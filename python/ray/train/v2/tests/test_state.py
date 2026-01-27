@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray.actor import ActorHandle
+from ray.runtime_env import RuntimeEnv
 from ray.train import DataConfig, DefaultBackendConfig
 from ray.train.v2._internal.callbacks.state_manager import (
     StateManagerCallback,
@@ -524,7 +525,7 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
         run_config=RunConfig(
             name="test",
             failure_config=FailureConfig(max_failures=1),
-            worker_runtime_env={"type": "conda"},
+            worker_runtime_env=RuntimeEnv(env_vars={"DUMMY_VAR": "abcd"}),
             checkpoint_config=CheckpointConfig(),
             storage_path="s3://bucket/path",
         ),

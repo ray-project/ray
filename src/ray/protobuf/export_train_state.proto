@@ -124,8 +124,10 @@ message ExportTrainRunEventData {
   // Scaling config for a Train run.
   message ScalingConfig {
     message StringMap {
-      // The bundle label selector key/value pairs (one selector map).
       map<string, string> values = 1;
+    }
+    message StringFloatMap {
+      map<string, double> values = 1;
     }
 
     // The number of workers for the Train run.
@@ -133,7 +135,7 @@ message ExportTrainRunEventData {
     // Whether to use GPUs for the Train run.
     bool use_gpu = 2;
     // The resources per worker for a Train run.
-    optional google.protobuf.Struct resources_per_worker = 3;
+    StringFloatMap resources_per_worker = 3;
     // The placement strategy for the Train run.
     string placement_strategy = 4;
     // The accelerator type for the Train run.
@@ -187,14 +189,22 @@ message ExportTrainRunEventData {
 
   // Checkpoint config for a Train run.
   message CheckpointConfig {
+    enum CheckpointScoreOrder {
+      // Default value required by proto3
+      SCORE_ORDER_UNSPECIFIED = 0;
+
+      MAX = 1;
+      MIN = 2;
+    }
+
     // The number of most recent checkpoints to keep. Older checkpoints may be deleted.
     optional uint64 num_to_keep = 1;
     // Attribute used to score and rank checkpoints; can be a metric key or attribute.
     optional string checkpoint_score_attribute = 2;
 
-    // Can be either 'max' or 'min'
-    // Order to rank checkpoint scores, 'max' for higher-is-better, 'min' for lower-is-better.
-    string checkpoint_score_order = 3;
+    // Either “max” or “min”. If “max”/”min”, then checkpoints with highest/lowest values
+    // of the checkpoint_score_attribute will be kept.
+    CheckpointScoreOrder checkpoint_score_order = 3;
   }
 
 }

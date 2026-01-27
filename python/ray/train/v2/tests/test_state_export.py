@@ -92,6 +92,7 @@ def _test_train_run_export():
 
     # Check that export files were created
     data = _get_exported_data()
+
     assert len(data) == 1
     assert data[0]["source_type"] == "EXPORT_TRAIN_RUN"
     assert data[0]["event_data"]["status"] == "RUNNING"
@@ -103,6 +104,45 @@ def test_export_train_run_enabled_by_config(enable_export_api_config):
 
 def test_export_train_run(enable_export_api_write):
     _test_train_run_export()
+
+
+def test_export_train_run_run_settings_fields(enable_export_api_write):
+    """Test that RunSettings fields are exported with expected shapes/types.
+
+    This is a regression test for the JSON export format produced by the Train state
+    export logger and the `export_train_state.proto` schema.
+    """
+    state_actor = get_or_create_state_actor()
+
+    ray.get(
+        state_actor.create_or_update_train_run.remote(
+            create_mock_train_run(RunStatus.RUNNING)
+        )
+    )
+
+    data = _get_exported_data()
+    assert len(data) == 1
+    run_settings = data[0]["event_data"]["run_settings"]
+
+    assert run_settings["backend_config"] == {
+        "config": {},
+        "framework": "TRAINING_FRAMEWORK_UNSPECIFIED",
+    }
+    assert run_settings["scaling_config"] == {
+        "num_workers": "1",
+        "placement_strategy": "PACK",
+        "use_gpu": False,
+        "use_tpu": False,
+        "bundle_label_selector": [],
+    }
+    assert run_settings["datasets"] == ["dataset_1"]
+    assert run_settings["data_config"] == {"all": {}, "enable_shard_locality": True}
+    assert run_settings["runtime_config"] == {
+        "failure_config": {"controller_failure_limit": -1, "max_failures": 0},
+        "worker_runtime_env": {"type": "conda"},
+        "checkpoint_config": {"checkpoint_score_order": "MAX"},
+        "storage_path": "s3://bucket/path",
+    }
 
 
 def test_export_train_run_attempt(enable_export_api_write):
@@ -314,13 +354,14 @@ def test_export_optional_fields(enable_export_api_write):
 
     # Verify train run without optional fields
     run_data = data[0]
+
     assert run_data["source_type"] == "EXPORT_TRAIN_RUN"
     assert "status_detail" not in run_data["event_data"]
     assert "end_time_ns" not in run_data["event_data"]
     assert "run_settings" in run_data["event_data"]
     run_settings = run_data["event_data"]["run_settings"]
     # Optional protobuf scalar fields use their defaults
-    assert run_settings["train_loop_config"] == ""
+    assert "train_loop_config" not in run_settings
     assert "checkpoint_config" in run_settings["runtime_config"]
     assert "num_to_keep" not in run_settings["runtime_config"]["checkpoint_config"]
     assert (
@@ -351,10 +392,10 @@ def test_export_optional_fields(enable_export_api_write):
         json.loads(run_settings["train_loop_config"])
         == run_with_optional.run_settings.train_loop_config
     )
-    assert (
-        run_settings["scaling_config"]["resources_per_worker"]
-        == run_with_optional.run_settings.scaling_config.resources_per_worker
-    )
+    assert run_settings["scaling_config"]["resources_per_worker"]["values"] == {
+        k: float(v)
+        for k, v in run_with_optional.run_settings.scaling_config.resources_per_worker.items()
+    }
     assert (
         run_settings["scaling_config"]["accelerator_type"]
         == run_with_optional.run_settings.scaling_config.accelerator_type

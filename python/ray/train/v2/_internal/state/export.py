@@ -71,6 +71,9 @@ logger = logging.getLogger(__name__)
 def _to_human_readable_json(obj, *, max_depth=10) -> str:
     """
     Convert arbitrary Python objects into a human-readable, JSON-serializable string.
+
+    Use-case(s):
+    - Convert user-defined dicts containing variable field types, custom objects, complex nesting to standard JSON string.
     """
 
     def sanitize(value, depth):
@@ -193,7 +196,7 @@ def to_proto_scaling_config(
     )
 
     if scaling_config.resources_per_worker is not None:
-        proto.resources_per_worker.update(scaling_config.resources_per_worker)
+        proto.resources_per_worker.values.update(scaling_config.resources_per_worker)
 
     # optional scalar fields: assign only if not None
     if scaling_config.accelerator_type is not None:
@@ -225,7 +228,10 @@ def to_proto_data_config(data_config: DataConfig) -> ProtoTrainRun.DataConfig:
         proto.datasets.values.extend(data_config.datasets_to_split)
 
     if data_config.execution_options is not None:
-        proto.execution_options.update(data_config.execution_options)
+        human_readable_execution_options = json.loads(
+            _to_human_readable_json(data_config.execution_options)
+        )
+        proto.execution_options.update(human_readable_execution_options)
 
     return proto
 
@@ -241,10 +247,17 @@ def to_proto_runtime_config(
     )
 
     worker_runtime_env = Struct()
-    worker_runtime_env.update(runtime_config.worker_runtime_env)
+    human_readable_worker_runtime_env = json.loads(
+        _to_human_readable_json(runtime_config.worker_runtime_env)
+    )
+    worker_runtime_env.update(human_readable_worker_runtime_env)
+
+    checkpoint_score_order = ProtoTrainRun.CheckpointConfig.CheckpointScoreOrder.Value(
+        runtime_config.checkpoint_config.checkpoint_score_order.upper()
+    )
 
     checkpoint_config = ProtoTrainRun.CheckpointConfig(
-        checkpoint_score_order=runtime_config.checkpoint_config.checkpoint_score_order
+        checkpoint_score_order=checkpoint_score_order
     )
     if runtime_config.checkpoint_config.num_to_keep is not None:
         checkpoint_config.num_to_keep = runtime_config.checkpoint_config.num_to_keep

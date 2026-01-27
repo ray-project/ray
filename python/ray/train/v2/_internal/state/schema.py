@@ -234,7 +234,7 @@ class ScalingConfig(BaseModel):
 
     num_workers: int = Field(description="The number of workers for the Train run.")
     use_gpu: bool = Field(description="Whether to use GPUs for the Train run.")
-    resources_per_worker: Optional[Dict] = Field(
+    resources_per_worker: Optional[Dict[str, float]] = Field(
         description="The resources per worker for a Train run."
     )
     placement_strategy: str = Field(
