@@ -76,10 +76,11 @@ def test_serve_namespace(ray_start_stop):
 def test_put_with_http_options(ray_start_stop, option, override):
     """Submits a config with HTTP options specified.
 
-    Trying to submit a config to the serve agent with the HTTP options modified should fail:
+    Trying to submit a config to the serve agent with the HTTP options modified should
+    NOT fail:
       - If Serve is NOT running, HTTP options will be honored when starting Serve
-      - If Serve is running and HTTP options are attempted to be changed, deployment will fail,
-        forcing users to restart Serve if they want their options to take effect.
+      - If Serve is running, HTTP options will be ignored, and warning will be logged
+      urging users to restart Serve if they want their options to take effect
     """
 
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
@@ -125,7 +126,7 @@ def test_put_with_http_options(ray_start_stop, option, override):
     put_response = requests.put(
         SERVE_HEAD_URL, json=updated_serve_config_json, timeout=5
     )
-    assert put_response.status_code == 500
+    assert put_response.status_code == 200
 
     # Fetch Serve status and confirm that HTTP options are unchanged
     get_response = requests.get(SERVE_HEAD_URL, timeout=5)

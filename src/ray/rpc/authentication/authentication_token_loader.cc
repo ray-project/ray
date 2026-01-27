@@ -58,8 +58,8 @@ std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
     return cached_token_;
   }
 
-  // If token or k8s auth is not enabled, return nullptr (unless ignoring auth mode)
-  if (!ignore_auth_mode && !RequiresTokenAuthentication()) {
+  // If token auth is not enabled, return std::nullopt (unless ignoring auth mode)
+  if (!ignore_auth_mode && GetAuthenticationMode() != AuthenticationMode::TOKEN) {
     return nullptr;
   }
 
@@ -91,7 +91,7 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
   }
 
   // If auth is disabled, return nullopt (no token needed)
-  if (!ignore_auth_mode && !RequiresTokenAuthentication()) {
+  if (!ignore_auth_mode && GetAuthenticationMode() != AuthenticationMode::TOKEN) {
     result.token = std::nullopt;
     return result;
   }
@@ -151,9 +151,10 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadTokenFromSources() {
     }
   }
 
-  // Precedence 3 (auth_mode=k8s only): Load Kubernetes service account token
-  if (GetAuthenticationMode() == AuthenticationMode::K8S) {
-    const std::string k8s_token_path(k8s::kK8sSaTokenPath);
+  // Precedence 3 (ENABLE_K8S_TOKEN_AUTH only): Load Ray service account token in
+  // /var/run/secrets/ray.io/serviceaccount/token
+  if (IsK8sTokenAuthEnabled()) {
+    const std::string k8s_token_path(k8s::kRaySaTokenPath);
     std::string token_str = TrimWhitespace(ReadTokenFromFile(k8s_token_path));
     if (!token_str.empty()) {
       RAY_LOG(DEBUG)
