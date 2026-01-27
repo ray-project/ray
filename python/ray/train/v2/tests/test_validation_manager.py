@@ -176,32 +176,7 @@ def test_checkpoint_validation_management_failure(tmp_path):
     )
 
 
-@pytest.mark.parametrize(
-    "base_task_config,override_task_config",
-    [
-        (
-            None,
-            ValidationTaskConfig(
-                ray_remote_kwargs={"max_retries": 1, "retry_exceptions": [ValueError]}
-            ),
-        ),
-        (
-            ValidationTaskConfig(
-                ray_remote_kwargs={"max_retries": 1, "retry_exceptions": [ValueError]}
-            ),
-            True,
-        ),
-        (
-            ValidationTaskConfig(
-                ray_remote_kwargs={"max_retries": 0, "retry_exceptions": [ValueError]}
-            ),
-            ValidationTaskConfig(ray_remote_kwargs={"max_retries": 1}),
-        ),
-    ],
-)
-def test_checkpoint_validation_management_success_after_retry(
-    tmp_path, base_task_config, override_task_config
-):
+def test_checkpoint_validation_management_success_after_retry(tmp_path):
     @ray.remote
     class Counter:
         def __init__(self):
@@ -224,7 +199,7 @@ def test_checkpoint_validation_management_success_after_retry(
         checkpoint_manager=checkpoint_manager,
         validation_config=ValidationConfig(
             fn=one_time_failing_validation_fn,
-            task_config=base_task_config,
+            ray_remote_kwargs={"max_retries": 1, "retry_exceptions": [ValueError]},
         ),
     )
     training_result = create_dummy_training_reports(
@@ -239,7 +214,7 @@ def test_checkpoint_validation_management_success_after_retry(
         training_report=_TrainingReport(
             metrics=training_result.metrics,
             checkpoint=training_result.checkpoint,
-            validation=override_task_config,
+            validation=True,
         ),
         metrics={},
     )

@@ -394,19 +394,16 @@ def test_report_validation_fn_success_after_retry():
             ray.train.report(
                 metrics={},
                 checkpoint=cp,
-                validation=ValidationTaskConfig(
-                    ray_remote_kwargs={
-                        "max_retries": 1,
-                        # Note that lists of exception types like [ValueError] are not json serializable.
-                        "retry_exceptions": True,
-                    },
-                ),
+                validation=True,
             )
 
     trainer = DataParallelTrainer(
         train_fn,
         scaling_config=ScalingConfig(num_workers=1),
-        validation_config=ValidationConfig(fn=validation_fn),
+        validation_config=ValidationConfig(
+            fn=validation_fn,
+            ray_remote_kwargs={"max_retries": 1, "retry_exceptions": [ValueError]},
+        ),
     )
     result = trainer.fit()
     assert result.best_checkpoints[0][1] == {"score": 100}
