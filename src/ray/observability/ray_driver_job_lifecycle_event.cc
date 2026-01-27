@@ -17,6 +17,26 @@
 namespace ray {
 namespace observability {
 
+rpc::events::DriverJobLifecycleEvent::SubmissionJobStatus StringToSubmissionJobStatus(
+    const std::string &status) {
+  if (status == "PENDING") {
+    return rpc::events::DriverJobLifecycleEvent::PENDING;
+  }
+  if (status == "RUNNING") {
+    return rpc::events::DriverJobLifecycleEvent::RUNNING;
+  }
+  if (status == "STOPPED") {
+    return rpc::events::DriverJobLifecycleEvent::STOPPED;
+  }
+  if (status == "SUCCEEDED") {
+    return rpc::events::DriverJobLifecycleEvent::SUCCEEDED;
+  }
+  if (status == "FAILED") {
+    return rpc::events::DriverJobLifecycleEvent::FAILED;
+  }
+  return rpc::events::DriverJobLifecycleEvent::SUBMISSION_JOB_STATUS_UNSPECIFIED;
+}
+
 RayDriverJobLifecycleEvent::RayDriverJobLifecycleEvent(
     const rpc::JobTableData &data,
     rpc::events::DriverJobLifecycleEvent::State state,
@@ -47,6 +67,10 @@ RayDriverJobLifecycleEvent::RayDriverJobLifecycleEvent(
     if (job_info.has_driver_exit_code()) {
       state_transition.set_exit_code(job_info.driver_exit_code());
     }
+
+    // Set submission job status from job_info.status() (for submission jobs)
+    state_transition.set_submission_job_status(
+        StringToSubmissionJobStatus(job_info.status()));
   }
 
   data_.mutable_state_transitions()->Add(std::move(state_transition));

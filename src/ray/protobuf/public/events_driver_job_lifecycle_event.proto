@@ -30,12 +30,26 @@ message DriverJobLifecycleEvent {
     FINISHED = 2;
   }
 
+  // Status for submission jobs (jobs submitted via Ray Job Submission API).
+  // Only populated when is_submission_job=true in DriverJobDefinitionEvent.
+  enum SubmissionJobStatus {
+    SUBMISSION_JOB_STATUS_UNSPECIFIED = 0;
+    PENDING = 1;    // Job submitted, waiting for runtime env setup
+    RUNNING = 2;    // Job is currently running
+    STOPPED = 3;    // Job stopped by user
+    SUCCEEDED = 4;  // Job completed successfully
+    FAILED = 5;     // Job failed
+  }
+
   message StateTransition {
     State state = 1;
     google.protobuf.Timestamp timestamp = 2;
     string message = 3;
     string error_type = 4;
     optional int32 exit_code = 5;
+    // For submission jobs only. Indicates the submission-level status.
+    // Will be SUBMISSION_JOB_STATUS_UNSPECIFIED for non-submission jobs.
+    SubmissionJobStatus submission_job_status = 6;
   }
 
   bytes job_id = 1;
