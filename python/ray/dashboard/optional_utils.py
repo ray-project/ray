@@ -12,7 +12,8 @@ import os
 import time
 import traceback
 from collections import namedtuple
-from typing import Callable, Union
+from types import ModuleType
+from typing import Callable, List, Optional, Set, Union
 
 from aiohttp.web import Request, Response
 
@@ -161,9 +162,9 @@ def is_browser_request(req: Request) -> bool:
 
 
 def get_browser_request_middleware(
-    aiohttp_module,
-    allowed_methods=None,
-    allowed_paths=None,
+    aiohttp_module: ModuleType,
+    allowed_methods: Optional[Set[str]] = None,
+    allowed_paths: Optional[List[str]] = None,
 ):
     """Create middleware that restricts browser access to specified HTTP methods.
 
