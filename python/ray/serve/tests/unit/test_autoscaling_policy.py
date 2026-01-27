@@ -5,16 +5,16 @@ import pytest
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
 from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
 from ray.serve.autoscaling_policy import (
+    _apply_app_level_autoscaling_config,
+    _apply_autoscaling_config,
     _apply_bounds,
     _apply_delay_logic,
     _apply_scaling_factors,
-    apply_app_level_autoscaling_config,
-    apply_autoscaling_config,
     replica_queue_length_autoscaling_policy,
 )
 from ray.serve.config import AutoscalingConfig, AutoscalingContext
 
-wrapped_replica_queue_length_autoscaling_policy = apply_autoscaling_config(
+wrapped_replica_queue_length_autoscaling_policy = _apply_autoscaling_config(
     replica_queue_length_autoscaling_policy
 )
 
@@ -904,7 +904,7 @@ class TestAutoscalingConfigParameters:
         assert decision_num_replicas == 0
 
 
-@apply_autoscaling_config
+@_apply_autoscaling_config
 def simple_custom_policy(ctx: AutoscalingContext):
     """
     Custom policy to check default parameters are applied
@@ -916,7 +916,7 @@ def simple_custom_policy(ctx: AutoscalingContext):
     return desired_num_replicas, {}
 
 
-@apply_app_level_autoscaling_config
+@_apply_app_level_autoscaling_config
 def simple_app_level_policy(ctxs):
     """App-level policy that always requests scaling up to 5 replicas."""
     return {deployment_id: 5 for deployment_id in ctxs.keys()}, {}

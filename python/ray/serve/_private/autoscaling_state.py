@@ -30,8 +30,8 @@ from ray.serve._private.metrics_utils import (
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 from ray.serve.autoscaling_policy import (
-    apply_app_level_autoscaling_config,
-    apply_autoscaling_config,
+    _apply_app_level_autoscaling_config,
+    _apply_autoscaling_config,
 )
 from ray.serve.config import AutoscalingContext, AutoscalingPolicy
 from ray.util import metrics
@@ -121,7 +121,7 @@ class DeploymentAutoscalingState:
         self._deployment_info = info
         self._config = config
         # Apply default autoscaling config to the policy
-        self._policy = apply_autoscaling_config(self._config.policy.get_policy())
+        self._policy = _apply_autoscaling_config(self._config.policy.get_policy())
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
@@ -852,7 +852,7 @@ class ApplicationAutoscalingState:
             autoscaling_policy: The autoscaling policy to register.
         """
         # Apply default autoscaling config to the policy
-        self._policy = apply_app_level_autoscaling_config(
+        self._policy = _apply_app_level_autoscaling_config(
             autoscaling_policy.get_policy()
         )
         self._policy_state = {}

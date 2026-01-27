@@ -10,6 +10,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve.config import AutoscalingConfig, AutoscalingContext
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -113,7 +114,7 @@ def _apply_bounds(
     )
 
 
-def apply_default_params(
+def _apply_default_params(
     desired_num_replicas: Union[int, float],
     ctx: AutoscalingContext,
     policy_state: Dict[str, Any],
@@ -153,7 +154,7 @@ def _apply_default_params_and_merge_state(
     }
     # Only pass the internal state used for delay counters so we don't
     # overwrite any custom user state.
-    final_num_replicas, updated_state = apply_default_params(
+    final_num_replicas, updated_state = _apply_default_params(
         desired_num_replicas, ctx, internal_policy_state
     )
     # Merge internal updated_state with the user's custom policy state.
@@ -176,7 +177,7 @@ def _get_cold_start_scale_up_replicas(ctx: AutoscalingContext) -> Optional[int]:
     return None
 
 
-def apply_autoscaling_config(
+def _apply_autoscaling_config(
     policy_func: Callable[
         [AutoscalingContext], Tuple[Union[int, float], Dict[str, Any]]
     ]
@@ -206,7 +207,7 @@ def apply_autoscaling_config(
     return wrapped_policy
 
 
-def apply_app_level_autoscaling_config(
+def _apply_app_level_autoscaling_config(
     policy_func: Callable[
         [Dict[DeploymentID, AutoscalingContext]],
         Tuple[
@@ -276,6 +277,7 @@ def _core_replica_queue_length_policy(ctx: AutoscalingContext) -> Tuple[float, D
     return desired_num_replicas, {}
 
 
+@PublicAPI(stability="alpha")
 def replica_queue_length_autoscaling_policy(
     ctx: AutoscalingContext,
 ) -> Tuple[int, Dict[str, Any]]:
