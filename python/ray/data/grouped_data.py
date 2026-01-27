@@ -41,12 +41,12 @@ class GroupedData:
         Use the ``Dataset.groupby()`` method to construct one.
         """
         self._dataset: Dataset = dataset
-        self.key: Optional[Union[str, List[str]]] = key
-        self.num_partitions: Optional[int] = num_partitions
+        self._key: Optional[Union[str, List[str]]] = key
+        self._num_partitions: Optional[int] = num_partitions
 
     def __repr__(self) -> str:
         return (
-            f"{self.__class__.__name__}(dataset={self._dataset}, " f"key={self.key!r})"
+            f"{self.__class__.__name__}(dataset={self._dataset}, " f"key={self._key!r})"
         )
 
     @PublicAPI(api_group=FA_API_GROUP)
@@ -65,10 +65,10 @@ class GroupedData:
 
         plan = self._dataset._plan.copy()
         op = Aggregate(
-            self._dataset._logical_plan.dag,
-            key=self.key,
+            input_op=self._dataset._logical_plan.dag,
+            key=self._key,
             aggs=aggs,
-            num_partitions=self.num_partitions,
+            num_partitions=self._num_partitions,
         )
         logical_plan = LogicalPlan(op, self._dataset.context)
         return Dataset(
@@ -91,7 +91,7 @@ class GroupedData:
         aggregation on the entire row for a simple Dataset.
         """
         aggs = self._dataset._build_multicolumn_aggs(
-            agg_cls, on, *args, skip_cols=self.key, **kwargs
+            agg_cls, on, *args, skip_cols=self._key, **kwargs
         )
         return self.aggregate(*aggs)
 
@@ -223,36 +223,36 @@ class GroupedData:
         #   - In case when hash-shuffle strategy is employed -- perform `repartition_and_sort`
         #   - Otherwise we perform "global" sort of the dataset (to co-locate rows with the
         #     same key values)
-        if self.key is None:
+        if self._key is None:
             shuffled_ds = self._dataset.repartition(1)
         elif self._dataset.context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
             num_partitions = (
-                self.num_partitions
+                self._num_partitions
                 or self._dataset.context.default_hash_shuffle_parallelism
             )
             shuffled_ds = self._dataset.repartition(
                 num_partitions,
-                keys=self.key,
+                keys=self._key,
                 # Blocks must be sorted after repartitioning, such that group
                 # of rows sharing the same key values are co-located
                 sort=True,
             )
         else:
-            shuffled_ds = self._dataset.sort(self.key)
+            shuffled_ds = self._dataset.sort(self._key)
 
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
 
-        if self.key is None:
+        if self._key is None:
             keys = []
-        elif isinstance(self.key, str):
-            keys = [self.key]
-        elif isinstance(self.key, List):
-            keys = self.key
+        elif isinstance(self._key, str):
+            keys = [self._key]
+        elif isinstance(self._key, List):
+            keys = self._key
         else:
             raise ValueError(
                 f"Group-by keys are expected to either be a single column (str) "
-                f"or a list of columns (got '{self.key}')"
+                f"or a list of columns (got '{self._key}')"
             )
 
         # NOTE: It's crucial to make sure that UDF isn't capturing `GroupedData`

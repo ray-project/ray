@@ -70,7 +70,7 @@ class TestDeltaSharingDatasource(unittest.TestCase):
 
         self.assertEqual(datasource._url, self.url)
         self.assertEqual(datasource._json_predicate_hints, self.json_predicate_hints)
-        self.assertEqual(datasource.limit, self.limit)
+        self.assertEqual(datasource._limit, self.limit)
         self.assertEqual(datasource._version, self.version)
         self.assertEqual(datasource._timestamp, None)
 
@@ -155,7 +155,7 @@ class MockDeltaSharingDatasource:
     ):
         self._url = url
         self._json_predicate_hints = json_predicate_hints
-        self.limit = limit
+        self._limit = limit
         self._version = version
         self._timestamp = timestamp
 
@@ -192,7 +192,7 @@ class MockDeltaSharingDatasource:
         response = self._rest_client.list_files_in_table(
             self._table,
             jsonPredicateHints=self._json_predicate_hints,
-            limitHint=self.limit,
+            limitHint=self._limit,
             version=self._version,
             timestamp=self._timestamp,
         )
@@ -280,7 +280,7 @@ def test_read_delta_sharing_tables(
     datasource = kwargs["datasource"]
     assert datasource._url == url
     assert datasource._json_predicate_hints == json_predicate_hints
-    assert datasource.limit == limit
+    assert datasource._limit == limit
     assert datasource._version == version
     assert datasource._timestamp == timestamp
     assert kwargs["ray_remote_args"] == ray_remote_args

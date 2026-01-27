@@ -261,7 +261,7 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
         new_exprs = projected_upstream_output_col_exprs + rebound_downstream_exprs
 
     return Project(
-        upstream_project.input_dependency,
+        input_op=upstream_project.input_dependency,
         exprs=new_exprs,
         compute=fused_compute,
         ray_remote_args=downstream_project.ray_remote_args,
@@ -404,7 +404,7 @@ class ProjectionPushdown(Rule):
 
                 # Has transformations: Keep Project on top of optimized Read
                 return Project(
-                    projected_input_op,
+                    input_op=projected_input_op,
                     exprs=current_project.exprs,
                     compute=current_project.compute,
                     ray_remote_args=current_project.ray_remote_args,

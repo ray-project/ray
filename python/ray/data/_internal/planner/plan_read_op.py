@@ -1,6 +1,6 @@
 import logging
 import warnings
-from typing import Iterable, List
+from typing import Callable, Iterable, List, Optional
 
 import ray
 from ray import ObjectRef
@@ -53,24 +53,12 @@ def _derive_metadata(read_task: ReadTask, read_task_ref: ObjectRef) -> BlockMeta
     )
 
 
-def plan_read_op(
+def _make_input_data_factory(
     op: Read,
-    physical_children: List[PhysicalOperator],
     data_context: DataContext,
-) -> PhysicalOperator:
-    """Get the corresponding DAG of physical operators for Read.
-
-    Note this method only converts the given `op`, but not its input dependencies.
-    See Planner.plan() for more details.
-    """
-    assert len(physical_children) == 0
-
+    parallelism: int,
+) -> Callable[[int], List[RefBundle]]:
     def get_input_data(target_max_block_size) -> List[RefBundle]:
-        parallelism = op.get_detected_parallelism()
-        assert (
-            parallelism is not None
-        ), "Read parallelism must be set by the optimizer before execution"
-
         # Get the original read tasks
         read_tasks = op.datasource_or_legacy_reader.get_read_tasks(
             parallelism,
@@ -101,7 +89,38 @@ def plan_read_op(
             ret.append(ref_bundle)
         return ret
 
-    inputs = InputDataBuffer(data_context, input_data_factory=get_input_data)
+    return get_input_data
+
+
+def plan_read_op(
+    op: Read,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> PhysicalOperator:
+    """Get the corresponding DAG of physical operators for Read.
+
+    Note this method only converts the given `op`, but not its input dependencies.
+    See Planner.plan() for more details.
+    """
+    assert len(physical_children) == 0
+
+    detected_parallelism: Optional[int] = op.get_detected_parallelism()
+    if detected_parallelism is None:
+
+        def get_input_data(_target_max_block_size) -> List[RefBundle]:
+            raise AssertionError(
+                "Read parallelism must be set by the optimizer before execution"
+            )
+
+        input_data_factory = get_input_data
+    else:
+        input_data_factory = _make_input_data_factory(
+            op,
+            data_context,
+            detected_parallelism,
+        )
+
+    inputs = InputDataBuffer(data_context, input_data_factory=input_data_factory)
 
     def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
         for read_task in blocks:

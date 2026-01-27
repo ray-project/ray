@@ -268,16 +268,16 @@ class PartitionActor:
     INIT_SAMPLE_BATCH_SIZE = 25
 
     def __init__(self, uri_column_names: List[str], data_context: DataContext):
-        self.uri_column_names = uri_column_names
+        self._uri_column_names = uri_column_names
         self._data_context = data_context
-        self.batch_size_estimate = None
+        self._batch_size_estimate = None
 
     def __call__(self, block: pa.Table) -> Iterator[pa.Table]:
         if not isinstance(block, pa.Table):
             block = BlockAccessor.for_block(block).to_arrow()
 
         # Validate all URI columns exist
-        for uri_column_name in self.uri_column_names:
+        for uri_column_name in self._uri_column_names:
             if uri_column_name not in block.column_names:
                 raise ValueError(
                     "Ray Data tried to download URIs from a column named "
@@ -285,14 +285,14 @@ class PartitionActor:
                     "exist. Is the specified download column correct?"
                 )
 
-        if self.batch_size_estimate is None:
-            self.batch_size_estimate = self._estimate_nrows_per_partition(block)
+        if self._batch_size_estimate is None:
+            self._batch_size_estimate = self._estimate_nrows_per_partition(block)
 
-        yield from _arrow_batcher(block, self.batch_size_estimate)
+        yield from _arrow_batcher(block, self._batch_size_estimate)
 
     def _estimate_nrows_per_partition(self, block: pa.Table) -> int:
         sampled_file_sizes_by_column = {}
-        for uri_column_name in self.uri_column_names:
+        for uri_column_name in self._uri_column_names:
             # Extract URIs from PyArrow table for sampling
             uris = block.column(uri_column_name).to_pylist()
             sample_uris = uris[: self.INIT_SAMPLE_BATCH_SIZE]
