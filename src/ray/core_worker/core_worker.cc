@@ -3089,6 +3089,7 @@ void CoreWorker::TryDelPendingObjectRefStreams() {
   absl::MutexLock lock(&generator_ids_pending_deletion_mutex_);
 
   std::vector<ObjectID> deleted;
+  deleted.reserve(generator_ids_pending_deletion_.size());
   for (const auto &generator_id : generator_ids_pending_deletion_) {
     RAY_LOG(DEBUG).WithField(generator_id)
         << "TryDelObjectRefStream from generator_ids_pending_deletion_";
@@ -3294,6 +3295,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
 
   std::vector<rpc::ObjectReference> returned_refs;
   size_t num_returns = task_spec.NumReturns();
+  returned_refs.reserve(num_returns);
   for (size_t i = 0; i < num_returns; i++) {
     if (!task_spec.IsActorCreationTask()) {
       reference_counter_->AddOwnedObject(
@@ -3338,6 +3340,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
   auto num_args = task.NumArgs();
   args->reserve(num_args);
   arg_refs->reserve(num_args);
+  borrowed_ids->reserve(num_args);
 
   absl::flat_hash_set<ObjectID> by_ref_ids;
   absl::flat_hash_map<ObjectID, std::vector<size_t>> by_ref_indices;
@@ -4254,6 +4257,7 @@ void CoreWorker::HandleDeleteObjects(rpc::DeleteObjectsRequest request,
                                      rpc::DeleteObjectsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> object_ids;
+  object_ids.reserve(request.object_ids_size());
   for (const auto &obj_id : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(obj_id));
   }
@@ -4559,6 +4563,7 @@ bool CoreWorker::IsIdle() const {
 
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
   std::vector<ActorID> actor_ids;
+  actor_ids.reserve(ids.size());
   for (const auto &id : ids) {
     if (ObjectID::IsActorID(id)) {
       actor_ids.emplace_back(ObjectID::ToActorID(id));
