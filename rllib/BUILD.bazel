@@ -467,7 +467,6 @@ py_test(
     main = "examples/algorithms/cql/pendulum_cql.py",
     tags = [
         "exclusive",
-        "gpu",
         "learning_tests",
         "team:rllib",
     ],
