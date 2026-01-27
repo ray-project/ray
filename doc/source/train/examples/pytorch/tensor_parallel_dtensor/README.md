@@ -627,7 +627,7 @@ scaling_config = ScalingConfig(
 
 In this tutorial, you learned:
 
-- How 2D parallelism combines tensor parallelism and data parallelism
+- How to combine tensor parallelism and data parallelism for 2D parallelism
 - How to set up a 2D device mesh with PyTorch
 - How to apply tensor parallelism with the Distributed Tensor API to transformer layers
 - The importance of TP-aware data loading for correct gradient computation
