@@ -3,9 +3,10 @@
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-import pyarrow.fs as pa_fs
-
-from ray.data._internal.datasource.delta.utils import to_pyarrow_schema
+from ray.data._internal.datasource.delta.utils import (
+    create_filesystem_from_storage_options,
+    to_pyarrow_schema,
+)
 from ray.data._internal.util import _check_import, _is_local_scheme
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.datasource.file_meta_provider import FileMetadataProvider
@@ -120,38 +121,13 @@ class DeltaDatasource(Datasource):
 
         from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 
-        filesystem = self.filesystem
         # If no filesystem was supplied, try to construct one from storage options
         # so that Parquet reads use the same credentials as Delta metadata access.
+        filesystem = self.filesystem
         if filesystem is None:
-            path_lower = self.path.lower()
-            if path_lower.startswith(("s3://", "s3a://")):
-                access_key = self.storage_options.get("AWS_ACCESS_KEY_ID")
-                secret_key = self.storage_options.get("AWS_SECRET_ACCESS_KEY")
-                session_token = self.storage_options.get("AWS_SESSION_TOKEN")
-                region = self.storage_options.get("AWS_REGION")
-                if access_key or secret_key or session_token or region:
-                    filesystem = pa_fs.S3FileSystem(
-                        access_key=access_key,
-                        secret_key=secret_key,
-                        session_token=session_token,
-                        region=region,
-                    )
-            elif path_lower.startswith(("abfss://", "abfs://")):
-                # Azure requires account_name for filesystem creation
-                account_name = self.storage_options.get("AZURE_STORAGE_ACCOUNT_NAME")
-                token = self.storage_options.get("AZURE_STORAGE_TOKEN")
-                if account_name and token:
-                    filesystem = pa_fs.AzureFileSystem(
-                        account_name=account_name,
-                        bearer_token=token,
-                    )
-            elif path_lower.startswith(("gs://", "gcs://")):
-                # GCS uses Application Default Credentials automatically
-                try:
-                    filesystem = pa_fs.GcsFileSystem()
-                except Exception:
-                    pass  # Fall back to default filesystem resolution
+            filesystem = create_filesystem_from_storage_options(
+                self.path, self.storage_options
+            )
 
         # Extract ParquetDatasource-specific kwargs from arrow_parquet_args
         # ParquetDatasource expects dataset_kwargs and to_batch_kwargs, not arbitrary kwargs
@@ -174,7 +150,9 @@ class DeltaDatasource(Datasource):
             to_batch_kwargs=to_batch_kwargs,
         )
 
-        return parquet_datasource.get_read_tasks(parallelism, per_task_row_limit)
+        return parquet_datasource.get_read_tasks(
+            parallelism, per_task_row_limit, data_context=data_context
+        )
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Estimate in-memory data size for the Delta table."""

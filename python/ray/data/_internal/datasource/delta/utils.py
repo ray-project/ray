@@ -75,18 +75,30 @@ def safe_dirname(path: str) -> str:
 def get_file_info_with_retry(
     fs: pa_fs.FileSystem, path: str, max_retries: int = 3, base_delay: float = 0.1
 ) -> pa_fs.FileInfo:
-    """Get file info with retries and exponential backoff."""
-    import time
+    """Get file info with retries and exponential backoff.
 
-    last_error: Optional[Exception] = None
-    for attempt in range(max_retries):
-        try:
-            return fs.get_file_info(path)
-        except Exception as e:
-            last_error = e
-            if attempt < max_retries - 1:
-                time.sleep(base_delay * (2**attempt))
-    raise last_error or RuntimeError(f"Failed to get file info: {path}")
+    Uses Ray's standard call_with_retry utility for consistent retry behavior.
+    """
+    from ray._common.retry import call_with_retry
+    from ray.data.context import DataContext
+
+    data_context = DataContext.get_current()
+
+    def _get_file_info():
+        return fs.get_file_info(path)
+
+    # Calculate max_backoff_s: base_delay * 2^(max_retries-1) to match exponential backoff
+    max_backoff_s = (
+        base_delay * (2 ** (max_retries - 1)) if max_retries > 1 else base_delay
+    )
+
+    return call_with_retry(
+        _get_file_info,
+        description=f"get file info for '{path}'",
+        match=data_context.retried_io_errors,
+        max_attempts=max_retries,
+        max_backoff_s=max_backoff_s,
+    )
 
 
 def validate_file_path(path: str, max_length: int = 500) -> None:
@@ -389,6 +401,53 @@ def is_temporal_type(t: pa.DataType) -> bool:
 # =============================================================================
 
 
+def create_filesystem_from_storage_options(
+    path: str, storage_options: Optional[Dict[str, str]] = None
+) -> Optional[pa_fs.FileSystem]:
+    """Create PyArrow filesystem from storage options if credentials are provided.
+
+    This is used when Delta Lake storage_options need to be converted to PyArrow
+    filesystem objects for reading Parquet files. If no storage_options are provided
+    or credentials are missing, returns None to let PyArrow use default resolution.
+
+    Args:
+        path: Path to determine filesystem type (S3, Azure, GCS).
+        storage_options: Storage options dict with credentials.
+
+    Returns:
+        PyArrow filesystem if credentials are available, None otherwise.
+    """
+    if not storage_options:
+        return None
+
+    path_lower = path.lower()
+    if path_lower.startswith(("s3://", "s3a://")):
+        access_key = storage_options.get("AWS_ACCESS_KEY_ID")
+        secret_key = storage_options.get("AWS_SECRET_ACCESS_KEY")
+        session_token = storage_options.get("AWS_SESSION_TOKEN")
+        region = storage_options.get("AWS_REGION")
+        if access_key or secret_key or session_token or region:
+            return pa_fs.S3FileSystem(
+                access_key=access_key,
+                secret_key=secret_key,
+                session_token=session_token,
+                region=region,
+            )
+    elif path_lower.startswith(("abfss://", "abfs://")):
+        account_name = storage_options.get("AZURE_STORAGE_ACCOUNT_NAME")
+        token = storage_options.get("AZURE_STORAGE_TOKEN")
+        if account_name and token:
+            return pa_fs.AzureFileSystem(
+                account_name=account_name,
+                bearer_token=token,
+            )
+    elif path_lower.startswith(("gs://", "gcs://")):
+        # GCS uses Application Default Credentials automatically
+        return pa_fs.GcsFileSystem()
+
+    return None
+
+
 def try_get_deltatable(
     table_uri: str, storage_options: Optional[Dict[str, str]] = None
 ) -> Optional["DeltaTable"]:
@@ -423,7 +482,9 @@ def to_pyarrow_schema(delta_schema: Any) -> pa.Schema:
                 try:
                     # Use pyarrow's C API to convert arro3 type to pyarrow type
                     pa_type = pa.DataType._import_from_c(field_type._export_to_c())
-                    fields.append(pa.field(field.name, pa_type, nullable=field.nullable))
+                    fields.append(
+                        pa.field(field.name, pa_type, nullable=field.nullable)
+                    )
                     needs_conversion = True
                 except (AttributeError, TypeError):
                     # If conversion fails, keep original field
