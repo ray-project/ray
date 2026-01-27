@@ -54,9 +54,9 @@ class BundleSchedulingPolicy : public IBundleSchedulingPolicy {
   /// Checks if every bundle is individually feasible on at least one node in the cluster.
   ///
   /// \param resource_request_list The list of resource and label constraints for each
-  /// bundle. 
+  /// bundle.
   /// \param candidate_nodes The candidate nodes in the cluster available for
-  /// scheduling. 
+  /// scheduling.
   /// \return True if all bundles are feasible on at least one node, false
   /// otherwise.
   bool IsRequestFeasible(
