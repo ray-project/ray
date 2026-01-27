@@ -1714,6 +1714,17 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_dqn_rl_module",
+    size = "small",
+    srcs = ["algorithms/dqn/tests/test_dqn_rl_module.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # DreamerV3
 py_test(
     name = "test_dreamerv3",
