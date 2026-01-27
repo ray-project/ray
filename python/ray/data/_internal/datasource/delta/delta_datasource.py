@@ -1,7 +1,7 @@
 """Datasource for reading Delta Lake tables."""
 
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import pyarrow.fs as pa_fs
 
@@ -11,6 +11,9 @@ from ray.data.datasource import Datasource, ReadTask
 from ray.data.datasource.file_meta_provider import FileMetadataProvider
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +108,10 @@ class DeltaDatasource(Datasource):
         return self.delta_table.file_uris()
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         """Get read tasks for Delta table snapshot reads."""
         file_paths = self.get_file_paths()

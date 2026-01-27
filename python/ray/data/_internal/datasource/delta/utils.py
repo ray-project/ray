@@ -197,27 +197,57 @@ def validate_partition_columns_in_table(cols: List[str], table: pa.Table) -> Non
 # =============================================================================
 
 
+def _safe_type_check(t: pa.DataType, check_func) -> bool:
+    """Safely check type, handling arro3 types that don't have 'id' attribute."""
+    try:
+        return check_func(t)
+    except AttributeError:
+        # arro3 types don't have 'id' attribute - convert to pyarrow type first
+        if not hasattr(t, "id"):
+            try:
+                # Convert arro3 type to pyarrow by reconstructing
+                pa_type = pa.DataType._import_from_c(t._export_to_c())
+                return check_func(pa_type)
+            except (AttributeError, TypeError):
+                # If conversion fails, return False
+                return False
+        raise
+
+
 def types_compatible(expected: pa.DataType, actual: pa.DataType) -> bool:
     """Check if actual type can be written to expected type column."""
     if expected == actual:
         return True
-    if pa.types.is_integer(expected) and pa.types.is_integer(actual):
-        if pa.types.is_signed_integer(expected) != pa.types.is_signed_integer(actual):
+    # Handle arro3 types that don't have 'id' attribute
+    if _safe_type_check(expected, pa.types.is_integer) and _safe_type_check(
+        actual, pa.types.is_integer
+    ):
+        if _safe_type_check(expected, pa.types.is_signed_integer) != _safe_type_check(
+            actual, pa.types.is_signed_integer
+        ):
             return False
         return getattr(actual, "bit_width", 64) <= getattr(expected, "bit_width", 64)
-    if pa.types.is_floating(expected) and pa.types.is_floating(actual):
+    if _safe_type_check(expected, pa.types.is_floating) and _safe_type_check(
+        actual, pa.types.is_floating
+    ):
         return True
     if is_string_type(expected) and is_string_type(actual):
         return True
     if is_binary_type(expected) and is_binary_type(actual):
         return True
-    if pa.types.is_boolean(expected) and pa.types.is_boolean(actual):
+    if _safe_type_check(expected, pa.types.is_boolean) and _safe_type_check(
+        actual, pa.types.is_boolean
+    ):
         return True
     if is_date_type(expected) and is_date_type(actual):
         return True
-    if pa.types.is_timestamp(expected) and pa.types.is_timestamp(actual):
+    if _safe_type_check(expected, pa.types.is_timestamp) and _safe_type_check(
+        actual, pa.types.is_timestamp
+    ):
         return getattr(expected, "tz", None) == getattr(actual, "tz", None)
-    if pa.types.is_decimal(expected) and pa.types.is_decimal(actual):
+    if _safe_type_check(expected, pa.types.is_decimal) and _safe_type_check(
+        actual, pa.types.is_decimal
+    ):
         return expected.precision == actual.precision and expected.scale == actual.scale
     return False
 
@@ -324,11 +354,22 @@ def infer_partition_type(value: Any) -> pa.DataType:
 
 # Type checking helpers
 def is_string_type(t: pa.DataType) -> bool:
-    return pa.types.is_string(t) or pa.types.is_large_string(t)
+    """Check if type is a string type (including string_view)."""
+    return (
+        pa.types.is_string(t)
+        or pa.types.is_large_string(t)
+        or (hasattr(pa.types, "is_string_view") and pa.types.is_string_view(t))
+    )
 
 
 def is_binary_type(t: pa.DataType) -> bool:
-    return pa.types.is_binary(t) or pa.types.is_large_binary(t)
+    """Check if type is a binary type (including binary_view and fixed_size_binary)."""
+    return (
+        pa.types.is_binary(t)
+        or pa.types.is_large_binary(t)
+        or (hasattr(pa.types, "is_binary_view") and pa.types.is_binary_view(t))
+        or pa.types.is_fixed_size_binary(t)
+    )
 
 
 def is_date_type(t: pa.DataType) -> bool:
@@ -362,15 +403,45 @@ def try_get_deltatable(
 
 
 def to_pyarrow_schema(delta_schema: Any) -> pa.Schema:
-    """Convert Delta Lake schema to PyArrow schema."""
+    """Convert Delta Lake schema to PyArrow schema.
+
+    Ensures all DataType objects are PyArrow types, not arro3 types.
+    arro3 types don't have 'id' attribute that pyarrow.types functions expect.
+    """
     if delta_schema is None:
         raise ValueError("Cannot convert None to PyArrow schema")
     if isinstance(delta_schema, pa.Schema):
+        # Check if schema contains arro3 types and convert if needed
+        # arro3 types don't have 'id' attribute that pyarrow.types functions expect
+        needs_conversion = False
+        fields = []
+        for field in delta_schema:
+            field_type = field.type
+            # Check if this is an arro3 type (doesn't have 'id' attribute)
+            if not hasattr(field_type, "id"):
+                # Convert arro3 type to pyarrow type
+                try:
+                    # Use pyarrow's C API to convert arro3 type to pyarrow type
+                    pa_type = pa.DataType._import_from_c(field_type._export_to_c())
+                    fields.append(pa.field(field.name, pa_type, nullable=field.nullable))
+                    needs_conversion = True
+                except (AttributeError, TypeError):
+                    # If conversion fails, keep original field
+                    # The _safe_type_check wrapper will handle it
+                    fields.append(field)
+            else:
+                fields.append(field)
+        if needs_conversion:
+            return pa.schema(fields)
         return delta_schema
     if hasattr(delta_schema, "to_pyarrow"):
-        return delta_schema.to_pyarrow()
+        schema = delta_schema.to_pyarrow()
+        # Recursively check and fix arro3 types
+        return to_pyarrow_schema(schema)
     if hasattr(delta_schema, "to_arrow"):
-        return delta_schema.to_arrow()
+        schema = delta_schema.to_arrow()
+        # Recursively check and fix arro3 types
+        return to_pyarrow_schema(schema)
     raise AttributeError(
         f"Cannot convert {type(delta_schema).__name__} to PyArrow schema"
     )
