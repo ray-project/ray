@@ -34,10 +34,10 @@ def test_limit_operator(ray_start_regular_shared):
         if limit == 0:
             # If the limit is 0, the operator should be completed immediately.
             assert limit_op.has_completed()
-            assert limit_op._limit_reached()
+            assert limit_op.limit_reached()
         cur_rows = 0
         loop_count = 0
-        while input_op.has_next() and not limit_op._limit_reached():
+        while input_op.has_next() and not limit_op.limit_reached():
             loop_count += 1
             assert not limit_op.has_completed(), limit
             assert not limit_op.has_execution_finished(), limit
@@ -50,12 +50,12 @@ def test_limit_operator(ray_start_regular_shared):
             if cur_rows >= limit:
                 assert limit_op.mark_execution_finished.call_count == 1, limit
                 assert limit_op.has_completed(), limit
-                assert limit_op._limit_reached(), limit
+                assert limit_op.limit_reached(), limit
                 assert limit_op.has_execution_finished(), limit
             else:
                 assert limit_op.mark_execution_finished.call_count == 0, limit
                 assert not limit_op.has_completed(), limit
-                assert not limit_op._limit_reached(), limit
+                assert not limit_op.limit_reached(), limit
                 assert not limit_op.has_execution_finished(), limit
         limit_op.mark_execution_finished()
         # After inputs done, the number of output bundles

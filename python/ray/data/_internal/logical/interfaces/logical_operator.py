@@ -30,7 +30,7 @@ class LogicalOperator(Operator):
         for x in input_dependencies:
             assert isinstance(x, LogicalOperator), x
 
-        self._num_outputs: Optional[int] = num_outputs
+        self.num_outputs: Optional[int] = num_outputs
 
     def estimated_num_outputs(self) -> Optional[int]:
         """Returns the estimated number of blocks that
@@ -41,8 +41,8 @@ class LogicalOperator(Operator):
         `Dataset.repartition(num_blocks=X)`. A more accurate estimation can be given by
         `PhysicalOperator.num_outputs_total()` during execution.
         """
-        if self._num_outputs is not None:
-            return self._num_outputs
+        if self.num_outputs is not None:
+            return self.num_outputs
         elif len(self.input_dependencies) == 1:
             return self.input_dependencies[0].estimated_num_outputs()
         return None
@@ -52,6 +52,10 @@ class LogicalOperator(Operator):
     @property
     def input_dependencies(self) -> List["LogicalOperator"]:
         return super().input_dependencies  # type: ignore
+
+    @input_dependencies.setter
+    def input_dependencies(self, value: List["LogicalOperator"]) -> None:
+        self._input_dependencies = value
 
     @property
     def output_dependencies(self) -> List["LogicalOperator"]:

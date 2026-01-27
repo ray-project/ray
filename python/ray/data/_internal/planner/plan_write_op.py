@@ -91,8 +91,8 @@ def _plan_write_op_internal(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
-    datasink = op._datasink_or_legacy_datasource
-    write_fn = generate_write_fn(datasink, **op._write_args)
+    datasink = op.datasink_or_legacy_datasource
+    write_fn = generate_write_fn(datasink, **op.write_args)
 
     # Create a MapTransformer for a write operator
     transform_fns = [
@@ -121,9 +121,9 @@ def _plan_write_op_internal(
         # Add a UUID to write tasks to prevent filename collisions. This a UUID for the
         # overall write operation, not the individual write tasks.
         map_task_kwargs={WRITE_UUID_KWARG_NAME: uuid.uuid4().hex},
-        ray_remote_args=op._ray_remote_args,
-        min_rows_per_bundle=op._min_rows_per_bundled_input,
-        compute_strategy=op._compute,
+        ray_remote_args=op.ray_remote_args,
+        min_rows_per_bundle=op.min_rows_per_bundled_input,
+        compute_strategy=op.compute,
         on_start=on_start,
     )
 

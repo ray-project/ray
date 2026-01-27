@@ -90,11 +90,11 @@ def _collect_operators_to_dict(op: LogicalOperator, ops_dict: Dict[str, int]):
 
     # Check read and write operator, and anonymize user-defined data source.
     if isinstance(op, Read):
-        op_name = f"Read{op._datasource.get_name()}"
+        op_name = f"Read{op.datasource.get_name()}"
         if op_name not in _op_name_white_list:
             op_name = "ReadCustom"
     elif isinstance(op, Write):
-        op_name = f"Write{op._datasink_or_legacy_datasource.get_name()}"
+        op_name = f"Write{op.datasink_or_legacy_datasource.get_name()}"
         if op_name not in _op_name_white_list:
             op_name = "WriteCustom"
     elif isinstance(op, AbstractUDFMap):

@@ -244,7 +244,7 @@ class _PipelinedStageExecutor:
 class _MapStageIterator:
     def __init__(self, input_blocks_list, shuffle_map, map_args):
         self._input_blocks_list = input_blocks_list
-        self._shuffle_map = shuffle_map
+        self.shuffle_map = shuffle_map
         self._map_args = map_args
 
         self._mapper_idx = 0
@@ -263,7 +263,7 @@ class _MapStageIterator:
         # Therefore, we do not specify a node affinity policy for map tasks
         # in case the caller or Ray has a better scheduling strategy, e.g.,
         # based on data locality.
-        map_result = self._shuffle_map.remote(
+        map_result = self.shuffle_map.remote(
             self._mapper_idx,
             block,
             *self._map_args,
@@ -288,7 +288,7 @@ class _MergeStageIterator:
         reduce_args,
     ):
         self._map_stage_iter = map_stage_iter
-        self._shuffle_merge = shuffle_merge
+        self.shuffle_merge = shuffle_merge
         self._stage = stage
         self._reduce_args = reduce_args
 
@@ -315,7 +315,7 @@ class _MergeStageIterator:
         num_merge_returns = self._stage.merge_schedule.get_num_reducers_per_merge_idx(
             self._merge_idx
         )
-        merge_result = self._shuffle_merge.options(
+        merge_result = self.shuffle_merge.options(
             num_returns=1 + num_merge_returns,
             **self._stage.get_merge_task_options(self._merge_idx),
         ).remote(
@@ -351,10 +351,10 @@ class _ReduceStageIterator:
         reduce_args: List[Any],
         _debug_limit_execution_to_num_blocks: Optional[int],
     ):
-        self._shuffle_reduce = shuffle_reduce
+        self.shuffle_reduce = shuffle_reduce
         self._stage = stage
         self._reduce_arg_blocks: List[Tuple[int, List[ObjectRef]]] = []
-        self._ray_remote_args = ray_remote_args
+        self.ray_remote_args = ray_remote_args
         self._reduce_args = reduce_args
 
         for reduce_idx in self._stage.merge_schedule.round_robin_reduce_idx_iterator():
@@ -397,8 +397,8 @@ class _ReduceStageIterator:
         # outputs produced by the corresponding merge task.
         # We also add the merge task arguments so that the reduce task
         # is colocated with its inputs.
-        block, meta_with_schema = self._shuffle_reduce.options(
-            **self._ray_remote_args,
+        block, meta_with_schema = self.shuffle_reduce.options(
+            **self.ray_remote_args,
             **self._stage.get_merge_task_options(merge_idx),
             num_returns=2,
         ).remote(*self._reduce_args, *reduce_arg_blocks, partial_reduce=False)
@@ -486,7 +486,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
         # Compute all constants used for task scheduling.
         num_cpus_per_node_map = _get_num_cpus_per_node_map()
-        stage = self._compute_shuffle_schedule(
+        stage = self.compute_shuffle_schedule(
             num_cpus_per_node_map,
             len(input_blocks_list),
             merge_factor,
@@ -754,7 +754,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         yield meta_with_schema
 
     @staticmethod
-    def _compute_shuffle_schedule(
+    def compute_shuffle_schedule(
         num_cpus_per_node_map: Dict[str, int],
         num_input_blocks: int,
         merge_factor: float,
