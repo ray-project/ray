@@ -1,5 +1,6 @@
 import math
 import time
+import warnings
 from typing import TYPE_CHECKING, Dict
 
 import ray
@@ -16,10 +17,9 @@ if TYPE_CHECKING:
 
 
 @Deprecated(
-    message="DefaultClusterAutoscaler (V1) is deprecated. "
-    "Use DefaultClusterAutoscalerV2 instead by setting "
-    "RAY_DATA_CLUSTER_AUTOSCALER=V2 or using the default.",
-    warning=True,
+    message="DefaultClusterAutoscaler (V1) is deprecated and will be removed "
+    "after June 2026. Use DefaultClusterAutoscalerV2 instead by setting "
+    "RAY_DATA_CLUSTER_AUTOSCALER=V2 or using the default."
 )
 class DefaultClusterAutoscaler(ClusterAutoscaler):
     # Min number of seconds between two autoscaling requests.
@@ -32,6 +32,13 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
         *,
         execution_id: str,
     ):
+        warnings.warn(
+            "DefaultClusterAutoscaler (V1) is deprecated and will be removed "
+            "after June 2026. Use DefaultClusterAutoscalerV2 instead by setting "
+            "RAY_DATA_CLUSTER_AUTOSCALER=V2 or using the default.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._topology = topology
         self._resource_limits = resource_limits
         self._execution_id = execution_id
