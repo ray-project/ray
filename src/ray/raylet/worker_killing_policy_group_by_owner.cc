@@ -44,8 +44,8 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
     return std::make_pair(nullptr, /*should retry*/ false);
   }
 
-  // Prioritize killing IDLE workers that doesn't have any lease granted and occupies
-  // large amount of memory first.
+  // Prioritize killing IDLE workers that don't have any lease granted and occupy
+  // a large amount of memory first.
   int64_t memory_threshold =
       RayConfig::instance().idle_worker_killing_memory_threshold_bytes();
   std::shared_ptr<WorkerInterface> idle_worker_to_kill = nullptr;
