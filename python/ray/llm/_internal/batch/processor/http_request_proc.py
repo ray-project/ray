@@ -15,6 +15,7 @@ from ray.llm._internal.batch.processor.base import (
     ProcessorBuilder,
     ProcessorConfig,
 )
+from ray.llm._internal.batch.processor.utils import extract_resource_kwargs
 from ray.llm._internal.batch.stages import HttpRequestStage
 
 
@@ -53,6 +54,15 @@ class HttpRequestProcessorConfig(ProcessorConfig):
         description="Optional session factory to be used for initializing a client session. Type: Callable[[], ClientSession]",
         # exclude from JSON serialization since `session_factory` is a callable
         exclude=True,
+    )
+    num_cpus: Optional[float] = Field(
+        default=None,
+        description="Number of CPUs per HttpRequestUDF worker. Defaults to 1 if None. "
+        "For I/O-bound workloads, use fractional values (e.g., 0.1).",
+    )
+    memory: Optional[float] = Field(
+        default=None,
+        description="Heap memory in bytes to reserve for each HttpRequestUDF worker.",
     )
 
 
@@ -93,7 +103,12 @@ def build_http_request_processor(
             map_batches_kwargs=dict(
                 compute=ActorPoolStrategy(
                     **config.get_concurrency(autoscaling_enabled=False),
-                )
+                ),
+                **extract_resource_kwargs(
+                    None,
+                    config.num_cpus,
+                    config.memory,
+                ),
             ),
         )
     ]
