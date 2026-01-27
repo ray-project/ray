@@ -845,8 +845,8 @@ class Node:
             # Fall back to stderr redirect environment variable.
         return (
             os.environ.get(ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE)
-                != "1"
-            )
+            != "1"
+        )
 
     # TODO(hjiang): Re-implement the logic in C++, and expose via cython.
     def get_log_file_names(
