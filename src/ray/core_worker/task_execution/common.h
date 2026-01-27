@@ -62,11 +62,11 @@ class TaskToExecute {
 struct TaskExecutionResult {
   TaskExecutionResult() = default;
 
-  // Disable copy constructor.
+  // Disable copy and move constructors defensively. This struct is only currently
+  // used as an output parameter that's passed by reference.
   TaskExecutionResult(const TaskExecutionResult &) = delete;
   TaskExecutionResult &operator=(const TaskExecutionResult &) = delete;
 
-  // Disable move constructor.
   TaskExecutionResult(TaskExecutionResult &&) = delete;
   TaskExecutionResult &operator=(TaskExecutionResult &&) = delete;
 
