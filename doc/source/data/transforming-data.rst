@@ -506,38 +506,50 @@ You can do this by using :ref:`placement groups <ray-placement-group-doc-ref>` a
     ds = ray.data.range(10).map_batches(DistributedModel, ray_remote_args_fn=ray_remote_args_fn)
     ds.take_all()
 
-Advanced: Asynchronous Transforms
-=================================
+Advanced: Asynchronous Transformations
+======================================
 
-Ray Data supports asynchronous functions by using the ``async`` keyword. This is useful for performing asynchronous operations such as fetching data from a database or making HTTP requests.
-Note that this only works when using a class-based transform function and currently requires ``uvloop==0.21.0``.
+Ray Data supports ``asyncio``` UDFs. This is useful for performing asynchronous operations such as downloading (images, videos
+or anything else) that's IO bound and is wasteful to do synchronously.
+
+:::note
+
+Note that this only works when using a class-based UDF and currently requires ``uvloop==0.21.0``.
+
+:::
 
 .. testcode::
 
-    import ray
-    from typing import Dict
-    import numpy as np
+.. testcode::
+    :skipif: True
 
-    class AsyncTransform:
-        async def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    import asyncio
+    import aiohttp
+    import numpy as np
+    import ray
+
+    async def fetch_url(session: aiohttp.ClientSession, url: str) -> str:
+        async with session.get(url) as response:
+            return await response.text()
+
+    class AsyncHTTPFetcher:
+        async def __call__(self, batch):
+            async with aiohttp.ClientSession() as session:
+                responses = await asyncio.gather(
+                    *[fetch_url(session, url) for url in batch["url"]]
+                )
+            batch["response"] = np.array(responses)
             return batch
 
-    ds = ray.data.range(10).map_batches(AsyncTransform)
+    ds = ray.data.from_items([
+        {"url": "https://www.wikipedia.org"},
+        # ...
+    ])
+
+    # NOTE: You can control the number of concurrent requests
+    #       in a single task through `batch_size`
+    ds = ds.map_batches(AsyncHTTPFetcher, batch_size=10)
     ds.take_all()
-
-.. testoutput::
-    :options: +MOCK
-
-    [{'id': 0},
-    {'id': 1},
-    {'id': 2},
-    {'id': 3},
-    {'id': 4},
-    {'id': 5},
-    {'id': 6},
-    {'id': 7},
-    {'id': 8},
-    {'id': 9}]
 
 
 Expressions (Alpha)
