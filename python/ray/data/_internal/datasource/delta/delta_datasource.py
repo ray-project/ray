@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray.data._internal.datasource.delta.utils import (
     create_filesystem_from_storage_options,
-    to_pyarrow_schema,
 )
 from ray.data._internal.util import _check_import, _is_local_scheme
 from ray.data.datasource import Datasource, ReadTask
@@ -166,25 +165,6 @@ class DeltaDatasource(Datasource):
     def get_name(self) -> str:
         """Return human-readable name for this datasource."""
         return "DeltaLake"
-
-    def get_table_version(self) -> int:
-        """Get current Delta table version."""
-        return self.delta_table.version()
-
-    def get_table_schema(self):
-        """Get Delta table schema."""
-        return to_pyarrow_schema(self.delta_table.schema())
-
-    def get_table_metadata(self) -> Dict[str, Any]:
-        """Get Delta table metadata."""
-        dt = self.delta_table
-        file_paths = self.get_file_paths()
-        return {
-            "version": dt.version(),
-            "num_files": len(file_paths),
-            "schema": to_pyarrow_schema(dt.schema()),
-            "partition_columns": dt.metadata().partition_columns,
-        }
 
     def __repr__(self) -> str:
         """String representation for debugging."""

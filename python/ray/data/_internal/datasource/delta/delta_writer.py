@@ -213,9 +213,8 @@ class DeltaFileWriter:
         full_path = join_delta_path(self.table_uri, relative_path)
 
         self.written_files.add(full_path)
-        table_to_write = self.prepare_table_for_write(table)
-        file_size = self.write_parquet_file(table_to_write, full_path)
-        file_statistics = compute_parquet_statistics(table_to_write)
+        file_size = self.write_parquet_file(table, full_path)
+        file_statistics = compute_parquet_statistics(table)
 
         return AddAction(
             path=relative_path,
@@ -309,12 +308,6 @@ class DeltaFileWriter:
         )
 
         return file_size_result[0]
-
-    def prepare_table_for_write(self, table: pa.Table) -> pa.Table:
-        """Prepare table for writing (remove partition columns if needed)."""
-        # Partition columns are stored in partition_values, not in file data
-        # But we keep them in the file for compatibility
-        return table
 
     def ensure_parent_directory(self, file_path: str) -> None:
         """Create parent directory for file if needed."""

@@ -4,7 +4,7 @@ This module handles committing file actions to Delta Lake transaction log.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import pyarrow as pa
 import pyarrow.fs as pa_fs
@@ -20,15 +20,9 @@ from ray.data._internal.datasource.delta.utils import (
     validate_file_path,
 )
 
-if __name__ == "__main__":
+if TYPE_CHECKING:
     from deltalake import DeltaTable
     from deltalake.transaction import AddAction
-else:
-    from typing import TYPE_CHECKING
-
-    if TYPE_CHECKING:
-        from deltalake import DeltaTable
-        from deltalake.transaction import AddAction
 
 logger = logging.getLogger(__name__)
 

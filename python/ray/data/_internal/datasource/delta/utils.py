@@ -264,17 +264,6 @@ def types_compatible(expected: pa.DataType, actual: pa.DataType) -> bool:
     return False
 
 
-def schemas_compatible(existing: pa.Schema, new: pa.Schema) -> bool:
-    """Check if new schema is compatible with existing schema for append."""
-    existing_types = {f.name: f.type for f in existing}
-    for fld in new:
-        if fld.name not in existing_types:
-            return False
-        if not types_compatible(existing_types[fld.name], fld.type):
-            return False
-    return True
-
-
 def convert_schema_to_delta(schema: pa.Schema) -> Any:
     """Convert PyArrow schema to Delta Lake schema."""
     from deltalake import Schema as DeltaSchema

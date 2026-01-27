@@ -405,7 +405,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     def _get_file_writer(self) -> DeltaFileWriter:
         """Get file writer instance for this datasink."""
         return DeltaFileWriter(
-            table_uri=self.path,
+            table_uri=self.table_uri,
             filesystem=self.filesystem,
             partition_cols=self.partition_cols,
             write_uuid=self._write_uuid,
@@ -473,7 +473,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             # But skip if table existed at start (IGNORE mode semantics)
             if self.schema and not existing_table and not self._table_existed_at_start:
                 create_table_with_files(
-                    self.path,
+                    self.table_uri,
                     [],
                     self.schema,
                     self.mode.value,
@@ -507,7 +507,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         # Wrap commit phase in try/except to ensure cleanup on failure
         # (files were written by workers, so _written_files is empty on driver)
         try:
-            validate_file_actions(all_file_actions, self.path, self.filesystem)
+            validate_file_actions(all_file_actions, self.table_uri, self.filesystem)
 
             # Commit based on mode
             if self._table_existed_at_start:
@@ -516,7 +516,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                     return
                 if existing_table is None and self.mode == SaveMode.OVERWRITE:
                     create_table_with_files(
-                        self.path,
+                        self.table_uri,
                         all_file_actions,
                         self.schema,
                         self.mode.value,
@@ -533,7 +533,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                     )
             else:
                 create_table_with_files(
-                    self.path,
+                    self.table_uri,
                     all_file_actions,
                     self.schema,
                     self.mode.value,
@@ -559,7 +559,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         if self.mode == SaveMode.UPSERT:
             commit_upsert(
                 table,
-                file_actions,
+            file_actions,
                 upsert_keys,
                 self._get_upsert_cols(),
                 self.partition_cols,
@@ -568,14 +568,14 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         else:
             commit_to_existing_table(
                 table,
-                file_actions,
+            file_actions,
                 self.mode.value,
                 self.partition_cols,
                 self.schema,
                 self.write_kwargs,
                 self.path,
                 self.filesystem,
-            )
+        )
 
     def _collect_write_results(
         self, write_result: WriteResult[DeltaWriteResult]
