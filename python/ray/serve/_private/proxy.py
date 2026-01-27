@@ -801,7 +801,7 @@ class gRPCProxy(GenericProxy):
 
     async def receive_grpc_messages(
         self, session_id: str
-    ) -> Tuple[bool, Optional[bytes], bool]:
+    ) -> Tuple[bool, Optional[Any], bool]:
         """Receive the next message from a gRPC streaming session.
 
         This method is called by replicas to receive messages from
@@ -811,9 +811,9 @@ class gRPCProxy(GenericProxy):
             session_id: The session ID of the streaming session.
 
         Returns:
-            A tuple of (has_more, message_bytes, is_cancelled).
+            A tuple of (has_more, message, is_cancelled).
             - has_more: True if there are more messages, False if stream is done.
-            - message_bytes: The pickled message, or None if stream is done.
+            - message: The protobuf message object, or None if stream is done.
             - is_cancelled: True if the stream was cancelled by client or error.
 
         Note:
@@ -833,7 +833,8 @@ class gRPCProxy(GenericProxy):
 
         try:
             message = await request_iterator.__anext__()
-            return (True, pickle.dumps(message), False)
+            # Return message directly - let Ray handle serialization
+            return (True, message, False)
         except StopAsyncIteration:
             return (False, None, False)
         except Exception as e:
@@ -1370,14 +1371,16 @@ class ProxyActorInterface(ABC):
         pass
 
     @abstractmethod
-    async def receive_grpc_messages(self, session_id: str) -> bytes:
+    async def receive_grpc_messages(
+        self, session_id: str
+    ) -> Tuple[bool, Optional[Any], bool]:
         """Get the next gRPC message for a streaming session.
 
         Args:
             session_id: The session ID of the streaming session
 
         Returns:
-            Serialized tuple of (has_more, message_bytes, is_cancelled)
+            Tuple of (has_more, message, is_cancelled)
         """
         pass
 
@@ -1643,7 +1646,9 @@ class ProxyActor(ProxyActorInterface):
             await self.http_proxy.receive_asgi_messages(request_metadata)
         )
 
-    async def receive_grpc_messages(self, session_id: str) -> bytes:
+    async def receive_grpc_messages(
+        self, session_id: str
+    ) -> Tuple[bool, Optional[Any], bool]:
         """Get the next gRPC message for a streaming session.
 
         This method is called by replicas to receive messages from
@@ -1653,10 +1658,9 @@ class ProxyActor(ProxyActorInterface):
             session_id: The session ID of the streaming session.
 
         Returns:
-            Pickled tuple of (has_more: bool, message_bytes: Optional[bytes],
-            is_cancelled: bool).
+            Tuple of (has_more: bool, message: Optional[Any], is_cancelled: bool).
             - has_more: True if there are more messages, False if stream is done.
-            - message_bytes: The pickled message, or None if stream is done.
+            - message: The protobuf message object, or None if stream is done.
             - is_cancelled: True if the stream was cancelled by client or error.
 
         Raises `KeyError` if the session ID is not found.
@@ -1664,8 +1668,8 @@ class ProxyActor(ProxyActorInterface):
         if self.grpc_proxy is None:
             raise RuntimeError("gRPC proxy is not enabled.")
 
-        result = await self.grpc_proxy.receive_grpc_messages(session_id)
-        return pickle.dumps(result)
+        # Return tuple directly - Ray handles serialization
+        return await self.grpc_proxy.receive_grpc_messages(session_id)
 
     def _get_http_options(self) -> HTTPOptions:
         """Internal method to get HTTP options used by the proxy."""

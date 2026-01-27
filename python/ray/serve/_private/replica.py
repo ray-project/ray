@@ -648,6 +648,9 @@ class ReplicaBase(ABC):
         # Track deployment handles created dynamically via get_deployment_handle()
         self._dynamically_created_handles: Set[DeploymentID] = set()
 
+        # Cache for proxy actor handles (for gRPC streaming)
+        self._proxy_actor_cache: Dict[str, ray.actor.ActorHandle] = {}
+
         # Flipped to `True` when health checks pass and `False` when they fail. May be
         # used by replica subclass implementations.
         self._healthy = False
@@ -976,6 +979,14 @@ class ReplicaBase(ABC):
 
         return request_args, request_kwargs, ray_trace_ctx
 
+    def _get_proxy_actor(self, proxy_actor_name: str) -> ray.actor.ActorHandle:
+        """Get proxy actor handle, using cache to avoid repeated lookups."""
+        if proxy_actor_name not in self._proxy_actor_cache:
+            self._proxy_actor_cache[proxy_actor_name] = ray.get_actor(
+                proxy_actor_name, namespace=SERVE_NAMESPACE
+            )
+        return self._proxy_actor_cache[proxy_actor_name]
+
     def _setup_grpc_streaming_args(
         self,
         request_metadata: RequestMetadata,
@@ -986,10 +997,8 @@ class ReplicaBase(ABC):
         Creates a gRPCInputStream that wraps the callback to the proxy,
         allowing the user method to iterate over incoming request messages.
         """
-        # Get the proxy actor handle for receiving messages
-        proxy_actor = ray.get_actor(
-            streaming_request.proxy_actor_name, namespace=SERVE_NAMESPACE
-        )
+        # Get the proxy actor handle for receiving messages (cached)
+        proxy_actor = self._get_proxy_actor(streaming_request.proxy_actor_name)
 
         # Create a cancel event that will be set when the client cancels
         cancel_event = asyncio.Event()
@@ -997,16 +1006,20 @@ class ReplicaBase(ABC):
         # Create an async iterator that fetches messages from the proxy
         async def request_message_iterator():
             while True:
-                result_bytes = await proxy_actor.receive_grpc_messages.remote(
+                # Ray handles serialization - no manual pickle needed
+                (
+                    has_more,
+                    message,
+                    is_cancelled,
+                ) = await proxy_actor.receive_grpc_messages.remote(
                     streaming_request.session_id
                 )
-                has_more, message_bytes, is_cancelled = pickle.loads(result_bytes)
                 if is_cancelled:
                     # Set the cancel event so is_cancelled() returns True
                     cancel_event.set()
                 if not has_more:
                     break
-                yield pickle.loads(message_bytes)
+                yield message
 
         # Create the gRPCInputStream wrapper with the cancel event
         input_stream = gRPCInputStream(
