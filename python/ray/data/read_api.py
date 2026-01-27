@@ -44,7 +44,6 @@ from ray.data._internal.datasource.json_datasource import (
     ArrowJSONDatasource,
     PandasJSONDatasource,
 )
-from ray.data._internal.datasource.kafka_datasource import KafkaDatasource
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
@@ -4856,77 +4855,77 @@ def read_kafka(
         ValueError: If configuration is invalid or required parameters are missing.
         ImportError: If kafka-python is not installed.
     """
+    from ray.data._internal.datasource.kafka_datasource import (
+        KafkaAuthConfig,
+        KafkaBoundedDatasource,
+        KafkaStreamingDatasource,
+    )
     from ray.data._internal.logical.interfaces import LogicalPlan
     from ray.data._internal.plan import ExecutionPlan
     from ray.data._internal.stats import DatasetStats
     from ray.data.context import DataContext
 
-    # Build kafka_config from flat parameters
-    kafka_config = {
-        "bootstrap_servers": bootstrap_servers,
-        "auto_offset_reset": auto_offset_reset,
-        "session_timeout_ms": session_timeout_ms,
-        "security_protocol": security_protocol,
-    }
-
-    # Add optional parameters if provided
-    if group_id is not None:
-        kafka_config["group_id"] = group_id
-
-    # SASL authentication parameters
-    if sasl_mechanism is not None:
-        kafka_config["sasl_mechanism"] = sasl_mechanism
-    if sasl_username is not None:
-        kafka_config["sasl_username"] = sasl_username
-    if sasl_password is not None:
-        kafka_config["sasl_password"] = sasl_password
-    if sasl_kerberos_service_name is not None:
-        kafka_config["sasl_kerberos_service_name"] = sasl_kerberos_service_name
-    if sasl_kerberos_domain_name is not None:
-        kafka_config["sasl_kerberos_domain_name"] = sasl_kerberos_domain_name
-    if sasl_oauth_token_provider is not None:
-        kafka_config["sasl_oauth_token_provider"] = sasl_oauth_token_provider
-
-    # SSL/TLS parameters
-    if ssl_ca_location is not None:
-        kafka_config["ssl_ca_location"] = ssl_ca_location
-    if ssl_certificate_location is not None:
-        kafka_config["ssl_certificate_location"] = ssl_certificate_location
-    if ssl_key_location is not None:
-        kafka_config["ssl_key_location"] = ssl_key_location
-    if ssl_keystore_location is not None:
-        kafka_config["ssl_keystore_location"] = ssl_keystore_location
-    if ssl_keystore_password is not None:
-        kafka_config["ssl_keystore_password"] = ssl_keystore_password
-    if ssl_truststore_location is not None:
-        kafka_config["ssl_truststore_location"] = ssl_truststore_location
-    if ssl_truststore_password is not None:
-        kafka_config["ssl_truststore_password"] = ssl_truststore_password
-    if ssl_ciphers is not None:
-        kafka_config["ssl_ciphers"] = ssl_ciphers
-    if ssl_protocol is not None:
-        kafka_config["ssl_protocol"] = ssl_protocol
-
-    # SSL configuration
-    kafka_config["ssl_check_hostname"] = ssl_check_hostname
-
-    # Add any additional kafka kwargs
-    kafka_config.update(kafka_kwargs)
-
-    # Create datasource
-    datasource = KafkaDatasource(
-        topics=topics,
-        kafka_config=kafka_config,
-        max_records_per_task=max_records_per_task,
-        start_offset=start_offset,
-        end_offset=end_offset,
+    # Build KafkaAuthConfig from flat parameters
+    kafka_auth_config = KafkaAuthConfig(
+        security_protocol=security_protocol if security_protocol != "PLAINTEXT" else None,
+        sasl_mechanism=sasl_mechanism,
+        sasl_plain_username=sasl_username,
+        sasl_plain_password=sasl_password,
+        sasl_kerberos_service_name=sasl_kerberos_service_name,
+        sasl_kerberos_domain_name=sasl_kerberos_domain_name,
+        sasl_oauth_token_provider=sasl_oauth_token_provider,
+        ssl_check_hostname=ssl_check_hostname if not ssl_check_hostname else None,
+        ssl_cafile=ssl_ca_location,
+        ssl_certfile=ssl_certificate_location,
+        ssl_keyfile=ssl_key_location,
+        ssl_ciphers=ssl_ciphers,
     )
 
     # Parse trigger configuration
     streaming_trigger = _parse_streaming_trigger(trigger)
 
-    # For streaming triggers, use the new streaming operator
-    if streaming_trigger.trigger_type != "once":
+    # Dispatch to appropriate datasource based on trigger
+    if streaming_trigger.trigger_type == "once":
+        # Bounded batch read - use KafkaBoundedDatasource
+        # Map offsets: use "earliest"/"latest" for bounded datasource
+        bounded_start = start_offset if start_offset else "earliest"
+        bounded_end = end_offset if end_offset else "latest"
+
+        # Convert numeric string offsets to int
+        if bounded_start and bounded_start.isdigit():
+            bounded_start = int(bounded_start)
+        if bounded_end and bounded_end.isdigit():
+            bounded_end = int(bounded_end)
+
+        datasource = KafkaBoundedDatasource(
+            topics=topics,
+            bootstrap_servers=bootstrap_servers,
+            start_offset=bounded_start,
+            end_offset=bounded_end,
+            kafka_auth_config=kafka_auth_config,
+            timeout_ms=session_timeout_ms,
+        )
+
+        return read_datasource(
+            datasource,
+            parallelism=parallelism,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
+        )
+    else:
+        # Streaming read - use KafkaStreamingDatasource
+        datasource = KafkaStreamingDatasource(
+            topics=topics,
+            bootstrap_servers=bootstrap_servers,
+            kafka_auth_config=kafka_auth_config,
+            max_records_per_task=max_records_per_task,
+            start_offset=start_offset,
+            end_offset=end_offset,
+            group_id=group_id,
+            poll_timeout_ms=session_timeout_ms,
+        )
+
         # Create streaming logical operator
         from ray.data._internal.logical.operators.unbound_data_operator import (
             UnboundedData,
@@ -4938,11 +4937,11 @@ def read_kafka(
             parallelism=parallelism,
         )
 
-        # Create logical plan - the planner will convert to physical operator
+        # Create logical plan
         ctx = DataContext.get_current()
         logical_plan = LogicalPlan(streaming_logical_op, ctx)
 
-        # Create execution plan (planner will create physical operators)
+        # Create execution plan
         execution_plan = ExecutionPlan(
             DatasetStats(metadata={}, parent=None),
             ctx.copy(),
@@ -4951,15 +4950,6 @@ def read_kafka(
         return Dataset(
             plan=execution_plan,
             logical_plan=logical_plan,
-        )
-    else:
-        # For "once" trigger, use standard read_datasource
-        return read_datasource(
-            datasource,
-            parallelism=parallelism,
-            ray_remote_args=ray_remote_args,
-            concurrency=concurrency,
-            override_num_blocks=override_num_blocks,
         )
 
 
