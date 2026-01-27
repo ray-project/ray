@@ -560,8 +560,7 @@ def train_fn():
         ray.train.report(
             metrics,
             checkpoint=checkpoint,
-            validate_fn=...,
-            validate_config=...,
+            validation=...,
         )
 
     # Get committed checkpoints which may still have ongoing validations.
