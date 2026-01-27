@@ -123,7 +123,7 @@ def commit_to_existing_table(
         table_uri: Base URI for Delta table.
         filesystem: PyArrow filesystem for reading files.
     """
-    # Always validate schema compatibility, even for empty writes
+    # Validate schema compatibility (allows new columns via schema evolution)
     existing_schema = to_pyarrow_schema(existing_table.schema())
     if file_actions:
         inferred_schema = infer_schema(
@@ -135,8 +135,6 @@ def commit_to_existing_table(
         # No file actions and no schema - skip validation
         inferred_schema = None
 
-    # Validate schema compatibility, allowing new columns (schema evolution)
-    # Delta Lake automatically adds new columns during append operations
     if inferred_schema:
         existing_cols = {f.name: f.type for f in existing_schema}
         inferred_cols = {f.name: f.type for f in inferred_schema}
@@ -149,12 +147,12 @@ def commit_to_existing_table(
             and not types_compatible(existing_cols[c], inferred_cols[c])
         ]
         if mismatches:
-            msg = "Schema mismatch: type mismatches for existing columns"
-            msg += f": {mismatches}"
-            raise ValueError(msg)
+            raise ValueError(
+                f"Schema mismatch: type mismatches for existing columns: {mismatches}"
+            )
 
-        # New columns are allowed and will be added automatically by Delta Lake
-        # Missing columns are also OK (partial writes)
+        # New columns are allowed (Delta Lake adds them automatically)
+        # Missing columns are OK (partial writes)
 
     validate_partition_columns_match_existing(existing_table, partition_cols)
     transaction_mode = "overwrite" if mode == "overwrite" else "append"

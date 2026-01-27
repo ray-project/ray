@@ -462,7 +462,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                         self.partition_cols,
                         self.schema,
                         self.write_kwargs,
-                        self.path,
+                        self.table_uri,
                         self.filesystem,
                     )
                     return
@@ -485,13 +485,12 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             return
 
         # Reconcile schemas from all workers with type promotion
-        # This handles cases where different workers infer different types (e.g., int32 vs int64)
-        reconciled_schema = None
+        # Handles cases where different workers infer different types (e.g., int32 vs int64)
         if all_schemas:
+            from ray.data._internal.datasource.delta.utils import to_pyarrow_schema
+
             if existing_table:
                 # Include existing table schema in reconciliation
-                from ray.data._internal.datasource.delta.utils import to_pyarrow_schema
-
                 table_schema = to_pyarrow_schema(existing_table.schema())
                 reconciled_schema = unify_schemas(
                     [table_schema] + all_schemas, promote_types=True
@@ -500,21 +499,22 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 # For new tables, reconcile all worker schemas
                 reconciled_schema = unify_schemas(all_schemas, promote_types=True)
 
-            # Update self.schema with reconciled schema for commit
+            # Update schema with reconciled result for commit
             if reconciled_schema:
                 self.schema = reconciled_schema
 
-        # Wrap commit phase in try/except to ensure cleanup on failure
-        # (files were written by workers, so _written_files is empty on driver)
+        # Commit phase: validate and commit files atomically
+        # Wrap in try/except to ensure cleanup on failure (files written by workers)
         try:
             validate_file_actions(all_file_actions, self.table_uri, self.filesystem)
 
-            # Commit based on mode
-            if self._table_existed_at_start:
-                if self.mode == SaveMode.IGNORE:
-                    self._cleanup_written_files(all_file_actions)
-                    return
-                if existing_table is None and self.mode == SaveMode.OVERWRITE:
+        if self._table_existed_at_start:
+                # Table existed at start - handle based on mode
+            if self.mode == SaveMode.IGNORE:
+                self._cleanup_written_files(all_file_actions)
+                return
+            if existing_table is None and self.mode == SaveMode.OVERWRITE:
+                    # Table was deleted, create new one
                     create_table_with_files(
                         self.table_uri,
                         all_file_actions,
@@ -525,13 +525,15 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                         self.write_kwargs,
                         self.filesystem,
                     )
-                elif existing_table is not None:
-                    self._commit_by_mode(existing_table, all_file_actions, upsert_keys)
-                else:
-                    raise ValueError(
-                        f"Delta table was deleted at {self.table_uri} after write started."
-                    )
+            elif existing_table is not None:
+                    # Commit to existing table (APPEND, OVERWRITE, or UPSERT)
+                self._commit_by_mode(existing_table, all_file_actions, upsert_keys)
             else:
+                raise ValueError(
+                    f"Delta table was deleted at {self.table_uri} after write started."
+                )
+        else:
+                # Table didn't exist at start - create new table
                 create_table_with_files(
                     self.table_uri,
                     all_file_actions,
@@ -573,7 +575,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 self.partition_cols,
                 self.schema,
                 self.write_kwargs,
-                self.path,
+                self.table_uri,
                 self.filesystem,
         )
 
@@ -668,11 +670,13 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         """
         files_to_cleanup = set()
         if file_actions:
+            # Use paths from file actions (used when commit fails)
             for action in file_actions:
                 if action and action.path:
-                    full_path = join_delta_path(self.path, action.path)
+                    full_path = join_delta_path(self.table_uri, action.path)
                     files_to_cleanup.add(full_path)
         else:
+            # Use tracked written files (used when write fails)
             files_to_cleanup = self._written_files.copy()
 
         for file_path in files_to_cleanup:
