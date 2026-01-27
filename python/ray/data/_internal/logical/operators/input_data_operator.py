@@ -6,6 +6,10 @@ from ray.data._internal.logical.interfaces import LogicalOperator, SourceOperato
 from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.block import BlockMetadata
 
+__all__ = [
+    "InputData",
+]
+
 
 class InputData(LogicalOperator, SourceOperator):
     """Logical operator for input data.
