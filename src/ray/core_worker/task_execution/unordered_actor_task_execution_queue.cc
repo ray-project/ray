@@ -108,7 +108,7 @@ void UnorderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
           task_to_cancel = std::move(task);
         } else {
           task_to_cancel = std::move(it->second);
-          queued_actor_tasks_[task_id] = std::move(task);
+          queued_actor_tasks_.insert_or_assign(task_id, std::move(task));
         }
       } else {
         queued_actor_tasks_.emplace(task_id, std::move(task));
