@@ -6,7 +6,6 @@ import pytest
 from packaging.version import parse as parse_version
 
 import ray
-from ray.data.util.arrow_utils import get_pyarrow_version
 from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import MiB, rows_same
 from ray.data.context import DataContext
