@@ -816,11 +816,15 @@ class gRPCProxy(GenericProxy):
             - message_bytes: The pickled message, or None if stream is done.
             - is_cancelled: True if the stream was cancelled by client or error.
 
-        Raises:
-            KeyError: If the session ID is not found.
+        Note:
+            If the session ID is not found (e.g., after cleanup due to timeout,
+            error, or completion), returns (False, None, True) for graceful
+            termination instead of raising an exception.
         """
         if session_id not in self._streaming_sessions:
-            raise KeyError(f"Streaming session {session_id} not found.")
+            # Session was already cleaned up - return graceful termination
+            # This is consistent with the behavior when cancel_event.is_set()
+            return (False, None, True)
 
         request_iterator, cancel_event = self._streaming_sessions[session_id]
 

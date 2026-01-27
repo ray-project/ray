@@ -5,11 +5,11 @@ import grpc
 
 from ray.util.annotations import PublicAPI
 
-T = TypeVar("T")
+_T = TypeVar("_T")
 
 
 @PublicAPI(stability="beta")
-class gRPCInputStream(AsyncIterator[T]):
+class gRPCInputStream(AsyncIterator[_T]):
     """Async iterator wrapping an incoming gRPC request stream.
 
     This class is used for client streaming and bidirectional streaming RPCs.
@@ -51,10 +51,10 @@ class gRPCInputStream(AsyncIterator[T]):
         self._cancel_event = cancel_event or asyncio.Event()
         self._exhausted = False
 
-    def __aiter__(self) -> "gRPCInputStream[T]":
+    def __aiter__(self) -> "gRPCInputStream[_T]":
         return self
 
-    async def __anext__(self) -> T:
+    async def __anext__(self) -> _T:
         """Get the next request message from the stream.
 
         Returns:
