@@ -106,6 +106,7 @@ def _make_user_callable_wrapper(
         local_testing_mode=False,
         deployment_config=DeploymentConfig(max_ongoing_requests=100),
         actor_id="test-actor-id",
+        ray_actor_options={},
     )
 
 

@@ -199,6 +199,36 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
                 num_episodes,
             )
 
+    def test_module_metrics_returns_equal_sum_of_agent_returns(self):
+        """Check if module metrics returns equals sum of returns of agents assigned to that module.
+
+        Related to https://github.com/ray-project/ray/issues/59860
+        """
+        # Build a multi agent config.
+        config = self._build_config(num_agents=4, num_policies=1)
+        # Create a `MultiAgentEnvRunner` instance.
+        env_runner = MultiAgentEnvRunner(config=config)
+        # Now run one episode
+        env_runner.sample(num_episodes=1)
+        # Collect metrics from that episode
+        metrics = env_runner.get_metrics()
+        # Expected singular policy name when setting num_agents != num_policies and num_policies = 1
+        assert "p0" in metrics["module_episode_returns_mean"].keys()
+        # Collect episode return, module return, and sum of agent returns
+        episode_return_mean = metrics["episode_return_mean"].reduce()
+        module_episode_returns_mean = metrics["module_episode_returns_mean"][
+            "p0"
+        ].reduce()
+        sum_agent_episode_returns_mean = sum(
+            value.reduce() for value in metrics["agent_episode_returns_mean"].values()
+        )
+        # Expect episode_return_mean == module_return_mean == sum_agent_returns_mean
+        assert (
+            episode_return_mean
+            == module_episode_returns_mean
+            == sum_agent_episode_returns_mean
+        )
+
 
 if __name__ == "__main__":
     import sys

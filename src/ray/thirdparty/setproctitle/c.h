@@ -12,20 +12,9 @@
 
 #include "spt_config.h"
 
-#ifndef __cplusplus
-
-#ifndef bool
-typedef char bool;
+#if !defined(__cplusplus) && (!defined(__STDC_VERSION__) || __STDC_VERSION__ <= 201710L)
+#include <stdbool.h>
 #endif
-
-#ifndef true
-#define true	((bool) 1)
-#endif
-
-#ifndef false
-#define false	((bool) 0)
-#endif
-#endif   /* not C++ */
 
 #include <stddef.h>
 

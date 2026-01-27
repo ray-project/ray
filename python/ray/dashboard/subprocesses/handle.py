@@ -164,26 +164,68 @@ class SubprocessModuleHandle:
 
     async def destroy_module(self):
         """
-        Destroy the module. This is called when the module is unhealthy.
+        Destroy the module with complete resource cleanup.
+        This is called when the module is unhealthy or being shut down.
         """
         self.incarnation += 1
 
+        # 1. Cancel health check task first to avoid race conditions
+        if self.health_check_task:
+            # NOTE: destroy_module() can be invoked from within the periodic health
+            # check task itself (see _do_periodic_health_check()).
+            # Cancelling the *current* task would raise CancelledError at the next
+            # await and prevent cleanup + restart from completing.
+            current_task = asyncio.current_task()
+            if current_task is None or self.health_check_task is not current_task:
+                self.health_check_task.cancel()
+            self.health_check_task = None
+
+        # 2. Close parent connection
         if self.parent_conn:
             self.parent_conn.close()
             self.parent_conn = None
 
+        # 3. Terminate process gracefully, then forcefully if needed
         if self.process:
-            self.process.kill()
-            self.process.join()
-            self.process = None
+            try:
+                # First, try graceful termination
+                if self.process.is_alive():
+                    self.process.terminate()
+                    logger.debug(
+                        f"Terminated process {self.process.pid}, waiting for exit..."
+                    )
 
+                    # Wait for process to exit (with timeout)
+                    self.process.join(
+                        timeout=dashboard_consts.SUBPROCESS_MODULE_GRACEFUL_SHUTDOWN_TIMEOUT
+                    )
+
+                    # Force kill if still alive
+                    if self.process.is_alive():
+                        logger.warning(
+                            f"Process {self.process.pid} did not exit gracefully, "
+                            "force killing..."
+                        )
+                        self.process.kill()
+                        self.process.join(
+                            timeout=dashboard_consts.SUBPROCESS_MODULE_JOIN_TIMEOUT
+                        )
+                else:
+                    # Process already dead, just wait for it
+                    self.process.join(
+                        timeout=dashboard_consts.SUBPROCESS_MODULE_JOIN_TIMEOUT
+                    )
+
+                logger.debug(f"Process {self.process.pid} terminated successfully")
+            except Exception as e:
+                logger.warning(f"Error terminating process: {e}")
+            finally:
+                self.process = None
+
+        # 4. Close HTTP client session with proper cleanup
         if self.http_client_session:
             await self.http_client_session.close()
             self.http_client_session = None
-
-        if self.health_check_task:
-            self.health_check_task.cancel()
-            self.health_check_task = None
 
     async def _health_check(self) -> aiohttp.web.Response:
         """

@@ -170,6 +170,11 @@ class ServeHead(SubprocessModule):
                 global_logging_config=config.logging_config,
             )
 
+        # Serve ignores HTTP options if it was already running when
+        # serve_start_async() is called. Therefore we validate that no
+        # existing HTTP options are updated and print warning in case they are
+        self.validate_http_options(client, full_http_options)
+
         try:
             if config.logging_config:
                 client.update_global_logging_config(config.logging_config)
@@ -267,6 +272,22 @@ class ServeHead(SubprocessModule):
                 return self._create_json_response(
                     {"error": "Internal Server Error"}, 503
                 )
+
+    def validate_http_options(self, client, http_options):
+        divergent_http_options = []
+
+        for option, new_value in http_options.items():
+            prev_value = getattr(client.http_config, option)
+            if prev_value != new_value:
+                divergent_http_options.append(option)
+
+        if divergent_http_options:
+            logger.warning(
+                "Serve is already running on this Ray cluster and "
+                "it's not possible to update its HTTP options without "
+                "restarting it. Following options are attempted to be "
+                f"updated: {divergent_http_options}."
+            )
 
     async def get_serve_controller(self):
         """Gets the ServeController to the this cluster's Serve app.

@@ -53,20 +53,16 @@ class TaskReceiver {
       bool *is_retryable_error,
       std::string *application_error)>;
 
-  using OnActorCreationTaskDone = std::function<Status()>;
-
   TaskReceiver(instrumented_io_context &task_execution_service,
                worker::TaskEventBuffer &task_event_buffer,
                TaskHandler task_handler,
                ActorTaskExecutionArgWaiter &actor_task_execution_arg_waiter,
-               std::function<std::function<void()>()> initialize_thread_callback,
-               OnActorCreationTaskDone actor_creation_task_done)
+               std::function<std::function<void()>()> initialize_thread_callback)
       : task_handler_(std::move(task_handler)),
         task_execution_service_(task_execution_service),
         task_event_buffer_(task_event_buffer),
         waiter_(actor_task_execution_arg_waiter),
         initialize_thread_callback_(std::move(initialize_thread_callback)),
-        actor_creation_task_done_(std::move(actor_creation_task_done)),
         normal_task_execution_queue_(std::make_unique<NormalTaskExecutionQueue>()),
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
         fiber_state_manager_(nullptr) {}
@@ -130,9 +126,6 @@ class TaskReceiver {
 
   /// The language-specific callback function that initializes threads.
   std::function<std::function<void()>()> initialize_thread_callback_;
-
-  /// The callback function to be invoked when finishing a task.
-  OnActorCreationTaskDone actor_creation_task_done_;
 
   /// Queue of actor tasks waiting to execute, keyed on the ID of the worker that
   /// submitted the task.

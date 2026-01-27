@@ -1,0 +1,12 @@
+name: my-llm-batch-inference-text
+entrypoint: python batch_inference_text.py
+image_uri: anyscale/ray-llm:2.51.1-py311-cu128
+compute_config:
+  head_node:
+    instance_type: m5.2xlarge
+  worker_nodes:
+    - instance_type: g6.2xlarge
+      min_nodes: 0
+      max_nodes: 10
+working_dir: .
+max_retries: 2

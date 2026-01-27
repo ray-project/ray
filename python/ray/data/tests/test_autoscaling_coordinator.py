@@ -153,7 +153,7 @@ def test_basic(cluster_nodes):
 
     # After req1_timeout, req1 should be expired.
     mocked_time = req1_timeout + 0.1
-    as_coordinator.tick()
+    as_coordinator._tick()
     mock_request_resources.assert_called_with(req2)
     res1 = as_coordinator.get_allocated_resources("requester1")
     res2 = as_coordinator.get_allocated_resources("requester2")
@@ -164,7 +164,7 @@ def test_basic(cluster_nodes):
 
     # After req2_timeout, req2 should be expired.
     mocked_time = req2_timeout + 0.1
-    as_coordinator.tick()
+    as_coordinator._tick()
     mock_request_resources.assert_called_with([])
     res1 = as_coordinator.get_allocated_resources("requester1")
     res2 = as_coordinator.get_allocated_resources("requester2")

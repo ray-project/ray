@@ -1,14 +1,13 @@
 import logging
 import traceback
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, TypeVar, Union
 
 from ray.air._internal.util import (
     StartTraceback,
     StartTracebackWithWorkerRank,
     skip_exceptions,
 )
-from ray.data import Dataset
 from ray.train import Checkpoint, DataConfig
 from ray.train._internal.backend_executor import (
     BackendExecutor,
@@ -26,6 +25,9 @@ from ray.train.base_trainer import (  # noqa: F401
 )
 from ray.util.annotations import DeveloperAPI
 
+if TYPE_CHECKING:
+    from ray.data import Dataset
+
 T = TypeVar("T")
 S = TypeVar("S")
 
@@ -41,7 +43,7 @@ class TrainingIterator:
         backend_executor: Union[BackendExecutor, ActorWrapper],
         backend_config: BackendConfig,
         train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-        datasets: Dict[str, Dataset],
+        datasets: Dict[str, "Dataset"],
         metadata: Dict[str, Any],
         data_config: DataConfig,
         checkpoint: Optional[Union[Dict, str, Path, Checkpoint]],
