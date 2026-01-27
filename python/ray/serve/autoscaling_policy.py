@@ -290,6 +290,10 @@ def replica_queue_length_autoscaling_policy(
     `get_decision_num_replicas` is called once every CONTROL_LOOP_PERIOD_S
     seconds.
     """
+    # Adding this guard makes the public policy safe to call directly.
+    cold_start_replicas = _get_cold_start_scale_up_replicas(ctx)
+    if cold_start_replicas is not None:
+        return cold_start_replicas, ctx.policy_state
     return _core_replica_queue_length_policy(ctx)
 
 
