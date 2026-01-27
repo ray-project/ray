@@ -269,7 +269,7 @@ class RuntimeContext(object):
     def get_task_name(self) -> Optional[str]:
         """Get current task name for this worker.
 
-        Task name by default is the task's funciton call string. It can also be
+        Task name by default is the task's function call string. It can also be
         specified in options when triggering a task.
 
         Example:

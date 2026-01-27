@@ -11,7 +11,6 @@ from ray.exceptions import AuthenticationError, RayError
 class FakeAuthMode(Enum):
     DISABLED = 0
     TOKEN = 1
-    K8S = 2
 
 
 class TestAuthenticationError:
@@ -38,10 +37,9 @@ class TestAuthenticationError:
         "auth_mode,expected_note",
         [
             (FakeAuthMode.DISABLED, "RAY_AUTH_MODE is currently 'disabled'"),
-            (FakeAuthMode.K8S, "RAY_AUTH_MODE is currently 'k8s'"),
             (FakeAuthMode.TOKEN, None),
         ],
-        ids=["disabled", "k8s", "token"],
+        ids=["disabled", "token"],
     )
     def test_auth_mode_note_in_message(self, auth_mode, expected_note):
         """Test that error message includes auth mode note when not in token mode."""

@@ -223,7 +223,7 @@ class SlimConv2d(nn.Module):
                 of implicit zero-paddings during the conv operation
             initializer: Initializer function for kernel weights
             activation_fn: Activation function at the end of layer
-            bias_init: Initalize bias weights to bias_init const
+            bias_init: Initialize bias weights to bias_init const
         """
         super(SlimConv2d, self).__init__()
         layers = []
@@ -274,7 +274,7 @@ class SlimFC(nn.Module):
             initializer: Initializer function for FC layer weights
             activation_fn: Activation function at the end of layer
             use_bias: Whether to add bias weights or not
-            bias_init: Initalize bias weights to bias_init const
+            bias_init: Initialize bias weights to bias_init const
         """
         super(SlimFC, self).__init__()
         layers = []
