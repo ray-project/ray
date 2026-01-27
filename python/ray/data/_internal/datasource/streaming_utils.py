@@ -121,15 +121,14 @@ class HTTPClientConfig:
 
         # Add authentication headers
         headers = dict(self.headers) if self.headers else {}
-        if self.auth_token:
-            if self.auth_type.lower() == "bearer":
-                headers["Authorization"] = f"Bearer {self.auth_token}"
-            elif self.auth_type.lower() == "basic" and self.username and self.password:
-                import base64
+        if self.auth_type.lower() == "bearer" and self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
+        elif self.auth_type.lower() == "basic" and self.username and self.password:
+            import base64
 
-                credentials = f"{self.username}:{self.password}"
-                encoded = base64.b64encode(credentials.encode()).decode()
-                headers["Authorization"] = f"Basic {encoded}"
+            credentials = f"{self.username}:{self.password}"
+            encoded = base64.b64encode(credentials.encode()).decode()
+            headers["Authorization"] = f"Basic {encoded}"
 
         if headers:
             kwargs["headers"] = headers

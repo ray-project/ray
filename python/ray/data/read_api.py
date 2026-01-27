@@ -5086,60 +5086,40 @@ def read_kinesis(
     from ray.data._internal.datasource.kinesis_datasource import (
         KinesisDatasource,
     )
+    from ray.data._internal.datasource.streaming_utils import AWSCredentials
     from ray.data._internal.logical.interfaces import LogicalPlan
     from ray.data._internal.plan import ExecutionPlan
     from ray.data._internal.stats import DatasetStats
     from ray.data.context import DataContext
 
-    # Build kinesis_config from flat parameters
-    kinesis_config = {
-        "region_name": region_name,
-        "retry_mode": retry_mode,
-        "max_attempts": max_attempts,
-        "connect_timeout": connect_timeout,
-        "read_timeout": read_timeout,
-    }
-
-    # Add optional AWS authentication parameters
-    if aws_access_key_id is not None:
-        kinesis_config["aws_access_key_id"] = aws_access_key_id
-    if aws_secret_access_key is not None:
-        kinesis_config["aws_secret_access_key"] = aws_secret_access_key
-    if aws_session_token is not None:
-        kinesis_config["aws_session_token"] = aws_session_token
-    if aws_profile is not None:
-        kinesis_config["profile_name"] = aws_profile
-    if endpoint_url is not None:
-        kinesis_config["endpoint_url"] = endpoint_url
-    if use_ssl is not None:
-        kinesis_config["use_ssl"] = use_ssl
-
-    # STS assume role parameters
-    if role_arn is not None:
-        kinesis_config["role_arn"] = role_arn
-    if role_session_name is not None:
-        kinesis_config["role_session_name"] = role_session_name
-    if external_id is not None:
-        kinesis_config["external_id"] = external_id
-    if mfa_serial is not None:
-        kinesis_config["mfa_serial"] = mfa_serial
-    if mfa_token is not None:
-        kinesis_config["mfa_token"] = mfa_token
-
-    # Encryption parameters
-    if kms_key_id is not None:
-        kinesis_config["kms_key_id"] = kms_key_id
-
-    # Add any additional kinesis kwargs
-    kinesis_config.update(kinesis_kwargs)
+    # Build AWSCredentials from flat parameters
+    aws_credentials = AWSCredentials(
+        region_name=region_name,
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        aws_session_token=aws_session_token,
+        profile_name=aws_profile,
+        role_arn=role_arn,
+        role_session_name=role_session_name,
+        external_id=external_id,
+        mfa_serial=mfa_serial,
+        mfa_token=mfa_token,
+        endpoint_url=endpoint_url,
+        use_ssl=use_ssl,
+        retry_mode=retry_mode,
+        max_attempts=max_attempts,
+        connect_timeout=connect_timeout,
+        read_timeout=read_timeout,
+    )
 
     # Create datasource
     datasource = KinesisDatasource(
         stream_name=stream_name,
-        kinesis_config=kinesis_config,
+        region_name=region_name,
         max_records_per_task=max_records_per_task,
         start_sequence=start_sequence,
         end_sequence=end_sequence,
+        aws_credentials=aws_credentials,
         enhanced_fan_out=enhanced_fan_out,
         consumer_name=consumer_name,
     )
@@ -5305,81 +5285,44 @@ def read_flink(
     Returns:
         Dataset containing Flink source records.
     """
+    from ray.data._internal.datasource.streaming_utils import HTTPClientConfig
     from ray.data._internal.logical.interfaces import LogicalPlan
     from ray.data._internal.plan import ExecutionPlan
     from ray.data._internal.stats import DatasetStats
     from ray.data.context import DataContext
 
-    # Build flink_config from flat parameters based on source_type
-    flink_config = {}
-
+    # Validate based on source_type
     if source_type == "rest_api":
         if rest_api_url is None or job_id is None:
             raise ValueError("rest_api_url and job_id are required for REST API source")
-        flink_config.update(
-            {
-                "rest_api_url": rest_api_url,
-                "job_id": job_id,
-                "verify_ssl": verify_ssl,
-                "timeout": timeout,
-            }
-        )
-        # Authentication parameters
-        if auth_token is not None:
-            flink_config["auth_token"] = auth_token
-        if auth_type != "bearer":
-            flink_config["auth_type"] = auth_type
-        if username is not None:
-            flink_config["username"] = username
-        if password is not None:
-            flink_config["password"] = password
-        if kerberos_service_name is not None:
-            flink_config["kerberos_service_name"] = kerberos_service_name
-        if kerberos_keytab is not None:
-            flink_config["kerberos_keytab"] = kerberos_keytab
 
-        # SSL parameters
-        if ssl_cert is not None:
-            flink_config["ssl_cert"] = ssl_cert
-        if ssl_key is not None:
-            flink_config["ssl_key"] = ssl_key
-        if ssl_ca_cert is not None:
-            flink_config["ssl_ca_cert"] = ssl_ca_cert
-
-    elif source_type == "sql_query":
-        if sql_gateway_url is None or sql_query is None:
-            raise ValueError(
-                "sql_gateway_url and sql_query are required for SQL query source"
-            )
-        flink_config.update(
-            {
-                "sql_gateway_url": sql_gateway_url,
-                "sql_query": sql_query,
-            }
+        # Build HTTPClientConfig
+        http_config = HTTPClientConfig(
+            base_url=rest_api_url,
+            auth_token=auth_token,
+            auth_type=auth_type,
+            username=username,
+            password=password,
+            kerberos_service_name=kerberos_service_name,
+            kerberos_keytab=kerberos_keytab,
+            verify_ssl=verify_ssl,
+            ssl_cert=ssl_cert,
+            ssl_key=ssl_key,
+            ssl_ca_cert=ssl_ca_cert,
+            timeout=timeout,
         )
 
-    elif source_type == "checkpoint":
-        if checkpoint_path is None:
-            raise ValueError("checkpoint_path is required for checkpoint source")
-        flink_config.update(
-            {
-                "checkpoint_path": checkpoint_path,
-            }
+        # Create datasource
+        datasource = FlinkDatasource(
+            rest_api_url=rest_api_url,
+            job_id=job_id,
+            max_records_per_task=max_records_per_task,
+            http_config=http_config,
         )
     else:
-        raise ValueError(f"Unsupported source_type: {source_type}")
-
-    # Add any additional flink kwargs
-    flink_config.update(flink_kwargs)
-
-    # Create datasource
-    datasource = FlinkDatasource(
-        source_type=source_type,
-        flink_config=flink_config,
-        max_records_per_task=max_records_per_task,
-        start_position=start_position,
-        end_position=end_position,
-    )
+        raise ValueError(
+            f"Unsupported source_type: {source_type}. Only 'rest_api' is currently supported."
+        )
 
     # Parse trigger configuration
     streaming_trigger = _parse_streaming_trigger(trigger)

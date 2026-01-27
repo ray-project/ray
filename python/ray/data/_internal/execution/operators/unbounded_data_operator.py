@@ -1244,6 +1244,10 @@ class _StreamingTaskWrapper:
     def cancel(self, force: bool = False) -> None:
         ray.cancel(self._task_ref, force=force)
 
+    def _cancel(self, force: bool = False) -> None:
+        """Cancel method expected by base class shutdown logic."""
+        self.cancel(force=force)
+
     def progress_str(self) -> str:
         """Get progress string for monitoring."""
         if self._operator:
