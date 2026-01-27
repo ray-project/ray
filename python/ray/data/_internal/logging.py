@@ -1,6 +1,7 @@
 import logging
 import logging.config
 import os
+import threading
 from typing import List, Optional
 
 import yaml
@@ -19,9 +20,16 @@ DEFAULT_CONFIG = {
         "ray_json": {
             "class": f"{DEFAULT_JSON_FORMATTER.__module__}.{DEFAULT_JSON_FORMATTER.__name__}"
         },
+        "console": {
+            "()": "ray.data._internal.logging.ConsoleFormatter",
+            "format": DEFAULT_TEXT_FORMATTER,
+        },
     },
     "filters": {
         "console_filter": {"()": "ray.data._internal.logging.HiddenRecordFilter"},
+        "dataset_context_filter": {
+            "()": "ray.data._internal.logging.DatasetContextFilter"
+        },
         "core_context_filter": {"()": "ray._common.filters.CoreContextFilter"},
     },
     "handlers": {
@@ -38,9 +46,9 @@ DEFAULT_CONFIG = {
         },
         "console": {
             "class": "ray._private.log.PlainRayHandler",
-            "formatter": "ray",
+            "formatter": "console",
             "level": "INFO",
-            "filters": ["console_filter"],
+            "filters": ["console_filter", "dataset_context_filter"],
         },
     },
     "loggers": {
@@ -68,7 +76,10 @@ RAY_DATA_LOG_ENCODING_ENV_VAR_NAME = "RAY_DATA_LOG_ENCODING"
 RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME = "RAY_DATA_LOGGING_CONFIG"
 
 _DATASET_LOGGER_HANDLER = {}
-_ACTIVE_DATASET = None
+_ACTIVE_DATASETS = set()
+
+# Thread-local storage for dataset IDs
+_thread_local_dataset_id = threading.local()
 
 # To facilitate debugging, Ray Data writes debug logs to a file. However, if Ray Data
 # logs every scheduler loop, logging might impact performance. So, we add a "TRACE"
@@ -79,6 +90,37 @@ _ACTIVE_DATASET = None
 # logger.log(logging.getLevelName("TRACE"), "Your message here.")
 # ````
 logging.addLevelName(logging.DEBUG - 1, "TRACE")
+
+
+def set_thread_dataset_id(dataset_id: str) -> None:
+    """Set dataset ID for the current thread.
+
+    This allows the logging system to identify which dataset is logging
+    in multi-threaded environments where multiple datasets may run concurrently.
+
+    Args:
+        dataset_id: The ID of the dataset.
+    """
+    _thread_local_dataset_id.value = dataset_id
+
+
+def get_thread_dataset_id() -> Optional[str]:
+    """Get dataset ID for the current thread.
+
+    Returns:
+        The dataset ID for the current thread, or None if not set.
+    """
+    return getattr(_thread_local_dataset_id, "value", None)
+
+
+def clear_thread_dataset_id() -> None:
+    """Clear the dataset ID for the current thread.
+
+    This should be called when a dataset finishes execution to clean up
+    thread-local state.
+    """
+    if hasattr(_thread_local_dataset_id, "value"):
+        delattr(_thread_local_dataset_id, "value")
 
 
 class HiddenRecordFilter:
@@ -99,6 +141,87 @@ class HiddenRecordFilter:
 
     def filter(self, record):
         return not getattr(record, "hide", False)
+
+
+class DatasetContextFilter:
+    """Mark log records with dataset context for conditional formatting.
+
+    When multiple datasets are running concurrently, this filter adds metadata
+    to the log record that can be used by formatters to add dataset ID prefixes
+    to console output only, without affecting file logs.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Add dataset ID metadata if multiple datasets are active.
+
+        This filter adds a 'dataset_prefix' attribute to the log record that
+        can be used by formatters. It does not modify record.msg directly to
+        avoid affecting other handlers that share the same LogRecord object.
+
+        Args:
+            record: The log record to filter.
+
+        Returns:
+            Always returns True to allow the record to be logged.
+        """
+        try:
+            # Get dataset ID from thread-local storage instead of global singleton
+            dataset_id = get_thread_dataset_id()
+
+            # Only add prefix metadata when multiple datasets are running concurrently
+            global _ACTIVE_DATASETS
+            if len(_ACTIVE_DATASETS) > 1 and dataset_id:
+                short_id = dataset_id[:8] if len(dataset_id) > 8 else dataset_id
+                record.dataset_prefix = f"[{short_id}] "
+            else:
+                record.dataset_prefix = ""
+        except Exception:
+            record.dataset_prefix = ""
+        return True
+
+
+class ConsoleFormatter(logging.Formatter):
+    """Formatter for console output that includes dataset prefix.
+
+    This formatter adds the dataset_prefix attribute (set by DatasetContextFilter)
+    to console messages without affecting the original log record, ensuring file
+    logs remain unmodified.
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Format the log record with dataset prefix for console output.
+
+        Args:
+            record: The log record to format.
+
+        Returns:
+            Formatted log string with dataset prefix if present.
+        """
+        # Get the prefix added by DatasetContextFilter
+        prefix = getattr(record, "dataset_prefix", "")
+
+        if prefix:
+            # Save original message
+            original_msg = record.msg
+            original_args = record.args
+
+            # Temporarily modify for formatting
+            # getMessage() combines msg and args
+            msg_with_prefix = f"{prefix}{record.getMessage()}"
+            record.msg = msg_with_prefix
+            record.args = None
+
+            # Format with the modified message
+            result = super().format(record)
+
+            # Restore original values to avoid affecting other handlers
+            record.msg = original_msg
+            record.args = original_args
+
+            return result
+        else:
+            # No prefix, use standard formatting
+            return super().format(record)
 
 
 class SessionFileHandler(logging.Handler):
@@ -218,7 +341,15 @@ def _create_formatters(config: dict) -> dict:
     formatters = {}
 
     for name, fmt_config in config.get("formatters", {}).items():
-        if "class" in fmt_config:
+        # Handle "()" factory syntax (same as filters and handlers)
+        if "()" in fmt_config:
+            formatter_class = _import_class(fmt_config["()"])
+            # Pass format string if provided
+            format_str = fmt_config.get("format")
+            formatters[name] = (
+                formatter_class(format_str) if format_str else formatter_class()
+            )
+        elif "class" in fmt_config:
             formatter_class = _import_class(fmt_config["class"])
             formatters[name] = formatter_class()
         elif "format" in fmt_config:
@@ -315,13 +446,13 @@ def reset_logging() -> None:
     Used for testing.
     """
     global _DATASET_LOGGER_HANDLER
-    global _ACTIVE_DATASET
+    global _ACTIVE_DATASETS
     logger = logging.getLogger("ray.data")
     logger.handlers.clear()
     logger.setLevel(logging.NOTSET)
 
     _DATASET_LOGGER_HANDLER = {}
-    _ACTIVE_DATASET = None
+    _ACTIVE_DATASETS = set()
 
 
 def get_log_directory() -> Optional[str]:
@@ -352,7 +483,7 @@ def _create_dataset_log_handler(dataset_id: str) -> SessionFileHandler:
         dataset_id: The ID of the dataset.
 
     Returns:
-        A log handler for the dataset.
+        SessionFileHandler: A log handler for the dataset.
     """
     handler = SessionFileHandler(filename=f"ray-data-{dataset_id}.log")
     handler.setFormatter(_get_default_formatter())
@@ -377,61 +508,69 @@ def update_dataset_logger_for_worker(dataset_id: Optional[str]) -> None:
         logger.addHandler(log_handler)
 
 
-def register_dataset_logger(dataset_id: str) -> Optional[int]:
-    """Create a log handler for a dataset with the given ID. Activate the handler if
-    this is the only active dataset. Otherwise, print a warning to that handler and
-    keep it inactive until it becomes the only active dataset.
+def register_dataset_logger(dataset_id: str) -> Optional[str]:
+    """Create a log handler for a dataset with the given ID and activate it.
+
+    This function allows multiple datasets to log concurrently, each to its own
+    log file. All datasets are activated immediately upon registration.
 
     Args:
         dataset_id: The ID of the dataset.
+
+    Returns:
+        str: The dataset_id if successfully registered, None otherwise.
     """
     global _DATASET_LOGGER_HANDLER
-    global _ACTIVE_DATASET
+    global _ACTIVE_DATASETS
+
     loggers = [logging.getLogger(name) for name in _get_logger_names()]
     log_handler = _create_dataset_log_handler(dataset_id)
 
-    # The per-dataset log will always have the full context about its registration,
-    # regardless of whether it is active or inactive.
+    # Log registration info to the dataset's own log file
     local_logger = logging.getLogger(__name__)
     local_logger.addHandler(log_handler)
     local_logger.info("Registered dataset logger for dataset %s", dataset_id)
-
-    _DATASET_LOGGER_HANDLER[dataset_id] = log_handler
-    if not _ACTIVE_DATASET:
-        _ACTIVE_DATASET = dataset_id
-        for logger in loggers:
-            logger.addHandler(log_handler)
-    else:
-        local_logger.info(
-            f"{dataset_id} registers for logging while another dataset "
-            f"{_ACTIVE_DATASET} is also logging. For performance reasons, we will not "
-            f"log to the dataset {dataset_id} until it is the only active dataset."
-        )
     local_logger.removeHandler(log_handler)
 
-    return _ACTIVE_DATASET
+    # Save handler and mark as active
+    _DATASET_LOGGER_HANDLER[dataset_id] = log_handler
+    _ACTIVE_DATASETS.add(dataset_id)
+
+    # Add this handler to all ray.data loggers
+    for logger in loggers:
+        logger.addHandler(log_handler)
+
+    # If multiple datasets are running concurrently, log this information
+    if len(_ACTIVE_DATASETS) > 1:
+        local_logger.addHandler(log_handler)
+        local_logger.info(
+            f"Dataset {dataset_id} is logging concurrently with "
+            f"{len(_ACTIVE_DATASETS) - 1} other dataset(s). "
+            f"Logs for this dataset are in ray-data-{dataset_id}.log"
+        )
+        local_logger.removeHandler(log_handler)
+
+    return dataset_id
 
 
-def unregister_dataset_logger(dataset_id: str) -> Optional[int]:
+def unregister_dataset_logger(dataset_id: str) -> None:
     """Remove the logger for a dataset with the given ID.
 
     Args:
         dataset_id: The ID of the dataset.
     """
     global _DATASET_LOGGER_HANDLER
-    global _ACTIVE_DATASET
-    loggers = [logging.getLogger(name) for name in _get_logger_names()]
+    global _ACTIVE_DATASETS
 
+    loggers = [logging.getLogger(name) for name in _get_logger_names()]
     log_handler = _DATASET_LOGGER_HANDLER.pop(dataset_id, None)
 
-    if _ACTIVE_DATASET == dataset_id:
-        _ACTIVE_DATASET = None
-        if _DATASET_LOGGER_HANDLER:
-            # If there are still active dataset loggers, activate the first one.
-            register_dataset_logger(next(iter(_DATASET_LOGGER_HANDLER.keys())))
+    # Remove from active set
+    if dataset_id in _ACTIVE_DATASETS:
+        _ACTIVE_DATASETS.discard(dataset_id)
 
     if log_handler:
+        # Remove handler from all loggers
         for logger in loggers:
             logger.removeHandler(log_handler)
         log_handler.close()
-    return _ACTIVE_DATASET

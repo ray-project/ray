@@ -324,15 +324,22 @@ class StreamingExecutor(Executor, threading.Thread):
 
             # Unregister should be called after all operators are shut down to
             # capture as many logs as possible.
-            self._data_context.set_dataset_logger_id(
-                unregister_dataset_logger(self._dataset_id)
-            )
+            unregister_dataset_logger(self._dataset_id)
 
     def run(self):
         """Run the control loop in a helper thread.
 
         Results are returned via the output node's outqueue.
         """
+        from ray.data._internal.logging import (
+            clear_thread_dataset_id,
+            set_thread_dataset_id,
+        )
+
+        # Set thread-local dataset ID for concurrent logging with console prefixes
+        # This must be done in run() (executor thread) not __init__ (parent thread)
+        set_thread_dataset_id(self._dataset_id)
+
         exc: Optional[Exception] = None
         try:
             # Run scheduling loop until complete.
@@ -358,6 +365,8 @@ class StreamingExecutor(Executor, threading.Thread):
             # Propagate it to the result iterator.
             exc = e
         finally:
+            # Clear thread-local dataset ID in the same thread that set it
+            clear_thread_dataset_id()
             # Mark state of outputting operator as finished
             _, state = self._output_node
             state.mark_finished(exc)
