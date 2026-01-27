@@ -130,7 +130,7 @@ class ActorPoolStrategy(ComputeStrategy):
                 opportunities for pipelining task dependency prefetching with
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
-            enable_true_multi_threading: If enable_true_multi_threading=True, no more than 1 actor task
+            enable_true_multi_threading: If enable_true_multi_threading=False, no more than 1 actor task
                 runs per actor. Otherwise, respects the `max_concurrency` argument.
         """
         if size is not None:
