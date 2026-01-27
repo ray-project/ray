@@ -440,6 +440,17 @@ def process_completed_tasks(
                         if state in max_bytes_to_read_per_op:
                             max_bytes_to_read_per_op[state] -= bytes_read
                     except Exception as e:
+                        # Ensure task cleanup callback is invoked even when
+                        # on_data_ready() raises an exception (e.g., RayActorError
+                        # from a dead actor). This is critical for:
+                        # - Decrementing num_tasks_in_flight in actor pools
+                        # - Removing the task from _data_tasks
+                        # - Freeing actor pool slots so new tasks can be scheduled
+                        # Without this, the pipeline can hang indefinitely.
+                        # See: https://github.com/ray-project/ray/issues/59518
+                        if not task.has_finished:
+                            task._task_done_callback(e)
+
                         num_errored_blocks += 1
                         should_ignore = (
                             max_errored_blocks < 0

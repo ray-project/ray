@@ -226,6 +226,119 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
     o2.mark_execution_finished.assert_called_once()
 
 
+def test_process_completed_tasks_calls_callback_on_exception(ray_start_regular_shared):
+    """Test that process_completed_tasks calls _task_done_callback when
+    on_data_ready() raises an exception.
+
+    This is critical for proper cleanup when actors die mid-task. Without this,
+    the pipeline can hang indefinitely because:
+    - num_tasks_in_flight is never decremented
+    - Actor pool slots are never freed
+    - No new tasks can be scheduled
+
+    See: https://github.com/ray-project/ray/issues/59518
+    """
+    from ray._raylet import ObjectRefGenerator
+    from ray.exceptions import RayActorError
+
+    inputs = make_ref_bundles([[x] for x in range(5)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
+    )
+    topo = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
+
+    # Process initial tasks to populate output queue
+    process_completed_tasks(topo, [], 0)
+    update_operator_states(topo)
+
+    # Create a mock streaming generator that will cause on_data_ready to raise
+    mock_gen = MagicMock(spec=ObjectRefGenerator)
+    # Simulate an actor error when trying to get next block
+    mock_gen._next_sync.side_effect = RayActorError()
+
+    # Track whether callback was invoked
+    callback_called = [False]
+    callback_exception = [None]
+
+    def task_done_callback(exc):
+        callback_called[0] = True
+        callback_exception[0] = exc
+
+    # Create a DataOpTask that will fail
+    failing_task = DataOpTask(
+        task_index=0,
+        streaming_gen=mock_gen,
+        task_done_callback=task_done_callback,
+    )
+
+    # Mock the operator to return our failing task
+    o2.get_active_tasks = MagicMock(return_value=[failing_task])
+
+    # Process the failing task - should call callback and handle exception gracefully
+    # max_errored_blocks=-1 means unlimited errors allowed (ignore errors)
+    num_errors = process_completed_tasks(topo, [], max_errored_blocks=-1)
+
+    # Verify callback was called with the exception
+    assert callback_called[0], "task_done_callback should be called on exception"
+    assert isinstance(
+        callback_exception[0], RayActorError
+    ), f"Expected RayActorError, got {type(callback_exception[0])}"
+    assert num_errors == 1, f"Expected 1 errored block, got {num_errors}"
+
+
+def test_process_completed_tasks_callback_not_double_called(ray_start_regular_shared):
+    """Test that _task_done_callback is not called twice if the task already finished.
+
+    The callback may have already been called inside on_data_ready() before it raised.
+    We should not call it again in process_completed_tasks.
+    """
+    from ray._raylet import ObjectRefGenerator
+
+    inputs = make_ref_bundles([[x] for x in range(5)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
+    )
+    topo = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
+
+    # Process initial tasks
+    process_completed_tasks(topo, [], 0)
+    update_operator_states(topo)
+
+    # Create a mock streaming generator
+    mock_gen = MagicMock(spec=ObjectRefGenerator)
+    mock_gen._next_sync.side_effect = StopIteration()
+
+    # Track callback invocations
+    callback_count = [0]
+
+    def task_done_callback(exc):
+        callback_count[0] += 1
+
+    # Create a DataOpTask
+    task = DataOpTask(
+        task_index=0,
+        streaming_gen=mock_gen,
+        task_done_callback=task_done_callback,
+    )
+
+    # Mock the operator to return our task
+    o2.get_active_tasks = MagicMock(return_value=[task])
+
+    # Process the task - on_data_ready will call callback internally on StopIteration
+    process_completed_tasks(topo, [], max_errored_blocks=-1)
+
+    # Callback should be called exactly once (by on_data_ready, not by our fix)
+    assert callback_count[0] == 1, (
+        f"Callback should be called exactly once, got {callback_count[0]}"
+    )
+
+
 def test_update_operator_states_drains_upstream(ray_start_regular_shared):
     """Test that update_operator_states drains upstream output queues when
     execution_finished() is called on a downstream operator.
