@@ -1864,6 +1864,13 @@ cdef void execute_task(
                     # Record the end of the task log.
                     worker.record_task_log_end(task_id, attempt_number)
                     if task_exception_instance is not None:
+                        # Convert StopIteration to RuntimeError per PEP 479
+                        exc_type = type(task_exception_instance)
+                        exc_name = exc_type.__name__
+                        if exc_name == "StopIteration" or exc_name == "StopAsyncIteration":
+                            task_exception_instance = RuntimeError(
+                                "coroutine raised " + exc_name
+                            )
                         raise task_exception_instance
                     if core_worker.get_current_actor_should_exit():
                         raise_sys_exit_with_custom_error_message("exit_actor() is called.")
