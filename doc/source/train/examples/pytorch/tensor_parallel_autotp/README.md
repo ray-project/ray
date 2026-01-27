@@ -73,6 +73,20 @@ Device Mesh (2x2):
 - **TP Groups** (rows): GPUs 0,1 and GPUs 2,3 share the same input data but have sharded model weights
 - **DP Groups** (columns): GPUs 0,2 and GPUs 1,3 see different data and synchronize gradients
 
+The following figure illustrates how tensor parallelism partitions a linear layer across GPUs:
+
+<p align="center">
+<img src="images/tp_partition.png" alt="Tensor Parallelism Partitioning" width="60%">
+</p>
+
+In tensor parallelism, linear layers alternate between column-wise and row-wise partitioning:
+
+1. **Column-wise partitioned layer**: The parameter tensor is split along the output dimension. The input activation is replicated across all GPUs. Each GPU computes its portion, producing a column-wise partitioned output.
+
+2. **Row-wise partitioned layer**: The next layer's parameters are split along the input dimension. Each GPU computes locally with its partition, then an **all-reduce** operation sums the partial results across all GPUs to produce the mathematically correct output.
+
+This alternating pattern allows consecutive layers to be computed efficiently while maintaining numerical correctness.
+
 ## Why DeepSpeed AutoTP?
 
 This tutorial uses [DeepSpeed AutoTP](https://github.com/deepspeedai/DeepSpeed/blob/master/blogs/huggingface-tp/README.md) for tensor parallelism, which provides two key benefits:
