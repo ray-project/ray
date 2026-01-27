@@ -455,7 +455,7 @@ py_test(
 # Pendulum
 py_test(
     name = "learning_tests_pendulum_cql",
-    size = "large",
+    size = "gpu-large",
     srcs = ["examples/algorithms/cql/pendulum_cql.py"],
     args = [
         "--as-test",
@@ -467,7 +467,6 @@ py_test(
     main = "examples/algorithms/cql/pendulum_cql.py",
     tags = [
         "exclusive",
-        "gpu-large",
         "learning_tests",
         "team:rllib",
     ],
@@ -476,7 +475,7 @@ py_test(
 # GPU training.
 py_test(
     name = "learning_tests_pendulum_cql_gpu",
-    size = "large",
+    size = "gpu-large",
     srcs = ["examples/algorithms/cql/pendulum_cql.py"],
     args = [
         "--as-test",
@@ -489,7 +488,7 @@ py_test(
     main = "examples/algorithms/cql/pendulum_cql.py",
     tags = [
         "exclusive",
-        "gpu-large",
+        "gpu",
         "learning_tests",
         "team:rllib",
     ],
