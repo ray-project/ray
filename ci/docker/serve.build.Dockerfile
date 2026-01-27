@@ -7,7 +7,7 @@ ARG ENABLE_TRACING
 ARG PYDANTIC_VERSION
 ARG IMAGE_TYPE="base"
 ARG PYTHON
-ARG PYTHON_DEPSET="python/deplocks/ci/serve_{IMAGE_TYPE}_depset_py${PYTHON}.lock"
+ARG PYTHON_DEPSET="python/deplocks/ci/serve_${IMAGE_TYPE}_depset_py${PYTHON}.lock"
 
 COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
