@@ -10,7 +10,7 @@ from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
 from ray.data._internal.execution.interfaces import ExecutionResources
-from ray.util.annotations import Deprecated
+from ray.util.annotations import Deprecated, RayDeprecationWarning
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
@@ -36,7 +36,7 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
             "DefaultClusterAutoscaler (V1) is deprecated and will be removed "
             "after June 2026. Use DefaultClusterAutoscalerV2 instead by setting "
             "RAY_DATA_CLUSTER_AUTOSCALER=V2 or using the default.",
-            DeprecationWarning,
+            RayDeprecationWarning,
             stacklevel=2,
         )
         self._topology = topology
