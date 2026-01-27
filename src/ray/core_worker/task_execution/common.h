@@ -59,11 +59,23 @@ class TaskToExecute {
 };
 
 struct TaskExecutionResult {
+  // Human-readable name for the actor in this process.
+  // This is only expected to be populated for actor creation tasks.
   std::string actor_repr_name;
+  // Detailed string containing information about any application error
+  // that occurred.
   std::string application_error;
+  // Indicates if the error is retryable or not. This is determined by the language
+  // frontend (e.g., the `retry_exceptions` parameter in Python).
   bool is_retryable_error = false;
+  // Objects returned by the task. Must be populated to match `task_spec.NumReturns()`
+  // if the task succeeded.
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
+  // Dynamic return objects that are determined on the first execution of a task.
+  // Subsequent executions must match the same number of returns as the first execution.
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
+  // Map of metadata associated with streaming generator outputs.
+  // The value is set to `true` if the object was written to plasma (not inlined).
   std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
 };
 
