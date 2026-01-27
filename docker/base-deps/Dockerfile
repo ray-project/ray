@@ -55,11 +55,19 @@ APT_PKGS=(
     netbase
     openssh-client
     gnupg
+)
+
+
+POWER_APT_PKGS=(
     build-essential
     pkg-config
     libssl-dev
     curl
 )
+
+if [[ "${HOSTTYPE:-}" =~ ^(ppc64le|powerpc64le)$ ]]; then
+    APT_PKGS+=("${POWER_APT_PKGS[@]}")
+fi
 
 apt-get install -y "${APT_PKGS[@]}"
 
@@ -67,9 +75,11 @@ useradd -ms /bin/bash -d /home/ray ray --uid $RAY_UID --gid $RAY_GID
 usermod -aG sudo ray
 echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers
 
-# Install Rust using rustup
-curl https://sh.rustup.rs -sSf | sh -s -- -y
-echo 'export PATH=$HOME/.cargo/bin:$PATH' >> /home/ray/.bashrc
+if [[ "${HOSTTYPE:-}" =~ ^(ppc64le|powerpc64le)$ ]]; then
+    # Install Rust for POWER
+    curl https://sh.rustup.rs -sSf | sh -s -- -y
+    echo 'export PATH=$HOME/.cargo/bin:$PATH' >> /home/ray/.bashrc
+fi
 
 EOF
 
