@@ -3,7 +3,30 @@ import subprocess
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
-MASTER_BRANCH_VERSION = "3.0.0.dev0"
+# Path to rayci.env relative to this file
+_RAYCI_ENV_PATH = os.path.join(os.path.dirname(__file__), "../../../rayci.env")
+
+
+def read_ray_version_from_rayci_env(rayci_env_path=None):
+    """Read RAY_VERSION from rayci.env file.
+
+    Args:
+        rayci_env_path: Path to rayci.env. Defaults to repo root rayci.env.
+
+    Returns:
+        The RAY_VERSION string, or None if not found.
+    """
+    if rayci_env_path is None:
+        rayci_env_path = _RAYCI_ENV_PATH
+    if os.path.exists(rayci_env_path):
+        with open(rayci_env_path) as f:
+            for line in f:
+                if line.startswith("RAY_VERSION="):
+                    return line.strip().split("=", 1)[1]
+    return None
+
+
+MASTER_BRANCH_VERSION = read_ray_version_from_rayci_env() or "3.0.0.dev0"
 MASTER_BRANCH_JAVA_VERSION = "2.0.0-SNAPSHOT"
 
 

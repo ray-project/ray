@@ -70,7 +70,11 @@ py_binary(
 py_library(
     name = "update_version_lib",
     srcs = ["update_version_lib.py"],
-    visibility = ["//ci/ray_ci/automation:__subpackages__"],
+    data = ["//:rayci.env"],
+    visibility = [
+        "//ci/ray_ci:__pkg__",
+        "//ci/ray_ci/automation:__subpackages__",
+    ],
     deps = [],
 )
 

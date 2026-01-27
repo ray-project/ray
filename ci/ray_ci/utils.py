@@ -11,6 +11,7 @@ from typing import List
 import boto3
 
 import ci.ray_ci.bazel_sharding as bazel_sharding
+from ci.ray_ci.automation.update_version_lib import read_ray_version_from_rayci_env
 
 from ray_release.bazel import bazel_runfile
 from ray_release.configs.global_config import init_global_config
@@ -19,7 +20,10 @@ from ray_release.test import Test, TestState
 GLOBAL_CONFIG_FILE = (
     os.environ.get("RAYCI_GLOBAL_CONFIG") or "ci/ray_ci/oss_config.yaml"
 )
-RAY_VERSION = "3.0.0.dev0"
+
+RAY_VERSION = (
+    os.environ.get("RAY_VERSION") or read_ray_version_from_rayci_env() or "3.0.0.dev0"
+)
 
 
 def ci_init() -> None:
