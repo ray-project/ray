@@ -139,7 +139,6 @@ import json
 import logging
 import tempfile
 import uuid
-from typing import List
 
 import torch
 import torch.distributed as dist
@@ -349,16 +348,16 @@ def setup_model_with_autotp(
     dtype = get_mixed_precision_dtype()
     use_bf16 = dtype == torch.bfloat16
 
-    # Calculate TP and DP rank
-    tp_rank = world_rank % tp_size
-    dp_rank = world_rank // tp_size
-
     # Validate configuration
     if dp_size * tp_size != world_size:
         raise ValueError(
             f"dp_size ({dp_size}) * tp_size ({tp_size}) must equal "
             f"world_size ({world_size})"
         )
+
+    # Calculate TP and DP rank
+    tp_rank = world_rank % tp_size
+    dp_rank = world_rank // tp_size
 
     # Load model config and validate TP compatibility
     hf_config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
@@ -562,10 +561,6 @@ def train_func(config):
         device=device,
         config=config,
     )
-
-    if world_rank == 0:
-        if dp_size > 1:
-            logger.info(f"2D parallelism: {dp_size} DP x {tp_size} TP")
 
     # Create dataloader with TP-aware sharding
     dataloader = create_dataloader(
