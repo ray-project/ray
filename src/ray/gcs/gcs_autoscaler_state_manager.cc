@@ -220,8 +220,16 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     // Multiple will be added when we implement the fallback mechanism.
     auto *bundle_selector = gang_resource_req->add_bundle_selectors();
 
+    // Read the resource demand from the highest priority scheduling strategy. The bundles
+    // field will be empty for a pending PG since no strategy has been selected yet.
+    bool use_strategy =
+        pg_data.bundles().empty() && pg_data.scheduling_strategy_size() > 0;
+    auto *pending_bundles =
+        use_strategy ? pg_data.mutable_scheduling_strategy(0)->mutable_bundles()
+                     : pg_data.mutable_bundles();
+
     // Copy the PG's bundles to the request.
-    for (auto &&bundle : std::move(*pg_data.mutable_bundles())) {
+    for (auto &&bundle : std::move(*pending_bundles)) {
       if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
         // We will be skipping **placed** bundle (which has node id associated with it).
         // This is to avoid double counting the bundles that are already placed when

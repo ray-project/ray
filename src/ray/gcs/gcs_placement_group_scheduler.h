@@ -476,6 +476,13 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// wildcard resource.
   bool IsPlacementGroupWildcardResource(const std::string &resource_name);
 
+  // Helper to attempt scheduling for a specific set of bundles.
+  // Returns the scheduling result (success/failure and selected nodes).
+  raylet_scheduling_policy::SchedulingResult TrySchedule(
+      const std::shared_ptr<GcsPlacementGroup> &placement_group,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
+      const rpc::PlacementStrategy strategy);
+
   instrumented_io_context &io_context_;
 
   /// A timer that ticks every cancel resource failure milliseconds.

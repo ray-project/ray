@@ -152,6 +152,9 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   // Mock prepare resource bundles for a placement group
   void PrepareBundleResources(
       const std::shared_ptr<gcs::GcsPlacementGroup> &placement_group) {
+    // Populate the 'bundles' field so we can assign node IDs to them.
+    placement_group->UpdateActiveBundles(placement_group->GetSchedulingStrategy().Get(0));
+
     // mock all bundles of pg have prepared and committed resource.
     MockReceivePrepareRequest(placement_group);
 
@@ -165,6 +168,9 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   void PrepareBundleResourcesWithIndex(
       const std::shared_ptr<gcs::GcsPlacementGroup> &placement_group,
       const std::vector<int> &bundle_indices) {
+    // Populate the 'bundles' field so we can assign node IDs to them.
+    placement_group->UpdateActiveBundles(placement_group->GetSchedulingStrategy().Get(0));
+
     // mock prepare resource bundles with committed resource for specific bundle indexes
     MockReceivePrepareRequestWithBundleIndexes(placement_group, bundle_indices);
 
@@ -248,6 +254,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache) {
   const auto &bundle_specs = placement_group->GetBundles();
   ASSERT_EQ(placement_group->cached_bundle_specs_, bundle_specs);
   ASSERT_FALSE(placement_group->cached_bundle_specs_.empty());
+  // Populate the 'bundles' field so we can safely mutate it.
+  placement_group->UpdateActiveBundles(placement_group->GetSchedulingStrategy().Get(0));
   // Invalidate the cache and verify it.
   RAY_UNUSED(placement_group->GetMutableBundle(0));
   ASSERT_TRUE(placement_group->cached_bundle_specs_.empty());
@@ -856,6 +864,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulerReinitializeAfterGcsRestart) {
   ASSERT_EQ(mock_placement_group_scheduler_->GetPlacementGroupCount(), 1);
 
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  // Populate the 'bundles' field so we can safely mutate it.
+  placement_group->UpdateActiveBundles(placement_group->GetSchedulingStrategy().Get(0));
   placement_group->GetMutableBundle(0)->set_node_id(NodeID::FromRandom().Binary());
   placement_group->GetMutableBundle(1)->set_node_id(NodeID::FromRandom().Binary());
   mock_placement_group_scheduler_->placement_groups_.pop_back();

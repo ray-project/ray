@@ -287,6 +287,11 @@ cdef extern from "ray/common/scheduling/fallback_strategy.h" namespace "ray":
         CFallbackOption() nogil except +
         CFallbackOption(CLabelSelector) nogil except +
 
+cdef extern from "ray/common/placement_group.h" namespace "ray":
+    cdef cppclass CPlacementGroupFallbackOptions "ray::PlacementGroupFallbackOptions":
+        c_vector[unordered_map[c_string, double]] bundles
+        c_vector[unordered_map[c_string, c_string]] bundle_label_selectors
+
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
@@ -424,6 +429,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool is_detached,
             CNodeID soft_target_node_id,
             const c_vector[unordered_map[c_string, c_string]] &bundle_label_selector,
+            const c_vector[CPlacementGroupFallbackOptions] &fallback_options,
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":

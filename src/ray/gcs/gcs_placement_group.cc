@@ -60,9 +60,22 @@ std::vector<std::shared_ptr<const BundleSpecification>> &GcsPlacementGroup::GetB
     const {
   // Fill the cache if it wasn't.
   if (cached_bundle_specs_.empty()) {
-    const auto &bundles = placement_group_table_data_.bundles();
-    for (const auto &bundle : bundles) {
-      cached_bundle_specs_.push_back(std::make_shared<const BundleSpecification>(bundle));
+    // If no active bundles selected, return the highest priority scheduling strategy.
+    if (placement_group_table_data_.bundles().empty() &&
+        placement_group_table_data_.scheduling_strategy_size() > 0) {
+      const auto &primary_bundles =
+          placement_group_table_data_.scheduling_strategy(0).bundles();
+      for (const auto &bundle : primary_bundles) {
+        cached_bundle_specs_.push_back(
+            std::make_shared<const BundleSpecification>(bundle));
+      }
+    } else {
+      // Return the active bundles for scheduling.
+      const auto &bundles = placement_group_table_data_.bundles();
+      for (const auto &bundle : bundles) {
+        cached_bundle_specs_.push_back(
+            std::make_shared<const BundleSpecification>(bundle));
+      }
     }
   }
   return cached_bundle_specs_;
@@ -142,6 +155,23 @@ const rpc::PlacementGroupStats &GcsPlacementGroup::GetStats() const {
 
 rpc::PlacementGroupStats *GcsPlacementGroup::GetMutableStats() {
   return placement_group_table_data_.mutable_stats();
+}
+
+const google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
+    &GcsPlacementGroup::GetSchedulingStrategy() const {
+  return placement_group_table_data_.scheduling_strategy();
+}
+
+void GcsPlacementGroup::UpdateActiveBundles(
+    const rpc::PlacementGroupSchedulingOption &fallback_option) {
+  // Invalidate the cache because we are changing the bundles.
+  cached_bundle_specs_.clear();
+
+  // Replace the current bundles with the bundles from the selected strategy.
+  placement_group_table_data_.clear_bundles();
+  for (const auto &bundle : fallback_option.bundles()) {
+    *placement_group_table_data_.add_bundles() = bundle;
+  }
 }
 
 }  // namespace gcs

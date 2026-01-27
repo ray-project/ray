@@ -34,6 +34,12 @@ using BundleLocations =
                         std::pair<NodeID, std::shared_ptr<const BundleSpecification>>,
                         pair_hash>;
 
+// Data structure to represent one option in the fallback list passed from the API.
+struct PlacementGroupFallbackOptions {
+  std::vector<std::unordered_map<std::string, double>> bundles;
+  std::vector<std::unordered_map<std::string, std::string>> bundle_label_selectors;
+};
+
 class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpec> {
  public:
   /// Construct from a protobuf message object.
@@ -62,6 +68,11 @@ class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpe
   /// Return the name of this placement group.
   std::string GetName() const;
 
+  const google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
+      &GetFallbackOptions() const {
+    return message_->fallback_options();
+  }
+
  private:
   /// Construct bundle vector from protobuf.
   void ConstructBundles();
@@ -88,7 +99,8 @@ class PlacementGroupSpecBuilder {
       const ActorID &creator_actor_id,
       bool is_creator_detached_actor,
       const std::vector<std::unordered_map<std::string, std::string>>
-          &bundle_label_selector = {}) {
+          &bundle_label_selector = {},
+      const std::vector<PlacementGroupFallbackOptions> &fallback_options = {}) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
     message_->set_strategy(strategy);
@@ -105,12 +117,42 @@ class PlacementGroupSpecBuilder {
     message_->set_is_detached(is_detached);
     message_->set_soft_target_node_id(soft_target_node_id.Binary());
 
-    for (size_t i = 0; i < bundles.size(); i++) {
-      auto resources = bundles[i];
-      auto message_bundle = message_->add_bundles();
+    // Add top-level bundles and bundle_label_selector for placement group.
+    AddBundles(
+        message_->mutable_bundles(), placement_group_id, bundles, bundle_label_selector);
+
+    // Add fallback bundles and bundle_label_selector to use if top-level are infeasible.
+    for (const auto &option : fallback_options) {
+      auto *fallback_proto = message_->add_fallback_options();
+      AddBundles(fallback_proto->mutable_bundles(),
+                 placement_group_id,
+                 option.bundles,
+                 option.bundle_label_selectors);
+    }
+
+    return *this;
+  }
+
+  PlacementGroupSpecification Build() { return PlacementGroupSpecification(message_); }
+
+ private:
+  std::shared_ptr<rpc::PlacementGroupSpec> message_;
+
+  // Helper to populate bundles into a repeated proto field.
+  void AddBundles(
+      google::protobuf::RepeatedPtrField<rpc::Bundle> *proto_bundles,
+      const PlacementGroupID &placement_group_id,
+      const std::vector<std::unordered_map<std::string, double>> &bundles_data,
+      const std::vector<std::unordered_map<std::string, std::string>>
+          &bundle_label_selector_data) {
+    for (size_t i = 0; i < bundles_data.size(); i++) {
+      auto resources = bundles_data[i];
+
+      auto message_bundle = proto_bundles->Add();
       auto mutable_bundle_id = message_bundle->mutable_bundle_id();
       mutable_bundle_id->set_bundle_index(i);
       mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
+
       auto mutable_unit_resources = message_bundle->mutable_unit_resources();
       for (auto it = resources.begin(); it != resources.end();) {
         auto current = it++;
@@ -121,21 +163,16 @@ class PlacementGroupSpecBuilder {
           mutable_unit_resources->insert({current->first, current->second});
         }
       }
-      // Set the label selector for this bundle if provided in bundle_label_selector.
-      if (bundle_label_selector.size() > i) {
+
+      // Set the label selector for this bundle if provided in bundle_label_selector_data.
+      if (bundle_label_selector_data.size() > i) {
         auto *mutable_label_selector = message_bundle->mutable_label_selector();
-        for (const auto &pair : bundle_label_selector[i]) {
+        for (const auto &pair : bundle_label_selector_data[i]) {
           (*mutable_label_selector)[pair.first] = pair.second;
         }
       }
     }
-    return *this;
   }
-
-  PlacementGroupSpecification Build() { return PlacementGroupSpecification(message_); }
-
- private:
-  std::shared_ptr<rpc::PlacementGroupSpec> message_;
 };
 
 }  // namespace ray
