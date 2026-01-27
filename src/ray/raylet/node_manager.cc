@@ -3110,7 +3110,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           worker_exit_message_ss << oom_kill_details << "\n" << oom_kill_suggestions;
           std::string worker_exit_message = worker_exit_message_ss.str();
 
-          // Rerpot the event to the dashboard.
+          // Report the event to the dashboard.
           RAY_EVENT_EVERY_MS(ERROR, "Out of Memory", 10 * 1000) << worker_exit_message;
 
           // Mark the worker as failure and raise an exception from a caller.
