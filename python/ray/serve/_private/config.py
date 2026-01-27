@@ -533,10 +533,10 @@ class ReplicaConfig:
             and len(self.placement_group_bundle_label_selector) == 1
             and len(self.placement_group_bundles) > 1
         ):
-            self.placement_group_bundle_label_selector = (
-                self.placement_group_bundle_label_selector
-                * len(self.placement_group_bundles)
-            )
+            single_selector = self.placement_group_bundle_label_selector[0]
+            self.placement_group_bundle_label_selector = [
+                single_selector.copy() for _ in range(len(self.placement_group_bundles))
+            ]
 
     def _validate(self):
         self._validate_ray_actor_options()
