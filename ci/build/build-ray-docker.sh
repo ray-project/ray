@@ -6,7 +6,14 @@ SOURCE_IMAGE="$2"
 DEST_IMAGE="$3"
 PIP_FREEZE_FILE="$4"
 
-RAY_VERSION="$(python python/ray/_version.py | cut -d' ' -f1)"
+# Source RAY_VERSION from rayci.env if not already set
+if [[ -z "${RAY_VERSION:-}" ]]; then
+    if [[ -f "rayci.env" ]]; then
+        source rayci.env
+    else
+        RAY_VERSION="$(python python/ray/_version.py | cut -d' ' -f1)"
+    fi
+fi
 RAY_COMMIT="$(git rev-parse HEAD)"
 
 CPU_TMP="$(mktemp -d)"
