@@ -1836,7 +1836,6 @@ def init(
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=_node_ip_address,
-            driver_mode=SCRIPT_MODE,
             redirect_output=None,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
