@@ -3,6 +3,7 @@ import collections
 import inspect
 import logging
 import queue
+import warnings
 from dataclasses import dataclass
 from threading import Thread
 from types import GeneratorType
@@ -64,9 +65,17 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
+from ray.util.debug import log_once
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
+
+
+class _MapBatchesRowCountWarning(UserWarning):
+    """Warning issued when map_batches UDF modifies row count but
+    udf_modifying_row_count=False."""
+
+    pass
 
 
 # Controls default max-concurrency setting for async row-based UDFs
@@ -300,7 +309,7 @@ def plan_udf_map_op(
 
     if isinstance(op, MapBatches):
         transform_fn = BatchMapTransformFn(
-            _generate_transform_fn_for_map_batches(fn),
+            _generate_transform_fn_for_map_batches(fn, op.can_modify_num_rows()),
             batch_size=op._batch_size,
             batch_format=op._batch_format,
             zero_copy_batch=op._zero_copy_batch,
@@ -524,14 +533,60 @@ def _validate_batch_output(batch: Block) -> None:
 
 def _generate_transform_fn_for_map_batches(
     fn: UserDefinedFunction,
+    can_modify_num_rows: bool = True,
 ) -> MapTransformCallable[DataBatch, DataBatch]:
+    def _get_batch_num_rows(batch: DataBatch) -> int:
+        """Get row count from a batch, converting to block if needed."""
+        # BlockAccessor.for_block only works with pa.Table and pd.DataFrame
+        # Convert other batch types (dict, numpy array) to block first
+        if isinstance(batch, (pa.Table, pd.DataFrame)):
+            return BlockAccessor.for_block(batch).num_rows()
+        block = BlockAccessor.batch_to_block(batch)
+        return BlockAccessor.for_block(block).num_rows()
+
+    def _warn_row_count_mismatch(input_rows: int, output_rows: int) -> None:
+        """Warn once if row count changed but can_modify_num_rows=False."""
+        if input_rows != output_rows and log_once("map_batches_row_count_mismatch"):
+            warnings.warn(
+                f"The UDF passed to `map_batches` modified the number of "
+                f"rows (input: {input_rows}, output: {output_rows}), "
+                f"but `udf_modifying_row_count=False` (default). This may "
+                f"cause incorrect results with optimizations like limit "
+                f"pushdown. Set `udf_modifying_row_count=True` to fix this.",
+                category=_MapBatchesRowCountWarning,
+            )
 
     if _is_async_udf(fn):
-        transform_fn = _generate_transform_fn_for_async_map(
+        base_transform_fn = _generate_transform_fn_for_async_map(
             fn,
             _validate_batch_output,
             max_concurrency=DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY,
         )
+
+        if can_modify_num_rows:
+            transform_fn = base_transform_fn
+        else:
+            # For async UDFs, we can only compare aggregate row counts since
+            # async generators may produce multiple outputs per input batch.
+            # This won't catch cases where changes balance out across batches,
+            # but avoids incorrect per-batch comparisons.
+            def transform_fn(
+                batches: Iterable[DataBatch], ctx: TaskContext
+            ) -> Iterable[DataBatch]:
+                total_input_rows = 0
+                total_output_rows = 0
+
+                def counting_batches():
+                    nonlocal total_input_rows
+                    for batch in batches:
+                        total_input_rows += _get_batch_num_rows(batch)
+                        yield batch
+
+                for out_batch in base_transform_fn(counting_batches(), ctx):
+                    total_output_rows += _get_batch_num_rows(out_batch)
+                    yield out_batch
+
+                _warn_row_count_mismatch(total_input_rows, total_output_rows)
 
     else:
 
@@ -549,7 +604,13 @@ def _generate_transform_fn_for_map_batches(
                         # TODO(hchen): This workaround is because some all-to-all
                         # operators output empty blocks with no schema.
                         res = [batch]
+                        input_num_rows = 0
                     else:
+                        input_num_rows = (
+                            _get_batch_num_rows(batch)
+                            if not can_modify_num_rows
+                            else None
+                        )
                         res = fn(batch)
                         if not isinstance(res, GeneratorType):
                             res = [res]
@@ -571,9 +632,15 @@ def _generate_transform_fn_for_map_batches(
                     else:
                         raise e from None
                 else:
+                    output_num_rows = 0
                     for out_batch in res:
                         _validate_batch_output(out_batch)
+                        if not can_modify_num_rows:
+                            output_num_rows += _get_batch_num_rows(out_batch)
                         yield out_batch
+
+                    if not can_modify_num_rows:
+                        _warn_row_count_mismatch(input_num_rows, output_num_rows)
 
     return transform_fn
 

@@ -119,6 +119,7 @@ from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.datatype import DataType
+from ray.data.expressions import Expr, StarExpr, col
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
@@ -145,7 +146,6 @@ if TYPE_CHECKING:
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
-from ray.data.expressions import Expr, StarExpr, col
 
 logger = logging.getLogger(__name__)
 
