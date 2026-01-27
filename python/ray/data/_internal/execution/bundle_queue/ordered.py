@@ -49,8 +49,8 @@ class ReorderingBundleQueue(BaseBundleQueue):
     @override
     def has_next(self) -> bool:
         if (
-            self._current_index in self._finalized_keys and
-            len(self._inner[self._current_index]) == 0
+            self._current_index in self._finalized_keys
+            and len(self._inner[self._current_index]) == 0
         ):
             self._move_to_next_key()
 
@@ -58,7 +58,9 @@ class ReorderingBundleQueue(BaseBundleQueue):
 
     @override
     def _get_next_inner(self) -> RefBundle:
-        if not self._inner[self._current_index]:
+        # NOTE: This assertion is vital here, since updating key pointers
+        #       happens in `has_next` method
+        if not self.has_next():
             raise ValueError("Cannot pop from empty queue.")
 
         return self._inner[self._current_index].popleft()
