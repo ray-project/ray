@@ -98,7 +98,6 @@ void UnorderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
       // queue the current attempt.
       run_task = false;
 
-
       auto it = queued_actor_tasks_.find(task_id);
       if (it != queued_actor_tasks_.end()) {
         // There is already an attempt of the same task queued,
