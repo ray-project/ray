@@ -398,17 +398,14 @@ class StreamingExecutor(Executor, threading.Thread):
         global_usage = self._resource_manager.get_global_usage()
         global_limits = self._resource_manager.get_global_limits()
 
+        def _calculate_util(usage, limit):
+            return (usage / limit * 100) if limit else 0
+
         # Calculate utilization percentages (0-100)
-        cpu_util = (
-            (global_usage.cpu / global_limits.cpu * 100) if global_limits.cpu else 0
-        )
-        gpu_util = (
-            (global_usage.gpu / global_limits.gpu * 100) if global_limits.gpu else 0
-        )
-        osm_util = (
-            (global_usage.object_store_memory / global_limits.object_store_memory * 100)
-            if global_limits.object_store_memory
-            else 0
+        cpu_util = _calculate_util(global_usage.cpu, global_limits.cpu)
+        gpu_util = _calculate_util(global_usage.gpu, global_limits.gpu)
+        osm_util = _calculate_util(
+            global_usage.object_store_memory, global_limits.object_store_memory
         )
 
         self._cluster_cpu_utilization_gauge.set(cpu_util, tags=tags)
