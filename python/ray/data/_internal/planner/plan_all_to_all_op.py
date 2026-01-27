@@ -30,7 +30,7 @@ def _plan_hash_shuffle_repartition(
     )
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
-    normalized_key_columns = SortKey(logical_op._keys).get_columns()
+    normalized_key_columns = SortKey(logical_op.keys).get_columns()
 
     return HashShuffleOperator(
         input_physical_op,
@@ -38,8 +38,8 @@ def _plan_hash_shuffle_repartition(
         key_columns=tuple(normalized_key_columns),  # noqa: type
         # NOTE: In case number of partitions is not specified, we fall back to
         #       default min parallelism configured
-        num_partitions=logical_op._num_outputs,
-        should_sort=logical_op._sort,
+        num_partitions=logical_op.num_outputs,
+        should_sort=logical_op.sort,
         # TODO wire in aggregator args overrides
     )
 
@@ -54,16 +54,16 @@ def _plan_hash_shuffle_aggregate(
     )
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
-    normalized_key_columns = SortKey(logical_op._key).get_columns()
+    normalized_key_columns = SortKey(logical_op.key).get_columns()
 
     return HashAggregateOperator(
         data_context,
         input_physical_op,
         key_columns=tuple(normalized_key_columns),  # noqa: type
-        aggregation_fns=tuple(logical_op._aggs),  # noqa: type
+        aggregation_fns=tuple(logical_op.aggs),  # noqa: type
         # NOTE: In case number of partitions is not specified, we fall back to
         #       default min parallelism configured
-        num_partitions=logical_op._num_partitions,
+        num_partitions=logical_op.num_partitions,
         # TODO wire in aggregator args overrides
     )
 
@@ -92,14 +92,14 @@ def plan_all_to_all_op(
         )
         fn = generate_random_shuffle_fn(
             data_context,
-            op._seed,
-            op._num_outputs,
-            op._ray_remote_args,
+            op.seed,
+            op.num_outputs,
+            op.ray_remote_args,
             debug_limit_shuffle_execution_to_num_blocks,
         )
 
     elif isinstance(op, Repartition):
-        if op._keys:
+        if op.keys:
             if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
                 return _plan_hash_shuffle_repartition(
                     data_context, op, input_physical_dag
@@ -111,7 +111,7 @@ def plan_all_to_all_op(
                     f"(got {data_context.shuffle_strategy})"
                 )
 
-        elif op._shuffle:
+        elif op.shuffle:
             debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
                 "debug_limit_shuffle_execution_to_num_blocks", None
             )
@@ -119,8 +119,8 @@ def plan_all_to_all_op(
             debug_limit_shuffle_execution_to_num_blocks = None
 
         fn = generate_repartition_fn(
-            op._num_outputs,
-            op._shuffle,
+            op.num_outputs,
+            op.shuffle,
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
         )
@@ -130,8 +130,8 @@ def plan_all_to_all_op(
             "debug_limit_shuffle_execution_to_num_blocks", None
         )
         fn = generate_sort_fn(
-            op._sort_key,
-            op._batch_format,
+            op.sort_key,
+            op.batch_format,
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
         )
@@ -144,9 +144,9 @@ def plan_all_to_all_op(
             "debug_limit_shuffle_execution_to_num_blocks", None
         )
         fn = generate_aggregate_fn(
-            op._key,
-            op._aggs,
-            op._batch_format,
+            op.key,
+            op.aggs,
+            op.batch_format,
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
         )
@@ -157,7 +157,7 @@ def plan_all_to_all_op(
         fn,
         input_physical_dag,
         data_context,
-        num_outputs=op._num_outputs,
-        sub_progress_bar_names=op._sub_progress_bar_names,
+        num_outputs=op.num_outputs,
+        sub_progress_bar_names=op.sub_progress_bar_names,
         name=op.name,
     )

@@ -27,9 +27,9 @@ class InheritBatchFormatRule(Rule):
             # or we reach to source op and do nothing
             upstream_op = node.input_dependencies[0]
             while upstream_op.input_dependencies:
-                if isinstance(upstream_op, MapBatches) and upstream_op._batch_format:
+                if isinstance(upstream_op, MapBatches) and upstream_op.batch_format:
                     new_op = copy.copy(node)
-                    new_op._batch_format = upstream_op._batch_format
+                    new_op.batch_format = upstream_op.batch_format
                     new_op._output_dependencies = []
                     return new_op
                 upstream_op = upstream_op.input_dependencies[0]
