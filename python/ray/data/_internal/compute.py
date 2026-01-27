@@ -132,7 +132,7 @@ class ActorPoolStrategy(ComputeStrategy):
                 queueing delay.
             enable_true_multi_threading: If enable_true_multi_threading=False, no more than 1 UDF
                 runs per actor. Otherwise, respects the `max_concurrency` argument. For more details, see
-                the source doc string for `ActorPoolStrategy`
+                the `ActorPoolStrategy` class docstring.
         """
         if size is not None:
             if size < 1:
