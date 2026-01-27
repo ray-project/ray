@@ -202,7 +202,7 @@ class LimitPushdownRule(Rule):
 
         # Use copy and replace input dependencies approach
         new_op = copy.copy(original_op)
-        new_op._input_dependencies = [new_input]
+        new_op.input_dependencies = [new_input]
         new_op._output_dependencies = []
 
         return new_op
