@@ -235,7 +235,7 @@ def create_dataloader(
     tokenized = dataset.map(
         tokenize_fn,
         batched=True,
-        num_proc=1,
+        num_proc=None,
         keep_in_memory=True,
         remove_columns=dataset.column_names,
     )
@@ -259,7 +259,7 @@ def create_dataloader(
         examples["labels"] = labels
         return examples
 
-    tokenized = tokenized.map(add_labels, batched=True, num_proc=1, keep_in_memory=True)
+    tokenized = tokenized.map(add_labels, batched=True, num_proc=None, keep_in_memory=True)
     tokenized.set_format(type="torch", columns=["input_ids", "attention_mask", "labels"])
 
     # [1] Use DP rank/size for sharding (ensures TP ranks get same data)
@@ -400,10 +400,17 @@ def setup_model_with_autotp(
     set_autotp_mode(training=True)
 
     # [4] Create model on the target device
+    # Sync seeds to ensure non-TP parameters (embeddings, layer norms) are identical across ranks
+    seed = config.get("seed", 42)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
     prev_device = torch.get_default_device()
-    torch.set_default_device(device)
-    model = AutoModelForCausalLM.from_config(hf_config).to(dtype=dtype)
-    torch.set_default_device(prev_device)
+    try:
+        torch.set_default_device(device)
+        model = AutoModelForCausalLM.from_config(hf_config).to(dtype=dtype)
+    finally:
+        torch.set_default_device(prev_device)
 
     # [5] Apply TP sharding with deepspeed.tp_model_init()
     model = deepspeed.tp_model_init(
@@ -498,10 +505,7 @@ def save_checkpoint(
     avg_loss: float,
 ) -> None:
     """Save checkpoint and report to Ray Train."""
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        checkpoint_dir = os.path.join(tmp_dir, "checkpoint")
-        os.makedirs(checkpoint_dir, exist_ok=True)
-
+    with tempfile.TemporaryDirectory() as checkpoint_dir:
         # Each rank saves its model/optimizer shard
         torch.save(
             engine.module.state_dict(),
@@ -587,6 +591,7 @@ def train_func(config):
 
         running_loss = 0.0
         num_batches = 0
+        step = -1  # Initialize in case dataloader is empty
 
         for step, batch in enumerate(dataloader):
             # Move batch to device
