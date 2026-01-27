@@ -149,8 +149,11 @@ class DeltaDatasource(Datasource):
 
         # Extract ParquetDatasource-specific kwargs from arrow_parquet_args
         # ParquetDatasource expects dataset_kwargs and to_batch_kwargs, not arbitrary kwargs
-        dataset_kwargs = self.arrow_parquet_args.get("dataset_kwargs")
-        to_batch_kwargs = self.arrow_parquet_args.get("to_batch_kwargs")
+        # Similar to read_parquet: extract dataset_kwargs, pass rest as to_batch_kwargs
+        arrow_parquet_args_copy = dict(self.arrow_parquet_args)
+        dataset_kwargs = arrow_parquet_args_copy.pop("dataset_kwargs", None)
+        # All remaining args (like filter, batch_size, etc.) go to to_batch_kwargs
+        to_batch_kwargs = arrow_parquet_args_copy if arrow_parquet_args_copy else None
 
         parquet_datasource = ParquetDatasource(
             file_paths,

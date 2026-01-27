@@ -635,9 +635,16 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         # Handle empty writes
         if not all_file_actions:
-            if self.schema and not existing_table:
-                if self.mode == SaveMode.IGNORE and self._table_existed_at_start:
+            if self._table_existed_at_start and existing_table is not None:
+                # For OVERWRITE mode with empty dataset, clear the table
+                if self.mode == SaveMode.OVERWRITE:
+                    self._commit_to_existing_table(existing_table, [])
                     return
+                # For IGNORE mode, do nothing if table exists
+                if self.mode == SaveMode.IGNORE:
+                    return
+            # Create empty table if schema provided and table doesn't exist
+            if self.schema and not existing_table:
                 self._create_empty_table()
             return
 
