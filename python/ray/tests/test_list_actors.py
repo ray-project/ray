@@ -34,7 +34,6 @@ def test_list_named_actors_basic(ray_start_regular):
     wait_for_condition(lambda: not ray.util.list_named_actors())
 
 
-
 if __name__ == "__main__":
 
     # Test suite is timing out. Disable on windows for now.
