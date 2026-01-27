@@ -609,15 +609,12 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             if result.schemas:
                 all_schemas.extend(result.schemas)
 
-        # Check for duplicate paths
+        # Validate no duplicate file paths (shouldn't happen but check for safety)
         seen_paths = set()
-        duplicates = set()
         for action in all_actions:
             if action.path in seen_paths:
-                duplicates.add(action.path)
+                raise ValueError(f"Duplicate file paths detected: {action.path}")
             seen_paths.add(action.path)
-        if duplicates:
-            raise ValueError(f"Duplicate file paths detected: {duplicates}")
 
         # Combine upsert keys from all workers
         upsert_keys = (
