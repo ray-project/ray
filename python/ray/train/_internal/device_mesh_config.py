@@ -113,9 +113,10 @@ class DeviceMeshConfig:
                 )
 
         if len(self.axis_order) != len(set(self.axis_order)):
-            duplicates = [a for a in self.axis_order if self.axis_order.count(a) > 1]
+            from collections import Counter
+            duplicates = {k for k, v in Counter(self.axis_order).items() if v > 1}
             raise ValueError(
-                f"Duplicate axes in axis_order: {set(duplicates)}. "
+                f"Duplicate axes in axis_order: {duplicates}. "
                 "Each axis can only appear once."
             )
 
