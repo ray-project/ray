@@ -193,7 +193,7 @@ class StatefulStageUDF:
 
         # Collect all outputs first, then return them in the original order
         # This is a requirement set by https://github.com/ray-project/ray/pull/54190/
-        not_outputed_rows = set(range(len(inputs))) - error_row_indices
+        not_output_rows = set(range(len(inputs))) - error_row_indices
         if normal_rows:
             async for output in self.udf(normal_rows):
                 if self.IDX_IN_BATCH_COLUMN not in output:
@@ -202,19 +202,19 @@ class StatefulStageUDF:
                         f"{self.IDX_IN_BATCH_COLUMN}."
                     )
                 idx_in_batch = output.pop(self.IDX_IN_BATCH_COLUMN)
-                if idx_in_batch not in not_outputed_rows:
+                if idx_in_batch not in not_output_rows:
                     raise ValueError(
-                        f"The row {idx_in_batch} is outputed twice. "
+                        f"The row {idx_in_batch} is output twice. "
                         "This is likely due to the UDF is not one-to-one."
                     )
-                not_outputed_rows.remove(idx_in_batch)
+                not_output_rows.remove(idx_in_batch)
 
                 # Add stage outputs to the data column of the row.
                 inputs[idx_in_batch].pop(self.IDX_IN_BATCH_COLUMN)
                 inputs[idx_in_batch].update(output)
 
-        if not_outputed_rows:
-            raise ValueError(f"The rows {not_outputed_rows} are not outputed.")
+        if not_output_rows:
+            raise ValueError(f"The rows {not_output_rows} are not output.")
 
         # Clean up idx column from error rows (normal rows already cleaned above)
         for idx in error_row_indices:
