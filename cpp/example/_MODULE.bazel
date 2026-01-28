@@ -1,3 +1,0 @@
-module(name = "ray_cpp_example")
-
-bazel_dep(name = "rules_cc", version = "0.0.9")
