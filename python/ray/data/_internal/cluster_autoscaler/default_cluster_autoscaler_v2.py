@@ -176,7 +176,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._resource_utilization_calculator = resource_utilization_calculator
         # Threshold of cluster utilization to trigger scaling up.
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
-        self._cluster_scaling_up_delta = cluster_scaling_up_delta
+        self._cluster_scaling_up_delta = int(math.ceil(self._cluster_scaling_up_delta))
         self._min_gap_between_autoscaling_requests_s = (
             min_gap_between_autoscaling_requests_s
         )
@@ -228,8 +228,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             # Bundles for existing nodes -> active (must include)
             active_bundles.extend([bundle] * count)
             # Bundles for scale-up delta -> pending (best-effort)
-            delta_count = int(math.ceil(self._cluster_scaling_up_delta))
-            pending_bundles.extend([bundle] * delta_count)
+            pending_bundles.extend([bundle] * self._cluster_scaling_up_delta)
 
         # Cap the resource request to respect user-configured limits.
         # Active bundles (existing nodes) are always included; pending bundles
@@ -254,7 +253,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             f"specified threshold of {self._cluster_scaling_up_util_threshold:.0%}: "
             f"CPU={current_utilization.cpu:.0%}, GPU={current_utilization.gpu:.0%}, "
             f"object_store_memory={current_utilization.object_store_memory:.0%}. "
-            "Requesting one node of each shape:"
+            f"Requesting {self._cluster_scaling_up_delta} node(s) of each shape:"
         )
 
         current_node_counts = Counter(
