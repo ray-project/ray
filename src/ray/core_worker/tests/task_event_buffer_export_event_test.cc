@@ -43,7 +43,7 @@ class MockEventAggregatorClient : public ray::rpc::EventAggregatorClient {
  public:
   MOCK_METHOD(void,
               AddEvents,
-              (const rpc::events::AddEventsRequest &request,
+              (rpc::events::AddEventsRequest && request,
                const rpc::ClientCallback<rpc::events::AddEventsReply> &callback),
               (override));
 };

@@ -83,10 +83,14 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
         /*task_events_dropped_gauge=*/fake_task_events_dropped_gauge_,
         /*task_events_stored_gauge=*/fake_task_events_stored_gauge_,
         /*event_recorder_dropped_events_counter=*/fake_dropped_events_counter_,
+        /*event_recorder_events_sent_counter=*/fake_events_sent_counter_,
+        /*event_recorder_events_failed_to_send_counter=*/
+        fake_events_failed_to_send_counter_,
         /*storage_operation_latency_in_ms_histogram=*/
         fake_storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/fake_storage_operation_count_counter_,
         /*resource_usage_gauge=*/fake_resource_usage_gauge_,
+        /*scheduler_placement_time_ms_histogram=*/
         fake_scheduler_placement_time_ms_histogram_,
         /*health_check_rpc_latency_ms_histogram=*/
         fake_health_check_rpc_latency_ms_histogram_,
@@ -147,7 +151,6 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
   std::unique_ptr<gcs::GcsClient> gcs_client_;
 
   // Fake metrics for testing.
-  observability::FakeCounter fake_dropped_events_counter_;
   observability::FakeGauge fake_actor_by_state_gauge_;
   observability::FakeGauge fake_gcs_actor_by_state_gauge_;
   observability::FakeGauge fake_running_job_gauge_;
@@ -160,6 +163,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
   observability::FakeGauge fake_task_events_reported_gauge_;
   observability::FakeGauge fake_task_events_dropped_gauge_;
   observability::FakeGauge fake_task_events_stored_gauge_;
+  observability::FakeCounter fake_dropped_events_counter_;
+  observability::FakeCounter fake_events_sent_counter_;
+  observability::FakeCounter fake_events_failed_to_send_counter_;
   observability::FakeHistogram fake_storage_operation_latency_in_ms_histogram_;
   observability::FakeCounter fake_storage_operation_count_counter_;
   observability::FakeGauge fake_resource_usage_gauge_;
