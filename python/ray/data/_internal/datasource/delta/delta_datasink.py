@@ -214,8 +214,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             schema: PyArrow schema from the first input bundle. Used for
                 schema validation and empty table creation.
         """
-        _check_import(self, module="deltalake", package="deltalake")
-
         # Store schema from first input bundle
         if schema is not None and self.schema is None:
             self.schema = schema
@@ -234,24 +232,11 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             # Delta Lake automatically evolves schema during commit, but we validate early
             if self.schema is not None:
                 existing_schema = to_pyarrow_schema(existing_table.schema())
-                incoming_schema = self.schema
+                from ray.data._internal.datasource.delta.utils import (
+                    validate_schema_type_compatibility,
+                )
 
-                # Check for type mismatches in existing columns (not allowed)
-                existing_cols = {f.name: f.type for f in existing_schema}
-                incoming_cols = {f.name: f.type for f in incoming_schema}
-                mismatches = [
-                    c
-                    for c in existing_cols
-                    if c in incoming_cols
-                    and not types_compatible(existing_cols[c], incoming_cols[c])
-                ]
-                if mismatches:
-                    raise ValueError(
-                        f"Schema type mismatches detected early: {mismatches}. "
-                        f"Delta Lake does not support changing column types. "
-                        f"Existing: {existing_cols}, Incoming: {incoming_cols}"
-                    )
-
+                validate_schema_type_compatibility(existing_schema, self.schema)
                 # New columns are allowed and will be added automatically during commit
                 # This early check prevents errors during write phase
 
@@ -304,8 +289,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         """
         if self._skip_write:
             return DeltaWriteResult()
-
-        _check_import(self, module="deltalake", package="deltalake")
 
         # Capture write_uuid from TaskContext (set by plan_write_op)
         ctx_kwargs = getattr(ctx, "kwargs", None) or {}
@@ -487,8 +470,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         # Reconcile schemas from all workers with type promotion
         # Handles cases where different workers infer different types (e.g., int32 vs int64)
         if all_schemas:
-            from ray.data._internal.datasource.delta.utils import to_pyarrow_schema
-
             if existing_table:
                 table_schema = to_pyarrow_schema(existing_table.schema())
                 reconciled_schema = unify_schemas(

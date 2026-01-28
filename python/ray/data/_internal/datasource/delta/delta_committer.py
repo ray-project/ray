@@ -24,6 +24,9 @@ if TYPE_CHECKING:
     from deltalake import DeltaTable
     from deltalake.transaction import AddAction
 
+# Import CommitProperties at runtime since it's used for dict conversion
+from deltalake.transaction import CommitProperties
+
 logger = logging.getLogger(__name__)
 
 
@@ -80,6 +83,11 @@ def create_table_with_files(
     )
     delta_schema = convert_schema_to_delta(inferred_schema)
 
+    # Convert commit_properties from dict to CommitProperties object if needed
+    commit_properties = write_kwargs.get("commit_properties")
+    if isinstance(commit_properties, dict):
+        commit_properties = CommitProperties(**commit_properties)
+
     create_table_with_add_actions(
         table_uri=table_uri,
         schema=delta_schema,
@@ -90,7 +98,7 @@ def create_table_with_files(
         description=write_kwargs.get("description"),
         configuration=write_kwargs.get("configuration"),
         storage_options=storage_options,
-        commit_properties=write_kwargs.get("commit_properties"),
+        commit_properties=commit_properties,
         post_commithook_properties=write_kwargs.get("post_commithook_properties"),
     )
 
@@ -140,7 +148,13 @@ def commit_to_existing_table(
         # New columns are allowed (Delta Lake adds them automatically)
         # Missing columns are OK (partial writes)
 
-    validate_partition_columns_match_existing(existing_table, partition_cols)
+    # Note: Partition validation is already done in on_write_start for early detection
+    # No need to validate again here
+
+    # Convert commit_properties from dict to CommitProperties object if needed
+    commit_properties = write_kwargs.get("commit_properties")
+    if isinstance(commit_properties, dict):
+        commit_properties = CommitProperties(**commit_properties)
 
     # Commit files atomically using Delta Lake write transaction
     existing_table.create_write_transaction(
@@ -148,7 +162,7 @@ def commit_to_existing_table(
         mode="overwrite" if mode == "overwrite" else "append",
         schema=existing_table.schema(),
         partition_by=partition_cols or None,
-        commit_properties=write_kwargs.get("commit_properties"),
+        commit_properties=commit_properties,
         post_commithook_properties=write_kwargs.get("post_commithook_properties"),
     )
 
