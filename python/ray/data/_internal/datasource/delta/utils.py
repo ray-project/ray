@@ -535,38 +535,126 @@ def to_pyarrow_schema(delta_schema: Any) -> pa.Schema:
             return pa.schema(fields)
         return delta_schema
 
-    # Handle arro3 Schema objects (from deltalake)
-    # Check by type name to avoid importing arro3 directly
+    # Handle deltalake Schema objects (deltalake._internal.Schema)
+    # Check by type name and module to identify deltalake schemas
     schema_type_name = type(delta_schema).__name__
-    if schema_type_name == "Schema":
-        # arro3 Schema - manually convert fields
-        fields = []
-        for field in delta_schema.fields:
-            field_type = field.field_type
-            # Convert arro3 type to pyarrow type
-            try:
-                pa_type = pa.DataType._import_from_c(field_type._export_to_c())
-                fields.append(pa.field(field.name, pa_type, nullable=field.nullable))
-            except (AttributeError, TypeError):
-                # Fallback: try to get PyArrow type directly if available
-                if hasattr(field_type, "to_pyarrow"):
-                    pa_type = field_type.to_pyarrow()
-                    fields.append(
-                        pa.field(field.name, pa_type, nullable=field.nullable)
+    schema_module = getattr(type(delta_schema), "__module__", "")
+
+    if schema_type_name == "Schema" and "deltalake" in schema_module:
+        # deltalake Schema - use fields directly (easier than arro3 conversion)
+        if hasattr(delta_schema, "fields"):
+            fields = []
+            for field in delta_schema.fields:
+                field_name = getattr(field, "name", None)
+                field_nullable = getattr(field, "nullable", True)
+                field_type = getattr(field, "type", None)
+
+                if field_name is None or field_type is None:
+                    continue
+
+                # Convert deltalake field type to PyArrow type
+                # deltalake types have string representations like PrimitiveType("long")
+                type_str = str(field_type).lower()
+                pa_type = None
+
+                # Map deltalake types to PyArrow types
+                if "long" in type_str or "int64" in type_str:
+                    pa_type = pa.int64()
+                elif "integer" in type_str or "int32" in type_str:
+                    pa_type = pa.int32()
+                elif "short" in type_str or "int16" in type_str:
+                    pa_type = pa.int16()
+                elif "byte" in type_str or "int8" in type_str:
+                    pa_type = pa.int8()
+                elif "float" in type_str or "double" in type_str:
+                    if "double" in type_str or "float64" in type_str:
+                        pa_type = pa.float64()
+                    else:
+                        pa_type = pa.float32()
+                elif "string" in type_str or "utf8" in type_str:
+                    pa_type = pa.string()
+                elif "boolean" in type_str or "bool" in type_str:
+                    pa_type = pa.bool_()
+                elif "binary" in type_str:
+                    pa_type = pa.binary()
+                elif "date" in type_str:
+                    pa_type = pa.date32()
+                elif "timestamp" in type_str:
+                    if "microsecond" in type_str or "us" in type_str:
+                        pa_type = pa.timestamp("us")
+                    elif "millisecond" in type_str or "ms" in type_str:
+                        pa_type = pa.timestamp("ms")
+                    else:
+                        pa_type = pa.timestamp("us")  # Default to microseconds
+                elif "decimal" in type_str:
+                    # Extract precision and scale from string if possible
+                    # Default to DECIMAL128(38, 18) if not parseable
+                    pa_type = pa.decimal128(38, 18)
+
+                if pa_type is None:
+                    raise AttributeError(
+                        f"Cannot convert deltalake field type '{type_str}' "
+                        f"to PyArrow type for field '{field_name}'"
                     )
-                else:
+
+                fields.append(pa.field(field_name, pa_type, nullable=field_nullable))
+
+            if fields:
+                return pa.schema(fields)
+
+    # Handle arro3 Schema objects (from arro3.core._core.Schema)
+    # These come from schema.to_arrow() which returns arro3 Schema
+    if schema_type_name == "Schema" and ("arro3" in schema_module or not schema_module):
+        # arro3 Schema - iterate and convert fields
+        fields = []
+        try:
+            # arro3 Schema can be iterated directly
+            for field in delta_schema:
+                field_name = getattr(field, "name", None)
+                field_nullable = getattr(field, "nullable", True)
+                field_type = getattr(field, "type", None)
+
+                if field_name is None or field_type is None:
+                    continue
+
+                # Convert arro3 type to pyarrow type using C API
+                try:
+                    pa_type = pa.DataType._import_from_c(field_type._export_to_c())
+                    fields.append(
+                        pa.field(field_name, pa_type, nullable=field_nullable)
+                    )
+                except (AttributeError, TypeError) as e:
                     raise AttributeError(
                         f"Cannot convert arro3 field type {type(field_type).__name__} "
-                        f"to PyArrow type for field '{field.name}'"
+                        f"to PyArrow type for field '{field_name}': {e}"
                     )
-        return pa.schema(fields)
+        except (TypeError, AttributeError):
+            # If iteration fails, try fields attribute
+            if hasattr(delta_schema, "fields"):
+                for field in delta_schema.fields:
+                    field_name = getattr(field, "name", None)
+                    field_nullable = getattr(field, "nullable", True)
+                    field_type = getattr(field, "type", None)
+
+                    if field_name is None or field_type is None:
+                        continue
+
+                    try:
+                        pa_type = pa.DataType._import_from_c(field_type._export_to_c())
+                        fields.append(
+                            pa.field(field_name, pa_type, nullable=field_nullable)
+                        )
+                    except (AttributeError, TypeError) as e:
+                        raise AttributeError(
+                            f"Cannot convert arro3 field type {type(field_type).__name__} "
+                            f"to PyArrow type for field '{field_name}': {e}"
+                        )
+
+        if fields:
+            return pa.schema(fields)
 
     if hasattr(delta_schema, "to_pyarrow"):
         schema = delta_schema.to_pyarrow()
-        # Recursively check and fix arro3 types
-        return to_pyarrow_schema(schema)
-    if hasattr(delta_schema, "to_arrow"):
-        schema = delta_schema.to_arrow()
         # Recursively check and fix arro3 types
         return to_pyarrow_schema(schema)
     raise AttributeError(
