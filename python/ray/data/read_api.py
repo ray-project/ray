@@ -849,8 +849,8 @@ def read_bigquery(
             For more information, see `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`_.
         dataset: The name of the dataset hosted in BigQuery in the format of ``dataset_id.table_id``.
             Both the dataset_id and table_id must exist otherwise an exception will be raised.
-        query: The SQL query to execute. If specified, ``dataset`` parameter is ignored.
-            The query result will be read as the dataset.
+        query: The SQL query to execute. `query` and `dataset` are mutually exclusive.
+            If `query` is provided, the query result is read as the dataset.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
