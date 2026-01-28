@@ -155,7 +155,6 @@ from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
 from ray.util import metrics as ray_metrics
-from ray.util.tracing.tracing_helper import _is_tracing_enabled
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -1908,41 +1907,6 @@ class Replica(ReplicaBase):
 
         return healthy, message
 
-    def get_asgi_tracing_context(self, headers: List[Tuple[bytes, bytes]]):
-        """Extract tracing context from ASGI request headers.
-
-        This method extracts both "traceparent" and "tracestate" headers from the
-        request headers to maintain proper trace context propagation.
-        """
-        if not _is_tracing_enabled():
-            return None
-
-        tracing_ctx = None
-        for key, value in headers:
-            key_str = key.decode()
-            if key_str in ("traceparent", "tracestate"):
-                tracing_ctx = tracing_ctx or {}
-                tracing_ctx[key_str] = value.decode()
-
-        return tracing_ctx
-
-    def get_grpc_tracing_context(self, context: grpc._cython.cygrpc._ServicerContext):
-        """Populate tracing context for gRPC requests.
-
-        This method extracts the "traceparent" metadata from the request headers and
-        sets the tracing context from it.
-        """
-        if not _is_tracing_enabled():
-            return
-
-        tracing_ctx = {}
-        for key, value in context.invocation_metadata():
-            if key in ("traceparent", "tracestate"):
-                tracing_ctx = tracing_ctx or {}
-                tracing_ctx[key] = value
-
-        return tracing_ctx
-
     async def _direct_ingress_unary_unary(
         self,
         service_method: str,
@@ -1984,7 +1948,7 @@ class Replica(ReplicaBase):
             # TODO(edoakes): populate this.
             multiplexed_model_id="",
             route=self._deployment_id.app_name,
-            tracing_context=self.get_grpc_tracing_context(context),
+            tracing_context=None,
             is_streaming=False,
             is_direct_ingress=True,
         )
@@ -2190,7 +2154,7 @@ class Replica(ReplicaBase):
             multiplexed_model_id="",
             is_streaming=True,
             _request_protocol=RequestProtocol.HTTP,
-            tracing_context=self.get_asgi_tracing_context(scope["headers"]),
+            tracing_context=None,
             _http_method=scope.get("method", "WS"),
             is_direct_ingress=True,
         )
