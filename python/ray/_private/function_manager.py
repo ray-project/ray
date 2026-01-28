@@ -132,7 +132,7 @@ class FunctionActorManager:
         collision_identifier = function_or_class.__name__ + ":" + string_file.getvalue()
 
         # Return a hash of the identifier in case it is too large.
-        return hashlib.sha1(collision_identifier.encode("utf-8")).digest()
+        return hashlib.sha256(collision_identifier.encode("utf-8")).digest()
 
     def load_function_or_class_from_local(self, module_name, function_or_class_name):
         """Try to load a function or class in the module from local."""
