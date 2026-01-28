@@ -66,11 +66,12 @@ void RayEventRecorder::StopExportingEvents() {
 
   auto flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
 
-  // Helper to wait for in-flight gRPC call to complete with timeout.
+  const auto shutdown_deadline = absl::Now() + absl::Milliseconds(flush_timeout_ms);
+
+  // Helper to wait for in-flight gRPC call to complete until a shared deadline.
   // Returns true if completed, false if timed out.
-  auto wait_for_grpc_completion = [&]() {
+  auto wait_for_grpc_completion_until = [&](absl::Time deadline) {
     absl::MutexLock lock(&grpc_completion_mutex_);
-    auto deadline = absl::Now() + absl::Milliseconds(flush_timeout_ms);
     while (grpc_in_progress_) {
       if (grpc_completion_cv_.WaitWithDeadline(&grpc_completion_mutex_, deadline)) {
         return false;  // Timeout
@@ -81,9 +82,9 @@ void RayEventRecorder::StopExportingEvents() {
 
   // First wait for any in-flight gRPC to complete, then flush, then wait again.
   // This ensures no events are lost during shutdown.
-  if (wait_for_grpc_completion()) {
+  if (wait_for_grpc_completion_until(shutdown_deadline)) {
     ExportEvents();
-    wait_for_grpc_completion();
+    wait_for_grpc_completion_until(shutdown_deadline);
   } else {
     RAY_LOG(WARNING) << "RayEventRecorder shutdown timed out waiting for gRPC. "
                      << "Some events may be lost.";
@@ -100,7 +101,8 @@ void RayEventRecorder::ExportEvents() {
   // periodic export is still in flight.
   if (grpc_in_progress_) {
     RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
-        << "Skipping RayEventRecorder export: gRPC call already in progress.";
+        << "Previous RayEventRecorder export in progress: new events will be exported "
+           "once previous export completes.";
     return;
   }
   rpc::events::AddEventsRequest request;

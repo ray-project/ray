@@ -531,11 +531,12 @@ void TaskEventBufferImpl::Stop() {
 
   auto flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
 
-  // Helper to wait for in-flight gRPC calls to complete with timeout.
+  const auto shutdown_deadline = absl::Now() + absl::Milliseconds(flush_timeout_ms);
+
+  // Helper to wait for in-flight gRPC calls to complete until a shared deadline.
   // Returns true if completed, false if timed out.
-  auto wait_for_grpc_completion = [&]() {
+  auto wait_for_grpc_completion_until = [&](absl::Time deadline) {
     absl::MutexLock lock(&grpc_completion_mutex_);
-    auto deadline = absl::Now() + absl::Milliseconds(flush_timeout_ms);
     while (gcs_grpc_in_progress_.load() > 0 ||
            event_aggregator_grpc_in_progress_.load() > 0) {
       if (grpc_completion_cv_.WaitWithDeadline(&grpc_completion_mutex_, deadline)) {
@@ -547,13 +548,13 @@ void TaskEventBufferImpl::Stop() {
 
   // First wait for any in-flight gRPC to complete, then flush, then wait again.
   // This ensures no events are lost during shutdown.
-  if (wait_for_grpc_completion()) {
+  if (wait_for_grpc_completion_until(shutdown_deadline)) {
     // Use stopping_ flag to allow flush without re-enabling event ingestion.
     // This prevents the race where new events could be added during shutdown.
     stopping_ = true;
     FlushEvents(/*forced=*/true);
     stopping_ = false;
-    wait_for_grpc_completion();
+    wait_for_grpc_completion_until(shutdown_deadline);
   } else {
     RAY_LOG(WARNING) << "TaskEventBuffer shutdown timed out waiting for gRPC. "
                      << "Some events may be lost.";

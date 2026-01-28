@@ -317,7 +317,6 @@ TEST_F(RayEventRecorderTest, TestDisabled) {
 }
 
 // Test that StopExportingEvents() flushes all buffered events.
-// This verifies the fix for https://github.com/ray-project/ray/issues/60218
 TEST_F(RayEventRecorderTest, TestStopFlushesEvents) {
   RayConfig::instance().initialize(
       R"(

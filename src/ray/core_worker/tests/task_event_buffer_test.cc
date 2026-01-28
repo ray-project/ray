@@ -1194,7 +1194,6 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestStopFlushesEvents) {
 
   ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), num_events);
 
-  // Mock gRPC calls - follow existing test patterns (don't invoke callback)
   auto task_gcs_accessor =
       static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
           ->mock_task_accessor;
