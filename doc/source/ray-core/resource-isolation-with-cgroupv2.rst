@@ -247,7 +247,7 @@ If your distribution uses GRUB, add ``systemd.unified_cgroup_hierarchy=1`` to ``
 Troubleshooting
 ===============
 
-To see if you've enabled Resource Isolation correctly, you can look at the ``raylet.out`` log file. If everything works you should see a log line that gives you detailed information about the cgroups that Ray created and the cgroup contraints it enabled.
+To see if you've enabled resource isolation correctly, you can look at the ``raylet.out`` log file. If everything works you should see a log line that gives you detailed information about the cgroups that Ray created and the cgroup contraints it enabled.
 
 For example:
 
