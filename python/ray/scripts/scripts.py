@@ -1446,10 +1446,6 @@ def kill_actor(
         force: If set, kill the actor forcefully. Otherwise attempt graceful termination.
         no_restart: If set, the actor will not be restarted after being killed.
 
-    Returns:
-        None: This function does not return any explicit value, it either executes successfully
-        or raises a click.ClickException on failure.
-
     Examples:
         ray kill-actor MyActor
         ray kill-actor MyActor --namespace my_namespace
@@ -1476,33 +1472,17 @@ def kill_actor(
         )
 
     try:
-        try:
-            actor_handle = ray.get_actor(name, namespace=namespace)
-        except Exception as e:
-            raise click.ClickException(
-                f"No named actor found: {name} (namespace={namespace}): {e}"
-            )
-
-        if force:
-            try:
-                ray.kill(actor_handle, no_restart=no_restart)
-                click.echo(f"Actor killed (force): {name}")
-                return
-            except Exception as e:
-                raise click.ClickException(f"Failed to force kill actor: {e}")
-
-        else:
-            try:
-                actor_handle.__ray_terminate__.remote()
-                click.echo(f"Requested graceful termination for actor: {name}")
-            except Exception as e:
-                raise click.ClickException(
-                    f"Failed to request graceful termination: {e}"
-                )
-    except click.ClickException:
-        raise
-    except Exception as e:
-        raise click.ClickException(f"Failed to kill actor: {e}")
+        actor_handle = ray.get_actor(name, namespace=namespace)
+    except ValueError:
+        raise click.ClickException(
+            f"No named actor found: {name} (namespace={namespace})"
+        )
+    if force:
+        ray.kill(actor_handle, no_restart=no_restart)
+        click.echo(f"Actor killed (force): {name}")
+    else:
+        actor_handle.__ray_terminate__.remote()
+        click.echo(f"Requested graceful termination for actor: {name}")
 
 
 @cli.command()

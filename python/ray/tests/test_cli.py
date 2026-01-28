@@ -1388,6 +1388,21 @@ def test_kill_actor_by_name_via_cli(ray_start_regular):
     """Test killing a named actor via CLI (both force and graceful termination). Covers regular and detached actors."""
     address = ray_start_regular["address"]
     runner = CliRunner()
+    # Kill non-existing actor
+    result = runner.invoke(
+        scripts.kill_actor,
+        [
+            "--address",
+            address,
+            "--name",
+            "non_existing_actor",
+            "--namespace",
+            "ns",
+            "--force",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "No named actor found: non_existing_actor (namespace=ns)" in result.output
 
     @ray.remote(max_restarts=-1)
     class Actor:
@@ -1407,7 +1422,7 @@ def test_kill_actor_by_name_via_cli(ray_start_regular):
         ray.get(actor.crash.remote())
     except ray.exceptions.RayTaskError:
         pass
-    assert ray.get(actor.ping.remote()) == "pong"
+    wait_for_condition(lambda: ray.get(actor.ping.remote()) == "pong", timeout=10)
 
     result = runner.invoke(
         scripts.kill_actor,
@@ -1422,10 +1437,12 @@ def test_kill_actor_by_name_via_cli(ray_start_regular):
         ],
     )
     _die_on_error(result)
-    assert ray.util.list_named_actors(all_namespaces=True) == [
-        {"name": "test_actor", "namespace": "ns"}
-    ]
-    assert ray.get(actor.ping.remote()) == "pong"
+    wait_for_condition(
+        lambda: ray.util.list_named_actors(all_namespaces=True)
+        == [{"name": "test_actor", "namespace": "ns"}],
+        timeout=10,
+    )
+    wait_for_condition(lambda: ray.get(actor.ping.remote()) == "pong", timeout=10)
     # Kill with --no-restart flag
     result = runner.invoke(
         scripts.kill_actor,
@@ -1441,7 +1458,9 @@ def test_kill_actor_by_name_via_cli(ray_start_regular):
         ],
     )
     _die_on_error(result)
-    assert ray.util.list_named_actors(all_namespaces=True) == []
+    wait_for_condition(
+        lambda: ray.util.list_named_actors(all_namespaces=True) == [], timeout=10
+    )
 
     # Detached named actor
     detached_actor = Actor.options(
@@ -1465,8 +1484,9 @@ def test_kill_actor_by_name_via_cli(ray_start_regular):
         ],
     )
     _die_on_error(result)
-    assert ray.util.list_named_actors(all_namespaces=True) == []
-
+    wait_for_condition(
+        lambda: ray.util.list_named_actors(all_namespaces=True) == [], timeout=10
+    )
     # Test graceful termination of named actor
     def check_killed(actorhandle):
         try:
@@ -1491,7 +1511,9 @@ def test_kill_actor_by_name_via_cli(ray_start_regular):
     )
     _die_on_error(result)
     wait_for_condition(lambda: check_killed(graceful_actor), timeout=10)
-    assert ray.util.list_named_actors(all_namespaces=True) == []
+    wait_for_condition(
+        lambda: ray.util.list_named_actors(all_namespaces=True) == [], timeout=10
+    )
 
 
 if __name__ == "__main__":
