@@ -839,7 +839,6 @@ def test_node_provider_adapter_post_process_logic(is_batching_provider):
     """
     from unittest.mock import Mock
 
-    from ray._common.test_utils import wait_for_condition
     from ray.autoscaler.batching_node_provider import BatchingNodeProvider
     from ray.autoscaler.node_provider import NodeProvider
 
