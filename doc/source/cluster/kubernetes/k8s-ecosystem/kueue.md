@@ -530,7 +530,7 @@ spec:
     env_vars:
       counter_name: "test_counter"
   rayClusterSpec:
-    rayVersion: "2.9.0"
+    rayVersion: "2.46.0"
     autoscalerOptions:
       idleTimeoutSeconds: 30
       upscalingMode: Aggressive
@@ -542,7 +542,7 @@ spec:
         spec:
           containers:
             - name: ray-head
-              image: rayproject/ray:2.9.0
+              image: rayproject/ray:2.46.0
               ports:
                 - containerPort: 6379
                   name: gcs-server
@@ -553,8 +553,10 @@ spec:
               resources:
                 limits:
                   cpu: "1"
+                  memory: "2Gi"
                 requests:
                   cpu: "1"
+                  memory: "2Gi"
               volumeMounts:
                 - mountPath: /home/ray/samples
                   name: code-sample
@@ -575,7 +577,7 @@ spec:
           spec:
             containers:
               - name: ray-worker
-                image: rayproject/ray:2.9.0
+                image: rayproject/ray:2.46.0
                 lifecycle:
                   preStop:
                     exec:
@@ -583,8 +585,10 @@ spec:
                 resources:
                   limits:
                     cpu: "1"
+                    memory: "2Gi"
                   requests:
                     cpu: "1"
+                    memory: "2Gi"
 ```
 
 Apply the manifests:
