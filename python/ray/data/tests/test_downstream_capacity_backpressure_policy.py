@@ -1,3 +1,4 @@
+import types
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,6 +19,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
+from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor_state import OpState
 from ray.data.context import DataContext
 
@@ -79,17 +81,22 @@ class TestDownstreamCapacityBackpressurePolicy:
     def _mock_materializing_operator(self):
         """Helper method to create mock materializing operator (e.g., AllToAllOperator).
 
-        This creates a mock that passes isinstance(op, MATERIALIZING_OPERATORS).
+        This creates a mock that passes isinstance(op, AllToAllOperator).
+        We use __class__ assignment to make isinstance work with MagicMock.
         """
         mock_operator = MagicMock(spec=AllToAllOperator)
+        mock_operator.__class__ = AllToAllOperator  # Make isinstance work
         mock_operator.metrics = MagicMock(spec=OpRuntimeMetrics)
         mock_operator.metrics.num_tasks_running = 0
         mock_operator.metrics.obj_store_mem_internal_inqueue = 0
         mock_operator.metrics.obj_store_mem_pending_task_inputs = 0
         mock_operator.metrics.obj_store_mem_pending_task_outputs = 0
         mock_operator.output_dependencies = []
-        mock_operator.throttling_disabled.return_value = False
         mock_operator.has_execution_finished.return_value = False
+
+        mock_operator.throttling_disabled = types.MethodType(
+            AllToAllOperator.throttling_disabled, mock_operator
+        )
 
         op_state = MagicMock(spec=OpState)
         op_state.output_queue_bytes.return_value = 0
@@ -164,15 +171,13 @@ class TestDownstreamCapacityBackpressurePolicy:
     ):
         """Helper to create a resource manager mock with common settings."""
         rm = MagicMock()
-        # is_op_eligible: checks op.throttling_disabled() and op.has_execution_finished()
-        rm.is_op_eligible.side_effect = lambda op: (
-            not op.throttling_disabled() and not op.has_execution_finished()
+        # Bind real methods from ResourceManager
+        rm.is_op_eligible = types.MethodType(ResourceManager.is_op_eligible, rm)
+        rm._get_downstream_ineligible_ops = types.MethodType(
+            ResourceManager._get_downstream_ineligible_ops, rm
         )
-        # is_materializing_op: checks isinstance(op, MATERIALIZING_OPERATORS)
-        rm.is_materializing_op.side_effect = lambda op: isinstance(op, AllToAllOperator)
-        # has_materializing_downstream_op: checks output_dependencies
-        rm.has_materializing_downstream_op.side_effect = lambda op: any(
-            isinstance(next_op, AllToAllOperator) for next_op in op.output_dependencies
+        rm._is_blocking_materializing_op = types.MethodType(
+            ResourceManager._is_blocking_materializing_op, rm
         )
         rm.get_op_internal_object_store_usage.return_value = internal_usage
         rm.get_op_outputs_object_store_usage_with_downstream.return_value = (
@@ -202,9 +207,8 @@ class TestDownstreamCapacityBackpressurePolicy:
 
         Returns the calculated queue_ratio for assertions.
         """
-        # Set queue size via output_queue_bytes (no ineligible downstream ops)
+        # Set queue size via output_queue_bytes
         op_state.output_queue_bytes.return_value = queue_size
-        rm._get_downstream_ineligible_ops.return_value = []
 
         # Set downstream capacity on the first output dependency
         if op.output_dependencies:
@@ -242,7 +246,6 @@ class TestDownstreamCapacityBackpressurePolicy:
             topology, data_context=context, resource_manager=rm
         )
         assert policy.can_add_input(op) is True
-        rm.is_op_eligible.assert_called_once_with(op)
 
     def test_backpressure_skipped_for_materializing_downstream(self):
         """Test that backpressure is skipped when downstream is materializing.
@@ -263,7 +266,6 @@ class TestDownstreamCapacityBackpressurePolicy:
             topology, data_context=context, resource_manager=rm
         )
         assert policy.can_add_input(op) is True
-        rm.has_materializing_downstream_op.assert_called_once_with(op)
 
     def test_backpressure_skipped_for_low_utilization(self):
         """Test backpressure skipped when utilized budget fraction is low."""

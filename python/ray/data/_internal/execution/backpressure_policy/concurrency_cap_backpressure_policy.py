@@ -157,7 +157,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             not isinstance(op, MapOperator)
             or not self._resource_manager.is_op_eligible(op)
             or not self.enable_dynamic_output_queue_size_backpressure
-            or self._resource_manager.has_materializing_downstream_op(op)
+            or self._resource_manager._is_blocking_materializing_op(op)
         ):
             return num_tasks_running < self._concurrency_caps[op]
 
