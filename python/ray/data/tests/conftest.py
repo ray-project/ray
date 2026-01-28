@@ -15,7 +15,6 @@ from ray._private.internal_api import get_memory_info_reply, get_state_from_addr
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockExecStats, BlockMetadata
-from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext, ShuffleStrategy
 from ray.data.tests.mock_server import *  # noqa
 
@@ -368,11 +367,7 @@ def ds_arrow_single_column_format(ray_start_regular_shared):
 def ds_arrow_single_column_tensor_format(ray_start_regular_shared):
     yield ray.data.from_arrow(
         pa.table(
-            {
-                TENSOR_COLUMN_NAME: ArrowTensorArray.from_numpy(
-                    np.arange(16).reshape((4, 2, 2))
-                )
-            }
+            {"data": ArrowTensorArray.from_numpy(np.arange(16).reshape((4, 2, 2)))}
         )
     )
 
