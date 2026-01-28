@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 __all__ = [
     "TFRecordDatasource",
     "TFXReadOptions",
+    "_infer_schema_and_transform",
 ]
 
 

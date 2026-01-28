@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 __all__ = [
+    "ARROW_DEFAULT_MAX_ROWS_PER_GROUP",
     "ParquetDatasink",
     "choose_row_group_limits",
 ]
