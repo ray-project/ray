@@ -85,7 +85,7 @@ import subprocess
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
 # Install Python dependencies (
-!pip install -r ../requirements.txt
+!pip install --no-cache-dir torch==2.8.0 torchvision==0.23.0
 ```
 
 
