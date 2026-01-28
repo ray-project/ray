@@ -1,8 +1,8 @@
 .. _custom-tensor-transport:
 
-*********************************
+*************************************************
 Implementing a custom tensor transport (Advanced)
-*********************************
+*************************************************
 
 Ray Direct Transport (RDT) allows you to register custom tensor transports at runtime.
 This page explains how to implement a custom tensor transport by implementing the :class:`TensorTransportManager <ray.experimental.TensorTransportManager>` abstract interface.
@@ -73,7 +73,7 @@ can_abort_transport
 
 Indicates whether your transport can safely abort an in-progress transfer.
 
-- If ``True``: Ray calls :meth:`abort_transport` on both the source and destination actors when a send / recv error, allowing your transport to clean up gracefully.
+- If ``True``: Ray calls :func:`abort_transport` on both the source and destination actors when a send / recv error, allowing your transport to clean up gracefully.
 - If ``False``: Ray kills the involved actors to prevent deadlocks when errors occur during transfer.
 
 Return ``True`` only if your transport can reliably interrupt an in-progress send or receive operation without leaving either party in a blocked state.
@@ -247,7 +247,7 @@ Use this to release any resources your transport allocated, such as deregisterin
 abort_transport
 ^^^^^^^^^^^^^^^
 
-Aborts an in-progress transfer. Ray calls this on both the source and destination actors when a system error occurs if :meth:`can_abort_transport` returns ``True``.
+Aborts an in-progress transfer. Ray calls this on both the source and destination actors when a system error occurs if :func:`can_abort_transport` returns ``True``.
 
 .. code-block:: python
 
