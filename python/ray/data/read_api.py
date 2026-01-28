@@ -409,7 +409,7 @@ def read_datasource(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        read_args: Additional kwargs to pass to the :class:`~ray.data.Datasource`
+        **read_args: Additional kwargs to pass to the :class:`~ray.data.Datasource`
             implementation.
 
     Returns:
@@ -538,6 +538,8 @@ def read_audio(
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
         file_extensions: A list of file extensions to filter files by.
+        shuffle: If ``"files"``, randomly shuffle input files order before read.
+            Defaults to ``None``.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -636,22 +638,27 @@ def read_videos(
             that describes how paths are organized. Defaults to ``None``.
         include_paths: If ``True``, include the path to each image. File paths are
             stored in the ``'path'`` column.
-        include_timestmaps: If ``True``, include the frame timestamps from the video
+        include_timestamps: If ``True``, include the frame timestamps from the video
             as a ``'frame_timestamp'`` column.
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
         file_extensions: A list of file extensions to filter files by.
+        shuffle: If ``"files"``, randomly shuffle input files order before read.
+            Defaults to ``None``.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
-
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
     Returns:
         A :class:`~ray.data.Dataset` containing video frames from the video files.
     """
@@ -757,7 +764,7 @@ def read_mongo(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        mongo_args: kwargs passed to `aggregate_arrow_all() <https://mongo-arrow\
+        **mongo_args: kwargs passed to `aggregate_arrow_all() <https://mongo-arrow\
             .readthedocs.io/en/latest/api/api.html#pymongoarrow.api\
             aggregate_arrow_all>`_ in pymongoarrow in producing
             Arrow-formatted results.
@@ -842,6 +849,8 @@ def read_bigquery(
             For more information, see `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`_.
         dataset: The name of the dataset hosted in BigQuery in the format of ``dataset_id.table_id``.
             Both the dataset_id and table_id must exist otherwise an exception will be raised.
+        query: The SQL query to execute. `query` and `dataset` are mutually exclusive.
+            If `query` is provided, the query result is read as the dataset.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -1001,10 +1010,6 @@ def read_parquet(
         shuffle: If setting to "files", randomly shuffle input files order before read.
             If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
             shuffle the input files. Defaults to not shuffle with ``None``.
-        arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
-            set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
-                python/generated/pyarrow.dataset.Scanner.html\
-                    #pyarrow.dataset.Scanner.from_fragment>`_
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
         file_extensions: A list of file extensions to filter files by.
@@ -1016,6 +1021,10 @@ def read_parquet(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        **arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
+            set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
+                python/generated/pyarrow.dataset.Scanner.html\
+                    #pyarrow.dataset.Scanner.from_fragment>`_
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified parquet
@@ -1334,9 +1343,6 @@ def read_json(
             If setting to ``FileShuffleConfig``, you can pass a random seed to shuffle
             the input files, e.g. ``FileShuffleConfig(seed=42)``.
             Defaults to not shuffle with ``None``.
-        arrow_json_args: JSON read options to pass to `pyarrow.json.read_json <https://\
-            arrow.apache.org/docs/python/generated/pyarrow.json.read_json.html#pyarrow.\
-            json.read_json>`_.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1346,7 +1352,9 @@ def read_json(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        **arrow_json_args: JSON read options to pass to `pyarrow.json.read_json <https://\
+            arrow.apache.org/docs/python/generated/pyarrow.json.read_json.html#pyarrow.\
+            json.read_json>`_.
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """  # noqa: E501
@@ -1528,10 +1536,6 @@ def read_csv(
         shuffle: If setting to "files", randomly shuffle input files order before read.
             If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
             shuffle the input files. Defaults to not shuffle with ``None``.
-        arrow_csv_args: CSV read options to pass to
-            `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
-            pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_
-            when opening CSV files.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1541,7 +1545,10 @@ def read_csv(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        **arrow_csv_args: CSV read options to pass to
+            `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
+            pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_
+            when opening CSV files.
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
@@ -1616,6 +1623,8 @@ def read_text(
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
         encoding: The encoding of the files (e.g., "utf-8" or "ascii").
+        drop_empty_lines: If ``True``, drop empty lines from the dataset.
+            Defaults to ``True``.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `PyArrow docs <https://arrow.apache.org/docs/python/api/\
@@ -1844,7 +1853,6 @@ def read_numpy(
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`_.
-        numpy_load_args: Other options to pass to np.load.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
@@ -1868,7 +1876,7 @@ def read_numpy(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        **numpy_load_args: Other options to pass to np.load.
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """  # noqa: E501
