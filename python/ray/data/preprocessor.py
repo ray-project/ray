@@ -344,7 +344,6 @@ class Preprocessor(abc.ABC):
         return {}
 
     def _transform_batch(self, data: "DataBatchType") -> "DataBatchType":
-        # For minimal install to locally import air modules
         import numpy as np
         import pandas as pd
 
