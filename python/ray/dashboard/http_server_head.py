@@ -8,7 +8,7 @@ import posixpath
 import sys
 import time
 from math import floor
-from typing import List, Set
+from typing import List
 
 from packaging.version import Version
 
@@ -282,37 +282,6 @@ class HttpServerDashboardHead:
                 raise aiohttp.web.HTTPForbidden()
         return await handler(request)
 
-    def get_browsers_no_post_put_middleware(self, whitelisted_paths: Set[str]):
-        """Create middleware that blocks POST/PUT requests from browsers.
-
-        Args:
-            whitelisted_paths: Set of paths that are allowed to accept POST/PUT
-                              from browsers (e.g., {"/api/authenticate"})
-
-        Returns:
-            An aiohttp middleware function
-        """
-
-        @aiohttp.web.middleware
-        async def browsers_no_post_put_middleware(request, handler):
-            # Allow whitelisted paths
-            if request.path in whitelisted_paths:
-                return await handler(request)
-
-            if (
-                # Deny mutating requests from browsers.
-                # See `is_browser_request` for details of the check.
-                dashboard_optional_utils.is_browser_request(request)
-                and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
-            ):
-                return aiohttp.web.Response(
-                    status=405, text="Method Not Allowed for browser traffic."
-                )
-
-            return await handler(request)
-
-        return browsers_no_post_put_middleware
-
     @aiohttp.web.middleware
     async def metrics_middleware(self, request, handler):
         start_time = time.monotonic()
@@ -379,11 +348,6 @@ class HttpServerDashboardHead:
         }
         public_path_prefixes = ("/static/",)  # Static assets (JS, CSS, images)
 
-        # Paths that are allowed to accept POST/PUT requests from browsers
-        browser_post_put_allowed_paths = {
-            "/api/authenticate",  # Token authentication endpoint
-        }
-
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
 
@@ -395,8 +359,10 @@ class HttpServerDashboardHead:
                     aiohttp, public_exact_paths, public_path_prefixes
                 ),
                 self.path_clean_middleware,
-                self.get_browsers_no_post_put_middleware(
-                    browser_post_put_allowed_paths
+                dashboard_optional_utils.get_browser_request_middleware(
+                    aiohttp,
+                    allowed_methods={"GET", "HEAD", "OPTIONS"},
+                    allowed_paths=["/api/authenticate"],
                 ),
                 self.cache_control_static_middleware,
             ],
