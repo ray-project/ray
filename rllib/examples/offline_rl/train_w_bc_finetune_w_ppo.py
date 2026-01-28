@@ -67,13 +67,8 @@ Then, after PPO training, you should see something like this (higher return):
 |          32.7647 |                 450.76 |                    406 |
 +------------------+------------------------+------------------------+
 """
-import os
-import random
 from pathlib import Path
 
-import gymnasium as gym
-import numpy as np
-import torch
 from torch import nn
 
 from ray.rllib.algorithms.bc import BCConfig
@@ -94,6 +89,7 @@ from ray.rllib.examples.utils import (
     run_rllib_example_script_experiment,
 )
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.debug.deterministic import update_global_seed_if_necessary
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -106,20 +102,6 @@ parser.set_defaults(
     checkpoint_freq=1,
 )
 parser.add_argument("--seed", type=int, default=42)
-
-
-def set_determinism(seed: int) -> None:
-    os.environ.setdefault("PYTHONHASHSEED", str(seed))
-    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-    torch.use_deterministic_algorithms(True)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    gym.utils.seeding.np_random(seed)
 
 
 class MyBCModel(TorchRLModule):
@@ -206,7 +188,7 @@ class MyPPOModel(MyBCModel, ValueFunctionAPI):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    set_determinism(args.seed)
+    update_global_seed_if_necessary(framework="torch", seed=42)
 
     assert args.env == "CartPole-v1", "This example works only with --env=CartPole-v1!"
 
