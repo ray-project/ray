@@ -109,7 +109,7 @@ Here's an example script that shows you how to perform these steps. This is to h
 Usage
 =====
 
-Resource isolation can be enabled and configured through both the CLI (``ray start`` command) and the SDK (``ray.init``).
+Resource isolation can be enabled and configured when starting a Ray cluster using ``ray start`` or when running Ray locally using ``ray.init``.
 
 Enable Resource Isolation with the CLI
 --------------------------------------
