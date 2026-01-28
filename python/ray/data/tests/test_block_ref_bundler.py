@@ -194,6 +194,31 @@ def test_block_ref_bundler_uniform(
     assert flat_out == list(range(n))
 
 
+def test_block_ref_bundler_empty_blocks_accumulation():
+    """Test that empty blocks don't accumulate indefinitely.
+
+    When upstream produces many empty blocks, they should be batched and output
+    when the number of empty bundles reaches min_rows_per_bundle.
+    """
+    min_rows_per_bundle = 5
+    bundler = BlockRefBundler(min_rows_per_bundle)
+
+    # Create 10 bundles, each containing one empty block
+    empty_bundles = _make_ref_bundles([[[]]] * 10)
+
+    output_bundles = []
+    for bundle in empty_bundles:
+        bundler.add_bundle(bundle)
+        while bundler.has_bundle():
+            _, out_bundle = bundler.get_next_bundle()
+            output_bundles.append(out_bundle)
+
+    # Verify that empty bundles were output (not accumulated indefinitely)
+    # With 10 bundles (each containing 1 empty block) and min_rows_per_bundle=5,
+    # we should get 2 output bundles (each containing 5 empty blocks)
+    assert len(output_bundles) == 2
+
+
 if __name__ == "__main__":
     import sys
 
