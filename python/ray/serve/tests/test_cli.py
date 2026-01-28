@@ -860,7 +860,7 @@ def test_controller_health(serve_instance):
     assert "replica_metrics_delay_ms" in metrics
 
 
-def test_controller_health_serve_not_running(ray_start_stop):
+def test_controller_health_serve_not_running(start_and_shutdown_ray_cli_module):
     """Test that controller-health shows a helpful error when Serve isn't running."""
 
     with pytest.raises(subprocess.CalledProcessError) as exc_info:
