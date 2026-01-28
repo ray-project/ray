@@ -68,6 +68,10 @@ class PrepareMultimodalStageConfig(_StageConfigBase):
     )
 
 
+class HttpRequestStageConfig(_StageConfigBase):
+    pass
+
+
 def resolve_stage_config(
     stage_cfg_value: Union[bool, Dict[str, Any], _StageConfigBase],
     stage_config_cls: Type[T],
