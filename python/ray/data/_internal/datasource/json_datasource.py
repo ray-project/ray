@@ -16,7 +16,6 @@ __all__ = [
     "ArrowJSONDatasource",
     "JSON_FILE_EXTENSIONS",
     "PandasJSONDatasource",
-    "StrictBufferedReader",
 ]
 
 
