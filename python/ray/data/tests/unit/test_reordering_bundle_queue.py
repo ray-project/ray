@@ -165,6 +165,75 @@ def test_ordered_queue_peek_next_empty():
     assert queue.peek_next() is None
 
 
+def test_ordered_queue_out_of_order():
+    """Tests that ordered queue works correctly under following conditions"""
+
+    queue = ReorderingBundleQueue()
+    bundle0 = _create_bundle("data0")
+    bundle1 = _create_bundle("data1")
+
+    # First, add bundle for key=1
+    queue.add(bundle1, key=1)
+    queue.finalize(key=1)
+    # No bundles can be retrieved yet as we're missing bundles for key=0
+    assert not queue.has_next()
+
+    # Next, add bundle for key=0
+    queue.add(bundle0, key=0)
+    assert queue.get_next() is bundle0
+    queue.finalize(key=0)
+
+    # Now able to retrieve bundle for key=1
+    assert queue.get_next() is bundle1
+
+    # Peek should return bundle0 without removing
+    assert not queue.has_next()
+    assert len(queue) == 0
+
+
+def test_ordered_queue_getting_stuck():
+    bundle2 = _create_bundle("data2")
+
+    queue = ReorderingBundleQueue()
+
+    # Task 2 produces output and completes (finalizes key)
+    queue.add(bundle2, key=2)
+    queue.finalize(key=2)
+
+    # _current_key = 0
+    # _completed_keys = {2}
+
+    # Task 1 completes with NO output (empty result)
+    queue.finalize(key=1)
+
+    # _current_key = 0
+    # _completed_keys = {1, 2}
+
+    # Task 0 completes with NO output (empty result)
+    #
+    # Previously this will trigger moving to the next key, since
+    # _current_key == 0 AND _inner[0] is empty
+    #   → _move_to_next_key()
+    #       → _current_key = 1
+    queue.finalize(key=0)
+
+    # Current state:
+    #   _current_key = 1
+    #   _completed_keys = {0, 1, 2}
+    #   _inner = {0: [], 1: [], 2: [bundle_2]}
+
+    # Previously
+    #   - `has_next` would return False, (_inner[_current_key] is empty)
+    #   - `get_next` will never be invoked (b/c `has_next` returns false)
+    #   - `finalize(key=1)` has already been invoked, no pointer advancement will happen
+    #
+    # This results in the last bundle getting stuck in the queue
+    assert queue.has_next()
+    assert queue.get_next() is bundle2
+
+    assert len(queue) == 0
+
+
 def test_ordered_queue_get_next_empty_raises():
     """Test that get_next raises when current key is empty."""
     queue = ReorderingBundleQueue()
