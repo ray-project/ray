@@ -20,12 +20,12 @@ from pyiceberg.table import Table
 from pyiceberg.transforms import IdentityTransform
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import read_iceberg
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
-from ray.data._internal.logical.operators.map_operator import Filter, Project
+from ray.data._internal.logical.operators import Filter, Project
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.expressions import col
 from ray.data.tests.test_util import (
     get_operator_types as _get_operator_types,
