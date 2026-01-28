@@ -31,6 +31,9 @@ from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.dataset_repr import _build_dataset_ascii_repr
 from ray.data._internal.datasource import (
+    BigQueryDatasink,
+    ClickHouseDatasink,
+    ClickHouseTableSettings,
     CSVDatasink,
     IcebergDatasink,
     ImageDatasink,
@@ -39,15 +42,10 @@ from ray.data._internal.datasource import (
     MongoDatasink,
     NumpyDatasink,
     ParquetDatasink,
+    SinkMode,
     SQLDatasink,
     TFRecordDatasink,
     WebDatasetDatasink,
-)
-from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
-from ray.data._internal.datasource.clickhouse_datasink import (
-    ClickHouseDatasink,
-    ClickHouseTableSettings,
-    SinkMode,
 )
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
