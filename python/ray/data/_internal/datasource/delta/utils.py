@@ -502,6 +502,7 @@ def try_get_deltatable(
 def to_pyarrow_schema(delta_schema: Any) -> pa.Schema:
     """Convert Delta Lake schema to PyArrow schema.
 
+    Handles both PyArrow schemas and arro3 Schema objects from deltalake.
     Ensures all DataType objects are PyArrow types, not arro3 types.
     arro3 types don't have 'id' attribute that pyarrow.types functions expect.
     """
@@ -533,6 +534,33 @@ def to_pyarrow_schema(delta_schema: Any) -> pa.Schema:
         if needs_conversion:
             return pa.schema(fields)
         return delta_schema
+
+    # Handle arro3 Schema objects (from deltalake)
+    # Check by type name to avoid importing arro3 directly
+    schema_type_name = type(delta_schema).__name__
+    if schema_type_name == "Schema":
+        # arro3 Schema - manually convert fields
+        fields = []
+        for field in delta_schema.fields:
+            field_type = field.field_type
+            # Convert arro3 type to pyarrow type
+            try:
+                pa_type = pa.DataType._import_from_c(field_type._export_to_c())
+                fields.append(pa.field(field.name, pa_type, nullable=field.nullable))
+            except (AttributeError, TypeError):
+                # Fallback: try to get PyArrow type directly if available
+                if hasattr(field_type, "to_pyarrow"):
+                    pa_type = field_type.to_pyarrow()
+                    fields.append(
+                        pa.field(field.name, pa_type, nullable=field.nullable)
+                    )
+                else:
+                    raise AttributeError(
+                        f"Cannot convert arro3 field type {type(field_type).__name__} "
+                        f"to PyArrow type for field '{field.name}'"
+                    )
+        return pa.schema(fields)
+
     if hasattr(delta_schema, "to_pyarrow"):
         schema = delta_schema.to_pyarrow()
         # Recursively check and fix arro3 types

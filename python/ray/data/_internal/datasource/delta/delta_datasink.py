@@ -354,10 +354,23 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         for field in self.schema:
             if field.name in table_cols and field.name not in self.partition_cols:
-                if not types_compatible(field.type, table[field.name].type):
+                table_col = table[field.name]
+                table_col_type = table_col.type
+
+                # Handle NULL-only columns: if column is all NULL and field is nullable,
+                # allow it (type will be inferred correctly during write)
+                if (
+                    field.nullable
+                    and pa.types.is_null(table_col_type)
+                    and pa.compute.is_null(table_col).all().as_py()
+                ):
+                    # All NULL values in nullable field - type will be inferred from schema
+                    continue
+
+                if not types_compatible(field.type, table_col_type):
                     raise ValueError(
                         f"Type mismatch for '{field.name}': expected {field.type}, "
-                        f"got {table[field.name].type}"
+                        f"got {table_col_type}"
                     )
 
     def _get_file_writer(self) -> DeltaFileWriter:
