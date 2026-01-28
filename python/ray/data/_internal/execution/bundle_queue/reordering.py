@@ -48,7 +48,7 @@ class ReorderingBundleQueue(BaseBundleQueue):
 
     @override
     def has_next(self) -> bool:
-        if (
+        while (
             self._current_key in self._finalized_keys
             and len(self._inner[self._current_key]) == 0
         ):
