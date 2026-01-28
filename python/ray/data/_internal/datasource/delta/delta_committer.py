@@ -15,6 +15,7 @@ from ray.data._internal.datasource.delta.utils import (
     get_file_info_with_retry,
     infer_partition_type,
     join_delta_path,
+    normalize_commit_properties,
     to_pyarrow_schema,
     validate_file_path,
     validate_schema_type_compatibility,
@@ -23,9 +24,6 @@ from ray.data._internal.datasource.delta.utils import (
 if TYPE_CHECKING:
     from deltalake import DeltaTable
     from deltalake.transaction import AddAction
-
-# Import CommitProperties at runtime since it's used for dict conversion
-from deltalake.transaction import CommitProperties
 
 logger = logging.getLogger(__name__)
 
@@ -83,10 +81,9 @@ def create_table_with_files(
     )
     delta_schema = convert_schema_to_delta(inferred_schema)
 
-    # Convert commit_properties from dict to CommitProperties object if needed
-    commit_properties = write_kwargs.get("commit_properties")
-    if isinstance(commit_properties, dict):
-        commit_properties = CommitProperties(**commit_properties)
+    commit_properties = normalize_commit_properties(
+        write_kwargs.get("commit_properties")
+    )
 
     create_table_with_add_actions(
         table_uri=table_uri,
@@ -151,10 +148,9 @@ def commit_to_existing_table(
     # Note: Partition validation is already done in on_write_start for early detection
     # No need to validate again here
 
-    # Convert commit_properties from dict to CommitProperties object if needed
-    commit_properties = write_kwargs.get("commit_properties")
-    if isinstance(commit_properties, dict):
-        commit_properties = CommitProperties(**commit_properties)
+    commit_properties = normalize_commit_properties(
+        write_kwargs.get("commit_properties")
+    )
 
     # Commit files atomically using Delta Lake write transaction
     existing_table.create_write_transaction(

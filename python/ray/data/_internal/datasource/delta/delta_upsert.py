@@ -13,12 +13,11 @@ from typing import TYPE_CHECKING, Any, List, Optional
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from ray.data._internal.datasource.delta.utils import normalize_commit_properties
+
 if TYPE_CHECKING:
     from deltalake import DeltaTable
     from deltalake.transaction import AddAction
-
-# CommitProperties is used at runtime, so import it unconditionally
-from deltalake.transaction import CommitProperties
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +73,9 @@ def commit_upsert(
                 table.delete(delete_predicate)
 
     # Append new data files
-    commit_properties = write_kwargs.get("commit_properties")
-    if isinstance(commit_properties, dict):
-        commit_properties = CommitProperties(**commit_properties)
+    commit_properties = normalize_commit_properties(
+        write_kwargs.get("commit_properties")
+    )
 
     # Get schema for transaction
     # Use delta schema directly for transaction

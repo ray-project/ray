@@ -264,6 +264,25 @@ def types_compatible(expected: pa.DataType, actual: pa.DataType) -> bool:
     return False
 
 
+def normalize_commit_properties(
+    commit_properties: Optional[Any],
+) -> Optional[Any]:
+    """Normalize commit_properties from dict to CommitProperties object if needed.
+
+    Args:
+        commit_properties: Either a dict, CommitProperties object, or None.
+
+    Returns:
+        CommitProperties object if dict was provided, otherwise returns input unchanged.
+    """
+    if isinstance(commit_properties, dict):
+        # Lazy import to avoid breaking helpful error messages when deltalake is not installed
+        from deltalake.transaction import CommitProperties
+
+        return CommitProperties(**commit_properties)
+    return commit_properties
+
+
 def validate_schema_type_compatibility(
     existing_schema: pa.Schema, incoming_schema: pa.Schema
 ) -> None:

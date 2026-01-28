@@ -29,6 +29,7 @@ from ray.data._internal.datasource.delta.utils import (
     types_compatible,
     validate_partition_column_names,
     validate_partition_columns_in_table,
+    validate_schema_type_compatibility,
 )
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
@@ -148,14 +149,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     def _validate_mode(self, mode: Any) -> SaveMode:
         """Validate and normalize write mode to SaveMode enum."""
         if isinstance(mode, SaveMode):
-            if mode not in (
-                SaveMode.APPEND,
-                SaveMode.OVERWRITE,
-                SaveMode.UPSERT,
-                SaveMode.ERROR,
-                SaveMode.IGNORE,
-            ):
-                raise ValueError(f"Unsupported SaveMode for Delta: {mode}")
+            # All SaveMode enum instances are valid by definition
             return mode
 
         # Handle string mode for backwards compatibility
@@ -232,10 +226,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             # Delta Lake automatically evolves schema during commit, but we validate early
             if self.schema is not None:
                 existing_schema = to_pyarrow_schema(existing_table.schema())
-                from ray.data._internal.datasource.delta.utils import (
-                    validate_schema_type_compatibility,
-                )
-
                 validate_schema_type_compatibility(existing_schema, self.schema)
                 # New columns are allowed and will be added automatically during commit
                 # This early check prevents errors during write phase
@@ -311,7 +301,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
                 self._validate_table_schema(table)
                 validate_partition_columns_in_table(self.partition_cols, table)
-                self._validate_partition_column_types(table)
 
                 # Collect schema for reconciliation
                 block_schemas.append(table.schema)
@@ -370,20 +359,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                         f"Type mismatch for '{field.name}': expected {field.type}, "
                         f"got {table[field.name].type}"
                     )
-
-    def _validate_partition_column_types(self, table: pa.Table) -> None:
-        """Validate partition column types are supported (not nested/dictionary)."""
-        if not self.partition_cols:
-            return
-        for col in self.partition_cols:
-            if col not in table.column_names:
-                continue  # Missing columns are caught by validate_partition_columns_in_table
-            col_type = table.schema.field(col).type
-            if pa.types.is_nested(col_type) or pa.types.is_dictionary(col_type):
-                raise ValueError(
-                    f"Partition column '{col}' has unsupported type {col_type}. "
-                    "Partition columns must be primitive types (not nested, dictionary, etc.)"
-                )
 
     def _get_file_writer(self) -> DeltaFileWriter:
         """Get file writer instance for this datasink."""
