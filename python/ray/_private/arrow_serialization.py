@@ -4,6 +4,7 @@
 # see https://github.com/ray-project/ray/issues/30498 for more context.
 import logging
 import os
+import struct
 import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
@@ -312,6 +313,8 @@ def _array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
         return _primitive_array_to_array_payload(a)
     elif _is_binary(a.type):
         return _binary_array_to_array_payload(a)
+    elif _is_binary_view(a.type):
+        return _binary_view_array_to_array_payload(a)
     elif pa.types.is_list(a.type) or pa.types.is_large_list(a.type):
         return _list_array_to_array_payload(a)
     elif pa.types.is_fixed_size_list(a.type):
@@ -354,6 +357,15 @@ def _is_binary(type_: "pyarrow.DataType") -> bool:
         or pa.types.is_large_string(type_)
         or pa.types.is_binary(type_)
         or pa.types.is_large_binary(type_)
+    )
+
+
+def _is_binary_view(type_: "pyarrow.DataType") -> bool:
+    """Whether the provided Array type is a variable-sized binary view type."""
+    import pyarrow as pa
+
+    return (hasattr(pa.types, "is_string_view") and pa.types.is_string_view(type_)) or (
+        hasattr(pa.types, "is_binary_view") and pa.types.is_binary_view(type_)
     )
 
 
@@ -428,6 +440,93 @@ def _binary_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload
         length=len(a),
         buffers=[bitmap_buf, offset_buf, data_buf],
         null_count=a.null_count,
+        offset=0,
+        children=[],
+    )
+
+
+# Views are defined in the spec as 16-bytes: https://arrow.apache.org/docs/format/Columnar.html#variable-size-binary-view-layout
+ARROW_VIEW_BYTE_SIZE = 16
+
+
+def _binary_view_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
+    """Serialize binary (variable-sized binary view, string view) arrays to
+    PicklableArrayPayload.
+    """
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    assert _is_binary_view(a.type), a.type
+    # Buffer scheme: [bitmap, views, data0, data1, ..., dataN]
+    #
+    # NB: In the C API there is a trailing buffer containing buffer lengths as 64-bit integers. This
+    # is not exposed in the Python interface. The buffer lengths are accessible, for example, via:
+    #
+    #     len(a.buffers()[1])
+    #
+    buffers = a.buffers()
+    assert len(buffers) >= 2, len(buffers)
+
+    # Copy bitmap buffer, if needed.
+    if a.null_count > 0:
+        bitmap_buf = _copy_bitpacked_buffer_if_needed(buffers[0], a.offset, len(a))
+    else:
+        bitmap_buf = None
+
+    # Copy view buffer, if needed.
+    view_buf = _copy_normal_buffer_if_needed(
+        buffers[1], ARROW_VIEW_BYTE_SIZE, a.offset, len(a)
+    )
+
+    bytes_allocated = sum(len(b) for b in a.buffers()[2:])
+
+    upper_bound_of_bytes_used = 0
+    seen_view_slices: set[tuple[int, int, int]] = set()
+    for index, is_valid in zip(range(len(a)), a.is_valid()):
+        if not is_valid:
+            continue
+
+        view: tuple[int, int, int, int] = struct.unpack(
+            "<iiii",
+            view_buf[
+                (index * ARROW_VIEW_BYTE_SIZE) : (index + 1) * ARROW_VIEW_BYTE_SIZE
+            ],
+        )
+        string_length, _, buffer_index, buffer_offset = view
+        if string_length <= 12:
+            continue
+
+        view_slice_key = (buffer_index, buffer_offset, string_length)
+        if view_slice_key in seen_view_slices:
+            continue
+
+        seen_view_slices.add(view_slice_key)
+        upper_bound_of_bytes_used += string_length
+
+    if upper_bound_of_bytes_used >= bytes_allocated // 2:
+        # If our best guess says we need most of the bytes, just pickle all the buffers:
+        return PicklableArrayPayload(
+            type=a.type,
+            length=len(a),
+            buffers=[bitmap_buf, view_buf, *a.buffers()[2:]],
+            null_count=a.null_count,
+            offset=0,
+            children=[],
+        )
+
+    # Otherwise, compact the array
+    assert hasattr(pa.types, "is_string_view")
+    if pa.types.is_string_view(a.type):
+        compacted = pc.cast(a, pa.large_string())
+        compacted_view = pc.cast(compacted, pa.string_view())
+    else:
+        compacted = pc.cast(a, pa.large_binary())
+        compacted_view = pc.cast(compacted, pa.binary_view())
+    return PicklableArrayPayload(
+        type=compacted_view.type,
+        length=len(compacted_view),
+        buffers=compacted_view.buffers(),
+        null_count=compacted_view.null_count,
         offset=0,
         children=[],
     )
