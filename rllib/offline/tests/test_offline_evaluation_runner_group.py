@@ -142,6 +142,15 @@ class TestOfflineData(unittest.TestCase):
             for metric in metric_dict[DEFAULT_MODULE_ID].values():
                 self.assertIsInstance(metric, StatsBase)
 
+            self.assertEqual(
+                metric_dict[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_SAMPLED],
+                metric_dict[ALL_MODULES][NUM_ENV_STEPS_SAMPLED],
+            )
+            self.assertEqual(
+                metric_dict[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_SAMPLED_LIFETIME],
+                metric_dict[ALL_MODULES][NUM_ENV_STEPS_SAMPLED_LIFETIME],
+            )
+
         # Clean up.
         algo.cleanup()
 
