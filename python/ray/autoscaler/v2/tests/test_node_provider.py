@@ -831,6 +831,55 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         ]
 
 
+@pytest.mark.parametrize("is_batching_provider", [True, False])
+def test_node_provider_adapter_post_process_logic(is_batching_provider):
+    """
+    Verifies that NodeProviderAdapter correctly invokes `post_process`
+    only when wrapping a BatchingNodeProvider (V2 compatibility patch).
+    """
+    from unittest.mock import Mock
+
+    from ray._common.test_utils import wait_for_condition
+    from ray.autoscaler.batching_node_provider import BatchingNodeProvider
+    from ray.autoscaler.node_provider import NodeProvider
+
+    # 1. Setup mock provider based on the provider type.
+    if is_batching_provider:
+        # Mock a BatchingNodeProvider which requires post_process call.
+        mock_provider = Mock(spec=BatchingNodeProvider)
+        mock_provider.post_process = Mock()
+    else:
+        # Mock a standard NodeProvider (e.g. KubeRay, AWS) which does not use post_process.
+        mock_provider = Mock(spec=NodeProvider)
+
+    # 2. Initialize NodeProviderAdapter with the mock provider.
+    config_reader = FileConfigReader(
+        get_test_config_path("test_ray_complex.yaml"), skip_content_hash=True
+    )
+    adapter = NodeProviderAdapter(
+        v1_provider=mock_provider,
+        config_reader=config_reader,
+    )
+
+    # 3. Trigger launch (asynchronous operation).
+    adapter.launch(shape={"worker_nodes": 1}, request_id="test-request")
+
+    # 4. Verify post_process call logic using wait_for_condition.
+    # Since launch is executed asynchronously via ThreadPoolExecutor,
+    # we must wait for the callback to trigger.
+    def verify():
+        if is_batching_provider:
+            # For BatchingNodeProvider, post_process must be called to submit the scale request.
+            mock_provider.post_process.assert_called_once()
+        else:
+            # For standard NodeProvider, post_process should not be involved.
+            if hasattr(mock_provider, "post_process"):
+                mock_provider.post_process.assert_not_called()
+        return True
+
+    wait_for_condition(verify)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
