@@ -58,8 +58,8 @@ class ReorderingBundleQueue(BaseBundleQueue):
 
     @override
     def _get_next_inner(self) -> RefBundle:
-        # NOTE: This assertion is vital here, since updating key pointers
-        #       happens in `has_next` method
+        # It's vital to invoke `has_next` here, to potentially advance the pointer
+        # to the next key
         if not self.has_next():
             raise ValueError("Cannot pop from empty queue.")
 
@@ -67,11 +67,12 @@ class ReorderingBundleQueue(BaseBundleQueue):
 
     @override
     def peek_next(self) -> Optional[RefBundle]:
-        return (
-            self._inner[self._current_key][0]
-            if self._inner[self._current_key]
-            else None
-        )
+        # It's vital to invoke `has_next` here, to potentially advance the pointer
+        # to the next key
+        if not self.has_next():
+            return None
+
+        return self._inner[self._current_key][0]
 
     @override
     def finalize(self, key: int):
