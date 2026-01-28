@@ -54,6 +54,18 @@ except ImportError:
     # vLLM not installed or older version without this exception
     pass
 
+# vLLM v1 Ray metrics integration. When available and stats logging is enabled,
+# this logger exports vLLM metrics (e.g., prefix cache hit rate, TTFT, TPOT,
+# KV cache utilization) to Ray's metrics system for Prometheus/Grafana integration.
+_RAY_PROMETHEUS_STAT_LOGGER: Optional[Type] = None
+try:
+    from vllm.v1.metrics.ray_wrappers import RayPrometheusStatLogger
+
+    _RAY_PROMETHEUS_STAT_LOGGER = RayPrometheusStatLogger
+except ImportError:
+    # vLLM v1 not available or metrics module not present
+    pass
+
 # Length of prompt snippet to surface in case of recoverable error
 _MAX_PROMPT_LENGTH_IN_ERROR = 500
 
@@ -219,6 +231,7 @@ class vLLMEngineWrapper:
         *args: The positional arguments for the engine.
         max_pending_requests: The maximum number of pending requests in the queue.
         dynamic_lora_loading_path: The S3 path to the dynamic LoRA adapter.
+        log_engine_metrics: Whether to export vLLM metrics to Ray's Prometheus endpoint.
         **kwargs: The keyword arguments for the engine.
     """
 
@@ -227,6 +240,7 @@ class vLLMEngineWrapper:
         idx_in_batch_column: str,
         max_pending_requests: int = -1,
         dynamic_lora_loading_path: Optional[str] = None,
+        log_engine_metrics: bool = True,
         **kwargs,
     ):
         self.request_id = 0
@@ -284,7 +298,29 @@ class vLLMEngineWrapper:
         )
         # create_engine_config will set default values including `max_num_seqs`.
         self._vllm_config = engine_args.create_engine_config()
-        self.engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
+
+        # Enable Ray metrics export when log_engine_metrics is True and
+        # RayPrometheusStatLogger is available (vLLM v1).
+        # This exports vLLM metrics (prefix cache hit rate, TTFT, TPOT, etc.)
+        # to Ray's metrics system for Prometheus/Grafana integration.
+        # Users can access metrics by initializing Ray with _metrics_export_port
+        # (e.g., ray.init(_metrics_export_port=8080))
+        stat_loggers = None
+        if log_engine_metrics and _RAY_PROMETHEUS_STAT_LOGGER is not None:
+            stat_loggers = [_RAY_PROMETHEUS_STAT_LOGGER]
+            logger.info(
+                "Enabling Ray metrics export for vLLM engine. "
+                "Metrics will be available at Ray's Prometheus endpoint."
+            )
+        elif log_engine_metrics and _RAY_PROMETHEUS_STAT_LOGGER is None:
+            logger.warning(
+                "log_engine_metrics is enabled but RayPrometheusStatLogger is not available. "
+                "This typically means vLLM v1 is not installed. Metrics will not be exported."
+            )
+
+        self.engine = vllm.AsyncLLMEngine.from_engine_args(
+            engine_args, stat_loggers=stat_loggers
+        )
 
         # The performance gets really bad if there are too many requests in the pending queue.
         # We work around it with semaphore to limit the number of concurrent requests in the engine.
@@ -569,6 +605,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         max_pending_requests: Optional[int] = None,
         dynamic_lora_loading_path: Optional[str] = None,
         should_continue_on_error: bool = False,
+        log_engine_metrics: bool = True,
     ):
         """
         Initialize the vLLMEngineStageUDF.
@@ -586,6 +623,8 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             should_continue_on_error: If True, continue processing when inference fails for
                 a row instead of raising. Failed rows will have '__inference_error__'
                 set to the error message.
+            log_engine_metrics: If True, export vLLM engine metrics (prefix cache hit rate,
+                TTFT, TPOT, KV cache utilization, etc.) to Ray's Prometheus endpoint.
         """
         super().__init__(data_column, expected_input_keys)
         self.model = model
@@ -630,6 +669,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             enable_log_requests=False,
             max_pending_requests=self.max_pending_requests,
             dynamic_lora_loading_path=dynamic_lora_loading_path,
+            log_engine_metrics=log_engine_metrics,
             **self.engine_kwargs,
         )
 
