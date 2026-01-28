@@ -114,6 +114,7 @@ def test_slice_handle_wait():
 
     handle = SlicePlacementGroupHandle(mock_spg)
     assert handle.wait(timeout_seconds=10)
+    mock_pg.wait.assert_called_once()
 
 
 def test_slice_handle_shutdown():
