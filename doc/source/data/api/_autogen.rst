@@ -20,5 +20,4 @@
     Schema
     stats.DatasetSummary
     grouped_data.GroupedData
-    aggregate.AggregateFn
-    aggregate.AggregateFnV2
+    aggregate.AggregateFunction

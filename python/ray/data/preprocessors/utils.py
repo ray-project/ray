@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Callable, Deque, Dict, List, Optional, Un
 
 import ray
 from ray.air.util.data_batch_conversion import BatchFormat
-from ray.data.aggregate import AggregateFnV2
+from ray.data.aggregate import AggregateFunction
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -32,7 +32,7 @@ class BaseStatSpec:
     def __init__(
         self,
         *,
-        stat_fn: Union[AggregateFnV2, Callable],
+        stat_fn: Union[AggregateFunction, Callable],
         post_process_fn: Callable = lambda x: x,
     ):
         self.stat_fn = stat_fn
@@ -40,12 +40,12 @@ class BaseStatSpec:
 
 
 class AggregateStatSpec(BaseStatSpec):
-    """Represents an AggregateFnV2 spec for a single column."""
+    """Represents an AggregateFunction spec for a single column."""
 
     def __init__(
         self,
         *,
-        aggregator_fn: Union[AggregateFnV2, Callable[[str], AggregateFnV2]],
+        aggregator_fn: Union[AggregateFunction, Callable[[str], AggregateFunction]],
         post_process_fn: Callable = lambda x: x,
         column: Optional[str] = None,
         batch_format: Optional[BatchFormat] = None,
@@ -81,11 +81,11 @@ class CallableStatSpec(BaseStatSpec):
 
 class StatComputationPlan:
     """
-    Encapsulates a set of aggregators (AggregateFnV2) and legacy stat functions
+    Encapsulates a set of aggregators (AggregateFunction) and legacy stat functions
     to compute statistics over a Ray dataset.
 
     Supports two types of aggregations:
-    1. AggregateFnV2-based aggregators, which are batch-executed using `Dataset.aggregate(...)`.
+    1. AggregateFunction-based aggregators, which are batch-executed using `Dataset.aggregate(...)`.
     2. Callable-based stat functions, executed sequentially (legacy use case).
     """
 
@@ -98,16 +98,16 @@ class StatComputationPlan:
     def add_aggregator(
         self,
         *,
-        aggregator_fn: Callable[[str], AggregateFnV2],
+        aggregator_fn: Callable[[str], AggregateFunction],
         post_process_fn: Callable = lambda x: x,
         columns: List[str],
         batch_format: Optional[BatchFormat] = None,
     ) -> None:
         """
-        Registers an AggregateFnV2 factory for one or more columns.
+        Registers an AggregateFunction factory for one or more columns.
 
         Args:
-            aggregator_fn: A callable (typically a lambda or class) that accepts a column name and returns an instance of AggregateFnV2.
+            aggregator_fn: A callable (typically a lambda or class) that accepts a column name and returns an instance of AggregateFunction.
                           The aggregator should set its name using alias_name parameter to control the output key.
             post_process_fn: Function to post-process the aggregated result.
             columns: List of column names to aggregate.
@@ -162,7 +162,7 @@ class StatComputationPlan:
         """
         Executes all registered aggregators and stat functions.
 
-        AggregateFnV2-based aggregators are batched and executed via Dataset.aggregate().
+        AggregateFunction-based aggregators are batched and executed via Dataset.aggregate().
         Callable-based stat functions are run sequentially.
 
         Args:
@@ -172,7 +172,7 @@ class StatComputationPlan:
             A dictionary of computed statistics.
         """
         stats = {}
-        # Run batched aggregators (AggregateFnV2)
+        # Run batched aggregators (AggregateFunction)
         aggregators = self._get_aggregate_fn_list()
         if aggregators:
             agg_ds = dataset.groupby(None).aggregate(*aggregators)
@@ -203,7 +203,7 @@ class StatComputationPlan:
 
         return stats
 
-    def _get_aggregate_fn_list(self) -> List[AggregateFnV2]:
+    def _get_aggregate_fn_list(self) -> List[AggregateFunction]:
         return [
             spec.stat_fn
             for spec in self._aggregators
