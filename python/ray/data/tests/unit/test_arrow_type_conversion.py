@@ -6,7 +6,6 @@ import pyarrow as pa
 import pytest
 from packaging.version import parse as parse_version
 
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import DataContext
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.tensor_extensions.arrow import (
@@ -18,6 +17,7 @@ from ray.data._internal.tensor_extensions.arrow import (
 )
 from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
 from ray.data._internal.util import MiB
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.tests.conftest import *  # noqa
 
 import psutil

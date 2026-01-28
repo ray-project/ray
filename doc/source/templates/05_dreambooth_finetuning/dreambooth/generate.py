@@ -24,7 +24,7 @@ def run(args):
             for i, prompt in zip(batch["idx"], batch["prompt"]):
                 # Generate 1 image at a time to reduce memory consumption.
                 for image in self.pipeline(prompt).images:
-                    hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                    hash_image = hashlib.sha256(image.tobytes()).hexdigest()
                     image_filename = path.join(self.output_dir, f"{i}-{hash_image}.jpg")
                     image.save(image_filename)
                     print(f"Saved {image_filename}")
