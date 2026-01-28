@@ -1037,41 +1037,6 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
 
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_static_shape(ray_start_regular):
-    if sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) < 2:
-        pytest.skip("This test requires at least 2 GPUs")
-
-    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-    sender = actor_cls.remote()
-    receiver = actor_cls.remote()
-
-    with InputNode() as inp:
-        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_tensor_transport(transport="nccl", _static_shape=True)
-        dag = receiver.recv.bind(dag)
-
-    compiled_dag = dag.experimental_compile()
-
-    # Test that the DAG works as long as we send the same shape.
-    shape = (10,)
-    dtype = torch.float16
-    for i in range(3):
-        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
-        assert ray.get(ref) == (i, shape, dtype)
-
-    # Error is thrown if we send the wrong shape. Currently the receiver cannot
-    # catch the exception so the DAG cannot be used again.
-    with pytest.raises(RayTaskError):
-        ref = compiled_dag.execute(i, shape=(20,), dtype=dtype)
-        ray.get(ref)
-
-    with pytest.raises(RayChannelError):
-        ref = compiled_dag.execute(i, shape=(21,), dtype=dtype)
-
-
-@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_direct_return(ray_start_regular):
     if sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) < 2:
         pytest.skip("This test requires at least 2 GPUs")
@@ -1944,6 +1909,41 @@ def test_torch_nccl_channel_with_all_local_readers(ray_start_regular):
         ),
     ):
         dag.experimental_compile()
+
+
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_static_shape(ray_start_regular):
+    if sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) < 2:
+        pytest.skip("This test requires at least 2 GPUs")
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
+
+    with InputNode() as inp:
+        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        dag = dag.with_tensor_transport(transport="nccl", _static_shape=True)
+        dag = receiver.recv.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    # Test that the DAG works as long as we send the same shape.
+    shape = (10,)
+    dtype = torch.float16
+    for i in range(3):
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
+
+    # Error is thrown if we send the wrong shape. Currently the receiver cannot
+    # catch the exception so the DAG cannot be used again.
+    with pytest.raises(RayTaskError):
+        ref = compiled_dag.execute(i, shape=(20,), dtype=dtype)
+        ray.get(ref)
+
+    with pytest.raises(RayChannelError):
+        ref = compiled_dag.execute(i, shape=(21,), dtype=dtype)
 
 
 if __name__ == "__main__":
