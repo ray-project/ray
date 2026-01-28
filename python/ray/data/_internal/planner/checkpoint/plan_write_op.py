@@ -6,7 +6,7 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
 )
-from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.logical.operators import Write
 from ray.data._internal.planner.plan_write_op import (
     _plan_write_op_internal,
     generate_collect_write_stats_fn,

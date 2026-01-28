@@ -12,7 +12,7 @@ from pyarrow.fs import FileType
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import Block
 from ray.data.dataset import Dataset
 from ray.data.datasource import FileBasedDatasource, PathPartitionParser

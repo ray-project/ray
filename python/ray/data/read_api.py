@@ -20,7 +20,6 @@ import numpy as np
 from packaging.version import parse as parse_version
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.datasource.audio_datasource import AudioDatasource
@@ -61,14 +60,14 @@ from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.from_operators import (
+from ray.data._internal.logical.operators import (
     FromArrow,
     FromBlocks,
     FromItems,
     FromNumpy,
     FromPandas,
+    Read,
 )
-from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
@@ -80,6 +79,7 @@ from ray.data._internal.util import (
     ndarray_to_block,
     pandas_df_to_arrow_block,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import (
     Block,
     BlockExecStats,
@@ -1026,7 +1026,7 @@ def read_parquet(
     # Check for deprecated filter parameter
     if "filter" in arrow_parquet_args:
         warnings.warn(
-            "The `filter` argument is deprecated and will not supported in a future release. "
+            "The `filter` argument is deprecated and will not be supported in a future release. "
             "Use `dataset.filter(expr=expr)` instead to filter rows.",
             DeprecationWarning,
             stacklevel=2,
