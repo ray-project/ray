@@ -1324,8 +1324,11 @@ async def execute_streaming_generator_async(
     interrupt_signal_event = threading.Event()
 
     try:
-        try:
-            async for output in gen:
+        report_dur_s = None
+
+        while True:
+            try:
+                output = await gen.asend(report_dur_s)
                 # NOTE: Report of streaming generator output is done in a
                 # standalone thread-pool to avoid blocking the event loop,
                 # since serializing and actual RPC I/O is done with "nogil". We
@@ -1338,7 +1341,7 @@ async def execute_streaming_generator_async(
                 # are currently under backpressure. Then we need to wait for an
                 # ack from the caller (the reply for a possibly previous report
                 # RPC) that they have consumed more ObjectRefs.
-                await loop.run_in_executor(
+                report_dur_s = await loop.run_in_executor(
                     executor,
                     report_streaming_generator_output,
                     context,
@@ -1347,9 +1350,13 @@ async def execute_streaming_generator_async(
                     interrupt_signal_event,
                 )
                 cur_generator_index += 1
-        except Exception as e:
-            # Report the exception to the owner of the task.
-            report_streaming_generator_exception(context, e, cur_generator_index, None)
+
+            except StopAsyncIteration:
+                break
+
+    except Exception as e:
+        # Report the exception to the owner of the task.
+        report_streaming_generator_exception(context, e, cur_generator_index, None)
 
     except BaseException as be:
         # NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
