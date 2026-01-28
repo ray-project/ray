@@ -191,7 +191,8 @@ def test_ordered_queue_out_of_order():
     assert len(queue) == 0
 
 
-def test_ordered_queue_getting_stuck():
+@pytest.mark.parametrize("target_op", ["get", "peek"])
+def test_ordered_queue_getting_stuck(target_op):
     bundle2 = _create_bundle("data2")
 
     queue = ReorderingBundleQueue()
@@ -228,8 +229,13 @@ def test_ordered_queue_getting_stuck():
     #   - `finalize(key=1)` has already been invoked, no pointer advancement will happen
     #
     # This results in the last bundle getting stuck in the queue
-    assert queue.has_next()
-    assert queue.get_next() is bundle2
+    if target_op == "get":
+        assert queue.get_next() is bundle2
+    elif target_op == "peek":
+        assert queue.peek_next() is bundle2
+        assert queue.get_next() is bundle2
+    else:
+        pytest.fail(f"unsupported {target_op}")
 
     assert len(queue) == 0
 
