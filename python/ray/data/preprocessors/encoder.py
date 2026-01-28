@@ -8,6 +8,7 @@ from typing import (
     Dict,
     Hashable,
     List,
+    Literal,
     Optional,
     Set,
     Tuple,
@@ -382,6 +383,11 @@ class OneHotEncoder(SerializablePreprocessorBase):
         max_categories: The maximum number of features to create for each column.
             If a value isn't specified for a column, then a feature is created
             for every category in that column.
+        drop: Strategy for dropping categories to avoid multicollinearity.
+            - If ``None`` (default), all categories are retained.
+            - If ``"first"``, the first category (alphabetically) is dropped for each column.
+            - If ``"if_binary"``, the first category is dropped only if exactly 2 categories exist.
+            This helps prevent the dummy variable trap in linear models.
         output_columns: The names of the transformed columns. If None, the transformed
             columns will be the same as the input columns. If not None, the length of
             ``output_columns`` must match the length of ``columns``, othwerwise an error
@@ -403,12 +409,13 @@ class OneHotEncoder(SerializablePreprocessorBase):
         columns: List[str],
         *,
         max_categories: Optional[Dict[str, int]] = None,
+        drop: Optional[Literal["first", "if_binary"]] = None,
         output_columns: Optional[List[str]] = None,
     ):
         super().__init__()
-        # TODO: add `drop` parameter.
         self.columns = columns
         self.max_categories = max_categories or {}
+        self.drop = drop
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
@@ -461,6 +468,16 @@ class OneHotEncoder(SerializablePreprocessorBase):
                 non_zero_indices,
                 codes[valid_category_mask],
             ] = 1
+
+            # Apply drop logic if specified
+            if self.drop is not None:
+                if self.drop == "first":
+                    # Always drop the first category
+                    one_hot = one_hot[:, 1:]
+                elif self.drop == "if_binary" and num_categories == 2:
+                    # Drop first only if binary
+                    one_hot = one_hot[:, 1:]
+
             df[output_column] = one_hot.tolist()
 
         return df
@@ -534,6 +551,17 @@ class OneHotEncoder(SerializablePreprocessorBase):
         if len(valid_indices) > 0:
             one_hot_matrix[valid_indices, indices_np[valid_mask]] = 1
 
+        # Apply drop logic if specified
+        if self.drop is not None:
+            if self.drop == "first":
+                # Always drop the first category
+                one_hot_matrix = one_hot_matrix[:, 1:]
+                num_categories = num_categories - 1
+            elif self.drop == "if_binary" and num_categories == 2:
+                # Drop first only if binary
+                one_hot_matrix = one_hot_matrix[:, 1:]
+                num_categories = num_categories - 1
+
         # Convert to Arrow FixedSizeListArray for efficient storage
         return pa.FixedSizeListArray.from_arrays(one_hot_matrix.ravel(), num_categories)
 
@@ -542,6 +570,7 @@ class OneHotEncoder(SerializablePreprocessorBase):
             "columns": self.columns,
             "output_columns": self.output_columns,
             "max_categories": self.max_categories,
+            "drop": self.drop,
             "_fitted": getattr(self, "_fitted", None),
         }
 
@@ -551,12 +580,14 @@ class OneHotEncoder(SerializablePreprocessorBase):
         self.output_columns = fields["output_columns"]
         self.max_categories = fields["max_categories"]
         # optional fields
+        self.drop = fields.get("drop")
         self._fitted = fields.get("_fitted")
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
             f"max_categories={self.max_categories!r}, "
+            f"drop={self.drop!r}, "
             f"output_columns={self.output_columns!r})"
         )
 
@@ -628,6 +659,11 @@ class MultiHotEncoder(SerializablePreprocessorBase):
         max_categories: The maximum number of features to create for each column.
             If a value isn't specified for a column, then a feature is created
             for every unique category in that column.
+        drop: Strategy for dropping categories to avoid multicollinearity.
+            - If ``None`` (default), all categories are retained.
+            - If ``"first"``, the first category (alphabetically) is dropped for each column.
+            - If ``"if_binary"``, the first category is dropped only if exactly 2 categories exist.
+            This helps prevent the dummy variable trap in linear models.
         output_columns: The names of the transformed columns. If None, the transformed
             columns will be the same as the input columns. If not None, the length of
             ``output_columns`` must match the length of ``columns``, othwerwise an error
@@ -651,12 +687,13 @@ class MultiHotEncoder(SerializablePreprocessorBase):
         columns: List[str],
         *,
         max_categories: Optional[Dict[str, int]] = None,
+        drop: Optional[Literal["first", "if_binary"]] = None,
         output_columns: Optional[List[str]] = None,
     ):
         super().__init__()
-        # TODO: add `drop` parameter.
         self.columns = columns
         self.max_categories = max_categories or {}
+        self.drop = drop
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
@@ -690,7 +727,21 @@ class MultiHotEncoder(SerializablePreprocessorBase):
             return [counter.get(x, 0) for x in stats]
 
         for column, output_column in zip(self.columns, self.output_columns):
-            df[output_column] = df[column].map(partial(encode_list, name=column))
+            stats = self.stats_[f"unique_values({column})"]
+            encoded = df[column].map(partial(encode_list, name=column))
+
+            # Apply drop logic if specified
+            if self.drop is not None:
+                n_categories = len(stats)
+
+                if self.drop == "first":
+                    # Always drop the first category
+                    encoded = encoded.apply(lambda x: x[1:])
+                elif self.drop == "if_binary" and n_categories == 2:
+                    # Drop first only if binary
+                    encoded = encoded.apply(lambda x: x[1:])
+
+            df[output_column] = encoded
 
         return df
 
@@ -699,6 +750,7 @@ class MultiHotEncoder(SerializablePreprocessorBase):
             "columns": self.columns,
             "output_columns": self.output_columns,
             "max_categories": self.max_categories,
+            "drop": self.drop,
             "_fitted": getattr(self, "_fitted", None),
         }
 
@@ -708,12 +760,14 @@ class MultiHotEncoder(SerializablePreprocessorBase):
         self.output_columns = fields["output_columns"]
         self.max_categories = fields["max_categories"]
         # optional fields
+        self.drop = fields.get("drop")
         self._fitted = fields.get("_fitted")
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
             f"max_categories={self.max_categories!r}, "
+            f"drop={self.drop!r}, "
             f"output_columns={self.output_columns})"
         )
 
