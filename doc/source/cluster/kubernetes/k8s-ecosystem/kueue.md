@@ -251,8 +251,8 @@ approach similar to the existing Kueue integration guides.
 
 > **Supported resources** – At the time of writing, the Kueue
 > autoscaler integration supports `RayCluster` and `RayService`.
-> `RayJob` autoscaling is supported since Kueue v0.15.2 and v0.14.7 and
-> is covered below.
+> `RayJob` autoscaling is supported starting from Kueue v0.15.2,
+> and is covered below.
 
 
 ### Prerequisites
@@ -473,8 +473,8 @@ inside the head Pod and monitors scaling:
 
 This RayJob example fans out CPU-bound tasks, which triggers the Ray
 autoscaler to scale the worker group within the admitted Kueue quota.
-If you used a different LocalQueue name in Step 1, replace `user-queue`
-in the RayJob metadata with your queue.
+If you used a different LocalQueue name when creating Kueue resources, replace `user-queue`
+in the RayJob metadata with your queue name.
 
 Create a ConfigMap that includes the Ray workload:
 
@@ -821,7 +821,7 @@ stand-alone `RayCluster` name (`raycluster-kueue-autoscaler`).
   `enableInTreeAutoscaling: true` when ray image < 2.47.0.
 
 * **RayJob support** – `RayJob` in-tree autoscaling requires Kueue
-  v0.15.2 or v0.14.7 and later.
+  v0.15.2+.
 
 * **Kueue versions prior to v0.13** – If you are using a Kueue version
   earlier than v0.13, restart the Kueue controller once after
