@@ -50,3 +50,20 @@ type NamespacesRsp = {
 export const getNamespaces = () => {
   return axiosInstance.get<NamespacesRsp>("namespaces");
 };
+
+type TorchTraceRsp = {
+  success: boolean;
+  output: string;
+};
+
+export const getTorchTrace = (ip: string, pid: string, numIterations = 4) => {
+  return axiosInstance.get<TorchTraceRsp>("worker/gpu_profile", {
+    params: {
+      ip,
+      pid,
+      num_iterations: numIterations,
+    },
+    // Allow following redirects and handle as blob for file download
+    maxRedirects: 5,
+  });
+};
