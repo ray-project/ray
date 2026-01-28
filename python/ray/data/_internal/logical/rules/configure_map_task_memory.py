@@ -19,12 +19,20 @@ class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
             if not isinstance(op, MapOperator):
                 continue
 
+            # Physical operators are out of scope here; keep backward-compatible access.
+            original_ray_remote_args_fn = getattr(
+                op, "ray_remote_args_fn", getattr(op, "_ray_remote_args_fn", None)
+            )
+
             def ray_remote_args_fn(
-                op: MapOperator = op, original_ray_remote_args_fn=op._ray_remote_args_fn
+                op: MapOperator = op,
+                original_ray_remote_args_fn=original_ray_remote_args_fn,
             ) -> Dict[str, Any]:
                 assert isinstance(op, MapOperator), op
 
-                static_ray_remote_args = copy.deepcopy(op._ray_remote_args)
+                static_ray_remote_args = copy.deepcopy(
+                    getattr(op, "ray_remote_args", getattr(op, "_ray_remote_args", {}))
+                )
 
                 dynamic_ray_remote_args = {}
                 if original_ray_remote_args_fn is not None:
@@ -54,7 +62,10 @@ class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
 
                 return dynamic_ray_remote_args
 
-            op._ray_remote_args_fn = ray_remote_args_fn
+            if hasattr(op, "ray_remote_args_fn"):
+                op.ray_remote_args_fn = ray_remote_args_fn
+            else:
+                op._ray_remote_args_fn = ray_remote_args_fn
 
         return plan
 

@@ -462,8 +462,8 @@ def read_datasource(
         parent=None,
     )
     read_op = Read(
-        datasource,
-        datasource_or_legacy_reader,
+        datasource=datasource,
+        datasource_or_legacy_reader=datasource_or_legacy_reader,
         parallelism=parallelism,
         num_outputs=len(read_tasks) if read_tasks else 0,
         ray_remote_args=ray_remote_args,

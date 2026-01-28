@@ -754,7 +754,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         yield meta_with_schema
 
     @staticmethod
-    def _compute_shuffle_schedule(
+    def compute_shuffle_schedule(
         num_cpus_per_node_map: Dict[str, int],
         num_input_blocks: int,
         merge_factor: float,
