@@ -293,7 +293,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   ///
   /// \param[in] actor_id The actor id to destroy.
   /// \param[in] death_cause The reason why actor is destroyed.
-  /// \param[in] force_kill Whether destory the actor forcelly.
+  /// \param[in] force_kill Whether destory the actor forcefully.
   /// \param[in] no_restart If true, permanently destroy the actor. If false,
   ///            allow restart based on max_restarts policy.
   /// \param[in] done_callback Called when destroy finishes.
