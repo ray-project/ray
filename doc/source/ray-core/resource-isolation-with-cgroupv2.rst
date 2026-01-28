@@ -16,7 +16,7 @@ Background
 A Ray cluster consists of Ray Nodes which run two types of processes:
 
 1. System critical processes internal to Ray which are critical to node health
-2. User processes that are executing remote tasks and actors
+2. Worker processes that are executing user code inside of remote tasks and actors
 
 Without resource isolation, user processes can starve system processes of CPU and memory leading to node failure. Node failure can cause instability in your workload and in extreme cases lead to job failure.
 
