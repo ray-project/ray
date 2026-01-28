@@ -35,7 +35,6 @@ from ray.data.block import (
     KeyType,
     U,
 )
-from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
 
 if TYPE_CHECKING:
@@ -76,8 +75,6 @@ class TableBlockBuilder(BlockBuilder):
     def add(self, item: Union[dict, Mapping, np.ndarray]) -> None:
         if hasattr(item, "as_pydict"):
             item = item.as_pydict()
-        elif isinstance(item, np.ndarray):
-            item = {TENSOR_COLUMN_NAME: item}
         if not isinstance(item, collections.abc.Mapping):
             raise ValueError(
                 "Returned elements of an TableBlock must be of type `dict`, "

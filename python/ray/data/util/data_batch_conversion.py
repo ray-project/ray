@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Dict, List, Union
 import numpy as np
 
 from ray.air.data_batch_type import DataBatchType
-from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -151,9 +150,6 @@ def _convert_batch_type_to_numpy(
         return data
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
         from ray.data._internal.arrow_ops import transform_pyarrow
-        from ray.data._internal.tensor_extensions.arrow import (
-            get_arrow_extension_fixed_shape_tensor_types,
-        )
 
         column_values_ndarrays = []
 
@@ -165,14 +161,6 @@ def _convert_batch_type_to_numpy(
             column_values_ndarrays.append(
                 transform_pyarrow.to_numpy(combined_array, zero_copy_only=False)
             )
-
-        arrow_fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
-
-        # NOTE: This branch is here for backwards-compatibility
-        if data.column_names == [TENSOR_COLUMN_NAME] and (
-            isinstance(data.schema.types[0], arrow_fixed_shape_tensor_types)
-        ):
-            return column_values_ndarrays[0]
 
         return dict(zip(data.column_names, column_values_ndarrays))
     elif isinstance(data, pd.DataFrame):
