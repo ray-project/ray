@@ -22,6 +22,7 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/scheduling/label_selector.h"
+#include "ray/util/graceful_shutdown.h"
 
 namespace ray {
 namespace core {
@@ -531,34 +532,22 @@ void TaskEventBufferImpl::Stop() {
 
   auto flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
 
-  const auto shutdown_deadline = absl::Now() + absl::Milliseconds(flush_timeout_ms);
-
-  // Helper to wait for in-flight gRPC calls to complete until a shared deadline.
-  // Returns true if completed, false if timed out.
-  auto wait_for_grpc_completion_until = [&](absl::Time deadline) {
-    absl::MutexLock lock(&grpc_completion_mutex_);
-    while (gcs_grpc_in_progress_.load() > 0 ||
-           event_aggregator_grpc_in_progress_.load() > 0) {
-      if (grpc_completion_cv_.WaitWithDeadline(&grpc_completion_mutex_, deadline)) {
-        return false;  // Timeout
-      }
-    }
-    return true;  // Completed
-  };
-
-  // First wait for any in-flight gRPC to complete, then flush, then wait again.
-  // This ensures no events are lost during shutdown.
-  if (wait_for_grpc_completion_until(shutdown_deadline)) {
-    // Use stopping_ flag to allow flush without re-enabling event ingestion.
-    // This prevents the race where new events could be added during shutdown.
-    stopping_ = true;
-    FlushEvents(/*forced=*/true);
-    stopping_ = false;
-    wait_for_grpc_completion_until(shutdown_deadline);
-  } else {
-    RAY_LOG(WARNING) << "TaskEventBuffer shutdown timed out waiting for gRPC. "
-                     << "Some events may be lost.";
-  }
+  GracefulShutdownWithFlush(
+      grpc_completion_mutex_,
+      grpc_completion_cv_,
+      [this]() {
+        return gcs_grpc_in_progress_.load() == 0 &&
+               event_aggregator_grpc_in_progress_.load() == 0;
+      },
+      [this]() {
+        // Use stopping_ flag to allow flush without re-enabling event ingestion.
+        // This prevents the race where new events could be added during shutdown.
+        stopping_ = true;
+        FlushEvents(/*forced=*/true);
+        stopping_ = false;
+      },
+      absl::Milliseconds(flush_timeout_ms),
+      "TaskEventBuffer");
 
   // Shutting down the io service to exit the io_thread. This should prevent
   // any other callbacks to be run on the io thread.

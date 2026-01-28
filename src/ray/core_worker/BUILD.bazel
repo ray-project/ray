@@ -258,6 +258,7 @@ ray_cc_library(
         "//src/ray/rpc:event_aggregator_client",
         "//src/ray/util:counter_map",
         "//src/ray/util:event",
+        "//src/ray/util:graceful_shutdown",
         "@boost//:circular_buffer",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",

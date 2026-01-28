@@ -15,6 +15,7 @@
 #include "ray/observability/ray_event_recorder.h"
 
 #include "ray/common/ray_config.h"
+#include "ray/util/graceful_shutdown.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/public/events_base_event.pb.h"
 
@@ -66,29 +67,13 @@ void RayEventRecorder::StopExportingEvents() {
 
   auto flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
 
-  const auto shutdown_deadline = absl::Now() + absl::Milliseconds(flush_timeout_ms);
-
-  // Helper to wait for in-flight gRPC call to complete until a shared deadline.
-  // Returns true if completed, false if timed out.
-  auto wait_for_grpc_completion_until = [&](absl::Time deadline) {
-    absl::MutexLock lock(&grpc_completion_mutex_);
-    while (grpc_in_progress_) {
-      if (grpc_completion_cv_.WaitWithDeadline(&grpc_completion_mutex_, deadline)) {
-        return false;  // Timeout
-      }
-    }
-    return true;  // Completed
-  };
-
-  // First wait for any in-flight gRPC to complete, then flush, then wait again.
-  // This ensures no events are lost during shutdown.
-  if (wait_for_grpc_completion_until(shutdown_deadline)) {
-    ExportEvents();
-    wait_for_grpc_completion_until(shutdown_deadline);
-  } else {
-    RAY_LOG(WARNING) << "RayEventRecorder shutdown timed out waiting for gRPC. "
-                     << "Some events may be lost.";
-  }
+  GracefulShutdownWithFlush(
+      grpc_completion_mutex_,
+      grpc_completion_cv_,
+      [this]() { return !grpc_in_progress_; },
+      [this]() { ExportEvents(); },
+      absl::Milliseconds(flush_timeout_ms),
+      "RayEventRecorder");
 }
 
 void RayEventRecorder::ExportEvents() {
