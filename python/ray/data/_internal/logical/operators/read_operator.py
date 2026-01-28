@@ -122,7 +122,7 @@ class Read(
         # `get_read_tasks` isn't guaranteed to return exactly one read task.
         metadata = [read_task.metadata for read_task in read_tasks]
 
-        if all(meta.num_rows is not None for meta in metadata):
+        if all(meta is not None and meta.num_rows is not None for meta in metadata):
             num_rows = sum(meta.num_rows for meta in metadata)
             original_num_rows = num_rows
             # Apply per-block limit if set
@@ -132,7 +132,7 @@ class Read(
             num_rows = None
             original_num_rows = None
 
-        if all(meta.size_bytes is not None for meta in metadata):
+        if all(meta is not None and meta.size_bytes is not None for meta in metadata):
             size_bytes = sum(meta.size_bytes for meta in metadata)
             # Pro-rate the byte size if we applied a row limit
             if (

@@ -1,286 +1,12 @@
-.. _loading-data-api:
+.. _input-output:
 
-Loading Data API
-================
+Input/Output
+============
 
 .. currentmodule:: ray.data
 
-Public APIs
------------
-
-Arrow
-^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   from_arrow
-
-Audio
-^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_audio
-
-Avro
-^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_avro
-
-BigQuery
-^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_bigquery
-
-Binary
-^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_binary_files
-
-CSV
-^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_csv
-
-ClickHouse
-^^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_clickhouse
-
-Daft
-^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   from_daft
-
-Dask
-^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   from_dask
-
-Databricks
-^^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_databricks_tables
-
-Delta Lake
-^^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_delta
-
-Delta Sharing
-^^^^^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_delta_sharing_tables
-
-Hudi
-^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_hudi
-
-Hugging Face
-^^^^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   from_huggingface
-
-Iceberg
-^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_iceberg
-
-Images
-^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_images
-
-JSON
-^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_json
-
-Kafka
-^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_kafka
-
-Lance
-^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_lance
-
-MCAP (Message Capture)
-^^^^^^^^^^^^^^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_mcap
-
-Mars
-^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   from_mars
-
-Modin
-^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   from_modin
-
-MongoDB
-^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_mongo
-
-NumPy
-^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   from_numpy
-   read_numpy
-
-Pandas
-^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   from_pandas
-
-Parquet
-^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_parquet
-
-Python Objects
-^^^^^^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   from_items
-
-SQL Databases
-^^^^^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_sql
-
-Snowflake
-^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   read_snowflake
-
-Spark
-^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   from_spark
-
 Synthetic Data
-^^^^^^^^^^^^^^
+--------------
 
 .. autosummary::
    :nosignatures:
@@ -289,27 +15,48 @@ Synthetic Data
    range
    range_tensor
 
-TFRecords
-^^^^^^^^^
+Python Objects
+--------------
 
 .. autosummary::
    :nosignatures:
    :toctree: doc/
 
-   read_tfrecords
-   TFXReadOptions
+   from_items
 
-TensorFlow
-^^^^^^^^^^
+Parquet
+-------
 
 .. autosummary::
    :nosignatures:
    :toctree: doc/
 
-   from_tf
+   read_parquet
+   read_parquet_bulk
+   Dataset.write_parquet
+
+CSV
+---
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_csv
+   Dataset.write_csv
+
+JSON
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_json
+   Dataset.write_json
 
 Text
-^^^^
+----
 
 .. autosummary::
    :nosignatures:
@@ -317,17 +64,140 @@ Text
 
    read_text
 
-Torch
-^^^^^
+Audio
+-----
 
 .. autosummary::
    :nosignatures:
    :toctree: doc/
 
-   from_torch
+   read_audio
+
+Avro
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_avro
+
+Images
+------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_images
+   Dataset.write_images
+
+Binary
+------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_binary_files
+
+TFRecords
+---------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_tfrecords
+   Dataset.write_tfrecords
+   TFXReadOptions
+
+Pandas
+------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   from_pandas
+   from_pandas_refs
+   Dataset.to_pandas
+   Dataset.to_pandas_refs
+
+NumPy
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_numpy
+   from_numpy
+   from_numpy_refs
+   Dataset.write_numpy
+   Dataset.to_numpy_refs
+
+Arrow
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   from_arrow
+   from_arrow_refs
+   Dataset.to_arrow_refs
+
+MongoDB
+-------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_mongo
+   Dataset.write_mongo
+
+BigQuery
+--------
+
+.. autosummary::
+   :toctree: doc/
+
+   read_bigquery
+   Dataset.write_bigquery
+
+SQL Databases
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_sql
+   Dataset.write_sql
+
+Databricks
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_databricks_tables
+
+Snowflake
+---------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_snowflake
+   Dataset.write_snowflake
 
 Unity Catalog
-^^^^^^^^^^^^^
+-------------
 
 .. autosummary::
    :nosignatures:
@@ -335,8 +205,151 @@ Unity Catalog
 
    read_unity_catalog
 
+Delta Sharing
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_delta_sharing_tables
+
+Hudi
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_hudi
+
+Iceberg
+-------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_iceberg
+   Dataset.write_iceberg
+
+Delta Lake
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_delta
+
+Lance
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_lance
+   Dataset.write_lance
+
+MCAP (Message Capture)
+----------------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_mcap
+
+ClickHouse
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_clickhouse
+   Dataset.write_clickhouse
+
+Daft
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   from_daft
+   Dataset.to_daft
+
+Dask
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   from_dask
+   Dataset.to_dask
+
+Spark
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   from_spark
+   Dataset.to_spark
+
+Modin
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   from_modin
+   Dataset.to_modin
+
+Mars
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   from_mars
+   Dataset.to_mars
+
+Torch
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   from_torch
+
+Hugging Face
+------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   from_huggingface
+
+TensorFlow
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   from_tf
+
 Video
-^^^^^
+-----
 
 .. autosummary::
    :nosignatures:
@@ -345,7 +358,7 @@ Video
    read_videos
 
 WebDataset
-^^^^^^^^^^
+----------
 
 .. autosummary::
    :nosignatures:
@@ -353,8 +366,51 @@ WebDataset
 
    read_webdataset
 
+Streaming sources
+-----------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_kafka
+   read_kinesis
+   read_flink
+
+.. _data_source_api:
+
+Datasource API
+--------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_datasource
+   Datasource
+   ReadTask
+   datasource.FilenameProvider
+   datasource.UnboundDatasource
+   datasource.create_unbound_read_task
+   datasource.infer_schema_from_records
+
+Datasink API
+------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.write_datasink
+   Datasink
+   datasource.RowBasedFileDatasink
+   datasource.BlockBasedFileDatasink
+   datasource.FileBasedDatasource
+   datasource.WriteResult
+   datasource.WriteReturnType
+
 Partitioning API
-^^^^^^^^^^^^^^^^
+----------------
 
 .. autosummary::
    :nosignatures:
@@ -362,69 +418,28 @@ Partitioning API
 
    datasource.Partitioning
    datasource.PartitionStyle
-   datasource.PathPartitionFilter
    datasource.PathPartitionParser
+   datasource.PathPartitionFilter
+
+.. _metadata_provider:
+
+MetadataProvider API
+--------------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   datasource.FileMetadataProvider
+   datasource.BaseFileMetadataProvider
+   datasource.DefaultFileMetadataProvider
+   datasource.FastFileMetadataProvider
 
 Shuffling API
-^^^^^^^^^^^^^
+-------------
 
 .. autosummary::
    :nosignatures:
    :toctree: doc/
 
    FileShuffleConfig
-
-Developer APIs
---------------
-
-Arrow refs
-^^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   from_arrow_refs
-
-Datasource API
-^^^^^^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Datasource
-   datasource.FileBasedDatasource
-   read_datasource
-   ReadTask
-
-.. _metadata_provider:
-
-MetadataProvider API
-^^^^^^^^^^^^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   datasource.BaseFileMetadataProvider
-   datasource.DefaultFileMetadataProvider
-   datasource.FileMetadataProvider
-
-NumPy refs
-^^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   from_numpy_refs
-
-Pandas refs
-^^^^^^^^^^^
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   from_pandas_refs

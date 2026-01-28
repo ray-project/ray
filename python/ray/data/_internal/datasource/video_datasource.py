@@ -62,7 +62,7 @@ class VideoDatasource(FileBasedDatasource):
 
         for frame_index, frame in enumerate(reader):
             item = {"frame": frame.asnumpy(), "frame_index": frame_index}
-            if self.include_timestamps is True:
+            if self.include_timestamps:
                 item["frame_timestamp"] = reader.get_frame_timestamp(frame_index)
 
             builder = DelegatingBlockBuilder()

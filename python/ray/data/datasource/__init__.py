@@ -40,6 +40,13 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
+from ray.data.datasource.unbound_datasource import (
+    UnboundDatasource,
+    UnboundMetrics,
+    UnboundPosition,
+    create_unbound_read_task,
+    infer_schema_from_records,
+)
 
 # Note: HuggingFaceDatasource should NOT be imported here, because
 # we want to only import the Hugging Face datasets library when we use
@@ -65,10 +72,15 @@ __all__ = [
     "ReadTask",
     "Reader",
     "RowBasedFileDatasink",
+    "UnboundDatasource",
+    "UnboundMetrics",
+    "UnboundPosition",
     "BlockBasedFileDatasink",
     "_S3FileSystemWrapper",
     "TimeRange",
     "WriteResult",
+    "create_unbound_read_task",
+    "infer_schema_from_records",
     "WriteReturnType",
     "SaveMode",
 ]

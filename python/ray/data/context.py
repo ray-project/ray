@@ -7,10 +7,12 @@ import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+import ray
 from ray._private.ray_constants import env_bool, env_float, env_integer
+from ray._private.worker import WORKER_MODE
 from ray.data._internal.logging import update_dataset_logger_for_worker
-from ray.data.checkpoint.interfaces import CheckpointBackend, CheckpointConfig
 from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
 if TYPE_CHECKING:
@@ -53,6 +55,12 @@ DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
 # target_max_block_size. We will warn the user if slicing fails and we produce
 # blocks larger than this threshold.
 MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
+
+# We will attempt to slice blocks whose size exceeds this factor *
+# target_num_rows_per_block. We will warn the user if slicing fails and we produce
+# blocks with more rows than this threshold.
+MAX_SAFE_ROWS_PER_BLOCK_FACTOR = 1.5
+
 
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 
@@ -168,10 +176,6 @@ DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
 
 DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
 
-DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS = False
-
-DEFAULT_ACTOR_INIT_MAX_RETRIES = 3
-
 DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
     "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
 )
@@ -200,6 +204,26 @@ LEGACY_DEFAULT_BATCH_SIZE = 1024
 # streaming generator backpressure.
 DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 2
 
+# Default configuration for online data sources (Kafka, Kinesis, etc.)
+# These are for unbounded data ingestion, not Ray Data's streaming execution engine
+DEFAULT_STREAMING_BATCH_SIZE = 1000  # Records per batch for online data sources
+DEFAULT_STREAMING_TRIGGER_INTERVAL = "30s"  # Default trigger interval for microbatching
+DEFAULT_STREAMING_MAX_RETRIES = 3  # Retry attempts for network failures
+DEFAULT_STREAMING_RETRY_DELAY = 1.0  # Base delay between retries in seconds
+
+# Advanced configuration for production online data workloads
+# See: https://docs.ray.io/en/latest/data/performance-tips.html#streaming-performance
+DEFAULT_STREAMING_MAX_CONCURRENT_TASKS = (
+    4  # Max concurrent read tasks per online data source
+)
+DEFAULT_STREAMING_TASK_TIMEOUT = 300  # 5 minutes - timeout for individual read tasks
+DEFAULT_STREAMING_HEARTBEAT_INTERVAL = (
+    30  # 30 seconds - heartbeat for connection health
+)
+DEFAULT_STREAMING_BACKPRESSURE_THRESHOLD = (
+    0.8  # 80% memory usage threshold for backpressure
+)
+
 # Default value for whether or not to try to create directories for write
 # calls if the URI is an S3 URI.
 DEFAULT_S3_TRY_CREATE_DIR = False
@@ -209,7 +233,7 @@ DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
 )
 
 DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR = env_integer(
-    "RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR", 2
+    "RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR", 4
 )
 
 # Enable per node metrics reporting for Ray Data, disabled by default.
@@ -228,7 +252,7 @@ DEFAULT_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S = env_integer(
 
 DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD: float = env_float(
     "RAY_DATA_DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD",
-    1.75,
+    2.0,
 )
 
 DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
@@ -236,20 +260,9 @@ DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
     0.5,
 )
 
-DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: int = env_integer(
-    "RAY_DATA_DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA",
-    1,
-)
 
-
-# Disable dynamic output queue size backpressure by default.
 DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
     "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", False
-)
-
-
-DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
-    "RAY_DATA_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO", 10.0
 )
 
 
@@ -272,9 +285,6 @@ class AutoscalingConfig:
             between autoscaling speed and resource efficiency (i.e.,
             making tasks wait instead of immediately triggering execution).
         actor_pool_util_downscaling_threshold: Actor Pool utilization threshold for downscaling.
-        actor_pool_max_upscaling_delta: Maximum number of actors to scale up in a single scaling decision.
-            This limits how many actors can be added at once to prevent resource contention
-            and scheduling pressure. Defaults to 1 for conservative scaling.
     """
 
     actor_pool_util_upscaling_threshold: float = (
@@ -285,9 +295,6 @@ class AutoscalingConfig:
     actor_pool_util_downscaling_threshold: float = (
         DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD
     )
-
-    # Maximum number of actors to scale up in a single scaling decision
-    actor_pool_max_upscaling_delta: int = DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA
 
 
 def _execution_options_factory() -> "ExecutionOptions":
@@ -398,9 +405,7 @@ class DataContext:
         enable_rich_progress_bars: Whether to use the new rich progress bars instead
             of the tqdm TUI.
         enable_get_object_locations_for_metrics: Whether to enable
-            ``get_object_locations`` for metrics. This is useful for tracking whether
-            the object input of a task is local (cache hit) or not local (cache miss)
-            to the node that task is running on.
+            ``get_object_locations`` for metrics.
         write_file_retry_on_errors: A list of substrings of error messages that should
             trigger a retry when writing files. This is useful for handling transient
             errors when writing to remote storage systems.
@@ -411,12 +416,6 @@ class DataContext:
             retry. This follows same format as :ref:`retry_exceptions <task-retries>` in
             Ray Core. Default to `False` to not retry on any errors. Set to `True` to
             retry all errors, or set to a list of errors to retry.
-        actor_init_retry_on_errors: Whether to retry when actor initialization fails.
-            Default to `False` to not retry on any errors. Set to `True` to retry
-            all errors.
-        actor_init_max_retries: Maximum number of consecutive retries for actor
-            initialization failures. The counter resets when an actor successfully
-            initializes. Default is 3. Set to -1 for infinite retries.
         op_resource_reservation_enabled: Whether to enable resource reservation for
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
@@ -478,9 +477,11 @@ class DataContext:
             dataset operations.
         downstream_capacity_backpressure_ratio: Ratio for downstream capacity
             backpressure control. A higher ratio causes backpressure to kick-in
-            later. If `None`, this backpressure policy is disabled.
+            later. If `None`, this type of backpressure is disabled.
+        downstream_capacity_backpressure_max_queued_bundles: Maximum number of queued
+            bundles before applying backpressure. If `None`, no limit is applied.
         enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
-            of an operator based on its and downstream operators' queue size.
+        of an operator based on it's and downstream's queue size.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
@@ -490,6 +491,10 @@ class DataContext:
     target_max_block_size: Optional[int] = DEFAULT_TARGET_MAX_BLOCK_SIZE
     target_min_block_size: int = DEFAULT_TARGET_MIN_BLOCK_SIZE
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
+
+    # Streaming datasource configuration (handled by properties)
+
+    # Advanced streaming configuration (handled by properties)
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
     actor_prefetcher_enabled: bool = DEFAULT_ACTOR_PREFETCHER_ENABLED
 
@@ -566,6 +571,8 @@ class DataContext:
     use_ray_tqdm: bool = DEFAULT_USE_RAY_TQDM
     enable_progress_bars: bool = DEFAULT_ENABLE_PROGRESS_BARS
     # By default, enable the progress bar for operator-level progress.
+    # In __post_init__(), we disable operator-level progress
+    # bars when running in a Ray job.
     enable_operator_progress_bars: bool = True
     enable_progress_bar_name_truncation: bool = (
         DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
@@ -579,8 +586,6 @@ class DataContext:
     actor_task_retry_on_errors: Union[
         bool, List[BaseException]
     ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
-    actor_init_retry_on_errors: bool = DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS
-    actor_init_max_retries: int = DEFAULT_ACTOR_INIT_MAX_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
@@ -617,9 +622,8 @@ class DataContext:
         default_factory=_issue_detectors_config_factory
     )
 
-    downstream_capacity_backpressure_ratio: Optional[
-        float
-    ] = DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO
+    downstream_capacity_backpressure_ratio: float = None
+    downstream_capacity_backpressure_max_queued_bundles: int = None
 
     enable_dynamic_output_queue_size_backpressure: bool = (
         DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
@@ -628,8 +632,6 @@ class DataContext:
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
-
-    _checkpoint_config: Optional[CheckpointConfig] = None
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -642,22 +644,45 @@ class DataContext:
         # the DataContext from the plugin implementations, as well as to avoid
         # circular dependencies.
         self._kv_configs: Dict[str, Any] = {}
-
-        # Sync hash shuffle aggregator fields to its detector config
-        self.issue_detectors_config.hash_shuffle_detector_config.detection_time_interval_s = (
-            self.hash_shuffle_aggregator_health_warning_interval_s
-        )
-        self.issue_detectors_config.hash_shuffle_detector_config.min_wait_time_s = (
-            self.min_hash_shuffle_aggregator_wait_time_in_s
-        )
-
         self._max_num_blocks_in_streaming_gen_buffer = (
             DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
         )
 
-        # Unique id of the current execution of the data pipeline.
-        # This value increments only upon re-execution of the exact same pipeline.
-        self._execution_idx = 0
+        # Initialize streaming configuration
+        self._streaming_batch_size = DEFAULT_STREAMING_BATCH_SIZE
+        self._streaming_trigger_interval = DEFAULT_STREAMING_TRIGGER_INTERVAL
+        self._streaming_max_retries = DEFAULT_STREAMING_MAX_RETRIES
+        self._streaming_retry_delay = DEFAULT_STREAMING_RETRY_DELAY
+
+        # Initialize advanced streaming configuration
+        self._streaming_max_concurrent_tasks = DEFAULT_STREAMING_MAX_CONCURRENT_TASKS
+        self._streaming_task_timeout = DEFAULT_STREAMING_TASK_TIMEOUT
+        self._streaming_heartbeat_interval = DEFAULT_STREAMING_HEARTBEAT_INTERVAL
+        self._streaming_backpressure_threshold = (
+            DEFAULT_STREAMING_BACKPRESSURE_THRESHOLD
+        )
+
+        is_ray_job = os.environ.get("RAY_JOB_ID") is not None
+        if is_ray_job:
+            is_driver = ray.get_runtime_context().worker.mode != WORKER_MODE
+            if is_driver and log_once(
+                "ray_data_disable_operator_progress_bars_in_ray_jobs"
+            ):
+                logger.info(
+                    "Disabling operator-level progress bars by default in Ray Jobs. "
+                    "To enable progress bars for all operators, set "
+                    "`ray.data.DataContext.get_current()"
+                    ".enable_operator_progress_bars = True`."
+                )
+            # Disable operator-level progress bars by default in Ray jobs.
+            # The global progress bar for the overall Dataset execution will
+            # still be enabled, unless the user also sets
+            # `ray.data.DataContext.get_current().enable_progress_bars = False`.
+            self.enable_operator_progress_bars = False
+        else:
+            # When not running in Ray job, operator-level progress
+            # bars are enabled by default.
+            self.enable_operator_progress_bars = True
 
     def __setattr__(self, name: str, value: Any) -> None:
         if (
@@ -679,7 +704,8 @@ class DataContext:
 
         elif name == "target_shuffle_max_block_size":
             warnings.warn(
-                "`target_shuffle_max_block_size` is deprecated! Configure `target_max_block_size` instead."
+                "`target_shuffle_max_block_size` is deprecated! "
+                "Configure `target_max_block_size` instead."
             )
 
             self.target_max_block_size = value
@@ -762,6 +788,78 @@ class DataContext:
     def shuffle_strategy(self, value: ShuffleStrategy) -> None:
         self._shuffle_strategy = value
 
+    @property
+    def streaming_batch_size(self) -> int:
+        """Default batch size for streaming datasources."""
+        return self._streaming_batch_size
+
+    @streaming_batch_size.setter
+    def streaming_batch_size(self, value: int) -> None:
+        self._streaming_batch_size = value
+
+    @property
+    def streaming_trigger_interval(self) -> str:
+        """Default trigger interval for streaming datasources."""
+        return self._streaming_trigger_interval
+
+    @streaming_trigger_interval.setter
+    def streaming_trigger_interval(self, value: str) -> None:
+        self._streaming_trigger_interval = value
+
+    @property
+    def streaming_max_retries(self) -> int:
+        """Maximum number of retries for streaming operations."""
+        return self._streaming_max_retries
+
+    @streaming_max_retries.setter
+    def streaming_max_retries(self, value: int) -> None:
+        self._streaming_max_retries = value
+
+    @property
+    def streaming_retry_delay(self) -> float:
+        """Delay between retries for streaming operations."""
+        return self._streaming_retry_delay
+
+    @streaming_retry_delay.setter
+    def streaming_retry_delay(self, value: float) -> None:
+        self._streaming_retry_delay = value
+
+    @property
+    def streaming_max_concurrent_tasks(self) -> int:
+        """Maximum number of concurrent streaming tasks."""
+        return self._streaming_max_concurrent_tasks
+
+    @streaming_max_concurrent_tasks.setter
+    def streaming_max_concurrent_tasks(self, value: int) -> None:
+        self._streaming_max_concurrent_tasks = value
+
+    @property
+    def streaming_task_timeout(self) -> int:
+        """Timeout for streaming tasks in seconds."""
+        return self._streaming_task_timeout
+
+    @streaming_task_timeout.setter
+    def streaming_task_timeout(self, value: int) -> None:
+        self._streaming_task_timeout = value
+
+    @property
+    def streaming_heartbeat_interval(self) -> int:
+        """Heartbeat interval for streaming tasks in seconds."""
+        return self._streaming_heartbeat_interval
+
+    @streaming_heartbeat_interval.setter
+    def streaming_heartbeat_interval(self, value: int) -> None:
+        self._streaming_heartbeat_interval = value
+
+    @property
+    def streaming_backpressure_threshold(self) -> float:
+        """Backpressure threshold for streaming operations (0.0 to 1.0)."""
+        return self._streaming_backpressure_threshold
+
+    @streaming_backpressure_threshold.setter
+    def streaming_backpressure_threshold(self, value: float) -> None:
+        self._streaming_backpressure_threshold = value
+
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get the value for a key-value style config.
 
@@ -800,34 +898,6 @@ class DataContext:
         workers.
         """
         self.dataset_logger_id = dataset_id
-
-    @property
-    def checkpoint_config(self) -> Optional[CheckpointConfig]:
-        """Get the checkpoint configuration."""
-        return self._checkpoint_config
-
-    @checkpoint_config.setter
-    def checkpoint_config(
-        self, value: Optional[Union[CheckpointConfig, Dict[str, Any]]]
-    ) -> None:
-        """Set the checkpoint configuration."""
-        if value is None:
-            self._checkpoint_config = None
-        elif isinstance(value, dict):
-            if "override_backend" in value:
-                if not isinstance(value["override_backend"], str):
-                    raise TypeError(
-                        "Expected 'override_backend' to be a string,"
-                        f" but got {type(value['override_backend'])}."
-                    )
-                value["override_backend"] = CheckpointBackend[value["override_backend"]]
-            self._checkpoint_config = CheckpointConfig(**value)
-        elif isinstance(value, CheckpointConfig):
-            self._checkpoint_config = value
-        else:
-            raise TypeError(
-                "checkpoint_config must be a CheckpointConfig instance, a dict, or None."
-            )
 
 
 # Backwards compatibility alias.
