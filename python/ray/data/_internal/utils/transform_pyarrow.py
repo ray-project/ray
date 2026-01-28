@@ -10,7 +10,15 @@ def _is_pa_extension_type(pa_type: "pyarrow.lib.DataType") -> bool:
     """Whether the provided Arrow Table column is an extension array, using an Arrow
     extension type.
     """
-    return isinstance(pa_type, pyarrow.ExtensionType)
+    # NOTE: Native Tensors are also BaseExtensionType
+    return isinstance(pa_type, pyarrow.BaseExtensionType)
+
+
+def _is_native_tensor_type(t: "pyarrow.BaseExtentionType") -> bool:
+    """Whether the provided Arrow Table column is an native Tensor array"""
+    from ray.data.extensions import FixedShapeTensorType
+
+    return FixedShapeTensorType is not None and isinstance(t, FixedShapeTensorType)
 
 
 def _concatenate_extension_column(
@@ -33,7 +41,7 @@ def _concatenate_extension_column(
         get_arrow_extension_tensor_types,
     )
 
-    if not _is_pa_extension_type(ca.type):
+    if not (_is_pa_extension_type(ca.type) or _is_native_tensor_type(ca.type)):
         raise ValueError("Chunked array isn't an extension array: {ca}")
 
     tensor_extension_types = get_arrow_extension_tensor_types()
