@@ -1,0 +1,14 @@
+# Wanda spec discovery configuration.
+#
+# Lists directories (relative to this file) to scan for .wanda.yaml specs.
+# When a spec depends on an image with default prefix cr.ray.io/rayproject/,
+# wanda looks for a matching local spec by name and builds it instead of pulling.
+#
+# Note: In CI mode (-rayci), dependencies are NOT rebuilt - they are assumed
+# to have been built by prior pipeline steps and are pulled from the work repo.
+
+# Wheel building
+ci/docker/ray-wheel.wanda.yaml
+ci/docker/ray-core.wanda.yaml
+ci/docker/ray-java.wanda.yaml
+ci/docker/ray-dashboard.wanda.yaml
