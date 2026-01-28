@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 log.generate_logging_config()
 logger = logging.getLogger(__name__)
 
+# Add test log statement
+logger.info("=== TEST: Custom wheel changes detected! ===")
 
 def _configure_system():
     import os
