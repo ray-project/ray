@@ -8,7 +8,6 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 
 __all__ = [
     "Connection",
-    "Cursor",
     "SQLDatasource",
 ]
 
