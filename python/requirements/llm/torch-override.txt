@@ -1,0 +1,2 @@
+# Override vLLM's torch==2.9.1+cpu requirement to allow CUDA variants
+torch>=2.9.0
