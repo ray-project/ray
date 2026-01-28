@@ -848,8 +848,10 @@ def controller_health(address: str, output_json: bool):
                 ),
                 end="",
             )
-    except Exception as e:
-        cli_logger.error(f"Failed to get controller health metrics: {e}")
+    except Exception:
+        cli_logger.error(
+            "Failed to get controller health metrics, see the controller logs for more details."
+        )
         sys.exit(1)
 
 

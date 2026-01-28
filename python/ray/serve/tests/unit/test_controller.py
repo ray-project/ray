@@ -546,18 +546,46 @@ class TestCollectHealthMetrics:
         assert 0.4 < loops_per_second < 0.6
 
     def test_component_update_durations_tracked(self):
-        """Test that component update durations are tracked."""
+        """Test that component update durations are tracked with DurationStats."""
         tracker = ControllerHealthMetricsTracker()
 
-        tracker.last_dsm_update_duration_s = 0.1
-        tracker.last_asm_update_duration_s = 0.2
-        tracker.last_proxy_update_duration_s = 0.3
-        tracker.last_node_update_duration_s = 0.05
+        # Record some component update durations
+        dsm_durations = [0.1, 0.2, 0.3, 0.4, 0.5]
+        asm_durations = [0.2, 0.3, 0.4, 0.5, 0.6]
+        proxy_durations = [0.3, 0.4, 0.5, 0.6, 0.7]
+        node_durations = [0.05, 0.06, 0.07, 0.08, 0.09]
 
-        assert tracker.last_dsm_update_duration_s == 0.1
-        assert tracker.last_asm_update_duration_s == 0.2
-        assert tracker.last_proxy_update_duration_s == 0.3
-        assert tracker.last_node_update_duration_s == 0.05
+        for d in dsm_durations:
+            tracker.record_dsm_update_duration(d)
+        for d in asm_durations:
+            tracker.record_asm_update_duration(d)
+        for d in proxy_durations:
+            tracker.record_proxy_update_duration(d)
+        for d in node_durations:
+            tracker.record_node_update_duration(d)
+
+        # Collect metrics and verify DurationStats
+        metrics = tracker.collect_metrics()
+
+        assert metrics.deployment_state_update_duration_s is not None
+        assert metrics.deployment_state_update_duration_s.mean == 0.3
+        assert metrics.deployment_state_update_duration_s.min == 0.1
+        assert metrics.deployment_state_update_duration_s.max == 0.5
+
+        assert metrics.application_state_update_duration_s is not None
+        assert metrics.application_state_update_duration_s.mean == 0.4
+        assert metrics.application_state_update_duration_s.min == 0.2
+        assert metrics.application_state_update_duration_s.max == 0.6
+
+        assert metrics.proxy_state_update_duration_s is not None
+        assert metrics.proxy_state_update_duration_s.mean == 0.5
+        assert metrics.proxy_state_update_duration_s.min == 0.3
+        assert metrics.proxy_state_update_duration_s.max == 0.7
+
+        assert metrics.node_update_duration_s is not None
+        assert abs(metrics.node_update_duration_s.mean - 0.07) < 0.0001
+        assert metrics.node_update_duration_s.min == 0.05
+        assert metrics.node_update_duration_s.max == 0.09
 
 
 class TestControllerHealthMetricsTracker:
@@ -615,6 +643,54 @@ class TestControllerHealthMetricsTracker:
         assert len(tracker.replica_metrics_delays) == 10
         assert tracker.handle_metrics_delays[-1] == 90.0
         assert tracker.replica_metrics_delays[-1] == 45.0
+
+    def test_record_dsm_update_duration(self):
+        """Test recording deployment state manager update durations."""
+        tracker = ControllerHealthMetricsTracker()
+
+        tracker.record_dsm_update_duration(0.1)
+        assert len(tracker.dsm_update_durations) == 1
+        assert tracker.dsm_update_durations[-1] == 0.1
+
+        tracker.record_dsm_update_duration(0.2)
+        assert len(tracker.dsm_update_durations) == 2
+        assert tracker.dsm_update_durations[-1] == 0.2
+
+    def test_record_asm_update_duration(self):
+        """Test recording application state manager update durations."""
+        tracker = ControllerHealthMetricsTracker()
+
+        tracker.record_asm_update_duration(0.15)
+        assert len(tracker.asm_update_durations) == 1
+        assert tracker.asm_update_durations[-1] == 0.15
+
+    def test_record_proxy_update_duration(self):
+        """Test recording proxy state update durations."""
+        tracker = ControllerHealthMetricsTracker()
+
+        tracker.record_proxy_update_duration(0.25)
+        assert len(tracker.proxy_update_durations) == 1
+        assert tracker.proxy_update_durations[-1] == 0.25
+
+    def test_record_node_update_duration(self):
+        """Test recording node update durations."""
+        tracker = ControllerHealthMetricsTracker()
+
+        tracker.record_node_update_duration(0.05)
+        assert len(tracker.node_update_durations) == 1
+        assert tracker.node_update_durations[-1] == 0.05
+
+    def test_component_duration_rolling_window(self):
+        """Test that component duration rolling windows respect max size."""
+        tracker = ControllerHealthMetricsTracker()
+
+        # Record more than the max history size
+        for i in range(_HEALTH_METRICS_HISTORY_SIZE + 50):
+            tracker.record_dsm_update_duration(float(i))
+
+        assert len(tracker.dsm_update_durations) == _HEALTH_METRICS_HISTORY_SIZE
+        # The oldest values should have been dropped
+        assert tracker.dsm_update_durations[0] == 50.0
 
 
 if __name__ == "__main__":

@@ -747,6 +747,20 @@ def test_get_health_metrics(serve_instance):
     assert "max" in loop_stats
     assert loop_stats["mean"] > 0
 
+    # Verify DurationStats structure for component update durations
+    for field in [
+        "deployment_state_update_duration_s",
+        "application_state_update_duration_s",
+        "proxy_state_update_duration_s",
+        "node_update_duration_s",
+    ]:
+        stats = metrics[field]
+        assert stats is not None, f"{field} should not be None"
+        assert "mean" in stats, f"{field} should have 'mean'"
+        assert "std" in stats, f"{field} should have 'std'"
+        assert "min" in stats, f"{field} should have 'min'"
+        assert "max" in stats, f"{field} should have 'max'"
+
     # Verify the metrics are JSON serializable
     metrics_json = json.dumps(metrics)
     assert isinstance(metrics_json, str)

@@ -69,11 +69,11 @@ class ControllerHealthMetrics(BaseModel):
     # Event loop health
     num_asyncio_tasks: int = 0  # Number of pending asyncio tasks
 
-    # Component update durations (from last iteration)
-    deployment_state_update_duration_s: float = 0.0
-    application_state_update_duration_s: float = 0.0
-    proxy_state_update_duration_s: float = 0.0
-    node_update_duration_s: float = 0.0
+    # Component update durations (rolling window stats)
+    deployment_state_update_duration_s: Optional[DurationStats] = None
+    application_state_update_duration_s: Optional[DurationStats] = None
+    proxy_state_update_duration_s: Optional[DurationStats] = None
+    node_update_duration_s: Optional[DurationStats] = None
 
     # Autoscaling metrics latency tracking (rolling window stats)
     # These track the delay between when metrics are generated and when they reach controller
@@ -103,12 +103,22 @@ class ControllerHealthMetricsTracker:
         default_factory=lambda: deque(maxlen=_HEALTH_METRICS_HISTORY_SIZE)
     )
 
+    # Rolling history of component update durations
+    dsm_update_durations: Deque[float] = field(
+        default_factory=lambda: deque(maxlen=_HEALTH_METRICS_HISTORY_SIZE)
+    )
+    asm_update_durations: Deque[float] = field(
+        default_factory=lambda: deque(maxlen=_HEALTH_METRICS_HISTORY_SIZE)
+    )
+    proxy_update_durations: Deque[float] = field(
+        default_factory=lambda: deque(maxlen=_HEALTH_METRICS_HISTORY_SIZE)
+    )
+    node_update_durations: Deque[float] = field(
+        default_factory=lambda: deque(maxlen=_HEALTH_METRICS_HISTORY_SIZE)
+    )
+
     # Latest values (used in collect_metrics)
     last_sleep_duration_s: float = 0.0
-    last_dsm_update_duration_s: float = 0.0
-    last_asm_update_duration_s: float = 0.0
-    last_proxy_update_duration_s: float = 0.0
-    last_node_update_duration_s: float = 0.0
     num_control_loops: int = 0
 
     def record_loop_duration(self, duration: float):
@@ -119,6 +129,18 @@ class ControllerHealthMetricsTracker:
 
     def record_replica_metrics_delay(self, delay_ms: float):
         self.replica_metrics_delays.append(delay_ms)
+
+    def record_dsm_update_duration(self, duration: float):
+        self.dsm_update_durations.append(duration)
+
+    def record_asm_update_duration(self, duration: float):
+        self.asm_update_durations.append(duration)
+
+    def record_proxy_update_duration(self, duration: float):
+        self.proxy_update_durations.append(duration)
+
+    def record_node_update_duration(self, duration: float):
+        self.node_update_durations.append(duration)
 
     def collect_metrics(self) -> ControllerHealthMetrics:
         """Collect and return current health metrics."""
@@ -150,6 +172,14 @@ class ControllerHealthMetricsTracker:
             list(self.replica_metrics_delays)
         )
 
+        # Calculate component update duration statistics
+        dsm_update_stats = DurationStats.from_values(list(self.dsm_update_durations))
+        asm_update_stats = DurationStats.from_values(list(self.asm_update_durations))
+        proxy_update_stats = DurationStats.from_values(
+            list(self.proxy_update_durations)
+        )
+        node_update_stats = DurationStats.from_values(list(self.node_update_durations))
+
         # Get memory usage in MB
         # Note: ru_maxrss is in bytes on macOS but kilobytes on Linux
         # The resource module is Unix-only, so we handle Windows gracefully
@@ -177,10 +207,10 @@ class ControllerHealthMetricsTracker:
             expected_sleep_duration_s=CONTROL_LOOP_INTERVAL_S,
             event_loop_delay_s=event_loop_delay,
             num_asyncio_tasks=num_asyncio_tasks,
-            deployment_state_update_duration_s=self.last_dsm_update_duration_s,
-            application_state_update_duration_s=self.last_asm_update_duration_s,
-            proxy_state_update_duration_s=self.last_proxy_update_duration_s,
-            node_update_duration_s=self.last_node_update_duration_s,
+            deployment_state_update_duration_s=dsm_update_stats,
+            application_state_update_duration_s=asm_update_stats,
+            proxy_state_update_duration_s=proxy_update_stats,
+            node_update_duration_s=node_update_stats,
             handle_metrics_delay_ms=handle_delay_stats,
             replica_metrics_delay_ms=replica_delay_stats,
             process_memory_mb=process_memory_mb,

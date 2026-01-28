@@ -565,7 +565,7 @@ class ServeController:
 
             dsm_duration = time.time() - dsm_update_start_time
             self.dsm_update_duration_gauge_s.set(dsm_duration)
-            self._health_metrics_tracker.last_dsm_update_duration_s = dsm_duration
+            self._health_metrics_tracker.record_dsm_update_duration(dsm_duration)
             if not self.done_recovering_event.is_set() and not any_recovering:
                 self.done_recovering_event.set()
                 if num_loops > 0:
@@ -585,7 +585,7 @@ class ServeController:
                 self._refresh_autoscaling_deployments_cache()
             asm_duration = time.time() - asm_update_start_time
             self.asm_update_duration_gauge_s.set(asm_duration)
-            self._health_metrics_tracker.last_asm_update_duration_s = asm_duration
+            self._health_metrics_tracker.record_asm_update_duration(asm_duration)
         except Exception:
             logger.exception("Exception updating application state.")
 
@@ -600,7 +600,7 @@ class ServeController:
         self._update_proxy_nodes()
         node_update_duration = time.time() - node_update_start_time
         self.node_update_duration_gauge_s.set(node_update_duration)
-        self._health_metrics_tracker.last_node_update_duration_s = node_update_duration
+        self._health_metrics_tracker.record_node_update_duration(node_update_duration)
 
         # Don't update proxy_state until after the done recovering event is set,
         # otherwise we may start a new proxy but not broadcast it any
@@ -611,7 +611,7 @@ class ServeController:
                 self.proxy_state_manager.update(proxy_nodes=self._proxy_nodes)
                 proxy_update_duration = time.time() - proxy_update_start_time
                 self.proxy_update_duration_gauge_s.set(proxy_update_duration)
-                self._health_metrics_tracker.last_proxy_update_duration_s = (
+                self._health_metrics_tracker.record_proxy_update_duration(
                     proxy_update_duration
                 )
             except Exception:
@@ -764,7 +764,11 @@ class ServeController:
             - Autoscaling metrics latency (handle/replica)
             - Memory usage
         """
-        return self._health_metrics_tracker.collect_metrics().dict()
+        try:
+            return self._health_metrics_tracker.collect_metrics().dict()
+        except Exception:
+            logger.exception("Exception collecting controller health metrics.")
+            raise
 
     def get_proxy_details(self, node_id: str) -> Optional[ProxyDetails]:
         """Returns the proxy details for the proxy on the given node.
