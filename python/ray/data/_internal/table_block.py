@@ -72,7 +72,7 @@ class TableBlockBuilder(BlockBuilder):
         self._num_compactions = 0
         self._block_type = block_type
 
-    def add(self, item: Union[dict, Mapping, np.ndarray]) -> None:
+    def add(self, item: Union[dict, Mapping]) -> None:
         if hasattr(item, "as_pydict"):
             item = item.as_pydict()
         if not isinstance(item, collections.abc.Mapping):
