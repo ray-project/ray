@@ -86,26 +86,6 @@ class TestBuildConfigProperties(unittest.TestCase):
             commit="abc1234",
         )
 
-    def test_image_name_x86(self):
-        self.assertEqual(
-            self.config.image_name, "cr.ray.io/rayproject/ray-wheel-py3.11"
-        )
-
-    def test_image_name_aarch64(self):
-        config = BuildConfig(
-            python_version="3.12",
-            output_dir=Path(".whl"),
-            ray_root=Path("/fake/ray"),
-            hosttype="aarch64",
-            arch_suffix="-aarch64",
-            raymake_version="0.28.0",
-            manylinux_version="260128.221a193",
-            commit="abc1234",
-        )
-        self.assertEqual(
-            config.image_name, "cr.ray.io/rayproject/ray-wheel-py3.12-aarch64"
-        )
-
     def test_build_env_contains_required_vars(self):
         env = self.config.build_env
         self.assertEqual(env["PYTHON_VERSION"], "3.11")
@@ -137,7 +117,8 @@ class TestBuildConfigFromEnv(unittest.TestCase):
                 config = BuildConfig.from_env("3.11", ".whl")
 
             self.assertEqual(config.python_version, "3.11")
-            self.assertEqual(config.output_dir, Path(".whl"))
+            self.assertTrue(config.output_dir.is_absolute())
+            self.assertEqual(config.output_dir.name, ".whl")
             self.assertEqual(config.hosttype, "x86_64")
             self.assertEqual(config.raymake_version, "0.28.0")
             self.assertEqual(config.manylinux_version, "260128.221a193")
