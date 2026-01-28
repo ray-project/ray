@@ -186,7 +186,7 @@ def test_ordered_queue_out_of_order():
     # Now able to retrieve bundle for key=1
     assert queue.get_next() is bundle1
 
-    # Peek should return bundle0 without removing
+    # `has_next` should return bundle0 without removing
     assert not queue.has_next()
     assert len(queue) == 0
 
