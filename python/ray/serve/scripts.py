@@ -36,6 +36,7 @@ from ray.serve.config import (
 )
 from ray.serve.context import _get_global_client
 from ray.serve.deployment import Application, deployment_to_schema
+from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     LoggingConfig,
     ServeApplicationSchema,
@@ -848,9 +849,13 @@ def controller_health(address: str, output_json: bool):
                 ),
                 end="",
             )
+    except RayServeException as e:
+        cli_logger.error(str(e))
+        sys.exit(1)
     except Exception:
         cli_logger.error(
-            "Failed to get controller health metrics, see the controller logs for more details."
+            "Failed to get controller health metrics, "
+            "see the controller logs for more details."
         )
         sys.exit(1)
 
