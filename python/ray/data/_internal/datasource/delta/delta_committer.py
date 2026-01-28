@@ -16,8 +16,8 @@ from ray.data._internal.datasource.delta.utils import (
     infer_partition_type,
     join_delta_path,
     to_pyarrow_schema,
-    types_compatible,
     validate_file_path,
+    validate_schema_type_compatibility,
 )
 
 if TYPE_CHECKING:
@@ -136,21 +136,7 @@ def commit_to_existing_table(
         inferred_schema = None
 
     if inferred_schema:
-        existing_cols = {f.name: f.type for f in existing_schema}
-        inferred_cols = {f.name: f.type for f in inferred_schema}
-
-        # Check for type mismatches in existing columns (not allowed)
-        mismatches = [
-            c
-            for c in existing_cols
-            if c in inferred_cols
-            and not types_compatible(existing_cols[c], inferred_cols[c])
-        ]
-        if mismatches:
-            raise ValueError(
-                f"Schema mismatch: type mismatches for existing columns: {mismatches}"
-            )
-
+        validate_schema_type_compatibility(existing_schema, inferred_schema)
         # New columns are allowed (Delta Lake adds them automatically)
         # Missing columns are OK (partial writes)
 

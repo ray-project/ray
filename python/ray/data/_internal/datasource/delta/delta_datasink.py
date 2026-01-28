@@ -558,7 +558,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         if self.mode == SaveMode.UPSERT:
             commit_upsert(
                 table,
-            file_actions,
+                file_actions,
                 upsert_keys,
                 self._get_upsert_cols(),
                 self.partition_cols,
@@ -567,14 +567,14 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         else:
             commit_to_existing_table(
                 table,
-            file_actions,
+                file_actions,
                 self.mode.value,
                 self.partition_cols,
                 self.schema,
                 self.write_kwargs,
                 self.table_uri,
                 self.filesystem,
-        )
+            )
 
     def _collect_write_results(
         self, write_result: WriteResult[DeltaWriteResult]

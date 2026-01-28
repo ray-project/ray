@@ -264,6 +264,36 @@ def types_compatible(expected: pa.DataType, actual: pa.DataType) -> bool:
     return False
 
 
+def validate_schema_type_compatibility(
+    existing_schema: pa.Schema, incoming_schema: pa.Schema
+) -> None:
+    """Validate that incoming schema is compatible with existing schema.
+
+    Checks for type mismatches in existing columns. New columns are allowed
+    (schema evolution), and missing columns are OK (partial writes).
+
+    Args:
+        existing_schema: Schema from existing Delta table.
+        incoming_schema: Schema from incoming data.
+
+    Raises:
+        ValueError: If type mismatches are found in existing columns.
+    """
+    existing_cols = {f.name: f.type for f in existing_schema}
+    incoming_cols = {f.name: f.type for f in incoming_schema}
+
+    mismatches = [
+        c
+        for c in existing_cols
+        if c in incoming_cols
+        and not types_compatible(existing_cols[c], incoming_cols[c])
+    ]
+    if mismatches:
+        raise ValueError(
+            f"Schema mismatch: type mismatches for existing columns: {mismatches}"
+        )
+
+
 def convert_schema_to_delta(schema: pa.Schema) -> Any:
     """Convert PyArrow schema to Delta Lake schema."""
     from deltalake import Schema as DeltaSchema

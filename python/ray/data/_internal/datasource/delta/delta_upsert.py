@@ -8,20 +8,17 @@ import datetime
 import functools
 import logging
 import math
-from typing import Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 import pyarrow as pa
 import pyarrow.compute as pc
 
-if __name__ == "__main__":
+if TYPE_CHECKING:
     from deltalake import DeltaTable
-    from deltalake.transaction import AddAction, CommitProperties
-else:
-    from typing import TYPE_CHECKING
+    from deltalake.transaction import AddAction
 
-    if TYPE_CHECKING:
-        from deltalake import DeltaTable
-        from deltalake.transaction import AddAction, CommitProperties
+# CommitProperties is used at runtime, so import it unconditionally
+from deltalake.transaction import CommitProperties
 
 logger = logging.getLogger(__name__)
 
