@@ -1551,7 +1551,7 @@ def test_runtime_metrics(ray_start_regular_shared):
     # Tolerance for floating-point rounding errors (100ms)
     # Individual operator times may appear slightly larger than total time
     # due to rounding (e.g., 2.265s rounds to 2.27s for operator but 2.26s for total)
-    TOLERANCE = 0.1
+    TOLERANCE = 0.02
 
     for time_s, percent in metrics_dict.values():
         assert time_s <= total_time + TOLERANCE
