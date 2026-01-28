@@ -29,15 +29,16 @@ namespace ray {
 /// 2. Perform a final flush
 /// 3. Wait for the flush operation to complete
 ///
+/// Warnings are logged if any wait times out.
+///
 /// @param mutex The mutex protecting the condition variable
 /// @param cv The condition variable to wait on
 /// @param is_idle_fn A callable that returns true when there are no in-flight operations
 /// @param flush_fn A callable that performs the final flush
 /// @param timeout The maximum time to wait for shutdown
 /// @param component_name Name of the component for logging (e.g., "TaskEventBuffer")
-/// @return true if shutdown completed successfully, false if timed out
 template <typename IsIdleFn, typename FlushFn>
-bool GracefulShutdownWithFlush(absl::Mutex &mutex,
+void GracefulShutdownWithFlush(absl::Mutex &mutex,
                                absl::CondVar &cv,
                                IsIdleFn &&is_idle_fn,
                                FlushFn &&flush_fn,
@@ -59,14 +60,19 @@ bool GracefulShutdownWithFlush(absl::Mutex &mutex,
 
   // First wait for any in-flight operations to complete, then flush, then wait again.
   // This ensures no data is lost during shutdown.
-  if (wait_until_idle(shutdown_deadline)) {
-    flush_fn();
-    wait_until_idle(shutdown_deadline);
-    return true;
-  } else {
-    RAY_LOG(WARNING) << component_name << " shutdown timed out waiting for gRPC. "
+  if (!wait_until_idle(shutdown_deadline)) {
+    RAY_LOG(WARNING) << component_name
+                     << " shutdown timed out waiting for in-flight operations. "
                      << "Some events may be lost.";
-    return false;
+    return;
+  }
+
+  flush_fn();
+
+  if (!wait_until_idle(shutdown_deadline)) {
+    RAY_LOG(WARNING) << component_name
+                     << " shutdown timed out waiting for flush to complete. "
+                     << "Some events may be lost.";
   }
 }
 
