@@ -1,7 +1,6 @@
 import argparse
 import dataclasses
 import inspect
-import os
 import typing
 from typing import TYPE_CHECKING, Any, AsyncGenerator, List, Optional, Tuple, Union
 
@@ -158,13 +157,6 @@ def _clear_current_platform_cache():
     https://github.com/vllm-project/vllm/issues/7890
     """
     from vllm.platforms import current_platform
-
-    # TODO(seiji): remove this once https://github.com/vllm-project/vllm/pull/18979 is merged
-    if (
-        "CUDA_VISIBLE_DEVICES" in os.environ
-        and os.environ["CUDA_VISIBLE_DEVICES"] == ""
-    ):
-        del os.environ["CUDA_VISIBLE_DEVICES"]
 
     # This check is just to future proof this implementation
     # in case vllm removes their lru_cache decorator

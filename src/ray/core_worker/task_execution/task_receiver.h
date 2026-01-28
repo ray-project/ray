@@ -51,6 +51,7 @@ class TaskReceiver {
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       RepeatedObjectRefCount *borrower_refs,
       bool *is_retryable_error,
+      std::string *actor_repr_name,
       std::string *application_error)>;
 
   TaskReceiver(instrumented_io_context &task_execution_service,
@@ -96,12 +97,6 @@ class TaskReceiver {
   bool CancelQueuedActorTask(const WorkerID &caller_worker_id, const TaskID &task_id);
 
   void Stop();
-
-  /// Set the actor repr name for an actor.
-  ///
-  /// The actor repr name is only available after actor creation task has been run since
-  /// the repr name could include data only initialized during the creation task.
-  void SetActorReprName(const std::string &repr_name);
 
  private:
   // True once shutdown begins. Requests to execute new tasks will be rejected.
@@ -153,10 +148,6 @@ class TaskReceiver {
   /// Whether this actor executes tasks out of order with respect to client submission
   /// order.
   bool allow_out_of_order_execution_ = false;
-
-  /// The repr name of the actor instance for an anonymous actor.
-  /// This is only available after the actor creation task.
-  std::string actor_repr_name_;
 
   /// The concurrency groups of this worker's actor, computed from actor creation task
   /// spec.

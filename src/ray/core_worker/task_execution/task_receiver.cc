@@ -45,6 +45,7 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
       std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
       bool is_retryable_error = false;
+      std::string actor_repr_name;
       std::string application_error;
       auto status = task_handler_(accepted_task_spec,
                                   std::move(resource_ids),
@@ -53,6 +54,7 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                   &streaming_generator_returns,
                                   reply->mutable_borrowed_refs(),
                                   &is_retryable_error,
+                                  &actor_repr_name,
                                   &application_error);
       reply->set_is_retryable_error(is_retryable_error);
       reply->set_is_application_error(!application_error.empty());
@@ -135,13 +137,13 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                              << ", actor_id: " << accepted_task_spec.ActorCreationId()
                              << ", status: " << status;
           } else {
-            if (!actor_repr_name_.empty()) {
-              reply->set_actor_repr_name(actor_repr_name_);
+            if (!actor_repr_name.empty()) {
+              reply->set_actor_repr_name(actor_repr_name);
             }
             RAY_LOG(INFO) << "Actor creation task finished, task_id: "
                           << accepted_task_spec.TaskId()
                           << ", actor_id: " << accepted_task_spec.ActorCreationId()
-                          << ", actor_repr_name: " << actor_repr_name_;
+                          << ", actor_repr_name: " << actor_repr_name;
           }
         }
       }
@@ -311,10 +313,6 @@ void TaskReceiver::Stop() {
   if (normal_task_execution_queue_) {
     normal_task_execution_queue_->Stop();
   }
-}
-
-void TaskReceiver::SetActorReprName(const std::string &repr_name) {
-  actor_repr_name_ = repr_name;
 }
 
 }  // namespace core

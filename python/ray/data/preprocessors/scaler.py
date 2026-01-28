@@ -15,6 +15,11 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset
 
+# Small epsilon value to handle near-zero values in division operations.
+# This prevents numerical instability when scaling columns with very small
+# variance or range. Similar to sklearn's approach.
+_EPSILON = 1e-8
+
 
 @PublicAPI(stability="alpha")
 @SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.standard_scaler")
@@ -113,9 +118,10 @@ class StandardScaler(SerializablePreprocessorBase):
                 s[:] = np.nan
                 return s
 
-            # Handle division by zero.
-            # TODO: extend this to handle near-zero values.
-            if s_std == 0:
+            # Handle division by zero and near-zero values for numerical stability.
+            # If standard deviation is very small (constant or near-constant column),
+            # treat it as 1 to avoid numerical instability.
+            if s_std < _EPSILON:
                 s_std = 1
 
             return (s - s_mean) / s_std
@@ -125,7 +131,8 @@ class StandardScaler(SerializablePreprocessorBase):
 
     @staticmethod
     def _scale_column(column: pa.Array, mean: float, std: float) -> pa.Array:
-        if std == 0:
+        # Handle division by zero and near-zero values for numerical stability.
+        if std < _EPSILON:
             std = 1
 
         return pc.divide(
@@ -267,9 +274,10 @@ class MinMaxScaler(SerializablePreprocessorBase):
             s_max = self.stats_[f"max({s.name})"]
             diff = s_max - s_min
 
-            # Handle division by zero.
-            # TODO: extend this to handle near-zero values.
-            if diff == 0:
+            # Handle division by zero and near-zero values for numerical stability.
+            # If range is very small (constant or near-constant column),
+            # treat it as 1 to avoid numerical instability.
+            if diff < _EPSILON:
                 diff = 1
 
             return (s - s_min) / diff
