@@ -696,7 +696,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 "batch_uuid": batch_uuid.hex,
                 "time_taken_llm": time_taken_llm,
                 "params": str(request.params),
-                "__inference_error__": None,
+                "__inference_error__": "",
             }
         except _VLLM_FATAL_ERRORS as e:
             # Fatal engine errors (e.g., EngineDeadError) indicate the vLLM

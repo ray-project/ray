@@ -767,8 +767,8 @@ async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
 
     assert len(results) == 3
 
-    errors = [r for r in results if r.get("__inference_error__") is not None]
-    successes = [r for r in results if r.get("__inference_error__") is None]
+    errors = [r for r in results if r.get("__inference_error__", "")]
+    successes = [r for r in results if not r.get("__inference_error__", "")]
 
     assert len(errors) == 1
     assert len(successes) == 2
