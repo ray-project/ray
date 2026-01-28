@@ -103,6 +103,8 @@ from ray.includes.common cimport (
     CLabelMatchExpression,
     CLabelIn,
     CLabelNotIn,
+    CLabelSelector,
+    CNodeResources,
     CRayFunction,
     CWorkerType,
     CJobConfig,
@@ -141,6 +143,7 @@ from ray.includes.common cimport (
     PersistPort,
     WaitForPersistedPort,
     CWaitForPersistedPortResult,
+    SetNodeResourcesLabels,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -596,6 +599,23 @@ cdef int prepare_label_selector(
         c_label_selector[0].AddConstraint(key.encode("utf-8"), value.encode("utf-8"))
 
     return 0
+
+def node_labels_match_selector(node_labels: Dict[str, str], selector: Dict[str, str]) -> bool:
+    """
+    Checks if the given node labels satisfy the label selector. This helper function exposes
+    the C++ logic for determining if a node satisfies a label selector to the Python layer.
+    """
+    cdef:
+        CNodeResources c_node_resources
+        CLabelSelector c_label_selector
+        unordered_map[c_string, c_string] c_labels_map
+
+    prepare_labels(node_labels, &c_labels_map)
+    SetNodeResourcesLabels(c_node_resources, c_labels_map)
+    prepare_label_selector(selector, &c_label_selector)
+
+    # Return whether the node resources satisfy the label constraint.
+    return c_node_resources.HasRequiredLabels(c_label_selector)
 
 cdef int prepare_fallback_strategy(
         list fallback_strategy,
