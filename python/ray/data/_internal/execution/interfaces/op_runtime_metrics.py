@@ -894,27 +894,29 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_info.num_rows_produced += num_rows_produced
 
         for block_ref, meta in output.blocks:
+            exec_stats = meta.exec_stats
+
             assert (
-                meta.exec_stats is not None and
-                meta.exec_stats.wall_time_s is not None and
-                meta.exec_stats.block_ser_time_s is not None
+                exec_stats is not None and
+                exec_stats.wall_time_s is not None and
+                exec_stats.block_ser_time_s is not None
             )
 
-            self.block_generation_time += meta.exec_stats.wall_time_s
-            self.block_serialization_time_s += meta.exec_stats.block_ser_time_s
+            self.block_generation_time += exec_stats.wall_time_s
+            self.block_serialization_time_s += exec_stats.block_ser_time_s
 
-            task_info.cum_block_gen_time_s += meta.exec_stats.wall_time_s
-            task_info.cum_block_ser_time_s += meta.exec_stats.block_ser_time_s
+            task_info.cum_block_gen_time_s += exec_stats.wall_time_s
+            task_info.cum_block_ser_time_s += exec_stats.block_ser_time_s
 
             assert meta.num_rows is not None
 
             trace_allocation(block_ref, "operator_output")
 
-            if meta.exec_stats.max_uss_bytes is not None:
+            if exec_stats.max_uss_bytes is not None:
                 if self._cum_max_uss_bytes is None:
-                    self._cum_max_uss_bytes = meta.exec_stats.max_uss_bytes
+                    self._cum_max_uss_bytes = exec_stats.max_uss_bytes
                 else:
-                    self._cum_max_uss_bytes += meta.exec_stats.max_uss_bytes
+                    self._cum_max_uss_bytes += exec_stats.max_uss_bytes
 
         # Update per node metrics
         if self._per_node_metrics_enabled:
