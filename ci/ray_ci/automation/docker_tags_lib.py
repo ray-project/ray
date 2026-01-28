@@ -10,6 +10,7 @@ from dateutil import parser
 
 import docker
 from ci.ray_ci.automation.crane_lib import (
+    CraneError,
     call_crane_copy,
     call_crane_index,
     call_crane_manifest,
@@ -475,16 +476,17 @@ def copy_tag_to_aws_ecr(tag: str, aws_ecr_repo: str) -> bool:
     _, repo_tag = tag.split("/")
     tag_name = repo_tag.split(":")[1]
     logger.info(f"Copying from {tag} to {aws_ecr_repo}:{tag_name}......")
-    return_code, output = call_crane_copy(
-        source=tag,
-        destination=f"{aws_ecr_repo}:{tag_name}",
-    )
-    if return_code:
+    try:
+        call_crane_copy(
+            source=tag,
+            destination=f"{aws_ecr_repo}:{tag_name}",
+        )
+        logger.info(f"Copied {tag} to {aws_ecr_repo}:{tag_name} successfully")
+        return True
+    except CraneError as e:
         logger.info(f"Failed to copy {tag} to {aws_ecr_repo}:{tag_name}......")
-        logger.info(f"Error: {output}")
+        logger.info(f"Error: {e}")
         return False
-    logger.info(f"Copied {tag} to {aws_ecr_repo}:{tag_name} successfully")
-    return True
 
 
 def backup_release_tags(
@@ -524,19 +526,21 @@ def generate_index(index_name: str, tags: List[str]) -> bool:
     print(f"Generating index {index_name} with tags {tags}")
     # Make sure tag is an image and not an index
     for tag in tags:
-        return_code, output = call_crane_manifest(tag)
-        if return_code:
+        try:
+            output = call_crane_manifest(tag)
+        except CraneError as e:
             logger.info(f"Failed to get manifest for {tag}")
-            logger.info(f"Error: {output}")
+            logger.info(f"Error: {e}")
             return False
         if "application/vnd.docker.distribution.manifest.list.v2+json" in output:
             logger.info(f"Tag {tag} is an index, not an image")
             return False
 
-    return_code, output = call_crane_index(index_name=index_name, tags=tags)
-    if return_code:
+    try:
+        call_crane_index(index_name=index_name, tags=tags)
+        logger.info(f"Generated index {index_name} successfully")
+        return True
+    except (CraneError, ValueError) as e:
         logger.info(f"Failed to generate index {index_name}......")
-        logger.info(f"Error: {output}")
+        logger.info(f"Error: {e}")
         return False
-    logger.info(f"Generated index {index_name} successfully")
-    return True

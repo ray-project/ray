@@ -196,8 +196,9 @@ include "includes/rpc_token_authentication.pxi"
 
 import ray
 from ray.exceptions import (
-    RayActorError,
+    ActorHandleNotFoundError,
     ActorDiedError,
+    RayActorError,
     RayError,
     RaySystemError,
     RayTaskError,
@@ -504,11 +505,6 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
     for i in range(c_node_ids.size()):
         node_id = c_node_ids[i].Hex().decode("ascii")
         node_ids.add(node_id)
-
-    # add primary_node_id into node_ids
-    if not c_object_location.GetPrimaryNodeID().IsNil():
-        node_ids.add(
-            c_object_location.GetPrimaryNodeID().Hex().decode("ascii"))
 
     # add spilled_node_id into node_ids
     if not c_object_location.GetSpilledNodeID().IsNil():
@@ -2913,9 +2909,6 @@ cdef class CoreWorker:
         return CCoreWorkerProcess.GetCoreWorker(
             ).UpdateTaskIsDebuggerPaused(c_task_id, is_debugger_paused)
 
-    def set_webui_display(self, key, message):
-        CCoreWorkerProcess.GetCoreWorker().SetWebuiDisplay(key, message)
-
     def set_actor_repr_name(self, repr_name):
         CCoreWorkerProcess.GetCoreWorker().SetActorReprName(repr_name)
 
@@ -3799,10 +3792,16 @@ cdef class CoreWorker:
     def kill_actor(self, ActorID actor_id, c_bool no_restart):
         cdef:
             CActorID c_actor_id = actor_id.native()
+            CRayStatus status = CRayStatus.OK()
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().KillActor(
-                  c_actor_id, True, no_restart))
+            status = CCoreWorkerProcess.GetCoreWorker().KillActor(
+                c_actor_id, True, no_restart)
+
+        if status.IsNotFound():
+            raise ActorHandleNotFoundError(status.message().decode())
+
+        check_status(status)
 
     def cancel_task(self, ObjectRef object_ref, c_bool force_kill,
                     c_bool recursive):

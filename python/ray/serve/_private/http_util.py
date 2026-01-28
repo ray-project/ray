@@ -696,6 +696,48 @@ def _apply_middlewares(app: ASGIApp, middlewares: List[Callable]) -> ASGIApp:
     return app
 
 
+def _inject_root_path(app: ASGIApp, root_path: str):
+    """Middleware to inject root_path to the ASGI app."""
+    if not root_path:
+        return app
+
+    async def scope_root_path_middleware(scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            scope["root_path"] = root_path
+        await app(scope, receive, send)
+
+    return scope_root_path_middleware
+
+
+def _apply_root_path(app: ASGIApp, root_path: str):
+    """Handle root_path parameter across different uvicorn versions.
+
+    For uvicorn >= 0.26.0, root_path must be injected into the ASGI scope
+    rather than passed to uvicorn.Config, as uvicorn changed its behavior
+    in version 0.26.0.
+
+    Reference: https://uvicorn.dev/release-notes/#0260-january-16-2024
+
+    Args:
+        app: The ASGI application
+        root_path: The root path prefix for all routes
+
+    Returns:
+        Tuple of (app, root_path) where:
+        - app may be wrapped with middleware (for uvicorn >= 0.26.0)
+        - root_path is "" for uvicorn >= 0.26.0, unchanged otherwise
+    """
+    if not root_path:
+        return app, root_path
+
+    uvicorn_version = version.parse(uvicorn.__version__)
+    if uvicorn_version < version.parse("0.26.0"):
+        return app, root_path
+    else:
+        app = _inject_root_path(app, root_path)
+        return app, ""
+
+
 async def start_asgi_http_server(
     app: ASGIApp,
     http_options: HTTPOptions,
@@ -708,6 +750,7 @@ async def start_asgi_http_server(
     Returns a task that blocks until the server exits (e.g., due to error).
     """
     app = _apply_middlewares(app, http_options.middlewares)
+    app, root_path = _apply_root_path(app, http_options.root_path)
 
     sock = socket.socket(
         socket.AF_INET6 if is_ipv6(http_options.host) else socket.AF_INET,
@@ -754,7 +797,7 @@ async def start_asgi_http_server(
             factory=True,
             host=http_options.host,
             port=http_options.port,
-            root_path=http_options.root_path,
+            root_path=root_path,
             timeout_keep_alive=http_options.keep_alive_timeout_s,
             loop=event_loop,
             lifespan="off",
