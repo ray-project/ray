@@ -108,7 +108,7 @@ def test_block_completion_time_histogram():
 
         # Manually set the task info to simulate the block generation
         metrics._running_tasks[i].num_outputs = num_blocks
-        metrics._running_tasks[i].cum_block_gen_time = total_time
+        metrics._running_tasks[i].cum_block_gen_time_s = total_time
 
         # Complete the task
         metrics.on_task_finished(i, None)  # None means no exception
