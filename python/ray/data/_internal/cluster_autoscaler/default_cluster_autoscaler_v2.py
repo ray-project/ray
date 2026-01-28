@@ -176,7 +176,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._resource_utilization_calculator = resource_utilization_calculator
         # Threshold of cluster utilization to trigger scaling up.
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
-        self._cluster_scaling_up_delta = int(math.ceil(self._cluster_scaling_up_delta))
+        self._cluster_scaling_up_delta = int(math.ceil(cluster_scaling_up_delta))
         self._min_gap_between_autoscaling_requests_s = (
             min_gap_between_autoscaling_requests_s
         )
