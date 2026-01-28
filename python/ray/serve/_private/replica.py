@@ -120,6 +120,7 @@ from ray.serve.exceptions import (
     BackPressureError,
     DeploymentUnavailableError,
     RayServeException,
+    gRPCStatusError,
 )
 from ray.serve.generated.serve_pb2 import (
     ASGIRequest,
@@ -972,9 +973,13 @@ class ReplicaBase(ABC):
         )
         with self._wrap_request(request_metadata, ray_trace_ctx):
             async with self._start_request(request_metadata):
-                return await self._user_callable_wrapper.call_user_method(
-                    request_metadata, request_args, request_kwargs
-                )
+                try:
+                    return await self._user_callable_wrapper.call_user_method(
+                        request_metadata, request_args, request_kwargs
+                    )
+                except Exception as e:
+                    # For gRPC requests, wrap exception with user-set status code
+                    raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
 
     async def handle_request_streaming(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
@@ -987,22 +992,45 @@ class ReplicaBase(ABC):
             request_metadata, ray_trace_ctx
         ) as status_code_callback:
             async with self._start_request(request_metadata):
-                if request_metadata.is_http_request:
-                    scope, receive = request_args
-                    async for msgs in self._user_callable_wrapper.call_http_entrypoint(
-                        request_metadata,
-                        status_code_callback,
-                        scope,
-                        receive,
-                    ):
-                        yield pickle.dumps(msgs)
-                else:
-                    async for result in self._user_callable_wrapper.call_user_generator(
-                        request_metadata,
-                        request_args,
-                        request_kwargs,
-                    ):
-                        yield result
+                try:
+                    if request_metadata.is_http_request:
+                        scope, receive = request_args
+                        async for msgs in self._user_callable_wrapper.call_http_entrypoint(
+                            request_metadata,
+                            status_code_callback,
+                            scope,
+                            receive,
+                        ):
+                            yield pickle.dumps(msgs)
+                    else:
+                        async for result in self._user_callable_wrapper.call_user_generator(
+                            request_metadata,
+                            request_args,
+                            request_kwargs,
+                        ):
+                            yield result
+                except Exception as e:
+                    # For gRPC requests, wrap exception with user-set status code
+                    raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
+
+    def _maybe_wrap_grpc_exception(
+        self, e: BaseException, request_metadata: RequestMetadata
+    ) -> BaseException:
+        """Wrap exception with gRPCStatusError if user set a status code.
+
+        For gRPC requests, if the user set a status code on the grpc_context before
+        raising an exception, we wrap the exception with gRPCStatusError to preserve
+        the user's intended status code through the error handling path.
+        """
+        if request_metadata.is_grpc_request:
+            grpc_context = request_metadata.grpc_context
+            if grpc_context and grpc_context.code():
+                return gRPCStatusError(
+                    original_exception=e,
+                    code=grpc_context.code(),
+                    details=grpc_context.details(),
+                )
+        return e
 
     async def handle_request_with_rejection(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
@@ -1032,26 +1060,30 @@ class ReplicaBase(ABC):
                     num_ongoing_requests=self.get_num_ongoing_requests(),
                 )
 
-                if request_metadata.is_http_request:
-                    scope, receive = request_args
-                    async for msgs in self._user_callable_wrapper.call_http_entrypoint(
-                        request_metadata,
-                        status_code_callback,
-                        scope,
-                        receive,
-                    ):
-                        yield pickle.dumps(msgs)
-                elif request_metadata.is_streaming:
-                    async for result in self._user_callable_wrapper.call_user_generator(
-                        request_metadata,
-                        request_args,
-                        request_kwargs,
-                    ):
-                        yield result
-                else:
-                    yield await self._user_callable_wrapper.call_user_method(
-                        request_metadata, request_args, request_kwargs
-                    )
+                try:
+                    if request_metadata.is_http_request:
+                        scope, receive = request_args
+                        async for msgs in self._user_callable_wrapper.call_http_entrypoint(
+                            request_metadata,
+                            status_code_callback,
+                            scope,
+                            receive,
+                        ):
+                            yield pickle.dumps(msgs)
+                    elif request_metadata.is_streaming:
+                        async for result in self._user_callable_wrapper.call_user_generator(
+                            request_metadata,
+                            request_args,
+                            request_kwargs,
+                        ):
+                            yield result
+                    else:
+                        yield await self._user_callable_wrapper.call_user_method(
+                            request_metadata, request_args, request_kwargs
+                        )
+                except Exception as e:
+                    # For gRPC requests, wrap exception with user-set status code
+                    raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
 
     @abstractmethod
     async def _on_initialized(self):
