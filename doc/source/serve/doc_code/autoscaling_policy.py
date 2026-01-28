@@ -93,11 +93,6 @@ def coordinated_scaling_policy(
 
 # __end_application_level_autoscaling_policy__
 
-# __begin app_level_policy_with_decorator_
-# Ray Serve automatically applies delays, factors, and bounds to application-level policies.
-# __end app_level_policy_with_decorator_
-
-
 # __begin_stateful_application_level_policy__
 from typing import Dict, Tuple, Any
 from ray.serve.config import AutoscalingContext

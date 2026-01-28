@@ -248,6 +248,7 @@ def _apply_app_level_autoscaling_config(
                 final_state[dep_id] = state_per_deployment[dep_id]
                 continue
             # Cold start fast path: 0 replicas bypasses delay logic for immediate scale-up
+            # TO FIX: For cold start path, user state is not returned.
             cold_start_replicas = _get_cold_start_scale_up_replicas(ctx)
             if cold_start_replicas is not None:
                 final_decisions[dep_id], final_state[dep_id] = (
@@ -268,7 +269,9 @@ def _apply_app_level_autoscaling_config(
     return wrapped_policy
 
 
-def _core_replica_queue_length_policy(ctx: AutoscalingContext) -> Tuple[float, Dict]:
+def _core_replica_queue_length_policy(
+    ctx: AutoscalingContext,
+) -> Tuple[float, Dict[str, Any]]:
     num_running_replicas = ctx.current_num_replicas
     config = ctx.config
     target_num_requests = config.get_target_ongoing_requests() * num_running_replicas
@@ -280,7 +283,7 @@ def _core_replica_queue_length_policy(ctx: AutoscalingContext) -> Tuple[float, D
 @PublicAPI(stability="alpha")
 def replica_queue_length_autoscaling_policy(
     ctx: AutoscalingContext,
-) -> Tuple[int, Dict[str, Any]]:
+) -> Tuple[Union[int, float], Dict[str, Any]]:
     """The default autoscaling policy based on basic thresholds for scaling.
     There is a minimum threshold for the average queue length in the cluster
     to scale up and a maximum threshold to scale down. Each period, a 'scale
