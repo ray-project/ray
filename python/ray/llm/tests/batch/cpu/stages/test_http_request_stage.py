@@ -213,13 +213,10 @@ async def test_http_request_udf_with_numpy_payload_server(numpy_payload_server):
         qps=None,
     )
 
-    # construct udf and invoke http_request_stage in map_batches.
-    # Note that default batch_format in map_batches is numpy.
     processor = ProcessorBuilder.build(config)
     ds = processor(ray.data.from_items(data * 10))
     results = await asyncio.to_thread(ds.take_all)
 
-    # Verify results
     assert len(results) == 10
     for result in results:
         assert result["http_response"]["response"] == "success"
