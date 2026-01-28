@@ -115,7 +115,10 @@ def configure_aws():
     # Use mock_aws context manager and boto3 to find the AMI
     import boto3
 
-    with mock_aws():
+    # In moto 5.x, AWS managed policies (e.g., AmazonEC2FullAccess) are not
+    # loaded by default for performance. Enable them since the autoscaler
+    # attaches these policies to the IAM role.
+    with mock_aws(config={"iam": {"load_aws_managed_policies": True}}):
         ec2_client = boto3.client("ec2", region_name="us-west-2")
         images = ec2_client.describe_images(
             Filters=[{"Name": "name", "Values": ["Deep Learning AMI Ubuntu*"]}]
