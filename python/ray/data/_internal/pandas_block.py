@@ -370,17 +370,6 @@ class PandasBlockAccessor(TableBlockAccessor):
         # Scalar value - use original fill_column logic
         return self._table.assign(**{name: value})
 
-    @staticmethod
-    def _build_tensor_row(row: PandasRow, row_idx: int, col_name: str) -> np.ndarray:
-        from ray.data.extensions import TensorArrayElement
-
-        tensor = row[col_name].iloc[row_idx]
-        if isinstance(tensor, TensorArrayElement):
-            # Getting an item in a Pandas tensor column may return a TensorArrayElement,
-            # which we have to convert to an ndarray.
-            tensor = tensor.to_numpy()
-        return tensor
-
     def slice(self, start: int, end: int, copy: bool = False) -> "pandas.DataFrame":
         view = self._table[start:end]
         view.reset_index(drop=True, inplace=True)
