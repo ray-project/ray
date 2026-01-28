@@ -898,17 +898,9 @@ void TaskEventBufferImpl::SendRayEventsToAggregator(
         }
       };
 
-  if (num_task_events_to_send == 0 && num_dropped_task_attempts_to_send == 0) {
-    // Signal under mutex to avoid lost wakeup race condition.
-    absl::MutexLock lock(&grpc_completion_mutex_);
-    auto previous = event_aggregator_grpc_in_progress_.fetch_sub(1);
-    RAY_CHECK_GT(previous, 0);
-    grpc_completion_cv_.Signal();
-  } else {
-    rpc::events::AddEventsRequest request;
-    *request.mutable_events_data() = std::move(*data);
-    event_aggregator_client_->AddEvents(request, on_complete);
-  }
+  rpc::events::AddEventsRequest request;
+  *request.mutable_events_data() = std::move(*data);
+  event_aggregator_client_->AddEvents(request, on_complete);
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {
