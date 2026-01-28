@@ -4,6 +4,7 @@ import logging
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.fs as pa_fs
 
 from ray.data._internal.arrow_ops.transform_pyarrow import (
@@ -177,7 +178,21 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         Local filesystem writes require all tasks to run on the same node
         to ensure files are accessible for the commit phase.
         """
-        return not _is_local_scheme(self.table_uri)
+        # Check for local:// scheme (Ray's custom scheme)
+        if _is_local_scheme(self.table_uri):
+            return False
+
+        # Check for regular local filesystem paths (no scheme or file:// scheme)
+        uri_lower = self.table_uri.lower()
+        if uri_lower.startswith("file://") or (
+            not uri_lower.startswith(
+                ("s3://", "s3a://", "gs://", "gcs://", "abfss://", "abfs://", "hdfs://")
+            )
+            and "://" not in self.table_uri
+        ):
+            return False
+
+        return True
 
     @property
     def min_rows_per_write(self) -> Optional[int]:
@@ -359,13 +374,12 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
                 # Handle NULL-only columns: if column is all NULL and field is nullable,
                 # allow it (type will be inferred correctly during write)
-                if (
-                    field.nullable
-                    and pa.types.is_null(table_col_type)
-                    and pa.compute.is_null(table_col).all().as_py()
-                ):
-                    # All NULL values in nullable field - type will be inferred from schema
-                    continue
+                if field.nullable and pa.types.is_null(table_col_type):
+                    # Check if all values are NULL using pc.all() for ChunkedArray
+                    is_null_mask = pa.compute.is_null(table_col)
+                    if pc.all(is_null_mask).as_py():
+                        # All NULL values in nullable field - type will be inferred from schema
+                        continue
 
                 if not types_compatible(field.type, table_col_type):
                     raise ValueError(
