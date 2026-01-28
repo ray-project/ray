@@ -26,6 +26,7 @@
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/counter_map.h"
 
@@ -98,7 +99,9 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         fake_placement_group_gauge_,
         fake_placement_group_creation_latency_in_ms_histogram_,
         fake_placement_group_scheduling_latency_in_ms_histogram_,
-        fake_placement_group_count_gauge_));
+        fake_placement_group_count_gauge_,
+        fake_ray_event_recorder_,
+        "test_session"));
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -225,6 +228,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   ray::observability::FakeHistogram
       fake_placement_group_scheduling_latency_in_ms_histogram_;
   ray::observability::FakeGauge fake_placement_group_count_gauge_;
+  ray::observability::FakeRayEventRecorder fake_ray_event_recorder_;
 
  private:
   ClusterResourceManager cluster_resource_manager_;

@@ -33,6 +33,7 @@
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
 #include "ray/observability/metric_interface.h"
+#include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/exponential_backoff.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -67,7 +68,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
           &placement_group_creation_latency_in_ms_histogram,
       ray::observability::MetricInterface
           &placement_group_scheduling_latency_in_ms_histogram,
-      ray::observability::MetricInterface &placement_group_count_gauge);
+      ray::observability::MetricInterface &placement_group_count_gauge,
+      ray::observability::RayEventRecorderInterface &ray_event_recorder,
+      const std::string &session_name);
 
   ~GcsPlacementGroupManager() override = default;
 
@@ -230,7 +233,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
           &placement_group_creation_latency_in_ms_histogram,
       ray::observability::MetricInterface
           &placement_group_scheduling_latency_in_ms_histogram,
-      ray::observability::MetricInterface &placement_group_count_gauge);
+      ray::observability::MetricInterface &placement_group_count_gauge,
+      ray::observability::RayEventRecorderInterface &ray_event_recorder,
+      const std::string &session_name);
 
  private:
   /// Push a placement group to pending queue.
@@ -363,6 +368,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   ray::observability::MetricInterface
       &placement_group_scheduling_latency_in_ms_histogram_;
   ray::observability::MetricInterface &placement_group_count_gauge_;
+
+  ray::observability::RayEventRecorderInterface &ray_event_recorder_;
+  std::string session_name_;
 
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule);
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed);
