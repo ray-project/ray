@@ -4,6 +4,7 @@ import errno
 import functools
 import inspect
 import logging
+import math
 import os
 import pickle
 import threading
@@ -914,6 +915,7 @@ class ReplicaBase(ABC):
             local_testing_mode=False,
             deployment_config=deployment_config,
             actor_id=actor_id,
+            ray_actor_options=self._version.ray_actor_options,
         )
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
 
@@ -2563,6 +2565,7 @@ class UserCallableWrapper:
         local_testing_mode: bool,
         deployment_config: DeploymentConfig,
         actor_id: str,
+        ray_actor_options: Optional[Dict] = None,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -2586,6 +2589,10 @@ class UserCallableWrapper:
         # Will be populated in `initialize_callable`.
         self._callable = None
         self._deployment_config = deployment_config
+        self._ray_actor_options = ray_actor_options or {}
+        self._user_code_threadpool: Optional[
+            concurrent.futures.ThreadPoolExecutor
+        ] = None
 
         if self._run_user_code_in_separate_thread:
             # All interactions with user code run on this loop to avoid blocking the
@@ -2611,6 +2618,7 @@ class UserCallableWrapper:
                 # Required so that calls to get the current running event loop work
                 # properly in user code.
                 asyncio.set_event_loop(self._user_code_event_loop)
+                self._configure_user_code_threadpool()
                 # Start monitoring before run_forever so the task is scheduled.
                 self._user_code_loop_monitor.start(self._user_code_event_loop)
                 self._user_code_event_loop.run_forever()
@@ -2623,10 +2631,27 @@ class UserCallableWrapper:
         else:
             self._user_code_event_loop = asyncio.get_running_loop()
             self._user_code_loop_monitor = None
+            self._configure_user_code_threadpool()
 
     @property
     def event_loop(self) -> asyncio.AbstractEventLoop:
         return self._user_code_event_loop
+
+    def _get_user_code_threadpool_max_workers(self) -> Optional[int]:
+        num_cpus = self._ray_actor_options.get("num_cpus")
+        if num_cpus is None:
+            return None
+        # Mirror ThreadPoolExecutor default behavior while respecting num_cpus.
+        return min(32, max(1, int(math.ceil(num_cpus))) + 4)
+
+    def _configure_user_code_threadpool(self) -> None:
+        max_workers = self._get_user_code_threadpool_max_workers()
+        if max_workers is None:
+            return
+        self._user_code_threadpool = concurrent.futures.ThreadPoolExecutor(
+            max_workers=max_workers
+        )
+        self._user_code_event_loop.set_default_executor(self._user_code_threadpool)
 
     def _run_user_code(f: Callable) -> Callable:
         """Decorator to run a coroutine method on the user code event loop.
@@ -3348,3 +3373,6 @@ class UserCallableWrapper:
 
         except Exception as e:
             logger.exception(f"Exception during graceful shutdown of replica: {e}")
+        finally:
+            if self._user_code_threadpool is not None:
+                self._user_code_threadpool.shutdown(wait=False)

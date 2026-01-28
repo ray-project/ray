@@ -17,6 +17,7 @@ from ray._common.utils import reset_ray_address
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private.test_utils import (
     TELEMETRY_ROUTE_PREFIX,
+    TEST_METRICS_EXPORT_PORT,
     check_ray_started,
     check_ray_stopped,
     start_telemetry_app,
@@ -32,7 +33,6 @@ from ray.tests.conftest import (  # noqa
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
 MAX_DYNAMIC_PORT = 65535
-TEST_METRICS_EXPORT_PORT = 9999
 
 TEST_GRPC_SERVICER_FUNCTIONS = [
     "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -56,6 +56,9 @@ def ray_shutdown():
 
 @pytest.fixture
 def ray_cluster():
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
     cluster = Cluster()
     yield cluster
     serve.shutdown()
@@ -65,6 +68,9 @@ def ray_cluster():
 
 @pytest.fixture
 def ray_autoscaling_cluster(request):
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
     # NOTE(zcin): We have to make a deepcopy here because AutoscalingCluster
     # modifies the dictionary that's passed in.
     params = deepcopy(request.param)
@@ -139,6 +145,11 @@ def _shared_serve_instance():
     # To run locally, please use this instead.
     # SERVE_DEBUG_LOG=1 pytest -v -s test_api.py
     # os.environ["SERVE_DEBUG_LOG"] = "1" <- Do not uncomment this.
+
+    # Ensure Ray is not already running before starting this session-scoped instance
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
 
     # Overriding task_retry_delay_ms to relaunch actors more quickly
     ray.init(
@@ -326,22 +337,37 @@ def metrics_start_shutdown(request):
             "task_retry_delay_ms": 50,
         },
     )
-    grpc_port = 9000
-    grpc_servicer_functions = [
-        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
-        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
-    ]
-    yield serve.start(
-        grpc_options=gRPCOptions(
-            port=grpc_port,
-            grpc_servicer_functions=grpc_servicer_functions,
-            request_timeout_s=request_timeout_s,
-        ),
-        http_options=HTTPOptions(
-            host="0.0.0.0",
-            request_timeout_s=request_timeout_s,
-        ),
-    )
-    serve.shutdown()
-    ray.shutdown()
-    reset_ray_address()
+
+    try:
+        # Wait for metrics endpoint to be ready before starting Serve
+        def metrics_endpoint_ready():
+            try:
+                resp = httpx.get(
+                    f"http://localhost:{TEST_METRICS_EXPORT_PORT}", timeout=1.0
+                )
+                return resp.status_code == 200
+            except Exception:
+                return False
+
+        wait_for_condition(metrics_endpoint_ready, timeout=30, retry_interval_ms=500)
+
+        grpc_port = 9000
+        grpc_servicer_functions = [
+            "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+            "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+        ]
+        yield serve.start(
+            grpc_options=gRPCOptions(
+                port=grpc_port,
+                grpc_servicer_functions=grpc_servicer_functions,
+                request_timeout_s=request_timeout_s,
+            ),
+            http_options=HTTPOptions(
+                host="0.0.0.0",
+                request_timeout_s=request_timeout_s,
+            ),
+        )
+    finally:
+        serve.shutdown()
+        ray.shutdown()
+        reset_ray_address()
