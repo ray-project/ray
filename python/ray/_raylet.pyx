@@ -1122,6 +1122,8 @@ cdef report_streaming_generator_output(
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
 
+    start = time.perf_counter()
+
     # Report the intermediate result if there was no error.
     create_generator_return_obj(
         output,
@@ -1148,6 +1150,8 @@ cdef report_streaming_generator_output(
             return_obj.first,
             is_plasma_object(return_obj.second)))
 
+    serialization_dur_s = time.perf_counter() - start
+
     with nogil:
         check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
             return_obj,
@@ -1156,6 +1160,9 @@ cdef report_streaming_generator_output(
             generator_index,
             context.attempt_number,
             context.waiter))
+
+
+    return serialization_dur_s
 
 
 cdef report_streaming_generator_exception(
@@ -1250,9 +1257,20 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     gen = context.generator
 
     try:
-        for output in gen:
-            report_streaming_generator_output(context, output, gen_index, None)
-            gen_index += 1
+        report_dur_s = None
+
+        while True:
+            try:
+                # Send object serialization duration to the generator and retrieve
+                # next output
+                output = gen.send(report_dur_s)
+                # Track serialization duration of the next output
+                report_dur_s = report_streaming_generator_output(context, output, gen_index, None)
+
+                gen_index += 1
+
+            except StopIteration:
+                break
     except Exception as e:
         report_streaming_generator_exception(context, e, gen_index, None)
 
