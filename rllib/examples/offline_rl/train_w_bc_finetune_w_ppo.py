@@ -188,7 +188,7 @@ class MyPPOModel(MyBCModel, ValueFunctionAPI):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    update_global_seed_if_necessary(framework="torch", seed=42)
+    update_global_seed_if_necessary(framework="torch", seed=args.seed)
 
     assert args.env == "CartPole-v1", "This example works only with --env=CartPole-v1!"
 
