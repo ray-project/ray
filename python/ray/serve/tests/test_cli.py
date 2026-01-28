@@ -848,7 +848,6 @@ def test_controller_health(serve_instance):
     json_output = subprocess.check_output(
         ["serve", "controller-health", "--json"],
     )
-    print(json_output)
     metrics = json.loads(json_output.decode("utf-8"))
 
     # Verify it's a valid dictionary with expected fields
