@@ -342,3 +342,13 @@ Advanced: RDT Internals
 
 .. note::
     Under construction.
+
+Table of Contents
+-----------------
+
+Learn more details about Ray Direct Transport from the following links.
+
+.. toctree::
+    :maxdepth: 1
+
+    custom-tensor-transport

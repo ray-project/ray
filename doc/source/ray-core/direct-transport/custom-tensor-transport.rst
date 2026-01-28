@@ -63,7 +63,7 @@ is_one_sided
 
 Indicates whether your transport uses one-sided communication where only the receiver initiates the transfer.
 
-- **One-sided transports**: The receiver can directly read  the receiver's memory without the receiver actively participating. NIXL and CUDA-IPC are examples.
+- **One-sided transports**: The receiver can directly read the sender's memory without the sender actively participating. NIXL and CUDA-IPC are examples.
 - **Two-sided transports**: Both sender and receiver must actively participate in the transfer. Collective communication libraries like NCCL and GLOO are examples.
 
 This affects how Ray orchestrates the transfer and handles failures. Two-sided transports also have extra limitations described in :ref:`limitations <limitations>`.
@@ -73,7 +73,7 @@ can_abort_transport
 
 Indicates whether your transport can safely abort an in-progress transfer.
 
-- If ``True``: Ray calls :func:`abort_transport` on both the source and destination actors when a send / recv error, allowing your transport to clean up gracefully.
+- If ``True``: Ray calls `abort_transport` on both the source and destination actors when a send / recv error, allowing your transport to clean up gracefully.
 - If ``False``: Ray kills the involved actors to prevent deadlocks when errors occur during transfer.
 
 Return ``True`` only if your transport can reliably interrupt an in-progress send or receive operation without leaving either party in a blocked state.
@@ -91,7 +91,7 @@ Ray creates this metadata on the source actor when the tensor is first created, 
 
     @dataclass
     class TensorTransportMetadata:
-            # list of tuples, each containing the shape and dtype of a tensor
+        # list of tuples, each containing the shape and dtype of a tensor
         tensor_meta: List[Tuple[torch.Size, torch.dtype]]
         # the device of the tensor, currently, all tensors in the list must have the same device type
         tensor_device: Optional[torch.device] = None
@@ -140,8 +140,7 @@ CommunicatorMetadata
 ^^^^^^^^^^^^^^^^^^^^
 
 :class:`CommunicatorMetadata <ray.experimental.CommunicatorMetadata>` stores any information about the actors that are doing the communication.
-If your owner / driver process has specific information about the actors involved in the transfer that needs to be sent.
-The data type is empty by default, and you can extend it to add any information that may be required for the transport.
+This is used when your owner / driver process has specific information about the actors involved in the transfer that needs to be sent.
 
 .. code-block:: python
 
@@ -210,7 +209,7 @@ Receives tensors on the destination actor. Ray calls this on the destination act
     def recv_multiple_tensors(
         self,
         obj_id: str,
-        tensor_transport_metadata: TensorTransportMetadata,
+        tensor_transport_meta: TensorTransportMetadata,
         communicator_metadata: MyCustomCommunicatorMetadata,
     ):
         comm = self._get_communicator(communicator_metadata.communicator_name)
@@ -247,7 +246,7 @@ Use this to release any resources your transport allocated, such as deregisterin
 abort_transport
 ^^^^^^^^^^^^^^^
 
-Aborts an in-progress transfer. Ray calls this on both the source and destination actors when a system error occurs if :func:`can_abort_transport` returns ``True``.
+Aborts an in-progress transfer. Ray calls this on both the source and destination actors when a system error occurs if `can_abort_transport` returns ``True``.
 
 .. code-block:: python
 
