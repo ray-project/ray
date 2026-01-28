@@ -594,10 +594,6 @@ RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
 RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S = float(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S", "30")
 )
-RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH = int(
-    # Default max message length in gRPC is 4MB, we keep that default
-    os.environ.get("RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH", 4 * 1024 * 1024)
-)
 
 # HTTP request timeout
 SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER = "x-request-timeout-seconds"
