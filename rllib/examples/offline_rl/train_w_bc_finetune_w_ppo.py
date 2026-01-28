@@ -67,8 +67,13 @@ Then, after PPO training, you should see something like this (higher return):
 |          32.7647 |                 450.76 |                    406 |
 +------------------+------------------------+------------------------+
 """
+import os
+import random
 from pathlib import Path
 
+import gymnasium as gym
+import numpy as np
+import torch
 from torch import nn
 
 from ray.rllib.algorithms.bc import BCConfig
@@ -100,6 +105,21 @@ parser.set_defaults(
     env="CartPole-v1",
     checkpoint_freq=1,
 )
+parser.add_argument("--seed", type=int, default=42)
+
+
+def set_determinism(seed: int) -> None:
+    os.environ.setdefault("PYTHONHASHSEED", str(seed))
+    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    torch.use_deterministic_algorithms(True)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    gym.utils.seeding.np_random(seed)
 
 
 class MyBCModel(TorchRLModule):
@@ -186,6 +206,8 @@ class MyPPOModel(MyBCModel, ValueFunctionAPI):
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    set_determinism(args.seed)
+
     assert args.env == "CartPole-v1", "This example works only with --env=CartPole-v1!"
 
     # Define the data paths for our CartPole large dataset.
@@ -225,12 +247,14 @@ if __name__ == "__main__":
             # run an entire epoch on the dataset during a single RLlib training
             # iteration. For single-learner mode, 1 is the only option.
             dataset_num_iters_per_learner=1 if not args.num_learners else None,
-        ).training(
+        )
+        .training(
             train_batch_size_per_learner=1024,
             # To increase learning speed with multiple learners,
             # increase the learning rate correspondingly.
             lr=0.0008 * (args.num_learners or 1) ** 0.5,
         )
+        .debugging(seed=args.seed)
         # Plug in our simple custom BC model from above.
         .rl_module(rl_module_spec=RLModuleSpec(module_class=MyBCModel))
         # Run evaluation to observe how good our BC policy already is.
@@ -268,6 +292,7 @@ if __name__ == "__main__":
             num_epochs=6,
             vf_loss_coeff=0.01,
         )
+        .debugging(seed=args.seed)
         # Plug in our simple custom PPO model from above. Note that the checkpoint
         # for the BC model is loadable into the PPO model, b/c the BC model is a subset
         # of the PPO model (all weights/biases in the BC model are also found in the PPO
@@ -311,6 +336,6 @@ if __name__ == "__main__":
 
     # Perform actual PPO training run (this time until 450.0 return).
     stop = {
-        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 450.0,
+        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 450.0,
     }
     run_rllib_example_script_experiment(base_config, args, stop=stop)
