@@ -131,7 +131,7 @@ class TaskSpecBuilder {
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetCommonTaskSpec(
       const TaskID &task_id,
-      const std::string name,
+      std::string_view name,
       const Language &language,
       const ray::FunctionDescriptor &function_descriptor,
       const JobID &job_id,
@@ -146,12 +146,12 @@ class TaskSpecBuilder {
       int64_t generator_backpressure_num_objects,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const std::string &debugger_breakpoint,
+      std::string_view debugger_breakpoint,
       int64_t depth,
       const TaskID &submitter_task_id,
-      const std::string &call_site,
+      std::string_view call_site,
       const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr,
-      const std::string &concurrency_group_name = "",
+      std::string_view concurrency_group_name = "",
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
       const LabelSelector &label_selector = {},
@@ -196,7 +196,7 @@ class TaskSpecBuilder {
   TaskSpecBuilder &SetNormalTaskSpec(
       int max_retries,
       bool retry_exceptions,
-      const std::string &serialized_retry_exception_allowlist,
+      std::string_view serialized_retry_exception_allowlist,
       const rpc::SchedulingStrategy &scheduling_strategy,
       const ActorID root_detached_actor_id) {
     message_->set_max_retries(max_retries);
@@ -247,7 +247,7 @@ class TaskSpecBuilder {
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetActorCreationTaskSpec(
       const ActorID &actor_id,
-      const std::string &serialized_actor_handle,
+      std::string_view serialized_actor_handle,
       const rpc::SchedulingStrategy &scheduling_strategy,
       int64_t max_restarts = 0,
       int64_t max_task_retries = 0,
@@ -258,7 +258,7 @@ class TaskSpecBuilder {
       std::string ray_namespace = "",
       bool is_asyncio = false,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      const std::string &extension_data = "",
+      std::string_view extension_data = "",
       bool allow_out_of_order_execution = false,
       ActorID root_detached_actor_id = ActorID::Nil()) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
@@ -298,14 +298,13 @@ class TaskSpecBuilder {
   /// See `common.proto` for meaning of the arguments.
   ///
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &SetActorTaskSpec(
-      const ActorID &actor_id,
-      const ObjectID &actor_creation_dummy_object_id,
-      int max_retries,
-      bool retry_exceptions,
-      const std::string &serialized_retry_exception_allowlist,
-      uint64_t sequence_number,
-      const std::optional<std::string> &tensor_transport) {
+  TaskSpecBuilder &SetActorTaskSpec(const ActorID &actor_id,
+                                    const ObjectID &actor_creation_dummy_object_id,
+                                    int max_retries,
+                                    bool retry_exceptions,
+                                    std::string_view serialized_retry_exception_allowlist,
+                                    uint64_t sequence_number,
+                                    const std::optional<std::string> &tensor_transport) {
     message_->set_type(TaskType::ACTOR_TASK);
     message_->set_max_retries(max_retries);
     message_->set_retry_exceptions(retry_exceptions);

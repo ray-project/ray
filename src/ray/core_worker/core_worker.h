@@ -869,9 +869,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       int max_retries,
       bool retry_exceptions,
       const rpc::SchedulingStrategy &scheduling_strategy,
-      const std::string &debugger_breakpoint,
-      const std::string &serialized_retry_exception_allowlist = "",
-      const std::string &call_site = "",
+      std::string_view debugger_breakpoint,
+      std::string_view serialized_retry_exception_allowlist = "",
+      std::string_view call_site = "",
       const TaskID current_task_id = TaskID::Nil());
 
   /// Create an actor.
@@ -893,8 +893,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   Status CreateActor(const RayFunction &function,
                      const std::vector<std::unique_ptr<TaskArg>> &args,
                      const ActorCreationOptions &actor_creation_options,
-                     const std::string &extension_data,
-                     const std::string &call_site,
+                     std::string_view extension_data,
+                     std::string_view call_site,
                      ActorID *actor_id);
 
   /// Create a placement group.
@@ -953,8 +953,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                          const TaskOptions &task_options,
                          int max_retries,
                          bool retry_exceptions,
-                         const std::string &serialized_retry_exception_allowlist,
-                         const std::string &call_site,
+                         std::string_view serialized_retry_exception_allowlist,
+                         std::string_view call_site,
                          std::vector<rpc::ObjectReference> &task_returns,
                          const TaskID current_task_id = TaskID::Nil());
 
@@ -1006,7 +1006,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// because the distributed reference counting protocol does not ensure that
   /// the owner will learn of this reference.
   /// \return The ActorID of the deserialized handle.
-  ActorID DeserializeAndRegisterActorHandle(const std::string &serialized,
+  ActorID DeserializeAndRegisterActorHandle(std::string_view serialized,
                                             const ObjectID &outer_object_id,
                                             bool add_local_ref);
 
@@ -1329,8 +1329,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param stderr_start_offset Start offset of the stderr for this task.
   void RecordTaskLogStart(const TaskID &task_id,
                           int32_t attempt_number,
-                          const std::string &stdout_path,
-                          const std::string &stderr_path,
+                          std::string_view stdout_path,
+                          std::string_view stderr_path,
                           int64_t stdout_start_offset,
                           int64_t stderr_start_offset) const;
 
@@ -1355,7 +1355,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param creation_task_exception_pb_bytes It is given when the worker is
   /// disconnected because the actor is failed due to its exception in its init method.
   void Exit(const rpc::WorkerExitType exit_type,
-            const std::string &detail,
+            std::string_view detail,
             const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
                 nullptr);
 
@@ -1389,7 +1389,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       TaskSpecBuilder &builder,
       const JobID &job_id,
       const TaskID &task_id,
-      const std::string &name,
+      std::string_view name,
       const TaskID &current_task_id,
       uint64_t task_index,
       const TaskID &caller_id,
@@ -1399,12 +1399,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       int64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const std::string &debugger_breakpoint,
+      std::string_view debugger_breakpoint,
       int64_t depth,
       const std::string &serialized_runtime_env_info,
-      const std::string &call_site,
+      std::string_view call_site,
       const TaskID &main_thread_current_task_id,
-      const std::string &concurrency_group_name = "",
+      std::string_view concurrency_group_name = "",
       bool include_job_config = false,
       int64_t generator_backpressure_num_objects = -1,
       bool enable_task_events = true,
@@ -1422,7 +1422,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// or cleaning any resources.
   /// \param exit_type The reason why this worker process is disconnected.
   /// \param exit_detail The detailed reason for a given exit.
-  void ForceExit(const rpc::WorkerExitType exit_type, const std::string &detail);
+  void ForceExit(const rpc::WorkerExitType exit_type, std::string_view detail);
 
   /// Forcefully kill child processes. User code running in actors or tasks
   /// can spawn processes that don't get terminated. If those processes

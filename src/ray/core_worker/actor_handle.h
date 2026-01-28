@@ -43,10 +43,10 @@ class ActorHandle {
               const ObjectID &initial_cursor,
               const Language actor_language,
               const FunctionDescriptor &actor_creation_task_function_descriptor,
-              const std::string &extension_data,
+              std::string_view extension_data,
               int64_t max_task_retries,
-              const std::string &name,
-              const std::string &ray_namespace,
+              std::string_view name,
+              std::string_view ray_namespace,
               int32_t max_pending_calls,
               bool allow_out_of_order_execution = false,
               bool enable_tensor_transport = false,
@@ -55,7 +55,7 @@ class ActorHandle {
               bool is_detached = false);
 
   /// Constructs an ActorHandle from a serialized string.
-  explicit ActorHandle(const std::string &serialized);
+  explicit ActorHandle(std::string_view serialized);
 
   /// Constructs an ActorHandle from a rpc::ActorTableData and a rpc::TaskSpec message.
   ActorHandle(const rpc::ActorTableData &actor_table_data,
@@ -90,7 +90,7 @@ class ActorHandle {
                         const ObjectID new_cursor,
                         int max_retries,
                         bool retry_exceptions,
-                        const std::string &serialized_retry_exception_allowlist,
+                        std::string_view serialized_retry_exception_allowlist,
                         const std::optional<std::string> &tensor_transport);
 
   /// Reset the actor task spec fields of an existing task so that the task can
