@@ -182,8 +182,7 @@ class DeltaDatasource(Datasource):
 
         Checks if version or storage options have changed since last load.
         """
-        if self._delta_table is None:
-            return True
+        # Check if version changed
         if self._delta_table_version != self.version:
             return True
         # Compare storage options by content, not reference

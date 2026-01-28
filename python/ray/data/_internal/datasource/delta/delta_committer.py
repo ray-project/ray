@@ -182,7 +182,7 @@ def validate_partition_columns_match_existing(
                 f"Partition columns mismatch. Existing: {existing_partitions}, "
                 f"requested: {partition_cols}"
             )
-        if not existing_partitions and partition_cols:
+        if not existing_partitions:
             raise ValueError(
                 f"Partition columns provided {partition_cols} but table is not partitioned."
             )

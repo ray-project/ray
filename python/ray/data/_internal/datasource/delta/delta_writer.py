@@ -5,6 +5,7 @@ streaming-safe and can be used independently of the main datasink class.
 """
 
 import logging
+import math
 import time
 import uuid
 from collections import defaultdict
@@ -116,8 +117,6 @@ class DeltaFileWriter:
         Returns:
             Dictionary mapping partition value tuples to partitioned tables.
         """
-        import math
-
         if len(table) == 0:
             return {}
 
@@ -185,6 +184,10 @@ class DeltaFileWriter:
         Writes Parquet file to storage, computes statistics, and creates AddAction
         object with file metadata. AddAction is used later to commit to Delta log.
 
+        Note: Partition columns are removed from the data written to Parquet files
+        per Delta Lake convention - partition values are stored only in directory
+        paths and AddAction metadata.
+
         deltalake AddAction: https://delta-io.github.io/delta-rs/python/api/deltalake.transaction.html#deltalake.transaction.AddAction
 
         Args:
@@ -200,6 +203,12 @@ class DeltaFileWriter:
 
         if len(table) == 0:
             return None
+
+        # Remove partition columns from data before writing (Delta Lake convention)
+        # Partition values are stored in directory paths and AddAction metadata
+        if self.partition_cols:
+            data_cols = [c for c in table.column_names if c not in self.partition_cols]
+            table = table.select(data_cols)
 
         filename = self.generate_filename(task_idx, block_idx)
         partition_path, partition_dict = build_partition_path(
