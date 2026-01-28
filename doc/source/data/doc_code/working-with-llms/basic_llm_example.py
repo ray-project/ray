@@ -125,6 +125,54 @@ s3_config = vLLMEngineProcessorConfig(
 )
 # __s3_config_example_end__
 
+# __row_level_fault_tolerance_config_example_start__
+# Row-level fault tolerance configuration
+config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    concurrency=1,
+    batch_size=64,
+    should_continue_on_error=True,
+)
+# __row_level_fault_tolerance_config_example_end__
+
+# __checkpoint_config_setup_example_start__
+from ray.data.checkpoint import CheckpointConfig
+
+ctx = ray.data.DataContext.get_current()
+ctx.checkpoint_config = CheckpointConfig(
+    id_column="id",
+    checkpoint_path="/tmp/path/to/checkpoint",
+    delete_checkpoint_on_success=False,
+)
+# __checkpoint_config_setup_example_end__
+
+# __checkpoint_usage_example_start__
+processor_config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    concurrency=1,
+    batch_size=64,
+)
+
+processor = build_processor(
+    processor_config,
+    preprocess=lambda row: dict(
+        prompt=row["prompt"],
+        sampling_params=dict(
+            temperature=0.3,
+            max_tokens=250,
+        ),
+    ),
+    postprocess=lambda row: {
+        "id": row["id"],
+        "answer": row.get("generated_text"),
+    },
+)
+
+ds = ray.data.read_parquet(input_path)
+ds = processor(ds)
+ds.write_parquet(output_path)
+# __checkpoint_usage_example_end__
+
 # __gpu_memory_config_example_start__
 # GPU memory management configuration
 # If you encounter CUDA out of memory errors, try these optimizations:

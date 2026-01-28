@@ -249,6 +249,47 @@ Then reference the remote path in your config:
     :start-after: __s3_config_example_start__
     :end-before: __s3_config_example_end__
 
+
+.. _resiliency:
+
+Resiliency
+----------------------
+
+Row-level fault tolerance
+~~~~~~~~~~~~~~~~~~~~~~~~~
+In Ray Data LLM, row-level fault tolerance is achieved by setting the ``should_continue_on_error`` parameter to ``True`` in the processor config.
+This means that if a row fails, the job will continue processing the remaining rows. This is useful for long-running jobs where you want to minimize the impact of failures.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __row_level_fault_tolerance_config_example_start__
+    :end-before: __row_level_fault_tolerance_config_example_end__
+
+
+Actor-level fault tolerance
+~~~~~~~~~~~~~~~~~~~~~~~~~
+When actor dies in the middle of a pipeline execution, it will be restarted and rejoin the pipeline to process remaining rows.
+This feature is enabled by default, and there are no additional configuration needed.
+
+Checkpoint recovery
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ray Data supports checkpoint recovery where a pipeline execution can be resumed from a checkpoint stored in both a local and cloud storage.
+Checkpointing is now limited to pipelines starting with a read and ending with a write operation.
+
+First, set up the checkpoint configuration:
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __checkpoint_config_setup_example_start__
+    :end-before: __checkpoint_config_setup_example_end__
+
+Then, specify the ID column for checkpointing. We include a read and write operation in the pipeline to enable checkpoint recovery.
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __checkpoint_usage_example_start__
+    :end-before: __checkpoint_usage_example_end__
+
+
 .. _advanced_configuration:
 
 Advanced configuration
