@@ -163,6 +163,24 @@ def _apply_default_params_and_merge_state(
     return final_num_replicas, user_policy_state
 
 
+def _merge_user_state_with_internal_state(
+    policy_state: Dict[str, Any],
+    user_policy_state: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Merge user state with previous policy state, preserving internal keys.
+
+    This mutates and returns `user_policy_state`.
+    """
+    # Extract internal polciy state from policy_state
+    internal_policy_state = {
+        SERVE_AUTOSCALING_DECISION_COUNTERS_KEY: policy_state.get(
+            SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, 0
+        )
+    }
+    user_policy_state.update(internal_policy_state)
+    return user_policy_state
+
+
 def _get_cold_start_scale_up_replicas(ctx: AutoscalingContext) -> Optional[int]:
     """
     Returns the desired number of replicas if the cold start fast path applies, otherwise returns None.
@@ -247,18 +265,23 @@ def _apply_app_level_autoscaling_config(
             if dep_id not in desired_num_replicas_dict:
                 final_state[dep_id] = state_per_deployment[dep_id]
                 continue
+
+            custom_policy_state_per_deployment = updated_custom_policy_state.get(
+                dep_id, {}
+            )
             # Cold start fast path: 0 replicas bypasses delay logic for immediate scale-up
-            # TO FIX: For cold start path, user state is not returned.
             cold_start_replicas = _get_cold_start_scale_up_replicas(ctx)
             if cold_start_replicas is not None:
-                final_decisions[dep_id], final_state[dep_id] = (
-                    cold_start_replicas,
+                final_decisions[dep_id] = cold_start_replicas
+                # Merge user policy state with internal policy state
+                final_state[dep_id] = _merge_user_state_with_internal_state(
                     state_per_deployment[dep_id],
+                    custom_policy_state_per_deployment,
                 )
                 continue
             final_num_replicas, final_dep_state = _apply_default_params_and_merge_state(
                 state_per_deployment[dep_id],
-                updated_custom_policy_state.get(dep_id, {}),
+                custom_policy_state_per_deployment,
                 desired_num_replicas_dict[dep_id],
                 ctx,
             )
