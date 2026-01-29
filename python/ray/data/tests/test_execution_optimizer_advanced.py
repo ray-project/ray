@@ -8,7 +8,7 @@ import pytest
 
 import ray
 from ray.data._internal.compute import TaskPoolStrategy
-from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+from ray.data._internal.datasource import ParquetDatasink
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,

@@ -4,6 +4,10 @@ import pyarrow
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
 
+__all__ = [
+    "NumpyDatasink",
+]
+
 
 class NumpyDatasink(BlockBasedFileDatasink):
     def __init__(

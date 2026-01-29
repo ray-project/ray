@@ -6,7 +6,7 @@ from packaging.version import parse as parse_version
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
-from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
+from ray.data._internal.datasource import TFXReadOptions
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,

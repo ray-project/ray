@@ -7,6 +7,11 @@ import requests
 
 import ray
 
+__all__ = [
+    "UnityCatalogConnector",
+]
+
+
 _FILE_FORMAT_TO_RAY_READER = {
     "delta": "read_delta",
     "parquet": "read_parquet",

@@ -6,6 +6,10 @@ from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import _resolve_kwargs
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
 
+__all__ = [
+    "JSONDatasink",
+]
+
 
 class JSONDatasink(BlockBasedFileDatasink):
     def __init__(

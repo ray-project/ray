@@ -11,8 +11,7 @@ import pytest
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray._raylet import NodeID
-from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
-from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.datasource import ParquetDatasink, ParquetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.backpressure_policy.resource_budget_backpressure_policy import (
     ResourceBudgetBackpressurePolicy,

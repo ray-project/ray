@@ -18,6 +18,13 @@ if TYPE_CHECKING:
 
     from ray.data.dataset import Dataset
 
+__all__ = [
+    "TFRecordDatasource",
+    "TFXReadOptions",
+    "_infer_schema_and_transform",
+]
+
+
 logger = logging.getLogger(__name__)
 
 

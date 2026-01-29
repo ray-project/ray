@@ -6,6 +6,12 @@ from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, List, Optio
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 
+__all__ = [
+    "Connection",
+    "SQLDatasource",
+]
+
+
 Connection = Any  # A Python DB API2-compliant `Connection` object.
 Cursor = Any  # A Python DB API2-compliant `Cursor` object.
 
