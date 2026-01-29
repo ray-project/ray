@@ -256,7 +256,7 @@ def test_streaming_repartition_write_with_operator_fusion(
 
     # Configure shuffle strategy
     ctx = DataContext.get_current()
-    ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     num_rows = 100
     partition_col = "skewed_key"
@@ -327,7 +327,7 @@ def test_streaming_repartition_fusion_output_shape(
 
     # Configure shuffle strategy
     ctx = DataContext.get_current()
-    ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     num_rows = 100
     partition_col = "skewed_key"
@@ -424,7 +424,7 @@ def test_streaming_repartition_with_partial_last_block(
     """
     # Configure shuffle strategy
     ctx = DataContext.get_current()
-    ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     num_rows = 101
 
