@@ -5,6 +5,10 @@ from ray.data._internal.logical.interfaces import LogicalOperator
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import NodeIdStr
 
+__all__ = [
+    "StreamingSplit",
+]
+
 
 class StreamingSplit(LogicalOperator):
     """Logical operator that represents splitting the input data to `n` splits."""

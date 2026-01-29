@@ -49,11 +49,6 @@ DEFAULT_CONFIG = {
             "handlers": ["file", "console"],
             "propagate": False,
         },
-        "ray.air.util.tensor_extensions": {
-            "level": "DEBUG",
-            "handlers": ["file", "console"],
-            "propagate": False,
-        },
     },
 }
 

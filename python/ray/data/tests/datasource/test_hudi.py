@@ -6,7 +6,7 @@ from packaging.version import parse as parse_version
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
     _unwrap_protocol,

@@ -8,7 +8,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.interfaces.transform_fn import (
     AllToAllTransformFnResult,
 )
-from ray.data._internal.logical.operators.all_to_all_operator import RandomizeBlocks
+from ray.data._internal.logical.operators import RandomizeBlocks
 
 
 def generate_randomize_blocks_fn(

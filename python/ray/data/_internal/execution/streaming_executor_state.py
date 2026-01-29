@@ -430,6 +430,7 @@ def process_completed_tasks(
             ready_tasks_by_op[state].append(task)
 
         for state, ready_tasks in ready_tasks_by_op.items():
+            # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
             for task in ready_tasks:
                 if isinstance(task, DataOpTask):

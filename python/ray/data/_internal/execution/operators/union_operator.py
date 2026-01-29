@@ -93,7 +93,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
         while self._output_buffer:
-            bundle = self._output_buffer.popleft()
+            bundle = self._output_buffer.get_next()
             self._metrics.on_output_dequeued(bundle)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:

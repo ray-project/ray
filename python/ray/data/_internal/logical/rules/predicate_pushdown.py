@@ -318,9 +318,7 @@ class PredicatePushdown(Rule):
             A shallow copy of the operator with updated input dependencies
         """
         new_op = copy.copy(op)
-        new_op._input_dependencies = new_inputs
-        # Clear and re-wire dependencies for the new operator.
-        # The output dependencies will be wired by the parent transform's traversal.
+        new_op.input_dependencies = new_inputs
         new_op._output_dependencies = []
         new_op._wire_output_deps(new_inputs)
         return new_op
