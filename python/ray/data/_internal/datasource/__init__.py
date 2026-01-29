@@ -20,8 +20,15 @@ from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.databricks_uc_datasource import (
     DatabricksUCDatasource,
 )
+from ray.data._internal.datasource.delta_sharing_datasource import (
+    DeltaSharingDatasource,
+)
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.huggingface_datasource import HuggingFaceDatasource
+from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
+from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
+from ray.data._internal.datasource.image_datasink import ImageDatasink
+from ray.data._internal.datasource.image_datasource import ImageDatasource
 from ray.data._internal.datasource.json_datasink import JSONDatasink
 from ray.data._internal.datasource.json_datasource import (
     ArrowJSONDatasource,
@@ -67,8 +74,13 @@ __all__ = [
     "ClickHouseDatasource",
     "ClickHouseTableSettings",
     "DatabricksUCDatasource",
+    "DeltaSharingDatasource",
     "HudiDatasource",
     "HuggingFaceDatasource",
+    "IcebergDatasink",
+    "IcebergDatasource",
+    "ImageDatasink",
+    "ImageDatasource",
     "JSONDatasink",
     "KafkaAuthConfig",
     "KafkaDatasource",
