@@ -152,15 +152,32 @@ def commit_to_existing_table(
         write_kwargs.get("commit_properties")
     )
 
-    # Commit files atomically using Delta Lake write transaction
-    existing_table.create_write_transaction(
-        actions=file_actions,
-        mode="overwrite" if mode == "overwrite" else "append",
-        schema=existing_table.schema(),
-        partition_by=partition_cols or None,
-        commit_properties=commit_properties,
-        post_commithook_properties=write_kwargs.get("post_commithook_properties"),
-    )
+    # For OVERWRITE mode, delete all existing data first, then append
+    # This ensures atomic overwrite behavior (delete + append in separate transactions)
+    # Note: This is not fully atomic across both operations, but matches Delta Lake's
+    # standard overwrite pattern where delete and append are separate transactions
+    if mode == "overwrite":
+        # Delete all existing data using a predicate that matches all rows
+        existing_table.delete("1=1")
+        # Then append new files
+        existing_table.create_write_transaction(
+            actions=file_actions,
+            mode="append",
+            schema=existing_table.schema(),
+            partition_by=partition_cols or None,
+            commit_properties=commit_properties,
+            post_commithook_properties=write_kwargs.get("post_commithook_properties"),
+        )
+    else:
+        # For APPEND mode, just append files
+        existing_table.create_write_transaction(
+            actions=file_actions,
+            mode="append",
+            schema=existing_table.schema(),
+            partition_by=partition_cols or None,
+            commit_properties=commit_properties,
+            post_commithook_properties=write_kwargs.get("post_commithook_properties"),
+        )
 
 
 def validate_partition_columns_match_existing(

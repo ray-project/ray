@@ -319,8 +319,23 @@ def convert_schema_to_delta(schema: pa.Schema) -> Any:
 
     if schema is None:
         raise ValueError("Cannot convert None schema to Delta Lake schema")
+
+    # Convert timestamp[s] to timestamp[us] since Delta Lake doesn't support second precision
+    # Delta Lake supports timestamp[us] (microsecond) and timestamp[ns] (nanosecond)
+    converted_fields = []
+    for field in schema:
+        field_type = field.type
+        # Convert timestamp[s] to timestamp[us] for Delta Lake compatibility
+        if pa.types.is_timestamp(field_type) and field_type.unit == "s":
+            field_type = pa.timestamp("us")
+        converted_fields.append(
+            pa.field(field.name, field_type, field.nullable, field.metadata)
+        )
+
+    converted_schema = pa.schema(converted_fields)
+
     try:
-        return DeltaSchema.from_arrow(schema)
+        return DeltaSchema.from_arrow(converted_schema)
     except (ValueError, TypeError):
         fields = [
             {
@@ -329,7 +344,7 @@ def convert_schema_to_delta(schema: pa.Schema) -> Any:
                 "nullable": f.nullable,
                 "metadata": {},
             }
-            for f in schema
+            for f in converted_schema
         ]
         return DeltaSchema.from_json(json.dumps({"type": "struct", "fields": fields}))
 
