@@ -103,6 +103,8 @@ from ray.includes.common cimport (
     CLabelMatchExpression,
     CLabelIn,
     CLabelNotIn,
+    CLabelSelector,
+    CNodeResources,
     CRayFunction,
     CWorkerType,
     CJobConfig,
@@ -141,6 +143,7 @@ from ray.includes.common cimport (
     PersistPort,
     WaitForPersistedPort,
     CWaitForPersistedPortResult,
+    SetNodeResourcesLabels,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -506,11 +509,6 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
         node_id = c_node_ids[i].Hex().decode("ascii")
         node_ids.add(node_id)
 
-    # add primary_node_id into node_ids
-    if not c_object_location.GetPrimaryNodeID().IsNil():
-        node_ids.add(
-            c_object_location.GetPrimaryNodeID().Hex().decode("ascii"))
-
     # add spilled_node_id into node_ids
     if not c_object_location.GetSpilledNodeID().IsNil():
         node_ids.add(
@@ -601,6 +599,23 @@ cdef int prepare_label_selector(
         c_label_selector[0].AddConstraint(key.encode("utf-8"), value.encode("utf-8"))
 
     return 0
+
+def node_labels_match_selector(node_labels: Dict[str, str], selector: Dict[str, str]) -> bool:
+    """
+    Checks if the given node labels satisfy the label selector. This helper function exposes
+    the C++ logic for determining if a node satisfies a label selector to the Python layer.
+    """
+    cdef:
+        CNodeResources c_node_resources
+        CLabelSelector c_label_selector
+        unordered_map[c_string, c_string] c_labels_map
+
+    prepare_labels(node_labels, &c_labels_map)
+    SetNodeResourcesLabels(c_node_resources, c_labels_map)
+    prepare_label_selector(selector, &c_label_selector)
+
+    # Return whether the node resources satisfy the label constraint.
+    return c_node_resources.HasRequiredLabels(c_label_selector)
 
 cdef int prepare_fallback_strategy(
         list fallback_strategy,
@@ -1614,6 +1629,7 @@ cdef void execute_task(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         c_bool *is_retryable_error,
+        c_string *actor_repr_name,
         c_string *application_error,
         # This parameter is only used for actor creation task to define
         # the concurrency groups of this actor.
@@ -1889,16 +1905,14 @@ cdef void execute_task(
                 if (hasattr(actor_class, "__ray_actor_class__") and
                         (actor_class.__ray_actor_class__.__repr__
                          != object.__repr__)):
-                    actor_repr = repr(actor)
+                    actor_repr_str = repr(actor)
                     actor_magic_token = "{}{}\n".format(
-                        ray_constants.LOG_PREFIX_ACTOR_NAME, actor_repr)
+                        ray_constants.LOG_PREFIX_ACTOR_NAME, actor_repr_str)
                     # Flush on both stdout and stderr.
                     print(actor_magic_token, end="")
                     print(actor_magic_token, file=sys.stderr, end="")
 
-                    # Sets the actor repr name for the actor so other components
-                    # like GCS has such info.
-                    core_worker.set_actor_repr_name(actor_repr)
+                    actor_repr_name[0] = actor_repr_str
 
             if (returns[0].size() > 0
                     and not inspect.isgenerator(outputs)
@@ -1985,6 +1999,7 @@ cdef execute_task_with_cancellation_handler(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         c_bool *is_retryable_error,
+        c_string *actor_repr_name,
         c_string *application_error,
         # This parameter is only used for actor creation task to define
         # the concurrency groups of this actor.
@@ -2079,6 +2094,7 @@ cdef execute_task_with_cancellation_handler(
                      dynamic_returns,
                      streaming_generator_returns,
                      is_retryable_error,
+                     actor_repr_name,
                      application_error,
                      c_defined_concurrency_groups,
                      c_name_of_concurrency_group_to_execute,
@@ -2197,6 +2213,7 @@ cdef CRayStatus task_execution_handler(
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
         c_bool *is_retryable_error,
+        c_string *actor_repr_name,
         c_string *application_error,
         const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
         const c_string name_of_concurrency_group_to_execute,
@@ -2226,6 +2243,7 @@ cdef CRayStatus task_execution_handler(
                         dynamic_returns,
                         streaming_generator_returns,
                         is_retryable_error,
+                        actor_repr_name,
                         application_error,
                         defined_concurrency_groups,
                         name_of_concurrency_group_to_execute,
@@ -2913,9 +2931,6 @@ cdef class CoreWorker:
 
         return CCoreWorkerProcess.GetCoreWorker(
             ).UpdateTaskIsDebuggerPaused(c_task_id, is_debugger_paused)
-
-    def set_actor_repr_name(self, repr_name):
-        CCoreWorkerProcess.GetCoreWorker().SetActorReprName(repr_name)
 
     def get_objects(self, object_refs, int64_t timeout_ms=-1):
         cdef:

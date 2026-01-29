@@ -49,6 +49,9 @@ echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}" >> /root/.bazelrc
 
 EOF
 
+ENV CC=clang
+ENV CXX=clang++-12
+
 # System conf for tests
 RUN locale -a
 ENV LC_ALL=en_US.utf8

@@ -18,7 +18,7 @@ from ray._private.ray_constants import ID_SIZE
 from ray.actor import ActorHandle
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
+from ray.data._internal.execution.bundle_queue import HashLinkedQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -31,6 +31,7 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
     _ActorPool,
     _ActorTaskSelector,
+    _MapWorker,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -94,7 +95,7 @@ class TestActorPool(unittest.TestCase):
             bundles = make_ref_bundles([[0]])
         else:
             bundles = [bundle]
-        queue = FIFOBundleQueue()
+        queue = HashLinkedQueue()
         for bundle in bundles:
             queue.add(bundle)
         actor_task_selector = self._create_task_selector(pool)
@@ -526,7 +527,7 @@ class TestActorPool(unittest.TestCase):
         actor2 = self._add_ready_actor(pool, node_id="node2")
 
         # Create the mock bundle queue
-        bundle_queue = FIFOBundleQueue()
+        bundle_queue = HashLinkedQueue()
         for bundle in bundles:
             bundle_queue.add(bundle)
 
@@ -573,7 +574,7 @@ class TestActorPool(unittest.TestCase):
             b.get_preferred_object_locations = lambda: {}
 
         # Create the mock bundle queue
-        bundle_queue = FIFOBundleQueue()
+        bundle_queue = HashLinkedQueue()
         for bundle in bundles:
             bundle_queue.add(bundle)
 
@@ -1171,6 +1172,26 @@ def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
         op.get_next()
     assert actor_pool.num_pending_actors() == num_actors
     assert op.has_completed()
+
+
+def test_map_worker_repr_handles_uninitialized_src_fn_name():
+    """Tests that _MapWorker.__repr__ doesn't crash when src_fn_name is not set.
+
+    This can happen during actor restarts when the actor's args are not
+    recoverable (zombie actors), causing __init__ to fail before src_fn_name
+    is set. The __repr__ method should gracefully handle this case.
+
+    """
+    # Create a _MapWorker instance without calling __init__
+    # This simulates the state where __init__ failed before src_fn_name was set
+    worker = object.__new__(_MapWorker)
+
+    # Verify __repr__ returns the fallback string without raising an error
+    assert repr(worker) == "MapWorker(<initializing>)"
+
+    # Also verify that when src_fn_name IS set, __repr__ returns it correctly
+    worker.src_fn_name = "TestFunction"
+    assert repr(worker) == "MapWorker(TestFunction)"
 
 
 if __name__ == "__main__":

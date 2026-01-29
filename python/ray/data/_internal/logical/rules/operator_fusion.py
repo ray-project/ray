@@ -26,19 +26,23 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
 from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
     AbstractAllToAll,
-    RandomShuffle,
-    Repartition,
-)
-from ray.data._internal.logical.operators.map_operator import (
     AbstractMap,
     AbstractUDFMap,
     MapBatches,
+    RandomShuffle,
+    Repartition,
     StreamingRepartition,
 )
 from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
 from ray.util.annotations import DeveloperAPI
+
+__all__ = [
+    "FuseOperators",
+    "are_remote_args_compatible",
+]
+
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
@@ -74,12 +78,12 @@ class FuseOperators(Rule):
         return new_plan
 
     def _remove_output_deps(self, op: PhysicalOperator) -> None:
-        for input in op._input_dependencies:
+        for input in op.input_dependencies:
             input._output_dependencies = []
             self._remove_output_deps(input)
 
     def _update_output_deps(self, op: PhysicalOperator) -> None:
-        for input in op._input_dependencies:
+        for input in op.input_dependencies:
             input._output_dependencies.append(op)
             self._update_output_deps(input)
 
@@ -225,7 +229,7 @@ class FuseOperators(Rule):
 
         # If the downstream operator takes no input, it cannot be fused with
         # the upstream operator.
-        if not down_logical_op._input_dependencies:
+        if not down_logical_op.input_dependencies:
             return False
 
         # We currently only support fusing for the following cases:

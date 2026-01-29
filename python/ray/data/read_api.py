@@ -20,7 +20,6 @@ import numpy as np
 from packaging.version import parse as parse_version
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.datasource.audio_datasource import AudioDatasource
@@ -61,14 +60,14 @@ from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.from_operators import (
+from ray.data._internal.logical.operators import (
     FromArrow,
     FromBlocks,
     FromItems,
     FromNumpy,
     FromPandas,
+    Read,
 )
-from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
@@ -80,6 +79,7 @@ from ray.data._internal.util import (
     ndarray_to_block,
     pandas_df_to_arrow_block,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import (
     Block,
     BlockExecStats,
@@ -88,7 +88,6 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
-    BaseFileMetadataProvider,
     Connection,
     Datasource,
     PathPartitionFilter,
@@ -100,7 +99,6 @@ from ray.data.datasource.file_based_datasource import (
 )
 from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
-    FileMetadataProvider,
 )
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
@@ -174,8 +172,20 @@ def from_items(
 
         >>> import ray
         >>> ds = ray.data.from_items([1, 2, 3, 4, 5])
-        >>> ds
-        MaterializedDataset(num_blocks=..., num_rows=5, schema={item: int64})
+        >>> ds  # doctest: +ELLIPSIS
+        shape: (5, 1)
+        ╭───────╮
+        │ item  │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        │ 2     │
+        │ 3     │
+        │ 4     │
+        │ 5     │
+        ╰───────╯
+        (Showing 5 of 5 rows)
         >>> ds.schema()
         Column  Type
         ------  ----
@@ -260,8 +270,14 @@ def range(
 
         >>> import ray
         >>> ds = ray.data.range(10000)
-        >>> ds
-        Dataset(num_rows=10000, schema={id: int64})
+        >>> ds  # doctest: +ELLIPSIS
+        shape: (10000, 1)
+        ╭───────╮
+        │ id    │
+        │ ---   │
+        │ int64 │
+        ╰───────╯
+        (Dataset isn't materialized)
         >>> ds.map(lambda row: {"id": row["id"] * 2}).take(4)
         [{'id': 0}, {'id': 2}, {'id': 4}, {'id': 6}]
 
@@ -314,11 +330,14 @@ def range_tensor(
 
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(2, 2))
-        >>> ds
-        Dataset(
-           num_rows=1000,
-           schema={data: ArrowTensorTypeV2(shape=(2, 2), dtype=int64)}
-        )
+        >>> ds  # doctest: +ELLIPSIS
+        shape: (1000, 1)
+        ╭──────────────────────────────────────────╮
+        │ data                                     │
+        │ ---                                      │
+        │ ArrowTensorTypeV2(shape=(2, 2), dtype=i… │
+        ╰──────────────────────────────────────────╯
+        (Dataset isn't materialized)
         >>> ds.map_batches(lambda row: {"data": row["data"] * 2}).take(2)
         [{'data': array([[0, 0],
                [0, 0]])}, {'data': array([[2, 2],
@@ -390,7 +409,7 @@ def read_datasource(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        read_args: Additional kwargs to pass to the :class:`~ray.data.Datasource`
+        **read_args: Additional kwargs to pass to the :class:`~ray.data.Datasource`
             implementation.
 
     Returns:
@@ -519,6 +538,8 @@ def read_audio(
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
         file_extensions: A list of file extensions to filter files by.
+        shuffle: If ``"files"``, randomly shuffle input files order before read.
+            Defaults to ``None``.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -542,7 +563,6 @@ def read_audio(
         paths,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
-        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
@@ -618,22 +638,27 @@ def read_videos(
             that describes how paths are organized. Defaults to ``None``.
         include_paths: If ``True``, include the path to each image. File paths are
             stored in the ``'path'`` column.
-        include_timestmaps: If ``True``, include the frame timestamps from the video
+        include_timestamps: If ``True``, include the frame timestamps from the video
             as a ``'frame_timestamp'`` column.
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
         file_extensions: A list of file extensions to filter files by.
+        shuffle: If ``"files"``, randomly shuffle input files order before read.
+            Defaults to ``None``.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
-
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
     Returns:
         A :class:`~ray.data.Dataset` containing video frames from the video files.
     """
@@ -641,7 +666,6 @@ def read_videos(
         paths,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
-        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
@@ -740,7 +764,7 @@ def read_mongo(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        mongo_args: kwargs passed to `aggregate_arrow_all() <https://mongo-arrow\
+        **mongo_args: kwargs passed to `aggregate_arrow_all() <https://mongo-arrow\
             .readthedocs.io/en/latest/api/api.html#pymongoarrow.api\
             aggregate_arrow_all>`_ in pymongoarrow in producing
             Arrow-formatted results.
@@ -825,6 +849,8 @@ def read_bigquery(
             For more information, see `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`_.
         dataset: The name of the dataset hosted in BigQuery in the format of ``dataset_id.table_id``.
             Both the dataset_id and table_id must exist otherwise an exception will be raised.
+        query: The SQL query to execute. `query` and `dataset` are mutually exclusive.
+            If `query` is provided, the query result is read as the dataset.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -870,7 +896,6 @@ def read_parquet(
     memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
-    meta_provider: Optional[FileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
@@ -977,9 +1002,6 @@ def read_parquet(
             assumes that the tensors are serialized in the raw
             NumPy array format in C-contiguous order (e.g., via
             `arr.tobytes()`).
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases you do not need to set this parameter.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
             with a custom callback to read only selected partitions of a dataset.
@@ -988,10 +1010,6 @@ def read_parquet(
         shuffle: If setting to "files", randomly shuffle input files order before read.
             If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
             shuffle the input files. Defaults to not shuffle with ``None``.
-        arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
-            set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
-                python/generated/pyarrow.dataset.Scanner.html\
-                    #pyarrow.dataset.Scanner.from_fragment>`_
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
         file_extensions: A list of file extensions to filter files by.
@@ -1003,18 +1021,21 @@ def read_parquet(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        **arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
+            set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
+                python/generated/pyarrow.dataset.Scanner.html\
+                    #pyarrow.dataset.Scanner.from_fragment>`_
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified parquet
         files.
     """
-    _emit_meta_provider_deprecation_warning(meta_provider)
     _validate_shuffle_arg(shuffle)
 
     # Check for deprecated filter parameter
     if "filter" in arrow_parquet_args:
         warnings.warn(
-            "The `filter` argument is deprecated and will not supported in a future release. "
+            "The `filter` argument is deprecated and will not be supported in a future release. "
             "Use `dataset.filter(expr=expr)` instead to filter rows.",
             DeprecationWarning,
             stacklevel=2,
@@ -1036,7 +1057,6 @@ def read_parquet(
         _block_udf=_block_udf,
         filesystem=filesystem,
         schema=schema,
-        meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         shuffle=shuffle,
@@ -1064,7 +1084,6 @@ def read_images(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
-    meta_provider: Optional[BaseFileMetadataProvider] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_file_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
@@ -1142,10 +1161,6 @@ def read_images(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
-        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
-            Custom metadata providers may be able to resolve file metadata more quickly
-            and/or accurately. In most cases, you do not need to set this. If ``None``,
-            this function uses a system-chosen implementation.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_file_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -1192,10 +1207,6 @@ def read_images(
         ValueError: if ``size`` contains non-positive numbers.
         ValueError: if ``mode`` is unsupported.
     """
-    _emit_meta_provider_deprecation_warning(meta_provider)
-
-    if meta_provider is None:
-        meta_provider = ImageFileMetadataProvider()
 
     datasource = ImageDatasource(
         paths,
@@ -1203,7 +1214,7 @@ def read_images(
         mode=mode,
         include_paths=include_paths,
         filesystem=filesystem,
-        meta_provider=meta_provider,
+        meta_provider=ImageFileMetadataProvider(),
         open_stream_args=arrow_open_file_args,
         partition_filter=partition_filter,
         partitioning=partitioning,
@@ -1235,7 +1246,6 @@ def read_json(
     memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-    meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = Partitioning("hive"),
     include_paths: bool = False,
@@ -1315,10 +1325,6 @@ def read_json(
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
-        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
-            Custom metadata providers may be able to resolve file metadata more quickly
-            and/or accurately. In most cases, you do not need to set this. If ``None``,
-            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1337,9 +1343,6 @@ def read_json(
             If setting to ``FileShuffleConfig``, you can pass a random seed to shuffle
             the input files, e.g. ``FileShuffleConfig(seed=42)``.
             Defaults to not shuffle with ``None``.
-        arrow_json_args: JSON read options to pass to `pyarrow.json.read_json <https://\
-            arrow.apache.org/docs/python/generated/pyarrow.json.read_json.html#pyarrow.\
-            json.read_json>`_.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1349,11 +1352,12 @@ def read_json(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        **arrow_json_args: JSON read options to pass to `pyarrow.json.read_json <https://\
+            arrow.apache.org/docs/python/generated/pyarrow.json.read_json.html#pyarrow.\
+            json.read_json>`_.
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """  # noqa: E501
-    _emit_meta_provider_deprecation_warning(meta_provider)
 
     if lines:
         incompatible_params = {
@@ -1365,13 +1369,10 @@ def read_json(
             if value:
                 raise ValueError(f"`{param}` is not supported when `lines=True`. ")
 
-    if meta_provider is None:
-        meta_provider = DefaultFileMetadataProvider()
-
     file_based_datasource_kwargs = dict(
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
-        meta_provider=meta_provider,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
@@ -1418,7 +1419,6 @@ def read_csv(
     memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-    meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = Partitioning("hive"),
     include_paths: bool = False,
@@ -1497,7 +1497,7 @@ def read_csv(
 
         >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
         ...     file_extensions=["csv"])
-        Dataset(num_rows=?, schema=...)
+        Dataset(num_rows=?, schema=Unknown schema)
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1521,10 +1521,6 @@ def read_csv(
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
-        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
-            Custom metadata providers may be able to resolve file metadata more quickly
-            and/or accurately. In most cases, you do not need to set this. If ``None``,
-            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1540,10 +1536,6 @@ def read_csv(
         shuffle: If setting to "files", randomly shuffle input files order before read.
             If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
             shuffle the input files. Defaults to not shuffle with ``None``.
-        arrow_csv_args: CSV read options to pass to
-            `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
-            pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_
-            when opening CSV files.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1553,21 +1545,20 @@ def read_csv(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        **arrow_csv_args: CSV read options to pass to
+            `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
+            pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_
+            when opening CSV files.
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
-    _emit_meta_provider_deprecation_warning(meta_provider)
-
-    if meta_provider is None:
-        meta_provider = DefaultFileMetadataProvider()
 
     datasource = CSVDatasource(
         paths,
         arrow_csv_args=arrow_csv_args,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
-        meta_provider=meta_provider,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
@@ -1600,7 +1591,6 @@ def read_text(
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-    meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     include_paths: bool = False,
@@ -1633,6 +1623,8 @@ def read_text(
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
         encoding: The encoding of the files (e.g., "utf-8" or "ascii").
+        drop_empty_lines: If ``True``, drop empty lines from the dataset.
+            Defaults to ``True``.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `PyArrow docs <https://arrow.apache.org/docs/python/api/\
@@ -1653,10 +1645,6 @@ def read_text(
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
-        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
-            Custom metadata providers may be able to resolve file metadata more quickly
-            and/or accurately. In most cases, you do not need to set this. If ``None``,
-            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1684,10 +1672,6 @@ def read_text(
         :class:`~ray.data.Dataset` producing lines of text read from the specified
         paths.
     """
-    _emit_meta_provider_deprecation_warning(meta_provider)
-
-    if meta_provider is None:
-        meta_provider = DefaultFileMetadataProvider()
 
     datasource = TextDatasource(
         paths,
@@ -1695,7 +1679,7 @@ def read_text(
         encoding=encoding,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
-        meta_provider=meta_provider,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
@@ -1726,7 +1710,6 @@ def read_avro(
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-    meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     include_paths: bool = False,
@@ -1776,10 +1759,6 @@ def read_avro(
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
-        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
-            Custom metadata providers may be able to resolve file metadata more quickly
-            and/or accurately. In most cases, you do not need to set this. If ``None``,
-            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1806,16 +1785,12 @@ def read_avro(
     Returns:
         :class:`~ray.data.Dataset` holding records from the Avro files.
     """
-    _emit_meta_provider_deprecation_warning(meta_provider)
-
-    if meta_provider is None:
-        meta_provider = DefaultFileMetadataProvider()
 
     datasource = AvroDatasource(
         paths,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
-        meta_provider=meta_provider,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
@@ -1842,7 +1817,6 @@ def read_numpy(
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-    meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     include_paths: bool = False,
@@ -1879,10 +1853,6 @@ def read_numpy(
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`_.
-        numpy_load_args: Other options to pass to np.load.
-        meta_provider: File metadata provider. Custom metadata providers may
-            be able to resolve file metadata more quickly and/or accurately. If
-            ``None``, this function uses a system-chosen implementation.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
@@ -1906,21 +1876,17 @@ def read_numpy(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        **numpy_load_args: Other options to pass to np.load.
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """  # noqa: E501
-    _emit_meta_provider_deprecation_warning(meta_provider)
-
-    if meta_provider is None:
-        meta_provider = DefaultFileMetadataProvider()
 
     datasource = NumpyDatasource(
         paths,
         numpy_load_args=numpy_load_args,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
-        meta_provider=meta_provider,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
@@ -1947,7 +1913,6 @@ def read_tfrecords(
     memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-    meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
@@ -1979,7 +1944,7 @@ def read_tfrecords(
     Examples:
         >>> import ray
         >>> ray.data.read_tfrecords("s3://anonymous@ray-example-data/iris.tfrecords")
-        Dataset(num_rows=?, schema=...)
+        Dataset(num_rows=?, schema=Unknown schema)
 
         We can also read compressed TFRecord files, which use one of the
         `compression types supported by Arrow <https://arrow.apache.org/docs/python/\
@@ -1989,7 +1954,7 @@ def read_tfrecords(
         ...     "s3://anonymous@ray-example-data/iris.tfrecords.gz",
         ...     arrow_open_stream_args={"compression": "gzip"},
         ... )
-        Dataset(num_rows=?, schema=...)
+        Dataset(num_rows=?, schema=Unknown schema)
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -2015,10 +1980,6 @@ def read_tfrecords(
             when opening input files to read. To read a compressed TFRecord file,
             pass the corresponding compression type (e.g., for ``GZIP`` or ``ZLIB``),
             use ``arrow_open_stream_args={'compression': 'gzip'}``).
-        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
-            Custom metadata providers may be able to resolve file metadata more quickly
-            and/or accurately. In most cases, you do not need to set this. If ``None``,
-            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -2052,8 +2013,6 @@ def read_tfrecords(
     """
     import platform
 
-    _emit_meta_provider_deprecation_warning(meta_provider)
-
     tfx_read = False
 
     if tfx_read_options and platform.processor() != "arm":
@@ -2070,14 +2029,12 @@ def read_tfrecords(
                 " This can help speed up the reading of large TFRecord files."
             )
 
-    if meta_provider is None:
-        meta_provider = DefaultFileMetadataProvider()
     datasource = TFRecordDatasource(
         paths,
         tf_schema=tf_schema,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
-        meta_provider=meta_provider,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
@@ -2125,7 +2082,6 @@ def read_mcap(
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
-    meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     include_paths: bool = False,
@@ -2203,9 +2159,6 @@ def read_mcap(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases you do not need to set this parameter.
         partition_filter: A :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a dataset.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
@@ -2231,11 +2184,7 @@ def read_mcap(
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified MCAP files.
     """
-    _emit_meta_provider_deprecation_warning(meta_provider)
     _validate_shuffle_arg(shuffle)
-
-    if meta_provider is None:
-        meta_provider = DefaultFileMetadataProvider()
 
     if file_extensions is None:
         file_extensions = ["mcap"]
@@ -2256,7 +2205,7 @@ def read_mcap(
         message_types=message_types,
         include_metadata=include_metadata,
         filesystem=filesystem,
-        meta_provider=meta_provider,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
@@ -2283,7 +2232,6 @@ def read_webdataset(
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-    meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     decoder: Optional[Union[bool, str, callable, list]] = True,
     fileselect: Optional[Union[list, callable]] = None,
@@ -2310,9 +2258,6 @@ def read_webdataset(
             To read a compressed TFRecord file,
             pass the corresponding compression type (e.g. for ``GZIP`` or ``ZLIB``, use
             ``arrow_open_stream_args={'compression': 'gzip'}``).
-        meta_provider: File metadata provider. Custom metadata providers may
-            be able to resolve file metadata more quickly and/or accurately. If
-            ``None``, this function uses a system-chosen implementation.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
         decoder: A function or list of functions to decode the data.
@@ -2346,10 +2291,6 @@ def read_webdataset(
 
     .. _tf.train.Example: https://www.tensorflow.org/api_docs/python/tf/train/Example
     """  # noqa: E501
-    _emit_meta_provider_deprecation_warning(meta_provider)
-
-    if meta_provider is None:
-        meta_provider = DefaultFileMetadataProvider()
 
     datasource = WebDatasetDatasource(
         paths,
@@ -2360,7 +2301,7 @@ def read_webdataset(
         verbose_open=verbose_open,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
-        meta_provider=meta_provider,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         shuffle=shuffle,
         include_paths=include_paths,
@@ -2387,7 +2328,6 @@ def read_binary_files(
     memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-    meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
@@ -2445,10 +2385,6 @@ def read_binary_files(
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
-        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
-            Custom metadata providers may be able to resolve file metadata more quickly
-            and/or accurately. In most cases, you do not need to set this. If ``None``,
-            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -2474,17 +2410,13 @@ def read_binary_files(
     Returns:
         :class:`~ray.data.Dataset` producing rows read from the specified paths.
     """
-    _emit_meta_provider_deprecation_warning(meta_provider)
-
-    if meta_provider is None:
-        meta_provider = DefaultFileMetadataProvider()
 
     datasource = BinaryDatasource(
         paths,
         include_paths=include_paths,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
-        meta_provider=meta_provider,
+        meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
@@ -2508,6 +2440,7 @@ def read_sql(
     sql: str,
     connection_factory: Callable[[], Connection],
     *,
+    sql_params: Optional[Any] = None,
     shard_keys: Optional[list[str]] = None,
     shard_hash_fn: str = "MD5",
     parallelism: int = -1,
@@ -2585,6 +2518,8 @@ def read_sql(
         connection_factory: A function that takes no arguments and returns a
             Python DB API2
             `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
+        sql_params: Parameters to bind to the SQL query. Use the placeholder style
+            required by your database connector (per Python DB API2).
         shard_keys: The keys to shard the data by.
         shard_hash_fn: The hash function string to use for sharding. Defaults to "MD5".
             For other databases, common alternatives include "hash" and "SHA".
@@ -2611,6 +2546,7 @@ def read_sql(
     """
     datasource = SQLDatasource(
         sql=sql,
+        sql_params=sql_params,
         shard_keys=shard_keys,
         shard_hash_fn=shard_hash_fn,
         connection_factory=connection_factory,
@@ -3074,13 +3010,36 @@ def from_pandas(
         >>> import pandas as pd
         >>> import ray
         >>> df = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
-        >>> ray.data.from_pandas(df)
-        MaterializedDataset(num_blocks=1, num_rows=3, schema={a: int64, b: int64})
+        >>> ray.data.from_pandas(df)  # doctest: +ELLIPSIS
+        shape: (3, 2)
+        ╭───────┬───────╮
+        │ a     ┆ b     │
+        │ ---   ┆ ---   │
+        │ int64 ┆ int64 │
+        ╞═══════╪═══════╡
+        │ 1     ┆ 4     │
+        │ 2     ┆ 5     │
+        │ 3     ┆ 6     │
+        ╰───────┴───────╯
+        (Showing 3 of 3 rows)
 
        Create a Ray Dataset from a list of Pandas DataFrames.
 
-        >>> ray.data.from_pandas([df, df])
-        MaterializedDataset(num_blocks=2, num_rows=6, schema={a: int64, b: int64})
+        >>> ray.data.from_pandas([df, df])  # doctest: +ELLIPSIS
+        shape: (6, 2)
+        ╭───────┬───────╮
+        │ a     ┆ b     │
+        │ ---   ┆ ---   │
+        │ int64 ┆ int64 │
+        ╞═══════╪═══════╡
+        │ 1     ┆ 4     │
+        │ 2     ┆ 5     │
+        │ 3     ┆ 6     │
+        │ 1     ┆ 4     │
+        │ 2     ┆ 5     │
+        │ 3     ┆ 6     │
+        ╰───────┴───────╯
+        (Showing 6 of 6 rows)
 
     Args:
         dfs: A pandas dataframe or a list of pandas dataframes.
@@ -3128,13 +3087,36 @@ def from_pandas_refs(
         >>> import pandas as pd
         >>> import ray
         >>> df_ref = ray.put(pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
-        >>> ray.data.from_pandas_refs(df_ref)
-        MaterializedDataset(num_blocks=1, num_rows=3, schema={a: int64, b: int64})
+        >>> ray.data.from_pandas_refs(df_ref)  # doctest: +ELLIPSIS
+        shape: (3, 2)
+        ╭───────┬───────╮
+        │ a     ┆ b     │
+        │ ---   ┆ ---   │
+        │ int64 ┆ int64 │
+        ╞═══════╪═══════╡
+        │ 1     ┆ 4     │
+        │ 2     ┆ 5     │
+        │ 3     ┆ 6     │
+        ╰───────┴───────╯
+        (Showing 3 of 3 rows)
 
         Create a Ray Dataset from a list of Pandas Dataframes references.
 
-        >>> ray.data.from_pandas_refs([df_ref, df_ref])
-        MaterializedDataset(num_blocks=2, num_rows=6, schema={a: int64, b: int64})
+        >>> ray.data.from_pandas_refs([df_ref, df_ref])  # doctest: +ELLIPSIS
+        shape: (6, 2)
+        ╭───────┬───────╮
+        │ a     ┆ b     │
+        │ ---   ┆ ---   │
+        │ int64 ┆ int64 │
+        ╞═══════╪═══════╡
+        │ 1     ┆ 4     │
+        │ 2     ┆ 5     │
+        │ 3     ┆ 6     │
+        │ 1     ┆ 4     │
+        │ 2     ┆ 5     │
+        │ 3     ┆ 6     │
+        ╰───────┴───────╯
+        (Showing 6 of 6 rows)
 
     Args:
         dfs: A Ray object reference to a pandas dataframe, or a list of
@@ -3200,13 +3182,30 @@ def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> MaterializedDat
         >>> import numpy as np
         >>> import ray
         >>> arr = np.array([1])
-        >>> ray.data.from_numpy(arr)
-        MaterializedDataset(num_blocks=1, num_rows=1, schema={data: int64})
+        >>> ray.data.from_numpy(arr)  # doctest: +ELLIPSIS
+        shape: (1, 1)
+        ╭───────╮
+        │ data  │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        ╰───────╯
+        (Showing 1 of 1 rows)
 
         Create a Ray Dataset from a list of NumPy arrays.
 
-        >>> ray.data.from_numpy([arr, arr])
-        MaterializedDataset(num_blocks=2, num_rows=2, schema={data: int64})
+        >>> ray.data.from_numpy([arr, arr])  # doctest: +ELLIPSIS
+        shape: (2, 1)
+        ╭───────╮
+        │ data  │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        │ 1     │
+        ╰───────╯
+        (Showing 2 of 2 rows)
 
     Args:
         ndarrays: A NumPy ndarray or a list of NumPy ndarrays.
@@ -3233,13 +3232,30 @@ def from_numpy_refs(
         >>> import numpy as np
         >>> import ray
         >>> arr_ref = ray.put(np.array([1]))
-        >>> ray.data.from_numpy_refs(arr_ref)
-        MaterializedDataset(num_blocks=1, num_rows=1, schema={data: int64})
+        >>> ray.data.from_numpy_refs(arr_ref)  # doctest: +ELLIPSIS
+        shape: (1, 1)
+        ╭───────╮
+        │ data  │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        ╰───────╯
+        (Showing 1 of 1 rows)
 
         Create a Ray Dataset from a list of NumPy array references.
 
-        >>> ray.data.from_numpy_refs([arr_ref, arr_ref])
-        MaterializedDataset(num_blocks=2, num_rows=2, schema={data: int64})
+        >>> ray.data.from_numpy_refs([arr_ref, arr_ref])  # doctest: +ELLIPSIS
+        shape: (2, 1)
+        ╭───────╮
+        │ data  │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        │ 1     │
+        ╰───────╯
+        (Showing 2 of 2 rows)
 
     Args:
         ndarrays: A Ray object reference to a NumPy ndarray or a list of Ray object
@@ -3296,13 +3312,30 @@ def from_arrow(
         >>> import pyarrow as pa
         >>> import ray
         >>> table = pa.table({"x": [1]})
-        >>> ray.data.from_arrow(table)
-        MaterializedDataset(num_blocks=1, num_rows=1, schema={x: int64})
+        >>> ray.data.from_arrow(table)  # doctest: +ELLIPSIS
+        shape: (1, 1)
+        ╭───────╮
+        │ x     │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        ╰───────╯
+        (Showing 1 of 1 rows)
 
         Create a Ray Dataset from a list of PyArrow tables.
 
-        >>> ray.data.from_arrow([table, table])
-        MaterializedDataset(num_blocks=2, num_rows=2, schema={x: int64})
+        >>> ray.data.from_arrow([table, table])  # doctest: +ELLIPSIS
+        shape: (2, 1)
+        ╭───────╮
+        │ x     │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        │ 1     │
+        ╰───────╯
+        (Showing 2 of 2 rows)
 
 
     Args:
@@ -3369,13 +3402,30 @@ def from_arrow_refs(
         >>> import pyarrow as pa
         >>> import ray
         >>> table_ref = ray.put(pa.table({"x": [1]}))
-        >>> ray.data.from_arrow_refs(table_ref)
-        MaterializedDataset(num_blocks=1, num_rows=1, schema={x: int64})
+        >>> ray.data.from_arrow_refs(table_ref)  # doctest: +ELLIPSIS
+        shape: (1, 1)
+        ╭───────╮
+        │ x     │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        ╰───────╯
+        (Showing 1 of 1 rows)
 
         Create a Ray Dataset from a list of PyArrow table references
 
-        >>> ray.data.from_arrow_refs([table_ref, table_ref])
-        MaterializedDataset(num_blocks=2, num_rows=2, schema={x: int64})
+        >>> ray.data.from_arrow_refs([table_ref, table_ref])  # doctest: +ELLIPSIS
+        shape: (2, 1)
+        ╭───────╮
+        │ x     │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        │ 1     │
+        ╰───────╯
+        (Showing 2 of 2 rows)
 
 
     Args:
@@ -3559,7 +3609,7 @@ def from_huggingface(
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
-            value in most cases.
+            value in most of cases.
 
     Returns:
         A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_.
@@ -4143,7 +4193,6 @@ def read_delta(
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
-    meta_provider: Optional[FileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Union[Literal["files"], None] = None,
@@ -4180,9 +4229,6 @@ def read_delta(
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases you do not need to set this parameter.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
             with a custom callback to read only selected partitions of a dataset.
@@ -4240,7 +4286,6 @@ def read_delta(
         columns=columns,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
-        meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         shuffle=shuffle,
@@ -4431,14 +4476,3 @@ def _get_num_output_blocks(
     elif override_num_blocks is not None:
         parallelism = override_num_blocks
     return parallelism
-
-
-def _emit_meta_provider_deprecation_warning(
-    meta_provider: Optional[BaseFileMetadataProvider],
-) -> None:
-    if meta_provider is not None:
-        warnings.warn(
-            "The `meta_provider` argument is deprecated and will be removed after May "
-            "2025.",
-            DeprecationWarning,
-        )

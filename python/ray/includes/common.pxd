@@ -275,6 +275,14 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CLineageReconstructionTask()
         const c_string &SerializeAsString() const
 
+cdef extern from "ray/common/scheduling/cluster_resource_data.h" namespace "ray" nogil:
+    cdef cppclass CNodeResources "ray::NodeResources":
+        CNodeResources()
+        unordered_map[c_string, c_string] labels
+        c_bool HasRequiredLabels(const CLabelSelector &label_selector) const
+
+    void SetNodeResourcesLabels(CNodeResources& resources, const unordered_map[c_string, c_string]& labels)
+
 cdef extern from "ray/common/scheduling/label_selector.h" namespace "ray":
     cdef cppclass CLabelSelector "ray::LabelSelector":
         CLabelSelector() nogil except +
@@ -427,7 +435,6 @@ cdef extern from "ray/core_worker/common.h" nogil:
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":
-        const CNodeID &GetPrimaryNodeID() const
         const int64_t GetObjectSize() const
         const c_vector[CNodeID] &GetNodeIDs() const
         c_bool IsSpilled() const

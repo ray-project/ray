@@ -99,8 +99,7 @@ ObjectLocation CreateObjectLocation(
   bool is_spilled = !object_info.spilled_url().empty();
   // If the object size is unknown it's unset, and we use -1 to indicate that.
   int64_t object_size = object_info.object_size() == 0 ? -1 : object_info.object_size();
-  return ObjectLocation(NodeID::FromBinary(object_info.primary_node_id()),
-                        object_size,
+  return ObjectLocation(object_size,
                         std::move(node_ids),
                         is_spilled,
                         object_info.spilled_url(),
@@ -382,18 +381,18 @@ CoreWorker::CoreWorker(
                                   std::placeholders::_5,
                                   std::placeholders::_6,
                                   std::placeholders::_7,
-                                  std::placeholders::_8);
-    task_argument_waiter_ = std::make_unique<DependencyWaiterImpl>(
-        [this](const std::vector<rpc::ObjectReference> &dependencies, int64_t tag) {
-          return raylet_ipc_client_->WaitForActorCallArgs(dependencies, tag);
+                                  std::placeholders::_8,
+                                  std::placeholders::_9);
+    actor_task_execution_arg_waiter_ = std::make_unique<ActorTaskExecutionArgWaiter>(
+        [this](const std::vector<rpc::ObjectReference> &args, int64_t tag) {
+          RAY_CHECK_OK(raylet_ipc_client_->WaitForActorCallArgs(args, tag))
+              << "WaitForActorCallArgs IPC failed unexpectedly";
         });
-    task_receiver_ = std::make_unique<TaskReceiver>(
-        task_execution_service_,
-        *task_event_buffer_,
-        execute_task,
-        *task_argument_waiter_,
-        options_.initialize_thread_callback,
-        [this] { return raylet_ipc_client_->ActorCreationTaskDone(); });
+    task_receiver_ = std::make_unique<TaskReceiver>(task_execution_service_,
+                                                    *task_event_buffer_,
+                                                    execute_task,
+                                                    *actor_task_execution_arg_waiter_,
+                                                    options_.initialize_thread_callback);
   }
 
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
@@ -2804,6 +2803,7 @@ Status CoreWorker::ExecuteTask(
     std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
     ReferenceCounterInterface::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
+    std::string *actor_repr_name,
     std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
 
@@ -2852,19 +2852,18 @@ Status CoreWorker::ExecuteTask(
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
-  // Modify the worker's per function counters.
-  std::string actor_repr_name;
-  {
-    absl::MutexLock lock(&mutex_);
-    actor_repr_name = actor_repr_name_;
-  }
   if (!options_.is_local_mode) {
+    // Modify the worker's per-function counters.
     task_counter_.MovePendingToRunning(func_name, is_retry);
 
-    const auto update =
-        (task_spec.IsActorTask() && !actor_repr_name.empty())
-            ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name, pid_)
-            : worker::TaskStatusEvent::TaskStateUpdate(pid_);
+    worker::TaskStatusEvent::TaskStateUpdate update;
+    {
+      absl::MutexLock lock(&mutex_);
+      update = (task_spec.IsActorTask() && !actor_repr_name_.empty())
+                   ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name_, pid_)
+                   : worker::TaskStatusEvent::TaskStateUpdate(pid_);
+    }
+
     RAY_UNUSED(
         task_event_buffer_->RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
                                                           task_spec.JobId(),
@@ -2877,6 +2876,7 @@ Status CoreWorker::ExecuteTask(
     worker_context_->SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
   }
+
   {
     absl::MutexLock lock(&mutex_);
     running_tasks_.emplace(task_spec.TaskId(), task_spec);
@@ -2956,6 +2956,7 @@ Status CoreWorker::ExecuteTask(
       streaming_generator_returns,
       creation_task_exception_pb_bytes,
       is_retryable_error,
+      actor_repr_name,
       application_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
@@ -3007,6 +3008,12 @@ Status CoreWorker::ExecuteTask(
     if (task_spec.IsNormalTask()) {
       resource_ids_.clear();
     }
+
+    // Cache the returned actor repr name as an instance variable.
+    // This is currently only used for exporting task events from the actor.
+    if (!actor_repr_name->empty()) {
+      actor_repr_name_ = *actor_repr_name;
+    }
   }
 
   if (!options_.is_local_mode) {
@@ -3014,6 +3021,11 @@ Status CoreWorker::ExecuteTask(
   }
   RAY_LOG(DEBUG).WithField(task_spec.TaskId())
       << "Finished executing task, status=" << status;
+
+  if (!options_.is_local_mode && task_spec.IsActorCreationTask()) {
+    RAY_CHECK_OK(raylet_ipc_client_->ActorCreationTaskDone())
+        << "Unexpected error in IPC to the Raylet; the Raylet has most likely crashed.";
+  }
 
   std::ostringstream stream;
   if (status.IsCreationTaskError()) {
@@ -3301,6 +3313,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   auto old_id = GetActorId();
   SetActorId(actor_id);
   bool is_retryable_error = false;
+  std::string actor_repr_name;
   std::string application_error;
   // TODO(swang): Support DynamicObjectRefGenerators in local mode?
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
@@ -3312,6 +3325,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
                          &streaming_generator_returns,
                          &borrowed_refs,
                          &is_retryable_error,
+                         &actor_repr_name,
                          &application_error));
   SetActorId(old_id);
   return returned_refs;
@@ -3475,13 +3489,14 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                           << " won't be executed because the worker already exited.";
             return;
           }
-          task_receiver_->HandleTask(std::move(request), reply, send_reply_callback);
+          task_receiver_->QueueTaskForExecution(
+              std::move(request), reply, send_reply_callback);
         },
         "CoreWorker.HandlePushTaskActor");
   } else {
-    // Normal tasks are enqueued here, and we post a RunNormalTasksFromQueue instance to
+    // Normal tasks are enqueued here, and we post a ExecuteQueuedNormalTasks instance to
     // the task execution service.
-    task_receiver_->HandleTask(std::move(request), reply, send_reply_callback);
+    task_receiver_->QueueTaskForExecution(std::move(request), reply, send_reply_callback);
     task_execution_service_.post(
         [this, func_name] {
           // We have posted an exit task onto the main event loop,
@@ -3491,7 +3506,7 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                           << " won't be executed because the worker already exited.";
             return;
           }
-          task_receiver_->RunNormalTasksFromQueue();
+          task_receiver_->ExecuteQueuedNormalTasks();
         },
         "CoreWorker.HandlePushTask");
   }
@@ -3509,11 +3524,11 @@ void CoreWorker::HandleActorCallArgWaitComplete(
   // Post on the task execution event loop since this may trigger the
   // execution of a task that is now ready to run.
   task_execution_service_.post(
-      [this, request = std::move(request)] {
-        RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
-        task_argument_waiter_->OnWaitComplete(request.tag());
+      [this, tag = request.tag()] {
+        RAY_LOG(DEBUG) << "Actor task args are ready for tag: " << tag;
+        actor_task_execution_arg_waiter_->MarkReady(tag);
       },
-      "CoreWorker.ArgWaitComplete");
+      "CoreWorker.MarkActorTaskArgsReady");
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -4520,14 +4535,6 @@ void CoreWorker::SetActorId(const ActorID &actor_id) {
     RAY_CHECK(actor_id_.IsNil());
   }
   actor_id_ = actor_id;
-}
-
-void CoreWorker::SetActorReprName(const std::string &repr_name) {
-  RAY_CHECK(task_receiver_ != nullptr);
-  task_receiver_->SetActorReprName(repr_name);
-
-  absl::MutexLock lock(&mutex_);
-  actor_repr_name_ = repr_name;
 }
 
 rpc::JobConfig CoreWorker::GetJobConfig() const {

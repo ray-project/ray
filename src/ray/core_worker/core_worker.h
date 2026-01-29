@@ -372,16 +372,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
     return worker_context_->GetCurrentTask()->ShouldRetryExceptions();
   }
 
-  /// Sets the actor's repr name.
-  ///
-  /// This is set explicitly rather than included as part of actor creation task spec
-  /// because it's only available after running the creation task as it might depend on
-  /// fields to be be initialized during actor creation task. The repr name will be
-  /// included as part of actor creation task reply (PushTaskReply) to GCS.
-  ///
-  /// \param repr_name Actor repr name.
-  void SetActorReprName(const std::string &repr_name);
-
   void SetCallerCreationTimestamp();
 
   /// Increase the reference count for this object ID.
@@ -1499,9 +1489,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// arguments and recursively, any object IDs that were contained in those objects.
   /// \param is_retryable_error[out] Whether the task failed with a retryable
   /// error.
-  /// \param application_error[out] The error message if the task failed during
-  /// execution or cancelled.
-  /// \return Status.
+  /// \param actor_repr_name[out] The user-specified repr name for the actor in this
+  /// process if one has been set. \param application_error[out] The error message if the
+  /// task failed during execution or cancelled. \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,
       std::optional<ResourceMappingType> resource_ids,
@@ -1511,6 +1501,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       ReferenceCounterInterface::ReferenceTableProto *borrowed_refs,
       bool *is_retryable_error,
+      std::string *actor_repr_name,
       std::string *application_error);
 
   /// Put an object in the local plasma store.
@@ -1887,9 +1878,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// of that resource allocated for this worker. This is set on task assignment.
   ResourceMappingType resource_ids_ ABSL_GUARDED_BY(mutex_);
 
-  /// Used to notify the task receiver when the arguments of a queued
-  /// actor task are ready.
-  std::unique_ptr<DependencyWaiterImpl> task_argument_waiter_;
+  /// Used to wait for actor task arguments to be ready before executing the task.
+  std::unique_ptr<ActorTaskExecutionArgWaiter> actor_task_execution_arg_waiter_;
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<TaskReceiver> task_receiver_;

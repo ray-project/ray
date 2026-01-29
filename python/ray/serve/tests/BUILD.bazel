@@ -113,6 +113,8 @@ py_test_module_list(
         "test_deployment_scheduler.py",
         "test_deployment_topology.py",
         "test_failure.py",
+        "test_grpc_e2e.py",
+        "test_grpc_replica_wrapper.py",
         "test_handle_1.py",
         "test_handle_2.py",
         "test_handle_cancellation.py",
@@ -239,11 +241,15 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     timeout = "long",
+    env = {
+        "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S": "0",
+    },
     files = [
         "test_deploy_app.py",
         "test_deploy_app_2.py",
         "test_metrics.py",
         "test_metrics_2.py",
+        "test_metrics_3.py",
     ],
     tags = [
         "exclusive",
@@ -452,7 +458,6 @@ py_test_module_list(
     files = [
         "test_cluster.py",
         "test_controller_recovery.py",
-        "test_deployment_scheduler.py",
         "test_gcs_failure.py",
         "test_max_replicas_per_node.py",
         "test_replica_placement_group.py",
@@ -496,6 +501,7 @@ py_test_module_list(
     data = glob(["test_config_files/**/*"]),
     env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},
     files = [
+        "test_deployment_scheduler.py",
         "test_standalone_2.py",
     ],
     name_suffix = "_with_pack_scheduling",

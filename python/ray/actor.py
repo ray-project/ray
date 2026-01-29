@@ -617,7 +617,7 @@ class ActorMethod:
             is_generator: True if a given method is a Python generator.
             generator_backpressure_num_objects: Generator-only config.
                 If a number of unconsumed objects reach this threshold,
-                a actor task stop pausing.
+                the actor task stops pausing.
             enable_task_events: True if task events is enabled, i.e., task events from
                 the actor should be reported. Defaults to True.
             decorator: An optional decorator that should be applied to the actor
@@ -840,6 +840,9 @@ class ActorMethod:
                     "`ray.experimental.collective.create_collective_group` "
                     "before calling actor tasks with non-default tensor_transport."
                 )
+
+            # Wait for source actor to have the transport registered.
+            gpu_object_manager.wait_until_custom_transports_registered(self._actor)
 
         args = args or []
         kwargs = kwargs or {}
@@ -1858,6 +1861,10 @@ class ActorClass(Generic[T]):
             allow_out_of_order_execution=allow_out_of_order_execution,
         )
 
+        if meta.enable_tensor_transport:
+            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+            gpu_object_manager.register_custom_transports_on_actor(actor_handle)
+
         return actor_handle
 
     @DeveloperAPI
@@ -2390,14 +2397,6 @@ def _modify_class(cls):
     # cls has been modified.
     if hasattr(cls, "__ray_actor_class__"):
         return cls
-
-    # Give an error if cls is an old-style class.
-    if not issubclass(cls, object):
-        raise TypeError(
-            "The @ray.remote decorator cannot be applied to old-style "
-            "classes. In Python 2, you must declare the class with "
-            "'class ClassName(object):' instead of 'class ClassName:'."
-        )
 
     # Modify the class to have additional default methods.
     class Class(cls):
