@@ -100,15 +100,28 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   RAY_CHECK(false) << "Memory monitor currently supports only linux";
 #endif
   auto [system_used_bytes, system_total_bytes] = GetLinuxMemoryBytes();
-  /// cgroup memory limit can be higher than system memory limit when it is
-  /// not used. We take its value only when it is less than or equal to system memory
-  /// limit. TODO(clarng): find a better way to detect cgroup memory limit is used.
-  system_total_bytes = NullableMin(system_total_bytes, cgroup_total_bytes);
-  /// This assumes cgroup total bytes will look different than system (meminfo)
-  if (system_total_bytes == cgroup_total_bytes) {
-    system_used_bytes = cgroup_used_bytes;
+
+  if (cgroup_used_bytes != kNull && cgroup_total_bytes != kNull) {
+    // If system memory data is invalid, use cgroup data
+    if (system_total_bytes == kNull || system_used_bytes == kNull) {
+      return {cgroup_used_bytes, cgroup_total_bytes};
+    }
+    if (cgroup_total_bytes < system_total_bytes) {
+      // Cgroup limit is less than system memory, use cgroup data
+      return {cgroup_used_bytes, cgroup_total_bytes};
+    }
+    // Cgroup limit >= system memory, use cgroup used_bytes but system total_bytes
+    if (cgroup_used_bytes > system_total_bytes) {
+      // If cgroup used_bytes exceeds system total_bytes, fall back to system data
+      RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+          << "Cgroup used_bytes (" << cgroup_used_bytes
+          << ") exceeds system total_bytes (" << system_total_bytes
+          << "), falling back to system memory data";
+      return {system_used_bytes, system_total_bytes};
+    }
+    return {cgroup_used_bytes, system_total_bytes};
   }
-  return std::tuple(system_used_bytes, system_total_bytes);
+  return {system_used_bytes, system_total_bytes};
 }
 
 int64_t MemoryMonitor::GetCGroupMemoryUsedBytes(const char *stat_path,

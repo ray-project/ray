@@ -482,4 +482,37 @@ TEST_F(MemoryMonitorTest, TestGetProcessMemoryUsageFiltersBadPids) {
   ASSERT_TRUE(usage.contains(1));
 }
 
+TEST_F(MemoryMonitorTest, TestGetMemoryBytesUsesCGroupWhenLimitUnlimited) {
+  auto &monitor = MakeMemoryMonitor(
+      0,
+      -1,
+      0,
+      [](bool is_usage_above_threshold,
+         MemorySnapshot system_memory,
+         float usage_threshold) { FAIL() << "Expected monitor to not run"; });
+
+  auto [cgroup_used_bytes, cgroup_total_bytes] = monitor.GetCGroupMemoryBytes();
+  auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
+
+  ASSERT_LE(used_bytes, total_bytes);
+
+  if (cgroup_used_bytes != kNull && cgroup_total_bytes != kNull) {
+    struct sysinfo info;
+    ASSERT_EQ(sysinfo(&info), 0) << "Failed to get system info";
+    int64_t system_total_bytes = info.totalram * info.mem_unit;
+
+    if (cgroup_total_bytes < system_total_bytes) {
+      ASSERT_EQ(used_bytes, cgroup_used_bytes);
+      ASSERT_EQ(total_bytes, cgroup_total_bytes);
+    } else {
+      if (cgroup_used_bytes > system_total_bytes) {
+        ASSERT_EQ(total_bytes, system_total_bytes);
+      } else {
+        ASSERT_EQ(used_bytes, cgroup_used_bytes);
+        ASSERT_EQ(total_bytes, system_total_bytes);
+      }
+    }
+  }
+}
+
 }  // namespace ray
