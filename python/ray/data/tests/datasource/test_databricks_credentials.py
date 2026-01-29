@@ -40,25 +40,19 @@ class TestStaticCredentialProvider:
         assert provider.get_token() == "test_token"
         assert provider.get_host() == "https://my-workspace.cloud.databricks.com"
 
-    def test_init_with_empty_token_raises_error(self):
-        """Test that empty token raises ValueError."""
-        with pytest.raises(ValueError, match="Token cannot be empty"):
-            StaticCredentialProvider(token="", host="host")
-
-    def test_init_with_none_token_raises_error(self):
-        """Test that None token raises ValueError."""
-        with pytest.raises(ValueError, match="Token cannot be empty"):
-            StaticCredentialProvider(token=None, host="host")
-
-    def test_init_with_empty_host_raises_error(self):
-        """Test that empty host raises ValueError."""
-        with pytest.raises(ValueError, match="Host cannot be empty"):
-            StaticCredentialProvider(token="valid_token", host="")
-
-    def test_init_with_none_host_raises_error(self):
-        """Test that None host raises ValueError."""
-        with pytest.raises(ValueError, match="Host cannot be empty"):
-            StaticCredentialProvider(token="valid_token", host=None)
+    @pytest.mark.parametrize(
+        "token,host,expected_error",
+        [
+            ("", "host", "Token cannot be empty"),
+            (None, "host", "Token cannot be empty"),
+            ("valid_token", "", "Host cannot be empty"),
+            ("valid_token", None, "Host cannot be empty"),
+        ],
+    )
+    def test_init_with_invalid_inputs_raises_error(self, token, host, expected_error):
+        """Test that invalid token or host raises ValueError."""
+        with pytest.raises(ValueError, match=expected_error):
+            StaticCredentialProvider(token=token, host=host)
 
     def test_invalidate_is_noop(self):
         """Test that invalidate doesn't affect the static token."""
@@ -93,18 +87,20 @@ class TestEnvironmentCredentialProvider:
             provider = EnvironmentCredentialProvider()
             assert provider.get_host() == "env_host"
 
-    def test_init_raises_when_token_not_set(self):
-        """Test __init__ raises ValueError when token env var is not set."""
-        with mock.patch.dict(os.environ, {"DATABRICKS_HOST": "host"}, clear=True):
-            with pytest.raises(ValueError, match="DATABRICKS_TOKEN.*not set"):
-                EnvironmentCredentialProvider()
-
-    def test_init_raises_when_host_not_set(self):
-        """Test __init__ raises ValueError when host env var is not set."""
-        with mock.patch.dict(os.environ, {"DATABRICKS_TOKEN": "token"}, clear=True):
-            with pytest.raises(
-                ValueError, match="set environment variable.*DATABRICKS_HOST"
-            ):
+    @pytest.mark.parametrize(
+        "env_vars,expected_error",
+        [
+            ({"DATABRICKS_HOST": "host"}, "DATABRICKS_TOKEN.*not set"),
+            (
+                {"DATABRICKS_TOKEN": "token"},
+                "set environment variable.*DATABRICKS_HOST",
+            ),
+        ],
+    )
+    def test_init_raises_when_env_var_not_set(self, env_vars, expected_error):
+        """Test __init__ raises ValueError when required env var is not set."""
+        with mock.patch.dict(os.environ, env_vars, clear=True):
+            with pytest.raises(ValueError, match=expected_error):
                 EnvironmentCredentialProvider()
 
     def test_host_detected_from_databricks_runtime(self):
@@ -167,56 +163,52 @@ class TestResolveCredentialProvider:
         result = resolve_credential_provider(credential_provider=provider)
         assert result is provider
 
-    def test_resolve_with_none_returns_environment_provider(self):
+    @pytest.mark.parametrize("credential_provider_arg", [None, "no_arg"])
+    def test_resolve_with_none_returns_environment_provider(
+        self, credential_provider_arg
+    ):
         """Test that EnvironmentCredentialProvider is returned when none provided."""
-        from ray.data._internal.datasource.databricks_credentials import (
-            EnvironmentCredentialProvider,
-        )
-
         with mock.patch.dict(
             os.environ, {"DATABRICKS_TOKEN": "token", "DATABRICKS_HOST": "host"}
         ):
-            result = resolve_credential_provider()
-            assert isinstance(result, EnvironmentCredentialProvider)
-
-    def test_resolve_with_explicit_none_returns_environment_provider(self):
-        """Test that explicit None returns EnvironmentCredentialProvider."""
-        from ray.data._internal.datasource.databricks_credentials import (
-            EnvironmentCredentialProvider,
-        )
-
-        with mock.patch.dict(
-            os.environ, {"DATABRICKS_TOKEN": "token", "DATABRICKS_HOST": "host"}
-        ):
-            result = resolve_credential_provider(credential_provider=None)
+            if credential_provider_arg == "no_arg":
+                result = resolve_credential_provider()
+            else:
+                result = resolve_credential_provider(
+                    credential_provider=credential_provider_arg
+                )
             assert isinstance(result, EnvironmentCredentialProvider)
 
 
 class TestCredentialProviderSerialization:
     """Tests for credential provider serialization (needed for Ray workers)."""
 
-    def test_static_provider_is_picklable(self):
-        """Verify StaticCredentialProvider can be pickled and unpickled."""
-        import pickle
-
-        provider = StaticCredentialProvider(token="test_token", host="test_host")
-        pickled = pickle.dumps(provider)
-        unpickled = pickle.loads(pickled)
-        assert unpickled.get_token() == "test_token"
-        assert unpickled.get_host() == "test_host"
-
-    def test_environment_provider_is_picklable(self):
-        """Verify EnvironmentCredentialProvider can be pickled and unpickled."""
+    @pytest.mark.parametrize(
+        "provider_type,expected_token,expected_host",
+        [
+            ("static", "test_token", "test_host"),
+            ("environment", "env_token", "env_host"),
+        ],
+    )
+    def test_provider_is_picklable(self, provider_type, expected_token, expected_host):
+        """Verify credential providers can be pickled and unpickled."""
         import pickle
 
         with mock.patch.dict(
-            os.environ, {"DATABRICKS_TOKEN": "env_token", "DATABRICKS_HOST": "env_host"}
+            os.environ,
+            {"DATABRICKS_TOKEN": expected_token, "DATABRICKS_HOST": expected_host},
         ):
-            provider = EnvironmentCredentialProvider()
+            if provider_type == "static":
+                provider = StaticCredentialProvider(
+                    token=expected_token, host=expected_host
+                )
+            else:
+                provider = EnvironmentCredentialProvider()
+
             pickled = pickle.dumps(provider)
             unpickled = pickle.loads(pickled)
-            assert unpickled.get_token() == "env_token"
-            assert unpickled.get_host() == "env_host"
+            assert unpickled.get_token() == expected_token
+            assert unpickled.get_host() == expected_host
 
 
 if __name__ == "__main__":

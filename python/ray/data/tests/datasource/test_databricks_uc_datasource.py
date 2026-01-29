@@ -518,9 +518,9 @@ class TestDatabricksUCDatasource401Retry:
         )
 
         # Verify retry occurred
-        assert post_call_count[0] == 2, (
-            "Expected POST to be called twice (initial + retry)"
-        )
+        assert (
+            post_call_count[0] == 2
+        ), "Expected POST to be called twice (initial + retry)"
 
         # Verify invalidate was called
         assert refreshable_credential_provider.invalidate_count == 1
@@ -570,9 +570,9 @@ class TestDatabricksUCDatasource401Retry:
         )
 
         # Verify retry occurred
-        assert poll_call_count[0] == 2, (
-            "Expected GET to be called twice (initial + retry)"
-        )
+        assert (
+            poll_call_count[0] == 2
+        ), "Expected GET to be called twice (initial + retry)"
 
         # Verify invalidate was called once
         assert refreshable_credential_provider.invalidate_count == 1
@@ -664,9 +664,9 @@ class TestDatabricksUCDatasource401Retry:
         results = list(read_fn())
 
         # Verify chunk fetch retry occurred
-        assert chunk_fetch_count[0] == 2, (
-            "Expected chunk fetch to be called twice (initial + retry)"
-        )
+        assert (
+            chunk_fetch_count[0] == 2
+        ), "Expected chunk fetch to be called twice (initial + retry)"
 
         # Verify invalidate was called during chunk fetch
         assert refreshable_credential_provider.invalidate_count == 1
