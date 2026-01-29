@@ -25,6 +25,7 @@
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_placement_group_manager.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/counter_map.h"
 
@@ -56,7 +57,9 @@ class GcsPlacementGroupManagerMockTest : public Test {
         fake_placement_group_gauge_,
         fake_placement_group_creation_latency_in_ms_histogram_,
         fake_placement_group_scheduling_latency_in_ms_histogram_,
-        fake_placement_group_count_gauge_);
+        fake_placement_group_count_gauge_,
+        fake_ray_event_recorder_,
+        "session_name");
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   }
 
@@ -77,6 +80,7 @@ class GcsPlacementGroupManagerMockTest : public Test {
   ray::observability::FakeHistogram
       fake_placement_group_scheduling_latency_in_ms_histogram_;
   ray::observability::FakeGauge fake_placement_group_count_gauge_;
+  ray::observability::FakeRayEventRecorder fake_ray_event_recorder_;
 };
 
 TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
