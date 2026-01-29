@@ -21,7 +21,7 @@ if [[ "$HOSTTYPE" =~ ^x86_64 ]]; then
 elif [[ "$HOSTTYPE" =~ ^aarch64 ]]; then
     ARCH="aarch64"
 else
-    echo "Unsupported architecture $MACHTYPE" >/dev/stderr
+    echo "Unsupported architecture $HOSTTYPE" >/dev/stderr
     exit 1
 fi
 
