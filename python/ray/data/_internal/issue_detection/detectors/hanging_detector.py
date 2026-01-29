@@ -152,6 +152,7 @@ class HangingExecutionIssueDetector(IssueDetector):
                     if (
                         prev_state_value is None
                         or bytes_output != prev_state_value.bytes_output
+                        or prev_state_value.task_state is None
                     ):
                         task_state = None
                         try:
