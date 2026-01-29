@@ -3538,6 +3538,7 @@ py_test(
         "--as-test",
         "--stop-reward=500.0",
         "--stop-timesteps=2000000",
+        "--framework=torch",
         "--algo=IMPALA",
     ],
     main = "examples/connectors/flatten_observations_dict_space.py",
