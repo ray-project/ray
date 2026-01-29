@@ -52,7 +52,7 @@ def wrap_postprocess(
         fn: The function to be applied.
         processor_data_column: The internal data column name of the processor.
         include_error_column: If True, always include __inference_error__ in output
-            (None for success rows, error message for failures). This ensures
+            (Empty string for success rows, error message for failures). This ensures
             consistent schema across all output rows.
 
     Returns:
@@ -70,12 +70,12 @@ def wrap_postprocess(
         # Error rows bypass user postprocess to avoid crashes when
         # expected output fields are missing. Return entire data dict
         # to preserve debugging info (e.g., prompt).
-        if data.get("__inference_error__") is not None:
+        if data.get("__inference_error__", "") != "":
             return data
 
         result = fn(data)
         if include_error_column:
-            result["__inference_error__"] = None
+            result["__inference_error__"] = ""
         return result
 
     return _postprocess
@@ -175,7 +175,7 @@ class StatefulStageUDF:
         normal_rows = []
         error_row_indices = set()
         for idx, row in enumerate(inputs):
-            if row.get("__inference_error__") is not None:
+            if row.get("__inference_error__", "") != "":
                 error_row_indices.add(idx)
             else:
                 normal_rows.append(row)
