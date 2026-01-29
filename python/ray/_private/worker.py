@@ -2663,7 +2663,6 @@ def connect(
         logs_dir,
         node.node_ip_address,
         node.node_manager_port,
-        False,
         driver_name,
         serialized_job_config,
         node.metrics_agent_port,
