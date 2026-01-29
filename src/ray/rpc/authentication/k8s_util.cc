@@ -156,9 +156,10 @@ bool K8sApiPost(const std::string &path,
 bool ValidateToken(const AuthenticationToken &token) {
   std::string token_str = token.GetRawValue();
 
-  nlohmann::json token_review_req = {{"apiVersion", kAuthenticationAPIVersion},
-                                     {"kind", kTokenReviewKind},
-                                     {"spec", {{"token", token_str}}}};
+  nlohmann::json token_review_req = {
+      {"apiVersion", kAuthenticationAPIVersion},
+      {"kind", kTokenReviewKind},
+      {"spec", {{"token", token_str}, {"audiences", {kRayTokenAudience}}}}};
   nlohmann::json token_review_resp;
 
   if (!k8s::K8sApiPost(
