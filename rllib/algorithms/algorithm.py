@@ -263,6 +263,7 @@ class Algorithm(Checkpointable, Trainable):
         "model",
         "optimizer",
         "custom_resources_per_env_runner",
+        "custom_resources_per_learner",
         "custom_resources_per_worker",
         "evaluation_config",
         "exploration_config",

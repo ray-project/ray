@@ -197,6 +197,7 @@ def _get_learner_bundles(config):
         {
             "CPU": num_cpus_per_learner + config.num_aggregator_actors_per_learner,
             "GPU": config.num_gpus_per_learner,
+            **config.custom_resources_per_learner,
         }
         for _ in range(config.num_learners)
     ]
