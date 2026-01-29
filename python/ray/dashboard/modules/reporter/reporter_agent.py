@@ -1410,8 +1410,7 @@ class ReporterAgent(
                     )
                 )
 
-            # NOTE: Autoscaler v2 introduces an additional node state ("idle") compared to v1.
-            # To surface this extra state in metrics, cluster_idle_nodes is emitted only when v2 is enabled.
+            # Emit cluster_idle_nodes only for autoscaler v2 (v1 has no "idle" state).
             if cluster_stats.get("has_autoscaler_v2_stats", False):
                 idle_nodes = cluster_stats["autoscaler_report"]["idle_nodes"] or {}
                 for node_type, idle_node_count in idle_nodes.items():
@@ -1768,9 +1767,7 @@ class ReporterAgent(
                 autoscaler_status_json_bytes: Optional[bytes] = None
                 if self._is_head_node:
 
-                    # NOTE: The v1 autoscaler stores a JSON debug payload in GCS internal KV
-                    # (DEBUG_AUTOSCALING_STATUS). The v2 autoscaler does not populate this key,
-                    # so we only fetch it when autoscaler v2 is NOT enabled.
+                    # Autoscaler v1 writes DEBUG_AUTOSCALING_STATUS to the internal KV; v2 does not.
                     if not is_autoscaler_v2(gcs_client=self._gcs_client):
                         autoscaler_status_json_bytes = (
                             await self._gcs_client.async_internal_kv_get(
@@ -1876,8 +1873,8 @@ class ReporterAgent(
 
         return {
             "autoscaler_report": {
-                "active_nodes": dict[str, int](active_nodes),
-                "idle_nodes": dict[str, int](idle_nodes),
+                "active_nodes": dict(active_nodes),
+                "idle_nodes": dict(idle_nodes),
                 "pending_nodes": pending_nodes,
                 "failed_nodes": failed_nodes,
             },
