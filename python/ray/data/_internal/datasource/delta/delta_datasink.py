@@ -497,7 +497,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                     self.schema = reconciled_schema
             validate_file_actions(all_file_actions, self.table_uri, self.filesystem)
 
-        if self._table_existed_at_start:
+            if self._table_existed_at_start:
                 # Table existed at start - handle based on mode
             if self.mode == SaveMode.IGNORE:
                 self._cleanup_written_files(all_file_actions)
