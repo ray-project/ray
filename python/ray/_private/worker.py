@@ -84,6 +84,7 @@ from ray._private.runtime_env.setup_hook import (
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.utils import get_ray_doc_version
 from ray._raylet import (
+    CoreWorker,
     ObjectRefGenerator,
     TaskID,
     WorkerID,
@@ -453,6 +454,8 @@ class Worker:
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
             WORKER_MODE.
     """
+
+    core_worker: CoreWorker
 
     def __init__(self):
         """Initialize a Worker object."""
