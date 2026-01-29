@@ -57,7 +57,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
       std::function<bool(void)> get_pull_manager_at_capacity,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       std::function<void(const NodeResources &)> resource_change_subscriber,
-      ray::observability::MetricInterface &resource_usage_gauge);
+      ray::observability::MetricInterface &resource_usage_gauge,
+      std::function<absl::Time()> now_fn = nullptr);
 
   scheduling::NodeID GetNodeId() const { return local_node_id_; }
 
@@ -121,6 +122,12 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   // Removes idle time for a WorkFootprint, thereby marking it busy.
   void MarkFootprintAsBusy(WorkFootprint item);
+  // Speculatively marks a footprint as busy, saving the previous idle time.
+  // Use this for eager/speculative busy marking where the footprint might
+  // return to idle without actual work happening (e.g., task queued for
+  // argument pulling but later spilled to another node).
+  // When MarkFootprintAsIdle is called, the saved time will be restored.
+  void MaybeMarkFootprintAsBusy(WorkFootprint item);
   // Sets the idle time for a WorkFootprint to now.
   void MarkFootprintAsIdle(WorkFootprint item);
 
@@ -224,6 +231,11 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   /// A map storing when the resource was last idle.
   absl::flat_hash_map<WorkArtifact, std::optional<absl::Time>> last_idle_times_;
+  /// Saved idle times for footprints marked busy via MaybeMarkFootprintAsBusy().
+  /// Used to restore idle time when the speculative busy state is cleared.
+  absl::flat_hash_map<WorkFootprint, absl::Time> saved_footprint_idle_times_;
+  /// Function to get current time. Defaults to absl::Now() if not provided.
+  std::function<absl::Time()> now_fn_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.
@@ -257,6 +269,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
   FRIEND_TEST(LocalResourceManagerTest, BasicGetResourceUsageMapTest);
   FRIEND_TEST(LocalResourceManagerTest, IdleResourceTimeTest);
   FRIEND_TEST(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest);
+  FRIEND_TEST(LocalResourceManagerTest, MaybeMarkFootprintAsBusyPreservesIdleTime);
+  FRIEND_TEST(LocalResourceManagerTest, MarkFootprintAsBusyResetsIdleTime);
+  FRIEND_TEST(LocalResourceManagerTest, NodeWorkersBusyClearsSavedPullingTime);
 };
 
 }  // end namespace ray
