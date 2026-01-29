@@ -35,11 +35,10 @@ from typing import Optional
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
-import moto
 import pytest
 import yaml
 from click.testing import CliRunner
-from moto import mock_ec2, mock_iam
+from moto import mock_aws
 from testfixtures import Replacer
 from testfixtures.popen import MockPopen, PopenBehaviour
 
@@ -113,18 +112,25 @@ def configure_aws():
     os.environ["AWS_SESSION_TOKEN"] = "testing"
 
     # moto (boto3 mock) only allows a hardcoded set of AMIs
-    dlami = (
-        moto.ec2.models.ec2_backends["us-west-2"]["us-west-2"]
-        .describe_images(filters={"name": "Deep Learning AMI Ubuntu*"})[0]
-        .id
-    )
-    aws_config.DEFAULT_AMI["us-west-2"] = dlami
-    list_instances_mock = MagicMock(return_value=boto3_list)
-    with patch(
-        "ray.autoscaler._private.aws.node_provider.list_ec2_instances",
-        list_instances_mock,
-    ):
-        yield
+    # Use mock_aws context manager and boto3 to find the AMI
+    import boto3
+
+    # In moto 5.x, AWS managed policies (e.g., AmazonEC2FullAccess) are not
+    # loaded by default for performance. Enable them since the autoscaler
+    # attaches these policies to the IAM role.
+    with mock_aws(config={"iam": {"load_aws_managed_policies": True}}):
+        ec2_client = boto3.client("ec2", region_name="us-west-2")
+        images = ec2_client.describe_images(
+            Filters=[{"Name": "name", "Values": ["Deep Learning AMI Ubuntu*"]}]
+        )["Images"]
+        dlami = images[0]["ImageId"]
+        aws_config.DEFAULT_AMI["us-west-2"] = dlami
+        list_instances_mock = MagicMock(return_value=boto3_list)
+        with patch(
+            "ray.autoscaler._private.aws.node_provider.list_ec2_instances",
+            list_instances_mock,
+        ):
+            yield
 
 
 @pytest.fixture(scope="function")
@@ -636,8 +642,6 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path, cleanup
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_up(
     configure_lang, _unlink_test_ssh_key, configure_aws, monkeypatch, tmp_path
 ):
@@ -677,8 +681,6 @@ def test_ray_up(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_up_docker(
     configure_lang, _unlink_test_ssh_key, configure_aws, monkeypatch, tmp_path
 ):
@@ -720,8 +722,6 @@ def test_ray_up_docker(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_up_record(
     configure_lang, _unlink_test_ssh_key, configure_aws, monkeypatch, tmp_path
 ):
@@ -754,8 +754,6 @@ def test_ray_up_record(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
@@ -796,8 +794,6 @@ def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_attach_with_ip(configure_lang, configure_aws, _unlink_test_ssh_key):
     from ray.autoscaler._private.commands import get_worker_node_ips
 
@@ -876,8 +872,6 @@ def test_ray_attach_with_ip(configure_lang, configure_aws, _unlink_test_ssh_key)
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_dashboard(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
@@ -910,8 +904,6 @@ def test_ray_dashboard(configure_lang, configure_aws, _unlink_test_ssh_key):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
@@ -963,8 +955,6 @@ def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
@@ -1355,8 +1345,6 @@ def test_ray_drain_node(monkeypatch):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         print("This is a test!")
