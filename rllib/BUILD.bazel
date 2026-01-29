@@ -455,7 +455,7 @@ py_test(
 # Pendulum
 py_test(
     name = "learning_tests_pendulum_cql",
-    size = "large",
+    size = "enormous",
     srcs = ["examples/algorithms/cql/pendulum_cql.py"],
     args = [
         "--as-test",
@@ -468,10 +468,7 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_use_all_core",
         "team:rllib",
-        # Disabled: https://github.com/ray-project/ray/issues/43808
-        "manual",
     ],
 )
 
@@ -493,10 +490,7 @@ py_test(
         "exclusive",
         "gpu",
         "learning_tests",
-        "learning_tests_use_all_core",
         "team:rllib",
-        # Disabled: https://github.com/ray-project/ray/issues/50538
-        "manual",
     ],
 )
 
