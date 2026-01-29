@@ -32,6 +32,17 @@ def commit_upsert(
 ) -> None:
     """Commit upsert: delete matching rows, then append. NOT fully atomic.
 
+    This function performs UPSERT using two separate Delta transactions:
+    1. Delete rows matching the upsert keys
+    2. Append new data files
+
+    **WARNING**: This is NOT atomic. If the second transaction (append) fails,
+    the deleted rows from the first transaction will NOT be restored, resulting
+    in data loss. Users should be aware of this limitation.
+
+    For atomic upserts, consider using Delta Lake's native merge() API directly
+    or implementing a custom solution that uses Delta's merge capabilities.
+
     Args:
         table: DeltaTable to commit to.
         file_actions: List of AddAction objects for new files.
@@ -40,13 +51,14 @@ def commit_upsert(
         partition_cols: List of partition column names.
         write_kwargs: Additional write options.
 
-    Warning:
-        UPSERT uses two transactions (delete then append) and is not atomic.
-        For atomic upsert, use deltalake's native merge() API.
+    Raises:
+        RuntimeError: If the append transaction fails after delete succeeds.
+            In this case, data loss has occurred and manual recovery may be needed.
     """
     logger.warning(
-        "UPSERT uses two transactions (delete then append) and is not atomic. "
-        "For atomic upsert, use deltalake's native merge() API."
+        "UPSERT uses two transactions (delete then append) and is NOT atomic. "
+        "If the append fails after delete succeeds, deleted rows will not be restored. "
+        "For atomic upserts, use Delta Lake's native merge() API."
     )
 
     # Build delete predicate from upsert keys
@@ -70,9 +82,17 @@ def commit_upsert(
             # Build IN predicate for each key column
             delete_predicate = build_delete_predicate(keys_table, upsert_cols)
             if delete_predicate:
-                table.delete(delete_predicate)
+                try:
+                    table.delete(delete_predicate)
+                except Exception as delete_err:
+                    logger.error(
+                        f"UPSERT delete transaction failed: {delete_err}. "
+                        "No data has been modified. Aborting upsert."
+                    )
+                    raise
 
     # Append new data files
+    # WARNING: If this fails, deleted rows from above will NOT be restored
     commit_properties = normalize_commit_properties(
         write_kwargs.get("commit_properties")
     )
@@ -81,14 +101,26 @@ def commit_upsert(
     # Use delta schema directly for transaction
     delta_schema = table.schema()
 
-    table.create_write_transaction(
-        file_actions,
-        mode="append",
-        schema=delta_schema,
-        partition_by=partition_cols or None,
-        commit_properties=commit_properties,
-        post_commithook_properties=write_kwargs.get("post_commithook_properties"),
-    )
+    try:
+        table.create_write_transaction(
+            file_actions,
+            mode="append",
+            schema=delta_schema,
+            partition_by=partition_cols or None,
+            commit_properties=commit_properties,
+            post_commithook_properties=write_kwargs.get("post_commithook_properties"),
+        )
+    except Exception as append_err:
+        logger.error(
+            f"UPSERT append transaction failed after delete succeeded: {append_err}. "
+            "Deleted rows will NOT be restored. Data loss has occurred. "
+            "Use Delta Lake time travel to recover: "
+            f"read_delta(table_path, version=<previous_version>)"
+        )
+        raise RuntimeError(
+            "UPSERT append failed after delete succeeded. Deleted rows are lost. "
+            "Use Delta Lake time travel to recover previous table state."
+        ) from append_err
 
 
 def quote_identifier(name: str) -> str:

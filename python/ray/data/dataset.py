@@ -4411,6 +4411,10 @@ class Dataset:
 
                 * "append": Add data to existing table (default)
                 * "overwrite": Replace all data in the table
+                * "upsert": Update existing rows matching join columns, or insert new rows.
+                  **WARNING**: UPSERT uses two separate transactions (delete then append)
+                  and is NOT fully atomic. If the second transaction fails, deleted rows
+                  will not be restored. Requires ``upsert_kwargs={'join_cols': [...]}``.
                 * "error": Raise error if table already exists
                 * "ignore": Skip write if table already exists
 
@@ -4433,6 +4437,9 @@ class Dataset:
                 * description: Table description for Delta metadata
                 * configuration: Delta table configuration options (dict)
                 * compression: Parquet compression codec ("snappy", "gzip", "zstd", etc.)
+                * upsert_kwargs: Options for UPSERT mode (dict). Required keys:
+                  - join_cols: List of column names to match rows on (required)
+                  Example: ``upsert_kwargs={'join_cols': ['id', 'timestamp']}``
 
         Raises:
             ImportError: If the deltalake package is not installed. Install with

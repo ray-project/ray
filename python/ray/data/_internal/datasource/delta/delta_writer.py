@@ -45,6 +45,8 @@ class DeltaFileWriter:
 
     This class is stateless (except for filesystem) and streaming-safe.
     It can be used independently for writing files without committing to Delta log.
+
+    PyArrow Parquet: https://arrow.apache.org/docs/python/parquet.html
     """
 
     def __init__(

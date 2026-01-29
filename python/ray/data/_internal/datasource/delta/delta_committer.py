@@ -1,6 +1,9 @@
 """Transaction commit logic for Delta Lake datasink.
 
 This module handles committing file actions to Delta Lake transaction log.
+
+Delta Lake specification: https://delta.io/specification/
+deltalake Python library: https://delta-io.github.io/delta-rs/python/
 """
 
 import logging
@@ -152,57 +155,16 @@ def commit_to_existing_table(
         write_kwargs.get("commit_properties")
     )
 
-    # For OVERWRITE mode, try using mode="overwrite" directly first
-    # If that doesn't work (e.g., deltalake version doesn't support it),
-    # fall back to delete + append pattern
-    if mode == "overwrite":
-        try:
-            # Try atomic overwrite mode first
-            existing_table.create_write_transaction(
-                actions=file_actions,
-                mode="overwrite",
-                schema=existing_table.schema(),
-                partition_by=partition_cols or None,
-                commit_properties=commit_properties,
-                post_commithook_properties=write_kwargs.get(
-                    "post_commithook_properties"
-                ),
-            )
-        except (ValueError, TypeError, AttributeError):
-            # Fallback: delete then append (not fully atomic, but works with all versions)
-            # WARNING: If append fails after delete, data loss can occur
-            # Users should use time travel to recover if needed
-            existing_table.delete("1=1")
-            try:
-                existing_table.create_write_transaction(
-                    actions=file_actions,
-                    mode="append",
-                    schema=existing_table.schema(),
-                    partition_by=partition_cols or None,
-                    commit_properties=commit_properties,
-                    post_commithook_properties=write_kwargs.get(
-                        "post_commithook_properties"
-                    ),
-                )
-            except Exception:
-                # If append fails after delete, data is lost
-                # Log warning and re-raise so caller can handle cleanup
-                logger.warning(
-                    "OVERWRITE mode failed: delete succeeded but append failed. "
-                    "Table is now empty. Use Delta Lake time travel to recover data: "
-                    f"read_delta('{table_uri}', version=<previous_version>)"
-                )
-                raise
-    else:
-        # For APPEND mode, just append files
-        existing_table.create_write_transaction(
-            actions=file_actions,
-            mode="append",
-            schema=existing_table.schema(),
-            partition_by=partition_cols or None,
-            commit_properties=commit_properties,
-            post_commithook_properties=write_kwargs.get("post_commithook_properties"),
-        )
+    # Commit files using the specified mode
+    # Delta Lake transaction API: https://delta-io.github.io/delta-rs/python/api/deltalake.table.html#deltalake.table.DeltaTable.create_write_transaction
+    existing_table.create_write_transaction(
+        actions=file_actions,
+        mode=mode,
+        schema=existing_table.schema(),
+        partition_by=partition_cols or None,
+        commit_properties=commit_properties,
+        post_commithook_properties=write_kwargs.get("post_commithook_properties"),
+    )
 
 
 def validate_partition_columns_match_existing(

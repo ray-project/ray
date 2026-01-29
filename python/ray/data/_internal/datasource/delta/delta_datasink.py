@@ -21,7 +21,6 @@ from ray.data._internal.datasource.delta.utils import (
     DeltaWriteResult,
     get_file_info_with_retry,
     get_storage_options,
-    join_delta_path,
     to_pyarrow_schema,
     try_get_deltatable,
     types_compatible,
@@ -55,7 +54,8 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     Uses two-phase commit: write Parquet files, then commit to transaction log.
     Supports APPEND, OVERWRITE, UPSERT, ERROR, and IGNORE modes.
 
-    deltalake: https://delta-io.github.io/delta-rs/python/
+    Delta Lake: https://delta.io/
+    deltalake Python library: https://delta-io.github.io/delta-rs/python/
     """
 
     def __init__(
@@ -76,6 +76,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             mode: Write mode - APPEND, OVERWRITE, UPSERT, ERROR, or IGNORE.
             partition_cols: Columns to partition by (Hive-style).
             filesystem: Optional PyArrow filesystem.
+                PyArrow filesystems: https://arrow.apache.org/docs/python/api/filesystems.html
             schema: Optional explicit schema for the table.
             upsert_kwargs: Options for UPSERT mode:
                 - join_cols: List of column names to match rows on (required for UPSERT)
@@ -264,6 +265,13 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                     "UPSERT mode requires join_cols in upsert_kwargs. "
                     "Example: upsert_kwargs={'join_cols': ['id']}"
                 )
+            # Warn about non-atomicity
+            logger.warning(
+                "UPSERT mode uses two separate transactions (delete then append) "
+                "and is NOT fully atomic. If the second transaction fails, "
+                "deleted rows will not be restored. For atomic upserts, consider "
+                "using Delta Lake's native merge() API directly."
+            )
 
     def write(
         self,
@@ -348,7 +356,10 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 schemas=block_schemas,
                 written_files=written_files,
             )
-        except Exception:
+        except Exception as e:
+            # Store written files in exception for cleanup in on_write_failed()
+            # This ensures cleanup works even if write() fails before returning
+            e._delta_written_files = written_files.copy()
             # Cleanup files written by this worker on failure
             self._cleanup_files(written_files)
             raise
@@ -395,12 +406,23 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     ) -> tuple[List["AddAction"], List[str]]:
         """Write table data as partitioned or non-partitioned Parquet files.
 
+        Args:
+            table: PyArrow table to write.
+            task_idx: Task index for filename generation.
+            block_idx: Block index for filename generation.
+            write_uuid: Unique identifier for this write operation.
+
         Returns:
             Tuple of (add_actions, written_files) where written_files are full paths.
         """
         # Recreate filesystem on worker (filesystem is not serializable)
+        # PyArrow filesystems cannot be pickled, so we recreate them on each worker.
         # This matches the pattern used in __setstate__ and ensures worker has
-        # access to filesystem even if it wasn't properly serialized
+        # access to filesystem even if it wasn't properly serialized.
+        # Note: We recreate on each call rather than caching per worker because:
+        # 1. Storage options might change between calls (unlikely but possible)
+        # 2. Simpler code path (no need for worker-local caching)
+        # 3. Filesystem creation is relatively cheap compared to file I/O
         data_context = DataContext.get_current()
         _, filesystem = _resolve_paths_and_filesystem(self.table_uri, None)
         filesystem = RetryingPyFileSystem.wrap(
@@ -431,7 +453,29 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         ) = self._collect_write_results(write_result)
         existing_table = try_get_deltatable(self.table_uri, self.storage_options)
 
-        # Validate race conditions
+        # Validate race conditions and handle early returns
+        self._validate_race_conditions(existing_table, all_written_files)
+
+        # Handle empty writes (no files written)
+        if not all_file_actions:
+            self._handle_empty_write(existing_table)
+            return
+
+        # Commit phase: validate and commit files atomically
+        try:
+            self._reconcile_schemas(all_schemas, existing_table)
+            validate_file_actions(all_file_actions, self.table_uri, self.filesystem)
+            self._commit_files(existing_table, all_file_actions, upsert_keys, all_written_files)
+        except Exception:
+            # Clean up orphaned files on commit failure
+            self._cleanup_files(all_written_files)
+            raise
+
+    def _validate_race_conditions(
+        self, existing_table: Optional["DeltaTable"], all_written_files: List[str]
+    ) -> None:
+        """Validate race conditions and raise errors or cleanup as needed."""
+        # ERROR mode: table created after write started
         if (
             not self._table_existed_at_start
             and existing_table is not None
@@ -443,7 +487,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 "after write started. Use SaveMode.APPEND or OVERWRITE."
             )
 
-        # IGNORE mode race condition: if table was created concurrently, clean up files
+        # IGNORE mode: table created concurrently
         if (
             not self._table_existed_at_start
             and existing_table is not None
@@ -452,6 +496,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             self._cleanup_files(all_written_files)
             return
 
+        # Table deleted after write started (for APPEND/UPSERT)
         if (
             self._table_existed_at_start
             and existing_table is None
@@ -463,109 +508,125 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 "Use SaveMode.OVERWRITE to create a new table."
             )
 
-        # Handle empty writes (no files written)
-        if not all_file_actions:
-            if self._table_existed_at_start and existing_table is not None:
-                if self.mode == SaveMode.OVERWRITE:
-                    # Clear existing table with empty commit
-                    commit_to_existing_table(
-                        existing_table,
-                        [],
-                        self.mode.value,
-                        self.partition_cols,
-                        self.schema,
-                        self.write_kwargs,
-                        self.table_uri,
-                        self.filesystem,
-                    )
-                    return
-                if self.mode == SaveMode.IGNORE:
-                    # Do nothing if table exists
-                    return
-            # Create empty table if schema provided and table doesn't exist
-            # Skip if table existed at start (IGNORE mode semantics)
-            if self.schema and not existing_table and not self._table_existed_at_start:
-                create_table_with_files(
-                    self.table_uri,
+    def _handle_empty_write(self, existing_table: Optional["DeltaTable"]) -> None:
+        """Handle empty writes (no files written)."""
+        if self._table_existed_at_start and existing_table is not None:
+            if self.mode == SaveMode.OVERWRITE:
+                # Clear existing table with empty commit
+                commit_to_existing_table(
+                    existing_table,
                     [],
-                    self.schema,
                     self.mode.value,
                     self.partition_cols,
-                    self.storage_options,
+                    self.schema,
                     self.write_kwargs,
+                    self.table_uri,
                     self.filesystem,
                 )
             return
 
-        # Commit phase: validate and commit files atomically
-        # Wrap in try/except to ensure cleanup on failure (files written by workers)
-        try:
-            # Reconcile schemas from all workers with type promotion
-            # Handles cases where different workers infer different types (e.g., int32 vs int64)
-            # This is inside the try block so files are cleaned up if reconciliation fails
-            if all_schemas:
-                if existing_table:
-                    table_schema = to_pyarrow_schema(existing_table.schema())
-                    reconciled_schema = unify_schemas(
-                        [table_schema] + all_schemas, promote_types=True
-                    )
-                else:
-                    reconciled_schema = unify_schemas(all_schemas, promote_types=True)
+        # Create empty table if schema provided and table doesn't exist
+        if self.schema and not existing_table and not self._table_existed_at_start:
+            create_table_with_files(
+                self.table_uri,
+                [],
+                self.schema,
+                self.mode.value,
+                self.partition_cols,
+                self.storage_options,
+                self.write_kwargs,
+                self.filesystem,
+            )
 
-                if reconciled_schema:
-                    self.schema = reconciled_schema
-            validate_file_actions(all_file_actions, self.table_uri, self.filesystem)
+    def _reconcile_schemas(
+        self, all_schemas: List[pa.Schema], existing_table: Optional["DeltaTable"]
+    ) -> None:
+        """Reconcile schemas from all workers with type promotion."""
+        if not all_schemas:
+            return
 
-            if self._table_existed_at_start:
-                # Table existed at start - handle based on mode
-                if self.mode == SaveMode.IGNORE:
-                    self._cleanup_files(all_written_files)
-                    return
-                if existing_table is None and self.mode == SaveMode.OVERWRITE:
-                    # Table was deleted, create new one
-                    create_table_with_files(
-                        self.table_uri,
-                        all_file_actions,
-                        self.schema,
-                        self.mode.value,
-                        self.partition_cols,
-                        self.storage_options,
-                        self.write_kwargs,
-                        self.filesystem,
-                    )
-                elif existing_table is not None:
-                    # Commit to existing table (APPEND, OVERWRITE, or UPSERT)
-                    self._commit_by_mode(existing_table, all_file_actions, upsert_keys)
-                else:
-                    raise ValueError(
-                        f"Delta table was deleted at {self.table_uri} after write started."
-                    )
-            else:
-                # Table didn't exist at start - create new table
-                # For IGNORE mode, check one more time if table was created concurrently
-                # to avoid orphaned files (create_table_with_add_actions silently does nothing)
-                if self.mode == SaveMode.IGNORE:
-                    final_check_table = try_get_deltatable(
-                        self.table_uri, self.storage_options
-                    )
-                    if final_check_table is not None:
-                        # Table was created concurrently, clean up files
-                        self._cleanup_files(all_written_files)
-                        return
-                create_table_with_files(
-                    self.table_uri,
-                    all_file_actions,
-                    self.schema,
-                    self.mode.value,
-                    self.partition_cols,
-                    self.storage_options,
-                    self.write_kwargs,
-                    self.filesystem,
-                )
-        except Exception:
-            # Clean up orphaned files on commit failure
+        if existing_table:
+            table_schema = to_pyarrow_schema(existing_table.schema())
+            reconciled_schema = unify_schemas(
+                [table_schema] + all_schemas, promote_types=True
+            )
+        else:
+            reconciled_schema = unify_schemas(all_schemas, promote_types=True)
+
+        if reconciled_schema:
+            self.schema = reconciled_schema
+
+    def _commit_files(
+        self,
+        existing_table: Optional["DeltaTable"],
+        all_file_actions: List["AddAction"],
+        upsert_keys: Optional[pa.Table],
+        all_written_files: List[str],
+    ) -> None:
+        """Commit files to table based on whether it existed at start."""
+        if self._table_existed_at_start:
+            self._commit_to_existing_table_state(
+                existing_table, all_file_actions, upsert_keys, all_written_files
+            )
+        else:
+            self._commit_to_new_table(all_file_actions, all_written_files)
+
+    def _commit_to_existing_table_state(
+        self,
+        existing_table: Optional["DeltaTable"],
+        all_file_actions: List["AddAction"],
+        upsert_keys: Optional[pa.Table],
+        all_written_files: List[str],
+    ) -> None:
+        """Commit files when table existed at start."""
+        if self.mode == SaveMode.IGNORE:
             self._cleanup_files(all_written_files)
-            raise
+            return
+
+        if existing_table is None and self.mode == SaveMode.OVERWRITE:
+            # Table was deleted, create new one
+            create_table_with_files(
+                self.table_uri,
+                all_file_actions,
+                self.schema,
+                self.mode.value,
+                self.partition_cols,
+                self.storage_options,
+                self.write_kwargs,
+                self.filesystem,
+            )
+        elif existing_table is not None:
+            # Commit to existing table (APPEND, OVERWRITE, or UPSERT)
+            self._commit_by_mode(existing_table, all_file_actions, upsert_keys)
+        else:
+            raise ValueError(
+                f"Delta table was deleted at {self.table_uri} after write started."
+            )
+
+    def _commit_to_new_table(
+        self, all_file_actions: List["AddAction"], all_written_files: List[str]
+    ) -> None:
+        """Commit files when table didn't exist at start."""
+        # For IGNORE mode, check one more time if table was created concurrently
+        if self.mode == SaveMode.IGNORE:
+            final_check_table = try_get_deltatable(
+                self.table_uri, self.storage_options
+            )
+            if final_check_table is not None:
+                # Table was created concurrently, clean up files
+                self._cleanup_files(all_written_files)
+                return
+
+        create_table_with_files(
+            self.table_uri,
+            all_file_actions,
+            self.schema,
+            self.mode.value,
+            self.partition_cols,
+            self.storage_options,
+            self.write_kwargs,
+            self.filesystem,
+        )
 
     def _commit_by_mode(
         self,
@@ -647,15 +708,41 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     def on_write_failed(self, error: Exception) -> None:
         """Handle write failure - attempt cleanup of orphaned files.
 
-        Note: In distributed execution, cleanup relies on written_files from
-        DeltaWriteResult. If write() fails before returning results, cleanup
-        may be incomplete and orphaned files may require manual cleanup.
+        Attempts to clean up files written before the failure. Files are tracked
+        in two ways:
+        1. If write() completed, files are in DeltaWriteResult.written_files
+        2. If write() failed early, files are stored in error._delta_written_files
+
+        Args:
+            error: The exception that caused the write to fail.
         """
-        logger.error(
-            f"Delta write failed for {self.table_uri}: {error}. "
-            "Cleanup relies on written_files from DeltaWriteResult. "
-            "If write() failed before returning, orphaned files may require manual cleanup."
-        )
+        # Try to get written files from exception (set in write() on failure)
+        written_files = getattr(error, "_delta_written_files", [])
+
+        # Also try to get from write_result if available (for failures after write() returns)
+        # Note: This may not be available if write() never returned
+        if not written_files:
+            # Fallback: check if error has write_result attached
+            write_result = getattr(error, "_write_result", None)
+            if write_result and hasattr(write_result, "write_returns"):
+                all_written_files = []
+                for result in write_result.write_returns:
+                    if result and hasattr(result, "written_files"):
+                        all_written_files.extend(result.written_files)
+                written_files = all_written_files
+
+        if written_files:
+            logger.warning(
+                f"Delta write failed for {self.table_uri}. "
+                f"Attempting to cleanup {len(written_files)} orphaned files."
+            )
+            self._cleanup_files(written_files)
+        else:
+            logger.error(
+                f"Delta write failed for {self.table_uri}: {error}. "
+                "Could not determine which files were written. "
+                "Orphaned files may require manual cleanup using Delta Lake VACUUM."
+            )
 
     def _cleanup_files(self, file_paths: List[str]) -> None:
         """Clean up files by their full paths.
