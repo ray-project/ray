@@ -382,6 +382,45 @@ class TestDeploymentSchema:
         }
         DeploymentSchema.parse_obj(deployment_options)
 
+    def test_validate_bundle_label_selector(self):
+        """Test validation for placement_group_bundle_label_selector."""
+
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        # Validate bundle_label_selector provided without bundles raises.
+        deployment_schema["placement_group_bundle_label_selector"] = [{"a": "b"}]
+        with pytest.raises(
+            ValidationError,
+            match="Setting bundle_label_selector is not allowed when placement_group_bundles is not provided",
+        ):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        # Validate mismatched lengths for bundles and bundle_label_selector raises.
+        deployment_schema["placement_group_bundles"] = [{"CPU": 1}, {"CPU": 1}]
+        deployment_schema["placement_group_bundle_label_selector"] = [
+            {"a": "b"},
+            {"c": "d"},
+            {"e": "f"},
+        ]
+        with pytest.raises(
+            ValidationError,
+            match=r"list must contain either a single selector \(to apply to all bundles\) or match the number of `placement_group_bundles`",
+        ):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        # Valid config - 2 bundles and 2 placement_group_bundle_label_selector.
+        deployment_schema["placement_group_bundle_label_selector"] = [
+            {"a": "b"},
+            {"c": "d"},
+        ]
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        # Valid config - single placement_group_bundle_label_selector.
+        deployment_schema["placement_group_bundle_label_selector"] = [
+            {"a": "b"},
+        ]
+        DeploymentSchema.parse_obj(deployment_schema)
+
 
 class TestServeApplicationSchema:
     def get_valid_serve_application_schema(self):
