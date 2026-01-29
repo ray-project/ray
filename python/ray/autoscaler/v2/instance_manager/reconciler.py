@@ -6,6 +6,9 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray._common.utils import binary_to_hex
+from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
+    KubeRayProvider,
+)
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
@@ -293,6 +296,7 @@ class Reconciler:
             ray_state=ray_cluster_resource_state,
             scheduler=scheduler,
             autoscaling_config=autoscaling_config,
+            cloud_provider=cloud_provider,
         )
 
         Reconciler._handle_instances_launch(
@@ -1081,6 +1085,7 @@ class Reconciler:
         ray_state: ClusterResourceState,
         scheduler: IResourceScheduler,
         autoscaling_config: AutoscalingConfig,
+        cloud_provider: ICloudInstanceProvider,
     ) -> None:
         """
         Scale the cluster based on the resource state and the resource scheduler's
@@ -1098,7 +1103,7 @@ class Reconciler:
             ray_state: The ray cluster's resource state.
             scheduler: The resource scheduler to make scaling decisions.
             autoscaling_config: The autoscaling config.
-
+            cloud_provider: The cloud provider interface.
         """
 
         # Get the current instance states.
@@ -1143,6 +1148,10 @@ class Reconciler:
                 cloud_resource_monitor.get_resource_availabilities()
             ),
         )
+
+        if isinstance(cloud_provider, KubeRayProvider):
+            sched_request.ippr_specs = cloud_provider.get_ippr_specs()
+            sched_request.ippr_statuses = cloud_provider.get_ippr_statuses()
 
         # Ask scheduler for updates to the cluster shape.
         reply = scheduler.schedule(sched_request)
@@ -1222,6 +1231,9 @@ class Reconciler:
                         "from scheduler"
                     ),
                 )
+
+        if isinstance(cloud_provider, KubeRayProvider):
+            cloud_provider.do_ippr_requests(reply.to_ippr)
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
 

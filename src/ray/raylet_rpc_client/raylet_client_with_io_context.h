@@ -14,6 +14,10 @@
 
 #pragma once
 
+#include <map>
+#include <string>
+#include <vector>
+
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/rpc/grpc_client.h"
 
@@ -43,6 +47,12 @@ class RayletClientWithIoContext {
   /// \param timeout_ms The timeout in milliseconds.
   void GetAgentPIDs(const rpc::OptionalItemCallback<std::vector<int32_t>> &callback,
                     int64_t timeout_ms);
+
+  /// Asynchronously resize local resource instances on the raylet.
+  void AsyncResizeLocalResourceInstances(
+      const std::map<std::string, double> &resources,
+      const rpc::OptionalItemCallback<std::map<std::string, double>> &callback,
+      int64_t timeout_ms);
 
  private:
   /// client call manager is created inside the raylet client, it should be kept active
