@@ -502,8 +502,17 @@ def create_filesystem_from_storage_options(
                 bearer_token=token,
             )
     elif path_lower.startswith(("gs://", "gcs://")):
-        # GCS uses Application Default Credentials automatically
-        return pa_fs.GcsFileSystem()
+        # Check for GCS-specific credentials in storage_options
+        # GOOGLE_SERVICE_ACCOUNT can be a path to service account JSON file
+        service_account = storage_options.get("GOOGLE_SERVICE_ACCOUNT")
+        anonymous = storage_options.get("GOOGLE_ANONYMOUS", "").lower() == "true"
+        # Only create filesystem if explicit credentials are provided
+        # Otherwise return None to let PyArrow use Application Default Credentials
+        if service_account or anonymous:
+            return pa_fs.GcsFileSystem(
+                service_account=service_account if service_account else None,
+                anonymous=anonymous,
+            )
 
     return None
 
