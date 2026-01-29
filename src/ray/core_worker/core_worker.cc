@@ -3253,7 +3253,6 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
   }
 
   // Fetch by-reference arguments directly from the plasma store.
-  bool got_exception = false;
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   // Resolve owner addresses of by-ref ids
   std::vector<ObjectID> object_ids =
