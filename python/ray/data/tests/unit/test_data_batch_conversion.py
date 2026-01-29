@@ -7,6 +7,7 @@ import pytest
 
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
 from ray.data._internal.tensor_extensions.pandas import TensorArray
+from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.util.data_batch_conversion import (
     BatchFormat,
     _cast_ndarray_columns_to_tensor_extension,
@@ -98,7 +99,9 @@ def test_pd_dataframe_to_numpy():
     actual_output = _convert_batch_type_to_numpy(input_data)
     np.testing.assert_array_equal(expected_output, actual_output)
 
-    input_data = pd.DataFrame({"data": TensorArray(np.arange(12).reshape(3, 4))})
+    input_data = pd.DataFrame(
+        {TENSOR_COLUMN_NAME: TensorArray(np.arange(12).reshape(3, 4))}
+    )
     expected_output = np.arange(12).reshape(3, 4)
     actual_output = _convert_batch_type_to_numpy(input_data)
     np.testing.assert_array_equal(expected_output, actual_output)
@@ -163,7 +166,7 @@ def test_no_pandas_future_warning():
 @pytest.mark.parametrize("cast_tensor_columns", [True, False])
 def test_numpy_pandas(cast_tensor_columns):
     input_data = np.array([1, 2, 3])
-    expected_output = pd.DataFrame({"data": input_data})
+    expected_output = pd.DataFrame({"TENSOR_COLUMN_NAME": input_data})
     actual_output = _convert_batch_type_to_pandas(input_data, cast_tensor_columns)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
@@ -176,7 +179,7 @@ def test_numpy_pandas(cast_tensor_columns):
 @pytest.mark.parametrize("cast_tensor_columns", [True, False])
 def test_numpy_multi_dim_pandas(cast_tensor_columns):
     input_data = np.arange(12).reshape((3, 2, 2))
-    expected_output = pd.DataFrame({"data": list(input_data)})
+    expected_output = pd.DataFrame({"TENSOR_COLUMN_NAME": list(input_data)})
     actual_output = _convert_batch_type_to_pandas(input_data, cast_tensor_columns)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
@@ -188,7 +191,7 @@ def test_numpy_multi_dim_pandas(cast_tensor_columns):
 
 def test_numpy_object_pandas():
     input_data = np.array([[1, 2, 3], [1]], dtype=object)
-    expected_output = pd.DataFrame({"data": input_data})
+    expected_output = pd.DataFrame({"TENSOR_COLUMN_NAME": input_data})
     actual_output = _convert_batch_type_to_pandas(input_data)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
