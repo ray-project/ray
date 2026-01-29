@@ -1,13 +1,18 @@
 import logging
 import os
 import re
+import time
 from datetime import datetime
 
 import pytest
 import yaml
 
 import ray
-from ray.data._internal.logging import configure_logging, get_log_directory
+from ray.data._internal.logging import (
+    configure_logging,
+    get_log_directory,
+    reset_logging,
+)
 from ray.tests.conftest import *  # noqa
 
 
@@ -206,6 +211,150 @@ def test_configure_logging_preserves_existing_handlers(reset_logging, shutdown_o
         test_logger.removeHandler(memory_handler)
         memory_handler.close()
         target_handler.close()
+
+
+def test_concurrent_dataset_logging_separate_files(shutdown_only):
+    """Test that concurrent datasets write to separate log files.
+
+    This test addresses issue #48633 by verifying that when multiple Ray Data
+    operations run concurrently, each writes to its own log file.
+    """
+    reset_logging()
+    ray.init()
+
+    @ray.remote
+    def create_dataset(dataset_id):
+        # Create and materialize a dataset
+        # ray.data.range returns {"id": n}, not {"value": n}
+        ds = ray.data.range(100, override_num_blocks=10)
+        ds = ds.map(lambda row: {"value": row["id"] * 2})
+        return ds.materialize()
+
+    # Launch 3 concurrent dataset operations
+    futures = [create_dataset.remote(i) for i in range(3)]
+    ray.get(futures)
+
+    # Give some time for logs to be flushed
+    time.sleep(1)
+
+    # Verify that multiple dataset-specific log files were created
+    log_dir = get_log_directory()
+    log_files = os.listdir(log_dir)
+
+    # Filter for dataset-specific log files (ray-data-{uuid}.log)
+    dataset_logs = [
+        f for f in log_files if f.startswith("ray-data-") and f != "ray-data.log"
+    ]
+
+    # Should have at least 3 dataset-specific log files
+    assert (
+        len(dataset_logs) >= 3
+    ), f"Expected at least 3 log files, got {len(dataset_logs)}: {dataset_logs}"
+
+    # Verify each log file contains execution information
+    for log_file in dataset_logs[:3]:  # Check first 3 files
+        log_path = os.path.join(log_dir, log_file)
+        with open(log_path) as f:
+            content = f.read()
+            # Each dataset log should contain its own execution info
+            assert (
+                "Starting execution" in content
+                or "Registered dataset logger" in content
+            ), f"Log file {log_file} missing execution info"
+
+    reset_logging()
+
+
+def test_concurrent_dataset_logging_no_interference(shutdown_only):
+    """Test that concurrent dataset logs don't interfere with each other.
+
+    Each dataset should have its own log file with separate content.
+    """
+    reset_logging()
+    ray.init()
+
+    @ray.remote
+    def create_dataset(dataset_num):
+        # Simple dataset creation - logs will be automatically generated
+        ds = ray.data.range(50, override_num_blocks=5)
+        ds = ds.map(lambda row: {"num": dataset_num, "value": row["id"]})
+        return ds.materialize()
+
+    # Launch 3 concurrent operations
+    futures = [create_dataset.remote(i) for i in range(3)]
+    ray.get(futures)
+
+    time.sleep(1)
+
+    # Verify separate log files were created
+    log_dir = get_log_directory()
+    log_files = os.listdir(log_dir)
+    dataset_logs = [
+        f for f in log_files if f.startswith("ray-data-") and f != "ray-data.log"
+    ]
+
+    # Should have at least 3 separate dataset log files
+    assert (
+        len(dataset_logs) >= 3
+    ), f"Expected at least 3 log files, got {len(dataset_logs)}: {dataset_logs}"
+
+    # Verify each log file has unique content and is non-empty
+    log_contents = []
+    for log_file in dataset_logs[:3]:
+        log_path = os.path.join(log_dir, log_file)
+        with open(log_path) as f:
+            content = f.read()
+            assert len(content) > 0, f"Log file {log_file} is empty"
+            log_contents.append(content)
+
+    # Each log file should contain execution information
+    for i, content in enumerate(log_contents):
+        assert (
+            "Starting execution" in content or "Registered dataset logger" in content
+        ), f"Log file {i} missing execution info"
+
+    reset_logging()
+
+
+def test_concurrent_logging_issue_48633_repro(shutdown_only):
+    """Test the exact reproduction case from issue #48633.
+
+    When multiple Ray tasks run datasets concurrently, their logs should
+    be written to separate files instead of being interleaved.
+    """
+    reset_logging()
+    ray.init()
+
+    @ray.remote
+    def f():
+        # This is the exact repro from issue #48633
+        ray.data.range(1).materialize()
+
+    # Run 2 concurrent tasks (from the issue repro)
+    ray.get([f.remote() for _ in range(2)])
+
+    time.sleep(1)
+
+    # Verify separate log files were created
+    log_dir = get_log_directory()
+    log_files = os.listdir(log_dir)
+    dataset_logs = [
+        f for f in log_files if f.startswith("ray-data-") and f != "ray-data.log"
+    ]
+
+    # Should have at least 2 separate log files
+    assert (
+        len(dataset_logs) >= 2
+    ), f"Expected at least 2 separate log files for concurrent datasets, got {len(dataset_logs)}"
+
+    # Verify each has content
+    for log_file in dataset_logs[:2]:
+        log_path = os.path.join(log_dir, log_file)
+        with open(log_path) as f:
+            content = f.read()
+            assert len(content) > 0, f"Log file {log_file} is empty"
+
+    reset_logging()
 
 
 if __name__ == "__main__":
