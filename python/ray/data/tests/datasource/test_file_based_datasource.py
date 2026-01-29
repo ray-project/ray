@@ -365,6 +365,27 @@ def test_valid_shuffle_arg_does_not_raise_error(ray_start_regular_shared, shuffl
     FileBasedDatasource("example://iris.csv", shuffle=shuffle)
 
 
+def test_read_s3_file_error(shutdown_only, s3_path):
+    from ray.data.datasource.file_meta_provider import _handle_read_os_error
+
+    dummy_path = s3_path + "_dummy"
+    error_message = "Please check that file exists and has properly configured access."
+    with pytest.raises(OSError, match=error_message):
+        ray.data.read_parquet(dummy_path)
+    with pytest.raises(OSError, match=error_message):
+        ray.data.read_binary_files(dummy_path)
+    with pytest.raises(OSError, match=error_message):
+        ray.data.read_csv(dummy_path)
+    with pytest.raises(OSError, match=error_message):
+        ray.data.read_json(dummy_path)
+    with pytest.raises(OSError, match=error_message):
+        error = OSError(
+            f"Error creating dataset. Could not read schema from {dummy_path}: AWS "
+            "Error [code 15]: No response body.. Is this a 'parquet' file?"
+        )
+        _handle_read_os_error(error, dummy_path)
+
+
 if __name__ == "__main__":
     import sys
 
