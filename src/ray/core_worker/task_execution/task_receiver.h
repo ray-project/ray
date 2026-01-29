@@ -99,14 +99,20 @@ class TaskReceiver {
   void Stop();
 
  private:
-  // True once shutdown begins. Requests to execute new tasks will be rejected.
-  std::atomic<bool> stopping_ = false;
-
   /// Set up the configs for an actor.
   /// This should be called once for the actor creation task.
   void SetupActor(bool is_asyncio,
                   int fiber_max_concurrency,
                   bool allow_out_of_order_execution);
+
+  void HandleTaskExecutionResult(Status status,
+                                 const TaskSpecification &task_spec,
+                                 const TaskExecutionResult &result,
+                                 const rpc::SendReplyCallback &send_reply_callback,
+                                 rpc::PushTaskReply *reply);
+
+  // True once shutdown begins. Requests to execute new tasks will be rejected.
+  std::atomic<bool> stopping_ = false;
 
   /// The callback function to process a task.
   TaskHandler task_handler_;
