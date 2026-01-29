@@ -654,7 +654,10 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     def obj_store_mem_pending_task_inputs(self) -> int:
         return self._pending_task_inputs.estimate_size_bytes()
 
-    @property
+    @metric_property(
+        description="Byte size of *pending* (not yielded yet) output blocks in running tasks.",
+        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
+    )
     def obj_store_mem_pending_task_outputs(self) -> Optional[float]:
         """Estimated size in bytes of output blocks in Ray generator buffers.
 
