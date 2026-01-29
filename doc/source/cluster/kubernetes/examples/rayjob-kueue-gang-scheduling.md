@@ -114,6 +114,7 @@ metadata:
   name: rayjob-gpu-config
 spec:
   provisioningClassName: queued-provisioning.gke.io
+  podSetMergePolicy: IdenticalWorkloadSchedulingRequirements
   managedResources:
   - nvidia.com/gpu
 ---
@@ -153,6 +154,13 @@ kubectl apply -f kueue-resources.yaml
 
 :::{note}
 This example configures Kueue to orchestrate the gang scheduling of GPUs. However, you can use other resources such as CPU and memory.
+:::
+
+:::{note}
+Google Kubernetes Engine's queued provisioning feature currently supports only single PodSet per request. To circumvent this issue, we
+set `podSetMergePolicy: IdenticalWorkloadSchedulingRequirements` in the `ProvisioningRequestConfig`. When giving the head node and the
+worker nodes the same resource requirements, affinities, and tolerations, Kueue merges them into a single PodSet in the `ProvisioningRequest`.
+See [Kueue ProvisioningRequest PodSet merge policy documentation](https://kueue.sigs.k8s.io/docs/concepts/admission_check/provisioning_request/#podset-merge-policy) for more details.
 :::
 
 ## Deploy a RayJob
