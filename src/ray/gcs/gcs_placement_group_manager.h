@@ -251,21 +251,26 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   void RetryCreatingPlacementGroup();
 
   /// Mark the manager that there's a placement group scheduling going on.
-  void MarkSchedulingStarted(const PlacementGroupID placement_group_id) {
-    scheduling_in_progress_id_ = placement_group_id;
+  void MarkSchedulingStarted(const PlacementGroupID &placement_group_id) {
+    scheduling_in_progress_ids_.insert(placement_group_id);
   }
 
   /// Mark the manager that there's no more placement group scheduling going on.
-  void MarkSchedulingDone() { scheduling_in_progress_id_ = PlacementGroupID::Nil(); }
+  void MarkSchedulingDone(const PlacementGroupID &placement_group_id) {
+    scheduling_in_progress_ids_.erase(placement_group_id);
+  }
 
   /// Check if the placement group of a given id is scheduling.
   bool IsSchedulingInProgress(const PlacementGroupID &placement_group_id) const {
-    return scheduling_in_progress_id_ == placement_group_id;
+    return scheduling_in_progress_ids_.contains(placement_group_id);
   }
 
   /// Check if there's any placement group scheduling going on.
-  bool IsSchedulingInProgress() const {
-    return scheduling_in_progress_id_ != PlacementGroupID::Nil();
+  bool IsSchedulingInProgress() const { return !scheduling_in_progress_ids_.empty(); }
+
+  bool CanScheduleMore() const {
+    return scheduling_in_progress_ids_.size() <
+           RayConfig::instance().gcs_max_concurrent_pg_scheduling();
   }
 
   // Method that is invoked every second.
@@ -324,10 +329,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>>
       placement_group_state_counter_;
 
-  /// The placement group id that is in progress of scheduling bundles.
-  /// TODO(sang): Currently, only one placement group can be scheduled at a time.
-  /// We should probably support concurrenet creation (or batching).
-  PlacementGroupID scheduling_in_progress_id_ = PlacementGroupID::Nil();
+  /// The placement group ids that are in progress of scheduling bundles.
+  /// Multiple placement groups can be scheduled concurrently, controlled by
+  /// gcs_max_concurrent_pg_scheduling config.
+  absl::flat_hash_set<PlacementGroupID> scheduling_in_progress_ids_;
 
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;

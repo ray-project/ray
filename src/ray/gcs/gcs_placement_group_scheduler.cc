@@ -57,9 +57,11 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const auto &bundles = placement_group->GetUnplacedBundles();
   const auto &strategy = placement_group->GetStrategy();
 
-  RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
-                 << ", id: " << placement_group->GetPlacementGroupID()
-                 << ", bundles size = " << bundles.size();
+  RAY_LOG(INFO) << "[CONCURRENT_PG_DEBUG] GCS Scheduler: Scheduling placement group "
+                << placement_group->GetName()
+                << ", id: " << placement_group->GetPlacementGroupID()
+                << ", bundles size = " << bundles.size()
+                << ", strategy = " << rpc::PlacementStrategy_Name(strategy);
 
   std::vector<const ResourceRequest *> resource_request_list;
   resource_request_list.reserve(bundles.size());
@@ -78,6 +80,21 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const auto &selected_nodes = scheduling_result.selected_nodes;
 
   if (!result_status.IsSuccess()) {
+    // Build required resources string for debug logging
+    std::stringstream required_resources_ss;
+    for (size_t i = 0; i < bundles.size(); ++i) {
+      required_resources_ss << "bundle[" << i << "]={";
+      required_resources_ss << bundles[i]->GetRequiredResources().DebugString();
+      required_resources_ss << "} ";
+    }
+    RAY_LOG(INFO) << "[CONCURRENT_PG_DEBUG] SCHEDULING FAILED for PG "
+                  << placement_group->GetName()
+                  << ", id: " << placement_group->GetPlacementGroupID()
+                  << ", IsFailed: " << result_status.IsFailed()
+                  << ", IsInfeasible: " << result_status.IsInfeasible()
+                  << ", Required: " << required_resources_ss.str()
+                  << ", Cluster resource view: "
+                  << cluster_resource_scheduler_.DebugString();
     RAY_LOG(DEBUG)
         << "Failed to schedule placement group " << placement_group->GetName()
         << ", id: " << placement_group->GetPlacementGroupID()
@@ -186,8 +203,11 @@ void GcsPlacementGroupScheduler::PrepareResources(
 
   const auto raylet_client = GetRayletClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
-  RAY_LOG(INFO) << "Preparing resource from node " << node_id
-                << " for bundles: " << GetDebugStringForBundles(bundles);
+  PlacementGroupID pg_id =
+      bundles.empty() ? PlacementGroupID::Nil() : bundles[0]->PlacementGroupId();
+  RAY_LOG(INFO) << "[CONCURRENT_PG_DEBUG] GCS Scheduler: Sending Prepare RPC to node "
+                << node_id << " for PG " << pg_id
+                << ", bundles: " << GetDebugStringForBundles(bundles);
 
   raylet_client->PrepareBundleResources(
       bundles,
