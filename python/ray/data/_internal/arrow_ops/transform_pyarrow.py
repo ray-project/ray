@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 import numpy as np
 from packaging.version import parse as parse_version
 
-from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.ray_constants import env_integer
 from ray._private.utils import INT32_MAX
 from ray.data._internal.tensor_extensions.arrow import (
@@ -17,6 +16,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     unify_tensor_arrays,
     unify_tensor_types,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 try:
     import pyarrow
