@@ -532,6 +532,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             and existing_table is not None
             and self.mode in (SaveMode.APPEND, SaveMode.OVERWRITE)
         ):
+            # Validate partition columns match the concurrently-created table
+            # (on_write_start skipped this validation since table didn't exist then)
+            validate_partition_columns_match_existing(existing_table, self.partition_cols)
             # Update state to reflect that table now exists
             self._table_existed_at_start = True
             return existing_table

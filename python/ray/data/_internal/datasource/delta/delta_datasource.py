@@ -159,8 +159,25 @@ class DeltaDatasource(Datasource):
 
     @property
     def supports_distributed_reads(self) -> bool:
-        """Whether this datasource supports distributed reads."""
-        return not _is_local_scheme(self.path)
+        """Whether this datasource supports distributed reads.
+        
+        Local filesystem reads require all tasks to run on the same node
+        to ensure files are accessible.
+        """
+        # Check for local:// scheme (Ray's custom scheme)
+        if _is_local_scheme(self.path):
+            return False
+
+        # Check for regular local filesystem paths
+        path_lower = self.path.lower()
+        if path_lower.startswith("file://"):
+            return False
+
+        # Check for paths without scheme (local filesystem)
+        if "://" not in self.path:
+            return False
+
+        return True
 
     def get_name(self) -> str:
         """Return human-readable name for this datasource."""
