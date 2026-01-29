@@ -3488,6 +3488,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":confest"],
 )
 
 py_test(
@@ -3507,6 +3508,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # IMPALA
@@ -3548,6 +3550,7 @@ py_test(
         "gpu",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # Prev-r/prev actions + LSTM example.
