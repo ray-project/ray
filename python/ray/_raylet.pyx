@@ -1842,6 +1842,14 @@ cdef void execute_task(
                 except (KeyboardInterrupt, SystemExit):
                     # Special casing these two because Ray can raise them
                     raise
+                except (StopIteration, StopAsyncIteration) as e:
+                    # Convert StopIteration to RuntimeError per PEP 479
+                    # preserving original cause and name of the original exception
+                    task_exception_instance = RuntimeError(
+                        "generator raised " + type(e).__name__
+                    )
+                    task_exception_instance.__cause__ = e
+                    raise task_exception_instance
                 except BaseException as e:
                     is_retryable_error[0] = determine_if_retryable(
                                     should_retry_exceptions,
@@ -1864,16 +1872,6 @@ cdef void execute_task(
                     # Record the end of the task log.
                     worker.record_task_log_end(task_id, attempt_number)
                     if task_exception_instance is not None:
-                        exc_type = type(task_exception_instance)
-                        exc_name = exc_type.__name__
-                        # Convert StopIteration to RuntimeError per PEP 479
-                        # preserving original cause and name of the original exception
-                        if exc_type is StopIteration or exc_type is StopAsyncIteration:
-                            original_exception = task_exception_instance
-                            task_exception_instance = RuntimeError(
-                                "generator raised " + exc_name
-                            )
-                            task_exception_instance.__cause__ = original_exception
                         raise task_exception_instance
                     if core_worker.get_current_actor_should_exit():
                         raise_sys_exit_with_custom_error_message("exit_actor() is called.")
