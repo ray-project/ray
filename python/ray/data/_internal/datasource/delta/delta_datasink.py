@@ -454,7 +454,8 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         existing_table = try_get_deltatable(self.table_uri, self.storage_options)
 
         # Validate race conditions and handle early returns
-        self._validate_race_conditions(existing_table, all_written_files)
+        # May update existing_table and _table_existed_at_start if table was created concurrently
+        existing_table = self._validate_race_conditions(existing_table, all_written_files)
 
         # Handle empty writes (no files written)
         if not all_file_actions:
@@ -473,8 +474,12 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
     def _validate_race_conditions(
         self, existing_table: Optional["DeltaTable"], all_written_files: List[str]
-    ) -> None:
-        """Validate race conditions and raise errors or cleanup as needed."""
+    ) -> Optional["DeltaTable"]:
+        """Validate race conditions and raise errors or cleanup as needed.
+
+        Returns:
+            Updated existing_table if race condition handling changed it, None otherwise.
+        """
         # ERROR mode: table created after write started
         if (
             not self._table_existed_at_start
@@ -494,7 +499,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             and self.mode == SaveMode.IGNORE
         ):
             self._cleanup_files(all_written_files)
-            return
+            return None
 
         # Table deleted after write started (for APPEND/UPSERT)
         if (
@@ -507,6 +512,19 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 f"Delta table was deleted at {self.table_uri} after write started. "
                 "Use SaveMode.OVERWRITE to create a new table."
             )
+
+        # APPEND/OVERWRITE mode: table created concurrently - return it so we can append/overwrite
+        # This is not an error, just a race condition we need to handle
+        if (
+            not self._table_existed_at_start
+            and existing_table is not None
+            and self.mode in (SaveMode.APPEND, SaveMode.OVERWRITE)
+        ):
+            # Update state to reflect that table now exists
+            self._table_existed_at_start = True
+            return existing_table
+
+        return existing_table
 
     def _handle_empty_write(self, existing_table: Optional["DeltaTable"]) -> None:
         """Handle empty writes (no files written)."""
@@ -569,7 +587,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 existing_table, all_file_actions, upsert_keys, all_written_files
             )
         else:
-            self._commit_to_new_table(all_file_actions, all_written_files)
+            self._commit_to_new_table(existing_table, all_file_actions, all_written_files)
 
     def _commit_to_existing_table_state(
         self,
@@ -604,19 +622,36 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             )
 
     def _commit_to_new_table(
-        self, all_file_actions: List["AddAction"], all_written_files: List[str]
+        self,
+        existing_table: Optional["DeltaTable"],
+        all_file_actions: List["AddAction"],
+        all_written_files: List[str],
     ) -> None:
-        """Commit files when table didn't exist at start."""
-        # For IGNORE mode, check one more time if table was created concurrently
-        if self.mode == SaveMode.IGNORE:
-            final_check_table = try_get_deltatable(
-                self.table_uri, self.storage_options
-            )
-            if final_check_table is not None:
+        """Commit files when table didn't exist at start.
+
+        Args:
+            existing_table: Table that exists now (may be None or created concurrently).
+            all_file_actions: File actions to commit.
+            all_written_files: Files written for cleanup on failure.
+        """
+        # Check if table was created concurrently (race condition)
+        if existing_table is not None:
+            # Table was created concurrently - handle based on mode
+            if self.mode == SaveMode.APPEND:
+                # Append to concurrently-created table
+                self._commit_by_mode(existing_table, all_file_actions, None)
+                return
+            elif self.mode == SaveMode.OVERWRITE:
+                # Overwrite the concurrently-created table
+                self._commit_by_mode(existing_table, all_file_actions, None)
+                return
+            elif self.mode == SaveMode.IGNORE:
                 # Table was created concurrently, clean up files
                 self._cleanup_files(all_written_files)
                 return
+            # ERROR mode already handled in _validate_race_conditions
 
+        # No table exists - create new one
         create_table_with_files(
             self.table_uri,
             all_file_actions,
