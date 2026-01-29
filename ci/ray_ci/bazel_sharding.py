@@ -17,6 +17,7 @@
 # BASED ON https://github.com/philwo/bazel-utils/blob/main/sharding/sharding.py
 
 import argparse
+import json
 import os
 import re
 import shlex
@@ -24,8 +25,47 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Set, Tuple
+
+# Global dictionary to store historical timing data
+# Maps test name (e.g., "//python/ray/data:test_stats") to runtime in seconds
+_historical_timing_data: Dict[str, float] = {}
+
+
+def load_timing_data(timing_file: str) -> Dict[str, float]:
+    """
+    Load historical test timing data from a JSON file.
+
+    The file should be a JSON object mapping test target names to their
+    historical runtime in seconds. Example:
+
+    {
+        "//python/ray/data:test_stats": 245.5,
+        "//python/ray/data:test_split": 180.3,
+        ...
+    }
+
+    Returns a dictionary mapping test names to their historical runtimes.
+    """
+    timing_data = {}
+    if not timing_file or not os.path.exists(timing_file):
+        return timing_data
+
+    try:
+        with open(timing_file, "r") as f:
+            timing_data = json.load(f)
+        print(
+            f"Loaded historical timing data for {len(timing_data)} tests from {timing_file}",
+            file=sys.stderr,
+        )
+    except (json.JSONDecodeError, IOError) as e:
+        print(
+            f"Warning: Failed to load timing data from {timing_file}: {e}",
+            file=sys.stderr,
+        )
+
+    return timing_data
 
 
 @dataclass
@@ -39,14 +79,18 @@ class BazelRule:
     name: str
     size: str
     timeout: Optional[str] = None
+    historical_runtime_s: Optional[float] = field(default=None, compare=False)
 
     def __post_init__(self):
         assert self.size in ("small", "medium", "large", "enormous")
         assert self.timeout in (None, "short", "moderate", "long", "eternal")
 
     @property
-    def actual_timeout_s(self) -> int:
-        # See https://bazel.build/reference/be/common-definitions
+    def estimated_timeout_s(self) -> int:
+        """
+        Get the estimated timeout based on Bazel size/timeout attributes.
+        See https://bazel.build/reference/be/common-definitions
+        """
         # Timeout takes priority over size
         if self.timeout == "short":
             return 60
@@ -64,6 +108,20 @@ class BazelRule:
             return 60 * 15
         if self.size == "enormous":
             return 60 * 60
+        return 60 * 5  # Default to medium
+
+    @property
+    def actual_timeout_s(self) -> int:
+        """
+        Get the actual estimated runtime for sharding purposes.
+
+        Uses historical runtime data when available (with a 20% buffer),
+        otherwise falls back to Bazel size-based estimates.
+        """
+        if self.historical_runtime_s is not None:
+            # Use historical data with a 20% buffer for variance
+            return int(self.historical_runtime_s * 1.2)
+        return self.estimated_timeout_s
 
     def __lt__(self, other: "BazelRule") -> bool:
         return (self.name, self.actual_timeout_s) < (other.name, other.actual_timeout_s)
@@ -72,11 +130,17 @@ class BazelRule:
         return self.name.__hash__()
 
     @classmethod
-    def from_xml_element(cls, element: ET.Element) -> "BazelRule":
+    def from_xml_element(
+        cls, element: ET.Element, timing_data: Optional[Dict[str, float]] = None
+    ) -> "BazelRule":
         """Create a BazelRule from an XML element.
 
         The XML element is expected to be produced by the
         ``bazel query --output=xml`` command.
+
+        Args:
+            element: The XML element from bazel query output
+            timing_data: Optional dictionary mapping test names to historical runtimes
         """
         name = element.get("name")
         all_string_tags = element.findall("string")
@@ -92,7 +156,18 @@ class BazelRule:
             ),
             None,
         )
-        return cls(name=name, size=size, timeout=timeout)
+
+        # Look up historical runtime if timing data is provided
+        historical_runtime = None
+        if timing_data and name in timing_data:
+            historical_runtime = timing_data[name]
+
+        return cls(
+            name=name,
+            size=size,
+            timeout=timeout,
+            historical_runtime_s=historical_runtime,
+        )
 
 
 def quote_targets(targets: Iterable[str]) -> str:
@@ -190,10 +265,17 @@ def run_bazel_query(query: str, debug: bool) -> ET.Element:
     return ET.fromstring(output) if output else None
 
 
-def extract_rules_from_xml(element: ET.Element) -> List[BazelRule]:
-    """Extract BazelRules from the XML obtained from ``bazel query --output=xml``."""
+def extract_rules_from_xml(
+    element: ET.Element, timing_data: Optional[Dict[str, float]] = None
+) -> List[BazelRule]:
+    """Extract BazelRules from the XML obtained from ``bazel query --output=xml``.
+
+    Args:
+        element: The root XML element from bazel query output
+        timing_data: Optional dictionary mapping test names to historical runtimes
+    """
     xml_rules = element.findall("rule")
-    return [BazelRule.from_xml_element(element) for element in xml_rules]
+    return [BazelRule.from_xml_element(xml_rule, timing_data) for xml_rule in xml_rules]
 
 
 def group_rules_by_time_needed(
@@ -320,15 +402,30 @@ def main(
     exclude_manual: bool = False,
     tag_filters: Optional[str] = None,
     sharding_strategy: str = "optimal",
+    timing_data_file: Optional[str] = None,
     debug: bool = False,
 ) -> List[str]:
     include_tags, exclude_tags = split_tag_filters(tag_filters)
+
+    # Load historical timing data if provided
+    timing_data = load_timing_data(timing_data_file) if timing_data_file else {}
 
     query = get_target_expansion_query(
         targets, tests_only, exclude_manual, include_tags, exclude_tags
     )
     xml_output = run_bazel_query(query, debug)
-    rules = extract_rules_from_xml(xml_output)
+    rules = extract_rules_from_xml(xml_output, timing_data)
+
+    # Log timing data usage statistics
+    if timing_data:
+        rules_with_timing = sum(
+            1 for rule in rules if rule.historical_runtime_s is not None
+        )
+        print(
+            f"Using historical timing data for {rules_with_timing}/{len(rules)} tests",
+            file=sys.stderr,
+        )
+
     rules_grouped_by_time = group_rules_by_time_needed(rules)
     if sharding_strategy == "optimal":
         rules_for_this_shard = get_rules_for_shard_optimal(
@@ -370,6 +467,17 @@ if __name__ == "__main__":
             "of targets to each shard)."
         ),
     )
+    parser.add_argument(
+        "--timing_data_file",
+        type=str,
+        default=os.getenv("TEST_TIMING_DATA_FILE"),
+        help=(
+            "Path to a JSON file containing historical test timing data. "
+            "The file should map test target names to their runtime in seconds. "
+            "When provided, this data is used for more accurate shard balancing. "
+            "Can also be set via TEST_TIMING_DATA_FILE environment variable."
+        ),
+    )
     parser.add_argument("targets", nargs="+")
     args, extra_args = parser.parse_known_args()
     args.targets = list(args.targets) + list(extra_args)
@@ -390,6 +498,7 @@ if __name__ == "__main__":
         exclude_manual=args.exclude_manual,
         tag_filters=args.tag_filters,
         sharding_strategy=args.sharding_strategy,
+        timing_data_file=args.timing_data_file,
         debug=args.debug,
     )
 
