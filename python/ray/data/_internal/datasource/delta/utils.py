@@ -323,13 +323,13 @@ def convert_schema_to_delta(schema: pa.Schema) -> Any:
     # Convert timestamp[s] to timestamp[us] since Delta Lake doesn't support second precision
     # Delta Lake supports timestamp[us] (microsecond) and timestamp[ns] (nanosecond)
     converted_fields = []
-    for field in schema:
-        field_type = field.type
+    for schema_field in schema:
+        field_type = schema_field.type
         # Convert timestamp[s] to timestamp[us] for Delta Lake compatibility
         if pa.types.is_timestamp(field_type) and field_type.unit == "s":
             field_type = pa.timestamp("us")
         converted_fields.append(
-            pa.field(field.name, field_type, field.nullable, field.metadata)
+            pa.field(schema_field.name, field_type, schema_field.nullable, schema_field.metadata)
         )
 
     converted_schema = pa.schema(converted_fields)
