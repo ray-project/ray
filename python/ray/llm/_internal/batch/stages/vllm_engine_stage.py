@@ -741,7 +741,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             )
             return {
                 **default_output.model_dump(),
-                "request_id": "",
+                "request_id": -1,
                 self.IDX_IN_BATCH_COLUMN: idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
                 "time_taken_llm": -1,
