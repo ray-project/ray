@@ -973,7 +973,7 @@ kafka-python==2.2.15
     # via -r python/requirements/ml/data-test-requirements.txt
 keras==2.15.0
     # via tensorflow
-kiwisolver==1.4.6
+kiwisolver==1.4.7
     # via matplotlib
 knack==0.11.0
     # via azure-cli-core
