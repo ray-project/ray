@@ -159,7 +159,7 @@ bool ValidateToken(const AuthenticationToken &token) {
   nlohmann::json token_review_req = {
       {"apiVersion", kAuthenticationAPIVersion},
       {"kind", kTokenReviewKind},
-      {"spec", {{"token", token_str}, {"audiences", {kRayTokenAuidence}}}}};
+      {"spec", {{"token", token_str}, {"audiences", {kRayTokenAudience}}}}};
   nlohmann::json token_review_resp;
 
   if (!k8s::K8sApiPost(
