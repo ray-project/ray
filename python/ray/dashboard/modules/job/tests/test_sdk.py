@@ -12,17 +12,13 @@ import pytest
 import ray.experimental.internal_kv as kv
 from ray._common.test_utils import wait_for_condition
 from ray._private import worker
-from ray._private.ray_constants import (
-    KV_NAMESPACE_DASHBOARD,
-    PROCESS_TYPE_DASHBOARD,
-)
+from ray._private.ray_constants import PROCESS_TYPE_DASHBOARD
 from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
 )
 from ray._raylet import GcsClient
 from ray.dashboard.consts import (
-    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
     GCS_RPC_TIMEOUT_SECONDS,
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
 )
@@ -171,12 +167,17 @@ def test_temporary_uri_reference(monkeypatch, expiration_s):
 
 
 def get_register_agents_number(gcs_client):
-    keys = gcs_client.internal_kv_keys(
-        prefix=DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
-        namespace=KV_NAMESPACE_DASHBOARD,
+    """Count the number of nodes with registered dashboard agents.
+
+    An agent is considered registered when its metrics_agent_port is set (> 0).
+    """
+    from ray.core.generated import gcs_pb2
+
+    node_info_dict = gcs_client.get_all_node_info(
         timeout=GCS_RPC_TIMEOUT_SECONDS,
+        state_filter=gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE,
     )
-    return len(keys)
+    return sum(1 for node in node_info_dict.values() if node.metrics_agent_port > 0)
 
 
 @pytest.mark.parametrize(

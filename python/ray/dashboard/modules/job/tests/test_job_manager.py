@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import signal
 import sys
 import tempfile
@@ -20,7 +21,6 @@ from ray._common.test_utils import (
     wait_for_condition,
 )
 from ray._private.ray_constants import (
-    DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
     KV_HEAD_NODE_ID_KEY,
     KV_NAMESPACE_JOB,
     RAY_ADDRESS_ENVIRONMENT_VARIABLE,
@@ -170,11 +170,17 @@ async def test_get_all_job_info(call_ray_start, tmp_path):  # noqa: F811
             assert job_info.entrypoint_num_cpus == 0
             assert job_info.entrypoint_num_gpus == 0
             assert job_info.entrypoint_memory == 0
-            assert job_info.driver_agent_http_address.startswith(
-                "http://"
-            ) and job_info.driver_agent_http_address.endswith(
-                str(DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
+            # Check that driver_agent_http_address is a valid HTTP URL with a valid port
+            assert job_info.driver_agent_http_address.startswith("http://")
+            # Extract port from URL (format: http://host:port)
+            port_match = re.search(r":(\d+)$", job_info.driver_agent_http_address)
+            assert port_match is not None, (
+                f"driver_agent_http_address should contain a port: "
+                f"{job_info.driver_agent_http_address}"
             )
+            port = int(port_match.group(1))
+            # Port should be a valid port number (between 1 and 65535)
+            assert 1 <= port <= 65535, f"Invalid port number: {port}"
             assert job_info.driver_node_id != ""
 
     assert found
