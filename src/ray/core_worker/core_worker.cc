@@ -1105,24 +1105,24 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
         *object_id, contained_object_ids, real_owner_address);
   }
 
-    if (status.ok()) {
-      status = plasma_store_provider_->Create(metadata,
-                                              data_size,
-                                              *object_id,
-                                              /*owner_address=*/real_owner_address,
-                                              data,
-                                              /*created_by_worker=*/true,
-                                              is_experimental_mutable_object);
-    }
-    if (!status.ok()) {
-      RemoveLocalReference(*object_id);
-      return status;
-    } else if (*data == nullptr) {
-      // Object already exists in plasma. Store the in-memory value so that the
-      // client will check the plasma store.
-      memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                         *object_id,
-                         reference_counter_->HasReference(*object_id));
+  if (status.ok()) {
+    status = plasma_store_provider_->Create(metadata,
+                                            data_size,
+                                            *object_id,
+                                            /*owner_address=*/real_owner_address,
+                                            data,
+                                            /*created_by_worker=*/true,
+                                            is_experimental_mutable_object);
+  }
+  if (!status.ok()) {
+    RemoveLocalReference(*object_id);
+    return status;
+  } else if (*data == nullptr) {
+    // Object already exists in plasma. Store the in-memory value so that the
+    // client will check the plasma store.
+    memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                       *object_id,
+                       reference_counter_->HasReference(*object_id));
   }
   return Status::OK();
 }
@@ -1133,8 +1133,8 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
                                   const rpc::Address &owner_address,
                                   std::shared_ptr<Buffer> *data,
                                   bool created_by_worker) {
-    return plasma_store_provider_->Create(
-        metadata, data_size, object_id, owner_address, data, created_by_worker);
+  return plasma_store_provider_->Create(
+      metadata, data_size, object_id, owner_address, data, created_by_worker);
 }
 
 Status CoreWorker::ExperimentalChannelWriteAcquire(
@@ -2747,28 +2747,28 @@ Status CoreWorker::ExecuteTask(
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
-    // Modify the worker's per-function counters.
-    task_counter_.MovePendingToRunning(func_name, is_retry);
+  // Modify the worker's per-function counters.
+  task_counter_.MovePendingToRunning(func_name, is_retry);
 
-    worker::TaskStatusEvent::TaskStateUpdate update;
-    {
-      absl::MutexLock lock(&mutex_);
-      update = (task_spec.IsActorTask() && !actor_repr_name_.empty())
-                   ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name_, pid_)
-                   : worker::TaskStatusEvent::TaskStateUpdate(pid_);
-    }
+  worker::TaskStatusEvent::TaskStateUpdate update;
+  {
+    absl::MutexLock lock(&mutex_);
+    update = (task_spec.IsActorTask() && !actor_repr_name_.empty())
+                 ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name_, pid_)
+                 : worker::TaskStatusEvent::TaskStateUpdate(pid_);
+  }
 
-    RAY_UNUSED(
-        task_event_buffer_->RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
-                                                          task_spec.JobId(),
-                                                          task_spec.AttemptNumber(),
-                                                          task_spec,
-                                                          rpc::TaskStatus::RUNNING,
-                                                          /*include_task_info=*/false,
-                                                          update));
+  RAY_UNUSED(
+      task_event_buffer_->RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
+                                                        task_spec.JobId(),
+                                                        task_spec.AttemptNumber(),
+                                                        task_spec,
+                                                        rpc::TaskStatus::RUNNING,
+                                                        /*include_task_info=*/false,
+                                                        update));
 
-    worker_context_->SetCurrentTask(task_spec);
-    SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
+  worker_context_->SetCurrentTask(task_spec);
+  SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
 
   {
     absl::MutexLock lock(&mutex_);
@@ -2888,8 +2888,8 @@ Status CoreWorker::ExecuteTask(
            "reference counting, and may cause problems in the object store.";
   }
 
-    SetCurrentTaskId(TaskID::Nil(), /*attempt_number=*/0, /*task_name=*/"");
-    worker_context_->ResetCurrentTask();
+  SetCurrentTaskId(TaskID::Nil(), /*attempt_number=*/0, /*task_name=*/"");
+  worker_context_->ResetCurrentTask();
 
   {
     absl::MutexLock lock(&mutex_);
@@ -2908,7 +2908,7 @@ Status CoreWorker::ExecuteTask(
     }
   }
 
-    task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
+  task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
   RAY_LOG(DEBUG).WithField(task_spec.TaskId())
       << "Finished executing task, status=" << status;
 
@@ -3255,12 +3255,12 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
   // Fetch by-reference arguments directly from the plasma store.
   bool got_exception = false;
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
-    // Resolve owner addresses of by-ref ids
-    std::vector<ObjectID> object_ids =
-        std::vector<ObjectID>(by_ref_ids.begin(), by_ref_ids.end());
-    auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids);
-    RAY_RETURN_NOT_OK(
-        plasma_store_provider_->Get(object_ids, owner_addresses, -1, &result_map));
+  // Resolve owner addresses of by-ref ids
+  std::vector<ObjectID> object_ids =
+      std::vector<ObjectID>(by_ref_ids.begin(), by_ref_ids.end());
+  auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids);
+  RAY_RETURN_NOT_OK(
+      plasma_store_provider_->Get(object_ids, owner_addresses, -1, &result_map));
   for (const auto &it : result_map) {
     for (size_t idx : by_ref_indices[it.first]) {
       args->at(idx) = it.second;
