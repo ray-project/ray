@@ -31,6 +31,7 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
     _ActorPool,
     _ActorTaskSelector,
+    _MapWorker,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -1171,6 +1172,26 @@ def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
         op.get_next()
     assert actor_pool.num_pending_actors() == num_actors
     assert op.has_completed()
+
+
+def test_map_worker_repr_handles_uninitialized_src_fn_name():
+    """Tests that _MapWorker.__repr__ doesn't crash when src_fn_name is not set.
+
+    This can happen during actor restarts when the actor's args are not
+    recoverable (zombie actors), causing __init__ to fail before src_fn_name
+    is set. The __repr__ method should gracefully handle this case.
+
+    """
+    # Create a _MapWorker instance without calling __init__
+    # This simulates the state where __init__ failed before src_fn_name was set
+    worker = object.__new__(_MapWorker)
+
+    # Verify __repr__ returns the fallback string without raising an error
+    assert repr(worker) == "MapWorker(<initializing>)"
+
+    # Also verify that when src_fn_name IS set, __repr__ returns it correctly
+    worker.src_fn_name = "TestFunction"
+    assert repr(worker) == "MapWorker(TestFunction)"
 
 
 if __name__ == "__main__":
