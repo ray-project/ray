@@ -497,12 +497,12 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                     self.schema = reconciled_schema
             validate_file_actions(all_file_actions, self.table_uri, self.filesystem)
 
-            if self._table_existed_at_start:
+        if self._table_existed_at_start:
                 # Table existed at start - handle based on mode
-                if self.mode == SaveMode.IGNORE:
-                    self._cleanup_written_files(all_file_actions)
-                    return
-                if existing_table is None and self.mode == SaveMode.OVERWRITE:
+            if self.mode == SaveMode.IGNORE:
+                self._cleanup_written_files(all_file_actions)
+                return
+            if existing_table is None and self.mode == SaveMode.OVERWRITE:
                     # Table was deleted, create new one
                     create_table_with_files(
                         self.table_uri,
@@ -514,15 +514,25 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                         self.write_kwargs,
                         self.filesystem,
                     )
-                elif existing_table is not None:
+            elif existing_table is not None:
                     # Commit to existing table (APPEND, OVERWRITE, or UPSERT)
-                    self._commit_by_mode(existing_table, all_file_actions, upsert_keys)
-                else:
-                    raise ValueError(
-                        f"Delta table was deleted at {self.table_uri} after write started."
-                    )
+                self._commit_by_mode(existing_table, all_file_actions, upsert_keys)
             else:
+                raise ValueError(
+                    f"Delta table was deleted at {self.table_uri} after write started."
+                )
+        else:
                 # Table didn't exist at start - create new table
+                # For IGNORE mode, check one more time if table was created concurrently
+                # to avoid orphaned files (create_table_with_add_actions silently does nothing)
+                if self.mode == SaveMode.IGNORE:
+                    final_check_table = try_get_deltatable(
+                        self.table_uri, self.storage_options
+                    )
+                    if final_check_table is not None:
+                        # Table was created concurrently, clean up files
+                        self._cleanup_written_files(all_file_actions)
+                        return
                 create_table_with_files(
                     self.table_uri,
                     all_file_actions,
@@ -550,7 +560,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         if self.mode == SaveMode.UPSERT:
             commit_upsert(
                 table,
-                file_actions,
+            file_actions,
                 upsert_keys,
                 self._get_upsert_cols(),
                 self.partition_cols,
@@ -559,14 +569,14 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         else:
             commit_to_existing_table(
                 table,
-                file_actions,
+            file_actions,
                 self.mode.value,
                 self.partition_cols,
                 self.schema,
                 self.write_kwargs,
                 self.table_uri,
                 self.filesystem,
-            )
+        )
 
     def _collect_write_results(
         self, write_result: WriteResult[DeltaWriteResult]
