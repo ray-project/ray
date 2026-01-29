@@ -540,20 +540,35 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
     def _handle_empty_write(self, existing_table: Optional["DeltaTable"]) -> None:
         """Handle empty writes (no files written)."""
-        if self._table_existed_at_start and existing_table is not None:
-            if self.mode == SaveMode.OVERWRITE:
-                # Clear existing table with empty commit
-                commit_to_existing_table(
-                    existing_table,
-                    [],
-                    self.mode.value,
-                    self.partition_cols,
-                    self.schema,
-                    self.write_kwargs,
-                    self.table_uri,
-                    self.filesystem,
-                )
-            return
+        if self._table_existed_at_start:
+            if existing_table is not None:
+                if self.mode == SaveMode.OVERWRITE:
+                    # Clear existing table with empty commit
+                    commit_to_existing_table(
+                        existing_table,
+                        [],
+                        self.mode.value,
+                        self.partition_cols,
+                        self.schema,
+                        self.write_kwargs,
+                        self.table_uri,
+                        self.filesystem,
+                    )
+                return
+            elif self.mode == SaveMode.OVERWRITE:
+                # Table was deleted during write - create new empty table (consistent with non-empty writes)
+                if self.schema:
+                    create_table_with_files(
+                        self.table_uri,
+                        [],
+                        self.schema,
+                        self.mode.value,
+                        self.partition_cols,
+                        self.storage_options,
+                        self.write_kwargs,
+                        self.filesystem,
+                    )
+                return
 
         # Create empty table if schema provided and table doesn't exist
         if self.schema and not existing_table and not self._table_existed_at_start:
