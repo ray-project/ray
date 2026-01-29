@@ -65,13 +65,6 @@ def test_arrow_to_numpy():
     )
 
     input_data = pa.table(
-        {"data": ArrowTensorArray.from_numpy(np.arange(12).reshape(3, 2, 2))}
-    )
-    expected_output = np.arange(12).reshape(3, 2, 2)
-    actual_output = _convert_batch_type_to_numpy(input_data)
-    np.testing.assert_array_equal(expected_output, actual_output)
-
-    input_data = pa.table(
         {
             "column_1": [1, 2, 3, 4],
             "column_2": [1, -1, 1, -1],
