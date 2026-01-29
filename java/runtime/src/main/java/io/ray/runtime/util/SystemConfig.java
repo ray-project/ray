@@ -29,10 +29,6 @@ public class SystemConfig {
 
   public static synchronized Object get(String key) {
     Preconditions.checkNotNull(rayConfig);
-    if (rayConfig.runMode == RunMode.LOCAL) {
-      // Code path of local mode.
-      return getInLocalMode(key);
-    }
     // Code path of cluster mode.
     if (cachedConfigs.containsKey(key)) {
       return cachedConfigs.get(key);

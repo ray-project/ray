@@ -34,10 +34,6 @@ public class TestUtils {
 
   private static final int WAIT_INTERVAL_MS = 5;
 
-  public static boolean isLocalMode() {
-    return getRuntime().getRayConfig().runMode == RunMode.LOCAL;
-  }
-
   /**
    * Assert that the given runnable finishes within given timeout.
    *
