@@ -493,7 +493,8 @@ class PopulationBasedTraining(FIFOScheduler):
                 "Using `CheckpointConfig.num_to_keep <= 2` with PBT can lead to "
                 "restoration problems when checkpoint are deleted too early for "
                 "other trials to exploit them. If this happens, increase the value "
-                "of `num_to_keep`."
+                "of `num_to_keep`.",
+                stacklevel=1,
             )
 
         self._trial_state[trial] = _PBTTrialState(trial)
@@ -502,8 +503,9 @@ class PopulationBasedTraining(FIFOScheduler):
             if attr not in trial.config:
                 if log_once(attr + "-missing"):
                     logger.debug(
-                        "Cannot find {} in config. Using search "
-                        "space provided by hyperparam_mutations."
+                        "Cannot find %s in config. Using search "
+                        "space provided by hyperparam_mutations.",
+                        attr,
                     )
                 # Add attr to trial's config by sampling search space from
                 # hyperparam_mutations.
