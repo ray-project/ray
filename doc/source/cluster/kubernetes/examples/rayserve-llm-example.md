@@ -163,3 +163,13 @@ kubectl port-forward svc/ray-serve-llm-head-svc 8265
 
 Once forwarded, navigate to the Serve tab on the dashboard to review application status, deployments, routers, logs, and other relevant features.
 ![LLM Serve Application](../images/ray_dashboard_llm_application.png)
+
+## Add custom dependencies
+
+To install additional custom packages necessary for the LLM services that can't be directly installed through `runtime_env`, such as KV cache backends, see [Add custom dependencies](kuberay-rayservice-custom-deps) in the RayService user guide. For a complete example, refer to the LMCache and Mooncake integration for distributed KV cache at [Deploy on Kubernetes with LMCache and Mooncake](kv-cache-offloading-guide).
+
+Download a basic example:
+
+```sh
+curl -o ray-service.extra-dependency.yaml https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.extra-dependency.yaml
+```
