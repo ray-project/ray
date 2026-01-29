@@ -1,4 +1,5 @@
 import abc
+import inspect
 import time
 import warnings
 from typing import (
@@ -18,6 +19,7 @@ from typing import (
 
 import numpy as np
 
+from ray.data._internal.batcher import BatchingFactoryProtocol
 from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -129,6 +131,7 @@ class DataIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        batching_factory: Optional[BatchingFactoryProtocol] = None,
     ) -> Iterable[DataBatch]:
         """Return a batched iterable over the dataset.
 
@@ -162,6 +165,10 @@ class DataIterator(abc.ABC):
                 buffer in order to yield a batch. When there are no more rows to add to
                 the buffer, the remaining rows in the buffer will be drained.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            batching_factory: [Alpha] A factory function to create a ``BatchingIteratorInterface`` instance,
+                which is used to iterate over blocks and yield batches. Default is None which uses
+                default batching logic. An ``BatchingIteratorInterface`` subclass can be used to customize
+                how input blocks are iterated over and batches are yielded.
 
         Returns:
             An iterable over record batches.
@@ -173,6 +180,7 @@ class DataIterator(abc.ABC):
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
+            _batching_factory=batching_factory,
         )
 
     def _create_batch_iterator(
@@ -191,13 +199,16 @@ class DataIterator(abc.ABC):
         self,
         *,
         prefetch_batches: int = 1,
-        batch_size: int = 256,
+        batch_size: Optional[int] = 256,
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        _collate_fn: Optional[Callable[[DataBatch], "CollatedData"]] = None,
+        _collate_fn: Optional[
+            Union[Callable[[Dict[str, np.ndarray]], "CollatedData"], CollateFn]
+        ] = None,
         _finalize_fn: Optional[Callable[[Any], Any]] = None,
+        _batching_factory: Optional[BatchingFactoryProtocol] = None,
     ) -> Iterable[DataBatch]:
         batch_format = _apply_batch_format(batch_format)
 
@@ -243,6 +254,7 @@ class DataIterator(abc.ABC):
                 shuffle_seed=local_shuffle_seed,
                 prefetch_batches=prefetch_batches,
                 prefetch_bytes_callback=prefetch_bytes_callback,
+                batching_factory=_batching_factory,
             )
 
             if stats:
@@ -319,6 +331,7 @@ class DataIterator(abc.ABC):
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         pin_memory: bool = False,
+        batching_factory: Optional[BatchingFactoryProtocol] = None,
     ) -> Iterable["TorchBatchType"]:
         """Return a batched iterable of Torch Tensors over the dataset.
 
@@ -441,6 +454,10 @@ class DataIterator(abc.ABC):
             local_shuffle_seed: The seed to use for the local random shuffle.
             pin_memory: [Alpha] If True, copies the tensor to pinned memory. Note that
                 `pin_memory` is only supported when using `DefaultCollateFn`.
+            batching_factory: [Alpha] A factory function that creates a ``BatchingIteratorInterface`` instance,
+                which is used to iterate over blocks and yield batches. Default is None which uses
+                default batching logic. A ``BatchingIteratorInterface`` subclass can be used to customize
+                how input blocks are iterated over and batches are yielded.
 
         Returns:
             An iterable over Torch Tensor batches.
@@ -526,6 +543,15 @@ class DataIterator(abc.ABC):
         else:
             raise ValueError(f"Unsupported collate function: {type(collate_fn)}")
 
+        if (
+            batching_factory is not None
+            and not callable(batching_factory)
+            and not inspect.isclass(batching_factory)
+        ):
+            raise ValueError(
+                "batching_factory must be a factory function that creates a BatchingIteratorInterface"
+            )
+
         return self._iter_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
@@ -535,6 +561,7 @@ class DataIterator(abc.ABC):
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=collate_fn,
             _finalize_fn=default_finalize_fn,
+            _batching_factory=batching_factory,
         )
 
     def iter_tf_batches(
@@ -546,6 +573,7 @@ class DataIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        batching_factory: Optional[BatchingFactoryProtocol] = None,
     ) -> Iterable["TensorFlowTensorBatchType"]:
         """Return a batched iterable of TensorFlow Tensors over the dataset.
 
@@ -591,6 +619,10 @@ class DataIterator(abc.ABC):
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            batching_factory: [Alpha] A factory function to create a ``BatchingIteratorInterface`` instance,
+                which is used to iterate over blocks and yield batches. Default is None which uses
+                default batching logic. An ``BatchingIteratorInterface`` subclass can be used to customize
+                how input blocks are iterated over and batches are yielded.
 
         Returns:
             An iterator over TensorFlow Tensor batches.
@@ -605,6 +637,7 @@ class DataIterator(abc.ABC):
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
+            _batching_factory=batching_factory,
         )
         mapped_iterable = map(
             lambda batch: convert_ndarray_batch_to_tf_tensor_batch(
