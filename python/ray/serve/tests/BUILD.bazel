@@ -656,8 +656,11 @@ py_test_module_list(
 
 # HAProxy tests (require RAY_SERVE_ENABLE_HAPROXY=1).
 py_test_module_list(
-    size = "medium",
-    env = {"RAY_SERVE_ENABLE_HAPROXY": "1"},
+    size = "large",
+    env = {
+        "RAY_SERVE_ENABLE_HAPROXY": "1",
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+    },
     files = [
         "test_haproxy.py",
         "test_haproxy_api.py",
@@ -665,6 +668,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
+        "haproxy",
         "no_windows",
         "team:serve",
     ],

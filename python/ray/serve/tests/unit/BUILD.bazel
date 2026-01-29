@@ -24,11 +24,15 @@ py_test_run_all_subdirectory(
 # HAProxy controller unit tests (require RAY_SERVE_ENABLE_HAPROXY=1).
 py_test_module_list(
     size = "small",
-    env = {"RAY_SERVE_ENABLE_HAPROXY": "1"},
+    env = {
+        "RAY_SERVE_ENABLE_HAPROXY": "1",
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+    },
     files = [
         "test_controller_haproxy.py",
     ],
     tags = [
+        "haproxy",
         "no_windows",
         "team:serve",
     ],
