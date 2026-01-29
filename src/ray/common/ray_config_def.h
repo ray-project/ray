@@ -376,6 +376,8 @@ RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
 RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_min_interval_ms, 100)
 RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
 RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
+/// Maximum number of placement groups that can be concurrently scheduled.
+RAY_CONFIG(size_t, gcs_max_concurrent_pg_scheduling, 50)
 /// Maximum number of destroyed actors in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.

@@ -160,7 +160,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
 TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder) {
   // Test priority works
   //   Add two pgs
-  //   Fail one and make sure it's scheduled later
+  //   Fail one and make sure it's scheduled later (after backoff)
   auto req1 = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
   auto pg1 = std::make_shared<GcsPlacementGroup>(req1, "", counter_);
   auto req2 = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
@@ -180,13 +180,14 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder) {
   ASSERT_EQ(2, pending_queue.size());
   std::move(*put_cb).Post("PendingQueuePriorityOrder", true);
   io_context_.poll();
-  ASSERT_EQ(1, pending_queue.size());
-  // PG1 is scheduled first, so PG2 is in pending queue
-  ASSERT_EQ(pg2, pending_queue.begin()->second.second);
+  // With concurrent scheduling, both PGs are scheduled
+  ASSERT_EQ(0, pending_queue.size());
+  // Fail pg1, it's added back with backoff delay
   request.failure_callback(pg1, true);
-  ASSERT_EQ(2, pending_queue.size());
+  ASSERT_EQ(1, pending_queue.size());
+  ASSERT_EQ(pg1, pending_queue.begin()->second.second);
+  // pg1 has backoff, so it won't be scheduled immediately
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
-  // PG2 is scheduled for the next, so PG1 is in pending queue
   ASSERT_EQ(1, pending_queue.size());
   ASSERT_EQ(pg1, pending_queue.begin()->second.second);
 }
