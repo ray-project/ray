@@ -326,8 +326,10 @@ def convert_schema_to_delta(schema: pa.Schema) -> Any:
     for schema_field in schema:
         field_type = schema_field.type
         # Convert timestamp[s] to timestamp[us] for Delta Lake compatibility
+        # Preserve timezone information if present
         if pa.types.is_timestamp(field_type) and field_type.unit == "s":
-            field_type = pa.timestamp("us")
+            tz = field_type.tz if hasattr(field_type, "tz") else None
+            field_type = pa.timestamp("us", tz=tz)
         converted_fields.append(
             pa.field(
                 schema_field.name,
