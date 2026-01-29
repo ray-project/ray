@@ -34,6 +34,13 @@ def parse_args() -> argparse.Namespace:
         type=str,
         help="Strategy to use when shuffling data (see ShuffleStrategy for accepted values)",
     )
+    parser.add_argument(
+        "--num-partitions",
+        required=False,
+        default=None,
+        type=int,
+        help="Number of partitions for groupby (defaults to auto)",
+    )
 
     consume_group = parser.add_mutually_exclusive_group()
     consume_group.add_argument("--aggregate", action="store_true")
@@ -61,7 +68,7 @@ def main(args):
         )
         grouped_ds = ray.data.read_parquet(
             path, override_num_blocks=override_num_blocks
-        ).groupby(args.group_by)
+        ).groupby(args.group_by, num_partitions=args.num_partitions)
         consume_fn(grouped_ds)
 
         # Report arguments for the benchmark.
