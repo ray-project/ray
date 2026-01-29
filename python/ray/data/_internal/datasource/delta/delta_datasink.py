@@ -424,6 +424,15 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 "after write started. Use SaveMode.APPEND or OVERWRITE."
             )
 
+        # IGNORE mode race condition: if table was created concurrently, clean up files
+        if (
+            not self._table_existed_at_start
+            and existing_table is not None
+            and self.mode == SaveMode.IGNORE
+        ):
+            self._cleanup_written_files(all_file_actions)
+            return
+
         if (
             self._table_existed_at_start
             and existing_table is None

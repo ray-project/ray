@@ -152,22 +152,37 @@ def commit_to_existing_table(
         write_kwargs.get("commit_properties")
     )
 
-    # For OVERWRITE mode, delete all existing data first, then append
-    # This ensures atomic overwrite behavior (delete + append in separate transactions)
-    # Note: This is not fully atomic across both operations, but matches Delta Lake's
-    # standard overwrite pattern where delete and append are separate transactions
+    # For OVERWRITE mode, try using mode="overwrite" directly first
+    # If that doesn't work (e.g., deltalake version doesn't support it),
+    # fall back to delete + append pattern
     if mode == "overwrite":
-        # Delete all existing data using a predicate that matches all rows
-        existing_table.delete("1=1")
-        # Then append new files
-        existing_table.create_write_transaction(
-            actions=file_actions,
-            mode="append",
-            schema=existing_table.schema(),
-            partition_by=partition_cols or None,
-            commit_properties=commit_properties,
-            post_commithook_properties=write_kwargs.get("post_commithook_properties"),
-        )
+        try:
+            # Try atomic overwrite mode first
+            existing_table.create_write_transaction(
+                actions=file_actions,
+                mode="overwrite",
+                schema=existing_table.schema(),
+                partition_by=partition_cols or None,
+                commit_properties=commit_properties,
+                post_commithook_properties=write_kwargs.get(
+                    "post_commithook_properties"
+                ),
+            )
+        except (ValueError, TypeError, AttributeError):
+            # Fallback: delete then append (not fully atomic, but works with all versions)
+            # WARNING: If append fails after delete, data loss can occur
+            # Users should use time travel to recover if needed
+            existing_table.delete("1=1")
+            existing_table.create_write_transaction(
+                actions=file_actions,
+                mode="append",
+                schema=existing_table.schema(),
+                partition_by=partition_cols or None,
+                commit_properties=commit_properties,
+                post_commithook_properties=write_kwargs.get(
+                    "post_commithook_properties"
+                ),
+            )
     else:
         # For APPEND mode, just append files
         existing_table.create_write_transaction(
