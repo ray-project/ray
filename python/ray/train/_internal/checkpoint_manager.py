@@ -179,22 +179,16 @@ class _CheckpointManager:
                 This score orders: nan values < float("-inf") < valid numeric metrics
         """
         checkpoint_score_attribute = self._checkpoint_config.checkpoint_score_attribute
-        if checkpoint_score_attribute:
-            try:
-                checkpoint_result = (
-                    score
-                    if score is not None
-                    else flatten_dict(checkpoint.metrics)[checkpoint_score_attribute]
-                )
-            except KeyError:
+        if checkpoint_score_attribute and score is not None:
+            checkpoint_result = score
+        else:
+            if checkpoint_score_attribute:
                 valid_keys = list(flatten_dict(checkpoint.metrics).keys())
                 logger.error(
                     f"Result dict has no key: {checkpoint_score_attribute}. "
                     f"checkpoint_score_attr must be set to a key in the "
                     f"result dict. Valid keys are: {valid_keys}"
                 )
-                checkpoint_result = float("-inf")
-        else:
             checkpoint_result = float("-inf")
 
         checkpoint_score_order = self._checkpoint_config.checkpoint_score_order

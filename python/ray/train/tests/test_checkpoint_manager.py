@@ -221,6 +221,7 @@ def test_nested_keep_best_checkpoint(checkpoint_paths, metrics_fn):
             checkpoint_score_order="max",
         )
     )
+    checkpoint_score_attribute = manager.checkpoint_config.checkpoint_score_attribute
 
     manager.register_checkpoint(
         _TrainingResult(
@@ -250,13 +251,17 @@ def test_nested_keep_best_checkpoint(checkpoint_paths, metrics_fn):
         == 2
     )
 
-    assert manager._get_checkpoint_score(manager.best_checkpoint_results[0]) == (
-        True,
-        2.0,
+    assert (
+        flatten_dict(manager.best_checkpoint_results[0].metrics)[
+            checkpoint_score_attribute
+        ]
+        == 2.0
     )
-    assert manager._get_checkpoint_score(manager.best_checkpoint_results[1]) == (
-        True,
-        3.0,
+    assert (
+        flatten_dict(manager.best_checkpoint_results[1].metrics)[
+            checkpoint_score_attribute
+        ]
+        == 3.0
     )
 
     # The latest checkpoint with the lowest score should not be deleted yet.
@@ -281,14 +286,17 @@ def test_nested_keep_best_checkpoint(checkpoint_paths, metrics_fn):
         )
         == 2
     )
-
-    assert manager._get_checkpoint_score(manager.best_checkpoint_results[0]) == (
-        True,
-        2.0,
+    assert (
+        flatten_dict(manager.best_checkpoint_results[0].metrics)[
+            checkpoint_score_attribute
+        ]
+        == 2.0
     )
-    assert manager._get_checkpoint_score(manager.best_checkpoint_results[1]) == (
-        True,
-        3.0,
+    assert (
+        flatten_dict(manager.best_checkpoint_results[1].metrics)[
+            checkpoint_score_attribute
+        ]
+        == 3.0
     )
 
     # A newer checkpoint came in. Even though the new one has a lower score, there are
@@ -325,7 +333,13 @@ def test_nested_get_checkpoint_score(metrics):
     )
 
     tracked_checkpoint = _TrainingResult(checkpoint=None, metrics=metrics)
-    assert manager._get_checkpoint_score(tracked_checkpoint) == (True, 5.0)
+
+    assert (
+        flatten_dict(tracked_checkpoint.metrics)[
+            manager.checkpoint_config.checkpoint_score_attribute
+        ]
+        == 5
+    )
 
 
 @pytest.mark.parametrize("has_score_attr", [True, False])
