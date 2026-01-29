@@ -152,9 +152,16 @@ class HangingExecutionIssueDetector(IssueDetector):
                     if (
                         prev_state_value is None
                         or bytes_output != prev_state_value.bytes_output
-                        or prev_state_value.task_state is None
                     ):
-                        task_state = None
+                        self._state_map[operator.id][task_idx] = HangingExecutionState(
+                            operator_id=operator.id,
+                            task_idx=task_idx,
+                            task_state=None,
+                            bytes_output=bytes_output,
+                            start_time_hanging=time.perf_counter(),
+                        )
+
+                    if self._state_map[operator.id][task_idx].task_state is None:
                         try:
                             task_state: Union[
                                 TaskState, List[TaskState]
@@ -168,18 +175,14 @@ class HangingExecutionIssueDetector(IssueDetector):
                                 task_state = max(
                                     task_state, key=lambda ts: ts.attempt_number
                                 )
+                            self._state_map[operator.id][
+                                task_idx
+                            ].task_state = task_state
                         except Exception as e:
                             logger.debug(
                                 f"Failed to grab task state with task_index={task_idx}, task_id={task_info.task_id}: {e}"
                             )
                             pass
-                        self._state_map[operator.id][task_idx] = HangingExecutionState(
-                            operator_id=operator.id,
-                            task_idx=task_idx,
-                            task_state=task_state,
-                            bytes_output=bytes_output,
-                            start_time_hanging=time.perf_counter(),
-                        )
 
                 # Remove any tasks that are no longer active
                 task_idxs_to_remove = (
