@@ -241,7 +241,7 @@ py_test_module_list(
 # Run serially on Windows.
 py_test_module_list(
     size = "medium",
-    timeout = "eternal",
+    timeout = "long",
     env = {
         "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S": "0",
     },
