@@ -24,6 +24,8 @@ from ray.data.expressions import (
     LiteralExpr,
     Operation,
     StarExpr,
+    SyntheticExpr,
+    SyntheticOperation,
     UDFExpr,
     UnaryExpr,
     _ExprVisitor,
@@ -517,8 +519,12 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
         )
 
     def visit_Call(self, node: ast.Call) -> "Expr":
-        """Handle function calls for operations like is_null, is_not_null, is_nan."""
-        from ray.data.expressions import BinaryExpr, Operation, UnaryExpr
+        """Handle function calls for operations like is_null, is_not_null, is_nan, random."""
+        from ray.data.expressions import (
+            BinaryExpr,
+            Operation,
+            UnaryExpr,
+        )
 
         func_name = node.func.id if isinstance(node.func, ast.Name) else str(node.func)
 
@@ -546,6 +552,18 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
             left = self.visit(node.args[0])
             right = self.visit(node.args[1])
             return BinaryExpr(Operation.IN, left, right)
+        elif func_name == "random":
+            raise ValueError(
+                "random() is not supported in string expressions. "
+                "String expressions are deprecated. Please use the expression API instead: "
+                "from ray.data.expressions import random; ds.filter(expr=(random(seed=42)>0.5))"
+            )
+        elif func_name == "uuid":
+            raise ValueError(
+                "uuid() is not supported in string expressions. "
+                "String expressions are deprecated. Please use the expression API instead: "
+                "ds.filter(expr=uuid().str.starts_with('a'))"
+            )
         else:
             raise ValueError(f"Unsupported function: {func_name}")
 
@@ -688,6 +706,35 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         raise TypeError(
             "DownloadExpr evaluation is not yet implemented in NativeExpressionEvaluator."
         )
+
+    def visit_synthetic(self, expr: SyntheticExpr) -> Union[BlockColumn, ScalarType]:
+        """Visit a synthetic expression and handle based on operation type.
+
+        Args:
+            expr: The synthetic expression.
+
+        Returns:
+            The evaluated result based on the synthetic operation type.
+        """
+        from ray.data._internal.planner.plan_expression.synthetic_impl import (
+            eval_random,
+            eval_uuid,
+        )
+
+        if expr.op == SyntheticOperation.RANDOM:
+            return eval_random(
+                self.block_accessor.num_rows(),
+                self.block_accessor.block_type(),
+                seed=expr.kwargs["seed"],
+                reseed_after_execution=expr.kwargs["reseed_after_execution"],
+            )
+        elif expr.op == SyntheticOperation.UUID:
+            return eval_uuid(
+                self.block_accessor.num_rows(),
+                self.block_accessor.block_type(),
+            )
+        else:
+            raise TypeError(f"Unsupported synthetic operation: {expr.op}")
 
 
 def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:

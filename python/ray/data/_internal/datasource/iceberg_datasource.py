@@ -23,6 +23,7 @@ from ray.data.expressions import (
     LiteralExpr,
     Operation,
     StarExpr,
+    SyntheticExpr,
     UDFExpr,
     UnaryExpr,
 )
@@ -174,6 +175,14 @@ class _IcebergExpressionVisitor(
         """Star expressions cannot be converted to Iceberg expressions."""
         raise TypeError(
             "Star expressions cannot be converted to Iceberg filter expressions."
+        )
+
+    def visit_synthetic(
+        self, expr: "SyntheticExpr"
+    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+        """Synthetic expressions cannot be converted to Iceberg expressions."""
+        raise TypeError(
+            "Synthetic expressions cannot be converted to Iceberg filter expressions."
         )
 
 
