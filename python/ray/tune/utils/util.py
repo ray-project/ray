@@ -5,6 +5,7 @@ import logging
 import os
 import threading
 import time
+import uuid
 from collections import defaultdict
 from datetime import datetime
 from numbers import Number
@@ -408,7 +409,9 @@ def _atomic_save(state: Dict, checkpoint_dir: str, file_name: str, tmp_file_name
     """
     import ray.cloudpickle as cloudpickle
 
-    tmp_search_ckpt_path = os.path.join(checkpoint_dir, tmp_file_name)
+    tmp_search_ckpt_path = os.path.join(
+        checkpoint_dir, tmp_file_name + str(uuid.uuid4())
+    )
     with open(tmp_search_ckpt_path, "wb") as f:
         cloudpickle.dump(state, f)
 
