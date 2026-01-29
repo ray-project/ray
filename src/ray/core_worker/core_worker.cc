@@ -2645,7 +2645,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                         const size_t &data_size,
                                         const std::shared_ptr<Buffer> &metadata,
                                         const std::vector<ObjectID> &contained_object_ids,
-                                        const rpc::Address &caller_address,
+                                        const rpc::Address &owner_address,
                                         int64_t *task_output_inlined_bytes,
                                         std::shared_ptr<RayObject> *return_object) {
   bool object_already_exists = false;
@@ -2660,7 +2660,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
       // but it's fine since AddNestedObjectIds is idempotent.
       // See https://github.com/ray-project/ray/issues/57997
       reference_counter_->AddNestedObjectIds(
-          object_id, contained_object_ids, caller_address);
+          object_id, contained_object_ids, owner_address);
     }
 
     // Allocate a buffer for the return object.
@@ -2674,7 +2674,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
       RAY_RETURN_NOT_OK(CreateExisting(metadata,
                                        data_size,
                                        object_id,
-                                       caller_address,
+                                       owner_address,
                                        &data_buffer,
                                        /*created_by_worker=*/true));
       object_already_exists = data_buffer == nullptr;
@@ -2943,16 +2943,16 @@ Status CoreWorker::ExecuteTask(
 Status CoreWorker::SealReturnObject(const ObjectID &return_id,
                                     const std::shared_ptr<RayObject> &return_object,
                                     const ObjectID &generator_id,
-                                    const rpc::Address &caller_address) {
+                                    const rpc::Address &owner_address) {
   RAY_LOG(DEBUG).WithField(return_id) << "Sealing return object";
 
   RAY_CHECK(return_object);
 
   Status status = Status::OK();
-  auto caller_address_ptr = std::make_unique<rpc::Address>(caller_address);
+  auto owner_address_ptr = std::make_unique<rpc::Address>(owner_address);
 
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
-    status = SealExisting(return_id, true, generator_id, caller_address_ptr);
+    status = SealExisting(return_id, true, generator_id, owner_address_ptr);
     if (!status.ok()) {
       RAY_LOG(FATAL).WithField(return_id)
           << "Failed to seal object in store: " << status.message();
@@ -3088,7 +3088,7 @@ ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address,
 Status CoreWorker::ReportGeneratorItemReturns(
     const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
     const ObjectID &generator_id,
-    const rpc::Address &caller_address,
+    const rpc::Address &owner_address,
     int64_t item_index,
     uint64_t attempt_number,
     const std::shared_ptr<GeneratorBackpressureWaiter> &waiter) {
@@ -3097,7 +3097,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
   request.set_item_index(item_index);
   request.set_generator_id(generator_id.Binary());
   request.set_attempt_number(attempt_number);
-  auto client = core_worker_client_pool_->GetOrConnect(caller_address);
+  auto client = core_worker_client_pool_->GetOrConnect(owner_address);
 
   // This means it is the last report when the task has finished executing.
   if (!dynamic_return_object.first.IsNil()) {
