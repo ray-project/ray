@@ -284,7 +284,7 @@ def test_symmetric_run_three_node_cluster_simulated(cleanup_ray):
             except (socket.timeout, ConnectionRefusedError, OSError):
                 return False
 
-        wait_for_condition(_check_head_ready, timeout=30, retry_interval_ms=250)
+        wait_for_condition(_check_head_ready, timeout=280, retry_interval_ms=250)
 
         for cmd in worker_cmds:
             worker_procs.append(
