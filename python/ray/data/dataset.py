@@ -1916,6 +1916,7 @@ class Dataset:
         *,
         equal: bool = False,
         locality_hints: Optional[List["NodeIdStr"]] = None,
+        replicas_per_split: int = 1,
     ) -> List[DataIterator]:
         """Returns ``n`` :class:`DataIterators <ray.data.DataIterator>` that can
         be used to read disjoint subsets of the dataset in parallel.
@@ -1932,6 +1933,12 @@ class Dataset:
         new execution of the Dataset. There is an implicit barrier at the start of
         each iteration, which means that `next` must be called on all iterators before
         the iteration starts.
+
+        When ``replicas_per_split > 1``, each data split is duplicated to multiple
+        consumers. This is useful for distributed training with model parallelism
+        (e.g., tensor parallelism, pipeline parallelism), where multiple workers
+        need to receive the same data. The total number of output iterators will
+        be ``n * replicas_per_split``.
 
         .. warning::
 
@@ -1980,19 +1987,30 @@ class Dataset:
                 ray.get(train.remote(it1))
 
         Args:
-            n: Number of output iterators to return.
+            n: Number of data splits (unique data partitions) to create.
             equal: If ``True``, each output iterator sees an exactly equal number
                 of rows, dropping data if necessary. If ``False``, some iterators may
                 see slightly more or less rows than others, but no data is dropped.
-            locality_hints: Specify the node ids corresponding to each iterator
+            locality_hints: Specify the node ids corresponding to each data split
                 location. Dataset will try to minimize data movement based on the
-                iterator output locations. This list must have length ``n``. You can
-                get the current node id of a task or actor by calling
-                ``ray.get_runtime_context().get_node_id()``.
+                iterator output locations. This list must have length ``n`` (one
+                node id per split). You can get the current node id of a task or
+                actor by calling ``ray.get_runtime_context().get_node_id()``.
+            replicas_per_split: Number of consumers (iterators) that receive the same
+                data split. Defaults to 1 (no duplication). When greater than 1, each
+                of the ``n`` data splits is replicated to ``replicas_per_split``
+                consumers, resulting in ``n * replicas_per_split`` total iterators.
+                This is useful for model parallelism where multiple workers in a
+                parallel group (e.g., tensor parallel, pipeline parallel) need
+                identical data.
 
         Returns:
-            The output iterator splits. These iterators are Ray-serializable and can
-            be freely passed to any Ray task or actor.
+            The output iterator splits. The list contains ``n * replicas_per_split``
+            iterators. These iterators are Ray-serializable and can be freely passed
+            to any Ray task or actor. When ``replicas_per_split > 1``, replicas of
+            the same split are grouped together: iterators at indices
+            ``[i * replicas_per_split : (i + 1) * replicas_per_split]`` receive the
+            same data for split ``i``.
 
         .. seealso::
 
@@ -2011,7 +2029,9 @@ class Dataset:
         split_dataset = Dataset(plan, logical_plan)
         split_dataset._set_uuid(self._uuid)
 
-        return StreamSplitDataIterator.create(split_dataset, n, locality_hints)
+        return StreamSplitDataIterator.create(
+            split_dataset, n, replicas_per_split, locality_hints
+        )
 
     @ConsumptionAPI
     @PublicAPI(api_group=SMJ_API_GROUP)
