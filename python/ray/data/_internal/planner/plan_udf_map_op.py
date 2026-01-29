@@ -538,41 +538,41 @@ def _generate_transform_fn_for_map_batches(
             batches: Iterable[DataBatch], _: TaskContext
         ) -> Iterable[DataBatch]:
             for batch in batches:
-                try:
-                    if (
-                        not isinstance(batch, collections.abc.Mapping)
-                        and BlockAccessor.for_block(batch).num_rows() == 0
-                    ):
-                        # For empty input blocks, we directly output them without
-                        # calling the UDF.
-                        # TODO(hchen): This workaround is because some all-to-all
-                        # operators output empty blocks with no schema.
-                        res = [batch]
-                    else:
+                if (
+                    not isinstance(batch, collections.abc.Mapping)
+                    and BlockAccessor.for_block(batch).num_rows() == 0
+                ):
+                    # For empty input blocks, we directly output them without
+                    # calling the UDF.
+                    # TODO(hchen): This workaround is because some all-to-all
+                    # operators output empty blocks with no schema.
+                    res = [batch]
+                else:
+                    try:
                         res = fn(batch)
                         if not isinstance(res, GeneratorType):
                             res = [res]
-                except ValueError as e:
-                    read_only_msgs = [
-                        "assignment destination is read-only",
-                        "buffer source array is read-only",
-                    ]
-                    err_msg = str(e)
-                    if any(msg in err_msg for msg in read_only_msgs):
-                        raise ValueError(
-                            f"Batch mapper function {fn.__name__} tried to mutate a "
-                            "zero-copy read-only batch. To be able to mutate the "
-                            "batch, pass zero_copy_batch=False to map_batches(); "
-                            "this will create a writable copy of the batch before "
-                            "giving it to fn. To elide this copy, modify your mapper "
-                            "function so it doesn't try to mutate its input."
-                        ) from e
-                    else:
-                        raise e from None
-                else:
-                    for out_batch in res:
-                        _validate_batch_output(out_batch)
-                        yield out_batch
+                    except ValueError as e:
+                        read_only_msgs = [
+                            "assignment destination is read-only",
+                            "buffer source array is read-only",
+                        ]
+                        err_msg = str(e)
+                        if any(msg in err_msg for msg in read_only_msgs):
+                            raise ValueError(
+                                f"Batch mapper function {fn.__name__} tried to mutate a "
+                                "zero-copy read-only batch. To be able to mutate the "
+                                "batch, pass zero_copy_batch=False to map_batches(); "
+                                "this will create a writable copy of the batch before "
+                                "giving it to fn. To elide this copy, modify your mapper "
+                                "function so it doesn't try to mutate its input."
+                            ) from e
+                        else:
+                            raise e from None
+
+                for out_batch in res:
+                    _validate_batch_output(out_batch)
+                    yield out_batch
 
     return transform_fn
 
