@@ -35,8 +35,10 @@ LocalResourceManager::LocalResourceManager(
     std::function<bool(void)> get_pull_manager_at_capacity,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     std::function<void(const NodeResources &)> resource_change_subscriber,
-    ray::observability::MetricInterface &resource_usage_gauge)
+    ray::observability::MetricInterface &resource_usage_gauge,
+    std::function<absl::Time()> now_fn)
     : local_node_id_(local_node_id),
+      now_fn_(now_fn ? std::move(now_fn) : []() { return absl::Now(); }),
       get_used_object_store_memory_(get_used_object_store_memory),
       get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
       shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
@@ -46,7 +48,7 @@ LocalResourceManager::LocalResourceManager(
   local_resources_.available = NodeResourceInstanceSet(node_resources.total);
   local_resources_.total = NodeResourceInstanceSet(node_resources.total);
   local_resources_.labels = node_resources.labels;
-  const auto now = absl::Now();
+  const auto now = now_fn_();
   for (const auto &resource_id : node_resources.total.ExplicitResourceIds()) {
     last_idle_times_[resource_id] = now;
   }
@@ -129,6 +131,32 @@ void LocalResourceManager::MarkFootprintAsBusy(WorkFootprint item) {
     return;
   }
   last_idle_times_[item] = absl::nullopt;
+  // If actual work starts (NODE_WORKERS busy), invalidate any speculative
+  // PULLING_TASK_ARGUMENTS state. This ensures that if a task was speculatively
+  // marked as pulling arguments but then actually runs, the idle time will be
+  // correctly reset to Now() rather than restored to the old saved time.
+  if (item == WorkFootprint::NODE_WORKERS) {
+    saved_footprint_idle_times_.erase(WorkFootprint::PULLING_TASK_ARGUMENTS);
+  }
+  OnResourceOrStateChanged();
+}
+
+void LocalResourceManager::MaybeMarkFootprintAsBusy(WorkFootprint item) {
+  auto prev = last_idle_times_.find(item);
+  if (prev != last_idle_times_.end() && prev->second.has_value()) {
+    // Save the current idle time before marking busy.
+    // This will be restored if MarkFootprintAsIdle is called later.
+    saved_footprint_idle_times_[item] = prev->second.value();
+  } else if (prev == last_idle_times_.end()) {
+    // Footprint wasn't tracked before (implicitly idle).
+    // Save InfinitePast as a marker so when restored, it won't affect
+    // the max idle time calculation in GetResourceIdleTime().
+    saved_footprint_idle_times_[item] = absl::InfinitePast();
+  }
+  if (prev != last_idle_times_.end() && !prev->second.has_value()) {
+    return;  // Already busy
+  }
+  last_idle_times_[item] = absl::nullopt;
   OnResourceOrStateChanged();
 }
 
@@ -136,7 +164,23 @@ void LocalResourceManager::MarkFootprintAsIdle(WorkFootprint item) {
   auto prev = last_idle_times_.find(item);
   bool state_change = prev == last_idle_times_.end() || !prev->second.has_value();
 
-  last_idle_times_[item] = absl::Now();
+  // Check if there's a saved idle time from MaybeMarkFootprintAsBusy().
+  // If so, restore it instead of using Now() to preserve the original idle duration.
+  // This handles speculative busy marking where no actual work occurred.
+  auto saved_it = saved_footprint_idle_times_.find(item);
+  if (saved_it != saved_footprint_idle_times_.end()) {
+    if (saved_it->second == absl::InfinitePast()) {
+      // InfinitePast is a marker indicating the footprint wasn't tracked before.
+      // Remove it from the map to restore the original state.
+      last_idle_times_.erase(item);
+    } else {
+      last_idle_times_[item] = saved_it->second;
+    }
+    saved_footprint_idle_times_.erase(saved_it);
+  } else {
+    last_idle_times_[item] = now_fn_();
+  }
+
   if (state_change) {
     OnResourceOrStateChanged();
   }
@@ -207,7 +251,7 @@ void LocalResourceManager::SetResourceIdle(const scheduling::ResourceID &resourc
   if (resource_id.IsImplicitResource()) {
     return;
   }
-  last_idle_times_[resource_id] = absl::Now();
+  last_idle_times_[resource_id] = now_fn_();
 }
 
 std::optional<absl::Time> LocalResourceManager::GetResourceIdleTime() const {
@@ -289,7 +333,7 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
     if (used == 0.0) {
       // Set it to idle as of now.
       RAY_LOG(INFO) << "Object store memory is idle.";
-      last_idle_times_[ResourceID::ObjectStoreMemory()] = absl::Now();
+      last_idle_times_[ResourceID::ObjectStoreMemory()] = now_fn_();
     } else {
       // Clear the idle info since we know it's being used.
       RAY_LOG(DEBUG) << "Object store memory is not idle.";
@@ -335,7 +379,7 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   if (idle_time.has_value()) {
     // We round up the idle duration to the nearest millisecond such that the idle
     // reporting would be correct even if it's less than 1 millisecond.
-    const auto now = absl::Now();
+    const auto now = now_fn_();
     resource_view_sync_message.set_idle_duration_ms(std::max(
         static_cast<int64_t>(1), absl::ToInt64Milliseconds(now - idle_time.value())));
   }
