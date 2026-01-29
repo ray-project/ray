@@ -273,7 +273,9 @@ def _shuffle_block(
     )
 
     if block.num_rows == 0:
-        empty = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build(block_ser_time_s=0))
+        empty = BlockAccessor.for_block(block).get_metadata(
+            exec_stats=stats.build(block_ser_time_s=0)
+        )
         return (empty, {})
 
     num_partitions = pool.num_partitions

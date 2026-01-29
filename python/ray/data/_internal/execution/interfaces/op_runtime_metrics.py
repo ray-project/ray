@@ -897,9 +897,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             exec_stats = meta.exec_stats
 
             assert (
-                exec_stats is not None and
-                exec_stats.wall_time_s is not None and
-                exec_stats.block_ser_time_s is not None
+                exec_stats is not None
+                and exec_stats.wall_time_s is not None
+                and exec_stats.block_ser_time_s is not None
             )
 
             self.block_generation_time += exec_stats.wall_time_s
@@ -948,8 +948,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         if task_info.num_outputs > 0:
             # Calculate the average block generation time per block
             block_time_delta = (
-                task_info.cum_block_gen_time_s +
-                task_info.cum_block_ser_time_s
+                task_info.cum_block_gen_time_s + task_info.cum_block_ser_time_s
             ) / task_info.num_outputs
 
             self.block_completion_time.observe(
@@ -960,8 +959,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._op_task_duration_stats.add_duration(task_time_delta)
 
         self.task_completion_time_excl_backpressure_s += (
-            task_info.cum_block_gen_time_s +
-            task_info.cum_block_ser_time_s
+            task_info.cum_block_gen_time_s + task_info.cum_block_ser_time_s
         )
         inputs = self._running_tasks[task_index].inputs
         self.num_task_inputs_processed += len(inputs)

@@ -774,8 +774,7 @@ def _map_task(
             exec_stats.max_uss_bytes = profiler.estimate_max_uss()
 
             yield BlockMetadataWithSchema(
-                metadata=replace(block_meta, exec_stats=exec_stats),
-                schema=block_schema
+                metadata=replace(block_meta, exec_stats=exec_stats), schema=block_schema
             )
 
             # Reset trackers

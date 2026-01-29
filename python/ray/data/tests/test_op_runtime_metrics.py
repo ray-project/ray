@@ -148,9 +148,9 @@ def test_task_completion_time_excl_backpressure():
     # Submit and complete multiple tasks with different gen/ser times
     test_cases = [
         # (gen_time, ser_time, num_outputs)
-        (0.5, 0.1, 2),   # Task 0: 0.5s gen + 0.1s ser = 0.6s
+        (0.5, 0.1, 2),  # Task 0: 0.5s gen + 0.1s ser = 0.6s
         (0.3, 0.05, 1),  # Task 1: 0.3s gen + 0.05s ser = 0.35s
-        (0.8, 0.2, 3),   # Task 2: 0.8s gen + 0.2s ser = 1.0s
+        (0.8, 0.2, 3),  # Task 2: 0.8s gen + 0.2s ser = 1.0s
     ]
 
     expected_total = 0
