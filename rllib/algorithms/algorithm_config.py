@@ -2282,7 +2282,7 @@ class AlgorithmConfig(_Config):
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
-        custom_resources_per_learner: Optional[Dict] = NotProvided,
+        custom_resources_per_learner: Optional[Dict[str, Any]] = NotProvided,
     ) -> Self:
         """Sets LearnerGroup and Learner worker related configurations.
 
