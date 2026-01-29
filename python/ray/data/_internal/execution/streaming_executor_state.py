@@ -34,6 +34,10 @@ from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.operator_schema_exporter import (
+    OperatorSchema,
+    get_operator_schema_exporter,
+)
 from ray.data._internal.util import (
     unify_schemas_with_validation,
 )
@@ -244,8 +248,25 @@ class OpState:
             enforce_schemas=self.op.data_context.enforce_schemas,
         )
 
+        # export operator schema when it's updated
+        should_export_schema = ref.schema is not None and self._schema != ref.schema
         self._schema = ref.schema
         self._warned_on_schema_divergence |= diverged
+
+        operator_schema_exporter = get_operator_schema_exporter()
+        if (
+            operator_schema_exporter is not None
+            and should_export_schema
+            and hasattr(self._schema, "names")
+            and hasattr(self._schema, "types")
+        ):
+            names = [str(n) for n in self._schema.names]
+            types = [str(t) for t in self._schema.types]
+            operator_schema = OperatorSchema(
+                operator_uuid=self.op.id,
+                schema_fields=dict(zip(names, types)),
+            )
+            operator_schema_exporter.export_operator_schema(operator_schema)
 
         self.output_queue.append(ref)
         self.num_completed_tasks += 1
