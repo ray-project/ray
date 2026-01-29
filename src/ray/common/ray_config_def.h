@@ -505,6 +505,11 @@ RAY_CONFIG(uint64_t, task_events_max_num_profile_events_buffer_on_worker, 10 * 1
 /// report to GCS.
 RAY_CONFIG(int64_t, task_events_dropped_task_attempt_batch_size, 10 * 1000)
 
+/// Timeout in milliseconds to wait for task events to be flushed during shutdown.
+/// During graceful shutdown, the TaskEventBuffer and RayEventRecorder will wait up to
+/// this duration for in-flight gRPC calls to complete before stopping the io_service.
+RAY_CONFIG(int64_t, task_events_shutdown_flush_timeout_ms, 5000)
+
 /// The delay in ms that GCS should mark any running tasks from a job as failed.
 /// Setting this value too smaller might result in some finished tasks marked as failed by
 /// GCS.
