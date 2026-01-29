@@ -2664,7 +2664,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
     }
 
     // Allocate a buffer for the return object.
-    if ((static_cast<int64_t>(data_size) < max_direct_call_object_size_ &&
+    if (static_cast<int64_t>(data_size) < max_direct_call_object_size_ &&
          // ensure we don't exceed the limit if we allocate this object inline.
          (*task_output_inlined_bytes + static_cast<int64_t>(data_size) <=
           RayConfig::instance().task_rpc_inlined_bytes_limit())) {
