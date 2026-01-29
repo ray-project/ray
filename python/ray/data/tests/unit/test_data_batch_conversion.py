@@ -65,6 +65,13 @@ def test_arrow_to_numpy():
     )
 
     input_data = pa.table(
+        {"data": ArrowTensorArray.from_numpy(np.arange(12).reshape(3, 2, 2))}
+    )
+    expected_output = np.arange(12).reshape(3, 2, 2)
+    actual_output = _convert_batch_type_to_numpy(input_data)
+    np.testing.assert_array_equal(expected_output, actual_output)
+
+    input_data = pa.table(
         {
             "column_1": [1, 2, 3, 4],
             "column_2": [1, -1, 1, -1],
@@ -88,6 +95,11 @@ def test_arrow_to_numpy():
 def test_pd_dataframe_to_numpy():
     input_data = pd.DataFrame({"column_1": [1, 2, 3, 4]})
     expected_output = np.array([1, 2, 3, 4])
+    actual_output = _convert_batch_type_to_numpy(input_data)
+    np.testing.assert_array_equal(expected_output, actual_output)
+
+    input_data = pd.DataFrame({"data": TensorArray(np.arange(12).reshape(3, 4))})
+    expected_output = np.arange(12).reshape(3, 4)
     actual_output = _convert_batch_type_to_numpy(input_data)
     np.testing.assert_array_equal(expected_output, actual_output)
 
@@ -146,6 +158,43 @@ def test_no_pandas_future_warning():
         warnings.simplefilter("error", category=FutureWarning)
         data_no_tensor_array = _cast_tensor_columns_to_ndarrays(input_data)
         _cast_ndarray_columns_to_tensor_extension(data_no_tensor_array)
+
+
+@pytest.mark.parametrize("cast_tensor_columns", [True, False])
+def test_numpy_pandas(cast_tensor_columns):
+    input_data = np.array([1, 2, 3])
+    expected_output = pd.DataFrame({"data": input_data})
+    actual_output = _convert_batch_type_to_pandas(input_data, cast_tensor_columns)
+    pd.testing.assert_frame_equal(expected_output, actual_output)
+
+    output_array = _convert_pandas_to_batch_type(
+        actual_output, type=BatchFormat.NUMPY, cast_tensor_columns=cast_tensor_columns
+    )
+    np.testing.assert_equal(output_array, input_data)
+
+
+@pytest.mark.parametrize("cast_tensor_columns", [True, False])
+def test_numpy_multi_dim_pandas(cast_tensor_columns):
+    input_data = np.arange(12).reshape((3, 2, 2))
+    expected_output = pd.DataFrame({"data": list(input_data)})
+    actual_output = _convert_batch_type_to_pandas(input_data, cast_tensor_columns)
+    pd.testing.assert_frame_equal(expected_output, actual_output)
+
+    output_array = _convert_pandas_to_batch_type(
+        actual_output, type=BatchFormat.NUMPY, cast_tensor_columns=cast_tensor_columns
+    )
+    np.testing.assert_array_equal(np.array(list(output_array)), input_data)
+
+
+def test_numpy_object_pandas():
+    input_data = np.array([[1, 2, 3], [1]], dtype=object)
+    expected_output = pd.DataFrame({"data": input_data})
+    actual_output = _convert_batch_type_to_pandas(input_data)
+    pd.testing.assert_frame_equal(expected_output, actual_output)
+
+    np.testing.assert_array_equal(
+        _convert_pandas_to_batch_type(actual_output, type=BatchFormat.NUMPY), input_data
+    )
 
 
 @pytest.mark.parametrize("writable", [False, True])

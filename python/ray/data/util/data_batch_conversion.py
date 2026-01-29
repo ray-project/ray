@@ -54,7 +54,9 @@ def _convert_batch_type_to_pandas(
     """
     pd = _lazy_import_pandas()
 
-    if isinstance(data, dict):
+    if isinstance(data, np.ndarray):
+        data = pd.DataFrame({"data": _ndarray_to_column(data)})
+    elif isinstance(data, dict):
         tensor_dict = {}
         for col_name, col in data.items():
             if not isinstance(col, np.ndarray):
