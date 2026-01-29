@@ -73,13 +73,13 @@ class StaticLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
 // It returns max(num_nodes_in_cluster, min_concurrent_lease_limit)
 class ClusterSizeBasedLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
  public:
-  explicit ClusterSizeBasedLeaseRequestRateLimiter(size_t min_concurrent_lease_limit);
+  ClusterSizeBasedLeaseRequestRateLimiter(size_t min_concurrent_lease_limit,
+                                          gcs::GcsClient *gcs_client);
   size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override;
-  void OnNodeChanges(const rpc::GcsNodeAddressAndLiveness &data);
 
  private:
   const size_t min_concurrent_lease_cap_;
-  std::atomic<size_t> num_alive_nodes_;
+  gcs::GcsClient *gcs_client_;
 };
 
 // This class is thread-safe.
@@ -365,14 +365,14 @@ class NormalTaskSubmitter {
   // Generators that are currently running and need to be resubmitted.
   absl::flat_hash_set<TaskID> generators_to_resubmit_ ABSL_GUARDED_BY(mu_);
 
-  // Tasks that have failed but we are waiting for their error cause to decide if they
+  // Tasks that have failed but were waiting for their error cause to decide if they
   // should be retried or permanently failed.
   absl::flat_hash_set<TaskID> failed_tasks_pending_failure_cause_ ABSL_GUARDED_BY(mu_);
 
   // Ratelimiter controls the num of pending lease requests.
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
 
-  // Retries cancelation requests if they were not successful.
+  // Retries cancellation requests if they were not successful.
   instrumented_io_context &io_service_;
 
   ray::observability::MetricInterface &scheduler_placement_time_ms_histogram_;

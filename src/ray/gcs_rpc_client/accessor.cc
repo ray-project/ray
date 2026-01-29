@@ -359,6 +359,11 @@ NodeInfoAccessor::GetAllNodeAddressAndLiveness() const {
   return node_cache_address_and_liveness_;
 }
 
+int NodeInfoAccessor::GetAliveNodeCount() const {
+  absl::MutexLock lock(&node_cache_address_and_liveness_mutex_);
+  return alive_node_count_;
+}
+
 StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCache(
     int64_t timeout_ms,
     std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter,
@@ -416,6 +421,10 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_
     if (entry == node_cache_address_and_liveness_.end()) {
       // If the entry is not in the cache, then the notification is new.
       is_notif_new = true;
+      // New node being added - increment counter if alive
+      if (is_alive) {
+        alive_node_count_++;
+      }
     } else {
       // If the entry is in the cache, then the notification is new if the node
       // was alive and is now dead.
@@ -429,6 +438,11 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_
                          "was already removed:"
                       << node_id;
         return;
+      }
+
+      // Node transitioning from alive to dead - decrement counter
+      if (is_notif_new) {
+        alive_node_count_--;
       }
     }
 

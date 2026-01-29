@@ -106,6 +106,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
   MOCK_METHOD(bool, IsNodeDead, (const NodeID &node_id), (const, override));
   MOCK_METHOD(bool, IsNodeAlive, (const NodeID &node_id), (const, override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
+  MOCK_METHOD(int, GetAliveNodeCount, (), (const, override));
 };
 
 }  // namespace gcs

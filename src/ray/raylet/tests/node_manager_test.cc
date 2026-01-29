@@ -624,11 +624,12 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
       publish_node_change_callback;
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
               AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
-      .WillOnce([&](const rpc::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
-                        &subscribe,
-                    const rpc::StatusCallback &done) {
-        publish_node_change_callback = subscribe;
-      });
+      .WillOnce(
+          [&](const std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)>
+                  &subscribe,
+              const rpc::StatusCallback &done) {
+            publish_node_change_callback = subscribe;
+          });
   node_manager_->RegisterGcs();
 
   // Preparing a detached actor creation task spec for the later RequestWorkerLease rpc.
@@ -1348,15 +1349,16 @@ TEST_P(NodeManagerDeathTest, TestGcsPublishesSelfDead) {
   //    started
   const bool shutting_down_during_death_publish = GetParam();
 
-  rpc::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
+  std::function<void(const NodeID &id, rpc::GcsNodeAddressAndLiveness &&node_info)>
       publish_node_change_callback;
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
               AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
-      .WillOnce([&](const rpc::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
-                        &subscribe,
-                    const rpc::StatusCallback &done) {
-        publish_node_change_callback = subscribe;
-      });
+      .WillOnce(
+          [&](const std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)>
+                  &subscribe,
+              const rpc::StatusCallback &done) {
+            publish_node_change_callback = subscribe;
+          });
   node_manager_->RegisterGcs();
 
   shutting_down_ = shutting_down_during_death_publish;

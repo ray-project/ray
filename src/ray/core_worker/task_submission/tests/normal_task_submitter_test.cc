@@ -1934,34 +1934,44 @@ TEST(LeaseRequestRateLimiterTest, StaticLeaseRequestRateLimiter) {
 }
 
 TEST(LeaseRequestRateLimiterTest, ClusterSizeBasedLeaseRequestRateLimiter) {
-  rpc::GcsNodeAddressAndLiveness dead_node;
-  dead_node.set_state(rpc::GcsNodeInfo::DEAD);
-  rpc::GcsNodeAddressAndLiveness alive_node;
-  alive_node.set_state(rpc::GcsNodeInfo::ALIVE);
+  // Test that the rate limiter uses gcs_client to get alive node count
   {
-    ClusterSizeBasedLeaseRequestRateLimiter limiter(1);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
-    limiter.OnNodeChanges(alive_node);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
-    limiter.OnNodeChanges(alive_node);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 2);
-    limiter.OnNodeChanges(dead_node);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
-    limiter.OnNodeChanges(dead_node);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
+    gcs::MockGcsClient mock_gcs_client;
+    ClusterSizeBasedLeaseRequestRateLimiter limiter(1, &mock_gcs_client);
+
+    // Expect GetAliveNodeCount to return 5 nodes
+    EXPECT_CALL(*mock_gcs_client.mock_node_accessor, GetAliveNodeCount())
+        .WillOnce(::testing::Return(5));
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 5);
   }
 
   {
-    ClusterSizeBasedLeaseRequestRateLimiter limiter(0);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 0);
-    limiter.OnNodeChanges(alive_node);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
-    limiter.OnNodeChanges(dead_node);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 0);
-    limiter.OnNodeChanges(dead_node);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 0);
-    limiter.OnNodeChanges(alive_node);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
+    gcs::MockGcsClient mock_gcs_client;
+    ClusterSizeBasedLeaseRequestRateLimiter limiter(10, &mock_gcs_client);
+
+    // min_concurrent_lease_cap is 10, but only 3 nodes
+    EXPECT_CALL(*mock_gcs_client.mock_node_accessor, GetAliveNodeCount())
+        .WillOnce(::testing::Return(3));
+    // Should return max(10, 3) = 10
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 10);
+  }
+
+  {
+    gcs::MockGcsClient mock_gcs_client;
+    ClusterSizeBasedLeaseRequestRateLimiter limiter(10, &mock_gcs_client);
+
+    // Now with more nodes than the cap
+    EXPECT_CALL(*mock_gcs_client.mock_node_accessor, GetAliveNodeCount())
+        .WillOnce(::testing::Return(15));
+    // Should return max(10, 15) = 15
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 15);
+  }
+
+  // Test with nullptr gcs_client
+  {
+    ClusterSizeBasedLeaseRequestRateLimiter limiter(5, nullptr);
+    // With nullptr, should return min_concurrent_lease_cap
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 5);
   }
 }
 

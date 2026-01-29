@@ -194,6 +194,14 @@ class NodeInfoAccessor {
   virtual absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>
   GetAllNodeAddressAndLiveness() const;
 
+  /// Get the number of alive nodes from the local cache.
+  /// Thread-safe.
+  /// Note, the local cache is only available if
+  /// `AsyncSubscribeToNodeAddressAndLivenessChange` is called before.
+  ///
+  /// \return The number of alive nodes in the local cache.
+  virtual int GetAliveNodeCount() const;
+
   /// Get information of all nodes from an RPC to GCS synchronously with optional filters.
   ///
   /// \return All nodes that match the given filters from the gcs without the cache.
@@ -286,6 +294,9 @@ class NodeInfoAccessor {
   absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>
       node_cache_address_and_liveness_
           ABSL_GUARDED_BY(node_cache_address_and_liveness_mutex_);
+
+  /// Counter tracking the number of alive nodes in the cache
+  int alive_node_count_ ABSL_GUARDED_BY(node_cache_address_and_liveness_mutex_) = 0;
 
   // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
   // https://github.com/ray-project/ray/issues/54805
