@@ -498,52 +498,91 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             validate_file_actions(all_file_actions, self.table_uri, self.filesystem)
 
             if self._table_existed_at_start:
+            if self._table_existed_at_start:
                 # Table existed at start - handle based on mode
-                if self.mode == SaveMode.IGNORE:
 
-                self._cleanup_written_files(all_file_actions)
-                return
+                    self._cleanup_written_files(all_file_actions)
+
+                    return
+
                 if existing_table is None and self.mode == SaveMode.OVERWRITE:
 
-                    # Table was deleted, create new one
+
+                # Table was deleted, create new one
+
                     create_table_with_files(
-                        self.table_uri,
-                        all_file_actions,
-                        self.schema,
-                        self.mode.value,
-                        self.partition_cols,
-                        self.storage_options,
-                        self.write_kwargs,
-                        self.filesystem,
+
+                    self.table_uri,
+
+                    all_file_actions,
+
+                    self.schema,
+
+                    self.mode.value,
+
+                    self.partition_cols,
+
+                    self.storage_options,
+
+                    self.write_kwargs,
+
+                    self.filesystem,
+
                     )
+
                 elif existing_table is not None:
 
-                    # Commit to existing table (APPEND, OVERWRITE, or UPSERT)
-                self._commit_by_mode(existing_table, all_file_actions, upsert_keys)
+
+                # Commit to existing table (APPEND, OVERWRITE, or UPSERT)
+
+                    self._commit_by_mode(existing_table, all_file_actions, upsert_keys)
+
                 else:
 
-                raise ValueError(
-                    f"Delta table was deleted at {self.table_uri} after write started."
+
+            else:
+                f"Delta table was deleted at {self.table_uri} after write started."
+
                 )
-        else:
+
+                else:
+
                 # Table didn't exist at start - create new table
+
                 # For IGNORE mode, check one more time if table was created concurrently
+
                 # to avoid orphaned files (create_table_with_add_actions silently does nothing)
+
                 if self.mode == SaveMode.IGNORE:
-                    final_check_table = try_get_deltatable(
-                        self.table_uri, self.storage_options
-                    )
-                    if final_check_table is not None:
-                        # Table was created concurrently, clean up files
-                        self._cleanup_written_files(all_file_actions)
-                        return
+
+                final_check_table = try_get_deltatable(
+
+                self.table_uri, self.storage_options
+
+                )
+
+                if final_check_table is not None:
+
+                # Table was created concurrently, clean up files
+
+                self._cleanup_written_files(all_file_actions)
+
+                return
+
                 create_table_with_files(
-                    self.table_uri,
-                    all_file_actions,
-                    self.schema,
-                    self.mode.value,
-                    self.partition_cols,
-                    self.storage_options,
+
+                self.table_uri,
+
+                all_file_actions,
+
+                self.schema,
+
+                self.mode.value,
+
+                self.partition_cols,
+
+                self.storage_options,
+
                     self.write_kwargs,
                     self.filesystem,
                 )
