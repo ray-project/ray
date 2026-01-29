@@ -75,7 +75,7 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
   for (const auto &command : request.commands()) {
     if (!command.has_unsubscribe_message() && !command.has_subscribe_message()) {
       send_reply_callback(Status::InvalidArgument(absl::StrFormat(
-                              "Unexpected pubsub command has been received: %s"
+                              "Unexpected pubsub command has been received: %s."
                               "Expected either unsubscribe or subscribe message",
                               command.DebugString())),
                           nullptr,

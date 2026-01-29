@@ -67,7 +67,7 @@ class SubscriberServiceImpl final : public rpc::SubscriberService::CallbackServi
     for (const auto &command : request->commands()) {
       RAY_CHECK(command.has_unsubscribe_message() || command.has_subscribe_message())
           << absl::StrFormat(
-                 "Unexpected pubsub command has been received: %s"
+                 "Unexpected pubsub command has been received: %s."
                  "Expected either unsubscribe or subscribe message",
                  command.DebugString());
       if (command.has_unsubscribe_message()) {
