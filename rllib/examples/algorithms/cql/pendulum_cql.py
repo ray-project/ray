@@ -28,7 +28,7 @@ base_path = Path(__file__).parents[3]
 # parquet data, the default in `AlgorithmConfig.offline_data`.
 data_path = base_path / "offline/tests/data/pendulum/pendulum-v1_enormous"
 data_path_uri = f"local://{data_path.as_posix()}"
-
+print(f"data_path_uri={data_path_uri}")
 # Define the configuration.
 config = (
     CQLConfig()

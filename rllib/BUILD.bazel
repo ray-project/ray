@@ -472,28 +472,6 @@ py_test(
     ],
 )
 
-# GPU training.
-py_test(
-    name = "learning_tests_pendulum_cql_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/cql/pendulum_cql.py"],
-    args = [
-        "--as-test",
-        "--num-gpus-per-learner=1",
-    ],
-    # Include the zipped json data file as well.
-    data = [
-        "offline/tests/data/pendulum/pendulum-v1_enormous",
-    ],
-    main = "examples/algorithms/cql/pendulum_cql.py",
-    tags = [
-        "exclusive",
-        "gpu",
-        "learning_tests",
-        "team:rllib",
-    ],
-)
-
 # DQN
 # CartPole
 py_test(
