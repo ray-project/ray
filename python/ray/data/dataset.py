@@ -5273,6 +5273,9 @@ class Dataset:
         max_rows_per_file: int = 64 * 1024 * 1024,
         data_storage_version: Optional[str] = None,
         storage_options: Optional[Dict[str, Any]] = None,
+        table_id: Optional[List[str]] = None,
+        namespace_impl: Optional[str] = None,
+        namespace_properties: Optional[Dict[str, str]] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> None:
@@ -5298,6 +5301,9 @@ class Dataset:
                 "legacy" which will use the legacy v1 version.  See the user guide
                 for more details.
             storage_options: The storage options for the writer. Default is None.
+            table_id: The table identifier as a list of strings, used with namespace params.
+            namespace_impl: The namespace implementation type (e.g., "rest", "dir").
+            namespace_properties: Properties for connecting to the namespace.
         """
         datasink = LanceDatasink(
             path,
@@ -5307,6 +5313,9 @@ class Dataset:
             max_rows_per_file=max_rows_per_file,
             data_storage_version=data_storage_version,
             storage_options=storage_options,
+            table_id=table_id,
+            namespace_impl=namespace_impl,
+            namespace_properties=namespace_properties,
         )
 
         self.write_datasink(
