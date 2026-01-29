@@ -1482,7 +1482,8 @@ def init(
             object store with.
             By default, this is 30% of available system memory capped by
             the shm size and 200G but can be set higher.
-        local_mode: No longer supported.
+        local_mode: No longer supported. For interactive debugging consider
+            using the Ray distributed debugger.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
         include_dashboard: Boolean flag indicating whether or not to start the
@@ -1797,7 +1798,7 @@ def init(
 
     if local_mode:
         raise RuntimeError(
-            "`local_mode` is no longer supported. For debugging consider using the Ray distributed debugger."
+            "`local_mode` is no longer supported. For interactive debugging consider using the Ray distributed debugger."
         )
 
     global _global_node

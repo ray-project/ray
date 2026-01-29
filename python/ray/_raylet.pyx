@@ -2754,7 +2754,6 @@ cdef class CoreWorker:
         options.unhandled_exception_handler = unhandled_exception_handler
         options.cancel_async_actor_task = cancel_async_actor_task
         options.get_lang_stack = get_py_stack
-        options.is_local_mode = False
         options.kill_main = kill_main_task
         options.actor_shutdown_callback = call_actor_shutdown
         options.serialized_job_config = serialized_job_config

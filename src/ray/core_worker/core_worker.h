@@ -366,9 +366,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   }
 
   bool GetCurrentTaskRetryExceptions() const {
-    if (options_.is_local_mode) {
-      return false;
-    }
     return worker_context_->GetCurrentTask()->ShouldRetryExceptions();
   }
 
@@ -390,12 +387,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
-    // TODO(ilr): better way of keeping an object from being deleted
     // TODO(sang): This seems bad... We should delete the memory store
     // properly from reference counter.
-    if (!options_.is_local_mode) {
       memory_store_->Delete(deleted);
-    }
   }
 
   int GetMemoryStoreSize() { return memory_store_->Size(); }
@@ -1522,23 +1516,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                                const ObjectID &object_id,
                                bool pin_object);
 
-  /// Execute a local mode task (runs normal ExecuteTask)
-  ///
-  /// \param spec[in] task_spec Task specification.
-  std::vector<rpc::ObjectReference> ExecuteTaskLocalMode(
-      const TaskSpecification &task_spec, const ActorID &actor_id = ActorID::Nil());
-
-  /// KillActor API for a local mode.
-  Status KillActorLocalMode(const ActorID &actor_id);
-
-  /// Get a handle to a named actor for local mode.
-  std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandleLocalMode(
-      const std::string &name);
-
-  /// Get all named actors in local mode.
-  std::pair<std::vector<std::pair<std::string, std::string>>, Status>
-  ListNamedActorsLocalMode();
-
   /// Get the values of the task arguments for the executor. Values are
   /// retrieved from the local plasma store or, if the value is inlined, from
   /// the task spec.
@@ -1892,10 +1869,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // Queue of tasks to resubmit when the specified time passes.
   std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
       to_resubmit_ ABSL_GUARDED_BY(mutex_);
-
-  /// Map of named actor registry. It doesn't need to hold a lock because
-  /// local mode is single-threaded.
-  absl::flat_hash_map<std::string, ActorID> local_mode_named_actor_registry_;
 
   // Guard for `async_plasma_callbacks_` map.
   mutable absl::Mutex plasma_mutex_;
