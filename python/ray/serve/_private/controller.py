@@ -42,6 +42,9 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.controller_health_metrics_tracker import (
+    ControllerHealthMetricsTracker,
+)
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
@@ -230,6 +233,11 @@ class ServeController:
         self._shutdown_event = asyncio.Event()
         self._shutdown_start_time = None
 
+        # Initialize health metrics tracker
+        self._health_metrics_tracker = ControllerHealthMetricsTracker(
+            controller_start_time=time.time()
+        )
+
         self._create_control_loop_metrics()
         run_background_task(self.run_control_loop())
 
@@ -304,6 +312,8 @@ class ServeController:
                 "replica": replica_metric_report.replica_id.unique_id,
             },
         )
+        # Track in health metrics
+        self._health_metrics_tracker.record_replica_metrics_delay(latency_ms)
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
             logger.warning(
                 f"Received autoscaling metrics from replica {replica_metric_report.replica_id} with timestamp {replica_metric_report.timestamp} "
@@ -329,6 +339,8 @@ class ServeController:
                 "handle": handle_metric_report.handle_id,
             },
         )
+        # Track in health metrics
+        self._health_metrics_tracker.record_handle_metrics_delay(latency_ms)
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
             logger.warning(
                 f"Received autoscaling metrics from handle {handle_metric_report.handle_id} for deployment {handle_metric_report.deployment_id} with timestamp {handle_metric_report.timestamp} "
@@ -507,13 +519,18 @@ class ServeController:
                     extra={"log_to_stderr": False},
                 )
             self.control_loop_duration_gauge_s.set(loop_duration)
+            # Track in health metrics
+            self._health_metrics_tracker.record_loop_duration(loop_duration)
 
             num_loops += 1
             self.num_control_loops_gauge.set(num_loops)
+            self._health_metrics_tracker.num_control_loops = num_loops
 
             sleep_start_time = time.time()
             await asyncio.sleep(CONTROL_LOOP_INTERVAL_S)
-            self.sleep_duration_gauge_s.set(time.time() - sleep_start_time)
+            sleep_duration = time.time() - sleep_start_time
+            self.sleep_duration_gauge_s.set(sleep_duration)
+            self._health_metrics_tracker.last_sleep_duration_s = sleep_duration
 
     async def run_control_loop_step(
         self, start_time: float, recovering_timeout: float, num_loops: int
@@ -546,7 +563,9 @@ class ServeController:
             dsm_update_start_time = time.time()
             any_recovering = self.deployment_state_manager.update()
 
-            self.dsm_update_duration_gauge_s.set(time.time() - dsm_update_start_time)
+            dsm_duration = time.time() - dsm_update_start_time
+            self.dsm_update_duration_gauge_s.set(dsm_duration)
+            self._health_metrics_tracker.record_dsm_update_duration(dsm_duration)
             if not self.done_recovering_event.is_set() and not any_recovering:
                 self.done_recovering_event.set()
                 if num_loops > 0:
@@ -564,7 +583,9 @@ class ServeController:
             any_target_state_changed = self.application_state_manager.update()
             if any_recovering or any_target_state_changed:
                 self._refresh_autoscaling_deployments_cache()
-            self.asm_update_duration_gauge_s.set(time.time() - asm_update_start_time)
+            asm_duration = time.time() - asm_update_start_time
+            self.asm_update_duration_gauge_s.set(asm_duration)
+            self._health_metrics_tracker.record_asm_update_duration(asm_duration)
         except Exception:
             logger.exception("Exception updating application state.")
 
@@ -577,7 +598,9 @@ class ServeController:
         # so they are more consistent.
         node_update_start_time = time.time()
         self._update_proxy_nodes()
-        self.node_update_duration_gauge_s.set(time.time() - node_update_start_time)
+        node_update_duration = time.time() - node_update_start_time
+        self.node_update_duration_gauge_s.set(node_update_duration)
+        self._health_metrics_tracker.record_node_update_duration(node_update_duration)
 
         # Don't update proxy_state until after the done recovering event is set,
         # otherwise we may start a new proxy but not broadcast it any
@@ -586,8 +609,10 @@ class ServeController:
             try:
                 proxy_update_start_time = time.time()
                 self.proxy_state_manager.update(proxy_nodes=self._proxy_nodes)
-                self.proxy_update_duration_gauge_s.set(
-                    time.time() - proxy_update_start_time
+                proxy_update_duration = time.time() - proxy_update_start_time
+                self.proxy_update_duration_gauge_s.set(proxy_update_duration)
+                self._health_metrics_tracker.record_proxy_update_duration(
+                    proxy_update_duration
                 )
             except Exception:
                 logger.exception("Exception updating proxy state.")
@@ -724,6 +749,26 @@ class ServeController:
         Currently used for test only.
         """
         return self._actor_details
+
+    def get_health_metrics(self) -> Dict[str, Any]:
+        """Returns comprehensive health metrics for the controller.
+
+        This method provides detailed performance metrics to help diagnose
+        controller health issues, especially as cluster size increases.
+
+        Returns:
+            Dictionary containing health metrics including:
+            - Control loop performance (iteration speed, durations)
+            - Event loop health (task count, scheduling delay)
+            - Component update latencies
+            - Autoscaling metrics latency (handle/replica)
+            - Memory usage
+        """
+        try:
+            return self._health_metrics_tracker.collect_metrics().dict()
+        except Exception:
+            logger.exception("Exception collecting controller health metrics.")
+            raise
 
     def get_proxy_details(self, node_id: str) -> Optional[ProxyDetails]:
         """Returns the proxy details for the proxy on the given node.
