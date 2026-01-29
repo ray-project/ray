@@ -56,9 +56,11 @@ class CombineShuffles(Rule):
         elif isinstance(input_op, StreamingRepartition) and isinstance(
             op, StreamingRepartition
         ):
+            strict = input_op._strict or op._strict
             return StreamingRepartition(
                 input_op.input_dependencies[0],
                 target_num_rows_per_block=op.target_num_rows_per_block,
+                strict=strict,
             )
         elif isinstance(input_op, Repartition) and isinstance(op, Aggregate):
             return Aggregate(

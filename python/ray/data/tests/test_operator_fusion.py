@@ -768,12 +768,12 @@ def test_streaming_repartition_map_batches_fusion_order_and_params(
 
     if order == "map_then_sr":
         ds = ds.map_batches(lambda x: x, batch_size=batch_size)
-        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
-        expected_fused_name = f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_num_rows}]"
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows, strict=True)
+        expected_fused_name = f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_num_rows},strict=True]"
     else:  # sr_then_map
-        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows, strict=True)
         ds = ds.map_batches(lambda x: x, batch_size=batch_size)
-        expected_fused_name = f"StreamingRepartition[num_rows_per_block={target_num_rows}]->MapBatches(<lambda>)"
+        expected_fused_name = f"StreamingRepartition[num_rows_per_block={target_num_rows},strict=True]->MapBatches(<lambda>)"
 
     assert len(ds.take_all()) == n
 
@@ -813,7 +813,7 @@ def test_streaming_repartition_no_further_fuse(
     stats1 = ds1.stats()
 
     assert (
-        f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows}]"
+        f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows},strict=False]"
         in stats1
     ), stats1
     assert "MapBatches(<lambda>)->MapBatches(<lambda>)" in stats1
