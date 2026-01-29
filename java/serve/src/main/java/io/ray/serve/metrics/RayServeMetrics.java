@@ -45,7 +45,8 @@ public enum RayServeMetrics {
 
   public static final String TAG_APPLICATION = "application";
 
-  private static final boolean canBeUsed = Ray.isInitialized();
+  private static final boolean canBeUsed =
+      Ray.isInitialized() && !Ray.getRuntimeContext().isLocalMode();
 
   private static volatile boolean enabled = true;
 

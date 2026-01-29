@@ -116,11 +116,6 @@ public class RayConfig {
     } else {
       runMode = config.getEnum(RunMode.class, "ray.run-mode");
     }
-
-    Preconditions.checkState(
-        runMode != RunMode.LOCAL,
-        "`ray.local-mode=true` and `ray.run-mode=LOCAL` are no longer supported.");
-
     // Node ip.
     if (config.hasPath("ray.node-ip")) {
       nodeIp = config.getString("ray.node-ip");

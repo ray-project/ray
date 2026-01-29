@@ -51,7 +51,15 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public boolean wasCurrentActorRestarted() {
+    if (isLocalMode()) {
+      return false;
+    }
     return runtime.getGcsClient().wasCurrentActorRestarted(getCurrentActorId());
+  }
+
+  @Override
+  public boolean isLocalMode() {
+    return RunMode.LOCAL == runtime.getRayConfig().runMode;
   }
 
   @Override

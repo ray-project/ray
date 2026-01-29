@@ -30,7 +30,10 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
 
     try {
       logger.debug("Initializing runtime with config: {}", rayConfig);
-      AbstractRayRuntime runtime = new RayNativeRuntime(rayConfig);
+      AbstractRayRuntime runtime =
+          rayConfig.runMode == RunMode.LOCAL
+              ? new RayDevRuntime(rayConfig)
+              : new RayNativeRuntime(rayConfig);
       runtime.start();
       return runtime;
     } catch (Exception e) {
