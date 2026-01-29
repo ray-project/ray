@@ -121,6 +121,7 @@ def gen_expected_metrics(
             "'num_tasks_finished': N",
             "'num_tasks_failed': Z",
             "'block_generation_time': N",
+            "'block_serialization_time_s': N",
             (
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
@@ -189,6 +190,7 @@ def gen_expected_metrics(
             "'num_tasks_finished': Z",
             "'num_tasks_failed': Z",
             "'block_generation_time': Z",
+            "'block_serialization_time_s': Z",
             (
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
@@ -660,6 +662,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_finished: N,\n"
         "      num_tasks_failed: Z,\n"
         "      block_generation_time: N,\n"
+        "      block_serialization_time_s: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
         "      task_completion_time_total_s: N,\n"
@@ -804,6 +807,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_finished: N,\n"
         "      num_tasks_failed: Z,\n"
         "      block_generation_time: N,\n"
+        "      block_serialization_time_s: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
         "      task_completion_time_total_s: N,\n"
@@ -901,6 +905,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_tasks_finished: N,\n"
         "            num_tasks_failed: Z,\n"
         "            block_generation_time: N,\n"
+        "            block_serialization_time_s: N,\n"
         "            task_submission_backpressure_time: N,\n"
         "            task_output_backpressure_time: Z,\n"
         "            task_completion_time_total_s: N,\n"
