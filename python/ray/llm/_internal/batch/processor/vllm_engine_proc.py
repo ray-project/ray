@@ -101,6 +101,12 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         "For ray distributed executor backend, each bundle must specify at most one GPU. "
         "For mp backend, the 'strategy' field is ignored.",
     )
+    # Testing/debugging parameter for simulating failures
+    simulate_failure: Optional[int] = Field(
+        default=None,
+        description="If set to an integer, fail batches containing rows with id > this threshold. "
+        "Used for testing checkpoint restoration. Not for production use.",
+    )
 
     @root_validator(pre=True)
     def validate_task_type(cls, values):
@@ -276,6 +282,7 @@ def build_vllm_engine_processor(
                 dynamic_lora_loading_path=config.dynamic_lora_loading_path,
                 placement_group_config=config.placement_group_config,
                 should_continue_on_error=config.should_continue_on_error,
+                simulate_failure=config.simulate_failure,
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,

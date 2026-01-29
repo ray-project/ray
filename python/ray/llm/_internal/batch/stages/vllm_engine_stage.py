@@ -569,6 +569,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         max_pending_requests: Optional[int] = None,
         dynamic_lora_loading_path: Optional[str] = None,
         should_continue_on_error: bool = False,
+        simulate_failure: Optional[int] = None,
     ):
         """
         Initialize the vLLMEngineStageUDF.
@@ -586,10 +587,13 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             should_continue_on_error: If True, continue processing when inference fails for
                 a row instead of raising. Failed rows will have '__inference_error__'
                 set to the error message.
+            simulate_failure: If set to an integer, fail batches containing rows with
+                id > this threshold. Used for testing checkpoint restoration.
         """
         super().__init__(data_column, expected_input_keys)
         self.model = model
         self.should_continue_on_error = should_continue_on_error
+        self.simulate_failure = simulate_failure
 
         # Setup vLLM engine kwargs.
         self.task_type = task_type
@@ -687,6 +691,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             The output dict, with __inference_error__ set if an error occurred.
         """
         idx_in_batch = row[self.IDX_IN_BATCH_COLUMN]
+        
         try:
             request, output, time_taken_llm = await self.llm.generate_async(row)
             return {
@@ -755,6 +760,21 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             asyncio.create_task(self._generate_with_error_handling(row, batch_uuid))
             for row in batch
         ]
+
+        # Check if we should simulate failure BEFORE processing this block
+        # This allows previous blocks to complete and be checkpointed
+        if self.simulate_failure is not None:
+            # simulate_failure is the id threshold - fail if any row id > threshold
+            fail_rows = [r for r in batch if r.get("id") is not None and r.get("id") > self.simulate_failure]
+            if fail_rows:
+                fail_ids = [r.get("id") for r in fail_rows]
+                logger.error(
+                    f"[vLLM] Simulated failure for batch containing rows with id > {self.simulate_failure}: {fail_ids}"
+                )
+                raise RuntimeError(
+                    f"Simulated failure: batch contains rows with id > {self.simulate_failure} "
+                    f"(row ids: {fail_ids})"
+                )
 
         for resp in asyncio.as_completed(tasks):
             yield await resp
