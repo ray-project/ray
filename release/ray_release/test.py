@@ -486,11 +486,6 @@ class Test(dict):
     def update_from_s3(self, force_branch_bucket: bool = True) -> None:
         """Update test object with data fields that exist only on s3."""
         try:
-            list_response = boto3.client("s3").list_objects_v2(
-                Bucket=get_read_state_machine_aws_bucket(),
-                Prefix=f"{AWS_TEST_KEY}/",
-            )
-            print(list_response)
             data = (
                 boto3.client("s3")
                 .get_object(
