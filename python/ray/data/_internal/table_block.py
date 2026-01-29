@@ -14,8 +14,6 @@ from typing import (
     Union,
 )
 
-import numpy as np
-
 from ray._private.ray_constants import env_integer
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
@@ -175,10 +173,6 @@ class TableBlockAccessor(BlockAccessor):
     @staticmethod
     def _munge_conflict(name, count):
         return f"{name}_{count + 1}"
-
-    @staticmethod
-    def _build_tensor_row(row: Mapping, row_idx: int) -> np.ndarray:
-        raise NotImplementedError
 
     def to_default(self) -> Block:
         # Always promote Arrow blocks to pandas for consistency, since
