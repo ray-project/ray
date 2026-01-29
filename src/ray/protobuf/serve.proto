@@ -400,6 +400,8 @@ service UserDefinedService {
   rpc Method1(UserDefinedMessage) returns (UserDefinedResponse);
   rpc Method2(UserDefinedMessage2) returns (UserDefinedResponse2);
   rpc Streaming(UserDefinedMessage) returns (stream UserDefinedResponse);
+  rpc ClientStreaming(stream UserDefinedMessage) returns (UserDefinedResponse);
+  rpc BidiStreaming(stream UserDefinedMessage) returns (stream UserDefinedResponse);
 }
 
 service FruitService {
