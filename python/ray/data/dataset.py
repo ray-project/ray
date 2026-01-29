@@ -4345,6 +4345,141 @@ class Dataset:
 
     @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
     @ConsumptionAPI
+    def write_delta(
+        self,
+        path: str,
+        *,
+        mode: str = "append",
+        partition_cols: Optional[List[str]] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        schema: Optional["pyarrow.Schema"] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+        **write_kwargs,
+    ) -> None:
+        """Write the dataset to a Delta Lake table.
+
+        Writes the dataset to a Delta Lake table with ACID guarantees using
+        a two-phase commit protocol. All files are written first, then committed
+        atomically in a single Delta transaction.
+
+        Examples:
+            Write to a local Delta table:
+
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_delta("/tmp/my-delta-table") # doctest: +SKIP
+
+            Write with partitioning:
+
+            >>> ds = ray.data.from_items([
+            ...     {"year": 2024, "month": 1, "value": 100},
+            ...     {"year": 2024, "month": 2, "value": 200},
+            ... ])
+            >>> ds.write_delta( # doctest: +SKIP
+            ...     "/tmp/partitioned-table",
+            ...     partition_cols=["year", "month"]
+            ... )
+
+            Overwrite existing table:
+
+            >>> ds.write_delta( # doctest: +SKIP
+            ...     "/tmp/my-delta-table",
+            ...     mode="overwrite"
+            ... )
+
+            Write to cloud storage (S3):
+
+            >>> ds.write_delta( # doctest: +SKIP
+            ...     "s3://bucket/path/to/table",
+            ...     storage_options={
+            ...         "AWS_REGION": "us-west-2",
+            ...         "AWS_ACCESS_KEY_ID": "...",
+            ...         "AWS_SECRET_ACCESS_KEY": "...",
+            ...     }
+            ... )
+
+        Args:
+            path: Path to the Delta table. Supports:
+
+                * Local filesystem: /path/to/table
+                * S3: s3://bucket/path/to/table
+                * GCS: gs://bucket/path/to/table
+                * Azure: abfss://container@account.dfs.core.windows.net/path
+
+            mode: Write mode for handling existing tables. Options:
+
+                * "append": Add data to existing table (default)
+                * "overwrite": Replace all data in the table
+                * "error": Raise error if table already exists
+                * "ignore": Skip write if table already exists
+
+            partition_cols: List of column names to partition by. Creates Hive-style
+                partitioning (e.g., year=2024/month=10/). Partition columns are
+                removed from the data files and encoded in directory names.
+            filesystem: PyArrow filesystem to use for writing. If None, automatically
+                detected based on the path scheme (s3://, gs://, etc.).
+            schema: PyArrow schema for the table. If None, inferred from the data.
+                Schema inference may fail for complex types; provide explicit schema
+                if needed.
+            ray_remote_args: Arguments passed to :func:`ray.remote` for write tasks.
+                Use to configure resources such as ``num_cpus`` or ``num_gpus``.
+            concurrency: Maximum number of concurrent write tasks. By default,
+                concurrency is dynamically determined based on available resources.
+            **write_kwargs: Additional arguments passed to the Delta writer:
+
+                * storage_options: Cloud storage credentials (dict)
+                * name: Table name for Delta metadata
+                * description: Table description for Delta metadata
+                * configuration: Delta table configuration options (dict)
+                * compression: Parquet compression codec ("snappy", "gzip", "zstd", etc.)
+
+        Raises:
+            ImportError: If the deltalake package is not installed. Install with
+                ``pip install deltalake``.
+            ValueError: If mode is invalid, or if table exists with mode="error",
+                or if partition columns don't exist in the data schema.
+
+        Note:
+            This operation uses a two-phase commit protocol:
+
+            1. **Phase 1 (Distributed)**: Each Ray task writes its data blocks as
+               Parquet files and returns AddAction metadata (files not yet visible).
+            2. **Phase 2 (Driver)**: The driver collects all AddActions and commits
+               them atomically in a single Delta transaction.
+
+            This ensures ACID properties: either all files become visible or none do.
+            If the write fails partway through, uncommitted files can be removed
+            by running Delta's VACUUM command.
+
+        Note:
+            For cloud storage, provide authentication via ``storage_options``:
+
+            * **AWS S3**: ``{"AWS_REGION": "...", "AWS_ACCESS_KEY_ID": "...", "AWS_SECRET_ACCESS_KEY": "..."}``
+            * **GCS**: ``{"GOOGLE_SERVICE_ACCOUNT": "path/to/key.json"}``
+            * **Azure**: ``{"AZURE_STORAGE_ACCOUNT_KEY": "..."}``
+
+            Alternatively, use environment variables or cloud-native authentication
+            (IAM roles, service accounts, etc.).
+        """
+        from ray.data._internal.datasource.delta import DeltaDatasink
+
+        datasink = DeltaDatasink(
+            path,
+            mode=mode,
+            partition_cols=partition_cols,
+            filesystem=filesystem,
+            schema=schema,
+            **write_kwargs,
+        )
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    @ConsumptionAPI
     def write_images(
         self,
         path: str,
