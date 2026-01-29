@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -809,6 +810,69 @@ def test_deploy_use_custom_autoscaling(serve_instance):
         lambda: httpx.post(f"{get_application_url(app_name='app1')}/").text
         == "hello_from_custom_autoscaling_policy"
     )
+
+
+def test_controller_health(serve_instance):
+
+    # Wait for control loops to run
+    time.sleep(1)
+
+    # Test YAML output (default)
+    # Note: We don't capture stderr because Ray connection logs would be mixed in
+    output = subprocess.check_output(
+        ["serve", "controller-health"],
+    )
+    output_str = output.decode("utf-8")
+
+    # Verify expected fields are present in YAML output
+    expected_fields = [
+        "timestamp:",
+        "controller_start_time:",
+        "uptime_s:",
+        "num_control_loops:",
+        "loop_duration_s:",
+        "loops_per_second:",
+        "num_asyncio_tasks:",
+        "process_memory_mb:",
+    ]
+    for field in expected_fields:
+        assert field in output_str, f"Missing field in YAML output: {field}"
+
+    # Verify DurationStats structure is present
+    assert "mean:" in output_str
+    assert "std:" in output_str
+    assert "min:" in output_str
+    assert "max:" in output_str
+
+    # Test JSON output
+    json_output = subprocess.check_output(
+        ["serve", "controller-health", "--json"],
+    )
+    metrics = json.loads(json_output.decode("utf-8"))
+
+    # Verify it's a valid dictionary with expected fields
+    assert isinstance(metrics, dict)
+    assert metrics["timestamp"] > 0
+    assert metrics["controller_start_time"] > 0
+    assert metrics["num_control_loops"] > 0
+    assert metrics["loop_duration_s"]["mean"] > 0
+    assert "handle_metrics_delay_ms" in metrics
+    assert "replica_metrics_delay_ms" in metrics
+
+
+def test_controller_health_serve_not_running(start_and_shutdown_ray_cli_module):
+    """Test that controller-health shows a helpful error when Serve isn't running."""
+
+    with pytest.raises(subprocess.CalledProcessError) as exc_info:
+        subprocess.check_output(
+            ["serve", "controller-health"],
+            stderr=subprocess.STDOUT,
+        )
+
+    output = exc_info.value.output.decode("utf-8")
+
+    # Verify the error message contains the helpful RayServeException message
+    assert "no serve instance running" in output.lower()
 
 
 if __name__ == "__main__":

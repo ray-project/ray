@@ -3,6 +3,6 @@ froms:
   - rayproject/manylinux2014:$MANYLINUX_VERSION-jdk-$HOSTTYPE
 build_args:
   - BUILDKITE_BAZEL_CACHE_URL
-  - MANYLINUX_VERSION=260103.868e54c
+  - MANYLINUX_VERSION
   - HOSTTYPE
 dockerfile: ci/docker/manylinux-retag.Dockerfile
