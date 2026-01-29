@@ -13,6 +13,8 @@ import click
 import runfiles
 from networkx import DiGraph, ancestors as networkx_ancestors, topological_sort
 
+from ci.raydepsets.dependency_graph import DependencyGraph
+from ci.raydepsets.parser import Parser
 from ci.raydepsets.workspace import Depset, Workspace
 
 DEFAULT_UV_FLAGS = """
@@ -196,6 +198,15 @@ class DependencySetManager:
                 )
                 for depset_name in depset.depsets:
                     self.build_graph.add_edge(depset_name, depset.name)
+            elif depset.operation == "relax":
+                self.build_graph.add_node(
+                    depset.name,
+                    operation="relax",
+                    depset=depset,
+                    node_type="depset",
+                    config_name=depset.config_name,
+                )
+                self.build_graph.add_edge(depset.source_depset, depset.name)
             else:
                 raise ValueError(
                     f"Invalid operation: {depset.operation} for depset {depset.name} in config {depset.config_name}"
@@ -317,6 +328,17 @@ class DependencySetManager:
                 output=depset.output,
                 include_setuptools=depset.include_setuptools,
             )
+        elif depset.operation == "relax":
+            self.relax(
+                source_depset=depset.source_depset,
+                drop_packages=depset.drop_packages,
+                requirements=depset.requirements,
+                constraints=depset.constraints,
+                name=depset.name,
+                output=depset.output,
+                append_flags=depset.append_flags,
+                override_flags=depset.override_flags,
+            )
         click.echo(f"Dependency set {depset.name} compiled successfully")
 
     def compile(
@@ -408,6 +430,39 @@ class DependencySetManager:
             include_setuptools=include_setuptools,
         )
 
+    def relax(
+        self,
+        source_depset: str,
+        requirements: List[str],
+        constraints: List[str],
+        drop_packages: List[str],
+        name: str,
+        output: str = None,
+        append_flags: Optional[List[str]] = None,
+        override_flags: Optional[List[str]] = None,
+        include_setuptools: Optional[bool] = False,
+    ):
+        """Relax a dependency set."""
+        depset = _get_depset(self.config.depsets, source_depset)
+        deps = Parser(self.get_path(depset.output)).parse()
+        dependency_graph = DependencyGraph()
+        dependency_graph.build_dependency_graph(deps)
+        dependency_graph.remove_dropped_dependencies(drop_packages)
+        temp_dir = tempfile.mkdtemp()
+        relaxed_output_file = Path(temp_dir) / f"{Path(depset.output).name}.relaxed"
+        _graph_to_lockfile(dependency_graph.graph, relaxed_output_file)
+        requirements.append(relaxed_output_file.as_posix())
+        self.compile(
+            constraints=constraints,
+            requirements=requirements,
+            name=name,
+            output=output,
+            append_flags=append_flags,
+            override_flags=override_flags,
+            include_setuptools=include_setuptools,
+        )
+        shutil.rmtree(temp_dir)
+
     def read_lock_file(self, file_path: Path) -> List[str]:
         """Read and return the contents of a lock file as a list of lines."""
         if not file_path.exists():
@@ -492,6 +547,18 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
         new_args.append(arg)
 
     return new_args + _flatten_flags(flags)
+
+
+def _graph_to_lockfile(graph: DiGraph, output_path: Path):
+    lockfile_content = (
+        "\n".join(
+            [f"{node}=={data['version']}" for node, data in graph.nodes(data=True)]
+        )
+        + "\n"
+    )
+    print(f"Writing lockfile to {output_path}")
+    with open(output_path, "w") as f:
+        f.write(lockfile_content)
 
 
 def _uv_binary():
