@@ -43,8 +43,8 @@ class LogicalOperator(Operator):
         """
         if self._num_outputs is not None:
             return self._num_outputs
-        elif len(self._input_dependencies) == 1:
-            return self._input_dependencies[0].estimated_num_outputs()
+        elif len(self.input_dependencies) == 1:
+            return self.input_dependencies[0].estimated_num_outputs()
         return None
 
     # Override the following 3 methods to correct type hints.
@@ -52,6 +52,10 @@ class LogicalOperator(Operator):
     @property
     def input_dependencies(self) -> List["LogicalOperator"]:
         return super().input_dependencies  # type: ignore
+
+    @input_dependencies.setter
+    def input_dependencies(self, value: List["LogicalOperator"]) -> None:
+        self._input_dependencies = value
 
     @property
     def output_dependencies(self) -> List["LogicalOperator"]:

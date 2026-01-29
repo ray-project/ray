@@ -855,6 +855,8 @@ class CreatePlacementGroupRequest:
     target_node_id: str
     name: str
     runtime_env: Optional[str] = None
+    bundle_label_selector: Optional[List[Dict[str, str]]] = None
+    fallback_strategy: Optional[List[Dict[str, Any]]] = None
 
 
 # This error is used to raise when a by-value DeploymentResponse is converted to an

@@ -40,8 +40,8 @@ def create_cluster_autoscaler(
     if selected_autoscaler == ClusterAutoscalerVersion.V2:
         return DefaultClusterAutoscalerV2(
             resource_manager,
-            resource_limits=resource_limits,
             execution_id=execution_id,
+            resource_limits=resource_limits,
         )
 
     elif selected_autoscaler == ClusterAutoscalerVersion.V1:

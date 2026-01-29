@@ -416,7 +416,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
-def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
+def test_browser_safe_methods_only(enable_test_module, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
@@ -672,6 +672,23 @@ def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
         )
         with pytest.raises(HTTPError):
             response.raise_for_status()
+
+    # DELETE should be blocked for browsers
+    for testcase in testcases:
+        response = requests.delete(
+            webui_url + "/api/jobs/nonexistent-job-id",
+            headers=testcase,
+        )
+        assert response.status_code == 405, "DELETE should be blocked for browsers"
+
+    # PATCH should also be blocked for browsers
+    for testcase in testcases:
+        response = requests.patch(
+            webui_url + "/api/jobs/nonexistent-job-id",
+            headers=testcase,
+            json={},
+        )
+        assert response.status_code == 405, "PATCH should be blocked for browsers"
 
     # Getting jobs should be fine for browsers
     response = requests.get(webui_url + "/api/jobs/")
@@ -1011,7 +1028,6 @@ def test_get_cluster_status(ray_start_with_dashboard):
     indirect=True,
 )
 def test_get_nodes_summary(call_ray_start):
-
     # The sleep is needed since it seems a previous shutdown could be not yet
     # done when the next test starts. This prevents a previous cluster to be
     # connected the current test session.

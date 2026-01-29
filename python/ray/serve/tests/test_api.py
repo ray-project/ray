@@ -36,6 +36,9 @@ from ray.serve.handle import DeploymentHandle
 
 @pytest.fixture
 def serve_and_ray_shutdown():
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
     yield
     serve.shutdown()
     ray.shutdown()

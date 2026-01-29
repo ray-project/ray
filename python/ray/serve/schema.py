@@ -254,6 +254,19 @@ class RayActorOptionsSchema(BaseModel):
             "See :ref:`accelerator types <accelerator_types>`."
         ),
     )
+    label_selector: Dict[str, str] = Field(
+        default=None,
+        description=(
+            "If specified, requires that the actor run on a node with the specified labels."
+        ),
+    )
+    fallback_strategy: List[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "If specified, expresses soft constraints through a list of decorator "
+            "options to fall back on when scheduling on a node."
+        ),
+    )
 
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):
@@ -395,6 +408,17 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         ),
     )
 
+    placement_group_bundle_label_selector: List[Dict[str, str]] = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "A list of label selectors to apply to the placement group "
+            "on a per-bundle level."
+        ),
+    )
+
+    # TODO(ryanaoleary@): Support placement_group_fallback_strategy here when
+    # support is added for that field to placement group options.
+
     max_replicas_per_node: int = Field(
         default=DEFAULT.VALUE,
         description=(
@@ -447,6 +471,32 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
                 "Setting max_replicas_per_node is not allowed when "
                 "placement_group_bundles is provided."
             )
+
+        return values
+
+    @root_validator
+    def validate_bundle_label_selector(cls, values):
+        placement_group_bundles = values.get("placement_group_bundles", None)
+        bundle_label_selector = values.get(
+            "placement_group_bundle_label_selector", None
+        )
+
+        if bundle_label_selector not in [DEFAULT.VALUE, None]:
+            if placement_group_bundles in [DEFAULT.VALUE, None]:
+                raise ValueError(
+                    "Setting bundle_label_selector is not allowed when "
+                    "placement_group_bundles is not provided."
+                )
+
+            if len(bundle_label_selector) != 1 and len(bundle_label_selector) != len(
+                placement_group_bundles
+            ):
+                raise ValueError(
+                    f"The `placement_group_bundle_label_selector` list must contain either "
+                    f"a single selector (to apply to all bundles) or match the number of "
+                    f"`placement_group_bundles`. Got {len(bundle_label_selector)} "
+                    f"selectors for {len(placement_group_bundles)} bundles."
+                )
 
         return values
 

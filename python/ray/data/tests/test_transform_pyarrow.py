@@ -9,7 +9,6 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
@@ -23,6 +22,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     _extension_array_concat_supported,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.extensions import (

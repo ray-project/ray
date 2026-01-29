@@ -42,7 +42,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     RowMapTransformFn,
 )
 from ray.data._internal.execution.util import make_callable_class_single_threaded
-from ray.data._internal.logical.operators.map_operator import (
+from ray.data._internal.logical.operators import (
     AbstractUDFMap,
     Filter,
     FlatMap,

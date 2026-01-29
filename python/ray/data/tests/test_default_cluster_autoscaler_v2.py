@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -564,6 +565,35 @@ class TestClusterAutoscaling:
         assert resources_allocated.memory >= large_node_spec.mem, (
             f"Existing large node (mem={large_node_spec.mem}) should be included. "
             f"Got total memory={resources_allocated.memory}"
+        )
+
+    def test_try_scale_up_logs_info_message(self, propagate_logs, caplog):
+        fake_coordinator = FakeAutoscalingCoordinator()
+        node_spec = _NodeResourceSpec.of(cpu=1, gpu=0, mem=8 * 1024**3)
+        utilization = ExecutionResources(cpu=1, gpu=1, object_store_memory=1)
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            execution_id="test_execution_id",
+            resource_utilization_calculator=StubUtilizationGauge(utilization),
+            min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=fake_coordinator,
+            get_node_counts=lambda: {node_spec: 1},
+        )
+
+        with caplog.at_level(logging.INFO):
+            autoscaler.try_trigger_scaling()
+
+        expected_message = (
+            "The utilization of one or more logical resource is higher than the "
+            "specified threshold of 75%: CPU=100%, GPU=100%, object_store_memory=100%. "
+            "Requesting 1 node(s) of each shape: "
+            "[{CPU: 1, GPU: 0, memory: 8.0GiB}: 1 -> 2]"
+        )
+        log_messages = [record.message for record in caplog.records]
+        assert expected_message in log_messages, (
+            f"Expected log message not found.\n"
+            f"Expected: {expected_message}\n"
+            f"Actual logs: {log_messages}"
         )
 
 

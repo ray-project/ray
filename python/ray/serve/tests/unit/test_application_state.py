@@ -1496,6 +1496,68 @@ class TestOverrideDeploymentInfo:
             == "s3://B"
         )
 
+    def test_override_bundle_label_selector(self, info):
+        """Test placement_group_bundle_label_selector is propagated from config."""
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    placement_group_bundles=[{"CPU": 1}],
+                    placement_group_bundle_label_selector=[
+                        {"accelerator-type": "A100"}
+                    ],
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info({"A": info}, config)
+        updated_info = updated_infos["A"]
+
+        assert updated_info.replica_config.placement_group_bundle_label_selector == [
+            {"accelerator-type": "A100"}
+        ]
+
+    def test_override_fallback_strategy(self, info):
+        """Test placement_group_fallback_strategy is preserved when config is updated.
+
+        placement_group_fallback_strategy is not yet part of the public DeploymentSchema,
+        so we cannot set it via the override config. Instead, we verify that an existing
+        value in the ReplicaConfig is preserved when other fields are updated via the config.
+        """
+        initial_info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(num_replicas=1),
+            replica_config=ReplicaConfig.create(
+                lambda x: x,
+                placement_group_bundles=[{"CPU": 1}],
+                placement_group_fallback_strategy=[{"bundles": [{"CPU": 1}]}],
+            ),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    num_replicas=5,  # Update a different field
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info({"A": initial_info}, config)
+        updated_info = updated_infos["A"]
+
+        assert updated_info.deployment_config.num_replicas == 5
+        assert updated_info.replica_config.placement_group_fallback_strategy == [
+            {"bundles": [{"CPU": 1}]}
+        ]
+
 
 class TestAutoscale:
     def test_autoscale(self, mocked_application_state_manager):

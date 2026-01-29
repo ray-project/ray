@@ -696,7 +696,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 "batch_uuid": batch_uuid.hex,
                 "time_taken_llm": time_taken_llm,
                 "params": str(request.params),
-                "__inference_error__": None,
+                "__inference_error__": "",
             }
         except _VLLM_FATAL_ERRORS as e:
             # Fatal engine errors (e.g., EngineDeadError) indicate the vLLM
@@ -732,11 +732,21 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             )
             # Include snippet of failed prompt for debuggability
             prompt = truncate_str(row.get("prompt", ""), _MAX_PROMPT_LENGTH_IN_ERROR)
+
+            # Construct default vLLMOutputData for schema consistency with success rows
+            default_output = vLLMOutputData(
+                prompt=prompt,
+                prompt_token_ids=None,
+                num_input_tokens=0,
+            )
             return {
+                **default_output.model_dump(),
+                "request_id": -1,
                 self.IDX_IN_BATCH_COLUMN: idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
+                "time_taken_llm": -1,
+                "params": "",
                 "__inference_error__": error_msg,
-                "prompt": prompt,
             }
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
