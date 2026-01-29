@@ -87,6 +87,7 @@ def commit_upsert(
         schema=delta_schema,
         partition_by=partition_cols or None,
         commit_properties=commit_properties,
+        post_commithook_properties=write_kwargs.get("post_commithook_properties"),
     )
 
 
