@@ -89,6 +89,7 @@ from ray.rllib.examples.utils import (
     run_rllib_example_script_experiment,
 )
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.debug.deterministic import update_global_seed_if_necessary
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -100,6 +101,7 @@ parser.set_defaults(
     env="CartPole-v1",
     checkpoint_freq=1,
 )
+parser.add_argument("--seed", type=int, default=42)
 
 
 class MyBCModel(TorchRLModule):
@@ -186,6 +188,8 @@ class MyPPOModel(MyBCModel, ValueFunctionAPI):
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    update_global_seed_if_necessary(framework="torch", seed=args.seed)
+
     assert args.env == "CartPole-v1", "This example works only with --env=CartPole-v1!"
 
     # Define the data paths for our CartPole large dataset.
@@ -225,12 +229,14 @@ if __name__ == "__main__":
             # run an entire epoch on the dataset during a single RLlib training
             # iteration. For single-learner mode, 1 is the only option.
             dataset_num_iters_per_learner=1 if not args.num_learners else None,
-        ).training(
+        )
+        .training(
             train_batch_size_per_learner=1024,
             # To increase learning speed with multiple learners,
             # increase the learning rate correspondingly.
             lr=0.0008 * (args.num_learners or 1) ** 0.5,
         )
+        .debugging(seed=args.seed)
         # Plug in our simple custom BC model from above.
         .rl_module(rl_module_spec=RLModuleSpec(module_class=MyBCModel))
         # Run evaluation to observe how good our BC policy already is.
@@ -268,6 +274,7 @@ if __name__ == "__main__":
             num_epochs=6,
             vf_loss_coeff=0.01,
         )
+        .debugging(seed=args.seed)
         # Plug in our simple custom PPO model from above. Note that the checkpoint
         # for the BC model is loadable into the PPO model, b/c the BC model is a subset
         # of the PPO model (all weights/biases in the BC model are also found in the PPO
@@ -302,15 +309,15 @@ if __name__ == "__main__":
     assert R >= 200.0, f"Initial PPO performance bad! R={R} (expected 200.0+)."
     print(f"PPO return after initialization: {R}")
     # Check, whether training 2 times causes catastrophic forgetting.
-    for _ in range(3):
+    for _ in range(5):
         ppo.train()
     eval_results = ppo.evaluate()
     R = eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     assert R >= 250.0, f"PPO performance (training) bad! R={R} (expected 250.0+)."
-    print(f"PPO return after 2x training: {R}")
+    print(f"PPO return after 5x training: {R}")
 
     # Perform actual PPO training run (this time until 450.0 return).
     stop = {
-        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 450.0,
+        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 450.0,
     }
     run_rllib_example_script_experiment(base_config, args, stop=stop)
