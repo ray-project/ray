@@ -52,15 +52,14 @@ from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
     OpState,
     build_streaming_topology,
+    format_op_state_summary,
     get_eligible_operators,
     process_completed_tasks,
     select_operator_to_run,
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.logical.operators.map_operator import MapRows
-from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.logical.operators import MapRows, Read, Write
 from ray.data._internal.util import MiB
 from ray.data.block import BlockAccessor, BlockMetadataWithSchema
 from ray.data.context import DataContext
@@ -510,19 +509,19 @@ def test_summary_str_backpressure_policies(ray_start_regular_shared):
     resource_manager = mock_resource_manager()
 
     # Test with no backpressure
-    summary = topo[o2].summary_str_raw(resource_manager)
+    summary = format_op_state_summary(topo[o2], resource_manager)
     assert "backpressured" not in summary
 
     # Set task submission backpressure with policy (using UX name)
     o2._in_task_submission_backpressure = True
     o2._task_submission_backpressure_policy = "ConcurrencyCap"
-    summary = topo[o2].summary_str_raw(resource_manager)
+    summary = format_op_state_summary(topo[o2], resource_manager)
     assert "tasks(ConcurrencyCap)" in summary
 
     # Set output backpressure with policy (using UX name)
     o2._in_task_output_backpressure = True
     o2._task_output_backpressure_policy = "ResourceBudget"
-    summary = topo[o2].summary_str_raw(resource_manager)
+    summary = format_op_state_summary(topo[o2], resource_manager)
     assert "tasks(ConcurrencyCap)" in summary
     assert "outputs(ResourceBudget)" in summary
 
@@ -531,7 +530,7 @@ def test_summary_str_backpressure_policies(ray_start_regular_shared):
     o2._task_submission_backpressure_policy = None
     o2._in_task_output_backpressure = False
     o2._task_output_backpressure_policy = None
-    summary = topo[o2].summary_str_raw(resource_manager)
+    summary = format_op_state_summary(topo[o2], resource_manager)
     assert "backpressured" not in summary
 
 
