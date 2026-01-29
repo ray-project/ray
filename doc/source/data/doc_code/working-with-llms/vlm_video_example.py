@@ -58,9 +58,9 @@ video_processor_config = vLLMEngineProcessorConfig(
             allowed_local_media_path="/tmp",
         ),
     },
-    chat_template_stage={"enabled": True},
-    tokenize_stage={"enabled": True},
-    detokenize_stage={"enabled": True},
+    chat_template_stage=True,
+    tokenize_stage=True,
+    detokenize_stage=True,
 )
 # __vlm_video_config_example_end__
 
@@ -188,9 +188,9 @@ def create_vlm_video_config():
                 allowed_local_media_path="/tmp",
             ),
         },
-        chat_template_stage={"enabled": True},
-        tokenize_stage={"enabled": True},
-        detokenize_stage={"enabled": True},
+        chat_template_stage=True,
+        tokenize_stage=True,
+        detokenize_stage=True,
     )
 
 

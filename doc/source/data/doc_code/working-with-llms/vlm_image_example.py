@@ -48,8 +48,6 @@ path = "hf://datasets/lmms-lab/LMMs-Eval-Lite/coco2017_cap_val/"
 fs = HfFileSystem()
 vision_dataset = ray.data.read_parquet(path, filesystem=fs)
 
-HF_TOKEN = "your-hf-token-here"  # Replace with actual token if needed
-
 # __vlm_config_example_start__
 vision_processor_config = vLLMEngineProcessorConfig(
     model_source="Qwen/Qwen2.5-VL-3B-Instruct",
@@ -57,18 +55,10 @@ vision_processor_config = vLLMEngineProcessorConfig(
         tensor_parallel_size=1,
         pipeline_parallel_size=1,
         max_model_len=4096,
-        enable_chunked_prefill=True,
-        max_num_batched_tokens=2048,
         trust_remote_code=True,
         limit_mm_per_prompt={"image": 1},
     ),
-    runtime_env=dict(
-        env_vars=dict(
-            VLLM_USE_V1="1",
-        ),
-    ),
     batch_size=16,
-    accelerator_type="L4",
     concurrency=1,
     prepare_multimodal_stage={"enabled": True},
 )
@@ -185,7 +175,6 @@ def create_vlm_config():
             limit_mm_per_prompt={"image": 1},
         ),
         batch_size=1,
-        accelerator_type="L4",
         concurrency=1,
         prepare_multimodal_stage={"enabled": True},
     )

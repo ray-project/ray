@@ -53,9 +53,9 @@ audio_processor_config = vLLMEngineProcessorConfig(
         "enabled": True,
         "chat_template_content_format": "openai",
     },
-    chat_template_stage={"enabled": True},
-    tokenize_stage={"enabled": True},
-    detokenize_stage={"enabled": True},
+    chat_template_stage=True,
+    tokenize_stage=True,
+    detokenize_stage=True,
 )
 # __omni_audio_config_example_end__
 
@@ -169,9 +169,9 @@ def create_omni_audio_config():
             "enabled": True,
             "chat_template_content_format": "openai",
         },
-        chat_template_stage={"enabled": True},
-        tokenize_stage={"enabled": True},
-        detokenize_stage={"enabled": True},
+        chat_template_stage=True,
+        tokenize_stage=True,
+        detokenize_stage=True,
     )
 
 
