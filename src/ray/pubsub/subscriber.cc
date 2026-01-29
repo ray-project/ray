@@ -438,9 +438,11 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
             }
           }
           if (!status.ok()) {
-            RAY_CHECK(!status.IsInvalidArgument())
-                << "Request to subscribe to the publisher failed due to bad arguments: "
-                << status.message();
+            RAY_CHECK(!status.IsInvalidArgument()) << absl::StrFormat(
+                "Request to subscribe to the publisher failed due to bad arguments: %s."
+                " Is the subscriber's ray version consisten with the publisher's ray "
+                "version?",
+                status.message());
             // This means the publisher has failed.
             // The publisher dead detection & command clean up will be done
             // from the long polling request.

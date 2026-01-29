@@ -73,9 +73,15 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
 
   Status status = Status::OK();
   for (const auto &command : request.commands()) {
-    RAY_CHECK(command.has_unsubscribe_message() || command.has_subscribe_message())
-        << absl::StrFormat("Unexpected pubsub command has been received: %s",
-                           command.DebugString());
+    if (!command.has_unsubscribe_message() && !command.has_subscribe_message()) {
+      send_reply_callback(Status::InvalidArgument(absl::StrFormat(
+                              "Unexpected pubsub command has been received: %s"
+                              "Expected either unsubscribe or subscribe message",
+                              command.DebugString())),
+                          nullptr,
+                          nullptr);
+      return;
+    }
 
     if (command.has_unsubscribe_message()) {
       gcs_publisher_.GetPublisher().UnregisterSubscription(
@@ -84,18 +90,19 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
       iter->second.erase(subscriber_id);
     } else {  // subscribe_message case
-      Status iteration_status = gcs_publisher_.GetPublisher().RegisterSubscription(
-          command.channel_type(),
-          subscriber_id,
-          command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
-      if (iteration_status.IsInvalidArgument()) {
-        send_reply_callback(iteration_status, nullptr, nullptr);
+      StatusSet<StatusT::InvalidArgument> result =
+          gcs_publisher_.GetPublisher().RegisterSubscription(
+              command.channel_type(),
+              subscriber_id,
+              command.key_id().empty() ? std::nullopt
+                                       : std::make_optional(command.key_id()));
+      if (result.has_error()) {
+        send_reply_callback(
+            Status::InvalidArgument(
+                std::get<StatusT::InvalidArgument>(result.error()).message()),
+            nullptr,
+            nullptr);
         return;
-      }
-
-      if (!iteration_status.ok()) {
-        // Preserves the last error status.
-        status = iteration_status;
       }
       iter->second.insert(subscriber_id);
     }

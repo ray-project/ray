@@ -856,6 +856,55 @@ TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidChannelType) {
               std::string::npos);
 }
 
+TEST_F(CoreWorkerTest,
+       HandlePubsubCommandBatchMissingSubscribeOrUnsubscribeReturnsInvalidArgument) {
+  auto subscriber_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+
+  rpc::PubsubCommandBatchRequest command_batch_request;
+  command_batch_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_batch_request.add_commands();
+  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_key_id(object_id.Binary());
+
+  rpc::PubsubCommandBatchReply command_reply;
+  Status received_status;
+
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply,
+      [&received_status](const Status &status,
+                         std::function<void()>,
+                         std::function<void()>) { received_status = status; });
+
+  ASSERT_TRUE(received_status.IsInvalidArgument());
+}
+
+TEST_F(CoreWorkerTest,
+       HandlePubsubCommandBatchInvalidSubscribeMessageTypeReturnsInvalidArgument) {
+  auto subscriber_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+
+  rpc::PubsubCommandBatchRequest command_batch_request;
+  command_batch_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_batch_request.add_commands();
+  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_key_id(object_id.Binary());
+  command->mutable_subscribe_message();
+
+  rpc::PubsubCommandBatchReply command_reply;
+  Status received_status;
+
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply,
+      [&received_status](const Status &status,
+                         std::function<void()>,
+                         std::function<void()>) { received_status = status; });
+
+  ASSERT_TRUE(received_status.IsInvalidArgument());
+}
+
 class CoreWorkerPubsubWorkerRefRemovedChannelTest
     : public CoreWorkerTest,
       public ::testing::WithParamInterface<bool> {};

@@ -66,8 +66,10 @@ class SubscriberServiceImpl final : public rpc::SubscriberService::CallbackServi
     auto *reactor = context->DefaultReactor();
     for (const auto &command : request->commands()) {
       RAY_CHECK(command.has_unsubscribe_message() || command.has_subscribe_message())
-          << absl::StrFormat("Unexpected pubsub command has been received: %s",
-                             command.DebugString());
+          << absl::StrFormat(
+                 "Unexpected pubsub command has been received: %s"
+                 "Expected either unsubscribe or subscribe message",
+                 command.DebugString());
       if (command.has_unsubscribe_message()) {
         publisher_->UnregisterSubscription(command.channel_type(),
                                            subscriber_id,
@@ -75,12 +77,14 @@ class SubscriberServiceImpl final : public rpc::SubscriberService::CallbackServi
                                                ? std::nullopt
                                                : std::make_optional(command.key_id()));
       } else {  // subscribe_message case
-        // Register subscription for a valid channel type should succeed.
-        RAY_CHECK_OK(publisher_->RegisterSubscription(
-            command.channel_type(),
-            subscriber_id,
-            command.key_id().empty() ? std::nullopt
-                                     : std::make_optional(command.key_id())));
+        RAY_CHECK(publisher_
+                      ->RegisterSubscription(command.channel_type(),
+                                             subscriber_id,
+                                             command.key_id().empty()
+                                                 ? std::nullopt
+                                                 : std::make_optional(command.key_id()))
+                      .ok())
+            << "Register subscription for a valid channel type should succeed.";
       }
     }
     reactor->Finish(grpc::Status::OK);

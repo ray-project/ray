@@ -97,7 +97,6 @@ TEST_F(PubSubHandlerTest, HandleGcsSubscriberCommandBatchInvalidChannelType) {
 }
 
 TEST_F(PubSubHandlerTest, HandleGcsSubscriberCommandBatchValidChannelType) {
-  // Test that HandleGcsSubscriberCommandBatch succeeds for a valid channel type.
   const auto subscriber_id = UniqueID::FromRandom();
   const auto actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
 
@@ -120,6 +119,31 @@ TEST_F(PubSubHandlerTest, HandleGcsSubscriberCommandBatchValidChannelType) {
                          std::function<void()>) { received_status = status; });
 
   ASSERT_TRUE(received_status.ok()) << received_status.message();
+}
+
+TEST_F(
+    PubSubHandlerTest,
+    HandleGcsSubscriberCommandBatchMissingSubscribeOrUnsubscribeReturnsInvalidArgument) {
+  const auto subscriber_id = UniqueID::FromRandom();
+  const auto actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+
+  rpc::GcsSubscriberCommandBatchRequest request;
+  request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = request.add_commands();
+  command->set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
+  command->set_key_id(actor_id.Binary());
+
+  rpc::GcsSubscriberCommandBatchReply reply;
+  Status received_status;
+
+  pubsub_handler_->HandleGcsSubscriberCommandBatch(
+      request,
+      &reply,
+      [&received_status](const Status &status,
+                         std::function<void()>,
+                         std::function<void()>) { received_status = status; });
+
+  ASSERT_TRUE(received_status.IsInvalidArgument());
 }
 
 }  // namespace gcs

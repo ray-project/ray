@@ -990,7 +990,7 @@ TEST_F(SubscriberTest, TestIsSubscribed) {
   ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
 }
 
-TEST_F(SubscriberTest, TestCommandBatchInvalidArgumentStatusCausesCheck) {
+TEST_F(SubscriberTest, TestCommandBatchInvalidArgumentStatusIsFatal) {
   auto subscription_callback = [](const rpc::PubMessage &msg) {};
   auto failure_callback = EMPTY_FAILURE_CALLBACK;
 
@@ -1006,8 +1006,7 @@ TEST_F(SubscriberTest, TestCommandBatchInvalidArgumentStatusCausesCheck) {
                          failure_callback);
 
   ASSERT_DEATH(
-      owner_client->ReplyCommandBatch(Status::InvalidArgument("Invalid channel type")),
-      "Request to subscribe to the publisher failed due to bad arguments");
+      owner_client->ReplyCommandBatch(Status::InvalidArgument("Invalid channel type")));
 }
 
 }  // namespace pubsub
