@@ -277,6 +277,22 @@ class _ClientAPI:
             ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES
         )
 
+    def available_resources_per_node(self):
+        """Get available resources per node in the cluster.
+
+        Returns:
+            A mapping from node id to a resources dict describing the available
+            resources on that node.
+        """
+        # This should be imported here, otherwise, it will error doc build.
+        import ray.core.generated.ray_client_pb2 as ray_client_pb2
+
+        try:
+            typ = ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES_PER_NODE
+        except AttributeError:
+            typ = 8
+        return self.worker.get_cluster_info(typ)
+
     def get_runtime_context(self):
         """Return a Ray RuntimeContext describing the state on the server
 

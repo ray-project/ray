@@ -110,6 +110,7 @@ from ray._private.state import (  # noqa: E402,F401
     timeline,
     cluster_resources,
     available_resources,
+    available_resources_per_node,
 )
 from ray._private.worker import (  # noqa: E402,F401
     LOCAL_MODE,
@@ -179,6 +180,7 @@ __all__ = [
     "get_runtime_context",
     "autoscaler",
     "available_resources",
+    "available_resources_per_node",
     "cancel",
     "client",
     "ClientBuilder",
@@ -229,6 +231,7 @@ NON_AUTO_INIT_APIS = {
     "_config",
     "autoscaler",
     "available_resources",
+    "available_resources_per_node",
     "client",
     "cluster_resources",
     "cpp_function",
