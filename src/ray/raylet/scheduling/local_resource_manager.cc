@@ -142,20 +142,24 @@ void LocalResourceManager::MarkFootprintAsBusy(WorkFootprint item) {
 }
 
 void LocalResourceManager::MaybeMarkFootprintAsBusy(WorkFootprint item) {
-  auto prev = last_idle_times_.find(item);
-  if (prev != last_idle_times_.end() && prev->second.has_value()) {
-    // Save the current idle time before marking busy.
-    // This will be restored if MarkFootprintAsIdle is called later.
-    saved_footprint_idle_times_[item] = prev->second.value();
-  } else if (prev == last_idle_times_.end()) {
-    // Footprint wasn't tracked before (implicitly idle).
-    // Save InfinitePast as a marker so when restored, it won't affect
-    // the max idle time calculation in GetResourceIdleTime().
+  auto it = last_idle_times_.find(item);
+
+  // If the footprint is already busy, do nothing.
+  if (it != last_idle_times_.end() && !it->second.has_value()) {
+    return;
+  }
+
+  // If the footprint was idle, save its idle time.
+  if (it != last_idle_times_.end()) {
+    // It must have a value because we checked for the busy case above.
+    saved_footprint_idle_times_[item] = it->second.value();
+  } else {
+    // If the footprint wasn't tracked, it was implicitly idle.
+    // Save InfinitePast as a marker.
     saved_footprint_idle_times_[item] = absl::InfinitePast();
   }
-  if (prev != last_idle_times_.end() && !prev->second.has_value()) {
-    return;  // Already busy
-  }
+
+  // Mark as busy.
   last_idle_times_[item] = absl::nullopt;
   OnResourceOrStateChanged();
 }
