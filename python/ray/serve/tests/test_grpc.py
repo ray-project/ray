@@ -9,7 +9,10 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor
-from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    SERVE_NAMESPACE,
+)
 from ray.serve._private.test_utils import (
     get_application_url,
     ping_fruit_stand,
@@ -231,6 +234,10 @@ def test_grpc_request_timeouts(ray_instance, ray_shutdown, streaming: bool):
     When the request timed out, gRPC proxy should return timeout response for both
     unary and streaming request.
     """
+    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
+    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -293,6 +300,10 @@ def test_grpc_request_internal_error(ray_instance, ray_shutdown, streaming: bool
     When the request error out, gRPC proxy should return INTERNAL status and the error
     message in the response for both unary and streaming request.
     """
+    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
+    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -340,6 +351,10 @@ async def test_grpc_request_cancellation(ray_instance, ray_shutdown, streaming: 
 
     When the request is canceled, gRPC proxy should cancel the underlying task.
     """
+    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
+    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -401,6 +416,10 @@ def test_using_grpc_context(ray_instance, ray_shutdown, streaming: bool):
     When the deployment sets code, details, and trailing metadata in the gRPC context,
     the response will reflect those values.
     """
+    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
+    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -468,6 +487,10 @@ def test_using_grpc_context_exception(ray_instance, ray_shutdown, streaming: boo
     When the deployment sets a status code on the gRPC context and then raises an
     exception, the user-defined status code should be preserved in the response.
     """
+    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
+    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -592,6 +615,10 @@ def test_using_grpc_context_bad_function_signature(
     When the deployment sets code, details, and trailing metadata in the gRPC context,
     the response will reflect those values.
     """
+    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
+    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
