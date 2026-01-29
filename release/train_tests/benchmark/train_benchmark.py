@@ -114,7 +114,6 @@ def main():
             get_state_from_address(ray.get_runtime_context().gcs_address)
         )
         spilled_bytes_total = memory_info.store_stats.spilled_bytes_total
-        metrics["spilled_bytes_total"] = spilled_bytes_total
         metrics["spilled_gb_total"] = round(spilled_bytes_total / (1024**3), 2)
     except Exception as e:
         logger.warning(f"Failed to collect spilled_bytes_total metric: {e}")
