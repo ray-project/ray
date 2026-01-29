@@ -276,7 +276,8 @@ class MapTransformer:
 
     def udf_time_s(self, reset: bool) -> float:
         cur_time_s = self._udf_time_s
-        self._udf_time_s = 0
+        if reset:
+            self._udf_time_s = 0
         return cur_time_s
 
 
