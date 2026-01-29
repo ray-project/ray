@@ -74,7 +74,7 @@ int TestSetupUtil::StartUpRedisServer(int port, bool save) {
 #endif
   cmdargs.insert(cmdargs.end(), {"--port", std::to_string(actual_port)});
   RAY_LOG(INFO) << "Start redis command is: " << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs, true).second);
+  RAY_CHECK(Process::Spawn(cmdargs, true).ok());
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   return actual_port;
 }

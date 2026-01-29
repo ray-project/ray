@@ -169,4 +169,33 @@ Status boost_to_ray_status(const boost::system::error_code &error) {
   }
 }
 
+Status Status::FromError(const std::error_code &error) {
+  if (!error) {
+    return Status::OK();
+  }
+
+  if (error == std::errc::not_enough_memory) {
+    return Status::OutOfMemory(error.message());
+  }
+  if (error == std::errc::permission_denied) {
+    return Status::PermissionDenied(error.message());
+  }
+  if (error == std::errc::timed_out) {
+    return Status::TimedOut(error.message());
+  }
+  if (error == std::errc::interrupted) {
+    return Status::Interrupted(error.message());
+  }
+  if (error == std::errc::invalid_argument) {
+    return Status::InvalidArgument(error.message());
+  }
+  if (error == std::errc::no_such_file_or_directory) {
+    return Status::NotFound(error.message());
+  }
+  if (error == std::errc::file_exists) {
+    return Status::AlreadyExists(error.message());
+  }
+  return Status::IOError(error.message());
+}
+
 }  // namespace ray

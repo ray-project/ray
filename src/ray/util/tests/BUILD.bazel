@@ -159,6 +159,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:process",
+        "//src/ray/util:process_utils",
         "@boost//:process",
         "@com_google_googletest//:gtest_main",
     ],

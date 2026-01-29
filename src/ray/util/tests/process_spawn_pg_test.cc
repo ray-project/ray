@@ -20,6 +20,7 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -33,15 +34,17 @@ namespace {
 TEST(ProcessSpawnPGTest, SpawnWithNewProcessGroupRequestedChildBecomesLeader) {
   setenv("RAY_process_group_cleanup_enabled", "true", 1);
   std::vector<std::string> args = {"/bin/sleep", "5"};
-  auto [proc, ec] = Process::Spawn(args,
-                                   /*decouple=*/false,
-                                   /*pid_file=*/"",
-                                   /*env=*/{},
-                                   /*new_process_group=*/true);
-  ASSERT_FALSE(ec) << ec.message();
-  ASSERT_TRUE(proc.IsValid());
+  StatusOr<std::unique_ptr<ProcessInterface>> result =
+      Process::Spawn(args,
+                     /*decouple=*/false,
+                     /*pid_file=*/"",
+                     /*env=*/{},
+                     /*new_process_group=*/true);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  std::unique_ptr<ProcessInterface> &proc = result.value();
+  ASSERT_TRUE(proc->IsValid());
 
-  pid_t pid = proc.GetId();
+  pid_t pid = proc->GetId();
   ASSERT_GT(pid, 0);
   // Child should be leader of its own process group.
 #if defined(__APPLE__)
@@ -71,27 +74,29 @@ TEST(ProcessSpawnPGTest, SpawnWithNewProcessGroupRequestedChildBecomesLeader) {
   }
   ASSERT_TRUE(ok) << "child did not become its own PG leader in time";
 #endif
-  proc.Kill();
+  proc->Kill();
 }
 
 TEST(ProcessSpawnPGTest, SpawnWithoutNewProcessGroupChildInheritsParentGroup) {
   setenv("RAY_process_group_cleanup_enabled", "true", 1);
   std::vector<std::string> args = {"/bin/sleep", "5"};
-  auto [proc, ec] = Process::Spawn(args,
-                                   /*decouple=*/false,
-                                   /*pid_file=*/"",
-                                   /*env=*/{},
-                                   /*new_process_group=*/false);
-  ASSERT_FALSE(ec) << ec.message();
-  ASSERT_TRUE(proc.IsValid());
+  StatusOr<std::unique_ptr<ProcessInterface>> result =
+      Process::Spawn(args,
+                     /*decouple=*/false,
+                     /*pid_file=*/"",
+                     /*env=*/{},
+                     /*new_process_group=*/false);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  std::unique_ptr<ProcessInterface> &proc = result.value();
+  ASSERT_TRUE(proc->IsValid());
 
-  pid_t pid = proc.GetId();
+  pid_t pid = proc->GetId();
   ASSERT_GT(pid, 0);
   // Child should inherit our process group
   pid_t my_pgid = getpgid(0);
   pid_t child_pgid = getpgid(pid);
   ASSERT_EQ(child_pgid, my_pgid);
-  proc.Kill();
+  proc->Kill();
 }
 
 }  // namespace
