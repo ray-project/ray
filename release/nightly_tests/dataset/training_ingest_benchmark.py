@@ -29,7 +29,6 @@ import boto3
 import numpy as np
 import ray
 import ray.data
-from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 import torchvision.transforms as transforms
 from PIL import Image
 from pyarrow import fs
@@ -703,7 +702,7 @@ def run_benchmark(config: BenchmarkConfig) -> List[Dict]:
     return results
 
 
-def print_summary(results: List[Dict], spilled_bytes_total: Optional[int] = None):
+def print_summary(results: List[Dict]):
     """Print summary of benchmark results using tabulate."""
     if not results:
         logger.warning("No results to display.")
@@ -746,22 +745,6 @@ def print_summary(results: List[Dict], spilled_bytes_total: Optional[int] = None
 
     # Print table to stdout
     logger.info("\n" + tabulate(table_data, headers=headers, tablefmt="grid"))
-
-    # Compute and print summary dict with aggregate stats
-    total_rows = sum(r["rows_processed"] for r in results)
-    total_time = sum(r["elapsed_time"] for r in results)
-    avg_rows_per_second = sum(r["rows_per_second"] for r in results) / len(results)
-    summary = {
-        "total_rows_processed": total_rows,
-        "total_time_s": round(total_time, 2),
-        "avg_rows_per_second": round(avg_rows_per_second, 2),
-    }
-    if spilled_bytes_total is not None:
-        summary["spilled_bytes_total"] = spilled_bytes_total
-        summary["spilled_gb_total"] = round(
-            spilled_bytes_total / (1024 * 1024 * 1024), 2
-        )
-    logger.info(f"Summary: {summary}")
 
 
 def main():
@@ -849,21 +832,11 @@ def main():
     # Run benchmarks
     results = run_benchmark(config)
 
-    # Collect object store spill metrics
-    spilled_bytes_total = None
-    try:
-        memory_info = get_memory_info_reply(
-            get_state_from_address(ray.get_runtime_context().gcs_address)
-        )
-        spilled_bytes_total = memory_info.store_stats.spilled_bytes_total
-    except Exception as e:
-        logger.warning(f"Failed to collect spilled_bytes_total metric: {e}")
-
     # Print summary table
-    print_summary(results, spilled_bytes_total)
+    print_summary(results)
 
     if results:
-        result = {
+        return {
             "results": results,
             "data_loader": config.data_loader,
             "transform_types": config.transform_types,
@@ -874,9 +847,6 @@ def main():
             "device": config.device,
             "pin_memory": config.pin_memory,
         }
-        if spilled_bytes_total is not None:
-            result["spilled_bytes_total"] = spilled_bytes_total
-        return result
 
 
 if __name__ == "__main__":
