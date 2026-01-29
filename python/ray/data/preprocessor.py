@@ -367,6 +367,9 @@ class Preprocessor(abc.ABC):
                 f"ndarray. Got {type(data)}."
             )
 
+        if isinstance(data, np.ndarray):
+            data = {"__value__": data}
+
         transform_type = self._determine_transform_to_use()
 
         if transform_type == BatchFormat.PANDAS:
