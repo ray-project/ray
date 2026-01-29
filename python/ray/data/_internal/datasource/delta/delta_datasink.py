@@ -452,10 +452,22 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             all_written_files,
         ) = self._collect_write_results(write_result)
         existing_table = try_get_deltatable(self.table_uri, self.storage_options)
+        table_existed_before_validation = existing_table is not None
 
         # Validate race conditions and handle early returns
         # May update existing_table and _table_existed_at_start if table was created concurrently
         existing_table = self._validate_race_conditions(existing_table, all_written_files)
+
+        # IGNORE mode: if table was created concurrently, files were cleaned up and we should return
+        # Check if IGNORE mode handled the race condition (existing_table is None but table existed before validation)
+        if (
+            self.mode == SaveMode.IGNORE
+            and existing_table is None
+            and not self._table_existed_at_start
+            and table_existed_before_validation
+        ):
+            # IGNORE mode handled concurrent table creation - files cleaned up, silently succeed
+            return
 
         # Handle empty writes (no files written)
         if not all_file_actions:
