@@ -367,9 +367,9 @@ config = vLLMEngineProcessorConfig(
     concurrency=1,
     # Number of batches that can run concurrently per actor (default: 8)
     max_concurrent_batches=8,
-    # Number of tasks Ray Data queues per actor (default: 4)
+    # Number of tasks Ray Data queues per actor (default: 16)
     # Increase to keep actor task queue saturated
-    experimental={"max_tasks_in_flight_per_actor": 8},
+    experimental={"max_tasks_in_flight_per_actor": 16},
 )
 # __concurrent_batches_tuning_example_end__
 # __basic_llm_example_end__
