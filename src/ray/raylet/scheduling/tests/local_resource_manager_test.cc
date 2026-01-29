@@ -59,17 +59,16 @@ class LocalResourceManagerTest : public ::testing::Test {
   }
 
   // Creates a LocalResourceManager with a fake clock for deterministic testing.
-  void CreateManagerWithFakeClock(
-      absl::flat_hash_map<ResourceID, double> resources = {{ResourceID::CPU(), 2.0}}) {
-    manager = std::make_unique<LocalResourceManager>(
-        local_node_id,
-        CreateNodeResources(resources),
-        nullptr,
-        nullptr,
-        nullptr,
-        nullptr,
-        fake_resource_usage_gauge_,
-        [this]() { return fake_time_; });
+  void CreateManagerWithFakeClock(absl::flat_hash_map<ResourceID, double> resources = {
+                                      {ResourceID::CPU(), 2.0}}) {
+    manager = std::make_unique<LocalResourceManager>(local_node_id,
+                                                     CreateNodeResources(resources),
+                                                     nullptr,
+                                                     nullptr,
+                                                     nullptr,
+                                                     nullptr,
+                                                     fake_resource_usage_gauge_,
+                                                     [this]() { return fake_time_; });
   }
 
   // Advances the fake clock by the given duration.
@@ -456,7 +455,8 @@ TEST_F(LocalResourceManagerTest, MaybeMarkFootprintAsBusyPreservesIdleTime) {
 }
 
 TEST_F(LocalResourceManagerTest, MarkFootprintAsBusyResetsIdleTime) {
-  // Test that MarkFootprintAsBusy resets idle time to now when MarkFootprintAsIdle is called.
+  // Test that MarkFootprintAsBusy resets idle time to now when MarkFootprintAsIdle is
+  // called.
   CreateManagerWithFakeClock();
 
   auto initial_idle_time = AssertIdleAndGetTime();
