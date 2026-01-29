@@ -1155,7 +1155,7 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
     assert "[🛑] open ports detected" in result.output
 
 
-def test_ray_drain_node(monkeypatch):
+def test_ray_drain_node(monkeypatch, shutdown_only):
     monkeypatch.setenv("RAY_py_gcs_connect_timeout_s", "1")
     ray.init()
 
