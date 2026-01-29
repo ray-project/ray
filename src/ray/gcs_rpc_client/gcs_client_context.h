@@ -27,10 +27,10 @@ class GcsRpcClient;
 namespace gcs {
 
 /**
-@class GcsClientContext
-Minimal interface providing access to RPC client and subscriber. This allows accessor
-implementations to access GCS services without depending on the full GcsClient class,
-breaking circular dependencies.
+  @class GcsClientContext
+  Minimal interface providing access to RPC client and subscriber. This allows accessor
+  implementations to access GCS services without depending on the full GcsClient class,
+  breaking circular dependencies.
 */
 class GcsClientContext {
  public:

@@ -15,6 +15,7 @@ ray_cc_library(
         ":actor_accessor_interface",
         ":gcs_client_context",
         ":gcs_client_defaults",
+        ":internal_kv_accessor_interface",
         ":rpc_client",
         "//src/ray/common:asio",
         "//src/ray/common:id",
@@ -45,7 +46,7 @@ ray_cc_library(
     hdrs = [
         "accessor_factory_interface.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     deps = [],
 )
 
@@ -62,6 +63,35 @@ ray_cc_library(
         "//src/ray/protobuf:autoscaler_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/rpc:rpc_callback_types",
+    ],
+)
+
+ray_cc_library(
+    name = "internal_kv_accessor_interface",
+    hdrs = [
+        "accessors/internal_kv_accessor_interface.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:gcs_callback_types",
+        "//src/ray/common:status",
+    ],
+)
+
+ray_cc_library(
+    name = "internal_kv_accessor_implementation",
+    srcs = [
+        "accessors/internal_kv_accessor.cc",
+    ],
+    hdrs = [
+        "accessors/internal_kv_accessor.h",
+    ],
+    visibility = [":__pkg__"],
+    deps = [
+        ":gcs_client_context",
+        ":internal_kv_accessor_interface",
+        ":rpc_client",
+        "//src/ray/util:container_util",
     ],
 )
 
@@ -122,6 +152,8 @@ ray_cc_library(
         ":actor_accessor_implementation",
         ":actor_accessor_interface",
         ":gcs_client_context",
+        ":internal_kv_accessor_implementation",
+        ":internal_kv_accessor_interface",
     ],
 )
 

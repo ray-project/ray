@@ -32,6 +32,8 @@ class DefaultAccessorFactory : public AccessorFactoryInterface {
 
   std::unique_ptr<ActorInfoAccessorInterface> CreateActorInfoAccessor(
       GcsClientContext *context) override;
+  std::unique_ptr<InternalKVAccessorInterface> CreateInternalKVAccessor(
+      GcsClientContext *context) override;
 };
 
 }  // namespace gcs
