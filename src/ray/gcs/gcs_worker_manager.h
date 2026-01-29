@@ -16,21 +16,24 @@
 
 #include <vector>
 
+#include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_kv_manager.h"
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/stats/metric.h"
+#include "ray/util/counter_map.h"
 
 namespace ray {
 namespace gcs {
 
 class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
  public:
-  GcsWorkerManager(gcs::GcsTableStorage &gcs_table_storage,
-                   instrumented_io_context &io_context,
-                   pubsub::GcsPublisher &gcs_publisher)
+  explicit GcsWorkerManager(size_t max_num_dead_workers,
+                            gcs::GcsTableStorage &gcs_table_storage,
+                            instrumented_io_context &io_context,
+                            pubsub::GcsPublisher &gcs_publisher)
       : gcs_table_storage_(gcs_table_storage),
         io_context_(io_context),
         gcs_publisher_(gcs_publisher) {}
@@ -61,6 +64,12 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
       rpc::UpdateWorkerNumPausedThreadsReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Initialize with the gcs tables data synchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param gcs_init_data.
+  void Initialize(const GcsInitData &gcs_init_data);
+
   void AddWorkerDeadListener(
       std::function<void(std::shared_ptr<rpc::WorkerTableData>)> listener);
 
@@ -80,6 +89,17 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
   /// Only listens for unexpected worker deaths not expected like node death.
   std::vector<std::function<void(std::shared_ptr<rpc::WorkerTableData>)>>
       worker_dead_listeners_;
+
+  /// A deque where workers are store as pairs of (WorkerID, Timestamp).
+  /// The workers are sorted according to the timestamp, and the oldest is at the head of
+  /// the deque.
+  /// @note The pair consists of:
+  ///   - first: WorkerID (identifier for the worker)
+  ///   - second: Timestamp (time when the worker was last updated or added)
+  std::deque<std::pair<WorkerID, int64_t>> sorted_dead_worker_deque_;
+
+  /// Max number of dead workers allowed in the storage.
+  size_t max_num_dead_workers_;
 
   /// Tracks the number of occurrences of worker crash due to system error
   int32_t worker_crash_system_error_count_ = 0;
