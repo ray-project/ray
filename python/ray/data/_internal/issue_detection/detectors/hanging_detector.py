@@ -156,6 +156,8 @@ class HangingExecutionIssueDetector(IssueDetector):
                         self._state_map[operator.id][task_idx] = HangingExecutionState(
                             operator_id=operator.id,
                             task_idx=task_idx,
+                            # NOTE: The task_id + node_id will not change once we grab the task state.
+                            # Therefore, we can avoid an rpc call if we have already retrieved state info.
                             task_state=(
                                 None
                                 if prev_state_value is None
