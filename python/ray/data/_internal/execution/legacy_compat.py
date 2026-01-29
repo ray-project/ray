@@ -18,7 +18,6 @@ from ray.data._internal.stats import DatasetStats
 from ray.data.block import (
     BlockMetadata,
     BlockMetadataWithSchema,
-    _take_first_non_empty_schema,
 )
 
 # Warn about tasks larger than this.
@@ -123,7 +122,7 @@ def execute_to_ref_bundle(
         preserve_order,
     )
     bundles = executor.execute(dag, initial_stats=stats)
-    ref_bundle = _bundles_to_ref_bundle(bundles)
+    ref_bundle = RefBundle.merge_ref_bundles(bundles)
     # Set the stats UUID after execution finishes.
     _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
     return ref_bundle
@@ -166,22 +165,6 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
         return DatasetStats(metadata={}, parent=None)
     else:
         return plan._in_stats
-
-
-def _bundles_to_ref_bundle(bundles: Iterator[RefBundle]) -> RefBundle:
-    blocks = []
-    owns_blocks = True
-    bundle_list = list(bundles)
-    schema = _take_first_non_empty_schema(
-        ref_bundle.schema for ref_bundle in bundle_list
-    )
-
-    for ref_bundle in bundle_list:
-        if not ref_bundle.owns_blocks:
-            owns_blocks = False
-        blocks.extend(ref_bundle.blocks)
-
-    return RefBundle(blocks=tuple(blocks), owns_blocks=owns_blocks, schema=schema)
 
 
 def _set_stats_uuid_recursive(stats: DatasetStats, dataset_uuid: str) -> None:
