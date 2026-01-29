@@ -21,6 +21,7 @@ class JaxTrainer(DataParallelTrainer):
     """A Trainer for Single-Program Multi-Data (SPMD) JAX training.
 
     At a high level, this Trainer does the following:
+
     1. Launches multiple workers as defined by the ``scaling_config``.
     2. Sets up a distributed JAX environment for TPUs or GPUs
        on these workers as defined by the ``jax_config``.
