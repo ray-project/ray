@@ -14,11 +14,11 @@ logger = logging.getLogger(__name__)
 class LoadCheckpointCallback(ExecutionCallback):
     """ExecutionCallback that handles checkpoints."""
 
-    def __init__(self):
-        # We cannot require config in __init__ anymore because this class is
-        # instantiated by the StreamingExecutor generic loop.
-        self._config: Optional[CheckpointConfig] = None
-        self._ckpt_filter: Optional[BatchBasedCheckpointFilter] = None
+    def __init__(self, config: CheckpointConfig):
+        self._config = config
+        self._ckpt_filter: BatchBasedCheckpointFilter = self._create_checkpoint_filter(
+            config
+        )
         self._checkpoint_ref: Optional[ObjectRef[Block]] = None
 
     @classmethod
@@ -34,7 +34,10 @@ class LoadCheckpointCallback(ExecutionCallback):
     def _create_checkpoint_filter(
         self, config: CheckpointConfig
     ) -> BatchBasedCheckpointFilter:
-        """Factory method to create the checkpoint filter."""
+        """Factory method to create the checkpoint filter.
+
+        Subclasses can override this to use a different filter implementation.
+        """
         return BatchBasedCheckpointFilter(config)
 
     def before_execution_starts(self, executor: StreamingExecutor):
@@ -57,6 +60,5 @@ class LoadCheckpointCallback(ExecutionCallback):
         pass
 
     def load_checkpoint(self) -> ObjectRef[Block]:
-        # This is called by the physical operators that need the data
         assert self._checkpoint_ref is not None, "Checkpoint data not loaded"
         return self._checkpoint_ref
