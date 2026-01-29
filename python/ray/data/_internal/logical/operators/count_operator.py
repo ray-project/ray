@@ -1,4 +1,7 @@
+from typing import Optional
+
 from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data.block import Schema
 
 __all__ = [
     "Count",
@@ -20,3 +23,8 @@ class Count(LogicalOperator):
         input_op: LogicalOperator,
     ):
         super().__init__("Count", [input_op])
+
+    def infer_schema(self) -> Optional["Schema"]:
+        import pyarrow as pa
+
+        return pa.schema([pa.field(self.COLUMN_NAME, pa.int64())])
