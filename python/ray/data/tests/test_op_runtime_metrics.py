@@ -140,7 +140,10 @@ def test_task_completion_time_excl_backpressure():
     This metric is critical for productivity calculation in resource allocators
     as it represents the actual work time excluding output backpressure delays.
     """
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+
+    metrics = OpRuntimeMetrics(op)
 
     # Submit and complete multiple tasks with different gen/ser times
     test_cases = [
