@@ -1384,9 +1384,9 @@ def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
         _check_output_via_pattern("test_ray_cluster_dump.txt", result)
 
 
-def test_kill_actor_by_name_via_cli(shutdown_only):
+def test_kill_actor_by_name_via_cli(ray_start_regular):
     """Test killing a named actor via CLI (both force and graceful termination). Covers regular and detached actors."""
-    address = ray.init(num_cpus=1).get("address")
+    address = ray_start_regular["address"]
     runner = CliRunner()
     # Kill non-existing actor
     result = runner.invoke(
