@@ -67,13 +67,32 @@ void RayEventRecorder::StopExportingEvents() {
 
   auto flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
 
+  // Local handler implementing GracefulShutdownHandler interface.
+  class ShutdownHandler : public GracefulShutdownHandler {
+   public:
+    explicit ShutdownHandler(RayEventRecorder *recorder) : recorder_(recorder) {}
+
+    bool WaitUntilIdle(absl::Duration timeout) override {
+      absl::MutexLock lock(&recorder_->grpc_completion_mutex_);
+      auto deadline = absl::Now() + timeout;
+      while (recorder_->grpc_in_progress_) {
+        if (recorder_->grpc_completion_cv_.WaitWithDeadline(
+                &recorder_->grpc_completion_mutex_, deadline)) {
+          return false;  // Timeout
+        }
+      }
+      return true;
+    }
+
+    void Flush() override { recorder_->ExportEvents(); }
+
+   private:
+    RayEventRecorder *recorder_;
+  };
+
+  ShutdownHandler handler(this);
   GracefulShutdownWithFlush(
-      grpc_completion_mutex_,
-      grpc_completion_cv_,
-      [this]() { return !grpc_in_progress_; },
-      [this]() { ExportEvents(); },
-      absl::Milliseconds(flush_timeout_ms),
-      "RayEventRecorder");
+      handler, absl::Milliseconds(flush_timeout_ms), "RayEventRecorder");
 }
 
 void RayEventRecorder::ExportEvents() {

@@ -532,22 +532,39 @@ void TaskEventBufferImpl::Stop() {
 
   auto flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
 
+  // Local handler implementing GracefulShutdownHandler interface.
+  class ShutdownHandler : public GracefulShutdownHandler {
+   public:
+    explicit ShutdownHandler(TaskEventBufferImpl *buffer) : buffer_(buffer) {}
+
+    bool WaitUntilIdle(absl::Duration timeout) override {
+      absl::MutexLock lock(&buffer_->grpc_completion_mutex_);
+      auto deadline = absl::Now() + timeout;
+      while (buffer_->gcs_grpc_in_progress_.load() > 0 ||
+             buffer_->event_aggregator_grpc_in_progress_.load() > 0) {
+        if (buffer_->grpc_completion_cv_.WaitWithDeadline(
+                &buffer_->grpc_completion_mutex_, deadline)) {
+          return false;  // Timeout
+        }
+      }
+      return true;
+    }
+
+    void Flush() override {
+      // Use stopping_ flag to allow flush without re-enabling event ingestion.
+      // This prevents the race where new events could be added during shutdown.
+      buffer_->stopping_ = true;
+      buffer_->FlushEvents(/*forced=*/true);
+      buffer_->stopping_ = false;
+    }
+
+   private:
+    TaskEventBufferImpl *buffer_;
+  };
+
+  ShutdownHandler handler(this);
   GracefulShutdownWithFlush(
-      grpc_completion_mutex_,
-      grpc_completion_cv_,
-      [this]() {
-        return gcs_grpc_in_progress_.load() == 0 &&
-               event_aggregator_grpc_in_progress_.load() == 0;
-      },
-      [this]() {
-        // Use stopping_ flag to allow flush without re-enabling event ingestion.
-        // This prevents the race where new events could be added during shutdown.
-        stopping_ = true;
-        FlushEvents(/*forced=*/true);
-        stopping_ = false;
-      },
-      absl::Milliseconds(flush_timeout_ms),
-      "TaskEventBuffer");
+      handler, absl::Milliseconds(flush_timeout_ms), "TaskEventBuffer");
 
   // Shutting down the io service to exit the io_thread. This should prevent
   // any other callbacks to be run on the io thread.
