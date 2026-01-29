@@ -18,6 +18,7 @@
 
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -322,7 +323,9 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   void RestartActor(const ActorID &actor_id,
                     bool need_reschedule,
                     const rpc::ActorDeathCause &death_cause,
-                    std::function<void()> done_callback = nullptr);
+                    std::function<void()> done_callback = nullptr,
+                    std::optional<rpc::events::ActorLifecycleEvent::RestartReason>
+                        restart_reason = std::nullopt);
 
   /// Remove the specified actor from `unresolved_actors_`.
   ///
