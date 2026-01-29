@@ -329,7 +329,12 @@ def convert_schema_to_delta(schema: pa.Schema) -> Any:
         if pa.types.is_timestamp(field_type) and field_type.unit == "s":
             field_type = pa.timestamp("us")
         converted_fields.append(
-            pa.field(schema_field.name, field_type, schema_field.nullable, schema_field.metadata)
+            pa.field(
+                schema_field.name,
+                field_type,
+                schema_field.nullable,
+                schema_field.metadata,
+            )
         )
 
     converted_schema = pa.schema(converted_fields)

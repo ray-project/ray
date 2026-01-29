@@ -469,23 +469,23 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 )
             return
 
-        # Reconcile schemas from all workers with type promotion
-        # Handles cases where different workers infer different types (e.g., int32 vs int64)
-        if all_schemas:
-            if existing_table:
-                table_schema = to_pyarrow_schema(existing_table.schema())
-                reconciled_schema = unify_schemas(
-                    [table_schema] + all_schemas, promote_types=True
-                )
-            else:
-                reconciled_schema = unify_schemas(all_schemas, promote_types=True)
-
-            if reconciled_schema:
-                self.schema = reconciled_schema
-
         # Commit phase: validate and commit files atomically
         # Wrap in try/except to ensure cleanup on failure (files written by workers)
         try:
+            # Reconcile schemas from all workers with type promotion
+            # Handles cases where different workers infer different types (e.g., int32 vs int64)
+            # This is inside the try block so files are cleaned up if reconciliation fails
+            if all_schemas:
+                if existing_table:
+                    table_schema = to_pyarrow_schema(existing_table.schema())
+                    reconciled_schema = unify_schemas(
+                        [table_schema] + all_schemas, promote_types=True
+                    )
+                else:
+                    reconciled_schema = unify_schemas(all_schemas, promote_types=True)
+
+                if reconciled_schema:
+                    self.schema = reconciled_schema
             validate_file_actions(all_file_actions, self.table_uri, self.filesystem)
 
             if self._table_existed_at_start:
