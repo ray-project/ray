@@ -2560,8 +2560,6 @@ def connect(
         else:
             interactive_mode = True
             driver_name = "INTERACTIVE MODE"
-    else:
-        raise ValueError("Invalid worker mode. Expected DRIVER or WORKER.")
 
     gcs_options = ray._raylet.GcsClientOptions.create(
         node.gcs_address,
