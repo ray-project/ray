@@ -31,7 +31,6 @@ from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
 from ray.serve.context import _get_global_client
-from ray.serve.exceptions import RayServeConfigException
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 from ray.util.state import list_actors
 
@@ -44,15 +43,18 @@ def _get_random_port() -> int:
 def ray_cluster():
     if cluster_not_supported:
         pytest.skip("Cluster not supported")
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
     cluster = Cluster()
-    yield Cluster()
+    yield cluster
     serve.shutdown()
     ray.shutdown()
     cluster.shutdown()
 
 
 @pytest.fixture()
-def lower_slow_startup_threshold_and_reset():
+def lower_slow_startup_threshold_and_reset(ray_shutdown):
     original_slow_startup_warning_s = os.environ.get("SERVE_SLOW_STARTUP_WARNING_S")
     original_slow_startup_warning_period_s = os.environ.get(
         "SERVE_SLOW_STARTUP_WARNING_PERIOD_S"
@@ -339,7 +341,7 @@ async def test_multi_app_shutdown_actors_async(ray_shutdown):
     wait_for_condition(check_dead)
 
 
-def test_deployment(ray_cluster):
+def test_deployment(ray_shutdown, ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
     cluster = ray_cluster
@@ -419,7 +421,7 @@ def _reuse_port_is_available():
         "This test can only be ran when port sharing is supported."
     ),
 )
-def test_multiple_routers(ray_cluster):
+def test_multiple_routers(ray_shutdown, ray_cluster):
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)
     cluster.add_node(num_cpus=4)
@@ -611,7 +613,7 @@ def test_no_http(ray_shutdown):
         serve.shutdown()
 
 
-def test_http_head_only(ray_cluster):
+def test_http_head_only(ray_shutdown, ray_cluster):
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4, dashboard_port=_get_random_port())
     cluster.add_node(num_cpus=4)
@@ -703,11 +705,11 @@ serve.run(A.bind())"""
         driver_template.format(address=address, namespace="test_namespace1", port=8000)
     )
     run_string_as_driver(
-        driver_template.format(address=address, namespace="test_namespace2", port=8000)
+        driver_template.format(address=address, namespace="test_namespace2", port=8001)
     )
 
 
-def test_serve_start_different_http_checkpoint_options_error(
+def test_serve_start_different_http_checkpoint_options_warning(
     ray_shutdown, propagate_logs, caplog
 ):
     logger = logging.getLogger("ray.serve")
@@ -727,13 +729,16 @@ def test_serve_start_different_http_checkpoint_options_error(
     # create a different config
     test_http = dict(host="127.1.1.8", port=_get_random_port())
 
-    with pytest.raises(
-        RayServeConfigException, match="Attempt to update `http_options`"
-    ):
-        serve.start(http_options=test_http)
+    serve.start(http_options=test_http)
+
+    for test_config, msg in zip([["host", "port"]], warning_msg):
+        for test_msg in test_config:
+            if "Autoscaling metrics pusher thread" in msg:
+                continue
+            assert test_msg in msg
 
 
-def test_recovering_controller_no_redeploy():
+def test_recovering_controller_no_redeploy(ray_shutdown):
     """Ensure controller doesn't redeploy running deployments when recovering."""
     ray_context = ray.init(namespace="x")
     address = ray_context.address_info["address"]
@@ -898,7 +903,7 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
         {
             "proxy_location": None,
             "http_options": HTTPOptions(),
-            "expected": HTTPOptions(location=DeploymentMode.EveryNode),
+            "expected": HTTPOptions(location=DeploymentMode.HeadOnly),
         },  # using default location from HTTPOptions
         {
             "proxy_location": None,

@@ -56,6 +56,9 @@ struct CoreWorkerOptions {
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
       bool *is_retryable_error,
+      // Human-readable name for the actor class.
+      // Only expected to be populated by actor creation tasks.
+      std::string *actor_repr_name,
       // Application error string, empty if no error.
       std::string *application_error,
       // The following 2 parameters `defined_concurrency_groups` and

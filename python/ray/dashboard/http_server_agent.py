@@ -105,7 +105,11 @@ class HttpServerAgent:
             dashboard_optional_utils.DashboardAgentRouteTable.bind(c)
 
         app = aiohttp.web.Application(
-            middlewares=[get_token_auth_middleware(aiohttp, PUBLIC_EXACT_PATHS)]
+            middlewares=[
+                get_token_auth_middleware(aiohttp, PUBLIC_EXACT_PATHS),
+                # Block all browser requests - agent is only accessed internally
+                dashboard_optional_utils.get_browser_request_middleware(aiohttp),
+            ]
         )
         app.add_routes(routes=routes.bound_routes())
 
