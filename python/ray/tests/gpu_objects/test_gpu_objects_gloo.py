@@ -1038,5 +1038,50 @@ def test_rdt_lineage_reconstruction(ray_start_cluster):
     assert ray.get(ref).nbytes >= (1024 * 1024)
 
 
+def test_rdt_memory_summary(ray_start_regular):
+    """Test that RDT objects appear in the memory summary with correct sizes."""
+    from ray._private.internal_api import get_state_from_address
+    from ray.dashboard.memory_utils import (
+        construct_memory_table,
+        node_stats,
+        node_stats_to_dict,
+    )
+
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    create_collective_group(actors, backend="gloo")
+
+    sender, receiver = actors
+
+    # torch.float32 = 4 bytes per element
+    ref1 = sender.echo.remote(torch.randn((1000,)))
+    ref2 = sender.echo.remote(torch.randn((2000,)))
+
+    ray.get([receiver.double.remote(ref1), receiver.double.remote(ref2)])
+
+    wait_for_condition(
+        lambda: ray.get(sender.get_num_gpu_objects.remote()) == 2,
+        timeout=10,
+    )
+
+    state = get_state_from_address()
+    workers_stats = []
+    for raylet in state.node_table():
+        if raylet["Alive"]:
+            stats = node_stats_to_dict(
+                node_stats(raylet["NodeManagerAddress"], raylet["NodeManagerPort"])
+            )
+            workers_stats.extend(stats["coreWorkersStats"])
+
+    memory_table = construct_memory_table(workers_stats)
+
+    rdt_entries = [e for e in memory_table.table if e.is_rdt]
+    assert len(rdt_entries) == 2
+
+    rdt_sizes = sorted([e.object_size for e in rdt_entries])
+    # Subtracting the tensor sizes because the "dummy object" size that's sent via plasma is
+    # included in the memory summary output. Since it should be the same for both, it's cancelled out.
+    assert rdt_sizes[1] - rdt_sizes[0] == 4000
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
