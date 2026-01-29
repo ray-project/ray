@@ -172,6 +172,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_placement_group_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/observability:fake_metric",
+        "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],

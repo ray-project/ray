@@ -550,7 +550,9 @@ void GcsServer::InitGcsPlacementGroupManager(
       placement_group_gauge,
       placement_group_creation_latency_in_ms_histogram,
       placement_group_scheduling_latency_in_ms_histogram,
-      placement_group_count_gauge);
+      placement_group_count_gauge,
+      *ray_event_recorder_,
+      config_.session_name);
 
   gcs_placement_group_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::PlacementGroupInfoGrpcService>(
