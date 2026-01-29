@@ -39,7 +39,7 @@ class Zip(NAry):
 
     def estimated_num_outputs(self):
         total_num_outputs = 0
-        for input in self._input_dependencies:
+        for input in self.input_dependencies:
             num_outputs = input.estimated_num_outputs()
             if num_outputs is None:
                 return None
@@ -58,7 +58,7 @@ class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
 
     def estimated_num_outputs(self):
         total_num_outputs = 0
-        for input in self._input_dependencies:
+        for input in self.input_dependencies:
             num_outputs = input.estimated_num_outputs()
             if num_outputs is None:
                 return None
