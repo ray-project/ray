@@ -3,7 +3,7 @@
 Get Started with Distributed Training using JAX
 ===============================================
 
-This guide provides an overview of the `JaxTrainer` in Ray Train.
+This guide provides an overview of the :class:`~ray.train.v2.jax.JaxTrainer` in Ray Train.
 
 What is JAX?
 ------------
@@ -16,7 +16,7 @@ utilizing the XLA compiler to create highly optimized code that scales efficient
 The core power of JAX lies in its composability, allowing these transformations to be combined to build complex,
 high-performance numerical programs for distributed execution.
 
-JAX supports different accelerators such as GPUs and TPUs. For more details, see `JAX Supported platforms <https://docs.jax.dev/en/latest/installation.html#supported-platforms>`_.
+JAX and :class:`~ray.train.v2.jax.JaxTrainer` support different accelerators such as GPUs and TPUs. For more details, see `JAX Supported platforms <https://docs.jax.dev/en/latest/installation.html#supported-platforms>`_.
 
 
 What are TPUs?
@@ -45,7 +45,7 @@ handles atomically reserving TPU slices.
 For GPUs, Ray automatically sets up the JAX distributed system on CUDA devices.
 
 You initialize the `JaxTrainer` with your training logic, defined in a `train_loop_per_worker` function, and a
-`ScalingConfig` that specifies the distributed hardware layout. The `JaxTrainer` supports both Google Cloud TPU and NVIDIA GPUs.
+`ScalingConfig` that specifies the distributed hardware layout. The `JaxTrainer` supports both **Google Cloud TPUs** and **NVIDIA GPUs**.
 
 Configure scale and accelerators
 --------------------------------
@@ -53,7 +53,7 @@ Configure scale and accelerators
 TPU scaling configuration
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-For TPU training, use `ScalingConfig` to define your hardware slice. Key fields include:
+For TPU training, use `ScalingConfig` to define your TPU slices configuration. Key fields include:
 
 * :class:`use_tpu <ray.train.ScalingConfig>`: It's a new field added in Ray 2.49.0 to the V2 `ScalingConfig`. This boolean flag tells Ray Train to initialize the JAX backend for TPU execution.
 * :class:`topology <ray.train.ScalingConfig>`: It's a new field added in Ray 2.49.0 to the V2 `ScalingConfig`. Topology is a string defining the physical arrangement of the TPU chips (for example, "4x4"). It's required for multi-host training and ensures Ray places workers correctly across the slice. For a list of supported TPU topologies by generation,
@@ -61,11 +61,11 @@ For TPU training, use `ScalingConfig` to define your hardware slice. Key fields 
 * :class:`num_workers <ray.train.ScalingConfig>`: Set this to the total number of TPU VMs across all slices. For example, one v4-32 slice with a 2x2x4 topology uses 4 VMs, so set `num_workers` to 4. If you use two v4-32 slices, set `num_workers` to 8.
 * :class:`resources_per_worker <ray.train.ScalingConfig>`: A dictionary specifying the resources each worker needs. For TPUs, you typically request the number of chips per VM (for example, `{"TPU": 4}`).
 * :class:`accelerator_type <ray.train.ScalingConfig>`: For TPUs, `accelerator_type` specifies the TPU generation you're using (for example, "TPU-V6E"), ensuring your workload is scheduled on the desired TPU slice.
+
 .. testcode::
 
     from ray.train import ScalingConfig
     tpu_scaling_config = ScalingConfig(num_workers=4, use_tpu=True, topology="4x4", accelerator_type="TPU-V6E")
-
 
 GPU scaling configuration
 ^^^^^^^^^^^^^^^^^^^^^^^^^

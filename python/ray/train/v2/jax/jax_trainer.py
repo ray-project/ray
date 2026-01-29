@@ -66,7 +66,7 @@ class JaxTrainer(DataParallelTrainer):
             # If you want to use GPUs, specify the GPU scaling config like below.
             # gpu_scaling_config = ScalingConfig(
             #     use_gpu=True,
-            #     num_workers=2,
+            #     num_workers=4,
             #     resources_per_worker={"GPU": 1},
             # )
 
@@ -80,6 +80,8 @@ class JaxTrainer(DataParallelTrainer):
                     worker_runtime_env={
                         "env_vars": {
                             "JAX_PLATFORMS": "tpu",
+                            # If you want to use GPUs, set the JAX_PLATFORMS to "cuda".
+                            # "JAX_PLATFORMS": "cuda",
                         }
                     },
                 ),
@@ -108,8 +110,8 @@ class JaxTrainer(DataParallelTrainer):
         jax_config: The configuration for setting up the JAX backend.
             If set to None, a default configuration will be used based on the ``scaling_config`` and ``JAX_PLATFORMS`` environment variable.
         scaling_config: Configuration for how to scale data parallel training
-            with SPMD. ``num_workers`` should be set to the number of TPU hosts or GPU workers
-            and if using TPUs, ``topology`` should be set to the TPU topology.
+            with SPMD. ``num_workers`` should be set to the number of TPU hosts or GPU workers.
+            If using TPUs, ``topology`` should be set to the TPU topology.
             See :class:`~ray.train.ScalingConfig` for more info.
         dataset_config: The configuration for ingesting the input ``datasets``.
             By default, all the Ray Dataset are split equally across workers.
