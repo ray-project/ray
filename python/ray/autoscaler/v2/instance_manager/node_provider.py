@@ -386,7 +386,32 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         shape: Dict[NodeType, int],
         request_id: str,
     ) -> None:
-        self._main_executor.submit(self._do_launch, shape, request_id)
+        future = self._main_executor.submit(self._do_launch, shape, request_id)
+
+        # Compatibility patch for V1 BatchingNodeProvider:
+        # Unlike V2 native providers, BatchingNodeProvider requires post_process()
+        # to be called after node creation to actually submit the scale request.
+        from ray.autoscaler.batching_node_provider import BatchingNodeProvider
+
+        if isinstance(self._v1_provider, BatchingNodeProvider):
+
+            def _on_launch_complete(fut):
+                try:
+                    fut.result()
+                    logger.info(
+                        "Calling post_process for BatchingNodeProvider (request_id={}).".format(
+                            request_id
+                        )
+                    )
+                    self._v1_post_process()
+                except Exception as e:
+                    logger.info(
+                        "Failed to call post_process for request {}: {}".format(
+                            request_id, e
+                        )
+                    )
+
+            future.add_done_callback(_on_launch_complete)
 
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
         self._main_executor.submit(self._do_terminate, ids, request_id)
