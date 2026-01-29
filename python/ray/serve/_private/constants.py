@@ -236,6 +236,9 @@ PROXY_MIN_DRAINING_PERIOD_S = get_env_float_positive(
 # rechecking whether the proxy actor is drained or not.
 PROXY_DRAIN_CHECK_PERIOD_S = 5
 
+# Message returned by proxy health check when draining.
+DRAINING_MESSAGE = "This node is being drained."
+
 #: Number of times in a row that a replica must fail the health check before
 #: being marked unhealthy.
 REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3

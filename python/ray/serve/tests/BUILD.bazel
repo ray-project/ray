@@ -653,3 +653,24 @@ py_test_module_list(
         "//python/ray/serve:serve_lib",
     ],
 )
+
+# HAProxy tests (require RAY_SERVE_ENABLE_HAPROXY=1).
+py_test_module_list(
+    size = "medium",
+    env = {"RAY_SERVE_ENABLE_HAPROXY": "1"},
+    files = [
+        "test_haproxy.py",
+        "test_haproxy_api.py",
+        "test_metrics_haproxy.py",
+    ],
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
