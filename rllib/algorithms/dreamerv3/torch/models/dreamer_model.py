@@ -162,11 +162,12 @@ class DreamerModel(nn.Module):
         """
         states = self.world_model.get_initial_state()
 
-        action_dim = (
-            self.action_space.n
-            if isinstance(self.action_space, gym.spaces.Discrete)
-            else np.prod(self.action_space.shape)
-        )
+        if isinstance(self.action_space, gym.spaces.Discrete):
+            action_dim = self.action_space.n
+        elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
+            action_dim = int(np.sum(self.action_space.nvec))
+        else:
+            action_dim = int(np.prod(self.action_space.shape))
         states["a"] = torch.zeros((action_dim,), dtype=torch.float32)
         return states
 
@@ -356,6 +357,13 @@ class DreamerModel(nn.Module):
 
         if isinstance(self.action_space, gym.spaces.Discrete):
             ret["actions_ints_dreamed_t0_to_H_B"] = torch.argmax(a_dreamed_H_B, dim=-1)
+        elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
+            # Split concatenated one-hot and argmax per sub-action
+            split_sizes = list(self.action_space.nvec)
+            split_actions = torch.split(a_dreamed_H_B, split_sizes, dim=-1)
+            ret["actions_ints_dreamed_t0_to_H_B"] = torch.stack(
+                [torch.argmax(a, dim=-1) for a in split_actions], dim=-1
+            )
 
         return ret
 
@@ -438,8 +446,26 @@ class DreamerModel(nn.Module):
                 a = actions[:, timesteps_burn_in + j]
             elif use_random_actions_in_dream:
                 if isinstance(self.action_space, gym.spaces.Discrete):
-                    a = torch.randint(self.action_space.n, (B,), dtype=torch.int64)
-                    a = torch.nn.functional.one_hot(a, num_classes=self.action_space.n)
+                    a = torch.randint(
+                        self.action_space.n, (B,),
+                        dtype=torch.int64, device=actions.device
+                    )
+                    a = torch.nn.functional.one_hot(
+                        a, num_classes=self.action_space.n
+                    ).float()
+                elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
+                    # Random one-hot per sub-action, then concatenate
+                    one_hots = [
+                        torch.nn.functional.one_hot(
+                            torch.randint(
+                                int(n), (B,),
+                                dtype=torch.int64, device=actions.device
+                            ),
+                            num_classes=int(n)
+                        )
+                        for n in self.action_space.nvec
+                    ]
+                    a = torch.cat(one_hots, dim=-1).float()
                 else:
                     a = torch.rand(
                         (B,) + self.action_space.shape, dtype=self.action_space.dtype
@@ -513,6 +539,13 @@ class DreamerModel(nn.Module):
         if isinstance(self.action_space, gym.spaces.Discrete):
             ret[re.sub("^actions_", "actions_ints_", key)] = torch.argmax(
                 a_t0_to_H_B, dim=-1
+            )
+        elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
+            # Split concatenated one-hot and argmax per sub-action
+            split_sizes = list(self.action_space.nvec)
+            split_actions = torch.split(a_t0_to_H_B, split_sizes, dim=-1)
+            ret[re.sub("^actions_", "actions_ints_", key)] = torch.stack(
+                [torch.argmax(a, dim=-1) for a in split_actions], dim=-1
             )
 
         return ret
