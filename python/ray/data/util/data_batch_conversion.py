@@ -54,6 +54,18 @@ def _convert_batch_type_to_pandas(
     """
     pd = _lazy_import_pandas()
 
+    ""
+
+    "Convert to dictionary if DataBatchType is np.ndarray."
+    "np.ndarray will be unsupported in future versions."
+    if isinstance(data, np.ndarray):
+        data = {"__value__": data}
+        warnings.warn(
+            "In future versions of Ray, DataBatch will not support np.ndarray.",
+            FutureWarning,
+            stacklevel=2,
+        )
+
     if isinstance(data, dict):
         tensor_dict = {}
         for col_name, col in data.items():
@@ -100,6 +112,12 @@ def _convert_pandas_to_batch_type(
 
     elif type == BatchFormat.NUMPY:
         if len(data.columns) == 1:
+            warnings.warn(
+                "In future versions of Ray, DataBatch will not support np.ndarray.",
+                FutureWarning,
+                stacklevel=2,
+            )
+
             # If just a single column, return as a single numpy array.
             return data.iloc[:, 0].to_numpy()
         else:
@@ -138,6 +156,12 @@ def _convert_batch_type_to_numpy(
     pd = _lazy_import_pandas()
 
     if isinstance(data, np.ndarray):
+        warnings.warn(
+            "In future versions of Ray, DataBatch will not support np.ndarray as an input type.",
+            FutureWarning,
+            stacklevel=2,
+        )
+
         return data
     elif isinstance(data, dict):
         for col_name, col in data.items():
