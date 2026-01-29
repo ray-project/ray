@@ -489,6 +489,10 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     ) -> Optional["DeltaTable"]:
         """Validate race conditions and raise errors or cleanup as needed.
 
+        Args:
+            existing_table: DeltaTable that exists now (may be None).
+            all_written_files: List of file paths written by workers (for cleanup).
+
         Returns:
             Updated existing_table if race condition handling changed it, None otherwise.
         """
