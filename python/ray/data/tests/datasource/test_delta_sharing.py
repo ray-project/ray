@@ -155,7 +155,7 @@ class MockDeltaSharingDatasource:
     ):
         self._url = url
         self._json_predicate_hints = json_predicate_hints
-        self._limit = limit
+        self.limit = limit
         self._version = version
         self._timestamp = timestamp
 
@@ -192,7 +192,7 @@ class MockDeltaSharingDatasource:
         response = self._rest_client.list_files_in_table(
             self._table,
             jsonPredicateHints=self._json_predicate_hints,
-            limitHint=self._limit,
+            limitHint=self.limit,
             version=self._version,
             timestamp=self._timestamp,
         )

@@ -486,7 +486,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
         # Compute all constants used for task scheduling.
         num_cpus_per_node_map = _get_num_cpus_per_node_map()
-        stage = self._compute_shuffle_schedule(
+        stage = self.compute_shuffle_schedule(
             num_cpus_per_node_map,
             len(input_blocks_list),
             merge_factor,
@@ -754,7 +754,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         yield meta_with_schema
 
     @staticmethod
-    def _compute_shuffle_schedule(
+    def compute_shuffle_schedule(
         num_cpus_per_node_map: Dict[str, int],
         num_input_blocks: int,
         merge_factor: float,
