@@ -83,6 +83,12 @@ class MapTransformFn(ABC):
         # buffer, while yielding incrementally
         for result in results:
             append(result)
+            # Release reference to avoid potentially holding an underlying object
+            # till the next iteration
+            #
+            # NOTE: This is only relevant when a new object is produced, allowing
+            #       the original input object to be released
+            del result
             # Try yielding incrementally
             while buffer.has_next():
                 yield buffer.next()
@@ -157,7 +163,7 @@ class MapTransformer:
             output_block_size_option_override: (Optional) Output block size configuration.
         """
 
-        self._transform_fns = []
+        self._transform_fns: List[MapTransformFn] = []
         self._init_fn = init_fn if init_fn is not None else lambda: None
         self._output_block_size_option_override = output_block_size_option_override
         self._udf_time_s = 0

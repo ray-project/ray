@@ -119,6 +119,13 @@ def blocks_to_batches(
 
     for block in block_iter:
         batcher.add(block)
+        # Release reference to avoid potentially holding underlying object
+        # till next iteration
+        #
+        # NOTE: This is only relevant when a new object is produced, allowing
+        #       the original input object to be released
+        del block
+
         while batcher.has_batch():
             with get_iter_next_batch_s_timer():
                 batch = batcher.next_batch()
@@ -180,9 +187,19 @@ def collate(
         stats: An optional stats object to record formatting times.
     """
     for batch in batch_iter:
+        data = batch.data
+        meta = batch.metadata
+
         with stats.iter_collate_batch_s.timer() if stats else nullcontext():
-            collated_batch = collate_fn(batch.data)
-        yield CollatedBatch(metadata=batch.metadata, data=collated_batch)
+            collated_batch = collate_fn(data)
+            # Release reference to avoid potentially holding an underlying object
+            # till the next iteration
+            #
+            # NOTE: This is only relevant when a new object is produced, allowing
+            #       the original input object to be released
+            del data
+
+        yield CollatedBatch(metadata=meta, data=collated_batch)
 
 
 def finalize_batches(

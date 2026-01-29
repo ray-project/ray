@@ -550,6 +550,13 @@ def _generate_transform_fn_for_map_batches(
                 else:
                     try:
                         res = fn(batch)
+                        # Release reference to avoid potentially holding an underlying object
+                        # till the next iteration
+                        #
+                        # NOTE: This is only relevant when a new object is produced, allowing
+                        #       the original input object to be released
+                        del batch
+
                         if not isinstance(res, GeneratorType):
                             res = [res]
                     except ValueError as e:
