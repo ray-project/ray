@@ -1,0 +1,1 @@
+opentelemetry-exporter-otlp==1.34.1
