@@ -156,7 +156,11 @@ class HangingExecutionIssueDetector(IssueDetector):
                         self._state_map[operator.id][task_idx] = HangingExecutionState(
                             operator_id=operator.id,
                             task_idx=task_idx,
-                            task_state=None,
+                            task_state=(
+                                None
+                                if prev_state_value is None
+                                else prev_state_value.task_state
+                            ),
                             bytes_output=bytes_output,
                             start_time_hanging=time.perf_counter(),
                         )
