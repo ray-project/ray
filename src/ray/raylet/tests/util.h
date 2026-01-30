@@ -96,7 +96,7 @@ class MockWorker : public WorkerInterface {
   void MarkUnblocked() override { blocked_ = false; }
   bool IsBlocked() const override { return blocked_; }
 
-  const std::unique_ptr<ProcessInterface> &GetProcess() const override { return proc_; }
+  const ProcessInterface &GetProcess() const override { return *proc_; }
   void SetProcess(std::unique_ptr<ProcessInterface> proc) override {
     proc_ = std::move(proc);
   }

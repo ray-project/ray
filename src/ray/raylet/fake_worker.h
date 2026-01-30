@@ -72,7 +72,7 @@ class FakeWorker : public WorkerInterface {
   void MarkBlocked() override {}
   void MarkUnblocked() override {}
   bool IsBlocked() const override { return false; }
-  const std::unique_ptr<ProcessInterface> &GetProcess() const override { return proc_; }
+  const ProcessInterface &GetProcess() const override { return *proc_; }
   void SetProcess(std::unique_ptr<ProcessInterface> proc) override {}
   Language GetLanguage() const override { return Language::PYTHON; }
   void Connect(int port) override {}

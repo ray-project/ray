@@ -45,8 +45,8 @@
 
 namespace ray {
 
-#if !defined(_WIN32)
 void SetFdCloseOnExec(int fd) {
+#if !defined(_WIN32)
   if (fd < 0) {
     return;
   }
@@ -64,8 +64,8 @@ void SetFdCloseOnExec(int fd) {
       "Was the fd open?",
       fd,
       strerror(errno));
-}
 #endif
+}
 
 #ifdef _WIN32
 #ifndef STATUS_BUFFER_OVERFLOW

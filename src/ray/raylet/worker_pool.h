@@ -582,7 +582,7 @@ class WorkerPool : public WorkerPoolInterface {
   ///   assigned to the worker.
   /// \return The process that we started and the worker ID assigned to it. If the worker
   /// ID is nil, we didn't start a process.
-  std::tuple<const std::unique_ptr<ProcessInterface> &, WorkerID> StartWorkerProcess(
+  std::tuple<const ProcessInterface &, WorkerID> StartWorkerProcess(
       const Language &language,
       rpc::WorkerType worker_type,
       const JobID &job_id,
@@ -820,7 +820,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// Delete runtime env asynchronously by runtime env agent.
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
 
-  const std::unique_ptr<ProcessInterface> &AddWorkerProcess(
+  const ProcessInterface &AddWorkerProcess(
       State &state,
       const WorkerID &worker_id,
       rpc::WorkerType worker_type,
@@ -930,8 +930,7 @@ class WorkerPool : public WorkerPoolInterface {
   WorkerPoolMetrics worker_pool_metrics_;
 
   /// A static null process used for returning references in error cases.
-  static inline const std::unique_ptr<ProcessInterface> kNullProcess =
-      std::make_unique<Process>();
+  static inline const ProcessInterface &kNullProcess = Process();
 
   friend class WorkerPoolTest;
   friend class WorkerPoolDriverRegisteredTest;

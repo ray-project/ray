@@ -56,7 +56,7 @@ class WorkerInterface {
   /// Return the worker's ID.
   virtual WorkerID WorkerId() const = 0;
   /// Return the worker process.
-  virtual const std::unique_ptr<ProcessInterface> &GetProcess() const = 0;
+  virtual const ProcessInterface &GetProcess() const = 0;
   virtual void SetProcess(std::unique_ptr<ProcessInterface> proc) = 0;
   virtual rpc::Language GetLanguage() const = 0;
   virtual const std::string IpAddress() const = 0;

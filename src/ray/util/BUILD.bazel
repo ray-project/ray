@@ -103,6 +103,7 @@ ray_cc_library(
 ray_cc_library(
     name = "process_interface",
     hdrs = ["process_interface.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":compat",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -113,6 +114,7 @@ ray_cc_library(
     name = "process_utils",
     srcs = ["process_utils.cc"],
     hdrs = ["process_utils.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":compat",
         ":logging",
@@ -133,6 +135,7 @@ ray_cc_library(
         "process.h",
         "subreaper.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":cmd_line_utils",
         ":compat",
@@ -153,6 +156,7 @@ ray_cc_library(
 ray_cc_library(
     name = "fake_process",
     hdrs = ["fake_process.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":process_interface",
     ],

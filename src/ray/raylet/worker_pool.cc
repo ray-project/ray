@@ -236,7 +236,7 @@ void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,
   }
 }
 
-const std::unique_ptr<ProcessInterface> &WorkerPool::AddWorkerProcess(
+const ProcessInterface &WorkerPool::AddWorkerProcess(
     State &state,
     const WorkerID &worker_id,
     rpc::WorkerType worker_type,
@@ -254,7 +254,7 @@ const std::unique_ptr<ProcessInterface> &WorkerPool::AddWorkerProcess(
                         runtime_env_info,
                         dynamic_options,
                         worker_startup_keep_alive_duration});
-  return it->second.proc;
+  return *it->second.proc;
 }
 
 void WorkerPool::RemoveWorkerProcess(State &state, const WorkerID &worker_id) {
@@ -458,8 +458,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
   return {std::move(worker_command_args), std::move(env)};
 }
 
-std::tuple<const std::unique_ptr<ProcessInterface> &, WorkerID>
-WorkerPool::StartWorkerProcess(
+std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
     const Language &language,
     const rpc::WorkerType worker_type,
     const JobID &job_id,
@@ -534,7 +533,7 @@ WorkerPool::StartWorkerProcess(
     AdjustWorkerOomScore(proc->GetId());
   }
   MonitorStartingWorkerProcess(worker_id, language, worker_type);
-  const std::unique_ptr<ProcessInterface> &stored_proc =
+  const ProcessInterface &stored_proc =
       AddWorkerProcess(state,
                        worker_id,
                        worker_type,
@@ -918,7 +917,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   // internal namespace. These are system processes and therefore, do not need to be moved
   // into the workers cgroup.
   if (!IsInternalNamespace(job_config.ray_namespace())) {
-    add_to_cgroup_hook_(std::to_string(driver->GetProcess()->GetId()));
+    add_to_cgroup_hook_(std::to_string(driver->GetProcess().GetId()));
   }
 
   HandleJobStarted(job_id, job_config);
@@ -1210,7 +1209,7 @@ void WorkerPool::TryKillingIdleWorkers() {
       RAY_LOG(DEBUG) << "Number of idle workers " << num_killable_idle_workers
                      << " is larger than the number of desired workers "
                      << num_desired_idle_workers << " killing idle worker with PID "
-                     << it->worker->GetProcess()->GetId();
+                     << it->worker->GetProcess().GetId();
       KillIdleWorker(*it);
       it = idle_of_all_languages_.erase(it);
       num_killable_idle_workers--;
@@ -1354,7 +1353,7 @@ void WorkerPool::StartNewWorker(
                            request->runtime_env_info_,
                            request->worker_startup_keep_alive_duration_);
     if (status == PopWorkerStatus::OK) {
-      RAY_CHECK(proc->IsValid());
+      RAY_CHECK(proc.IsValid());
       WarnAboutSize();
       state.pending_registration_requests.emplace_back(request);
       MonitorPopWorkerRequestForRegistration(request);
@@ -1779,7 +1778,7 @@ void WorkerPool::TryStartIOWorkers(const Language &language,
       PopWorkerStatus status;
       auto [proc, worker_id] =
           StartWorkerProcess(ray::Language::PYTHON, worker_type, JobID::Nil(), &status);
-      if (!proc->IsValid()) {
+      if (!proc.IsValid()) {
         // We may hit the maximum worker start up concurrency limit. Stop.
         return;
       }

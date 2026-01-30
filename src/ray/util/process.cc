@@ -14,8 +14,6 @@
 
 #include "ray/util/process.h"
 
-#include "ray/common/status.h"
-#include "ray/common/status_or.h"
 #include "ray/util/process_utils.h"
 
 #ifdef _WIN32
@@ -65,7 +63,8 @@ Process::~Process() {
 #else
     success = close(static_cast<int>(fd_)) == 0;
 #endif
-    RAY_CHECK(success) << absl::StrFormat("error %d closing process %d FD", errno, pid_);
+    RAY_CHECK(success) << absl::StrFormat(
+        "error %s closing process %d FD", strerror(errno), pid_);
   }
 
   fd_ = -1;
@@ -131,24 +130,20 @@ Process::Process(const char *argv[],
                  bool new_process_group) {
 #ifdef __linux__
   KnownChildrenTracker::instance().AddKnownChild([&, this]() -> pid_t {
-    auto result =
-        Spawnvpe(argv, decouple, env, pipe_to_stdin, add_to_cgroup, new_process_group);
-    if (result.ok()) {
-      pid_ = result->first;
-      fd_ = result->second;
-    } else {
-      ec = std::error_code(static_cast<int>(result.code()), std::generic_category());
+    std::pair<pid_t, intptr_t> result = Spawnvpe(
+        argv, ec, decouple, env, pipe_to_stdin, add_to_cgroup, new_process_group);
+    if (!ec) {
+      pid_ = result.first;
+      fd_ = result.second;
     }
     return this->GetId();
   });
 #else
   auto result =
-      Spawnvpe(argv, decouple, env, pipe_to_stdin, add_to_cgroup, new_process_group);
-  if (result.ok()) {
-    pid_ = result->first;
-    fd_ = result->second;
-  } else {
-    ec = std::error_code(static_cast<int>(result.code()), std::generic_category());
+      Spawnvpe(argv, ec, decouple, env, pipe_to_stdin, add_to_cgroup, new_process_group);
+  if (!ec) {
+    pid_ = result.first;
+    fd_ = result.second;
   }
 #endif
 }
@@ -163,15 +158,16 @@ Process &Process::operator=(Process &&other) {
   return *this;
 }
 
-StatusOr<std::pair<pid_t, intptr_t>> Process::Spawnvpe(
-    const char *argv[],
-    bool decouple,
-    const ProcessEnvironment &env,
-    bool pipe_to_stdin,
-    AddProcessToCgroupHook add_to_cgroup,
-    bool new_process_group) const {
+std::pair<pid_t, intptr_t> Process::Spawnvpe(const char *argv[],
+                                             std::error_code &ec,
+                                             bool decouple,
+                                             const ProcessEnvironment &env,
+                                             bool pipe_to_stdin,
+                                             AddProcessToCgroupHook add_to_cgroup,
+                                             bool new_process_group) const {
   intptr_t fd;
   pid_t pid;
+  ec = std::error_code();
   ProcessEnvironment new_env;
   for (char *const *e = environ; *e; ++e) {
     RAY_CHECK(*e && **e != '\0') << "environment variable name is absent";
@@ -222,7 +218,8 @@ StatusOr<std::pair<pid_t, intptr_t>> Process::Spawnvpe(
     fd = reinterpret_cast<intptr_t>(pi.hProcess);
     pid = pi.dwProcessId;
   } else {
-    return Status::FromError(std::error_code(GetLastError(), std::system_category()));
+    ec = std::error_code(GetLastError(), std::system_category());
+    return std::pair<pid_t, intptr_t>(-1, -1);
   }
 #else
   std::vector<char *> new_env_ptrs;
@@ -357,7 +354,7 @@ StatusOr<std::pair<pid_t, intptr_t>> Process::Spawnvpe(
   // Use pipe to track process lifetime. (The pipe closes when process terminates.)
   fd = pipefds[0];
   if (pid == -1) {
-    return Status::FromError(std::error_code(errno, std::system_category()));
+    ec = std::error_code(errno, std::system_category());
   }
 #endif
   return std::pair<pid_t, intptr_t>(pid, fd);
@@ -380,7 +377,7 @@ std::string Process::Exec(const std::string command) {
   return result;
 }
 
-StatusOr<std::unique_ptr<ProcessInterface>> Process::Spawn(
+std::pair<std::unique_ptr<ProcessInterface>, std::error_code> Process::Spawn(
     const std::vector<std::string> &args,
     bool decouple,
     const std::string &pid_file,
@@ -406,11 +403,8 @@ StatusOr<std::unique_ptr<ProcessInterface>> Process::Spawn(
     file << proc->GetId() << std::endl;
     RAY_CHECK(file.good());
   }
-
-  if (error) {
-    return Status::FromError(error);
-  }
-  return std::move(proc);
+  return std::pair<std::unique_ptr<ProcessInterface>, std::error_code>(std::move(proc),
+                                                                       error);
 }
 
 std::error_code Process::Call(const std::vector<std::string> &args,

@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/status_or.h"
 #include "ray/util/compat.h"
 #include "ray/util/logging.h"
 #include "ray/util/process_interface.h"
@@ -117,9 +116,10 @@ class Process : public ProcessInterface {
    * @note The given environment variables will be simply added to the process's
    *          environment in addition to the existing environment variables.
    *          Behaviors of duplicate environment variables will be undefined.
-   * @return A StatusOr containing the process object on success, or an error status.
+   * @return A pair containing the process object and the error code if any error
+   * occurred.
    */
-  static StatusOr<std::unique_ptr<ProcessInterface>> Spawn(
+  static std::pair<std::unique_ptr<ProcessInterface>, std::error_code> Spawn(
       const std::vector<std::string> &args,
       bool decouple,
       const std::string &pid_file = std::string(),
@@ -132,17 +132,10 @@ class Process : public ProcessInterface {
 
   bool IsValid() const override;
 
-  /**
-   * @brief Forcefully kills the process. Unsafe for unowned processes.
-   */
   void Kill() override;
 
   bool IsAlive() const override;
 
-  /**
-   * @brief Waits for the process to terminate. Not supported for unowned processes.
-   * @return The process's exit code. Returns -1 for a null process.
-   */
   int Wait() const override;
 
  private:
@@ -159,6 +152,7 @@ class Process : public ProcessInterface {
    *          to track the parent process's lifetime. The fd of the read end
    *          of the pipe to track child process's lifetime is returned.
    * @param[in] argv The command-line arguments to spawn the process with.
+   * @param[out] ec Returns any error that occurred when spawning the process.
    * @param[in] decouple Whether to decouple the parent and child processes.
    * @param[in] env The environment variables to set for the process.
    * @param[in] pipe_to_stdin Whether to pipe the child's stdin to the parent.
@@ -167,16 +161,16 @@ class Process : public ProcessInterface {
    * @note The given environment variables will be simply added to the process's
    *          environment in addition to the existing environment variables.
    *          Behaviors of duplicate environment variables will be undefined.
-   * @return A pair of the process ID and the fd of the read end
-   *         of the pipe to track child process's lifetime on success.
-   *         Returns an error status wrapping the error code on failure.
+   * @return A pair of the process ID and the fd of the read end of the pipe
+   *         to track child process's lifetime.
    */
-  StatusOr<std::pair<pid_t, intptr_t>> Spawnvpe(const char *argv[],
-                                                bool decouple,
-                                                const ProcessEnvironment &env,
-                                                bool pipe_to_stdin,
-                                                AddProcessToCgroupHook add_to_cgroup,
-                                                bool new_process_group) const;
+  std::pair<pid_t, intptr_t> Spawnvpe(const char *argv[],
+                                      std::error_code &ec,
+                                      bool decouple,
+                                      const ProcessEnvironment &env,
+                                      bool pipe_to_stdin,
+                                      AddProcessToCgroupHook add_to_cgroup,
+                                      bool new_process_group) const;
 };
 
 }  // namespace ray

@@ -22,19 +22,18 @@
 
 namespace ray {
 
-#if !defined(_WIN32)
 /**
  * @brief Sets the FD_CLOEXEC flag on a file descriptor.
  * @details This means when the process is forked, this fd would be
  *          closed in the child process side.
+ *          This should be called on any FD that shouldn't be leaked
+ *          to the child process on a fork.
  *
- *          Idempotent.
- *          Not thread safe.
- *          See https://github.com/ray-project/ray/issues/40813
+ * @note Idempotent.
+ * @note Not thread safe.
  * @param fd The file descriptor to set the FD_CLOEXEC flag on.
  */
 void SetFdCloseOnExec(int fd);
-#endif
 
 /**
  * @brief Get the Process ID of the parent process.

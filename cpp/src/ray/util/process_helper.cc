@@ -49,20 +49,18 @@ void ProcessHelper::StartRayNode(const std::string node_id_address,
     cmdargs.insert(cmdargs.end(), head_args.begin(), head_args.end());
   }
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
-  StatusOr<std::unique_ptr<ProcessInterface>> spawn_result =
-      Process::Spawn(cmdargs, true);
-  RAY_CHECK(spawn_result.ok()) << "Failed to spawn process to start ray node";
-  spawn_result.value()->Wait();
+  auto [proc, ec] = Process::Spawn(cmdargs, true);
+  RAY_CHECK(!ec) << "Failed to spawn process to start ray node: " << ec.message();
+  proc->Wait();
   return;
 }
 
 void ProcessHelper::StopRayNode() {
   std::vector<std::string> cmdargs({"ray", "stop"});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
-  StatusOr<std::unique_ptr<ProcessInterface>> spawn_result =
-      Process::Spawn(cmdargs, true);
-  RAY_CHECK(spawn_result.ok()) << "Failed to spawn process to stop ray node";
-  spawn_result.value()->Wait();
+  auto [proc, ec] = Process::Spawn(cmdargs, true);
+  RAY_CHECK(!ec) << "Failed to spawn process to stop ray node: " << ec.message();
+  proc->Wait();
   return;
 }
 

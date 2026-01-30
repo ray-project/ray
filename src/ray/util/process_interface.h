@@ -24,8 +24,6 @@ namespace ray {
 
 using ProcessEnvironment = absl::flat_hash_map<std::string, std::string>;
 
-using StartupToken = int64_t;
-
 /**
  * @class ProcessInterface
  * @details This interface is used to abstract the process implementation
@@ -72,7 +70,11 @@ class ProcessInterface {
 
   /**
    * @brief Waits for process to terminate.
-   * @details Not supported for unowned processes.
+   * @details Wait can only be called on processes spawned by this Process instance
+   *          either as a child process or a decoupled grandchild process.
+   *          Calling wait on a process with no relationship to this Process
+   *          will result in error being returned.
+   *
    * @return The process's exit code. Returns -1 for a null process.
    */
   virtual int Wait() const = 0;

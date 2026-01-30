@@ -68,14 +68,14 @@ void Worker::KillAsync(instrumented_io_context &io_service, bool force) {
   }
   const auto worker = shared_from_this();
   if (force) {
-    worker->GetProcess()->Kill();
+    proc_->Kill();
     return;
   }
 #ifdef _WIN32
   // TODO(mehrdadn): implement graceful process termination mechanism
 #else
   // Attempt to gracefully shutdown the worker before force killing it.
-  kill(worker->GetProcess()->GetId(), SIGTERM);
+  kill(proc_->GetId(), SIGTERM);
 #endif
 
   auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service);
@@ -86,8 +86,8 @@ void Worker::KillAsync(instrumented_io_context &io_service, bool force) {
       [timeout, retry_timer, worker](const boost::system::error_code &error) {
 #ifdef _WIN32
 #else
-        if (worker->GetProcess()->IsAlive()) {
-          RAY_LOG(INFO) << "Worker with PID=" << worker->GetProcess()->GetId()
+        if (worker->proc_->IsAlive()) {
+          RAY_LOG(INFO) << "Worker with PID=" << worker->proc_->GetId()
                         << " did not exit after " << timeout
                         << "ms, force killing with SIGKILL.";
         } else {
@@ -95,7 +95,7 @@ void Worker::KillAsync(instrumented_io_context &io_service, bool force) {
         }
 #endif
         // Force kill worker
-        worker->GetProcess()->Kill();
+        worker->proc_->Kill();
       });
 }
 
@@ -107,11 +107,14 @@ bool Worker::IsBlocked() const { return blocked_; }
 
 WorkerID Worker::WorkerId() const { return worker_id_; }
 
-const std::unique_ptr<ProcessInterface> &Worker::GetProcess() const { return proc_; }
+const ProcessInterface &Worker::GetProcess() const { return *proc_; }
 
 void Worker::SetProcess(std::unique_ptr<ProcessInterface> proc) {
-  RAY_CHECK(proc_ == nullptr ||
-            proc_->IsNull());  // this procedure should not be called multiple times
+  RAY_CHECK(proc_ == nullptr || proc_->IsNull()) << absl::StrFormat(
+      "Failed to set process: %d on worker: %s because it already has a process: %d",
+      proc->GetId(),
+      worker_id_.Hex(),
+      proc_->GetId());
   proc_ = std::move(proc);
 }
 

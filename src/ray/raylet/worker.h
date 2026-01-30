@@ -65,7 +65,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// Return the worker's ID.
   WorkerID WorkerId() const override;
   /// Return the worker process.
-  const std::unique_ptr<ProcessInterface> &GetProcess() const override;
+  const ProcessInterface &GetProcess() const override;
   void SetProcess(std::unique_ptr<ProcessInterface> proc) override;
   rpc::Language GetLanguage() const override;
   const std::string IpAddress() const override;
