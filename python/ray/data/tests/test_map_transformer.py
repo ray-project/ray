@@ -58,6 +58,8 @@ def test_chained_transforms_release_intermediates_between_batches():
         # NOTE: Every of the chained UDFs will be appending into this list in
         #       order, meaning that in 1 iteration N refs will be added, where
         #       N is the number of chained UDFs
+        print(f">>> [DBG] Batch: {batch=}")
+
         input_intermediates.append(weakref.ref(batch))
 
         return pd.DataFrame({"id": batch["id"] * 2})
@@ -65,12 +67,12 @@ def test_chained_transforms_release_intermediates_between_batches():
     transformer = _create_chained_transformer(udf, NUM_CHAINED_TRANSFORMS)
     ctx = TaskContext(task_idx=0, op_name="test")
 
-    input_blocks = [pd.DataFrame({"id": [i + 1]}) for i in range(NUM_BATCHES)]
+    # Use a generator instead of a list to avoid list_iterator holding references
+    def make_input_blocks():
+        for i in range(NUM_BATCHES):
+            yield pd.DataFrame({"id": [i + 1]})
 
-    result_iter = transformer.apply_transform(iter(input_blocks), ctx)
-
-    # Release original references!
-    del input_blocks
+    result_iter = transformer.apply_transform(make_input_blocks(), ctx)
 
     for i in range(NUM_BATCHES):
         # Consume batch
@@ -81,6 +83,8 @@ def test_chained_transforms_release_intermediates_between_batches():
 
         # Trigger GC
         gc.collect()
+
+        print(f">>> {input_intermediates=}")
 
         # Extract current set of intermediate input refs
         cur_intermediates = [input_intermediates.popleft() for _ in range(NUM_CHAINED_TRANSFORMS)]
