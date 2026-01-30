@@ -407,7 +407,7 @@ class BasicVariantGenerator(SearchAlgorithm):
             state=state_dict,
             checkpoint_dir=dirpath,
             file_name=file_name,
-            tmp_file_name=f".tmp-{file_name}",
+            tmp_file_name=f"tmp-{file_name}",
         )
 
     def has_checkpoint(self, dirpath: str):

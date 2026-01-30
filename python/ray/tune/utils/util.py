@@ -405,12 +405,12 @@ def _atomic_save(state: Dict, checkpoint_dir: str, file_name: str, tmp_file_name
         state: Object state to be serialized.
         checkpoint_dir: Directory location for the checkpoint.
         file_name: Final name of file.
-        tmp_file_name: Temporary name of file.
+        tmp_file_name: Temporary name of file with .uuid prefix.
     """
     import ray.cloudpickle as cloudpickle
 
     tmp_search_ckpt_path = os.path.join(
-        checkpoint_dir, f"{str(uuid.uuid4())}-{tmp_file_name}"
+        checkpoint_dir, f".{str(uuid.uuid4())}-{tmp_file_name}"
     )
     with open(tmp_search_ckpt_path, "wb") as f:
         cloudpickle.dump(state, f)

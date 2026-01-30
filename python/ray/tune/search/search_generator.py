@@ -189,7 +189,7 @@ class SearchGenerator(SearchAlgorithm):
             state=search_alg_state,
             checkpoint_dir=dirpath,
             file_name=file_name,
-            tmp_file_name=f".tmp-{file_name}",
+            tmp_file_name=f"tmp-{file_name}",
         )
 
     def restore_from_dir(self, dirpath: str):

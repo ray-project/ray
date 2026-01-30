@@ -2,6 +2,7 @@ import copy
 import glob
 import logging
 import os
+import uuid
 import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
@@ -376,7 +377,7 @@ class Searcher:
                 session.
         """
         file_name = self.CKPT_FILE_TMPL.format(session_str)
-        tmp_file_name = f".tmp-{file_name}"
+        tmp_file_name = f".{str(uuid.uuid4())}-tmp-{file_name}"
         tmp_search_ckpt_path = os.path.join(checkpoint_dir, tmp_file_name)
         success = True
         try:
