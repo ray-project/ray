@@ -767,8 +767,9 @@ def _map_task(
             exec_stats = stats.build()
             # Yield block and retrieve its Ray object serialization timing
             stats: StreamingGeneratorStats = yield block
+            if stats:
+                exec_stats.block_ser_time_s = stats.object_creation_dur_s
 
-            exec_stats.block_ser_time_s = stats.object_creation_dur_s
             exec_stats.udf_time_s = map_transformer.udf_time_s(reset=True)
             exec_stats.task_idx = ctx.task_idx
             exec_stats.max_uss_bytes = profiler.estimate_max_uss()

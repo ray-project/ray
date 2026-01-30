@@ -1751,7 +1751,8 @@ class HashShuffleAggregator:
             stats: StreamingGeneratorStats = yield block
 
             # Update block serialization time
-            exec_stats.block_ser_time_s = stats.object_creation_dur_s
+            if stats:
+                exec_stats.block_ser_time_s = stats.object_creation_dur_s
 
             yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
 
