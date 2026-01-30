@@ -405,7 +405,7 @@ def _atomic_save(state: Dict, checkpoint_dir: str, file_name: str, tmp_file_name
         state: Object state to be serialized.
         checkpoint_dir: Directory location for the checkpoint.
         file_name: Final name of file.
-        tmp_file_name: Temporary name of file with .uuid prefix.
+        tmp_file_name: Temporary name of file. We prepend a .uuid- prefix.
     """
     import ray.cloudpickle as cloudpickle
 
