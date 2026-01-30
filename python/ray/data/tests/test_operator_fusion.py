@@ -337,10 +337,9 @@ def test_map_batches_batch_size_fusion(
         LogicalPlan(input_op, context),
     )
 
-    mapped_ds = ds.map_batches(lambda x: x, batch_size=2).map_batches(
-        lambda x: x,
-        batch_size=5,
-    )
+    mapped_ds = ds.map_batches(
+        lambda x: x, batch_size=2, udf_modifying_row_count=False
+    ).map_batches(lambda x: x, batch_size=5, udf_modifying_row_count=False)
 
     physical_plan = get_execution_plan(mapped_ds._logical_plan)
 
@@ -383,9 +382,11 @@ def test_map_batches_with_batch_size_specified_fusion(
     mapped_ds = ds.map_batches(
         lambda x: x,
         batch_size=upstream_batch_size,
+        udf_modifying_row_count=False,
     ).map_batches(
         lambda x: x,
         batch_size=downstream_batch_size,
+        udf_modifying_row_count=False,
     )
 
     physical_plan = get_execution_plan(mapped_ds._logical_plan)
@@ -803,11 +804,19 @@ def test_streaming_repartition_no_further_fuse(
     # Case 1: map_batches -> map_batches -> streaming_repartition -> map_batches -> map_batches
     # Result: map -> (map -> s_r)-> (map -> map)
     ds1 = ray.data.range(n, override_num_blocks=2)
-    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
-    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+    ds1 = ds1.map_batches(
+        lambda x: x, batch_size=target_rows, udf_modifying_row_count=False
+    )
+    ds1 = ds1.map_batches(
+        lambda x: x, batch_size=target_rows, udf_modifying_row_count=False
+    )
     ds1 = ds1.repartition(target_num_rows_per_block=target_rows)
-    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
-    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+    ds1 = ds1.map_batches(
+        lambda x: x, batch_size=target_rows, udf_modifying_row_count=False
+    )
+    ds1 = ds1.map_batches(
+        lambda x: x, batch_size=target_rows, udf_modifying_row_count=False
+    )
 
     assert len(ds1.take_all()) == n
     stats1 = ds1.stats()
