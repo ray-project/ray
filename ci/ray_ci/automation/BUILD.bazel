@@ -349,6 +349,7 @@ py_binary(
     deps = [
         ":image_tags_lib",
         "//ci/ray_ci:ray_ci_lib",
+        "//ci/ray_ci:rayci_auth",
         "//release:ray_release",
         ci_require("click"),
     ],
@@ -365,6 +366,7 @@ py_test(
     ],
     deps = [
         ":push_ray_image",
+        "//ci/ray_ci:rayci_auth",
         ci_require("pytest"),
     ],
 )
