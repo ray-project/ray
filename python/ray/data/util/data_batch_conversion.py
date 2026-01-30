@@ -66,7 +66,6 @@ def _convert_batch_type_to_pandas(
             FutureWarning,
             stacklevel=2,
         )
-
     if isinstance(data, dict):
         tensor_dict = {}
         for col_name, col in data.items():

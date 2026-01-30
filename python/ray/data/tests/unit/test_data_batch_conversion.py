@@ -74,7 +74,10 @@ def test_arrow_to_numpy():
     )
     expected_output = {TENSOR_COLUMN_NAME: np.arange(12).reshape(3, 2, 2)}
     actual_output = _convert_batch_type_to_numpy(input_data)
-    np.testing.assert_array_equal(expected_output, actual_output)
+    assert expected_output.keys() == actual_output.keys()
+    np.testing.assert_array_equal(
+        expected_output[TENSOR_COLUMN_NAME], actual_output[TENSOR_COLUMN_NAME]
+    )
 
     input_data = pa.table(
         {
@@ -99,16 +102,23 @@ def test_arrow_to_numpy():
 
 def test_pd_dataframe_to_numpy():
     input_data = pd.DataFrame({"column_1": [1, 2, 3, 4]})
-    expected_output = np.array([1, 2, 3, 4])
+    expected_output = {"column_1": np.array([1, 2, 3, 4])}
     actual_output = _convert_batch_type_to_numpy(input_data)
-    np.testing.assert_array_equal(expected_output, actual_output)
+    assert expected_output.keys() == actual_output.keys()
+    np.testing.assert_array_equal(
+        expected_output["column_1"], actual_output["column_1"]
+    )
 
     input_data = pd.DataFrame(
         {TENSOR_COLUMN_NAME: TensorArray(np.arange(12).reshape(3, 4))}
     )
+
     expected_output = {TENSOR_COLUMN_NAME: np.arange(12).reshape(3, 4)}
     actual_output = _convert_batch_type_to_numpy(input_data)
-    np.testing.assert_array_equal(expected_output, actual_output)
+    assert expected_output.keys() == actual_output.keys()
+    np.testing.assert_array_equal(
+        expected_output[TENSOR_COLUMN_NAME], actual_output[TENSOR_COLUMN_NAME]
+    )
 
     input_data = pd.DataFrame({"column_1": [1, 2, 3, 4], "column_2": [1, -1, 1, -1]})
     expected_output = {
@@ -174,33 +184,39 @@ def test_numpy_pandas(cast_tensor_columns):
     actual_output = _convert_batch_type_to_pandas(input_data, cast_tensor_columns)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
-    output_array = _convert_pandas_to_batch_type(
+    output_numpy = _convert_pandas_to_batch_type(
         actual_output, type=BatchFormat.NUMPY, cast_tensor_columns=cast_tensor_columns
     )
-    np.testing.assert_equal(output_array, input_data)
+
+    np.testing.assert_equal(output_numpy, {TENSOR_COLUMN_NAME: input_data})
 
 
 @pytest.mark.parametrize("cast_tensor_columns", [True, False])
 def test_numpy_multi_dim_pandas(cast_tensor_columns):
     input_data = np.arange(12).reshape((3, 2, 2))
-    expected_output = pd.DataFrame({"__value__": list(input_data)})
+    expected_output = pd.DataFrame({TENSOR_COLUMN_NAME: list(input_data)})
     actual_output = _convert_batch_type_to_pandas(input_data, cast_tensor_columns)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
-    output_array = _convert_pandas_to_batch_type(
+    output_numpy = _convert_pandas_to_batch_type(
         actual_output, type=BatchFormat.NUMPY, cast_tensor_columns=cast_tensor_columns
     )
-    np.testing.assert_array_equal(np.array(list(output_array)), input_data)
+    np.testing.assert_array_equal(
+        np.array(list(output_numpy[TENSOR_COLUMN_NAME])), input_data
+    )
 
 
 def test_numpy_object_pandas():
     input_data = np.array([[1, 2, 3], [1]], dtype=object)
-    expected_output = pd.DataFrame({"__value__": input_data})
+    expected_output = pd.DataFrame({TENSOR_COLUMN_NAME: input_data})
     actual_output = _convert_batch_type_to_pandas(input_data)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
     np.testing.assert_array_equal(
-        _convert_pandas_to_batch_type(actual_output, type=BatchFormat.NUMPY), input_data
+        _convert_pandas_to_batch_type(actual_output, type=BatchFormat.NUMPY)[
+            TENSOR_COLUMN_NAME
+        ],
+        input_data,
     )
 
 
@@ -228,10 +244,12 @@ def test_dict_pandas(cast_tensor_columns):
     actual_output = _convert_batch_type_to_pandas(input_data, cast_tensor_columns)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
-    output_array = _convert_pandas_to_batch_type(
+    output_numpy = _convert_pandas_to_batch_type(
         actual_output, type=BatchFormat.NUMPY, cast_tensor_columns=cast_tensor_columns
     )
-    np.testing.assert_array_equal(output_array, input_data["x"])
+
+    assert output_numpy.keys() == input_data.keys()
+    np.testing.assert_array_equal(output_numpy["x"], input_data["x"])
 
 
 @pytest.mark.parametrize("cast_tensor_columns", [True, False])
@@ -242,10 +260,10 @@ def test_dict_multi_dim_to_pandas(cast_tensor_columns):
     actual_output = _convert_batch_type_to_pandas(input_data, cast_tensor_columns)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
-    output_array = _convert_pandas_to_batch_type(
+    output_numpy = _convert_pandas_to_batch_type(
         actual_output, type=BatchFormat.NUMPY, cast_tensor_columns=cast_tensor_columns
     )
-    np.testing.assert_array_equal(np.array(list(output_array)), input_data["x"])
+    np.testing.assert_array_equal(np.array(list(output_numpy["x"])), input_data["x"])
 
 
 @pytest.mark.parametrize("cast_tensor_columns", [True, False])
@@ -258,6 +276,7 @@ def test_dict_pandas_multi_column(cast_tensor_columns):
     output_dict = _convert_pandas_to_batch_type(
         actual_output, type=BatchFormat.NUMPY, cast_tensor_columns=cast_tensor_columns
     )
+
     for k, v in output_dict.items():
         np.testing.assert_array_equal(v, array_dict[k])
 
