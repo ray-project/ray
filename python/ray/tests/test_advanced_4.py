@@ -28,12 +28,6 @@ def test_initialized(shutdown_only_with_initialization_check):
     assert ray.is_initialized()
 
 
-def test_initialized_local_mode(shutdown_only_with_initialization_check):
-    assert not ray.is_initialized()
-    ray.init(num_cpus=0, local_mode=True)
-    assert ray.is_initialized()
-
-
 def test_ray_start_and_stop():
     for i in range(10):
         subprocess.check_call(["ray", "start", "--head"])
@@ -164,32 +158,6 @@ def test_back_pressure(shutdown_only_with_initialization_check):
         assert False
 
     ray.shutdown()
-
-
-def test_local_mode_deadlock(shutdown_only_with_initialization_check):
-    ray.init(local_mode=True)
-
-    @ray.remote
-    class Foo:
-        def __init__(self):
-            pass
-
-        def ping_actor(self, actor):
-            actor.ping.remote()
-            return 3
-
-    @ray.remote
-    class Bar:
-        def __init__(self):
-            pass
-
-        def ping(self):
-            return 1
-
-    foo = Foo.remote()
-    bar = Bar.remote()
-    # Expect ping_actor call returns normally without deadlock.
-    assert ray.get(foo.ping_actor.remote(bar)) == 3
 
 
 def function_entry_num(job_id):

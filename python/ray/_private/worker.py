@@ -116,9 +116,8 @@ from ray.widgets.util import repr_with_fallback
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
-LOCAL_MODE = 2
-SPILL_WORKER_MODE = 3
-RESTORE_WORKER_MODE = 4
+SPILL_WORKER_MODE = 2
+RESTORE_WORKER_MODE = 3
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -450,8 +449,7 @@ class Worker:
 
     Attributes:
         node (ray._private.node.Node): The node this worker is attached to.
-        mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
-            WORKER_MODE.
+        mode: The mode of the worker. One of SCRIPT_MODE or WORKER_MODE.
     """
 
     def __init__(self):
@@ -793,13 +791,8 @@ class Worker:
         The mode WORKER_MODE should be used if this Worker is not a driver. It
         will not print information about tasks.
 
-        The mode LOCAL_MODE should be used if this Worker is a driver and if
-        you want to run the driver in a manner equivalent to serial Python for
-        debugging purposes. It will not send remote function calls to the
-        scheduler and will instead execute them in a blocking fashion.
-
         Args:
-            mode: One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
+            mode: One of SCRIPT_MODE or WORKER_MODE.
         """
         self.mode = mode
 
@@ -1115,18 +1108,6 @@ class Worker:
         if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
             original_ids = self.original_visible_accelerator_ids[resource_name]
             assigned_ids = {str(original_ids[i]) for i in assigned_ids}
-            # Give all accelerator ids in local_mode.
-            if self.mode == LOCAL_MODE:
-                if resource_name == ray_constants.GPU:
-                    max_accelerators = self.node.get_resource_and_label_spec().num_gpus
-                else:
-                    max_accelerators = (
-                        self.node.get_resource_and_label_spec().resources.get(
-                            resource_name, None
-                        )
-                    )
-                if max_accelerators:
-                    assigned_ids = original_ids[:max_accelerators]
         return list(assigned_ids)
 
     def shutdown_gpu_object_manager(self):
@@ -1182,12 +1163,6 @@ def get_resource_ids():
     """
     worker = global_worker
     worker.check_connected()
-
-    if _mode() == LOCAL_MODE:
-        raise RuntimeError(
-            "ray._private.worker.get_resource_ids() does not work in local_mode."
-        )
-
     return global_worker.core_worker.resource_ids()
 
 
@@ -1507,7 +1482,8 @@ def init(
             object store with.
             By default, this is 30% of available system memory capped by
             the shm size and 200G but can be set higher.
-        local_mode: Deprecated: consider using the Ray Distributed Debugger instead.
+        local_mode: No longer supported. For interactive debugging consider
+            using the Ray distributed debugger.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
         include_dashboard: Boolean flag indicating whether or not to start the
@@ -1821,16 +1797,9 @@ def init(
         _node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
 
     if local_mode:
-        driver_mode = LOCAL_MODE
-        warnings.warn(
-            "`local_mode` is an experimental feature that is no "
-            "longer maintained and will be removed in the near future. "
-            "For debugging consider using the Ray distributed debugger.",
-            FutureWarning,
-            stacklevel=2,
+        raise RuntimeError(
+            "`local_mode` is no longer supported. For interactive debugging consider using the Ray distributed debugger."
         )
-    else:
-        driver_mode = SCRIPT_MODE
 
     global _global_node
 
@@ -1868,7 +1837,6 @@ def init(
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=_node_ip_address,
-            driver_mode=driver_mode,
             redirect_output=None,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
@@ -2009,7 +1977,7 @@ def init(
     connect(
         _global_node,
         _global_node.session_name,
-        mode=driver_mode,
+        mode=SCRIPT_MODE,
         log_to_driver=log_to_driver,
         worker=global_worker,
         driver_object_store_memory=_driver_object_store_memory,
@@ -2134,7 +2102,7 @@ def shutdown(_exiting_interpreter: bool = False):
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
     if hasattr(global_worker, "core_worker"):
-        if global_worker.mode == SCRIPT_MODE or global_worker.mode == LOCAL_MODE:
+        if global_worker.mode == SCRIPT_MODE:
             global_worker.core_worker.shutdown_driver()
         del global_worker.core_worker
     # We need to reset function actor manager to clear the context
@@ -2496,7 +2464,7 @@ def connect(
     Args:
         node (ray._private.node.Node): The node to connect.
         session_name: The current Ray session name.
-        mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
+        mode: The mode of the worker. One of SCRIPT_MODE or WORKER_MODE.
         log_to_driver: If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         worker: The ray.Worker instance.
@@ -2551,7 +2519,7 @@ def connect(
         if job_id is None:
             job_id = ray._private.state.next_job_id()
 
-    if mode is not SCRIPT_MODE and mode is not LOCAL_MODE:
+    if mode is not SCRIPT_MODE:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
         if mode is SPILL_WORKER_MODE:
             process_name = ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
@@ -2592,8 +2560,6 @@ def connect(
         else:
             interactive_mode = True
             driver_name = "INTERACTIVE MODE"
-    elif not LOCAL_MODE:
-        raise ValueError("Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
     gcs_options = ray._raylet.GcsClientOptions.create(
         node.gcs_address,
@@ -2695,7 +2661,6 @@ def connect(
         logs_dir,
         node.node_ip_address,
         node.node_manager_port,
-        (mode == LOCAL_MODE),
         driver_name,
         serialized_job_config,
         node.metrics_agent_port,
@@ -2813,13 +2778,11 @@ def disconnect(exiting_interpreter=False):
 
 @contextmanager
 def _changeproctitle(title, next_title):
-    if _mode() is not LOCAL_MODE:
-        ray._raylet.setproctitle(title)
+    ray._raylet.setproctitle(title)
     try:
         yield
     finally:
-        if _mode() is not LOCAL_MODE:
-            ray._raylet.setproctitle(next_title)
+        ray._raylet.setproctitle(next_title)
 
 
 # Global variable to make sure we only send out the warning once.
