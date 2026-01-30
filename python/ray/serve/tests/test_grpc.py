@@ -553,6 +553,9 @@ def test_exception_without_grpc_context_code(
     When the deployment raises an exception without setting a status code on the
     gRPC context, the response should be INTERNAL error.
     """
+    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",

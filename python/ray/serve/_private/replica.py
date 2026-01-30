@@ -156,6 +156,7 @@ from ray.serve.generated.serve_pb2_grpc import add_ASGIServiceServicer_to_server
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
+from ray.serve.exceptions import gRPCStatusError
 from ray.util import metrics as ray_metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -2034,6 +2035,13 @@ class Replica(ReplicaBase):
                     except StopAsyncIteration:
                         pass
                 except BaseException as e:
+                    # For gRPC requests, wrap exception with user-set status code
+                    if c.code():
+                        e = gRPCStatusError(
+                            original_exception=e,
+                            code=c.code(),
+                            details=c.details(),
+                        )
                     status = get_grpc_response_status(
                         e,
                         self._grpc_options.request_timeout_s,
