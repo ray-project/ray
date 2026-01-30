@@ -107,7 +107,14 @@ class OfflineRLStatefulTest(unittest.TestCase):
             for state in batch["item"]
         ][:1]
         # Get the episode return.
+        # Note: dataset contains only best 5 episodes recorded:
+        # [SAEps(len=1596 done=True R=1596.0 id_=79f4875d8d814f50b88077073fb5101c),
+        # SAEps(len=1463 done=True R=1463.0 id_=6b87782a7d9c4eb79f98defb68fb198e),
+        # SAEps(len=1421 done=True R=1421.0 id_=32275111853d4f9ebd1215694498132a),
+        # SAEps(len=1418 done=True R=1418.0 id_=7cae30fc42244e01aad4afd3e84c0fb4),
+        # SAEps(len=1349 done=True R=1349.0 id_=0aa924b047494c83a5e63e67f3d180c9)]
         episode_return = episodes[0].get_return()
+        print(f"episodes[0].id_: {episodes[0].id_}")
         print(f"Found episode with return {episode_return}")
 
         # Assert the episode has a decent return.

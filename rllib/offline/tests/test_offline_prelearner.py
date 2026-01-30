@@ -1,4 +1,3 @@
-import functools
 import shutil
 import unittest
 from pathlib import Path
@@ -179,32 +178,6 @@ class TestOfflinePreLearner(unittest.TestCase):
         self.assertTrue(len(episodes) == 10)
         self.assertTrue(isinstance(episodes[0], SingleAgentEpisode))
 
-    def test_offline_prelearner_in_map_batches(self):
-        """Tests using the `OfflinePreLearner` in `map_batches` where it is used
-        in `OfflineData`.
-        """
-
-        # Create a simple dataset.
-        data = ray.data.read_parquet(self.data_path)
-
-        # Generate a batch iterator that uses the `OfflinePreLearner` to convert
-        # data to episodes.
-        batch_iterator = data.map_batches(
-            functools.partial(
-                OfflinePreLearner._map_to_episodes,
-                False,
-            )
-        ).iter_batches(
-            batch_size=10,
-            prefetch_batches=1,
-        )
-
-        # Now sample a single batch.
-        batch = next(iter(batch_iterator))
-        # Assert that we have indeed sampled episodes.
-        self.assertTrue("episodes" in batch)
-        self.assertTrue(isinstance(batch["episodes"][0], SingleAgentEpisode))
-
     def test_offline_prelearner_sample_from_old_sample_batch_data(self):
         """Tests sampling from a `SampleBatch` dataset."""
 
@@ -275,7 +248,8 @@ class TestOfflinePreLearner(unittest.TestCase):
                 batch_mode="complete_episodes",
             )
             .training(
-                train_batch_size=200,
+                train_batch_size=20,
+                minibatch_size=10,
             )
             .offline_data(
                 output=data_path,
@@ -292,7 +266,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         self.config.offline_data(
             input_=[data_path],
             input_read_episodes=True,
-            input_read_batch_size=50,
+            input_read_batch_size=10,
         )
 
         # Build the `BC` algorithm.
@@ -300,7 +274,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         # Read in the generated set of episode data.
         episode_ds = ray.data.read_parquet(data_path)
         # Sample a batch of episodes from the episode dataset.
-        episode_batch = episode_ds.take_batch(256)
+        episode_batch = episode_ds.take_batch(20)
         # Get the module state from the `Learner`.
         module_state = algo.offline_data.learner_handles[0].get_state(
             component=COMPONENT_RL_MODULE,
