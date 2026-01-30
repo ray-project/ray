@@ -33,15 +33,14 @@ def get_available_object_store_budget_fraction(
     Returns:
         The available budget fraction, or None if not available.
     """
-    op_usage = resource_manager.get_op_usage(op)
+    op_usage = resource_manager.get_op_usage(
+        op, include_ineligible_downstream=consider_downstream_ineligible_ops
+    )
     op_budget = resource_manager.get_budget(op)
     if op_usage is None or op_budget is None:
         return None
 
-    if consider_downstream_ineligible_ops:
-        total_usage = resource_manager.get_op_usage_object_store_with_downstream(op)
-    else:
-        total_usage = op_usage.object_store_memory
+    total_usage = op_usage.object_store_memory
 
     total_budget = op_budget.object_store_memory
     total_mem = total_usage + total_budget

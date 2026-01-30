@@ -178,7 +178,9 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         # Current total queued bytes (this op + downstream)
         current_queue_size_bytes = self._resource_manager.get_mem_op_internal(
             op
-        ) + self._resource_manager.get_op_outputs_object_store_usage_with_downstream(op)
+        ) + self._resource_manager.get_mem_op_outputs(
+            op, include_ineligible_downstream=True
+        )
 
         # Update EWMA state (level & dev) and compute effective cap. Note that
         # we don't update the EWMA state if the objectstore budget (available) vs total
