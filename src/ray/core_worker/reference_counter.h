@@ -511,7 +511,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
-  using ReferenceProtoTable = absl::flat_hash_map<ObjectID, rpc::ObjectReferenceCount>;
 
   bool AddOwnedObjectInternal(const ObjectID &object_id,
                               const std::vector<ObjectID> &contained_ids,
@@ -546,11 +545,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Deserialize a ReferenceTable.
   static ReferenceTable ReferenceTableFromProto(const ReferenceTableProto &proto);
-
-  /// Packs an object ID to ObjectReferenceCount map, into an array of
-  /// ObjectReferenceCount. Consumes the input proto table.
-  static void ReferenceTableToProto(ReferenceProtoTable &table,
-                                    ReferenceTableProto *proto);
 
   /// Remove references for the provided object IDs that correspond to them
   /// being dependencies to a submitted task. This should be called when
@@ -598,7 +592,14 @@ class ReferenceCounter : public ReferenceCounterInterface,
   bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
                                          bool for_ref_removed,
                                          bool deduct_local_ref,
-                                         ReferenceProtoTable *borrowed_refs)
+                                         ReferenceTableProto *borrowed_refs)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
+                                         bool for_ref_removed,
+                                         bool deduct_local_ref,
+                                         ReferenceTableProto *borrowed_refs,
+                                         absl::flat_hash_set<ObjectID> &encountered)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Merge remote borrowers into our local ref count. This will add any
