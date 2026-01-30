@@ -1,5 +1,7 @@
 import logging
 import os
+import random
+import string
 import sys
 import types
 from unittest import mock
@@ -18,6 +20,7 @@ import ray.train
 from ray._private.arrow_serialization import (
     PicklableArrayPayload,
     _align_bit_offset,
+    _binary_view_array_to_array_payload,
     _bytes_for_bits,
     _copy_bitpacked_buffer_if_needed,
     _copy_buffer_if_needed,
@@ -189,6 +192,14 @@ def string_array():
 
 
 @pytest.fixture
+def string_view_array():
+    return pa.array(
+        ["foo", "barbarbarbarbar", "bz", None, "quuxquuxquuxquux"] * 200,
+        type=pa.string_view(),
+    )
+
+
+@pytest.fixture
 def large_string_array():
     return pa.array(["foo", "bar", "bz", None, "quux"] * 200, type=pa.large_string())
 
@@ -196,6 +207,14 @@ def large_string_array():
 @pytest.fixture
 def binary_array():
     return pa.array([b"foo", b"bar", b"bz", None, b"quux"] * 200)
+
+
+@pytest.fixture
+def binary_view_array():
+    return pa.array(
+        [b"foo", b"barbarbarbarbar", b"bz", None, b"quuxquuxquuxquux"] * 200,
+        type=pa.binary_view(),
+    )
 
 
 @pytest.fixture
@@ -378,10 +397,14 @@ pytest_custom_serialization_arrays = [
     (lazy_fixture("boolean_array"), 0.8),
     # String array
     (lazy_fixture("string_array"), 0.1),
+    # String View array
+    (lazy_fixture("string_view_array"), 0.1),
     # Large string array
     (lazy_fixture("large_string_array"), 0.1),
     # Binary array
     (lazy_fixture("binary_array"), 0.1),
+    # Binary View array
+    (lazy_fixture("binary_view_array"), 0.1),
     # Fixed size binary array
     (lazy_fixture("fixed_size_binary_array"), 0.1),
     # Large binary array
@@ -707,6 +730,41 @@ def test_variable_shape_tensor_serialization():
     payload = PicklableArrayPayload.from_array(ar)
     ar2 = payload.to_array()
     assert ar == ar2
+
+
+def test_binary_view_serialization_does_not_overestimate_nulls():
+    def random_string(length=15):
+        return "".join(random.choices(string.ascii_letters + string.digits, k=length))
+
+    all_out_of_line_strings = pa.array(
+        [random_string() for i in range(100)], type=pa.string_view()
+    )
+
+    # # PyArrow has no kernel for masking string_view arrays.
+    # mostly_null_strings = pc.replace_with_mask(
+    #     all_out_of_line_strings,
+    #     pa.array([False] * 250 + [None] * 750),
+    #     pa.scalar("dummy", type=pa.string_view()),
+    # )
+
+    # Replace 90% of the elements with null.
+    mostly_null_validity_buffer = pa.array([True] * 10 + [False] * 90).buffers()[1]
+    mostly_null_strings = pa.Array.from_buffers(
+        all_out_of_line_strings.type,
+        len(all_out_of_line_strings),
+        [mostly_null_validity_buffer, *all_out_of_line_strings.buffers()[1:]],
+    )
+    mostly_null_serialized = _binary_view_array_to_array_payload(mostly_null_strings)
+
+    mostly_null_serialized_byte_size = sum(
+        len(b) if b else 0 for b in mostly_null_serialized.buffers
+    )
+
+    # The minimum possible size is the sum of:
+    # - the views: 16 * 100
+    # - the null bits: (100 + 7)/8
+    # - the non-null out-of-line string values: 15 * 10
+    assert mostly_null_serialized_byte_size == 16 * 100 + (100 + 7) // 8 + 15 * 10
 
 
 if __name__ == "__main__":
