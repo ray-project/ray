@@ -237,8 +237,8 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
 
     def _create_batch_iterator(self, **kwargs) -> Iterable:
 
-        # Import the torch utils here b/c Ray Air imports `torch`` directly.
-        from ray.air._internal.torch_utils import (
+        # Import the torch utils here b/c Ray Data imports `torch`` directly.
+        from ray.data.util.torch_utils import (
             convert_ndarray_batch_to_torch_tensor_batch,
         )
 
