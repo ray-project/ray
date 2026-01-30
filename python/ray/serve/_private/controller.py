@@ -251,8 +251,8 @@ class ServeController:
         self._shutdown_event = asyncio.Event()
         self._shutdown_start_time = None
 
-        # Actors registered for cleanup on serve.shutdown()
-        self._registered_cleanup_actors: List[ActorHandle] = []
+        # Actors registered for cleanup on serve.shutdown(), keyed by actor ID
+        self._registered_cleanup_actors: Dict[str, ActorHandle] = {}
 
         # Initialize health metrics tracker
         self._health_metrics_tracker = ControllerHealthMetricsTracker(
@@ -888,14 +888,19 @@ class ServeController:
         For full persistence, use controller-managed deployment-scoped actors
         (see https://github.com/ray-project/ray/issues/60359).
 
+        If the same actor is registered multiple times (e.g., from multiple
+        router instances sharing a tree actor via get_if_exists=True), it will
+        only be stored once.
+
         Args:
             actor_handle: The actor handle to register for cleanup.
         """
-        self._registered_cleanup_actors.append(actor_handle)
+        actor_id = actor_handle._actor_id.hex()
+        self._registered_cleanup_actors[actor_id] = actor_handle
 
     def _kill_registered_cleanup_actors(self) -> None:
         """Kill all actors registered for shutdown cleanup."""
-        for actor in self._registered_cleanup_actors:
+        for actor in self._registered_cleanup_actors.values():
             try:
                 ray.kill(actor, no_restart=True)
             except Exception:
