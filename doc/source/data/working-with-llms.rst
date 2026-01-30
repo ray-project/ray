@@ -93,7 +93,7 @@ Ray Data LLM uses a **multi-stage processor pipeline** to transform your data th
 - **Detokenize**: Converts output token IDs back to readable text.
 - **Postprocess**: Your custom function that extracts and formats the final output.
 
-Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. CPU stages (ChatTemplate, Tokenize, Detokenize) use autoscaling actor pools (except for ServeDeployment and HTTP request handling stages), while the GPU stage uses a fixed pool.
+Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. CPU stages (ChatTemplate, Tokenize, Detokenize, and HttpRequestStage) use autoscaling actor pools (except for ServeDeployment stage), while the GPU stage uses a fixed pool.
 
 .. _horizontal_scaling:
 

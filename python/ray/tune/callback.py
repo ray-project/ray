@@ -464,7 +464,7 @@ class CallbackList(Callback):
 
         if state_dict:
             file_name = self.CKPT_FILE_TMPL.format(session_str)
-            tmp_file_name = f".tmp-{file_name}"
+            tmp_file_name = f"tmp-{file_name}"
             _atomic_save(
                 state=state_dict,
                 checkpoint_dir=checkpoint_dir,
