@@ -484,10 +484,6 @@ class RemoteFunction:
                     self._function_signature, args, kwargs
                 )
 
-            if worker.mode == ray._private.worker.LOCAL_MODE:
-                assert (
-                    not self._is_cross_language
-                ), "Cross language remote function cannot be executed locally."
             object_refs = worker.core_worker.submit_task(
                 self._language,
                 self._function_descriptor,

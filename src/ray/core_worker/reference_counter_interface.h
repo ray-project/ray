@@ -40,8 +40,6 @@ enum class LineageReconstructionEligibility {
   INELIGIBLE_PUT,
   /// Task created with max_retries=0.
   INELIGIBLE_NO_RETRIES,
-  /// Local mode does not support object reconstruction.
-  INELIGIBLE_LOCAL_MODE,
   /// Lineage evicted due to memory pressure.
   INELIGIBLE_LINEAGE_EVICTED,
   /// Lineage pinning is disabled system-wide, reconstruction not supported.
@@ -64,8 +62,6 @@ inline std::optional<rpc::ErrorType> ToErrorType(
     return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED;
   case LineageReconstructionEligibility::INELIGIBLE_LINEAGE_EVICTED:
     return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED;
-  case LineageReconstructionEligibility::INELIGIBLE_LOCAL_MODE:
-    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE;
   case LineageReconstructionEligibility::INELIGIBLE_LINEAGE_DISABLED:
     return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED;
   case LineageReconstructionEligibility::INELIGIBLE_REF_NOT_FOUND:

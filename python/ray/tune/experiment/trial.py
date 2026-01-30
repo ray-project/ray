@@ -6,7 +6,6 @@ import platform
 import re
 import time
 import uuid
-from contextlib import contextmanager
 from functools import partial
 from numbers import Number
 from pathlib import Path
@@ -196,8 +195,7 @@ def _noop_logger_creator(config: Dict[str, Any], logdir: str):
     if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
         # Set the working dir to the trial directory in the remote process,
         # for user file writes
-        if not ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
-            os.chdir(logdir)
+        os.chdir(logdir)
 
     return NoopLogger(config, logdir)
 
@@ -224,24 +222,6 @@ def _get_trainable_kwargs(trial: "Trial") -> Dict[str, Any]:
     }
 
     return kwargs
-
-
-@contextmanager
-def _change_working_directory(trial):
-    """Context manager changing working directory to trial logdir.
-    Used in local mode.
-
-    For non-local mode it is no-op.
-    """
-    if ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
-        old_dir = os.getcwd()
-        try:
-            os.chdir(trial.local_path)
-            yield
-        finally:
-            os.chdir(old_dir)
-    else:
-        yield
 
 
 @DeveloperAPI

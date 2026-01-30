@@ -696,7 +696,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 "batch_uuid": batch_uuid.hex,
                 "time_taken_llm": time_taken_llm,
                 "params": str(request.params),
-                "__inference_error__": None,
+                "__inference_error__": "",
             }
         except _VLLM_FATAL_ERRORS as e:
             # Fatal engine errors (e.g., EngineDeadError) indicate the vLLM
@@ -732,11 +732,21 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             )
             # Include snippet of failed prompt for debuggability
             prompt = truncate_str(row.get("prompt", ""), _MAX_PROMPT_LENGTH_IN_ERROR)
+
+            # Construct default vLLMOutputData for schema consistency with success rows
+            default_output = vLLMOutputData(
+                prompt=prompt,
+                prompt_token_ids=None,
+                num_input_tokens=0,
+            )
             return {
+                **default_output.model_dump(),
+                "request_id": -1,
                 self.IDX_IN_BATCH_COLUMN: idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
+                "time_taken_llm": -1,
+                "params": "",
                 "__inference_error__": error_msg,
-                "prompt": prompt,
             }
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
@@ -860,8 +870,17 @@ class vLLMEngineStage(StatefulStage):
         pp_size = engine_kwargs.get("pipeline_parallel_size", 1)
         num_bundles_per_replica = tp_size * pp_size
 
-        # Use the MP backend by default.
-        engine_kwargs.setdefault("distributed_executor_backend", "mp")
+        # Select distributed executor backend:
+        # - "uni": Single-process executor for single-GPU inference. Avoids unnecessary
+        #   process spawning and IPC overhead which is noticeable for small models
+        #   or short decode lengths.
+        # - "ray": Ray-based executor for multi-GPU (TP/PP > 1) with better resource
+        #   cleanup, unification with multi-node pipeline parallelism, and advanced control
+        #   over the placement group.
+        engine_kwargs.setdefault(
+            "distributed_executor_backend",
+            "uni" if num_bundles_per_replica == 1 else "ray",
+        )
         executor_backend = engine_kwargs.get("distributed_executor_backend")
 
         # When Ray is used in the vLLM engine, we set num_devices to 0 so that

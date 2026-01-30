@@ -84,7 +84,7 @@ class LoraConfig(BaseModelExtended):
     )
     max_num_adapters_per_replica: PositiveInt = Field(
         default=16,
-        description="The maximum number of adapters load on each replica.",
+        description="The maximum number of adapters to load on each replica.",
     )
     download_timeout_s: Optional[float] = Field(
         DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,

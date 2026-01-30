@@ -234,7 +234,7 @@ class SearchSpaceTest(unittest.TestCase):
         config.pop("func")
         from ray.tune.search.basic_variant import BasicVariantGenerator
 
-        ray.init(num_cpus=1, local_mode=True)
+        ray.init(num_cpus=1)
 
         num_samples = 5
         params = dict(
