@@ -5,10 +5,8 @@ streaming-safe and can be used independently of the main datasink class.
 """
 
 import logging
-import math
 import time
 import uuid
-from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
 import pyarrow as pa
@@ -19,7 +17,6 @@ from ray.data._internal.datasource.delta.utils import (
     build_partition_path,
     compute_parquet_statistics,
     get_file_info_with_retry,
-    join_delta_path,
     safe_dirname,
     validate_file_path,
     validate_partition_value,
@@ -104,11 +101,11 @@ class DeltaFileWriter:
     def partition_table(
         self, table: pa.Table, partition_cols: List[str]
     ) -> Dict[Tuple, pa.Table]:
-        """Partition table by columns efficiently using vectorized operations.
+        """Partition table by columns efficiently using Arrow-native operations.
 
-        Uses PyArrow compute functions for efficient partitioning. For single partition
-        column, uses pc.unique() and pc.equal() filters. For multiple columns, groups
-        by partition value tuples.
+        Uses PyArrow compute functions for efficient O(n) partitioning:
+        - Single column: Uses pc.unique() + pc.filter() (O(n) + O(k*n) where k is unique count)
+        - Multiple columns: Uses struct column + dictionary encoding for O(n) grouping
 
         PyArrow compute functions: https://arrow.apache.org/docs/python/api/compute.html
 
@@ -124,6 +121,7 @@ class DeltaFileWriter:
 
         partitions = {}
         if len(partition_cols) == 1:
+            # Single column: use unique() + filter (already efficient)
             col = partition_cols[0]
             unique_vals = pc.unique(table[col])
             if len(unique_vals) > _MAX_PARTITIONS:
@@ -144,34 +142,53 @@ class DeltaFileWriter:
                 if len(filtered) > 0:
                     partitions[(val_py,)] = filtered
         else:
-            # Sentinel object for NaN values to ensure consistent tuple keys
-            # (NaN != NaN in Python, so we use a sentinel object)
-            _NAN_SENTINEL = object()
+            # Multiple columns: use struct + dictionary encoding for O(n) grouping
+            # This avoids converting to Python lists (which is O(n) and slow for large datasets)
+            # Create struct column from partition columns
+            struct_fields = [
+                pa.field(col, table.schema.field(col).type, nullable=True)
+                for col in partition_cols
+            ]
+            struct_array = pa.StructArray.from_arrays(
+                [table[col] for col in partition_cols], fields=struct_fields
+            )
 
-            val_lists = [table[col].to_pylist() for col in partition_cols]
-            indices = defaultdict(list)
-            for idx, tup in enumerate(zip(*val_lists)):
-                # Normalize NaN values to sentinel to ensure consistent tuple keys
-                normalized_tup = tuple(
-                    _NAN_SENTINEL if isinstance(v, float) and math.isnan(v) else v
-                    for v in tup
-                )
-                for v in tup:
-                    validate_partition_value(v)
-                indices[normalized_tup].append(idx)
-            if len(indices) > _MAX_PARTITIONS:
+            # Use dictionary encode to get unique groups and indices
+            # This gives us O(n) grouping instead of O(k*n) Python loops
+            dict_encoded = pc.dictionary_encode(struct_array)
+            dictionary = dict_encoded.dictionary  # Unique struct values (partition keys)
+            indices = dict_encoded.indices  # Dictionary index for each row
+
+            # Check partition count
+            if len(dictionary) > _MAX_PARTITIONS:
                 raise ValueError(
-                    f"Too many partition combinations ({len(indices)}). Max: {_MAX_PARTITIONS}"
+                    f"Too many partition combinations ({len(dictionary)}). Max: {_MAX_PARTITIONS}"
                 )
-            for tup, idxs in indices.items():
-                # Convert sentinel back to NaN for partition key
-                # (Delta Lake uses NaN as partition value)
-                partition_key = tuple(
-                    float("nan") if v is _NAN_SENTINEL else v for v in tup
-                )
-                partitioned = table.take(idxs)
+
+            # For each unique partition key, filter rows using vectorized operations
+            # This is O(k*n) but uses Arrow-native operations (much faster than Python loops)
+            for dict_idx in range(len(dictionary)):
+                # Create mask: rows that belong to this partition
+                mask = pc.equal(indices, dict_idx)
+
+                # Filter table using mask (Arrow-native, very fast)
+                partitioned = table.filter(mask)
+
                 if len(partitioned) > 0:
+                    # Extract partition key from dictionary struct
+                    struct_val = dictionary[dict_idx]
+                    partition_key = tuple(
+                        struct_val[i].as_py() if struct_val[i].is_valid else None
+                        for i in range(len(partition_cols))
+                    )
+
+                    # Validate partition values
+                    for v in partition_key:
+                        if v is not None:
+                            validate_partition_value(v)
+
                     partitions[partition_key] = partitioned
+
         return partitions
 
     def write_partition(
