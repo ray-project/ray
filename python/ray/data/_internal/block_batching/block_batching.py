@@ -62,7 +62,6 @@ def _user_timed_iter(
 
 
 class _UserTimingIterator(Iterator[DataBatch]):
-
     def __init__(self, iter: Iterator[DataBatch], stats: Optional[DatasetStats]):
         self._iter = iter
         self._stats = stats
