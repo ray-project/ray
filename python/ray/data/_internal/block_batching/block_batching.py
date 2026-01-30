@@ -1,4 +1,3 @@
-from contextlib import nullcontext
 from typing import Callable, Iterator, Optional, TypeVar
 
 from ray.data._internal.block_batching.interfaces import Batch
