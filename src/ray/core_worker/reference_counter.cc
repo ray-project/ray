@@ -1070,7 +1070,8 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
     bool deduct_local_ref,
     ReferenceTableProto *borrowed_refs) {
   absl::flat_hash_set<ObjectID> encountered;
-  return GetAndClearLocalBorrowersInternal(object_id, for_ref_removed, deduct_local_ref, borrowed_refs, encountered);
+  return GetAndClearLocalBorrowersInternal(
+      object_id, for_ref_removed, deduct_local_ref, borrowed_refs, encountered);
 }
 
 bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
@@ -1116,8 +1117,11 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
 
   // Attempt to pop children.
   for (const auto &contained_id : it->second.nested().contains) {
-    GetAndClearLocalBorrowersInternal(
-        contained_id, for_ref_removed, /*deduct_local_ref=*/false, borrowed_refs, encountered);
+    GetAndClearLocalBorrowersInternal(contained_id,
+                                      for_ref_removed,
+                                      /*deduct_local_ref=*/false,
+                                      borrowed_refs,
+                                      encountered);
   }
   // We've reported our nested refs.
   ref.has_nested_refs_to_report = false;
@@ -1364,10 +1368,11 @@ void ReferenceCounter::PublishRefRemovedInternal(const ObjectID &object_id) {
   pub_message.set_channel_type(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL);
   auto *worker_ref_removed_message = pub_message.mutable_worker_ref_removed_message();
 
-  RAY_UNUSED(GetAndClearLocalBorrowersInternal(object_id,
-                                               /*for_ref_removed=*/true,
-                                               /*deduct_local_ref=*/false,
-                                               worker_ref_removed_message->mutable_borrowed_refs()));
+  RAY_UNUSED(GetAndClearLocalBorrowersInternal(
+      object_id,
+      /*for_ref_removed=*/true,
+      /*deduct_local_ref=*/false,
+      worker_ref_removed_message->mutable_borrowed_refs()));
   /*
   for (const auto &[id, ref] : borrowed_refs) {
     RAY_LOG(DEBUG).WithField(id)
