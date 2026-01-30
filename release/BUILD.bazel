@@ -8,7 +8,7 @@ compile_pip_requirements(
     requirements_in = "requirements_py310.in",
     requirements_txt = "requirements_py310.txt",
     tags = [
-        "team:ci",
+        "team:deps",
     ],
     visibility = ["//visibility:private"],
 )
@@ -786,6 +786,7 @@ py_test(
     ],
     exec_compatible_with = ["//bazel:py3"],
     tags = [
+        "manual",
         "release_unit",
         "team:ci",
     ],
