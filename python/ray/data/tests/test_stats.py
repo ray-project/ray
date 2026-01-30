@@ -89,6 +89,7 @@ def gen_expected_metrics(
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue': Z",
             "'obj_store_mem_pending_task_inputs': Z",
+            "'obj_store_mem_pending_task_outputs': Z",
             "'average_bytes_inputs_per_task': N",
             "'average_rows_inputs_per_task': N",
             "'average_bytes_outputs_per_task': N",
@@ -158,6 +159,7 @@ def gen_expected_metrics(
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue': Z",
             "'obj_store_mem_pending_task_inputs': Z",
+            "'obj_store_mem_pending_task_outputs': Z",
             "'average_bytes_inputs_per_task': None",
             "'average_rows_inputs_per_task': None",
             "'average_bytes_outputs_per_task': None",
@@ -630,6 +632,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_internal_inqueue: Z,\n"
         "      obj_store_mem_internal_outqueue: Z,\n"
         "      obj_store_mem_pending_task_inputs: Z,\n"
+        "      obj_store_mem_pending_task_outputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
@@ -775,6 +778,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_internal_inqueue: Z,\n"
         "      obj_store_mem_internal_outqueue: Z,\n"
         "      obj_store_mem_pending_task_inputs: Z,\n"
+        "      obj_store_mem_pending_task_outputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
@@ -873,6 +877,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            obj_store_mem_internal_inqueue: Z,\n"
         "            obj_store_mem_internal_outqueue: Z,\n"
         "            obj_store_mem_pending_task_inputs: Z,\n"
+        "            obj_store_mem_pending_task_outputs: Z,\n"
         "            average_bytes_inputs_per_task: N,\n"
         "            average_rows_inputs_per_task: N,\n"
         "            average_bytes_outputs_per_task: N,\n"
