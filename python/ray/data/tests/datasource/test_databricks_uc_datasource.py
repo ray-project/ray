@@ -6,7 +6,6 @@ import tempfile
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Optional
 from unittest import mock
 
 import pandas as pd
@@ -23,26 +22,15 @@ from ray.data._internal.datasource.databricks_uc_datasource import (
     DatabricksUCDatasource,
 )
 from ray.data._internal.util import rows_same
+from ray.data.tests.datasource.databricks_test_utils import (
+    MockResponse,
+    RefreshableCredentialProvider,
+)
 from ray.tests.conftest import *  # noqa
 
 # =============================================================================
 # Dataclasses for mock objects
 # =============================================================================
-
-
-@dataclass
-class MockResponse:
-    """Mock HTTP response for testing."""
-
-    status_code: int = 200
-    content: Optional[bytes] = None
-    _json_data: Optional[dict] = None
-
-    def raise_for_status(self):
-        pass
-
-    def json(self):
-        return self._json_data
 
 
 @dataclass
@@ -58,24 +46,6 @@ class MockChunk:
 # =============================================================================
 # Mock credential providers for testing
 # =============================================================================
-
-
-class RefreshableCredentialProvider(DatabricksCredentialProvider):
-    """A credential provider that simulates token refresh on invalidate."""
-
-    def __init__(self, initial_token: str = "expired_token"):
-        self.current_token = initial_token
-        self.invalidate_count = 0
-
-    def get_token(self) -> str:
-        return self.current_token
-
-    def get_host(self) -> str:
-        return "test_host"
-
-    def invalidate(self) -> None:
-        self.invalidate_count += 1
-        self.current_token = "refreshed_token"
 
 
 class TokenTrackingProvider(DatabricksCredentialProvider):
@@ -113,7 +83,7 @@ def databricks_env():
 @pytest.fixture
 def refreshable_credential_provider():
     """Fixture that provides a refreshable credential provider."""
-    return RefreshableCredentialProvider()
+    return RefreshableCredentialProvider(host="test_host")
 
 
 @pytest.fixture
@@ -125,11 +95,9 @@ def token_tracking_provider():
 @pytest.fixture
 def requests_mocker():
     """Fixture that mocks requests.get and requests.post."""
-    with (
-        mock.patch("requests.get") as mock_get,
-        mock.patch("requests.post") as mock_post,
-    ):
-        yield {"get": mock_get, "post": mock_post}
+    with mock.patch("requests.get") as mock_get:
+        with mock.patch("requests.post") as mock_post:
+            yield {"get": mock_get, "post": mock_post}
 
 
 @pytest.fixture

@@ -1,63 +1,21 @@
 """Tests for Unity Catalog datasource (uc_datasource.py)."""
 
-from dataclasses import dataclass
-from typing import Optional
 from unittest import mock
 
 import pytest
 
 from ray.data._internal.datasource.databricks_credentials import (
-    DatabricksCredentialProvider,
     StaticCredentialProvider,
+    build_headers,
+    request_with_401_retry,
 )
 from ray.data._internal.datasource.uc_datasource import (
     UnityCatalogConnector,
-    _build_headers,
-    _request_with_401_retry,
 )
-
-# =============================================================================
-# Dataclasses for mock objects
-# =============================================================================
-
-
-@dataclass
-class MockResponse:
-    """Mock HTTP response for testing."""
-
-    status_code: int = 200
-    _json_data: Optional[dict] = None
-
-    def raise_for_status(self):
-        if self.status_code >= 400:
-            raise Exception(f"HTTP Error {self.status_code}")
-
-    def json(self):
-        return self._json_data
-
-
-# =============================================================================
-# Mock credential providers for testing
-# =============================================================================
-
-
-class RefreshableCredentialProvider(DatabricksCredentialProvider):
-    """A credential provider that simulates token refresh on invalidate."""
-
-    def __init__(self, initial_token: str = "expired_token"):
-        self.current_token = initial_token
-        self.invalidate_count = 0
-
-    def get_token(self) -> str:
-        return self.current_token
-
-    def get_host(self) -> str:
-        return "https://test-host.databricks.com"
-
-    def invalidate(self) -> None:
-        self.invalidate_count += 1
-        self.current_token = "refreshed_token"
-
+from ray.data.tests.datasource.databricks_test_utils import (
+    MockResponse,
+    RefreshableCredentialProvider,
+)
 
 # =============================================================================
 # Pytest fixtures
@@ -92,34 +50,34 @@ def requests_mocker():
 
 
 class TestBuildHeaders:
-    """Tests for _build_headers function."""
+    """Tests for build_headers function."""
 
     def test_builds_correct_headers(self, static_credential_provider):
         """Test that headers contain correct token and content type."""
-        headers = _build_headers(static_credential_provider)
+        headers = build_headers(static_credential_provider)
 
         assert headers["Content-Type"] == "application/json"
         assert headers["Authorization"] == "Bearer test_token"
 
     def test_fetches_fresh_token(self, refreshable_credential_provider):
         """Test that token is fetched fresh each time."""
-        headers1 = _build_headers(refreshable_credential_provider)
+        headers1 = build_headers(refreshable_credential_provider)
         assert "expired_token" in headers1["Authorization"]
 
         refreshable_credential_provider.invalidate()
 
-        headers2 = _build_headers(refreshable_credential_provider)
+        headers2 = build_headers(refreshable_credential_provider)
         assert "refreshed_token" in headers2["Authorization"]
 
 
 class TestRequestWith401Retry:
-    """Tests for _request_with_401_retry function."""
+    """Tests for request_with_401_retry function."""
 
     def test_successful_request_no_retry(self, static_credential_provider):
         """Test that successful request doesn't trigger retry."""
         mock_request = mock.Mock(return_value=MockResponse(status_code=200))
 
-        response = _request_with_401_retry(
+        response = request_with_401_retry(
             mock_request,
             "https://test-url.com",
             static_credential_provider,
@@ -140,7 +98,7 @@ class TestRequestWith401Retry:
                 return MockResponse(status_code=401)
             return MockResponse(status_code=200)
 
-        response = _request_with_401_retry(
+        response = request_with_401_retry(
             mock_request,
             "https://test-url.com",
             refreshable_credential_provider,
@@ -157,7 +115,7 @@ class TestRequestWith401Retry:
         mock_request = mock.Mock(return_value=MockResponse(status_code=500))
 
         with pytest.raises(Exception, match="HTTP Error 500"):
-            _request_with_401_retry(
+            request_with_401_retry(
                 mock_request,
                 "https://test-url.com",
                 static_credential_provider,
