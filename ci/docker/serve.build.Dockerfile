@@ -11,6 +11,17 @@ SHELL ["/bin/bash", "-ice"]
 
 COPY . .
 
+# Install HAProxy for serve tests
+RUN <<EOF
+#!/bin/bash
+set -euo pipefail
+
+sudo apt-get update -y
+sudo apt-get install -y --no-install-recommends haproxy socat
+sudo rm -rf /var/lib/apt/lists/*
+
+EOF
+
 RUN <<EOF
 #!/bin/bash
 
