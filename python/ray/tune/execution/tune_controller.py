@@ -33,7 +33,6 @@ from ray.tune.execution.insufficient_resources_manager import (
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment import Experiment, Trial
 from ray.tune.experiment.trial import (
-    _change_working_directory,
     _get_trainable_kwargs,
     _Location,
     _noop_logger_creator,
@@ -1004,17 +1003,16 @@ class TuneController:
         trial.set_location(_Location())
         trainable_kwargs = _get_trainable_kwargs(trial=trial)
 
-        with _change_working_directory(trial):
-            tracked_actor = self._actor_manager.add_actor(
-                cls=_actor_cls,
-                resource_request=trial.placement_group_factory,
-                kwargs=trainable_kwargs,
-                on_start=self._actor_started,
-                on_stop=self._actor_stopped,
-                on_error=self._actor_failed,
-            )
-            self._trial_to_actor[trial] = tracked_actor
-            self._actor_to_trial[tracked_actor] = trial
+        tracked_actor = self._actor_manager.add_actor(
+            cls=_actor_cls,
+            resource_request=trial.placement_group_factory,
+            kwargs=trainable_kwargs,
+            on_start=self._actor_started,
+            on_stop=self._actor_stopped,
+            on_error=self._actor_failed,
+        )
+        self._trial_to_actor[trial] = tracked_actor
+        self._actor_to_trial[tracked_actor] = trial
 
         logger.debug(
             f"Scheduled new ACTOR for trial {trial}: {tracked_actor}. "
@@ -1255,18 +1253,17 @@ class TuneController:
 
         logger.debug(f"Future {method_name.upper()} SCHEDULED for trial {trial}")
 
-        with _change_working_directory(trial):
-            future = self._actor_manager.schedule_actor_task(
-                tracked_actor=tracked_actor,
-                method_name=method_name,
-                args=args,
-                kwargs=kwargs,
-                on_result=_on_result,
-                on_error=_on_error,
-                _return_future=_return_future,
-            )
-            if _return_future:
-                return future
+        future = self._actor_manager.schedule_actor_task(
+            tracked_actor=tracked_actor,
+            method_name=method_name,
+            args=args,
+            kwargs=kwargs,
+            on_result=_on_result,
+            on_error=_on_error,
+            _return_future=_return_future,
+        )
+        if _return_future:
+            return future
 
     def _queue_decision(self, trial, decision):
         # Get old decision, setting it to the current decision if it isn't set
