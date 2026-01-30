@@ -6,6 +6,7 @@ from typing import List
 import click
 
 from ci.ray_ci.automation.crane_lib import (
+    CraneError,
     call_crane_copy,
     call_crane_manifest,
 )
@@ -222,8 +223,11 @@ class RayImagePushContext:
 
 def _image_exists(tag: str) -> bool:
     """Check if a container image manifest exists using crane."""
-    return_code, _ = call_crane_manifest(tag)
-    return return_code == 0
+    try:
+        call_crane_manifest(tag)
+        return True
+    except CraneError:
+        return False
 
 
 def _copy_image(reference: str, destination: str, dry_run: bool = False) -> None:
@@ -233,10 +237,11 @@ def _copy_image(reference: str, destination: str, dry_run: bool = False) -> None
         return
 
     logger.info(f"Copying {reference} -> {destination}")
-    return_code, output = call_crane_copy(reference, destination)
-    if return_code != 0:
-        raise PushRayImageError(f"Crane copy failed: {output}")
-    logger.info(f"Successfully copied to {destination}")
+    try:
+        call_crane_copy(reference, destination)
+        logger.info(f"Successfully copied to {destination}")
+    except CraneError as e:
+        raise PushRayImageError(f"Crane copy failed: {e}")
 
 
 @click.command()
