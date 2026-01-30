@@ -58,8 +58,6 @@ def test_chained_transforms_release_intermediates_between_batches():
         # NOTE: Every of the chained UDFs will be appending into this list in
         #       order, meaning that in 1 iteration N refs will be added, where
         #       N is the number of chained UDFs
-        print(f">>> [DBG] Batch: {batch=}")
-
         input_intermediates.append(weakref.ref(batch))
 
         return pd.DataFrame({"id": batch["id"] * 2})
@@ -85,8 +83,6 @@ def test_chained_transforms_release_intermediates_between_batches():
 
         # Trigger GC
         gc.collect()
-
-        print(f">>> {input_intermediates=}")
 
         # Extract current set of intermediate input refs
         cur_intermediates = [
