@@ -1,9 +1,11 @@
 import math
 import time
+from datetime import timedelta
 from typing import Any, Dict, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
+from freezegun import freeze_time
 
 import ray
 from ray.data._internal.compute import ComputeStrategy
@@ -21,6 +23,7 @@ from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
+    OpResourceAllocator,
     ResourceManager,
 )
 from ray.data._internal.execution.streaming_executor_state import (
@@ -551,6 +554,125 @@ class TestResourceManager:
         # o5's downstream (o6, o7) has no blocking materializing ops
         assert resource_manager2._is_blocking_materializing_op(o5) is False
         assert resource_manager2._is_blocking_materializing_op(o7) is False
+
+
+class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
+    """Tests for OpResourceAllocator._should_unblock_streaming_output_backpressure."""
+
+    def test_unblock_backpressure_terminal_operator(self, restore_data_context):
+        """Terminal operator (no downstream) should always unblock."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+
+        topo = build_streaming_topology(o2, ExecutionOptions())
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        allocator = resource_manager._op_resource_allocator
+
+        # o2 is terminal (no output_dependencies), should always unblock
+        assert allocator._should_unblock_streaming_output_backpressure(o2) is True
+
+        # Add o3 operator - o2 is no longer terminal
+        o3 = mock_map_op(o2)
+
+        topo = build_streaming_topology(o3, ExecutionOptions())
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        allocator = resource_manager._op_resource_allocator
+
+        # Mock downstream (o3) has active tasks and input blocks (ie unblocking
+        # conditions not met)
+        o3.num_active_tasks = MagicMock(return_value=1)
+        allocator._idle_detector.detect_idle = MagicMock(return_value=False)
+
+        # o2 is not terminal anymore, falls back to idle detector which returns False
+        assert allocator._should_unblock_streaming_output_backpressure(o2) is False
+
+    def test_unblock_backpressure_downstream_idle(self, restore_data_context):
+        """Unblock when downstream is idle (no active tasks) to maintain liveness."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+
+        topo = build_streaming_topology(o3, ExecutionOptions())
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        allocator = resource_manager._op_resource_allocator
+        o3.num_active_tasks = MagicMock(return_value=0)
+
+        # Case 1: Downstream cannot submit (resource constrained) - unblock to free resources
+        allocator.can_submit_new_task = MagicMock(return_value=False)
+        assert allocator._should_unblock_streaming_output_backpressure(o2) is True
+
+        # Case 2: Downstream can submit but has no input blocks - unblock to produce data
+        allocator.can_submit_new_task = MagicMock(return_value=True)
+        topo[o3].total_enqueued_input_blocks = MagicMock(return_value=0)
+        assert allocator._should_unblock_streaming_output_backpressure(o2) is True
+
+    def test_unblock_backpressure_fallback_to_idle_detector(self, restore_data_context):
+        """When unblock conditions not met, falls back to idle detector result."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+
+        topo = build_streaming_topology(o3, ExecutionOptions())
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        allocator = resource_manager._op_resource_allocator
+
+        # Case: Downstream has active tasks - falls back to idle detector
+        o3.num_active_tasks = MagicMock(return_value=2)
+        allocator._idle_detector.detect_idle = MagicMock(return_value=False)
+        assert allocator._should_unblock_streaming_output_backpressure(o2) is False
+
+        # Case: Idle detector returns True - should unblock
+        allocator._idle_detector.detect_idle = MagicMock(return_value=True)
+        assert allocator._should_unblock_streaming_output_backpressure(o2) is True
+
+        # Case: Downstream has no active tasks but has input blocks - falls back to idle detector
+        allocator.can_submit_new_task = MagicMock(return_value=True)
+        o3.num_active_tasks = MagicMock(return_value=0)
+        topo[o3].total_enqueued_input_blocks = MagicMock(return_value=5)
+        allocator._idle_detector.detect_idle = MagicMock(return_value=False)
+        assert allocator._should_unblock_streaming_output_backpressure(o2) is False
+
+
+class TestIdleDetector:
+    """Tests for OpResourceAllocator.IdleDetector."""
+
+    def test_idle_detector(self, restore_data_context):
+        """Test IdleDetector behavior through its public interface."""
+        idle_detector = OpResourceAllocator.IdleDetector()
+        op = MagicMock()
+        op.metrics.num_task_outputs_generated = 0
+
+        with freeze_time() as frozen:
+            # First call initializes state, returns False
+            assert idle_detector.detect_idle(op) is False
+
+            # Call within interval returns False (rate limited)
+            frozen.tick(timedelta(seconds=idle_detector.DETECTION_INTERVAL_S - 1))
+            assert idle_detector.detect_idle(op) is False
+
+            # Call after interval with no output returns True (idle)
+            frozen.tick(timedelta(seconds=2))
+            assert idle_detector.detect_idle(op) is True
+
+            # Operator produces output - next detection returns False (active)
+            op.metrics.num_task_outputs_generated = 5
+            assert idle_detector.detect_idle(op) is False
+
+            # After output, wait for interval with no new output - returns True (idle again)
+            frozen.tick(timedelta(seconds=idle_detector.DETECTION_INTERVAL_S + 1))
+            assert idle_detector.detect_idle(op) is True
 
 
 if __name__ == "__main__":

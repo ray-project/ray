@@ -97,7 +97,7 @@ def _build_dataset(
 
     def producer(batch):
         for i in range(num_blocks):
-            print("Producing block", i, time.time())
+            print(f"[{time.time()}] Producing block #{i} ({block_size=})")
             yield {
                 "id": [i],
                 "data": [np.zeros(block_size, dtype=np.uint8)],
@@ -105,7 +105,7 @@ def _build_dataset(
 
     def consumer(batch):
         assert len(batch["id"]) == 1
-        print("Consuming block", batch["id"][0], time.time())
+        print(f"[{time.time()}] Consuming block #{batch['id'][0]}")
         time.sleep(0.01)
         del batch["data"]
         return batch
