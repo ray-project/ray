@@ -11,8 +11,6 @@ COPY $PYTHON_DEPSET /home/ray/python_depset.lock
 
 SHELL ["/bin/bash", "-ice"]
 
-COPY . .
-
 RUN <<EOF
 #!/bin/bash
 
