@@ -158,6 +158,12 @@ from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
 from ray.util import metrics as ray_metrics
 
+# isort: off
+import gc
+from ray.anyscale.serve._private.constants import ANYSCALE_FREEZE_GC_ON_STARTUP
+
+# isort: on
+
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
