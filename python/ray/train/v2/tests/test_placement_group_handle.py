@@ -48,6 +48,14 @@ def test_default_handle_ready():
     handle.shutdown()
 
 
+def test_default_handle_wait():
+    """wait() should return True if the placement group is ready."""
+    pg = placement_group([{"CPU": 1}])
+    handle = DefaultPlacementGroupHandle(pg)
+    assert handle.wait(timeout_seconds=10)
+    handle.shutdown()
+
+
 def test_default_handle_shutdown():
     """shutdown() should remove the placement group."""
     pg = placement_group([{"CPU": 1}])
@@ -95,6 +103,18 @@ def test_slice_handle_ready():
 
     mock_pg.ready.assert_called_once()
     assert result is mock_ready_ref
+
+
+def test_slice_handle_wait():
+    """wait() should delegate to the underlying PlacementGroup."""
+    mock_spg = MagicMock()
+    mock_pg = MagicMock()
+    mock_pg.wait.return_value = True
+    mock_spg.placement_group = mock_pg
+
+    handle = SlicePlacementGroupHandle(mock_spg)
+    assert handle.wait(timeout_seconds=10)
+    mock_pg.wait.assert_called_once()
 
 
 def test_slice_handle_shutdown():

@@ -37,7 +37,7 @@ def train_func(config):
 
     # Prepare PyTorch Data Loaders
     # ====================================================
-    hf_datasets = load_dataset("glue", "mrpc")
+    hf_datasets = load_dataset("nyu-mll/glue", "mrpc")
     tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
 
     def collate_fn(batch):
