@@ -525,18 +525,29 @@ def try_get_deltatable(
     """Return DeltaTable if it exists, None otherwise."""
     from deltalake import DeltaTable
 
+    # Collect all possible exception types that indicate table doesn't exist
+    exception_types = [FileNotFoundError, OSError, ValueError]
+
     # Try to import exceptions module (may not exist in all deltalake versions)
     try:
         from deltalake.exceptions import DeltaError, TableNotFoundError
 
-        exception_types = (FileNotFoundError, OSError, ValueError, TableNotFoundError, DeltaError)
+        exception_types.extend([TableNotFoundError, DeltaError])
     except ImportError:
-        # Fallback: exceptions module doesn't exist, catch common exceptions
-        exception_types = (FileNotFoundError, OSError, ValueError)
+        pass
+
+    # PyDeltaTableError is a base exception class in deltalake
+    # It's raised when path exists but is not a valid Delta table (e.g., empty dir)
+    try:
+        from deltalake import PyDeltaTableError
+
+        exception_types.append(PyDeltaTableError)
+    except ImportError:
+        pass
 
     try:
         return DeltaTable(table_uri, storage_options=storage_options)
-    except exception_types:
+    except tuple(exception_types):
         return None
 
 
