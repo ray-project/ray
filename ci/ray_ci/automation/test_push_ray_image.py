@@ -318,6 +318,118 @@ class TestDestinationTags:
         assert "build123-py312-cpu" in tags
 
 
+class TestShouldUpload:
+    """Test _should_upload function."""
+
+    POSTMERGE_PIPELINE_ID = "test-postmerge-pipeline-id"
+    NON_POSTMERGE_PIPELINE_ID = "some-other-pipeline-id"
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
+    def test_non_postmerge_pipeline_returns_false(self, mock_config):
+        """Non-postmerge pipelines should not upload."""
+        from ci.ray_ci.automation.push_ray_image import _should_upload
+
+        mock_config.return_value = {
+            "ci_pipeline_postmerge": [self.POSTMERGE_PIPELINE_ID]
+        }
+        result = _should_upload(
+            pipeline_id=self.NON_POSTMERGE_PIPELINE_ID,
+            branch="master",
+            rayci_schedule="nightly",
+        )
+        assert result is False
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
+    def test_release_branch_returns_true(self, mock_config):
+        """Release branches on postmerge should upload."""
+        from ci.ray_ci.automation.push_ray_image import _should_upload
+
+        mock_config.return_value = {
+            "ci_pipeline_postmerge": [self.POSTMERGE_PIPELINE_ID]
+        }
+        result = _should_upload(
+            pipeline_id=self.POSTMERGE_PIPELINE_ID,
+            branch="releases/2.44.0",
+            rayci_schedule="",
+        )
+        assert result is True
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
+    def test_master_nightly_returns_true(self, mock_config):
+        """Master branch with nightly schedule on postmerge should upload."""
+        from ci.ray_ci.automation.push_ray_image import _should_upload
+
+        mock_config.return_value = {
+            "ci_pipeline_postmerge": [self.POSTMERGE_PIPELINE_ID]
+        }
+        result = _should_upload(
+            pipeline_id=self.POSTMERGE_PIPELINE_ID,
+            branch="master",
+            rayci_schedule="nightly",
+        )
+        assert result is True
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
+    def test_master_non_nightly_returns_false(self, mock_config):
+        """Master branch without nightly schedule should not upload."""
+        from ci.ray_ci.automation.push_ray_image import _should_upload
+
+        mock_config.return_value = {
+            "ci_pipeline_postmerge": [self.POSTMERGE_PIPELINE_ID]
+        }
+        result = _should_upload(
+            pipeline_id=self.POSTMERGE_PIPELINE_ID,
+            branch="master",
+            rayci_schedule="",
+        )
+        assert result is False
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
+    def test_feature_branch_returns_false(self, mock_config):
+        """Feature branches should not upload even on postmerge."""
+        from ci.ray_ci.automation.push_ray_image import _should_upload
+
+        mock_config.return_value = {
+            "ci_pipeline_postmerge": [self.POSTMERGE_PIPELINE_ID]
+        }
+        result = _should_upload(
+            pipeline_id=self.POSTMERGE_PIPELINE_ID,
+            branch="andrew/revup/master/feature",
+            rayci_schedule="",
+        )
+        assert result is False
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
+    def test_pr_branch_returns_false(self, mock_config):
+        """PR branches should not upload even on postmerge."""
+        from ci.ray_ci.automation.push_ray_image import _should_upload
+
+        mock_config.return_value = {
+            "ci_pipeline_postmerge": [self.POSTMERGE_PIPELINE_ID]
+        }
+        result = _should_upload(
+            pipeline_id=self.POSTMERGE_PIPELINE_ID,
+            branch="feature-branch",
+            rayci_schedule="",
+        )
+        assert result is False
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
+    def test_master_with_other_schedule_returns_false(self, mock_config):
+        """Master branch with non-nightly schedule should not upload."""
+        from ci.ray_ci.automation.push_ray_image import _should_upload
+
+        mock_config.return_value = {
+            "ci_pipeline_postmerge": [self.POSTMERGE_PIPELINE_ID]
+        }
+        result = _should_upload(
+            pipeline_id=self.POSTMERGE_PIPELINE_ID,
+            branch="master",
+            rayci_schedule="weekly",
+        )
+        assert result is False
+
+
 class TestCopyImage:
     """Test _copy_image function."""
 
