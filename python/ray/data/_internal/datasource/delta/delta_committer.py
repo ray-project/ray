@@ -40,17 +40,17 @@ def validate_file_actions(
 
     Args:
         file_actions: List of AddAction objects to validate.
-        table_uri: Base URI for Delta table.
-        filesystem: PyArrow filesystem for checking files.
+        table_uri: Base URI for Delta table (for error messages only).
+        filesystem: PyArrow filesystem (SubTreeFileSystem rooted at table path).
     """
     for action in file_actions:
         validate_file_path(action.path)
-        full_path = join_delta_path(table_uri, action.path)
-        file_info = get_file_info_with_retry(filesystem, full_path)
+        # filesystem is SubTreeFileSystem, so action.path is relative from table root
+        file_info = get_file_info_with_retry(filesystem, action.path)
         if file_info.type == pa_fs.FileType.NotFound:
-            raise ValueError(f"File does not exist: {full_path}")
+            raise ValueError(f"File does not exist: {action.path} (relative to table root)")
         if file_info.size == 0:
-            raise ValueError(f"File is empty: {full_path}")
+            raise ValueError(f"File is empty: {action.path}")
 
 
 def create_table_with_files(
@@ -145,8 +145,9 @@ def commit_to_existing_table(
 
     if inferred_schema:
         validate_schema_type_compatibility(existing_schema, inferred_schema)
-        # New columns are allowed (Delta Lake adds them automatically)
         # Missing columns are OK (partial writes)
+        # Note: New columns must be added via schema evolution (alter.add_columns)
+        # before committing files. This is handled in DeltaDatasink._evolve_schema()
 
     # Note: Partition validation is already done in on_write_start for early detection
     # No need to validate again here

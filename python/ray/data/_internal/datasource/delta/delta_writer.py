@@ -219,12 +219,10 @@ class DeltaFileWriter:
         relative_path = partition_path + filename
 
         validate_file_path(relative_path)
-        # Use filesystem-safe path joining to prevent path traversal
+        # filesystem is SubTreeFileSystem rooted at table path, so use relative_path directly
         # relative_path is already validated to not contain ".."
-        full_path = join_delta_path(self.table_uri, relative_path)
-
-        self.written_files.add(full_path)
-        file_size = self.write_parquet_file(table, full_path)
+        self.written_files.add(relative_path)
+        file_size = self.write_parquet_file(table, relative_path)
         file_statistics = compute_parquet_statistics(table)
 
         return AddAction(
@@ -270,7 +268,7 @@ class DeltaFileWriter:
 
         Args:
             table: PyArrow table to write.
-            file_path: Full path to write file to.
+            file_path: Relative path from table root (filesystem is SubTreeFileSystem).
 
         Returns:
             Size of written file in bytes.

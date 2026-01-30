@@ -67,6 +67,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         filesystem: Optional[pa_fs.FileSystem] = None,
         schema: Optional[pa.Schema] = None,
         upsert_kwargs: Optional[Dict[str, Any]] = None,
+        schema_mode: str = "error",
         **write_kwargs,
     ):
         """Initialize DeltaDatasink.
@@ -77,9 +78,15 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             partition_cols: Columns to partition by (Hive-style).
             filesystem: Optional PyArrow filesystem.
                 PyArrow filesystems: https://arrow.apache.org/docs/python/api/filesystems.html
+                Note: For distributed writes, filesystem must be reconstructible from
+                storage_options. Consider passing storage_options instead.
             schema: Optional explicit schema for the table.
             upsert_kwargs: Options for UPSERT mode:
                 - join_cols: List of column names to match rows on (required for UPSERT)
+            schema_mode: How to handle schema changes when writing to existing table:
+                - "error": Reject new columns (default, safest)
+                - "merge": Add new columns using DeltaTable.alter.add_columns()
+                - "overwrite": Replace table schema (not recommended)
             **write_kwargs: Additional options passed to Delta writer.
         """
         _check_import(self, module="deltalake", package="deltalake")
@@ -90,6 +97,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         self.schema = schema
         self.write_kwargs = write_kwargs
         self._upsert_kwargs = (upsert_kwargs or {}).copy()
+        self.schema_mode = self._validate_schema_mode(schema_mode)
 
         # Validate upsert_kwargs
         if self._upsert_kwargs and self.mode != SaveMode.UPSERT:
@@ -100,29 +108,39 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         # Internal state
         self._skip_write = False
         self._table_existed_at_start: bool = False
+        self._new_columns_to_add: List[tuple] = []  # List of (name, type, nullable) tuples for schema evolution
+        self._new_columns_to_add: List[tuple] = []  # List of (name, type, nullable) tuples
 
         # Store unresolved path (original URI) for deltalake APIs which need the scheme
         self.table_uri = path
 
         # Set up filesystem with retry support
+        # Use SubTreeFileSystem rooted at table path for consistent relative paths
         data_context = DataContext.get_current()
-        resolved_paths, self.filesystem = _resolve_paths_and_filesystem(
-            path, filesystem
-        )
-        self.filesystem = RetryingPyFileSystem.wrap(
-            self.filesystem, retryable_errors=data_context.retried_io_errors
-        )
+        resolved_paths, raw_filesystem = _resolve_paths_and_filesystem(path, filesystem)
         if len(resolved_paths) != 1:
             raise ValueError(
                 f"Expected exactly one path for Delta table, got {len(resolved_paths)} paths"
             )
-        self.path = resolved_paths[0]
+        self.table_root = resolved_paths[0]
 
         # Validate path is not empty
-        if not self.path or not self.path.strip():
+        if not self.table_root or not self.table_root.strip():
             raise ValueError("Delta table path cannot be empty")
 
+        # Create SubTreeFileSystem rooted at table path
+        # This ensures all filesystem operations use relative paths from table root
+        # PyArrow SubTreeFileSystem: https://arrow.apache.org/docs/python/api/filesystems.html#pyarrow.fs.SubTreeFileSystem
+        self.filesystem = pa_fs.SubTreeFileSystem(self.table_root, raw_filesystem)
+        self.filesystem = RetryingPyFileSystem.wrap(
+            self.filesystem, retryable_errors=data_context.retried_io_errors
+        )
+
+        # Store original path for deltalake APIs (which need full URI)
+        self.path = self.table_root
+
         # Get storage options with auto-detection for cloud storage
+        # These are serializable and used to reconstruct filesystem on workers
         self.storage_options = get_storage_options(
             self.table_uri, write_kwargs.get("storage_options")
         )
@@ -136,9 +154,12 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     def __setstate__(self, state: dict) -> None:
         """Restore state and re-create filesystem on unpickling."""
         self.__dict__.update(state)
-        # Re-create filesystem from path
+        # Re-create filesystem from storage_options (serializable)
+        # This ensures workers use the same credentials as the driver
         data_context = DataContext.get_current()
-        _, self.filesystem = _resolve_paths_and_filesystem(self.table_uri, None)
+        _, raw_filesystem = _resolve_paths_and_filesystem(self.table_uri, None)
+        # Recreate SubTreeFileSystem rooted at table path
+        self.filesystem = pa_fs.SubTreeFileSystem(self.table_root, raw_filesystem)
         self.filesystem = RetryingPyFileSystem.wrap(
             self.filesystem, retryable_errors=data_context.retried_io_errors
         )
@@ -166,6 +187,19 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             return mode_map[mode_lower]
 
         raise ValueError(f"Invalid mode type: {type(mode).__name__}")
+
+    def _validate_schema_mode(self, schema_mode: Any) -> str:
+        """Validate schema_mode parameter."""
+        if not isinstance(schema_mode, str):
+            raise ValueError(f"schema_mode must be a string, got {type(schema_mode).__name__}")
+
+        schema_mode_lower = schema_mode.lower()
+        valid_modes = ["error", "merge", "overwrite"]
+        if schema_mode_lower not in valid_modes:
+            raise ValueError(
+                f"Invalid schema_mode '{schema_mode}'. Supported: {valid_modes}"
+            )
+        return schema_mode_lower
 
     @property
     def supports_distributed_writes(self) -> bool:
@@ -207,6 +241,66 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         """Get join columns for upsert operations."""
         return self._upsert_kwargs.get(UPSERT_JOIN_COLS, [])
 
+    def _validate_and_evolve_schema(
+        self,
+        existing_table: "DeltaTable",
+        existing_schema: pa.Schema,
+        incoming_schema: pa.Schema,
+    ) -> None:
+        """Validate schema compatibility and handle schema evolution.
+
+        Args:
+            existing_table: Existing DeltaTable.
+            existing_schema: Schema from existing table.
+            incoming_schema: Schema from incoming data.
+
+        Raises:
+            ValueError: If schema_mode="error" and new columns are detected,
+                or if type mismatches are found in existing columns.
+        """
+        existing_cols = {f.name: f.type for f in existing_schema}
+        incoming_cols = {f.name: f.type for f in incoming_schema}
+
+        # Check for type mismatches in existing columns
+        mismatches = [
+            c
+            for c in existing_cols
+            if c in incoming_cols
+            and not types_compatible(existing_cols[c], incoming_cols[c])
+        ]
+        if mismatches:
+            raise ValueError(
+                f"Schema mismatch: type mismatches for existing columns: {mismatches}"
+            )
+
+        # Detect new columns
+        new_columns = [c for c in incoming_cols if c not in existing_cols]
+
+        if new_columns:
+            if self.schema_mode == "error":
+                raise ValueError(
+                    f"New columns detected: {new_columns}. "
+                    "Schema evolution is disabled by default. "
+                    "To allow new columns, set schema_mode='merge'."
+                )
+            elif self.schema_mode == "merge":
+                # Schema evolution will be handled in commit phase using alter.add_columns
+                # Store field definitions (name, type, nullable) for new columns
+                self._new_columns_to_add = [
+                    (f.name, f.type, f.nullable)
+                    for f in incoming_schema
+                    if f.name in new_columns
+                ]
+                logger.info(
+                    f"Schema evolution enabled: {len(new_columns)} new columns will be added: {new_columns}"
+                )
+            elif self.schema_mode == "overwrite":
+                # Schema overwrite - no action needed here, handled in commit
+                logger.warning(
+                    "schema_mode='overwrite' will replace the table schema. "
+                    "This may cause data loss if columns are removed."
+                )
+
     def on_write_start(self, schema: Optional[pa.Schema] = None) -> None:
         """Initialize table for writing and validate constraints.
 
@@ -227,18 +321,20 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         self._table_existed_at_start = existing_table is not None
 
         if existing_table:
-            validate_partition_columns_match_existing(
-                existing_table, self.partition_cols
-            )
+            # Infer partition_cols from existing table if not provided
+            if not self.partition_cols:
+                existing_partitions = existing_table.metadata().partition_columns
+                if existing_partitions:
+                    self.partition_cols = existing_partitions
+            else:
+                validate_partition_columns_match_existing(
+                    existing_table, self.partition_cols
+                )
 
-            # Early schema evolution preparation (like Iceberg)
-            # Validate schema compatibility and prepare for evolution before writing files
-            # Delta Lake automatically evolves schema during commit, but we validate early
+            # Validate schema compatibility and handle schema evolution
             if self.schema is not None:
                 existing_schema = to_pyarrow_schema(existing_table.schema())
-                validate_schema_type_compatibility(existing_schema, self.schema)
-                # New columns are allowed and will be added automatically during commit
-                # This early check prevents errors during write phase
+                self._validate_and_evolve_schema(existing_table, existing_schema, self.schema)
 
         # Validate mode-specific constraints
         if self.mode == SaveMode.ERROR and existing_table:
@@ -413,18 +509,15 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             write_uuid: Unique identifier for this write operation.
 
         Returns:
-            Tuple of (add_actions, written_files) where written_files are full paths.
+            Tuple of (add_actions, written_files) where written_files are relative paths
+            from table root (filesystem is SubTreeFileSystem).
         """
-        # Recreate filesystem on worker (filesystem is not serializable)
-        # PyArrow filesystems cannot be pickled, so we recreate them on each worker.
-        # This matches the pattern used in __setstate__ and ensures worker has
-        # access to filesystem even if it wasn't properly serialized.
-        # Note: We recreate on each call rather than caching per worker because:
-        # 1. Storage options might change between calls (unlikely but possible)
-        # 2. Simpler code path (no need for worker-local caching)
-        # 3. Filesystem creation is relatively cheap compared to file I/O
+        # Recreate filesystem on worker using storage_options (serializable)
+        # This ensures workers use the same credentials as the driver
         data_context = DataContext.get_current()
-        _, filesystem = _resolve_paths_and_filesystem(self.table_uri, None)
+        _, raw_filesystem = _resolve_paths_and_filesystem(self.table_uri, None)
+        # Recreate SubTreeFileSystem rooted at table path
+        filesystem = pa_fs.SubTreeFileSystem(self.table_root, raw_filesystem)
         filesystem = RetryingPyFileSystem.wrap(
             filesystem, retryable_errors=data_context.retried_io_errors
         )
@@ -648,6 +741,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 self.filesystem,
             )
         elif existing_table is not None:
+            # Handle schema evolution before committing files
+            if self._new_columns_to_add and self.schema_mode == "merge":
+                self._evolve_schema(existing_table, self._new_columns_to_add)
             # Commit to existing table (APPEND, OVERWRITE, or UPSERT)
             self._commit_by_mode(existing_table, all_file_actions, upsert_keys)
         else:
@@ -696,6 +792,40 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             self.write_kwargs,
             self.filesystem,
         )
+
+    def _evolve_schema(
+        self, existing_table: "DeltaTable", new_fields: List[tuple]
+    ) -> None:
+        """Add new columns to existing table using DeltaTable.alter.add_columns.
+
+        This is a separate transaction from the file commit, so not perfectly atomic,
+        but it's the correct way to evolve schema in delta-rs.
+
+        Args:
+            existing_table: DeltaTable to evolve.
+            new_fields: List of (name, type, nullable) tuples for new columns.
+        """
+        from deltalake.schema import Field
+
+        # Convert PyArrow types to Delta Lake types
+        delta_fields = []
+        for name, pa_type, nullable in new_fields:
+            # Convert PyArrow type to Delta Lake DataType string
+            from ray.data._internal.datasource.delta.utils import (
+                convert_schema_to_delta,
+            )
+
+            # Create a temporary schema with just this field to convert it
+            temp_schema = pa.schema([pa.field(name, pa_type, nullable)])
+            delta_schema = convert_schema_to_delta(temp_schema)
+            # Extract the field from the converted schema
+            delta_field = delta_schema.fields[0]
+            delta_fields.append(delta_field)
+
+        if delta_fields:
+            # Use alter.add_columns to evolve schema
+            # DeltaTable.alter API: https://delta-io.github.io/delta-rs/python/api/deltalake.table.html#deltalake.table.DeltaTable.alter
+            existing_table.alter.add_columns(delta_fields)
 
     def _commit_by_mode(
         self,
@@ -814,10 +944,10 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             )
 
     def _cleanup_files(self, file_paths: List[str]) -> None:
-        """Clean up files by their full paths.
+        """Clean up files by their relative paths.
 
         Args:
-            file_paths: List of full file paths to clean up.
+            file_paths: List of relative file paths from table root (filesystem is SubTreeFileSystem).
         """
         for file_path in file_paths:
             try:

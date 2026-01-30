@@ -138,9 +138,15 @@ def build_partition_path(
     part_dict: Dict[str, Optional[str]] = {}
 
     for col, val in zip(cols, values):
-        if val is None or (isinstance(val, float) and math.isnan(val)):
+        if val is None:
+            # NULL values use default partition
             parts.append(f"{col}=__HIVE_DEFAULT_PARTITION__")
             part_dict[col] = None
+        elif isinstance(val, float) and math.isnan(val):
+            # NaN values use "NaN" string (distinct from NULL)
+            # Delta/Spark convention: NaN is encoded as string "NaN" in partition paths
+            parts.append(f"{col}=NaN")
+            part_dict[col] = "NaN"
         else:
             validate_partition_value(val)
             encoded_val = urllib.parse.quote(str(val), safe="")
@@ -522,33 +528,45 @@ def create_filesystem_from_storage_options(
 def try_get_deltatable(
     table_uri: str, storage_options: Optional[Dict[str, str]] = None
 ) -> Optional["DeltaTable"]:
-    """Return DeltaTable if it exists, None otherwise."""
+    """Return DeltaTable if it exists, None otherwise.
+
+    Only catches exceptions that indicate "table not found" to avoid hiding
+    real errors like auth failures, corrupt logs, etc.
+    """
     from deltalake import DeltaTable
 
-    # Collect all possible exception types that indicate table doesn't exist
-    exception_types = [FileNotFoundError, OSError, ValueError]
+    # Narrow exception handling: only catch "not found" exceptions
+    # This avoids hiding auth/permission errors, corrupt logs, etc.
+    not_found_exceptions = []
 
-    # Try to import exceptions module (may not exist in all deltalake versions)
+    # FileNotFoundError: path doesn't exist
+    not_found_exceptions.append(FileNotFoundError)
+
+    # Try to import delta-rs specific "not found" exceptions
     try:
-        from deltalake.exceptions import DeltaError, TableNotFoundError
+        from deltalake.exceptions import TableNotFoundError
 
-        exception_types.extend([TableNotFoundError, DeltaError])
+        not_found_exceptions.append(TableNotFoundError)
     except ImportError:
         pass
 
-    # PyDeltaTableError is a base exception class in deltalake
-    # It's raised when path exists but is not a valid Delta table (e.g., empty dir)
+    # PyDeltaTableError: path exists but is not a valid Delta table (empty dir, etc.)
     try:
         from deltalake import PyDeltaTableError
 
-        exception_types.append(PyDeltaTableError)
+        not_found_exceptions.append(PyDeltaTableError)
     except ImportError:
         pass
 
     try:
         return DeltaTable(table_uri, storage_options=storage_options)
-    except tuple(exception_types):
+    except tuple(not_found_exceptions):
+        # Table doesn't exist - return None
         return None
+    except Exception as e:
+        # Re-raise all other exceptions (auth errors, corrupt logs, etc.)
+        # These are real errors that should not be silently ignored
+        raise
 
 
 def to_pyarrow_schema(delta_schema: Any) -> pa.Schema:
