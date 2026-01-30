@@ -334,7 +334,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// \param[in] ref The protobuf object to populate.
     /// \param[in] object_id The ObjectID corresponding to this reference.
     /// \param[in] has_local_ref Whether this worker is still using the ObjectID locally.
-    void ToProto(rpc::ObjectReferenceCount *ref, const ObjectID &object_id, bool has_local_ref) const;
+    void ToProto(rpc::ObjectReferenceCount *ref,
+                 const ObjectID &object_id,
+                 bool has_local_ref) const;
 
     /// The reference count. This number includes:
     /// - Python references to the ObjectID.
