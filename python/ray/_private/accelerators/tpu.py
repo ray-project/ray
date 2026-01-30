@@ -9,6 +9,7 @@ import requests
 
 import ray
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.ray_constants import env_bool
 from ray.util.placement_group import PlacementGroup, placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -419,7 +420,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         Args:
             visible_tpu_chips (List[str]): List of int representing TPU chips.
         """
-        if os.environ.get(NOSET_TPU_VISIBLE_CHIPS_ENV_VAR):
+        if env_bool(NOSET_TPU_VISIBLE_CHIPS_ENV_VAR, False):
             return
 
         num_visible_tpu_chips = len(visible_tpu_chips)
