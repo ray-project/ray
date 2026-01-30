@@ -8,6 +8,8 @@ steps:
   - name: windowsbuild
     wanda: ci/docker/windows.build.wanda.yaml
     instance_type: builder-windows
+    tags:
+      - debug_test_ray_init_2
 
   - label: ":windows: wheel {{matrix}}"
     # we have linux/mac wheels tag, but do not have a windows wheels tag..
@@ -50,9 +52,7 @@ steps:
   - label: ":ray: core: :windows: python tests"
     key: windows_python_tests
     tags:
-      - python
-      - windows
-      - oss
+      - debug_test_ray_init_2
     job_env: WINDOWS
     instance_type: windows
     commands:
@@ -62,10 +62,10 @@ steps:
         --build-name windowsbuild
         --operating-system windows
         --except-tags no_windows
-        --run-flaky-tests
         --test-env=CI="1"
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
+        --test-env=RAYCI_DISABLE_TEST_DB=1
     depends_on: windowsbuild
 
   - label: ":ray-serve: serve: :windows: tests"
