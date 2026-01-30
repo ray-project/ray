@@ -170,6 +170,64 @@ def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
     }
 
 
+@pytest.mark.parametrize(
+    "engine_kwargs_extra,expected_resources",
+    [
+        ({"tensor_parallel_size": 2}, {"num_cpus": 2, "num_gpus": 2}),
+        (
+            {"tensor_parallel_size": 2, "pipeline_parallel_size": 2},
+            {"num_cpus": 4, "num_gpus": 4},
+        ),
+        ({}, {"num_cpus": 1, "num_gpus": 1}),  # Default case
+    ],
+)
+def test_vllm_engine_processor_bundle_per_worker(
+    gpu_type, model_opt_125m, engine_kwargs_extra, expected_resources
+):
+    """Test bundle_per_worker auto-expands based on tp*pp."""
+    engine_kwargs = dict(max_model_len=8192)
+    engine_kwargs.update(engine_kwargs_extra)
+    config = vLLMEngineProcessorConfig(
+        model_source=model_opt_125m,
+        engine_kwargs=engine_kwargs,
+        accelerator_type=gpu_type,
+        concurrency=4,
+        batch_size=64,
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        placement_group_config={"bundle_per_worker": {"CPU": 1, "GPU": 1}},
+    )
+    processor = ProcessorBuilder.build(config)
+    stage = processor.get_stage_by_name("vLLMEngineStage")
+
+    stage.map_batches_kwargs.pop("runtime_env")
+    stage.map_batches_kwargs.pop("compute")
+
+    # With tp*pp and bundle_per_worker={'CPU': 1, 'GPU': 1},
+    # should expand to tp*pp bundles.
+    expected_kwargs = {
+        "zero_copy_batch": True,
+        "max_concurrency": 8,
+        "accelerator_type": gpu_type,
+    }
+    expected_kwargs.update(expected_resources)
+    assert stage.map_batches_kwargs == expected_kwargs
+
+
+def test_vllm_engine_processor_bundle_per_worker_conflict(gpu_type, model_opt_125m):
+    """Test that specifying both bundle_per_worker and bundles raises error."""
+    with pytest.raises(ValueError, match="Cannot specify both"):
+        vLLMEngineProcessorConfig(
+            model_source=model_opt_125m,
+            engine_kwargs=dict(max_model_len=8192),
+            accelerator_type=gpu_type,
+            placement_group_config={
+                "bundle_per_worker": {"CPU": 1, "GPU": 1},
+                "bundles": [{"CPU": 1, "GPU": 1}],
+            },
+        )
+
+
 def test_prepare_multimodal_stage_vllm_engine_processor(gpu_type, model_smolvlm_256m):
     config = vLLMEngineProcessorConfig(
         model_source=model_smolvlm_256m,

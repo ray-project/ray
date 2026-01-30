@@ -183,8 +183,11 @@ class LLMConfig(BaseModelExtended):
         description=(
             "Ray placement group configuration for scheduling vLLM engine workers. "
             "Defines resource bundles and placement strategy for multi-node deployments. "
-            "Should contain 'bundles' (list of resource dicts) and optionally 'strategy' "
-            "(defaults to 'PACK'). Example: {'bundles': [{'GPU': 1, 'CPU': 2}], 'strategy': 'PACK'}"
+            "Can specify either 'bundle_per_worker' (auto-replicated by tp*pp) or 'bundles' "
+            "(full list of resource dicts). Optionally include 'strategy' key "
+            "('PACK', 'STRICT_PACK', 'SPREAD', or 'STRICT_SPREAD'). "
+            "Example with bundle_per_worker: {'bundle_per_worker': {'CPU': 1, 'GPU': 1}}. "
+            "Example with bundles: {'bundles': [{'CPU': 1, 'GPU': 1}] * 4, 'strategy': 'SPREAD'}."
         ),
     )
 
