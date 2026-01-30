@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 import ray
 from ray import ObjectRef
-from ray._raylet import ObjectRefGenerator
+from ray._raylet import ObjectRefGenerator, StreamingGeneratorStats
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
@@ -766,9 +766,9 @@ def _map_task(
             # Derive block execution stats
             exec_stats = stats.build()
             # Yield block and retrieve its Ray object serialization timing
-            block_ser_time_s = yield block
+            stats: StreamingGeneratorStats = yield block
 
-            exec_stats.block_ser_time_s = block_ser_time_s
+            exec_stats.block_ser_time_s = stats.serialization_dur_s
             exec_stats.udf_time_s = map_transformer.udf_time_s(reset=True)
             exec_stats.task_idx = ctx.task_idx
             exec_stats.max_uss_bytes = profiler.estimate_max_uss()

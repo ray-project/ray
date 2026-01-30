@@ -33,6 +33,7 @@ from ray import ObjectRef
 from ray._private.ray_constants import (
     env_integer,
 )
+from ray._raylet import StreamingGeneratorStats
 from ray.actor import ActorHandle
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import (
@@ -1747,10 +1748,10 @@ class HashShuffleAggregator:
             exec_stats = exec_stats_builder.build()
             exec_stats_builder = BlockExecStats.builder()
 
-            block_ser_time_s = yield block
+            stats: StreamingGeneratorStats = yield block
 
             # Update block serialization time
-            exec_stats.block_ser_time_s = block_ser_time_s
+            exec_stats.block_ser_time_s = stats.serialization_dur_s
 
             yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
 
