@@ -7,20 +7,28 @@ they will be upstreamed to vLLM.
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
-from vllm.entrypoints.openai.protocol import (
+from vllm.entrypoints.openai.chat_completion.protocol import (
     ChatCompletionRequest as vLLMChatCompletionRequest,
     ChatCompletionResponse as vLLMChatCompletionResponse,
     ChatCompletionStreamResponse as vLLMChatCompletionStreamResponse,
+)
+from vllm.entrypoints.openai.completion.protocol import (
     CompletionRequest as vLLMCompletionRequest,
     CompletionResponse as vLLMCompletionResponse,
     CompletionStreamResponse as vLLMCompletionStreamResponse,
+)
+from vllm.entrypoints.serve.tokenize.protocol import (
     DetokenizeRequest as vLLMDetokenizeRequest,
     DetokenizeResponse as vLLMDetokenizeResponse,
-    ErrorInfo as vLLMErrorInfo,
-    ErrorResponse as vLLMErrorResponse,
     TokenizeChatRequest as vLLMTokenizeChatRequest,
     TokenizeCompletionRequest as vLLMTokenizeCompletionRequest,
     TokenizeResponse as vLLMTokenizeResponse,
+)
+from vllm.entrypoints.openai.engine.protocol import (
+    ErrorInfo as vLLMErrorInfo,
+    ErrorResponse as vLLMErrorResponse,
+)
+from vllm.entrypoints.openai.translations.protocol import (
     TranscriptionRequest as vLLMTranscriptionRequest,
     TranscriptionResponse as vLLMTranscriptionResponse,
     TranscriptionStreamResponse as vLLMTranscriptionStreamResponse,
@@ -33,6 +41,9 @@ from vllm.entrypoints.pooling.embed.protocol import (
 from vllm.entrypoints.pooling.score.protocol import (
     ScoreRequest as vLLMScoreRequest,
     ScoreResponse as vLLMScoreResponse,
+    ScoreQueriesDocumentsRequest as vLLMScoreQueriesDocumentsRequest,
+    ScoreDataRequest as vLLMScoreDataRequest,
+    ScoreTextRequest as vLLMScoreTextRequest,
 )
 from vllm.utils import random_uuid
 
@@ -107,8 +118,28 @@ class TranscriptionStreamResponse(vLLMTranscriptionStreamResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class ScoreRequest(vLLMScoreRequest):
+# In vLLM 0.15.0+, ScoreRequest was refactored from a single class to a union type
+# (ScoreQueriesDocumentsRequest | ScoreDataRequest | ScoreTextRequest).
+# We create wrapper classes for each variant to maintain compatibility.
+class ScoreQueriesDocumentsRequest(vLLMScoreQueriesDocumentsRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class ScoreDataRequest(vLLMScoreDataRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class ScoreTextRequest(vLLMScoreTextRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+# For backward compatibility: In earlier vLLM versions, ScoreRequest was a single class
+# with text_1 and text_2 fields. Since ScoreTextRequest has the same API (text_1, text_2),
+# we alias ScoreRequest to ScoreTextRequest to maintain backward compatibility with
+# existing code that uses ScoreRequest(text_1=..., text_2=...).
+# Note: For type checking purposes, ScoreRequest should be treated as
+# Union[ScoreQueriesDocumentsRequest, ScoreDataRequest, ScoreTextRequest]
+ScoreRequest = ScoreTextRequest
 
 
 class ScoreResponse(vLLMScoreResponse):

@@ -5,3 +5,6 @@ torch>=2.9.0
 numpy>=2.0.0,<2.3
 # Override scipy to allow version compatible with numpy 2.x (scipy>=1.14 supports numpy 2.x)
 scipy>=1.14.0
+# Override pandas to allow version compatible with numpy 2.x (pandas>=2.0 supports numpy 2.x)
+# pandas 1.5.3 (from data-requirements.txt) is incompatible with numpy 2.x
+pandas>=2.0.0
