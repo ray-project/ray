@@ -9,8 +9,9 @@ steps:
     depends_on:
       - oss-ci-base_build-multipy
     env:
-      IMAGE_TO: "llmbuild"
-      IMAGE_FROM: "cr.ray.io/rayproject/oss-ci-base_build-py3.11"
+      PYTHON: "3.11"
+      BASE_TYPE: "build"
+      BUILD_VARIANT: "build"
       RAY_CUDA_CODE: "cpu"
     tags: cibase
 
@@ -19,8 +20,9 @@ steps:
     depends_on:
       - oss-ci-base_cu128-multipy
     env:
-      IMAGE_TO: "llmgpubuild"
-      IMAGE_FROM: "cr.ray.io/rayproject/oss-ci-base_cu128-py3.11"
+      PYTHON: "3.11"
+      BASE_TYPE: "cu128"
+      BUILD_VARIANT: "gpubuild"
       RAY_CUDA_CODE: "cu128"
     tags: cibase
 
