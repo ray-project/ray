@@ -25,19 +25,18 @@ class TestBatchBlocks:
         if batch_format == "pandas":
             assert isinstance(batches[0], pd.DataFrame)
             assert isinstance(batches[1], pd.DataFrame)
-            pd.testing.assert_frame_equal(
-                batches[0], pd.DataFrame({"foo": [0, 1, 2]})
-            )
-            pd.testing.assert_frame_equal(
-                batches[1], pd.DataFrame({"foo": [3, 4, 5]})
-            )
+            pd.testing.assert_frame_equal(batches[0], pd.DataFrame({"foo": [0, 1, 2]}))
+            pd.testing.assert_frame_equal(batches[1], pd.DataFrame({"foo": [3, 4, 5]}))
         elif batch_format == "numpy":
             assert isinstance(batches[0], dict)
             assert isinstance(batches[1], dict)
             np.testing.assert_array_equal(batches[0]["foo"], np.array([0, 1, 2]))
             np.testing.assert_array_equal(batches[1]["foo"], np.array([3, 4, 5]))
         elif batch_format == "pyarrow":
-            assert batches == [pa.table({"foo": [0, 1, 2]}), pa.table({"foo": [3, 4, 5]})]
+            assert batches == [
+                pa.table({"foo": [0, 1, 2]}),
+                pa.table({"foo": [3, 4, 5]}),
+            ]
         else:
             pytest.fail(f"Unsupported batch format {batch_format}")
 
