@@ -230,6 +230,9 @@ class ServeController:
         self._shutdown_event = asyncio.Event()
         self._shutdown_start_time = None
 
+        # Actors registered for cleanup on serve.shutdown()
+        self._registered_cleanup_actors: List[ActorHandle] = []
+
         self._create_control_loop_metrics()
         run_background_task(self.run_control_loop())
 
@@ -794,37 +797,30 @@ class ServeController:
         """
         return self.kv_store.get(CONFIG_CHECKPOINT_KEY) is None
 
-    def _kill_prefix_tree_actors(self) -> None:
-        """Kill all PrefixTreeActor instances in the serve namespace.
+    def register_shutdown_cleanup_actor(self, actor_handle: ActorHandle) -> None:
+        """Register an actor to be killed on serve.shutdown().
 
-        TODO(https://github.com/ray-project/ray/issues/60359): Replace this
-        with proper controller-managed actor lifecycle management.
+        This allows deployments to register auxiliary actors (like caches,
+        coordinators, etc.) that should be cleaned up when Serve shuts down.
+        The actors must use lifetime="detached" to survive replica restarts,
+        but will be explicitly killed during serve.shutdown().
+
+        Note: Registered actors are NOT persisted across controller restarts.
+        For full persistence, use controller-managed deployment-scoped actors
+        (see https://github.com/ray-project/ray/issues/60359).
+
+        Args:
+            actor_handle: The actor handle to register for cleanup.
         """
-        # Import lazily to avoid triggering ray.llm observability setup
-        # which adds CoreContextFilter to root logger (breaks Ray Client mode)
-        from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
-            LLM_PREFIX_TREE_ACTOR_NAME_PREFIX,
-        )
+        self._registered_cleanup_actors.append(actor_handle)
 
-        try:
-            actors = ray.util.list_named_actors(all_namespaces=True)
-        except Exception:
-            logger.debug("Failed to list actors for cleanup", exc_info=True)
-            return
-
-        for actor in actors:
-            name = actor.get("name")
-            namespace = actor.get("namespace")
-            if (
-                name
-                and namespace
-                and namespace.startswith(SERVE_NAMESPACE)
-                and name.startswith(LLM_PREFIX_TREE_ACTOR_NAME_PREFIX)
-            ):
-                try:
-                    ray.kill(ray.get_actor(name, namespace=namespace), no_restart=True)
-                except Exception:
-                    pass
+    def _kill_registered_cleanup_actors(self) -> None:
+        """Kill all actors registered for shutdown cleanup."""
+        for actor in self._registered_cleanup_actors:
+            try:
+                ray.kill(actor, no_restart=True)
+            except Exception:
+                pass  # Actor may already be dead
 
     def shutdown(self):
         """Shuts down the serve instance completely.
@@ -864,7 +860,7 @@ class ServeController:
             and endpoint_is_shutdown
             and proxy_state_is_shutdown
         ):
-            self._kill_prefix_tree_actors()
+            self._kill_registered_cleanup_actors()
             logger.warning(
                 "All resources have shut down, controller exiting.",
                 extra={"log_to_stderr": False},

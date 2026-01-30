@@ -14,6 +14,7 @@ from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_tree import (
 )
 from ray.serve._private.common import ReplicaID
 from ray.serve._private.constants import (
+    SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -32,9 +33,6 @@ from ray.serve._private.request_router.request_router import (
     MultiplexMixin,
     RequestRouter,
 )
-
-#: Actor name prefix for LLM prefix tree actors
-LLM_PREFIX_TREE_ACTOR_NAME_PREFIX = "LlmPrefixTreeActor"
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -109,7 +107,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             # in multi-deployment scenarios (e.g., PD disaggregation with DP)
             deployment_name = self._deployment_id.name if self._deployment_id else None
             app_name = self._deployment_id.app_name if self._deployment_id else None
-            actor_name = LLM_PREFIX_TREE_ACTOR_NAME_PREFIX
+            actor_name = "LlmPrefixTreeActor"
             actor_namespace_components = [SERVE_NAMESPACE]
 
             if app_name:
@@ -124,6 +122,10 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 get_if_exists=True,
                 lifetime="detached",
             ).remote()
+
+            # Register the actor with the controller for cleanup on serve.shutdown()
+            controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+            ray.get(controller.register_shutdown_cleanup_actor.remote(self._tree_actor))
         else:
             self._tree_actor = tree_actor
 

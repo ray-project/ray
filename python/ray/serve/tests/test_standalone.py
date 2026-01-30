@@ -2,6 +2,7 @@
 The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
+
 import logging
 import os
 import random
@@ -338,78 +339,45 @@ async def test_multi_app_shutdown_actors_async(ray_shutdown):
     wait_for_condition(check_dead)
 
 
-def test_shutdown_cleans_up_prefix_tree_actor(ray_shutdown):
-    """Regression test: serve.shutdown() should clean up PrefixTreeActor.
+def test_registered_cleanup_actors_killed_on_shutdown(ray_shutdown):
+    """Test that actors registered via register_shutdown_cleanup_actor are killed.
 
-    The PrefixTreeActor (used by prefix-aware routing) is created with a unique
-    name in the serve namespace. It should be cleaned up on shutdown so that
-    after restart, a fresh tree is created with no stale tenant state.
+    This tests the generic actor registration API that allows deployments to register
+    auxiliary actors (like caches, coordinators, etc.) for cleanup on serve.shutdown().
     """
-    TEST_PORT = 8003
-    # Simulates the naming pattern from prefix_aware_router.py
-    TREE_ACTOR_NAME = "LlmPrefixTreeActor_test_app_test_deployment"
-
-    def check_tree_actor_exists(expected_alive: bool):
-        actors = list_actors(filters=[("state", "=", "ALIVE")])
-        found = any(
-            actor.get("name") == TREE_ACTOR_NAME
-            and actor.get("ray_namespace") == SERVE_NAMESPACE
-            for actor in actors
-        )
-        return found if expected_alive else not found
-
     ray.init(num_cpus=4)
-    serve.start(http_options=dict(port=TEST_PORT))
+    serve.start()
 
+    # Create a detached actor that we'll register for cleanup
     @ray.remote
-    class MockPrefixTreeActor:
-        def __init__(self):
-            self.tenants = {}
+    class DummyActor:
+        def ping(self):
+            return "pong"
 
-        def add_tenant(self, tenant_id: str):
-            self.tenants[tenant_id] = 0
-
-        def get_tenants(self):
-            return self.tenants
-
-    tree_actor = MockPrefixTreeActor.options(
-        name=TREE_ACTOR_NAME,
-        namespace=SERVE_NAMESPACE,
-        lifetime="detached",
-        get_if_exists=True,
+    dummy_actor_name = "test_registered_cleanup_dummy"
+    dummy = DummyActor.options(
+        name=dummy_actor_name, namespace=SERVE_NAMESPACE, lifetime="detached"
     ).remote()
 
-    # Add some tenant data (simulating replica registrations)
-    ray.get(tree_actor.add_tenant.remote("replica_1"))
-    ray.get(tree_actor.add_tenant.remote("replica_2"))
-    assert ray.get(tree_actor.get_tenants.remote()) == {"replica_1": 0, "replica_2": 0}
-
     # Verify actor is alive
-    assert check_tree_actor_exists(expected_alive=True)
+    assert ray.get(dummy.ping.remote()) == "pong"
+
+    # Register the actor with the controller for cleanup
+    controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    ray.get(controller.register_shutdown_cleanup_actor.remote(dummy))
 
     # Shutdown serve
     serve.shutdown()
 
-    # Verify the detached actor in the serve namespace is cleaned up
-    wait_for_condition(lambda: check_tree_actor_exists(expected_alive=False))
+    # Verify the registered actor is killed
+    def check_actor_dead():
+        try:
+            ray.get_actor(dummy_actor_name, namespace=SERVE_NAMESPACE)
+            return False
+        except ValueError:
+            return True
 
-    # Restart serve and verify a fresh tree actor would be created (no stale state)
-    serve.start(http_options=dict(port=TEST_PORT))
-
-    new_tree_actor = MockPrefixTreeActor.options(
-        name=TREE_ACTOR_NAME,
-        namespace=SERVE_NAMESPACE,
-        lifetime="detached",
-        get_if_exists=True,
-    ).remote()
-
-    # Verify the new tree has no stale tenants from before the restart
-    new_tenants = ray.get(new_tree_actor.get_tenants.remote())
-    assert new_tenants == {}, f"Expected empty tree after restart, got: {new_tenants}"
-
-    # Cleanup
-    serve.shutdown()
-    wait_for_condition(lambda: check_tree_actor_exists(expected_alive=False))
+    wait_for_condition(check_actor_dead)
 
 
 def test_deployment(ray_cluster):
@@ -661,7 +629,7 @@ def test_no_http(ray_shutdown):
 
     address = ray.init(num_cpus=8)["address"]
     for i, option in enumerate(options):
-        print(f"[{i+1}/{len(options)}] Running with {option}")
+        print(f"[{i + 1}/{len(options)}] Running with {option}")
         serve.start(**option)
 
         # Only controller actor should exist
