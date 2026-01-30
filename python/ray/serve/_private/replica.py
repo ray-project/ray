@@ -2034,6 +2034,13 @@ class Replica(ReplicaBase):
                     except StopAsyncIteration:
                         pass
                 except BaseException as e:
+                    # For gRPC requests, wrap exception with user-set status code
+                    if c.code():
+                        e = gRPCStatusError(
+                            original_exception=e,
+                            code=c.code(),
+                            details=c.details(),
+                        )
                     status = get_grpc_response_status(
                         e,
                         self._grpc_options.request_timeout_s,
