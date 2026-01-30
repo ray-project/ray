@@ -1006,7 +1006,8 @@ TEST_F(SubscriberTest, TestCommandBatchInvalidArgumentStatusIsFatal) {
                          failure_callback);
 
   ASSERT_DEATH(
-      owner_client->ReplyCommandBatch(Status::InvalidArgument("Invalid channel type")));
+      owner_client->ReplyCommandBatch(Status::InvalidArgument("Invalid channel type")),
+      "Invalid channel type");
 }
 
 }  // namespace pubsub
