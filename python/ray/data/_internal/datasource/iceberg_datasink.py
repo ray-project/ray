@@ -3,7 +3,7 @@ Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink A
 """
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
 
 from ray._common.retry import call_with_retry
 from ray.data._internal.execution.interfaces import TaskContext
@@ -153,33 +153,41 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         self.__dict__.update(state)
         self._table = None
 
-    def _get_catalog(self) -> "Catalog":
-        from pyiceberg import catalog
+    def _with_catalog_retry(self, func: Callable, description: str) -> Any:
+        """Execute a function with catalog retry logic.
 
-        def _load_catalog():
-            return catalog.load_catalog(self._catalog_name, **self._catalog_kwargs)
+        This helper encapsulates the common retry pattern for Iceberg catalog
+        operations, using the configured retry parameters from DataContext.
 
+        Args:
+            func: The callable to execute with retry logic.
+            description: Human-readable description for logging/error messages.
+
+        Returns:
+            The result of calling func.
+        """
         return call_with_retry(
-            _load_catalog,
-            description=f"load Iceberg catalog '{self._catalog_name}'",
+            func,
+            description=description,
             match=self._data_context.iceberg_catalog_retried_errors,
             max_attempts=self._data_context.iceberg_catalog_max_attempts,
             max_backoff_s=self._data_context.iceberg_catalog_retry_max_backoff_s,
         )
 
+    def _get_catalog(self) -> "Catalog":
+        from pyiceberg import catalog
+
+        return self._with_catalog_retry(
+            lambda: catalog.load_catalog(self._catalog_name, **self._catalog_kwargs),
+            description=f"load Iceberg catalog '{self._catalog_name}'",
+        )
+
     def _reload_table(self) -> None:
         """Reload the Iceberg table from the catalog."""
         cat = self._get_catalog()
-
-        def _load_table():
-            return cat.load_table(self.table_identifier)
-
-        self._table = call_with_retry(
-            _load_table,
+        self._table = self._with_catalog_retry(
+            lambda: cat.load_table(self.table_identifier),
             description=f"load Iceberg table '{self.table_identifier}'",
-            match=self._data_context.iceberg_catalog_retried_errors,
-            max_attempts=self._data_context.iceberg_catalog_max_attempts,
-            max_backoff_s=self._data_context.iceberg_catalog_retry_max_backoff_s,
         )
         self._io = self._table.io
         self._table_metadata = self._table.metadata
@@ -209,12 +217,9 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             for data_file in data_files:
                 append_files.append_data_file(data_file)
 
-        call_with_retry(
+        self._with_catalog_retry(
             txn.commit_transaction,
             description=f"commit transaction to Iceberg table '{self.table_identifier}'",
-            match=self._data_context.iceberg_catalog_retried_errors,
-            max_attempts=self._data_context.iceberg_catalog_max_attempts,
-            max_backoff_s=self._data_context.iceberg_catalog_retry_max_backoff_s,
         )
 
     def _commit_upsert(
@@ -346,12 +351,9 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 with self._table.update_schema() as update:
                     self._update_schema_with_union(update, schema, table_schema)
 
-            call_with_retry(
+            self._with_catalog_retry(
                 _update_schema,
                 description=f"update schema for Iceberg table '{self.table_identifier}'",
-                match=self._data_context.iceberg_catalog_retried_errors,
-                max_attempts=self._data_context.iceberg_catalog_max_attempts,
-                max_backoff_s=self._data_context.iceberg_catalog_retry_max_backoff_s,
             )
             # Succeeded, reload to get latest table version and exit.
             self._reload_table()
