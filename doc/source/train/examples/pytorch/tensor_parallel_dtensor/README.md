@@ -132,7 +132,9 @@ def get_mixed_precision_dtype() -> torch.dtype:
 
 ## 2. Data loading with TP-aware sharding
 
-A critical aspect of tensor parallelism is ensuring all GPUs in a TP group receive identical input data. Standard data loaders shard by `world_rank`, giving each GPU different data. With TP, you must shard by `dp_rank` instead:
+A critical aspect of tensor parallelism is ensuring all GPUs in a TP group receive identical input data. Standard data loaders shard by `world_rank`, giving each GPU different data. With TP, you must shard by `dp_rank` instead.
+
+**Global batch size**: Because all GPUs in a TP group see the same data, the effective (global) batch size is `batch_size_per_gpu * dp_size`, not `batch_size_per_gpu * world_size`. For example, with `batch_size_per_gpu=1`, `dp_size=2`, and `tp_size=2` (4 GPUs total), the global batch size is 2, not 4.
 
 ```python
 # All TP ranks in same DP group get identical batches
@@ -159,7 +161,7 @@ def create_dataloader(
     model_name: str,
     dataset_name: str,
     seq_length: int,
-    batch_size: int,
+    batch_size_per_gpu: int,
     dp_rank: int,
     dp_size: int,
     seed: int = 42,
@@ -226,7 +228,7 @@ def create_dataloader(
         tokenized, num_replicas=dp_size, rank=dp_rank, shuffle=True, seed=seed
     )
 
-    return DataLoader(tokenized, batch_size=batch_size, sampler=sampler, drop_last=True)
+    return DataLoader(tokenized, batch_size=batch_size_per_gpu, sampler=sampler, drop_last=True)
 ```
 
 ## 3. Model parallelization with the Distributed Tensor API
@@ -456,7 +458,7 @@ def train_func(config):
         model_name=config["model_name"],
         dataset_name=config["dataset_name"],
         seq_length=config["seq_length"],
-        batch_size=config["batch_size"],
+        batch_size_per_gpu=config["batch_size_per_gpu"],
         dp_rank=dp_rank,
         dp_size=dp_size,
         seed=config.get("seed", 42),
@@ -562,7 +564,7 @@ train_loop_config = {
     "tp_size": tp_size,
     "dp_size": dp_size,
     # Training hyperparameters
-    "batch_size": 1,
+    "batch_size_per_gpu": 1,  # Global batch size = batch_size_per_gpu * dp_size
     "seq_length": 512,
     "num_epochs": 1,
     "learning_rate": 1e-5,
@@ -605,7 +607,7 @@ train_loop_config = {
     "model_name": "Qwen/Qwen2-7B",
     "tp_size": 4,
     "dp_size": 2,
-    "batch_size": 1,
+    "batch_size_per_gpu": 1,
     "seq_length": 2048,
     ...
 }
