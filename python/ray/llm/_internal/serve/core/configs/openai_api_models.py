@@ -17,13 +17,6 @@ from vllm.entrypoints.openai.completion.protocol import (
     CompletionResponse as vLLMCompletionResponse,
     CompletionStreamResponse as vLLMCompletionStreamResponse,
 )
-from vllm.entrypoints.serve.tokenize.protocol import (
-    DetokenizeRequest as vLLMDetokenizeRequest,
-    DetokenizeResponse as vLLMDetokenizeResponse,
-    TokenizeChatRequest as vLLMTokenizeChatRequest,
-    TokenizeCompletionRequest as vLLMTokenizeCompletionRequest,
-    TokenizeResponse as vLLMTokenizeResponse,
-)
 from vllm.entrypoints.openai.engine.protocol import (
     ErrorInfo as vLLMErrorInfo,
     ErrorResponse as vLLMErrorResponse,
@@ -39,11 +32,17 @@ from vllm.entrypoints.pooling.embed.protocol import (
     EmbeddingResponse as vLLMEmbeddingResponse,
 )
 from vllm.entrypoints.pooling.score.protocol import (
-    ScoreRequest as vLLMScoreRequest,
-    ScoreResponse as vLLMScoreResponse,
-    ScoreQueriesDocumentsRequest as vLLMScoreQueriesDocumentsRequest,
     ScoreDataRequest as vLLMScoreDataRequest,
+    ScoreQueriesDocumentsRequest as vLLMScoreQueriesDocumentsRequest,
+    ScoreResponse as vLLMScoreResponse,
     ScoreTextRequest as vLLMScoreTextRequest,
+)
+from vllm.entrypoints.serve.tokenize.protocol import (
+    DetokenizeRequest as vLLMDetokenizeRequest,
+    DetokenizeResponse as vLLMDetokenizeResponse,
+    TokenizeChatRequest as vLLMTokenizeChatRequest,
+    TokenizeCompletionRequest as vLLMTokenizeCompletionRequest,
+    TokenizeResponse as vLLMTokenizeResponse,
 )
 from vllm.utils import random_uuid
 
