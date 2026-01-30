@@ -195,6 +195,10 @@ class _ListNamespace:
 
         @pyarrow_udf(return_dtype=return_dtype)
         def _list_sort(arr: pyarrow.Array) -> pyarrow.Array:
+            # Approach:
+            # 1) Normalize fixed_size_list -> list for list_* kernels (preserve nulls).
+            # 2) Flatten to (row_index, value) pairs, sort by row then value.
+            # 3) Rebuild list array using per-row lengths and restore original type.
             arr = _ensure_array(arr)
 
             arr_type = arr.type
@@ -208,7 +212,8 @@ class _ListNamespace:
             if pyarrow.types.is_fixed_size_list(arr_type):
                 # Example: FixedSizeList<2>[ [3,1], None, [2,4] ]
                 # Fill null row -> [[3,1],[None,None],[2,4]], cast to list<child> for sort,
-                # then cast back to fixed_size to preserve schema.
+                # then cast back to fixed_size to preserve schema. list_* kernels operate
+                # on list/large_list, so we cast fixed_size_list<T> to list<T> here.
                 child_type = arr_type.value_type
                 list_size = arr_type.list_size
                 if null_mask is not None:
@@ -220,6 +225,7 @@ class _ListNamespace:
                 list_type = pyarrow.list_(child_type)
                 sort_arr = sort_arr.cast(list_type)
                 arr_type = sort_arr.type
+            # Flatten to (row_index, value) pairs, sort within each row by value.
             values = pc.list_flatten(sort_arr)
             if len(values):
                 row_indices = pc.list_parent_indices(sort_arr)
@@ -234,6 +240,7 @@ class _ListNamespace:
                 )
                 values = pc.take(values, sorted_indices)
 
+            # Reconstruct list array with original row boundaries and nulls.
             lengths = pc.list_value_length(sort_arr)
             lengths = pc.fill_null(lengths, 0)
             is_large = pyarrow.types.is_large_list(arr_type)
@@ -259,6 +266,10 @@ class _ListNamespace:
 
         @pyarrow_udf(return_dtype=return_dtype)
         def _list_flatten(arr: pyarrow.Array) -> pyarrow.Array:
+            # Approach:
+            # 1) Flatten list<list<T>> to a flat values array and parent indices.
+            # 2) Count values per original row.
+            # 3) Rebuild list array using offsets while preserving top-level nulls.
             arr = _ensure_array(arr)
 
             _validate_nested_list(arr.type)
@@ -268,6 +279,8 @@ class _ListNamespace:
 
             n_rows: int = len(arr)
             if len(all_scalars) == 0:
+                # All rows are empty/None after flatten, so build zero counts to
+                # preserve row count and produce empty lists for each row.
                 counts = pyarrow.array(np.repeat(0, n_rows), type=pyarrow.int64())
                 offsets = _counts_to_offsets(counts)
             else:
@@ -284,6 +297,9 @@ class _ListNamespace:
                 rows_with_scalars: pyarrow.Array = pc.struct_field(vc, "values")
                 scalar_counts: pyarrow.Array = pc.struct_field(vc, "counts")
 
+                # Compute per-row counts of flattened scalars. value_counts gives counts
+                # only for rows that appear, so we map those counts back onto the full
+                # row range [0, n_rows) and fill missing rows with 0.
                 row_sequence: pyarrow.Array = pyarrow.array(
                     np.arange(n_rows, dtype=np.int64), type=pyarrow.int64()
                 )
@@ -301,6 +317,7 @@ class _ListNamespace:
 
             is_large: bool = pyarrow.types.is_large_list(arr.type)
             null_mask: pyarrow.Array | None = arr.is_null() if arr.null_count else None
+            # Rebuild a list/large_list array while preserving top-level nulls.
             return _combine_as_list_array(
                 offsets=offsets,
                 values=all_scalars,
