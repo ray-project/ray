@@ -56,8 +56,6 @@ def _convert_batch_type_to_pandas(
     """
     pd = _lazy_import_pandas()
 
-    ""
-
     "Convert to dictionary if DataBatchType is np.ndarray."
     if isinstance(data, np.ndarray):
         data = {TENSOR_COLUMN_NAME: data}
