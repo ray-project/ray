@@ -629,3 +629,7 @@ RDT_FETCH_FAIL_TIMEOUT_SECONDS = (
 RAY_ENABLE_ZERO_COPY_TORCH_TENSORS = env_bool(
     "RAY_ENABLE_ZERO_COPY_TORCH_TENSORS", False
 )
+
+# Max number of cached NIXL remote agents. When exceeded, the least recently used
+# remote agent is evicted.
+NIXL_REMOTE_AGENT_CACHE_MAXSIZE = env_integer("RAY_NIXL_REMOTE_AGENT_CACHE_MAXSIZE", 64)
