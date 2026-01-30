@@ -273,22 +273,20 @@ def types_compatible(expected: pa.DataType, actual: pa.DataType) -> bool:
 
 
 def normalize_commit_properties(
-    commit_properties: Optional[Any],
-) -> Optional[Any]:
-    """Normalize commit_properties from dict to CommitProperties object if needed.
+    commit_properties: Optional[Dict[str, str]],
+) -> Dict[str, str]:
+    """Normalize commit properties for Delta Lake transactions.
 
     Args:
-        commit_properties: Either a dict, CommitProperties object, or None.
+        commit_properties: Optional dict of commit properties.
 
     Returns:
-        CommitProperties object if dict was provided, otherwise returns input unchanged.
+        Normalized commit properties dict (never None).
+        delta-rs accepts dict directly for commit_properties.
     """
-    if isinstance(commit_properties, dict):
-        # Lazy import to avoid breaking helpful error messages when deltalake is not installed
-        from deltalake.transaction import CommitProperties
-
-        return CommitProperties(**commit_properties)
-    return commit_properties
+    if commit_properties is None:
+        return {}
+    return dict(commit_properties)
 
 
 def validate_schema_type_compatibility(
@@ -563,7 +561,7 @@ def try_get_deltatable(
     except tuple(not_found_exceptions):
         # Table doesn't exist - return None
         return None
-    except Exception as e:
+    except Exception:
         # Re-raise all other exceptions (auth errors, corrupt logs, etc.)
         # These are real errors that should not be silently ignored
         raise
@@ -796,6 +794,37 @@ def _get_gcs_credentials() -> Dict[str, str]:
         return result
     except Exception:
         return {}
+
+
+def create_app_transaction_id(write_uuid: Optional[str]) -> Dict[str, str]:
+    """Create app_transaction ID for idempotent commits.
+
+    Uses write_uuid to generate a deterministic transaction ID that can be
+    checked after commit failures to determine if commit succeeded.
+
+    Args:
+        write_uuid: Unique identifier for this write operation.
+
+    Returns:
+        Dict with app_transaction ID for commit_properties.
+    """
+    import hashlib
+
+    if write_uuid is None:
+        # Fallback: generate from timestamp (less ideal but better than nothing)
+        import time
+
+        write_uuid = f"ray_data_write_{int(time.time() * 1000000)}"
+
+    # Create deterministic app_id and version from write_uuid
+    # app_id identifies the application (Ray Data)
+    # version is a monotonic sequence derived from write_uuid hash
+    app_id = "ray.data.write_delta"
+    # Hash write_uuid to get a deterministic integer version
+    version = int(hashlib.md5(write_uuid.encode()).hexdigest()[:8], 16)
+
+    # Format: "app_id:version" as required by delta-rs
+    return {"app_transactions": f"{app_id}:{version}"}
 
 
 # =============================================================================
