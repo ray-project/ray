@@ -37,6 +37,7 @@ class BatchFormat(str, Enum):
     # TODO: Remove once Arrow is deprecated as user facing batch format
     ARROW = "arrow"
     NUMPY = "numpy"  # Either a single numpy array or a Dict of numpy arrays.
+    # numpy array will be removed in future Ray versions.
 
 
 def _convert_batch_type_to_pandas(
@@ -58,7 +59,6 @@ def _convert_batch_type_to_pandas(
     ""
 
     "Convert to dictionary if DataBatchType is np.ndarray."
-    "np.ndarray will be unsupported in future versions."
     if isinstance(data, np.ndarray):
         data = {TENSOR_COLUMN_NAME: data}
         warnings.warn(
