@@ -1,4 +1,5 @@
 import atexit
+import logging
 import os
 import tempfile
 from typing import Any, Callable, Dict, Optional
@@ -6,11 +7,56 @@ from typing import Any, Callable, Dict, Optional
 import requests
 
 import ray
+from ray.data._internal.datasource.databricks_credentials import (
+    DatabricksCredentialProvider,
+)
+
+logger = logging.getLogger(__name__)
 
 _FILE_FORMAT_TO_RAY_READER = {
     "delta": "read_delta",
     "parquet": "read_parquet",
 }
+
+
+def _build_headers(
+    credential_provider: DatabricksCredentialProvider,
+) -> dict[str, str]:
+    """Build request headers with fresh token from credential provider."""
+    return {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {credential_provider.get_token()}",
+    }
+
+
+def _request_with_401_retry(
+    request_fn: Callable[..., requests.Response],
+    url: str,
+    credential_provider: DatabricksCredentialProvider,
+    **kwargs,
+) -> requests.Response:
+    """Make an HTTP request with one retry on 401 after invalidating credentials.
+
+    Args:
+        request_fn: Request function (e.g., requests.get or requests.post)
+        url: Request URL
+        credential_provider: Credential provider for authentication
+        **kwargs: Additional arguments passed to requests
+
+    Returns:
+        Response object (after calling raise_for_status)
+    """
+    response = request_fn(url, headers=_build_headers(credential_provider), **kwargs)
+
+    if response.status_code == 401:
+        logger.info("Received 401 response, invalidating credentials and retrying.")
+        credential_provider.invalidate()
+        response = request_fn(
+            url, headers=_build_headers(credential_provider), **kwargs
+        )
+
+    response.raise_for_status()
+    return response
 
 
 class UnityCatalogConnector:
@@ -26,17 +72,18 @@ class UnityCatalogConnector:
     def __init__(
         self,
         *,
-        base_url: str,
-        token: str,
         table_full_name: str,
+        credential_provider: DatabricksCredentialProvider,
         region: Optional[str] = None,
         data_format: Optional[str] = "delta",
         operation: str = "READ",
         ray_init_kwargs: Optional[Dict] = None,
         reader_kwargs: Optional[Dict] = None,
     ):
-        self.base_url = base_url.rstrip("/")
-        self.token = token
+        self._credential_provider = credential_provider
+        self.base_url = self._credential_provider.get_host().rstrip("/")
+        if not self.base_url.startswith(("http://", "https://")):
+            self.base_url = f"https://{self.base_url}"
         self.table_full_name = table_full_name
         self.data_format = data_format.lower() if data_format else None
         self.region = region
@@ -47,9 +94,11 @@ class UnityCatalogConnector:
 
     def _get_table_info(self) -> dict:
         url = f"{self.base_url}/api/2.1/unity-catalog/tables/{self.table_full_name}"
-        headers = {"Authorization": f"Bearer {self.token}"}
-        resp = requests.get(url, headers=headers)
-        resp.raise_for_status()
+        resp = _request_with_401_retry(
+            requests.get,
+            url,
+            self._credential_provider,
+        )
         data = resp.json()
         self._table_info = data
         self._table_id = data["table_id"]
@@ -57,13 +106,13 @@ class UnityCatalogConnector:
 
     def _get_creds(self):
         url = f"{self.base_url}/api/2.1/unity-catalog/temporary-table-credentials"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.token}",
-        }
         payload = {"table_id": self._table_id, "operation": self.operation}
-        resp = requests.post(url, json=payload, headers=headers)
-        resp.raise_for_status()
+        resp = _request_with_401_retry(
+            requests.post,
+            url,
+            self._credential_provider,
+            json=payload,
+        )
         self._creds_response = resp.json()
         self._table_url = self._creds_response["url"]
 

@@ -4139,9 +4139,10 @@ def read_clickhouse(
 @PublicAPI(stability="alpha")
 def read_unity_catalog(
     table: str,
-    url: str,
-    token: str,
+    url: Optional[str] = None,
+    token: Optional[str] = None,
     *,
+    credential_provider: Optional["DatabricksCredentialProvider"] = None,
     data_format: Optional[str] = None,
     region: Optional[str] = None,
     reader_kwargs: Optional[dict] = None,
@@ -4171,21 +4172,63 @@ def read_unity_catalog(
         ... )
         >>> ds.show(3)  # doctest: +SKIP
 
+        Read using a custom credential provider:
+
+        >>> from ray.data._internal.datasource.databricks_credentials import (  # doctest: +SKIP
+        ...     StaticCredentialProvider,
+        ... )
+        >>> provider = StaticCredentialProvider(  # doctest: +SKIP
+        ...     token="dapi...",
+        ...     host="https://dbc-XXXXXXX-XXXX.cloud.databricks.com",
+        ... )
+        >>> ds = ray.data.read_unity_catalog(  # doctest: +SKIP
+        ...     table="main.sales.transactions",
+        ...     credential_provider=provider,
+        ...     region="us-west-2"
+        ... )
+
     Args:
         table: Unity Catalog table path in format ``catalog.schema.table``.
         url: Databricks workspace URL (e.g., ``"https://dbc-XXXXXXX-XXXX.cloud.databricks.com"``).
+            Required if ``credential_provider`` is not specified. Please prefer to use
+            credential_provider instead of url and token parameters. This parameter will be
+            deprecated in a future release.
         token: Databricks Personal Access Token with ``EXTERNAL USE SCHEMA`` permission.
+            Required if ``credential_provider`` is not specified. Please prefer to use
+            credential_provider instead of url and token parameters. This parameter will be
+            deprecated in a future release.
+        credential_provider: (Optional) A custom credential provider for
+            authentication. Must be a subclass of ``DatabricksCredentialProvider``
+            implementing ``get_token()``, ``get_host()``, and ``invalidate()``.
+            The provider must be picklable (serializable) as it is sent to Ray
+            workers for distributed execution. If provided, the provider is used
+            exclusively and ``url``/``token`` parameters are ignored.
         data_format: Data format (``"delta"`` or ``"parquet"``). If not specified, inferred from table metadata.
         region: AWS region for S3 access (e.g., ``"us-west-2"``). Required for AWS, not needed for Azure/GCP.
         reader_kwargs: Additional arguments passed to the underlying Ray Data reader.
 
     Returns:
         A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
-    """
+    """  # noqa: E501
+    from ray.data._internal.datasource.databricks_credentials import (
+        StaticCredentialProvider,
+        resolve_credential_provider,
+    )
+
+    # Resolve credentials: either from credential_provider or from url/token
+    if credential_provider is not None:
+        resolved_provider = resolve_credential_provider(credential_provider)
+    elif url is not None and token is not None:
+        # Backwards compatible: create provider from url/token
+        resolved_provider = StaticCredentialProvider(token=token, host=url)
+    else:
+        raise ValueError(
+            "Either 'credential_provider' or both 'url' and 'token' must be provided."
+        )
+
     connector = UnityCatalogConnector(
-        base_url=url,
-        token=token,
         table_full_name=table,
+        credential_provider=resolved_provider,
         data_format=data_format,
         region=region,
         reader_kwargs=reader_kwargs,
