@@ -44,7 +44,9 @@ export UV_SYSTEM_PYTHON=1
 export TORCH_CUDA_ARCH_LIST="9.0a 10.0a"
 
 # Install EP kernels (PPLX, DeepEP, and NVSHMEM)
-curl -fsSL "${VLLM_RAW}/tools/ep_kernels/install_python_libraries.sh" | bash -s -- --workspace /home/ray/llm_ep_support
+# Fix CUDA version mismatch: Use nvshmem 3.3.20 which was compiled with CUDA 12.8
+curl -fsSL "${VLLM_RAW}/tools/ep_kernels/install_python_libraries.sh" | \
+    bash -s -- --workspace /home/ray/llm_ep_support --nvshmem-ver 3.3.20
 
 # Install DeepGEMM
 curl -fsSL "${VLLM_RAW}/tools/install_deepgemm.sh" | bash
