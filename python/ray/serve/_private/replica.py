@@ -156,7 +156,6 @@ from ray.serve.generated.serve_pb2_grpc import add_ASGIServiceServicer_to_server
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
-from ray.serve.exceptions import gRPCStatusError
 from ray.util import metrics as ray_metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
