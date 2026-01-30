@@ -5,7 +5,6 @@ import pprint
 import time
 
 import ray.train
-from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray._private.test_utils import safe_write_to_results_json
 from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.util import date_str
@@ -107,16 +106,6 @@ def main():
 
     with open(METRICS_OUTPUT_PATH, "r") as f:
         metrics = json.load(f)
-
-    # Collect object store spill metrics
-    try:
-        memory_info = get_memory_info_reply(
-            get_state_from_address(ray.get_runtime_context().gcs_address)
-        )
-        spilled_bytes_total = memory_info.store_stats.spilled_bytes_total
-        metrics["spilled_gb_total"] = round(spilled_bytes_total / (1024**3), 2)
-    except Exception as e:
-        logger.warning(f"Failed to collect spilled_bytes_total metric: {e}")
 
     final_metrics_str = (
         f"\nTotal training time: {end_time - start_time} seconds\n"
