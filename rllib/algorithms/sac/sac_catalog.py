@@ -188,7 +188,7 @@ class SACCatalog(Catalog):
         """
         # For discrete action spaces, we don't need to encode the action
         # because the Q-function will output a value for each action.
-        return self.catalog.build_encoder(framework=framework)
+        return self.build_encoder(framework=framework)
 
     @OverrideToImplementCustomLogic
     def build_qf_encoder(self, framework: str) -> Encoder:
