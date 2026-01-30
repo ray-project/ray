@@ -43,7 +43,7 @@ from ray.util.client.server.server_stubs import current_server
 
 logger = logging.getLogger(__name__)
 
-TIMEOUT_FOR_SPECIFIC_SERVER_S = env_integer("TIMEOUT_FOR_SPECIFIC_SERVER_S", 30)
+TIMEOUT_FOR_SPECIFIC_SERVER_S = env_integer("TIMEOUT_FOR_SPECIFIC_SERVER_S", 60)
 
 
 def _use_response_cache(func):

@@ -445,6 +445,16 @@ class Worker:
                 if deadline and time.monotonic() > deadline:
                     raise
                 logger.debug("Internal retry for get {}".format(to_get))
+            except ConnectionError as e:
+                # During Ray Client reconnect, transient gRPC errors are decoded into
+                # ConnectionError (see decode_exception()). Treat these as retryable
+                # while reconnect is enabled, so user code doesn't fail fast during
+                # the reconnect window.
+                if not self._reconnect_enabled:
+                    raise
+                if deadline and time.monotonic() > deadline:
+                    raise
+                time.sleep(0.5)
         if len(to_get) != len(res):
             raise Exception(
                 "Mismatched number of items in request ({}) and response ({})".format(

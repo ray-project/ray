@@ -420,6 +420,8 @@ class ProxyManager:
     def get_channel(
         self,
         client_id: str,
+        *,
+        timeout_s: float = CHECK_CHANNEL_TIMEOUT_S,
     ) -> Optional["grpc._channel.Channel"]:
         """
         Find the gRPC Channel for the given client_id. This will block until
@@ -431,12 +433,19 @@ class ProxyManager:
         # Wait for the SpecificServer to become ready.
         server.wait_ready()
         try:
-            grpc.channel_ready_future(server.channel).result(
-                timeout=CHECK_CHANNEL_TIMEOUT_S
-            )
+            grpc.channel_ready_future(server.channel).result(timeout=timeout_s)
             return server.channel
         except grpc.FutureTimeoutError:
             logger.exception(f"Timeout waiting for channel for {client_id}")
+            exit_code = server.poll()
+            # If the process has already exited, eagerly remove it so reconnect can recreate
+            # the server without waiting for _check_processes (30s interval).
+            if exit_code is not None:
+                with self.server_lock:
+                    cur = self.servers.get(client_id)
+                    if cur is server:
+                        del self.servers[client_id]
+                        self._free_ports.append(server.port)
             return None
 
     def _check_processes(self):
@@ -475,10 +484,18 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
         self, request, context, method: str
     ) -> Optional[ray_client_pb2_grpc.RayletDriverStub]:
         client_id = _get_client_id_from_context(context)
-        chan = self.proxy_manager.get_channel(client_id)
+        # During reconnect, the specific-server process/channel may be in the middle of being
+        # recreated by the DataServicerProxy. In that case we should fail fast with a
+        # *recoverable* error so the client retries instead of surfacing an unrecoverable
+        # NOT_FOUND to the user.
+        chan = self.proxy_manager.get_channel(client_id, timeout_s=5)
         if not chan:
             logger.error(f"Channel for Client: {client_id} not found!")
-            context.set_code(grpc.StatusCode.NOT_FOUND)
+            context.set_code(grpc.StatusCode.UNAVAILABLE)
+            context.set_details(
+                "Ray Client backend is temporarily unavailable (likely reconnecting). "
+                "Please retry."
+            )
             return None
 
         stub = ray_client_pb2_grpc.RayletDriverStub(chan)
@@ -698,9 +715,73 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         # dictionary mapping client_id's to the last time they connected
         self.clients_last_seen: Dict[str, float] = {}
         self.reconnect_grace_periods: Dict[str, float] = {}
+        # dictionary mapping client_id's to their job_config for reconnection
+        self.job_configs: Dict[str, JobConfig] = {}
+        # dictionary mapping client_id's to the serialized job_config bytes (already pickled)
+        # used to synthesize an InitRequest without re-pickling Python objects.
+        self.job_config_bytes: Dict[str, bytes] = {}
+        # dictionary mapping client_id's to their original ray_init_kwargs (JSON string)
+        # used to synthesize an InitRequest if the specific-server must be recreated.
+        self.ray_init_kwargs: Dict[str, str] = {}
+        # Per-client flag indicating the current backend is fresh and must receive an InitRequest
+        # before it can accept reconnecting=True requests.
+        self.backend_needs_init: Dict[str, bool] = {}
+        # Schedule delayed cleanup without blocking the Datapath RPC.
+        # For each client_id, a monotonically increasing token invalidates any
+        # previously scheduled cleanup task.
+        self._cleanup_tokens: Dict[str, int] = {}
         self.clients_lock = Lock()
         self.proxy_manager = proxy_manager
         self.stopped = Event()
+
+    def _invalidate_cleanup_locked(self, client_id: str) -> int:
+        """Invalidate any previously scheduled cleanup for this client."""
+        token = self._cleanup_tokens.get(client_id, 0) + 1
+        self._cleanup_tokens[client_id] = token
+        return token
+
+    def _schedule_delayed_cleanup(
+        self, client_id: str, start_time: float, delay_s: float
+    ) -> None:
+        """
+        Schedule cleanup after delay_s without blocking the current Datapath RPC.
+
+        IMPORTANT: If we block inside the Datapath handler (e.g. time.sleep / Event.wait),
+        the client will not observe the RpcError and therefore will not begin reconnecting
+        until after that wait finishes.
+        """
+        with self.clients_lock:
+            token = self._invalidate_cleanup_locked(client_id)
+
+        def _run_cleanup():
+            # Allow server shutdown to interrupt the wait.
+            self.stopped.wait(timeout=delay_s)
+            with self.clients_lock:
+                if self._cleanup_tokens.get(client_id) != token:
+                    return
+
+                if client_id not in self.clients_last_seen:
+                    self.reconnect_grace_periods.pop(client_id, None)
+                    self.job_configs.pop(client_id, None)
+                    self.job_config_bytes.pop(client_id, None)
+                    self.ray_init_kwargs.pop(client_id, None)
+                    self.backend_needs_init.pop(client_id, None)
+                    return
+
+                current_last_seen = self.clients_last_seen[client_id]
+                if current_last_seen > start_time:
+                    return
+
+                if self.num_clients > 0:
+                    self.num_clients -= 1
+                del self.clients_last_seen[client_id]
+                self.reconnect_grace_periods.pop(client_id, None)
+                self.job_configs.pop(client_id, None)
+                self.job_config_bytes.pop(client_id, None)
+                self.ray_init_kwargs.pop(client_id, None)
+                self.backend_needs_init.pop(client_id, None)
+
+        Thread(target=_run_cleanup, daemon=True).start()
 
     def modify_connection_info_resp(
         self, init_resp: ray_client_pb2.DataResponse
@@ -726,27 +807,170 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         if client_id == "":
             return
         reconnecting = _get_reconnecting_from_context(context)
+        downstream_reconnecting = reconnecting
 
         if reconnecting:
+            recreated_backend = False
+            ray_init_kwargs = None
             with self.clients_lock:
+                # A reconnect attempt means the session is active again; cancel any pending cleanup.
+                self._invalidate_cleanup_locked(client_id)
+                # Get saved job_config first - it might still exist even if clients_last_seen was cleaned
+                job_config = self.job_configs.get(client_id)
+                ray_init_kwargs = self.ray_init_kwargs.get(client_id)
+                
                 if client_id not in self.clients_last_seen:
-                    # Client took too long to reconnect, session has already
-                    # been cleaned up
-                    context.set_code(grpc.StatusCode.NOT_FOUND)
-                    context.set_details(
-                        "Attempted to reconnect a session that has already "
-                        "been cleaned up"
-                    )
-                    return
-                self.clients_last_seen[client_id] = start_time
+                    # Client took too long to reconnect, session has already been cleaned up
+                    # But check if we still have job_config - if so, allow recovery (race condition)
+                    if job_config is not None:
+                        # Restore clients_last_seen entry for this reconnection
+                        self.clients_last_seen[client_id] = start_time
+                    else:
+                        # No job_config either, truly cannot recover
+                        logger.error(
+                            f"Client {client_id} not found in clients_last_seen "
+                            f"and no job_config available. Session has been cleaned up."
+                        )
+                        context.set_code(grpc.StatusCode.NOT_FOUND)
+                        context.set_details(
+                            "Attempted to reconnect a session that has already "
+                            "been cleaned up"
+                        )
+                        return
+                else:
+                    self.clients_last_seen[client_id] = start_time
+
             server = self.proxy_manager._get_server_for_client(client_id)
-            channel = self.proxy_manager.get_channel(client_id)
-            # iterator doesn't need modification on reconnect
-            new_iter = request_iterator
+            if server is None:
+                # Server was removed by _check_processes, need to recreate it
+                if job_config is None:
+                    # No saved job_config, cannot recover
+                    logger.error(
+                        f"Cannot reconnect {client_id}: server was removed "
+                        "and job config is not available."
+                    )
+                    # Don't return here - let it go through exception handling
+                    # so cleanup can happen properly in finally block
+                    raise RuntimeError(
+                        "Cannot reconnect: server was removed and job config "
+                        "is not available. Please reconnect as a new client."
+                    )
+                
+                # Recreate server for reconnection
+                server = self.proxy_manager.create_specific_server(client_id)
+                recreated_backend = True
+                downstream_reconnecting = False
+                if not self.proxy_manager.start_specific_server(
+                    client_id, job_config
+                ):
+                    logger.error(
+                        f"Failed to restart server for {client_id} during reconnection"
+                    )
+                    # Don't return here - let it go through exception handling
+                    raise RuntimeError(
+                        "Failed to restart server during reconnection. "
+                        "Please try reconnecting again."
+                    )
+                with self.clients_lock:
+                    self.backend_needs_init[client_id] = True
+            
+            # Use a shorter readiness timeout during reconnect to avoid 30s stalls.
+            channel = self.proxy_manager.get_channel(client_id, timeout_s=5)
+            if channel is None:
+                # If the server process is dead or the channel isn't becoming ready,
+                # don't sit in a 30s timeout loop. Eagerly recreate the server.
+                exit_code = server.poll() if server is not None else None
+                if job_config is None:
+                    raise RuntimeError(
+                        "Failed to get channel during reconnection and no job_config is available. "
+                        "Please reconnect as a new client."
+                    )
+                # Force recreate: drop the existing server entry (if any) and start a fresh one.
+                with self.proxy_manager.server_lock:
+                    existing = self.proxy_manager.servers.get(client_id)
+                    if existing is not None:
+                        del self.proxy_manager.servers[client_id]
+                        self.proxy_manager._free_ports.append(existing.port)
+                server = self.proxy_manager.create_specific_server(client_id)
+                recreated_backend = True
+                downstream_reconnecting = False
+                if not self.proxy_manager.start_specific_server(client_id, job_config):
+                    raise RuntimeError(
+                        "Failed to restart server during reconnection (channel not ready). "
+                        "Please try reconnecting again."
+                    )
+                with self.clients_lock:
+                    self.backend_needs_init[client_id] = True
+                # Use a shorter readiness timeout during reconnect to avoid 30s stalls.
+                channel = self.proxy_manager.get_channel(client_id, timeout_s=5)
+                if channel is None:
+                    # If we just recreated the server, it might not be ready yet
+                    if server is None or not server.is_ready():
+                        logger.error(
+                            f"Failed to get channel for {client_id} during reconnection: "
+                            f"server={'None' if server is None else 'not ready'}"
+                        )
+                        raise RuntimeError(
+                            "Failed to get channel during reconnection. "
+                            "The specific server may not be ready yet. "
+                            "Please try reconnecting again."
+                        )
+                    # Server exists but channel is None - this shouldn't happen
+                    logger.error(
+                        f"Failed to get channel for {client_id}: "
+                        "server exists but channel is None"
+                    )
+                    raise RuntimeError(
+                        "Failed to get channel during reconnection. "
+                        "Please try reconnecting again."
+                    )
+            # If the backend is fresh (recreated, or we haven't observed an init ack yet),
+            # it has no in-memory session state. Do NOT forward reconnecting=True downstream
+            # (it would be rejected with NOT_FOUND). Prepend a synthetic InitRequest and
+            # keep forcing reconnecting=False until we observe an init response.
+            with self.clients_lock:
+                needs_init = recreated_backend or self.backend_needs_init.get(
+                    client_id, False
+                )
+                jc_bytes = self.job_config_bytes.get(client_id)
+
+            if needs_init:
+                init_kwargs = ray_init_kwargs or "{}"
+                grace = int(self.reconnect_grace_periods.get(client_id, 0) or 0)
+                if jc_bytes is None:
+                    # Fallback: try to re-pickle the JobConfig object if bytes are missing.
+                    if job_config is None:
+                        raise RuntimeError(
+                            "Internal error: backend needs init but job_config is missing."
+                        )
+                    jc_bytes = pickle.dumps(job_config)
+                # IMPORTANT:
+                # - The client never "mints" req_id=0 (it's reserved for unawaited /
+                #   opportunistic requests).
+                # - The specific-server's OrderedResponseCache assumes the streaming req_id
+                #   sequence is positive int32 and monotonic with rollover handling.
+                # Therefore, to avoid interfering with the client's req_id space *and* to
+                # avoid OrderedResponseCache validation, we send the synthetic init with
+                # req_id=0 and ensure `init` is not cached on the specific-server.
+                synthetic_init = ray_client_pb2.DataRequest(
+                    req_id=0,
+                    init=ray_client_pb2.InitRequest(
+                        job_config=jc_bytes,
+                        ray_init_kwargs=init_kwargs,
+                        reconnect_grace_period=grace,
+                    ),
+                )
+                new_iter = chain([synthetic_init], request_iterator)
+                downstream_reconnecting = False
+            else:
+                new_iter = request_iterator
+                downstream_reconnecting = True
         else:
             # Create Placeholder *before* reading the first request.
             server = self.proxy_manager.create_specific_server(client_id)
             with self.clients_lock:
+                # New stream means the session is active; cancel any pending cleanup.
+                self._invalidate_cleanup_locked(client_id)
                 self.clients_last_seen[client_id] = start_time
                 self.num_clients += 1
 
@@ -758,8 +982,15 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     self.reconnect_grace_periods[
                         client_id
                     ] = init_req.init.reconnect_grace_period
+                    self.ray_init_kwargs[client_id] = init_req.init.ray_init_kwargs
                 try:
                     modified_init_req, job_config = prepare_runtime_init_req(init_req)
+                    # Save job_config for potential reconnection
+                    with self.clients_lock:
+                        self.job_configs[client_id] = job_config
+                        # Persist the already-serialized bytes to avoid re-pickling on reconnect.
+                        self.job_config_bytes[client_id] = modified_init_req.init.job_config
+                        self.backend_needs_init[client_id] = True
                     if not self.proxy_manager.start_specific_server(
                         client_id, job_config
                     ):
@@ -796,10 +1027,19 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 new_iter = chain([modified_init_req], request_iterator)
 
             stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
-            metadata = [("client_id", client_id), ("reconnecting", str(reconnecting))]
+            metadata = [
+                ("client_id", client_id),
+                ("reconnecting", str(downstream_reconnecting)),
+            ]
             resp_stream = stub.Datapath(new_iter, metadata=metadata)
             for resp in resp_stream:
                 resp_type = resp.WhichOneof("type")
+                if resp_type == "init":
+                    with self.clients_lock:
+                        # Once we observe an init response from the backend, it is safe to
+                        # treat subsequent reconnect attempts as reconnecting=True downstream.
+                        if self.backend_needs_init.get(client_id):
+                            self.backend_needs_init[client_id] = False
                 if resp_type == "connection_cleanup":
                     # Specific server is skipping cleanup, proxier should too
                     cleanup_requested = True
@@ -814,29 +1054,24 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         finally:
             cleanup_delay = self.reconnect_grace_periods.get(client_id)
             if not cleanup_requested and cleanup_delay is not None:
-                # Delay cleanup, since client may attempt a reconnect
-                # Wait on stopped event in case the server closes and we
-                # can clean up earlier
-                self.stopped.wait(timeout=cleanup_delay)
-            with self.clients_lock:
-                if client_id not in self.clients_last_seen:
-                    logger.info(f"{client_id} not found. Skipping clean up.")
-                    # Connection has already been cleaned up
-                    return
-                last_seen = self.clients_last_seen[client_id]
-                logger.info(
-                    f"{client_id} last started stream at {last_seen}. Current "
-                    f"stream started at {start_time}."
-                )
-                if last_seen > start_time:
-                    logger.info("Client reconnected. Skipping cleanup.")
-                    # Client has reconnected, don't clean up
-                    return
-                logger.debug(f"Client detached: {client_id}")
-                self.num_clients -= 1
-                del self.clients_last_seen[client_id]
-                if client_id in self.reconnect_grace_periods:
-                    del self.reconnect_grace_periods[client_id]
+                # DO NOT block here. Blocking the Datapath handler delays the client observing
+                # the RpcError, which in turn delays reconnection until after the grace period.
+                self._schedule_delayed_cleanup(client_id, start_time, cleanup_delay)
+            else:
+                with self.clients_lock:
+                    # Cancel any scheduled cleanup and clean immediately.
+                    self._invalidate_cleanup_locked(client_id)
+                    if client_id in self.clients_last_seen:
+                        if self.num_clients > 0:
+                            self.num_clients -= 1
+                        del self.clients_last_seen[client_id]
+                    self.reconnect_grace_periods.pop(client_id, None)
+                    self.job_configs.pop(client_id, None)
+                    self.job_config_bytes.pop(client_id, None)
+                    self.ray_init_kwargs.pop(client_id, None)
+                    self.backend_needs_init.pop(client_id, None)
+
+            if server is not None:
                 server.set_result(None)
 
 

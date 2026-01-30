@@ -50,6 +50,13 @@ def _should_cache(req: ray_client_pb2.DataRequest) -> bool:
     false otherwise. At the moment the only requests we do not cache are:
         - asynchronous gets: These arrive out of order. Skipping caching here
             is fine, since repeating an async get is idempotent
+        - init: Init is a handshake / session setup message. It should not
+            participate in the ordered streaming response cache used for
+            reconnect deduplication (OrderedResponseCache), because:
+              (1) reconnecting clients don't resend init, and
+              (2) the proxier may inject a synthetic init (e.g., when a backend
+                  specific-server is recreated) with req_id=0, which is not part
+                  of the client's normal monotonic req_id sequence.
         - acks: Repeating acks is idempotent
         - clean up requests: Also idempotent, and client has likely already
              wrapped up the data connection by this point.
@@ -65,7 +72,7 @@ def _should_cache(req: ray_client_pb2.DataRequest) -> bool:
         return req.put.chunk_id == req.put.total_chunks - 1
     if req_type == "task":
         return req.task.chunk_id == req.task.total_chunks - 1
-    return req_type not in ("acknowledge", "connection_cleanup")
+    return req_type not in ("init", "acknowledge", "connection_cleanup")
 
 
 def fill_queue(
