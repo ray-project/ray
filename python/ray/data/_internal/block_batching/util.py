@@ -213,6 +213,9 @@ def collate(
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[CollatedBatch]:
     """Returns an iterator with the provided collate_fn applied to batches."""
+    if not isinstance(batch_iter, Iterator):
+        batch_iter = iter(batch_iter)
+
     return _CollatingIterator(batch_iter, collate_fn, stats)
 
 
@@ -249,6 +252,9 @@ def finalize_batches(
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[CollatedBatch]:
     """Returns an iterator with finalize_fn applied to batches."""
+    if not isinstance(batch_iter, Iterator):
+        batch_iter = iter(batch_iter)
+
     return _FinalizingIterator(batch_iter, finalize_fn, stats)
 
 
