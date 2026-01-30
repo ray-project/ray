@@ -21,12 +21,15 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
+from ray.data.block import BlockAccessor
 from ray.data.preprocessor import (
     Preprocessor,
     PreprocessorNotFittedException,
     SerializablePreprocessorBase,
 )
-from ray.data.preprocessors.utils import make_post_processor
+from ray.data.preprocessors.utils import (
+    make_post_processor,
+)
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -36,6 +39,30 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _get_unique_value_arrow_arrays(
+    stats: Dict[str, Any], input_col: str
+) -> Tuple[pa.Array, pa.Array]:
+    """Get Arrow arrays for keys and values from encoder stats.
+
+    Args:
+        stats: The encoder's stats_ dictionary.
+        input_col: The name of the column to get arrays for.
+
+    Returns:
+        Tuple of (keys_array, values_array) for the column's ordinal mapping.
+    """
+    stat_value = stats[f"unique_values({input_col})"]
+    if isinstance(stat_value, dict):
+        # Stats are in pandas dict format - convert to Arrow format
+        sorted_keys = sorted(stat_value.keys())
+        keys_array = pa.array(sorted_keys)
+        values_array = pa.array([stat_value[k] for k in sorted_keys], type=pa.int64())
+    else:
+        # Stats are in Arrow tuple format: (keys_array, values_array)
+        keys_array, values_array = stat_value
+    return keys_array, values_array
 
 
 @PublicAPI(stability="alpha")
@@ -172,6 +199,10 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         keys_array, values_array = stat_value
         return {k.as_py(): v.as_py() for k, v in zip(keys_array, values_array)}
 
+    def _get_arrow_arrays(self, input_col: str) -> Tuple[pa.Array, pa.Array]:
+        """Get Arrow arrays for keys and values."""
+        return _get_unique_value_arrow_arrays(self.stats_, input_col)
+
     def _encode_list_element(self, element: list, *, column_name: str):
         ordinal_map = self._get_ordinal_map(column_name)
         # If encoding lists, entire column is flattened, hence we map individual
@@ -204,6 +235,9 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         for pandas-backed datasets (PandasBlockSchema), we can't detect list columns
         until runtime, so we fall back to pandas here if list columns are found.
         """
+        # Validate that columns don't contain null values (consistent with pandas path)
+        _validate_arrow(table, *self.columns)
+
         # Check for list columns (runtime fallback for PandasBlockSchema datasets)
         for col_name in self.columns:
             col_type = table.schema.field(col_name).type
@@ -213,54 +247,35 @@ class OrdinalEncoder(SerializablePreprocessorBase):
                 result_df = self._transform_pandas(df)
                 return pa.Table.from_pandas(result_df, preserve_index=False)
 
-        # Validate no null values in target columns
-        null_columns = []
-        for col_name in self.columns:
-            column = table.column(col_name)
-            if pc.any(pc.is_null(column)).as_py():
-                null_columns.append(col_name)
-        if null_columns:
-            raise ValueError(
-                f"Unable to transform columns {null_columns} because they contain "
-                f"null values. Consider imputing missing values first."
-            )
-
         for input_col, output_col in zip(self.columns, self.output_columns):
             column = table.column(input_col)
+            encoded_column = self._encode_column_vectorized(column, input_col)
 
-            # Get the ordinal mapping - may be tuple (Arrow) or dict (pandas) format
-            # Dict format can occur when aggregation returns Python list/set
-            stat_value = self.stats_[f"unique_values({input_col})"]
-
-            if isinstance(stat_value, dict):
-                # Stats are in pandas dict format - convert to Arrow format
-                sorted_keys = sorted(stat_value.keys())
-                keys_array = pa.array(sorted_keys)
-                values_array = pa.array(
-                    [stat_value[k] for k in sorted_keys], type=pa.int64()
-                )
-            else:
-                # Stats are in Arrow tuple format: (keys_array, values_array)
-                keys_array, values_array = stat_value
-
-            # Cast keys to match column type if needed
-            if keys_array.type != column.type:
-                keys_array = pc.cast(keys_array, column.type)
-
-            # Use pc.index_in to find position of each value in keys_array
-            indices = pc.index_in(column, keys_array)
-
-            # Map indices to ordinal values using pc.take
-            encoded_column = pc.take(values_array, indices)
-
-            # Add or replace the column in the table
-            if output_col in table.column_names:
-                col_idx = table.column_names.index(output_col)
-                table = table.set_column(col_idx, output_col, encoded_column)
-            else:
-                table = table.append_column(output_col, encoded_column)
+            table = BlockAccessor.for_block(table).upsert_column(
+                output_col, encoded_column
+            )
 
         return table
+
+    def _encode_column_vectorized(
+        self, column: pa.ChunkedArray, input_col: str
+    ) -> pa.Array:
+        """Encode column using PyArrow's vectorized pc.index_in.
+
+        Unseen categories are encoded as null in the output, which becomes NaN
+        when converted to pandas. Null values should be validated before calling
+        this method via _validate_arrow.
+        """
+        keys_array, values_array = self._get_arrow_arrays(input_col)
+
+        if keys_array.type != column.type:
+            keys_array = pc.cast(keys_array, column.type)
+
+        # pc.index_in returns null for values not found in keys_array
+        # (including null input values and unseen categories)
+        indices = pc.index_in(column, keys_array)
+        # pc.take preserves nulls from indices, so null inputs -> null outputs
+        return pc.take(values_array, indices)
 
     @classmethod
     @DeveloperAPI
@@ -414,6 +429,11 @@ class OneHotEncoder(SerializablePreprocessorBase):
         )
         return self
 
+    @classmethod
+    @DeveloperAPI
+    def preferred_batch_format(cls) -> BatchFormat:
+        return BatchFormat.ARROW
+
     def safe_get(self, v: Any, stats: Dict[str, int]):
         if isinstance(v, (list, np.ndarray)):
             v = tuple(v)
@@ -444,6 +464,78 @@ class OneHotEncoder(SerializablePreprocessorBase):
             df[output_column] = one_hot.tolist()
 
         return df
+
+    def _transform_arrow(self, table: pa.Table) -> pa.Table:
+        """Transform using fast native PyArrow operations for scalar columns.
+
+        List-type columns are preferably handled by _transform_pandas, which is selected
+        via _determine_transform_to_use when a PyArrow schema is available. However,
+        for pandas-backed datasets (PandasBlockSchema), we can't detect list columns
+        until runtime, so we fall back to pandas here if list columns are found.
+        """
+        # Validate that columns don't contain null values (consistent with pandas path)
+        _validate_arrow(table, *self.columns)
+
+        # Check for list columns (runtime fallback for PandasBlockSchema datasets)
+        for col_name in self.columns:
+            col_type = table.schema.field(col_name).type
+            if pa.types.is_list(col_type) or pa.types.is_large_list(col_type):
+                # Fall back to pandas transform for list columns
+                df = table.to_pandas()
+                result_df = self._transform_pandas(df)
+                return pa.Table.from_pandas(result_df, preserve_index=False)
+
+        for input_col, output_col in zip(self.columns, self.output_columns):
+            column = table.column(input_col)
+            encoded_column = self._encode_column_one_hot(column, input_col)
+
+            table = BlockAccessor.for_block(table).upsert_column(
+                output_col, encoded_column
+            )
+
+        return table
+
+    def _get_arrow_arrays(self, input_col: str) -> Tuple[pa.Array, pa.Array]:
+        """Get Arrow arrays for keys and values."""
+        return _get_unique_value_arrow_arrays(self.stats_, input_col)
+
+    def _encode_column_one_hot(
+        self, column: pa.ChunkedArray, input_col: str
+    ) -> pa.FixedSizeListArray:
+        """Encode a column to one-hot vectors using Arrow arrays.
+
+        Unseen categories are encoded as all-zeros vectors, matching the pandas
+        behavior. Null values should be validated before calling this method
+        via _validate_arrow.
+        """
+        keys_array, _ = self._get_arrow_arrays(input_col)
+        num_categories = len(keys_array)
+
+        # Cast keys to match column type if needed
+        if keys_array.type != column.type:
+            keys_array = pc.cast(keys_array, column.type)
+
+        # Use pc.index_in to find position of each value in keys_array
+        # Returns null for null inputs and unseen categories (values not in keys_array)
+        indices = pc.index_in(column, keys_array)
+
+        # Fill nulls with -1 so they can be filtered out below (resulting in all-zeros)
+        indices_filled = pc.fill_null(indices, -1)
+
+        # Create one-hot encoded matrix using vectorized NumPy operations
+        num_rows = len(column)
+        indices_np = indices_filled.to_numpy()
+
+        one_hot_matrix = np.zeros((num_rows, num_categories), dtype=np.uint8)
+
+        # Find valid indices (not -1) and set 1s at the appropriate positions
+        valid_mask = indices_np != -1
+        valid_indices = np.nonzero(valid_mask)[0]
+        if len(valid_indices) > 0:
+            one_hot_matrix[valid_indices, indices_np[valid_mask]] = 1
+
+        # Convert to Arrow FixedSizeListArray for efficient storage
+        return pa.FixedSizeListArray.from_arrays(one_hot_matrix.ravel(), num_categories)
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
@@ -584,15 +676,6 @@ class MultiHotEncoder(SerializablePreprocessorBase):
             columns=self.columns,
         )
         return self
-
-    def _encode_list_element(self, element: list, *, column_name: str):
-        ordinal_map = self.stats_[f"unique_values({column_name})"]
-        # If encoding lists, entire column is flattened, hence we map individual
-        # elements inside the list element (of the column)
-        if self.encode_lists:
-            return [ordinal_map.get(x) for x in element]
-
-        return ordinal_map.get(tuple(element))
 
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
@@ -1013,6 +1096,7 @@ def compute_unique_value_indices(
     return unique_values_by_col
 
 
+# FIXME: the arrow format path is broken: https://anyscale1.atlassian.net/browse/DATA-1788
 def unique_post_fn(
     drop_na_values: bool = False, batch_format: BatchFormat = None
 ) -> Callable:
@@ -1121,6 +1205,26 @@ def unique_post_fn(
 
 def _validate_df(df: pd.DataFrame, *columns: str) -> None:
     null_columns = [column for column in columns if df[column].isnull().values.any()]
+    if null_columns:
+        raise ValueError(
+            f"Unable to transform columns {null_columns} because they contain "
+            f"null values. Consider imputing missing values first."
+        )
+
+
+def _validate_arrow(table: pa.Table, *columns: str) -> None:
+    """Validate that specified columns in an Arrow table do not contain null values.
+
+    Args:
+        table: The Arrow table to validate.
+        *columns: Column names to check for null values.
+
+    Raises:
+        ValueError: If any of the specified columns contain null values.
+    """
+    null_columns = [
+        column for column in columns if pc.any(pc.is_null(table.column(column))).as_py()
+    ]
     if null_columns:
         raise ValueError(
             f"Unable to transform columns {null_columns} because they contain "

@@ -111,13 +111,16 @@ def test_build_anyscale_base_byod_images() -> None:
                 # This is a duplicate of the default.
                 name="aws",
                 env="aws",
-                python="3.9",
+                python="3.10",
                 cluster={"byod": {"type": "cpu"}},
             ),
-            Test(name="aws", env="aws", python="3.10", cluster={"byod": {}}),
+            Test(name="aws", env="aws", python="3.11", cluster={"byod": {}}),
             Test(name="aws", env="aws", cluster={"byod": {"type": "cu121"}}),
             Test(
-                name="aws", env="aws", python="3.9", cluster={"byod": {"type": "cu116"}}
+                name="aws",
+                env="aws",
+                python="3.10",
+                cluster={"byod": {"type": "cu116"}},
             ),
             Test(
                 name="aws",
@@ -132,12 +135,12 @@ def test_build_anyscale_base_byod_images() -> None:
         aws_cr = global_config["byod_aws_cr"]
         gcp_cr = global_config["byod_gcp_cr"]
         assert set(images) == {
-            f"{aws_cr}/anyscale/ray:a1b2c3d4-py39-cpu",
-            f"{aws_cr}/anyscale/ray:a1b2c3d4-py39-cu116",
+            f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cpu",
+            f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cu116",
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cu121",
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py311-cu118",
             f"{aws_cr}/anyscale/ray-ml:a1b2c3d4-py310-gpu",
-            f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cpu",
+            f"{aws_cr}/anyscale/ray:a1b2c3d4-py311-cpu",
             f"{gcp_cr}/anyscale/ray:a1b2c3d4-py310-cpu",
         }
 

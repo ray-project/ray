@@ -38,6 +38,7 @@ from ray._private import (
     ray_constants,
 )
 from ray._private.internal_api import memory_summary
+from ray._private.services import ProcessInfo
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._private.worker import RayContext
 from ray._raylet import Config, GcsClient, GcsClientOptions, GlobalStateAccessor
@@ -498,6 +499,31 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
+def kill_processes(process_infos: List[ProcessInfo]):
+    """
+    Forcefully kills the list of given processes.
+    Ignores processes that are already dead.
+
+    Args:
+        process_infos: The list of ProcessInfo representing the processes to kill.
+
+    Raises:
+        TimeoutError: If the process did not exit within 5 seconds.
+    """
+    for process_info in process_infos:
+        try:
+            process_info.process.kill()
+            process_info.process.wait(timeout=5)
+        except ProcessLookupError:
+            # Process already dead
+            pass
+        except subprocess.TimeoutExpired as exception:
+            raise TimeoutError(
+                f"Process {process_info.process.pid} did not exit within 5 seconds "
+                "after SIGKILL"
+            ) from exception
+
+
 def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "utf-8"):
     """Run a driver as a separate process.
 
@@ -746,10 +772,8 @@ def get_metric_check_condition(
                 if metric_pattern.matches(metric_sample):
                     break
             else:
-                print(
-                    f"Didn't find {metric_pattern}",
-                    "all samples",
-                    metric_samples,
+                logger.info(
+                    f"Didn't find {metric_pattern} in all samples: {metric_samples}",
                 )
                 return False
         return True

@@ -21,9 +21,6 @@
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
-/// The duration at which the GCS tries to run global GC.
-RAY_CONFIG(uint64_t, gcs_global_gc_interval_milliseconds, 10000)
-
 /// Whether to enable Ray event stats collection.
 RAY_CONFIG(bool, event_stats, true)
 
@@ -40,6 +37,9 @@ RAY_CONFIG(bool, enable_cluster_auth, true)
 /// rpc/authentication/authentication_mode.h
 /// use GetAuthenticationMode() to get the authentication mode enum value.
 RAY_CONFIG(std::string, AUTH_MODE, "disabled")
+
+/// Whether to enable Kubernetes token-based authentication for RPC calls.
+RAY_CONFIG(bool, ENABLE_K8S_TOKEN_AUTH, false)
 
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available
@@ -736,9 +736,6 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 300 * 1000)
 // This is the minimum time an actor will remain in the actor table before
 // being garbage collected when a job finishes
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
-
-/// Whether to enable GCS-based actor scheduling.
-RAY_CONFIG(bool, gcs_actor_scheduling_enabled, false)
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 

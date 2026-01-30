@@ -799,8 +799,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         return self._output_budgets.get(op)
 
     def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        # TODO fix
-        return ExecutionResources.zero()
+        budget = self.get_budget(op)
+        if budget is None:
+            return None
+        return budget.add(self._resource_manager.get_op_usage(op))
 
     def _get_total_reserved(self, op: PhysicalOperator) -> ExecutionResources:
         """Get total reserved resources for an operator, including outputs reservation."""

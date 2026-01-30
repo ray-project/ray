@@ -92,10 +92,33 @@ usermod -a -G docker0 forge
 usermod -a -G docker1 forge
 usermod -a -G docker forge
 
+# Create a shared directory for the ray repository checkout.
+mkdir /rayci
+chown forge:users /rayci
+
 if [[ "$(uname -i)" == "x86_64" ]]; then
   bash install-k8s-tools.sh
 fi
 
+# Install crane (container registry tool)
+CRANE_VERSION=0.19.0
+case "$(uname -m)" in
+  x86_64|amd64)
+    CRANE_ARCH="x86_64"
+    ;;
+  aarch64|arm64)
+    CRANE_ARCH="arm64"
+    ;;
+  *)
+    echo "Unsupported architecture: $(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+curl -fsSL "https://github.com/google/go-containerregistry/releases/download/v${CRANE_VERSION}/go-containerregistry_Linux_${CRANE_ARCH}.tar.gz" \
+  | tar -xzf - -C /usr/local/bin crane
+
+chmod +x /usr/local/bin/crane
 EOF
 
 USER forge
@@ -116,4 +139,4 @@ EOF
 CMD ["echo", "ray forge"]
 
 
-# last update: 2025-11-12
+# last update: 2026-01-13
