@@ -297,6 +297,8 @@ def _core_replica_queue_length_policy(
 ) -> Tuple[float, Dict[str, Any]]:
     num_running_replicas = ctx.current_num_replicas
     config = ctx.config
+    if num_running_replicas == 0:
+        raise ValueError("Number of replicas cannot be zero")
     target_num_requests = config.get_target_ongoing_requests() * num_running_replicas
     error_ratio = ctx.total_num_requests / target_num_requests
     desired_num_replicas = num_running_replicas * error_ratio
