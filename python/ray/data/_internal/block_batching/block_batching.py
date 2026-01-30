@@ -51,16 +51,6 @@ def batch_blocks(
     return _UserTimingIterator(_UnwrappingIterator(batch_iter), stats)
 
 
-def _user_timed_iter(
-    iter: Iterator[DataBatch], stats: Optional[DatasetStats]
-) -> Iterator[DataBatch]:
-    for batch in iter:
-        # Track iteration's time spent in user code
-        timer = stats.iter_user_s.timer() if stats else nullcontext()
-        with timer:
-            yield batch
-
-
 class _UserTimingIterator(Iterator[DataBatch]):
     def __init__(self, iter: Iterator[DataBatch], stats: Optional[DatasetStats]):
         self._iter = iter
@@ -94,6 +84,7 @@ class _UserTimingIterator(Iterator[DataBatch]):
 
         if self._active_timer:
             self._active_timer.__exit__(None, None, None)
+            self._active_timer = None
 
     def _reset_timer(self):
         if not self._stats:
