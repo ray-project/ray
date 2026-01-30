@@ -7,7 +7,9 @@ supporting static tokens with extensibility for future credential sources.
 import logging
 import os
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Callable, Optional
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -218,3 +220,48 @@ def resolve_credential_provider(
 
     # Fall back to environment variables
     return EnvironmentCredentialProvider()
+
+
+def build_headers(
+    credential_provider: DatabricksCredentialProvider,
+) -> dict[str, str]:
+    """Build request headers with fresh token from credential provider.
+
+    Args:
+        credential_provider: The credential provider to get the token from.
+
+    Returns:
+        Dictionary containing Content-Type and Authorization headers.
+    """
+    return {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {credential_provider.get_token()}",
+    }
+
+
+def request_with_401_retry(
+    request_fn: Callable[..., requests.Response],
+    url: str,
+    credential_provider: DatabricksCredentialProvider,
+    **kwargs,
+) -> requests.Response:
+    """Make an HTTP request with one retry on 401 after invalidating credentials.
+
+    Args:
+        request_fn: Request function (e.g., requests.get or requests.post)
+        url: Request URL
+        credential_provider: Credential provider for authentication
+        **kwargs: Additional arguments passed to requests
+
+    Returns:
+        Response object (after calling raise_for_status)
+    """
+    response = request_fn(url, headers=build_headers(credential_provider), **kwargs)
+
+    if response.status_code == 401:
+        logger.info("Received 401 response, invalidating credentials and retrying.")
+        credential_provider.invalidate()
+        response = request_fn(url, headers=build_headers(credential_provider), **kwargs)
+
+    response.raise_for_status()
+    return response
