@@ -132,7 +132,6 @@ cdef class CoreWorker:
         object async_event_loop
         object job_config
         object current_runtime_env
-        c_bool is_local_mode
 
         object cgname_to_eventloop_dict
         object eventloop_for_default_cg
