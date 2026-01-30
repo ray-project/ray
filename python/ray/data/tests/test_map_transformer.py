@@ -17,17 +17,6 @@ from ray.data._internal.planner.plan_udf_map_op import (
 from ray.data.block import DataBatch
 
 
-def _create_tracking_udf(input_intermediates: list):
-    """Create a UDF that creates new DataFrames and tracks them via weakrefs."""
-
-    def udf(batch: DataBatch) -> DataBatch:
-        new_batch = pd.DataFrame({"id": batch["id"] * 2})
-        input_intermediates.append(weakref.ref(batch))
-        return new_batch
-
-    return udf
-
-
 def _create_chained_transformer(udf, n):
     """Create a MapTransformer with chained batch transforms that track intermediates."""
     transform_fns = [
