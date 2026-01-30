@@ -343,9 +343,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
 
         # Mock queue size methods
         mock_resource_manager.get_mem_op_internal.return_value = 100
-        mock_resource_manager.get_op_outputs_object_store_usage_with_downstream.return_value = (
-            200
-        )
+        mock_resource_manager.get_mem_op_outputs.return_value = 200
 
         policy = ConcurrencyCapBackpressurePolicy(
             DataContext.get_current(),
@@ -444,6 +442,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         ) in test_cases:
             with self.subTest(description=description):
                 mock_resource_manager.get_mem_op_internal.return_value = internal_usage
+                mock_resource_manager.get_mem_op_outputs.return_value = downstream_usage
                 mock_resource_manager.get_op_outputs_object_store_usage_with_downstream.return_value = (
                     downstream_usage
                 )
