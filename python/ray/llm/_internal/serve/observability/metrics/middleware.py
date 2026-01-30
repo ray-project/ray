@@ -60,8 +60,16 @@ class MeasureHTTPRequestMetricsMiddleware:
         request = Request(scope)
         req_id = get_request_id(request)
         now = time.monotonic()
+
+        # Check if request lifecycle logging is enabled
+        # Default to False (suppress logs) unless explicitly enabled via app state
+        log_requests = getattr(request.app.state, "log_requests_enabled", False)
+
         try:
-            logger.info(f"Starting handling of the request {req_id}")
+            if log_requests:
+                logger.info(f"Starting handling of the request {req_id}")
+            else:
+                logger.debug(f"Starting handling of the request {req_id}")
             await self.app(scope, receive, send_wrapper)
 
         except CancelledError as ce:
@@ -103,15 +111,27 @@ class MeasureHTTPRequestMetricsMiddleware:
                     extra={"ray_serve_extra_fields": extra_context},
                 )
             elif status_code == -1:
-                logger.info(
-                    f"Handling of the request {req_id} have been cancelled",
-                    extra={"ray_serve_extra_fields": extra_context},
-                )
+                if log_requests:
+                    logger.info(
+                        f"Handling of the request {req_id} have been cancelled",
+                        extra={"ray_serve_extra_fields": extra_context},
+                    )
+                else:
+                    logger.debug(
+                        f"Handling of the request {req_id} have been cancelled",
+                        extra={"ray_serve_extra_fields": extra_context},
+                    )
             else:
-                logger.info(
-                    f"Handling of the request {req_id} successfully completed",
-                    extra={"ray_serve_extra_fields": extra_context},
-                )
+                if log_requests:
+                    logger.info(
+                        f"Handling of the request {req_id} successfully completed",
+                        extra={"ray_serve_extra_fields": extra_context},
+                    )
+                else:
+                    logger.debug(
+                        f"Handling of the request {req_id} successfully completed",
+                        extra={"ray_serve_extra_fields": extra_context},
+                    )
 
 
 def _get_route_details(scope):
