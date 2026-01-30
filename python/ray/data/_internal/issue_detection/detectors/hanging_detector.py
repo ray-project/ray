@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 class HangingExecutionState:
     operator_id: str
     task_idx: int
-    task_id: str
+    task_id: ray.TaskID
     task_state: Optional[TaskState]
     bytes_output: int
     start_time_hanging: float
@@ -200,10 +200,10 @@ class HangingExecutionIssueDetector(IssueDetector):
         return self._detector_cfg.detection_time_interval_s
 
 
-def get_latest_state_for_task(task_id: str) -> TaskState | None:
+def get_latest_state_for_task(task_id: ray.TaskID) -> TaskState | None:
     try:
         task_state: TaskState | List[TaskState] | None = ray.util.state.get_task(
-            task_id,
+            task_id.hex(),
             timeout=1.0,
             _explain=True,
         )
