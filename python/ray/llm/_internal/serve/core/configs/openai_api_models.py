@@ -32,8 +32,6 @@ from vllm.entrypoints.pooling.embed.protocol import (
     EmbeddingResponse as vLLMEmbeddingResponse,
 )
 from vllm.entrypoints.pooling.score.protocol import (
-    ScoreDataRequest as vLLMScoreDataRequest,
-    ScoreQueriesDocumentsRequest as vLLMScoreQueriesDocumentsRequest,
     ScoreResponse as vLLMScoreResponse,
     ScoreTextRequest as vLLMScoreTextRequest,
 )
@@ -117,28 +115,8 @@ class TranscriptionStreamResponse(vLLMTranscriptionStreamResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-# In vLLM 0.15.0+, ScoreRequest was refactored from a single class to a union type
-# (ScoreQueriesDocumentsRequest | ScoreDataRequest | ScoreTextRequest).
-# We create wrapper classes for each variant to maintain compatibility.
-class ScoreQueriesDocumentsRequest(vLLMScoreQueriesDocumentsRequest):
+class ScoreRequest(vLLMScoreTextRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class ScoreDataRequest(vLLMScoreDataRequest):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class ScoreTextRequest(vLLMScoreTextRequest):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-# For backward compatibility: In earlier vLLM versions, ScoreRequest was a single class
-# with text_1 and text_2 fields. Since ScoreTextRequest has the same API (text_1, text_2),
-# we alias ScoreRequest to ScoreTextRequest to maintain backward compatibility with
-# existing code that uses ScoreRequest(text_1=..., text_2=...).
-# Note: For type checking purposes, ScoreRequest should be treated as
-# Union[ScoreQueriesDocumentsRequest, ScoreDataRequest, ScoreTextRequest]
-ScoreRequest = ScoreTextRequest
 
 
 class ScoreResponse(vLLMScoreResponse):

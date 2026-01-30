@@ -2,9 +2,7 @@
 # constraining to a maximum version (i.e. <=) to temporarily work around a bug.
 # Those pins for the sake of workarounds should not be advertised as constraints
 # on future releases in setup.py.
-# Use PyPI wheel instead of git source to avoid build-system torch==2.9.1 requirement
-# (build-system.requires exact version conflicts with +cpu suffix in CPU index)
-vllm[audio]==0.15.0
+vllm[audio]>=0.15.0
 nixl>=0.6.1
 anyio>=4.5.0
 # For json mode
