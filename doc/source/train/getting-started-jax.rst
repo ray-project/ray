@@ -53,7 +53,7 @@ Configure scale and accelerators
 TPU scaling configuration
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-For TPU training, use `ScalingConfig` to define your TPU slices configuration. Key fields include:
+For TPU training, use :class:`~ray.train.ScalingConfig` to define your TPU slices configuration. Key fields include:
 
 * :class:`use_tpu <ray.train.ScalingConfig>`: It's a new field added in Ray 2.49.0 to the V2 `ScalingConfig`. This boolean flag tells Ray Train to initialize the JAX backend for TPU execution.
 * :class:`topology <ray.train.ScalingConfig>`: It's a new field added in Ray 2.49.0 to the V2 `ScalingConfig`. Topology is a string defining the physical arrangement of the TPU chips (for example, "4x4"). It's required for multi-host training and ensures Ray places workers correctly across the slice. For a list of supported TPU topologies by generation,
@@ -70,10 +70,12 @@ For TPU training, use `ScalingConfig` to define your TPU slices configuration. K
 GPU scaling configuration
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-For GPU training, `ScalingConfig` is similar to other frameworks. Key fields include:
+For GPU training, use :class:`~ray.train.ScalingConfig` to define your GPU configuration. Each worker is one Ray Train process. By default, this will request one GPU per training worker. Sometimes you might want to allocate multiple GPUs for a worker. For example, you can specify `resources_per_worker={"GPU": 2}` in the :class:`~ray.train.ScalingConfig` if you want to assign 2 GPUs for each worker.
 
 * :class:`num_workers <ray.train.ScalingConfig>`: The number of distributed training worker processes.
 * :class:`use_gpu <ray.train.ScalingConfig>`: Whether each worker should use a GPU.
+* :class:`resources_per_worker <ray.train.ScalingConfig>`: A dictionary specifying the resources each worker needs.
+
 
 .. testcode::
 
@@ -98,12 +100,12 @@ For reference, the final code is as follows:
         # Your JAX training code here.
 
     # Define the TPU scaling configuration with `use_tpu=True`.
-    tpu_scaling_config = ScalingConfig(num_workers=4, use_tpu=True, topology="4x4", accelerator_type="TPU-V6E")
+    scaling_config = ScalingConfig(num_workers=4, use_tpu=True, topology="4x4", accelerator_type="TPU-V6E")
     # Define the GPU scaling configuration with `use_gpu=True`.
-    gpu_scaling_config = ScalingConfig(num_workers=4, use_gpu=True, resources_per_worker={"GPU": 1})
+    # scaling_config = ScalingConfig(num_workers=4, use_gpu=True)
 
     # Choose one scaling config.
-    trainer = JaxTrainer(train_func, scaling_config=tpu_scaling_config)
+    trainer = JaxTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
 
 1. `train_func` is the Python code that executes on each distributed training worker.
@@ -162,7 +164,7 @@ Compare a JAX training script with and without Ray Train.
                     ray.train.report({"loss": float(loss), "epoch": epoch})
 
             # Define the TPU scaling configuration for your distributed job.
-            tpu_scaling_config = ScalingConfig(
+            scaling_config = ScalingConfig(
                 num_workers=4,
                 use_tpu=True,
                 topology="4x4",
@@ -171,16 +173,15 @@ Compare a JAX training script with and without Ray Train.
             )
 
             # Define the GPU scaling configuration with `use_gpu=True`.
-            # gpu_scaling_config = ScalingConfig(
+            # scaling_config = ScalingConfig(
             #     num_workers=4,
             #     use_gpu=True,
-            #     resources_per_worker={"GPU": 1},
             # )
 
             # Define and run the JaxTrainer.
             trainer = JaxTrainer(
                 train_loop_per_worker=train_func,
-                scaling_config=tpu_scaling_config,
+                scaling_config=scaling_config,
             )
             result = trainer.fit()
             print(f"Training finished. Final loss: {result.metrics['loss']:.4f}")
@@ -268,7 +269,7 @@ This function is the entry point that Ray will execute on each remote worker.
     -if __name__ == "__main__":
     -    main_logic()
     +# Define the hardware configuration for your distributed job.
-    +tpu_scaling_config = ScalingConfig(
+    +scaling_config = ScalingConfig(
     +    num_workers=4,
     +    use_tpu=True,
     +    topology="4x4",
@@ -277,7 +278,7 @@ This function is the entry point that Ray will execute on each remote worker.
     +)
     +
     +# Define the GPU scaling configuration with `use_gpu=True`.
-    +# gpu_scaling_config = ScalingConfig(
+    +# scaling_config = ScalingConfig(
     +#     num_workers=4,
     +#     use_gpu=True,
     +#     resources_per_worker={"GPU": 1},
@@ -286,7 +287,7 @@ This function is the entry point that Ray will execute on each remote worker.
     +# Define and run the JaxTrainer, which executes `train_func`.
     +trainer = JaxTrainer(
     +    train_loop_per_worker=train_func,
-    +    scaling_config=tpu_scaling_config  
+    +    scaling_config=scaling_config  
     +)
     +result = trainer.fit()
 
@@ -332,9 +333,9 @@ Tying it all together, you can now launch a distributed training job with a :cla
 
     train_func = lambda: None
     # Define the TPU scaling configuration with `use_tpu=True`.
-    tpu_scaling_config = ScalingConfig(num_workers=4, use_tpu=True, topology="4x4", accelerator_type="TPU-V6E")
+    scaling_config = ScalingConfig(num_workers=4, use_tpu=True, topology="4x4", accelerator_type="TPU-V6E")
     # Define the GPU scaling configuration with `use_gpu=True`.
-    # gpu_scaling_config = ScalingConfig(num_workers=4, use_gpu=True, resources_per_worker={"GPU": 1})
+    # scaling_config = ScalingConfig(num_workers=4, use_gpu=True)
     run_config = None
 
 .. testcode::
@@ -343,7 +344,7 @@ Tying it all together, you can now launch a distributed training job with a :cla
     from ray.train.v2.jax import JaxTrainer
 
     trainer = JaxTrainer(
-        train_func, scaling_config=tpu_scaling_config, run_config=run_config
+        train_func, scaling_config=scaling_config, run_config=run_config
     )
     result = trainer.fit()
 
