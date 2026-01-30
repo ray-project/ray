@@ -48,9 +48,11 @@ steps:
     depends_on: windowsbuild
 
   - label: ":ray: core: :windows: python tests"
+    key: windows_python_tests
     tags:
       - python
       - windows
+      - oss
     job_env: WINDOWS
     instance_type: windows
     commands:
