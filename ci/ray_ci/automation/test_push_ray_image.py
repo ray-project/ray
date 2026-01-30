@@ -318,5 +318,35 @@ class TestDestinationTags:
         assert "build123-py312-cpu" in tags
 
 
+class TestCopyImage:
+    """Test _copy_image function."""
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image.call_crane_copy")
+    def test_copy_image_dry_run_skips_crane(self, mock_copy):
+        """Test that dry run mode does not call crane copy."""
+        from ci.ray_ci.automation.push_ray_image import _copy_image
+
+        _copy_image("src", "dest", dry_run=True)
+        mock_copy.assert_not_called()
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image.call_crane_copy")
+    def test_copy_image_calls_crane(self, mock_copy):
+        """Test that non-dry-run mode calls crane copy."""
+        from ci.ray_ci.automation.push_ray_image import _copy_image
+
+        _copy_image("src", "dest", dry_run=False)
+        mock_copy.assert_called_once_with("src", "dest")
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image.call_crane_copy")
+    def test_copy_image_raises_on_crane_error(self, mock_copy):
+        """Test that crane errors are wrapped in PushRayImageError."""
+        from ci.ray_ci.automation.crane_lib import CraneError
+        from ci.ray_ci.automation.push_ray_image import PushRayImageError, _copy_image
+
+        mock_copy.side_effect = CraneError("Copy failed")
+        with pytest.raises(PushRayImageError, match="Crane copy failed"):
+            _copy_image("src", "dest", dry_run=False)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))
