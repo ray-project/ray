@@ -756,6 +756,9 @@ async def start_asgi_http_server(
         socket.AF_INET6 if is_ipv6(http_options.host) else socket.AF_INET,
         socket.SOCK_STREAM,
     )
+    # Always set SO_REUSEADDR to allow binding to ports in TIME_WAIT state.
+    # This is needed for both proxy (SO_REUSEPORT=True) and replica (SO_REUSEPORT=False).
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     if enable_so_reuseport:
         set_socket_reuse_port(sock)
 
