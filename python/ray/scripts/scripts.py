@@ -558,8 +558,8 @@ Windows powershell users need additional escaping:
 @click.option(
     "--temp-dir",
     default=None,
-    help="manually specify the root temporary dir of the Ray process. Can be "
-    "specified per node.",
+    help="manually specify the root temporary dir of the Ray process, only "
+    "works when --head is specified",
 )
 @click.option(
     "--system-config",
@@ -771,6 +771,14 @@ def start(
                 cf.bold('--labels="key1=val1,key2=val2"'),
             )
     labels_dict = {**labels_from_file, **labels_from_string}
+    if temp_dir and not head:
+        cli_logger.warning(
+            f"`--temp-dir={temp_dir}` option will be ignored. "
+            "`--head` is a required flag to use `--temp-dir`. "
+            "temp_dir is only configurable from a head node. "
+            "All the worker nodes will use the same temp_dir as a head node. "
+        )
+        temp_dir = None
 
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
@@ -779,7 +787,18 @@ def start(
         system_reserved_memory=system_reserved_memory,
     )
 
-    redirect_output = None if not no_redirect_output else True
+    # - For non-worker processes, thread the behavior explicitly via RayParams.log_to_stderr.
+    # - For worker processes, stdout/stderr redirection is controlled in C++ via
+    #   `RAY_LOG_TO_STDERR`, so we pass it to the raylet/worker subprocess env via
+    #   RayParams.env_vars (without touching os.environ).
+    if no_redirect_output:
+        log_to_stderr = True
+        env_vars = {
+            ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE: "1",
+        }
+    else:
+        log_to_stderr = None
+        env_vars = None
 
     # no  client, no  port -> ok
     # no  port, has client -> default to 10001
@@ -802,7 +821,7 @@ def start(
         object_store_memory=object_store_memory,
         redis_username=redis_username,
         redis_password=redis_password,
-        redirect_output=redirect_output,
+        log_to_stderr=log_to_stderr,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
@@ -826,6 +845,7 @@ def start(
         ray_debugger_external=ray_debugger_external,
         include_log_monitor=include_log_monitor,
         resource_isolation_config=resource_isolation_config,
+        env_vars=env_vars,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
@@ -849,7 +869,8 @@ def start(
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
             ray_params.env_vars = {
-                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
+                **(ray_params.env_vars or {}),
+                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
             }
 
         if (
@@ -2065,10 +2086,11 @@ def timeline(address):
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = os.path.join(
-        ray.get_runtime_context().get_temp_dir(), f"ray-timeline-{time}.json"
+        ray._common.utils.get_user_temp_dir(), f"ray-timeline-{time}.json"
     )
     ray.timeline(filename=filename)
-    logger.info(f"Trace file written to {filename} in the ray temp directory.")
+    size = os.path.getsize(filename)
+    logger.info(f"Trace file written to {filename} ({size} bytes).")
     logger.info("You can open this with chrome://tracing in the Chrome browser.")
 
 

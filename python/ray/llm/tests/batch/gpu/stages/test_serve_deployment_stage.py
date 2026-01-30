@@ -319,8 +319,8 @@ async def test_serve_udf_mixed_success_and_error(mock_serve_deployment_handle):
 
     assert len(results) == 3
 
-    errors = [r for r in results if r.get("__inference_error__") is not None]
-    successes = [r for r in results if r.get("__inference_error__") is None]
+    errors = [r for r in results if r.get("__inference_error__", "") != ""]
+    successes = [r for r in results if r.get("__inference_error__", "") == ""]
 
     assert len(errors) == 1
     assert len(successes) == 2
@@ -452,7 +452,7 @@ async def test_serve_udf_success_with_continue_on_error_includes_none_error(
         results.extend(result["__data"])
 
     assert len(results) == 1
-    assert results[0]["__inference_error__"] is None
+    assert results[0]["__inference_error__"] == ""
     assert results[0]["generated_text"] == "Hello!"
 
 

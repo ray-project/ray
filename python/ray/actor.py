@@ -617,7 +617,7 @@ class ActorMethod:
             is_generator: True if a given method is a Python generator.
             generator_backpressure_num_objects: Generator-only config.
                 If a number of unconsumed objects reach this threshold,
-                a actor task stop pausing.
+                the actor task stops pausing.
             enable_task_events: True if task events is enabled, i.e., task events from
                 the actor should be reported. Defaults to True.
             decorator: An optional decorator that should be applied to the actor
@@ -2397,14 +2397,6 @@ def _modify_class(cls):
     # cls has been modified.
     if hasattr(cls, "__ray_actor_class__"):
         return cls
-
-    # Give an error if cls is an old-style class.
-    if not issubclass(cls, object):
-        raise TypeError(
-            "The @ray.remote decorator cannot be applied to old-style "
-            "classes. In Python 2, you must declare the class with "
-            "'class ClassName(object):' instead of 'class ClassName:'."
-        )
 
     # Modify the class to have additional default methods.
     class Class(cls):

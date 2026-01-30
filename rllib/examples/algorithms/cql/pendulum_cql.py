@@ -27,13 +27,14 @@ base_path = Path(__file__).parents[3]
 # Use the larger data set of Pendulum we have. Note, these are
 # parquet data, the default in `AlgorithmConfig.offline_data`.
 data_path = base_path / "offline/tests/data/pendulum/pendulum-v1_enormous"
-
+data_path_uri = f"local://{data_path.as_posix()}"
+print(f"data_path_uri={data_path_uri}")
 # Define the configuration.
 config = (
     CQLConfig()
     .environment("Pendulum-v1")
     .offline_data(
-        input_=[data_path.as_posix()],
+        input_=[data_path_uri],
         # The `kwargs` for the `map_batches` method in which our
         # `OfflinePreLearner` is run. 2 data workers should be run
         # concurrently.
