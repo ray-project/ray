@@ -1200,3 +1200,18 @@ class HAProxyManager(ProxyActorInterface):
                         replica_ids.add(replica_id)
 
         return replica_ids
+
+    def _dump_ingress_cache_for_testing(self, route: str) -> Set[ReplicaID]:
+        """Return replica IDs that are cached/ready for the given route (for testing).
+
+        For HAProxy, all registered replicas are immediately ready for routing
+        (no warm-up cache like the internal router), so this returns the same
+        set as _dump_ingress_replicas_for_testing.
+
+        Args:
+            route: The route prefix to match against target groups.
+
+        Returns:
+            Set of ReplicaID objects for targets in the matching target group.
+        """
+        return self._dump_ingress_replicas_for_testing(route)
