@@ -2,14 +2,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import torch
 
-from ray._private.ray_constants import env_bool
 from ray.air._internal.device_manager import get_torch_device_manager_by_context
-
-# Default non-blocking transfer for tensors.
-DEFAULT_TENSOR_NON_BLOCKING_TRANSFER = env_bool(
-    "RAY_AIR_DEFAULT_TENSOR_NON_BLOCKING_TRANSFER",
-    True,
-)
 
 
 def get_devices() -> List[torch.device]:
