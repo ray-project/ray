@@ -600,11 +600,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                          ReferenceTableProto *borrowed_refs)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /// Recursive implementation of `GetAndClearLocalBorrowersInternal`.
+  ///
+  /// `encountered_ids` is used to memoize object IDs that have already been added to
+  /// `borrowed_refs`.
   bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
                                          bool for_ref_removed,
                                          bool deduct_local_ref,
                                          ReferenceTableProto *borrowed_refs,
-                                         absl::flat_hash_set<ObjectID> &encountered)
+                                         absl::flat_hash_set<ObjectID> &encountered_ids)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Merge remote borrowers into our local ref count. This will add any

@@ -1069,9 +1069,9 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
     bool for_ref_removed,
     bool deduct_local_ref,
     ReferenceTableProto *borrowed_refs) {
-  absl::flat_hash_set<ObjectID> encountered;
+  absl::flat_hash_set<ObjectID> encountered_ids;
   return GetAndClearLocalBorrowersInternal(
-      object_id, for_ref_removed, deduct_local_ref, borrowed_refs, encountered);
+      object_id, for_ref_removed, deduct_local_ref, borrowed_refs, encountered_ids);
 }
 
 bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
@@ -1079,7 +1079,7 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
     bool for_ref_removed,
     bool deduct_local_ref,
     ReferenceTableProto *borrowed_refs,
-    absl::flat_hash_set<ObjectID> &encountered) {
+    absl::flat_hash_set<ObjectID> &encountered_ids) {
   RAY_LOG(DEBUG).WithField(object_id) << "Pop object for_ref_removed " << for_ref_removed;
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -1099,7 +1099,7 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
 
   if (for_ref_removed || !ref.foreign_owner_already_monitoring) {
     // If this object_id has not been encountered yet, add it to borrowed_refs.
-    if (encountered.insert(object_id).second) {
+    if (encountered_ids.insert(object_id).second) {
       RAY_LOG(DEBUG).WithField(object_id)
           << "Object has " << ref.borrow().borrowers.size() << " borrowers, stored in "
           << ref.borrow().stored_in_objects.size();
@@ -1125,7 +1125,7 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
                                       for_ref_removed,
                                       /*deduct_local_ref=*/false,
                                       borrowed_refs,
-                                      encountered);
+                                      encountered_ids);
   }
   // We've reported our nested refs.
   ref.has_nested_refs_to_report = false;
