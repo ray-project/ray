@@ -17,7 +17,6 @@ from ray.data._internal.datasource.delta.utils import (
     convert_schema_to_delta,
     get_file_info_with_retry,
     infer_partition_type,
-    join_delta_path,
     normalize_commit_properties,
     to_pyarrow_schema,
     validate_file_path,
@@ -236,16 +235,17 @@ def infer_schema(
     if not first_action:
         raise ValueError("No valid file actions found for schema inference")
 
-    first_file = join_delta_path(table_uri, first_action.path)
+    # filesystem is SubTreeFileSystem rooted at table path, so use relative path directly
+    # action.path is already relative to table root (no need for join_delta_path)
     try:
-        with filesystem.open_input_file(first_file) as file_obj:
+        with filesystem.open_input_file(first_action.path) as file_obj:
             parquet_file = pq.ParquetFile(file_obj)
             schema = parquet_file.schema_arrow
     except Exception as e:
-        raise ValueError(f"Failed to read schema from {first_file}: {e}") from e
+        raise ValueError(f"Failed to read schema from {first_action.path}: {e}") from e
 
     if len(schema) == 0:
-        raise ValueError(f"Cannot infer schema from file with no columns: {first_file}")
+        raise ValueError(f"Cannot infer schema from file with no columns: {first_action.path}")
 
     # Add partition columns to schema if not present
     if partition_cols:

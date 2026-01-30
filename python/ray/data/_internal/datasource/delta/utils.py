@@ -42,12 +42,14 @@ class DeltaWriteResult:
         upsert_keys: Key columns for upsert operations.
         schemas: Schemas from written blocks.
         written_files: List of full file paths written by this worker.
+        write_uuid: Unique identifier for this write operation (for app_transactions).
     """
 
     add_actions: List["AddAction"] = field(default_factory=list)
     upsert_keys: Optional[pa.Table] = None
     schemas: List[pa.Schema] = field(default_factory=list)
     written_files: List[str] = field(default_factory=list)
+    write_uuid: Optional[str] = None
 
 
 # =============================================================================
@@ -745,24 +747,6 @@ def get_storage_options(
         options = {**_get_gcs_credentials(), **options}
 
     return options
-
-
-def create_filesystem_from_storage_options(
-    path: str, storage_options: Optional[Dict[str, str]] = None
-) -> pa.fs.FileSystem:
-    """Create PyArrow filesystem from path and storage options.
-
-    Args:
-        path: Path to create filesystem for.
-        storage_options: Optional storage authentication options.
-
-    Returns:
-        PyArrow filesystem instance.
-    """
-    from ray.data.datasource.path_util import _resolve_paths_and_filesystem
-
-    _, filesystem = _resolve_paths_and_filesystem(path, None)
-    return filesystem
 
 
 def _get_aws_credentials() -> Dict[str, str]:

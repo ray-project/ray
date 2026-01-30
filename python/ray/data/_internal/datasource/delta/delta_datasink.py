@@ -454,6 +454,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 upsert_keys=upsert_keys,
                 schemas=block_schemas,
                 written_files=written_files,
+                write_uuid=write_uuid,  # Pass write_uuid to driver for app_transactions
             )
         except Exception as e:
             # Store written files in exception for cleanup in on_write_failed()
@@ -572,8 +573,16 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         # Commit phase: validate and commit files atomically
         # Add app_transactions for idempotence (allows checking if commit succeeded)
-        if self._write_uuid:
-            app_transaction = create_app_transaction_id(self._write_uuid)
+        # Get write_uuid from WriteResult (set by workers, passed to driver)
+        write_uuid = None
+        if write_result.write_returns:
+            # Get write_uuid from first result (all tasks share same write_uuid)
+            first_result = write_result.write_returns[0]
+            if isinstance(first_result, DeltaWriteResult):
+                write_uuid = first_result.write_uuid
+
+        if write_uuid:
+            app_transaction = create_app_transaction_id(write_uuid)
             existing_props = normalize_commit_properties(
                 self.write_kwargs.get("commit_properties")
             )
