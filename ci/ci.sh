@@ -31,19 +31,30 @@ compile_pip_dependencies() {
 
     cd "${WORKSPACE_DIR}"
 
+    # Fetch uv binary from bazel WORKSPACE
+    if [[ "${OSTYPE}" == darwin* ]]; then
+      UV_TARGET="uv_aarch64-darwin"
+      UV_SUBDIR="uv-aarch64-apple-darwin"
+    else
+      UV_TARGET="uv_x86_64-linux"
+      UV_SUBDIR="uv-x86_64-unknown-linux-gnu"
+    fi
+    bazel fetch @${UV_TARGET}//...
+    UV_BIN="$(bazel info output_base)/external/${UV_TARGET}/${UV_SUBDIR}/uv"
+
     echo "Target file: $TARGET"
-    pip install "pip-tools==7.4.1" "wheel==0.45.1"
+    "$UV_BIN" pip install "pip-tools==7.4.1" "wheel==0.45.1"
 
     # Required packages to lookup e.g. dragonfly-opt
     HAS_TORCH=0
     python -c "import torch" 2>/dev/null && HAS_TORCH=1
-    pip install --no-cache-dir numpy torch
+    "$UV_BIN" pip install --no-cache-dir numpy torch
 
 
-    uv pip compile --verbose --strip-extras --no-header --universal \
+    "$UV_BIN" pip compile --verbose --strip-extras --no-header --universal \
     --unsafe-package ray --unsafe-package pip --unsafe-package setuptools \
     --index-strategy unsafe-best-match --python-version 3.10 --python 3.11 \
-    --extra-index-url https://download.pytorch.org/whl/cpu \
+    --index https://download.pytorch.org/whl/cpu \
     --find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html \
     -o "python/$TARGET" \
     python/requirements.txt \
