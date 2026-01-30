@@ -21,10 +21,10 @@ def update_progress(result):
 
 
 if __name__ == "__main__":
-    ray.init(address="auto", runtime_env={"pip": ["requests==2.18.0"]})
-    versions = ["2.16.0", "2.17.0", "2.18.0"]
+    ray.init(address="auto", runtime_env={"pip": ["requests==2.31.0"]})
+    versions = ["2.28.0", "2.29.0", "2.31.0"]
     envs = [{"pip": [f"requests=={versions[i]}"]} for i in range(len(versions) - 1)]
-    # If a task's env is {}, we should have requests==2.18.0 from the job's env
+    # If a task's env is {}, we should have requests==2.31.0 from the job's env
     envs.append({})
 
     NUM_TASK_ITERATIONS = 10

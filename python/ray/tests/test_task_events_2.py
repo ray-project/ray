@@ -21,6 +21,7 @@ from ray._private.state_api_test_utils import (
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
+    wait_for_aggregator_agent_if_enabled,
 )
 from ray.util.state import (
     StateApiClient,
@@ -31,6 +32,14 @@ from ray.util.state import (
 from ray.util.state.common import ListApiOptions, StateResource
 
 import psutil
+
+# Run every test in this module twice: default and aggregator-enabled
+pytestmark = [
+    pytest.mark.parametrize(
+        "event_routing_config", ["default", "aggregator"], indirect=True
+    ),
+    pytest.mark.usefixtures("event_routing_config"),
+]
 
 _SYSTEM_CONFIG = {
     "task_events_report_interval_ms": 100,
@@ -506,7 +515,10 @@ def test_ray_intentional_errors(shutdown_only):
         def exit_normal(self):
             exit(0)
 
-    ray.init(num_cpus=1)
+    # Avoid worker-dead marking racing with max_calls task completion.
+    sys_config = _SYSTEM_CONFIG.copy()
+    sys_config["gcs_mark_task_failed_on_worker_dead_delay_ms"] = 30000
+    ray.init(num_cpus=1, _system_config=sys_config)
 
     a = Actor.remote()
     ray.get(a.ready.remote())
@@ -601,7 +613,11 @@ def test_ray_intentional_errors(shutdown_only):
 def test_fault_tolerance_chained_task_fail(
     shutdown_only, exit_type, actor_or_normal_tasks
 ):
-    ray.init(_system_config=_SYSTEM_CONFIG)
+    ray_context = ray.init(_system_config=_SYSTEM_CONFIG)
+    address = ray_context.address_info["address"]
+    node_id = ray_context.address_info["node_id"]
+    # TODO(#57203): remove this once task event buffer handles this internally.
+    wait_for_aggregator_agent_if_enabled(address, node_id)
 
     def sleep_or_fail(pid_actor=None, exit_type=None):
         if exit_type is None:
@@ -1050,7 +1066,7 @@ def test_task_events_gc_default_policy(shutdown_only):
     def error_task():
         raise ValueError("Expected to fail")
 
-    ray.init(
+    ray_context = ray.init(
         num_cpus=8,
         _system_config={
             "task_events_max_num_task_in_gcs": 5,
@@ -1058,6 +1074,11 @@ def test_task_events_gc_default_policy(shutdown_only):
             "task_events_report_interval_ms": 100,
         },
     )
+    address = ray_context.address_info["address"]
+    node_id = ray_context.address_info["node_id"]
+    # TODO(#57203): remove this once task event buffer handles this internally.
+    wait_for_aggregator_agent_if_enabled(address, node_id)
+
     a = Actor.remote()
     ray.get(a.ready.remote())
     # Run 10 and 5 should be evicted

@@ -89,15 +89,13 @@ from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.utils import add_rllib_example_script_args
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
 )
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    check_learning_achieved,
-)
+from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import get_trainable_cls, register_env
 
 parser = add_rllib_example_script_args(

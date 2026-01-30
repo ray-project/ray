@@ -22,6 +22,8 @@ from ray._private.metrics_agent import (
     PrometheusServiceDiscoveryWriter,
 )
 from ray._private.ray_constants import (
+    AGENT_PROCESS_TYPE_DASHBOARD_AGENT,
+    AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT,
     PROMETHEUS_SERVICE_DISCOVERY_FILE,
 )
 from ray._private.test_utils import (
@@ -31,6 +33,7 @@ from ray._private.test_utils import (
     get_log_batch,
     raw_metric_timeseries,
 )
+from ray._raylet import JobID, TaskID
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.core.generated.common_pb2 import TaskAttempt
 from ray.core.generated.events_base_event_pb2 import RayEvent
@@ -54,7 +57,7 @@ try:
 except ImportError:
     prometheus_client = None
 
-# This list of metrics should be kept in sync with src/ray/stats/metric_defs.h
+# This list of metrics should be kept in sync with metric definitions across the codebase
 # NOTE: Commented out metrics are not available in this test.
 # TODO(Clark): Find ways to trigger commented out metrics in cluster setup.
 _METRICS = [
@@ -260,6 +263,19 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     prom_addresses = []
     for node_info in node_info_list:
         metrics_export_port = node_info["MetricsExportPort"]
+        if enable_metrics_collection:
+            # When metrics are enabled, all nodes should have valid ports
+            assert metrics_export_port > 0, (
+                f"Expected MetricsExportPort > 0 when metrics enabled, "
+                f"but got {metrics_export_port} for node {node_info['NodeID']}"
+            )
+        else:
+            # When metrics are disabled, all nodes should have port == -1
+            assert metrics_export_port == -1, (
+                f"Expected MetricsExportPort == -1 when metrics disabled, "
+                f"but got {metrics_export_port} for node {node_info['NodeID']}"
+            )
+            continue
         addr = node_info["NodeManagerAddress"]
         prom_addresses.append(build_address(addr, metrics_export_port))
     autoscaler_export_addr = build_address(
@@ -428,7 +444,15 @@ def test_metrics_export_node_metrics(shutdown_only):
             samples = avail_metrics[metric]
             for sample in samples:
                 components.add(sample.labels["Component"])
-        assert components == {"gcs", "raylet", "agent", "ray::IDLE", sys.executable}
+        assert components == {
+            AGENT_PROCESS_TYPE_DASHBOARD_AGENT,
+            AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT,
+            "gcs",
+            "raylet",
+            "agent",
+            "ray::IDLE",
+            sys.executable,
+        }
 
         avail_metrics = set(avail_metrics)
 
@@ -480,6 +504,7 @@ def httpserver_listen_address():
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 2,
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS": "True",
                 # Turn off task events generation to avoid the task events from the
                 # cluster impacting the test result
                 "RAY_task_events_report_interval_ms": 0,
@@ -534,28 +559,28 @@ def test_metrics_export_event_aggregator_agent(
                 return False
         return True
 
-    def test_case_publisher_specific_metrics_correct(publisher_name: str):
+    def test_case_publisher_specific_metrics_value_correct(
+        consumer_name: str, expected_metrics_values: dict
+    ):
         fetch_prometheus_timeseries(prom_addresses, timeseries)
         metric_samples = timeseries.metric_samples.values()
-        expected_metrics_values = {
-            "ray_aggregator_agent_published_events_total": 1.0,
-            "ray_aggregator_agent_filtered_events_total": 1.0,
-            "ray_aggregator_agent_queue_dropped_events_total": 1.0,
-        }
         for descriptor, expected_value in expected_metrics_values.items():
-            samples = [m for m in metric_samples if m.name == descriptor]
+            samples = [
+                m
+                for m in metric_samples
+                if m.name == descriptor and m.labels[CONSUMER_TAG_KEY] == consumer_name
+            ]
             if not samples:
                 return False
-            if (
-                samples[0].value != expected_value
-                or samples[0].labels[CONSUMER_TAG_KEY] != publisher_name
-            ):
+            if samples[0].value != expected_value:
                 return False
         return True
 
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
+    job_id = JobID.from_int(1)
+    valid_task_id_bytes = TaskID.for_fake_task(job_id).binary()
     request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
@@ -587,7 +612,7 @@ def test_metrics_export_event_aggregator_agent(
             task_events_metadata=TaskEventsMetadata(
                 dropped_task_attempts=[
                     TaskAttempt(
-                        task_id=b"1",
+                        task_id=valid_task_id_bytes,
                         attempt_number=1,
                     ),
                 ],
@@ -602,8 +627,27 @@ def test_metrics_export_event_aggregator_agent(
 
     wait_for_condition(test_case_value_correct, timeout=30, retry_interval_ms=1000)
 
+    expected_http_publisher_metrics_values = {
+        "ray_aggregator_agent_published_events_total": 1.0,
+        "ray_aggregator_agent_filtered_events_total": 1.0,
+        "ray_aggregator_agent_queue_dropped_events_total": 1.0,
+    }
     wait_for_condition(
-        lambda: test_case_publisher_specific_metrics_correct("http_publisher"),
+        lambda: test_case_publisher_specific_metrics_value_correct(
+            "http_service", expected_http_publisher_metrics_values
+        ),
+        timeout=30,
+        retry_interval_ms=1000,
+    )
+
+    expected_gcs_publisher_metrics_values = {
+        "ray_aggregator_agent_published_events_total": 2.0,
+        "ray_aggregator_agent_queue_dropped_events_total": 1.0,
+    }
+    wait_for_condition(
+        lambda: test_case_publisher_specific_metrics_value_correct(
+            "ray_gcs", expected_gcs_publisher_metrics_values
+        ),
         timeout=30,
         retry_interval_ms=1000,
     )
@@ -1131,38 +1175,12 @@ def test_custom_metrics_validation(shutdown_only):
 @pytest.mark.parametrize("_setup_cluster_for_test", [False], indirect=True)
 def test_metrics_disablement(_setup_cluster_for_test):
     """Make sure the metrics are not exported when it is disabled."""
-    prom_addresses, autoscaler_export_addr, _ = _setup_cluster_for_test
-    timeseries = PrometheusTimeseries()
-
-    def verify_metrics_not_collected():
-        fetch_prometheus_timeseries(prom_addresses, timeseries)
-        components_dict = timeseries.components_dict
-        metric_descriptors = timeseries.metric_descriptors
-        metric_names = metric_descriptors.keys()
-        # Make sure no component is reported.
-        for _, comp in components_dict.items():
-            if len(comp) > 0:
-                print(f"metrics from a component {comp} exists although it should not.")
-                return False
-
-        # Make sure metrics are not there.
-        for metric in (
-            _METRICS
-            + _AUTOSCALER_METRICS
-            + _DASHBOARD_METRICS
-            + _EVENT_AGGREGATOR_METRICS
-        ):
-            if metric in metric_names:
-                print("f{metric} exists although it should not.")
-                return False
-        return True
-
-    # Make sure metrics are not collected for more than 10 seconds.
-    for _ in range(10):
-        assert verify_metrics_not_collected()
-        import time
-
-        time.sleep(1)
+    prom_addresses, _, _ = _setup_cluster_for_test
+    # When metrics are disabled, prom_addresses should be empty
+    assert len(prom_addresses) == 0, (
+        f"Expected no prometheus addresses when metrics disabled, "
+        f"but got {prom_addresses}"
+    )
 
 
 _FAULTY_METRIC_REGEX = re.compile(".*Invalid metric name.*")

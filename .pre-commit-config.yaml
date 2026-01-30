@@ -69,7 +69,7 @@ repos:
     hooks:
       - id: cpplint
         args: ["--filter=-whitespace/braces,-whitespace/line_length,-build/c++11,-build/c++14,-build/c++17,-readability/braces,-whitespace/indent_namespace,-runtime/int,-runtime/references,-build/include_order"]
-        files: ^src/ray/(common/cgroup2|common/scheduling|common/ray_syncer|common/test|util|raylet_client|internal|scheduling|pubsub|object_manager|rpc(?:/.*)?|raylet|core_worker|ipc)/.*\.(h|cc)$
+        files: ^src/ray/(gcs/actor|common/cgroup2|common/scheduling|common/ray_syncer|common/test|util|raylet_client|internal|scheduling|pubsub|object_manager|rpc(?:/.*)?|raylet|core_worker|ipc)/.*\.(h|cc)$
         exclude: |
           (?x)^(
             src/ray/raylet/scheduling/.*\.(h|cc)$ |
@@ -120,7 +120,9 @@ repos:
             python/ray/autoscaler/sdk/sdk.py|
             python/ray/autoscaler/_private/commands.py|
             python/ray/autoscaler/_private/autoscaler.py|
-            python/ray/_private/gcs_utils.py
+            python/ray/_private/gcs_utils.py|
+            python/ray/serve/handle.py|
+            python/ray/serve/tests/typing_files/check_handle_typing.py
           )
         additional_dependencies:
           [

@@ -74,7 +74,51 @@ Ray Serve allows you to fine-tune the backoff behavior of the request router, wh
 - `RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER`: The multiplier applied to the backoff time after each retry. Default is `2`.
 - `RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S`: The maximum backoff time (in seconds) between retries. Default is `0.5`.
 
+### Configure locality-based routing
 
+Ray Serve routes requests to replicas based on locality to reduce network latency. The system applies locality routing in two scenarios: proxy-to-replica communication (HTTP/gRPC requests) and inter-deployment communication (replica-to-replica calls through `DeploymentHandle`).
+
+#### Routing priority
+
+When locality routing is enabled, the system selects replicas in the following priority order:
+
+1. **Same node**: Replicas running on the same node as the caller (lowest latency)
+2. **Same availability zone**: Replicas in the same availability zone as the caller
+3. **Any replica**: All available replicas (fallback when local replicas are busy)
+
+If replicas at a higher priority level are busy or unavailable, the system automatically falls back to the next level.
+
+#### Proxy-to-replica routing
+
+You can configure proxy routing behavior through environment variables:
+
+- `RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING`: When enabled, the proxy prefers routing requests to replicas on the same node. Default is `1` (enabled).
+- `RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING`: When enabled, the proxy prefers routing requests to replicas in the same availability zone. Default is `1` (enabled).
+
+#### Inter-deployment routing
+
+When one deployment calls another through a `DeploymentHandle`, you can enable locality routing to reduce latency between deployments.
+
+**Same-node routing**: By default, inter-deployment calls don't prefer same-node replicas. To enable same-node routing, initialize the handle with the `_prefer_local_routing` option:
+
+```python
+from ray import serve
+from ray.serve.handle import DeploymentHandle
+
+@serve.deployment
+class Caller:
+    def __init__(self, target_handle: DeploymentHandle):
+        # Enable same-node routing for this handle
+        self._handle = target_handle.options(_prefer_local_routing=True)
+
+    async def call_target(self):
+        # Requests prefer replicas on the same node as this Caller replica
+        return await self._handle.remote()
+```
+
+**Same-AZ routing**: The `RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING` environment variable controls availability zone routing for both proxy and inter-deployment communication. You can't configure AZ routing per-handle.
+
+(serve-high-throughput)=
 ### Enable throughput-optimized serving
 
 :::{note}
@@ -160,6 +204,8 @@ The Serve Controller runs on the Ray head node and is responsible for a variety 
 including receiving autoscaling metrics from other Ray Serve components.
 If the Serve Controller becomes overloaded
 (symptoms might include high CPU usage and a large number of pending `ServeController.record_autoscaling_metrics_from_handle` tasks),
-you can increase the interval between cycles of the control loop
-by setting the `RAY_SERVE_CONTROL_LOOP_INTERVAL_S` environment variable (defaults to `0.1` seconds).
-This setting gives the Controller more time to process requests and may help alleviate the overload.
+you can tune the following environment variables:
+
+- `RAY_SERVE_CONTROL_LOOP_INTERVAL_S`: The interval between cycles of the control loop (defaults to `0.1` seconds). Increasing this value gives the Controller more time to process requests and may help alleviate overload.
+- `RAY_SERVE_CONTROLLER_MAX_CONCURRENCY`: The maximum number of concurrent requests the Controller can handle (defaults to `15000`). The Controller accepts one long poll request per handle, so its concurrency needs scale with the number of handles. Increase this value if you have a large number of deployment handles.
+- `RAY_SERVE_MAX_CACHED_HANDLES`: The maximum number of cached deployment handles (defaults to `100`). Each handle maintains a long poll connection to the controller, so limiting the cache size reduces controller overhead. Decrease this value if you're experiencing controller overload due to many handles.

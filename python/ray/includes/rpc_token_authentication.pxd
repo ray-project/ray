@@ -1,4 +1,5 @@
 from libcpp cimport bool as c_bool
+from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string
 from ray.includes.optional cimport optional
 
@@ -7,9 +8,9 @@ cdef extern from "ray/rpc/authentication/authentication_mode.h" namespace "ray::
     cdef enum CAuthenticationMode "ray::rpc::AuthenticationMode":
         DISABLED "ray::rpc::AuthenticationMode::DISABLED"
         TOKEN "ray::rpc::AuthenticationMode::TOKEN"
-        K8S "ray::rpc::AuthenticationMode::K8S"
 
     CAuthenticationMode GetAuthenticationMode()
+    c_bool IsK8sTokenAuthEnabled()
 
 cdef extern from "ray/rpc/authentication/authentication_token.h" namespace "ray::rpc" nogil:
     cdef cppclass CAuthenticationToken "ray::rpc::AuthenticationToken":
@@ -32,11 +33,11 @@ cdef extern from "ray/rpc/authentication/authentication_token_loader.h" namespac
         @staticmethod
         CAuthenticationTokenLoader& instance()
         void ResetCache()
-        optional[CAuthenticationToken] GetToken(c_bool ignore_auth_mode)
+        shared_ptr[const CAuthenticationToken] GetToken(c_bool ignore_auth_mode)
         CTokenLoadResult TryLoadToken(c_bool ignore_auth_mode)
 
 cdef extern from "ray/rpc/authentication/authentication_token_validator.h" namespace "ray::rpc" nogil:
     cdef cppclass CAuthenticationTokenValidator "ray::rpc::AuthenticationTokenValidator":
         @staticmethod
         CAuthenticationTokenValidator& instance()
-        c_bool ValidateToken(const optional[CAuthenticationToken]& expected_token, const CAuthenticationToken& provided_token)
+        c_bool ValidateToken(const shared_ptr[const CAuthenticationToken]& expected_token, const string& provided_metadata)

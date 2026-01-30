@@ -6,11 +6,7 @@ they will be upstreamed to vLLM.
 
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Union
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-)
+from pydantic import BaseModel, ConfigDict, Field
 from vllm.entrypoints.openai.protocol import (
     ChatCompletionRequest as vLLMChatCompletionRequest,
     ChatCompletionResponse as vLLMChatCompletionResponse,
@@ -18,16 +14,25 @@ from vllm.entrypoints.openai.protocol import (
     CompletionRequest as vLLMCompletionRequest,
     CompletionResponse as vLLMCompletionResponse,
     CompletionStreamResponse as vLLMCompletionStreamResponse,
-    EmbeddingChatRequest as vLLMEmbeddingChatRequest,
-    EmbeddingCompletionRequest as vLLMEmbeddingCompletionRequest,
-    EmbeddingResponse as vLLMEmbeddingResponse,
+    DetokenizeRequest as vLLMDetokenizeRequest,
+    DetokenizeResponse as vLLMDetokenizeResponse,
     ErrorInfo as vLLMErrorInfo,
     ErrorResponse as vLLMErrorResponse,
-    ScoreRequest as vLLMScoreRequest,
-    ScoreResponse as vLLMScoreResponse,
+    TokenizeChatRequest as vLLMTokenizeChatRequest,
+    TokenizeCompletionRequest as vLLMTokenizeCompletionRequest,
+    TokenizeResponse as vLLMTokenizeResponse,
     TranscriptionRequest as vLLMTranscriptionRequest,
     TranscriptionResponse as vLLMTranscriptionResponse,
     TranscriptionStreamResponse as vLLMTranscriptionStreamResponse,
+)
+from vllm.entrypoints.pooling.embed.protocol import (
+    EmbeddingChatRequest as vLLMEmbeddingChatRequest,
+    EmbeddingCompletionRequest as vLLMEmbeddingCompletionRequest,
+    EmbeddingResponse as vLLMEmbeddingResponse,
+)
+from vllm.entrypoints.pooling.score.protocol import (
+    ScoreRequest as vLLMScoreRequest,
+    ScoreResponse as vLLMScoreResponse,
 )
 from vllm.utils import random_uuid
 
@@ -59,15 +64,6 @@ class ErrorResponse(vLLMErrorResponse):
 class CompletionRequest(vLLMCompletionRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    request_id: str = Field(
-        default_factory=lambda: f"{random_uuid()}",
-        description=(
-            "The request_id related to this request. If the caller does "
-            "not set it, a random_uuid will be generated. This id is used "
-            "through out the inference process and return in response."
-        ),
-    )
-
 
 class CompletionResponse(vLLMCompletionResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -80,15 +76,6 @@ class CompletionStreamResponse(vLLMCompletionStreamResponse):
 # TODO (Kourosh): Upstream
 class EmbeddingCompletionRequest(vLLMEmbeddingCompletionRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    request_id: str = Field(
-        default_factory=lambda: f"{random_uuid()}",
-        description=(
-            "The request_id related to this request. If the caller does "
-            "not set it, a random_uuid will be generated. This id is used "
-            "through out the inference process and return in response."
-        ),
-    )
 
 
 class EmbeddingChatRequest(vLLMEmbeddingChatRequest):
@@ -128,7 +115,29 @@ class ScoreResponse(vLLMScoreResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
+class TokenizeCompletionRequest(vLLMTokenizeCompletionRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class TokenizeChatRequest(vLLMTokenizeChatRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class TokenizeResponse(vLLMTokenizeResponse):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class DetokenizeRequest(vLLMDetokenizeRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class DetokenizeResponse(vLLMDetokenizeResponse):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
 EmbeddingRequest = Union[EmbeddingCompletionRequest, EmbeddingChatRequest]
+
+TokenizeRequest = Union[TokenizeCompletionRequest, TokenizeChatRequest]
 
 LLMEmbeddingsResponse = Union[
     AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None],
@@ -136,6 +145,14 @@ LLMEmbeddingsResponse = Union[
 
 LLMScoreResponse = Union[
     AsyncGenerator[Union[ScoreResponse, ErrorResponse], None],
+]
+
+LLMTokenizeResponse = Union[
+    AsyncGenerator[Union[TokenizeResponse, ErrorResponse], None],
+]
+
+LLMDetokenizeResponse = Union[
+    AsyncGenerator[Union[DetokenizeResponse, ErrorResponse], None],
 ]
 
 LLMChatResponse = Union[
