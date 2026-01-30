@@ -9,10 +9,10 @@ This template shows how to train large language models using tensor parallelism 
 This tutorial provides a step-by-step guide covering:
 
 - Understanding 2D parallelism (Tensor Parallelism + Data Parallelism)
-- Setting up DeepSpeed AutoTP for automatic model sharding
-- Combining with ZeRO optimization for data parallelism
-- TP-aware data loading to ensure correct gradient computation
-- Distributed checkpointing with Ray Train
+- Setting up a data loader compatible with 2D parallelism
+- Preparing the model with DeepSpeed AutoTP and ZeRO
+- Checkpointing
+- Distributed training with Ray Train
 
 **Note:** This tutorial uses DeepSpeed's AutoTP API. DeepSpeed automatically identifies and shards linear layers for tensor parallelism.
 
@@ -156,7 +156,9 @@ def get_mixed_precision_dtype() -> torch.dtype:
 
 ## 2. Data loading with TP-aware sharding
 
-A critical aspect of tensor parallelism is ensuring all GPUs in a TP group receive identical input data. Standard data loaders shard by `world_rank`, giving each GPU different data. With TP, you must shard by `dp_rank` instead:
+A critical aspect of tensor parallelism is ensuring all GPUs in a TP group receive identical input data. Standard data loaders shard by `world_rank`, giving each GPU different data. With TP, you must shard by `dp_rank` instead.
+
+**Global batch size**: Because all GPUs in a TP group see the same data, the effective (global) batch size is `batch_size_per_gpu * dp_size`, not `batch_size_per_gpu * world_size`. For example, with `batch_size_per_gpu=1`, `dp_size=2`, and `tp_size=2` (4 GPUs total), the global batch size is 2, not 4.
 
 ```python
 # All TP ranks in same DP group get identical batches
@@ -183,7 +185,7 @@ def create_dataloader(
     model_name: str,
     dataset_name: str,
     seq_length: int,
-    batch_size: int,
+    batch_size_per_gpu: int,
     dp_rank: int,
     dp_size: int,
     seed: int = 42,
@@ -266,7 +268,7 @@ def create_dataloader(
         tokenized, num_replicas=dp_size, rank=dp_rank, shuffle=True, seed=seed
     )
 
-    return DataLoader(tokenized, batch_size=batch_size, sampler=sampler, drop_last=True)
+    return DataLoader(tokenized, batch_size=batch_size_per_gpu, sampler=sampler, drop_last=True)
 ```
 
 ## 3. Model Parallelization with DeepSpeed AutoTP
@@ -420,12 +422,12 @@ def setup_model_with_autotp(
     )
 
     # [6] Build DeepSpeed config
-    batch_size = config.get("batch_size", 1)
+    batch_size_per_gpu = config.get("batch_size_per_gpu", 1)
     effective_dp = dp_size if tp_size > 1 else world_size
 
     ds_config = {
-        "train_batch_size": batch_size * effective_dp,
-        "train_micro_batch_size_per_gpu": batch_size,
+        "train_batch_size": batch_size_per_gpu * effective_dp,
+        "train_micro_batch_size_per_gpu": batch_size_per_gpu,
         "gradient_accumulation_steps": 1,
         "gradient_clipping": config.get("max_grad_norm", 1.0),
         "zero_optimization": {
@@ -567,7 +569,7 @@ def train_func(config):
         model_name=config["model_name"],
         dataset_name=config["dataset_name"],
         seq_length=config["seq_length"],
-        batch_size=config["batch_size"],
+        batch_size_per_gpu=config["batch_size_per_gpu"],
         dp_rank=dp_rank,
         dp_size=dp_size,
         seed=config.get("seed", 42),
@@ -668,7 +670,7 @@ train_loop_config = {
     "tp_size": tp_size,
     "dp_size": dp_size,
     # Training hyperparameters
-    "batch_size": 1,
+    "batch_size_per_gpu": 1,  # Global batch size = batch_size_per_gpu * dp_size
     "seq_length": 512,
     "num_epochs": 1,
     "learning_rate": 1e-5,
@@ -711,7 +713,7 @@ train_loop_config = {
     "model_name": "Qwen/Qwen2-7B",
     "tp_size": 4,
     "dp_size": 2,
-    "batch_size": 1,
+    "batch_size_per_gpu": 1,
     "seq_length": 2048,
     ...
 }
