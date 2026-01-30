@@ -37,11 +37,9 @@ class MockResponse:
     status_code: int = 200
     content: Optional[bytes] = None
     _json_data: Optional[dict] = None
-    _raise_error: bool = False
 
     def raise_for_status(self):
-        if self._raise_error:
-            raise Exception(f"HTTP Error {self.status_code}")
+        pass
 
     def json(self):
         return self._json_data
@@ -196,8 +194,10 @@ def create_mock_chunks(df: pd.DataFrame, rows_per_chunk: int) -> list[MockChunk]
 class TestDatabricksUCDatasourceIntegration:
     """Integration tests for DatabricksUCDatasource."""
 
+    _MOCK_ENV_VAR = "RAY_DATABRICKS_UC_DATASOURCE_READ_FN_MOCK_TEST_SETUP_FN_PATH"
+
     @contextmanager
-    def setup_mock(self, test_data: dict, mock_chunks: list[MockChunk]):
+    def _setup_mock(self, test_data: dict, mock_chunks: list[MockChunk]):
         """Set up mocks for integration tests."""
         chunk_meta_json = [
             {
@@ -308,24 +308,28 @@ class TestDatabricksUCDatasourceIntegration:
         ):
             yield
 
-    def test_read_with_table_name(self, test_data):
-        """Test reading data using table name."""
+    @contextmanager
+    def _setup_integration_test(self, test_data: dict):
+        """Set up complete integration test environment with mocks and Ray."""
         mock_chunks = create_mock_chunks(
             test_data["expected_df"], test_data["rows_per_chunk"]
         )
 
         setup_mock_fn_path = os.path.join(tempfile.mkdtemp(), "setup_mock_fn.pkl")
         with open(setup_mock_fn_path, "wb") as fp:
-            pickle.dump(lambda: self.setup_mock(test_data, mock_chunks), fp)
+            pickle.dump(lambda: self._setup_mock(test_data, mock_chunks), fp)
 
-        MOCK_ENV = "RAY_DATABRICKS_UC_DATASOURCE_READ_FN_MOCK_TEST_SETUP_FN_PATH"
         with (
-            self.setup_mock(test_data, mock_chunks),
-            mock.patch.dict(os.environ, {MOCK_ENV: setup_mock_fn_path}),
+            self._setup_mock(test_data, mock_chunks),
+            mock.patch.dict(os.environ, {self._MOCK_ENV_VAR: setup_mock_fn_path}),
         ):
             ray.shutdown()
             ray.init()
+            yield
 
+    def test_read_with_table_name(self, test_data):
+        """Test reading data using table name."""
+        with self._setup_integration_test(test_data):
             result = ray.data.read_databricks_tables(
                 warehouse_id=test_data["warehouse_id"],
                 table="table1",
@@ -338,22 +342,7 @@ class TestDatabricksUCDatasourceIntegration:
 
     def test_read_with_sql_query(self, test_data):
         """Test reading data using SQL query."""
-        mock_chunks = create_mock_chunks(
-            test_data["expected_df"], test_data["rows_per_chunk"]
-        )
-
-        setup_mock_fn_path = os.path.join(tempfile.mkdtemp(), "setup_mock_fn.pkl")
-        with open(setup_mock_fn_path, "wb") as fp:
-            pickle.dump(lambda: self.setup_mock(test_data, mock_chunks), fp)
-
-        MOCK_ENV = "RAY_DATABRICKS_UC_DATASOURCE_READ_FN_MOCK_TEST_SETUP_FN_PATH"
-        with (
-            self.setup_mock(test_data, mock_chunks),
-            mock.patch.dict(os.environ, {MOCK_ENV: setup_mock_fn_path}),
-        ):
-            ray.shutdown()
-            ray.init()
-
+        with self._setup_integration_test(test_data):
             result = ray.data.read_databricks_tables(
                 warehouse_id=test_data["warehouse_id"],
                 query=test_data["query"],
@@ -367,22 +356,7 @@ class TestDatabricksUCDatasourceIntegration:
     @pytest.mark.parametrize("num_blocks", [5, 100])
     def test_read_with_different_parallelism(self, test_data, num_blocks):
         """Test reading data with different parallelism settings."""
-        mock_chunks = create_mock_chunks(
-            test_data["expected_df"], test_data["rows_per_chunk"]
-        )
-
-        setup_mock_fn_path = os.path.join(tempfile.mkdtemp(), "setup_mock_fn.pkl")
-        with open(setup_mock_fn_path, "wb") as fp:
-            pickle.dump(lambda: self.setup_mock(test_data, mock_chunks), fp)
-
-        MOCK_ENV = "RAY_DATABRICKS_UC_DATASOURCE_READ_FN_MOCK_TEST_SETUP_FN_PATH"
-        with (
-            self.setup_mock(test_data, mock_chunks),
-            mock.patch.dict(os.environ, {MOCK_ENV: setup_mock_fn_path}),
-        ):
-            ray.shutdown()
-            ray.init()
-
+        with self._setup_integration_test(test_data):
             result = ray.data.read_databricks_tables(
                 warehouse_id=test_data["warehouse_id"],
                 query=test_data["query"],
