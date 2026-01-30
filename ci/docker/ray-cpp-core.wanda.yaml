@@ -1,4 +1,4 @@
-name: "ray-cpp-core-py$PYTHON_VERSION$ARCH_SUFFIX"
+name: "ray-cpp-core$ARCH_SUFFIX"
 froms: ["rayproject/manylinux2014:$MANYLINUX_VERSION-jdk-$HOSTTYPE"]
 dockerfile: ci/docker/ray-cpp-core.Dockerfile
 srcs:
@@ -21,7 +21,6 @@ srcs:
   - release/requirements.txt
   - release/requirements_py310.txt
 build_args:
-  - PYTHON_VERSION
   - ARCH_SUFFIX
   - HOSTTYPE
   - MANYLINUX_VERSION

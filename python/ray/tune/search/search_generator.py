@@ -184,11 +184,12 @@ class SearchGenerator(SearchAlgorithm):
         # We save the base searcher separately for users to easily
         # separate the searcher.
         base_searcher.save_to_dir(dirpath, session_str)
+        file_name = self.CKPT_FILE_TMPL.format(session_str)
         _atomic_save(
             state=search_alg_state,
             checkpoint_dir=dirpath,
-            file_name=self.CKPT_FILE_TMPL.format(session_str),
-            tmp_file_name=".tmp_search_generator_ckpt",
+            file_name=file_name,
+            tmp_file_name=f"tmp-{file_name}",
         )
 
     def restore_from_dir(self, dirpath: str):

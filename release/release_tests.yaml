@@ -3776,10 +3776,10 @@
   variations:
     - __suffix__: v1
       run:
-        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
+        script: RAY_UP_enable_autoscaler_v2=0 RAY_TRIM_AUTOSCALER_SSH_KEYS=1 python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
     - __suffix__: v2
       run:
-        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
+        script: RAY_UP_enable_autoscaler_v2=1 RAY_TRIM_AUTOSCALER_SSH_KEYS=1 python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
 
 - name: gcp_cluster_launcher_full
   python: "3.10"
@@ -3799,10 +3799,10 @@
   variations:
     - __suffix__: v1
       run:
-        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30 --docker-override latest
+        script: RAY_UP_enable_autoscaler_v2=0 RAY_TRIM_AUTOSCALER_SSH_KEYS=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30 --docker-override latest
     - __suffix__: v2
       run:
-        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30 --docker-override latest
+        script: RAY_UP_enable_autoscaler_v2=1 RAY_TRIM_AUTOSCALER_SSH_KEYS=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30 --docker-override latest
 
 - name: gcp_cluster_launcher_latest_image
   group: cluster-launcher-test
@@ -3821,10 +3821,10 @@
   variations:
     - __suffix__: v1
       run:
-        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
+        script: RAY_UP_enable_autoscaler_v2=0 RAY_TRIM_AUTOSCALER_SSH_KEYS=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
     - __suffix__: v2
       run:
-        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
+        script: RAY_UP_enable_autoscaler_v2=1 RAY_TRIM_AUTOSCALER_SSH_KEYS=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
 
 - name: gcp_cluster_launcher_nightly_image
   python: "3.10"
@@ -3844,10 +3844,10 @@
   variations:
     - __suffix__: v1
       run:
-        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
+        script: RAY_UP_enable_autoscaler_v2=0 RAY_TRIM_AUTOSCALER_SSH_KEYS=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
     - __suffix__: v2
       run:
-        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
+        script: RAY_UP_enable_autoscaler_v2=1 RAY_TRIM_AUTOSCALER_SSH_KEYS=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
 
 - name: gcp_cluster_launcher_release_image
   python: "3.10"
@@ -3867,10 +3867,10 @@
   variations:
     - __suffix__: v1
       run:
-        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
+        script: RAY_UP_enable_autoscaler_v2=0 RAY_TRIM_AUTOSCALER_SSH_KEYS=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
     - __suffix__: v2
       run:
-        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
+        script: RAY_UP_enable_autoscaler_v2=1 RAY_TRIM_AUTOSCALER_SSH_KEYS=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
 
 - name: gcp_cluster_launcher_gpu_docker
   python: "3.10"
@@ -3890,10 +3890,10 @@
   variations:
     - __suffix__: v1
       run:
-        script: RAY_UP_enable_autoscaler_v2=0 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
+        script: RAY_UP_enable_autoscaler_v2=0 RAY_TRIM_AUTOSCALER_SSH_KEYS=1 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
     - __suffix__: v2
       run:
-        script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
+        script: RAY_UP_enable_autoscaler_v2=1 RAY_TRIM_AUTOSCALER_SSH_KEYS=1 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
 
 - name: autoscaler_aws
   python: "3.10"
