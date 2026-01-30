@@ -573,6 +573,12 @@ RAY_SERVE_FAIL_ON_RANK_ERROR = get_env_bool("RAY_SERVE_FAIL_ON_RANK_ERROR", "0")
 # The message to return when the replica is healthy.
 HEALTHY_MESSAGE = "success"
 
+# The message to return when the route table is not populated yet.
+NO_ROUTES_MESSAGE = "Route table is not populated yet."
+
+# The message to return when no replicas are available yet.
+NO_REPLICAS_MESSAGE = "No replicas are available yet."
+
 # Feature flag to enable a limited form of direct ingress where ingress applications
 # listen on port 8000 (HTTP) and 9000 (gRPC). No proxies will be started.
 RAY_SERVE_ENABLE_DIRECT_INGRESS = (
