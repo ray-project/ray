@@ -11,7 +11,8 @@ This example:
     processing stacked Atari frames
     - shows how to use the `FrameStackingEnvToModule` and `FrameStackingLearner`
     ConnectorV2 pieces for proper frame stacking
-    - uses 2 aggregator actors per learner for efficient experience collection (see: `num_aggregator_actors_per_learner=2` in the learner configuration)
+    - uses 2 aggregator actors per learner for efficient experience collection
+        (see: `num_aggregator_actors_per_learner=2` in the learner configuration)
     - schedules the entropy coefficient to decay from 0.025 to 0.0 over training
 
 How to run this script

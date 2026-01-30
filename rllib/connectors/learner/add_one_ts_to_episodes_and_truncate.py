@@ -148,8 +148,9 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
             )
 
             terminateds = (
-                [False for _ in range(len_)] +
-                [bool(sa_episode.is_terminated)]
+                [False for _ in range(len_ - 1)]
+                + [bool(sa_episode.is_terminated)]
+                + [True]  # extra timestep
             )
             self.add_n_batch_items(
                 batch,

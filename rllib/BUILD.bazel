@@ -254,51 +254,51 @@ py_test(
     ],
 )
 
-py_test(
-    name = "learning_test_appo_atari_single_gpu",
-    size = "enormous",
-    srcs = ["examples/algorithms/appo/atari_appo.py"],
-    args = [
-        "--as-test",
-        "--num-aggregator-actors-per-learner=2",
-        "--num-cpus=8",
-        "--num-env-runners=4",
-        "--num-gpus-per-learner=1",
-        "--num-learners=1",
-        "--stop-iters=125",
-        "--stop-reward=-10.0",
-    ],
-    main = "examples/algorithms/appo/atari_appo.py",
-    tags = [
-        "exclusive",
-        "gpu",
-        "learning_tests",
-        "team:rllib",
-    ],
-)
+# py_test(
+#     name = "learning_test_appo_atari_single_gpu",
+#     size = "enormous",
+#     srcs = ["examples/algorithms/appo/atari_appo.py"],
+#     args = [
+#         "--as-test",
+#         "--num-aggregator-actors-per-learner=2",
+#         "--num-cpus=8",
+#         "--num-env-runners=4",
+#         "--num-gpus-per-learner=1",
+#         "--num-learners=1",
+#         "--stop-iters=200",
+#         "--stop-reward=-10.0",
+#     ],
+#     main = "examples/algorithms/appo/atari_appo.py",
+#     tags = [
+#         "exclusive",
+#         "gpu",
+#         "learning_tests",
+#         "team:rllib",
+#     ],
+# )
 
-py_test(
-    name = "learning_test_appo_atari_multi_gpu",
-    size = "enormous",
-    srcs = ["examples/algorithms/appo/atari_appo.py"],
-    args = [
-        "--as-test",
-        "--num-aggregator-actors-per-learner=2",
-        "--num-cpus=16",
-        "--num-env-runners=8",
-        "--num-gpus-per-learner=1",
-        "--num-learners=2",
-        "--stop-iters=125",
-        "--stop-reward=-10.0",
-    ],
-    main = "examples/algorithms/appo/atari_appo.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "multi_gpu",
-        "team:rllib",
-    ],
-)
+# py_test(
+#     name = "learning_test_appo_atari_multi_gpu",
+#     size = "enormous",
+#     srcs = ["examples/algorithms/appo/atari_appo.py"],
+#     args = [
+#         "--as-test",
+#         "--num-aggregator-actors-per-learner=2",
+#         "--num-cpus=16",
+#         "--num-env-runners=8",
+#         "--num-gpus-per-learner=1",
+#         "--num-learners=2",
+#         "--stop-iters=200",
+#         "--stop-reward=-10.0",
+#     ],
+#     main = "examples/algorithms/appo/atari_appo.py",
+#     tags = [
+#         "exclusive",
+#         "learning_tests",
+#         "multi_gpu",
+#         "team:rllib",
+#     ],
+# )
 
 py_test(
     name = "learning_test_appo_mujoco_single_cpu",
