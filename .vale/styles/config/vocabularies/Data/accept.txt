@@ -22,6 +22,7 @@ Modin
 [Mm]ultiget(s)?
 ndarray(s)?
 NLP
+[Oo]mni
 [Oo]utqueue(s)?
 PDFs
 PIL

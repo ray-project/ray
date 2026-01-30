@@ -359,7 +359,7 @@ Resiliency
 Row-level fault tolerance
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 In Ray Data LLM, row-level fault tolerance is achieved by setting the ``should_continue_on_error`` parameter to ``True`` in the processor config.
-This means that if a single row fails due to a request level error from the engine, the job will continue processing the remaining rows.
+This means that if a single row fails due to a request level error from the engine, the job continues processing the remaining rows.
 This is useful for long-running jobs where you want to minimize the impact of request failures.
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
@@ -370,7 +370,7 @@ This is useful for long-running jobs where you want to minimize the impact of re
 
 Actor-level fault tolerance
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-When an actor dies in the middle of a pipeline execution, it will be restarted and rejoin the actor pool to process remaining rows.
+When an actor dies in the middle of a pipeline execution, it's restarted and rejoins the actor pool to process remaining rows.
 This feature is enabled by default, and there are no additional configuration needed.
 
 
@@ -388,14 +388,14 @@ First, set up the checkpoint configuration and specify the ID column for checkpo
     :start-after: __checkpoint_config_setup_example_start__
     :end-before: __checkpoint_config_setup_example_end__
 
-Then, include a read and write operation in the pipeline to enable checkpoint recovery. It is important to preserve the ID column during postprocess to ensure that the ID column is stored in the checkpoint.
+Then, include a read and write operation in the pipeline to enable checkpoint recovery. It's important to preserve the ID column during postprocess to ensure that the ID column is stored in the checkpoint.
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
     :start-after: __checkpoint_usage_example_start__
     :end-before: __checkpoint_usage_example_end__
 
-To resume from a checkpoint, run exactly the same code above. Ray Data discovers the checkpoint and resumes from the last successful block.
+To resume from a checkpoint, run the same code again. Ray Data discovers the checkpoint and resumes from the last successful block.
 
 .. _advanced_configuration:
 
