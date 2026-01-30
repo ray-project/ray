@@ -1,6 +1,7 @@
 import threading
 import time
 import traceback
+from collections import namedtuple
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -36,6 +37,9 @@ class NixlTransportMetadata(TensorTransportMetadata):
     __hash__ = object.__hash__
 
 
+TensorDesc = namedtuple("TensorDesc", ["reg_desc", "ref_count"])
+
+
 class NixlTensorTransport(TensorTransportManager):
     def __init__(self):
         # This is lazily initialized because it requires NIXL to actually be installed and we want to allow an owner that is just coordinating to not need to have NIXL installed.
@@ -43,8 +47,10 @@ class NixlTensorTransport(TensorTransportManager):
         self._aborted_transfer_obj_ids = set()
         self._aborted_transfer_obj_ids_lock = threading.Lock()
         # Mapping from tensor data pointer and nbytes to the NIXL descriptor and reference count.
-        self._tensor_desc_cache: Dict[Tuple[int, int], Tuple[Any, int]] = {}
+        # Unlike _managed_meta_nixl, we only deregister tensors when ALL metadata containing the tensor is freed.
+        self._tensor_desc_cache: Dict[Tuple[int, int], TensorDesc] = {}
         # Mapping from object ID to the NIXL managed meta.
+        # The lifetime of _managed_meta_nixl is tied to the object ref and freed when the ref goes out of scope.
         self._managed_meta_nixl: Dict[str, Any] = {}
         # Lock protecting _tensor_desc_cache and _managed_meta_nixl since they can be
         # accessed from the user's python thread or the _ray_system thread.

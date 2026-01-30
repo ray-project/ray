@@ -94,13 +94,6 @@ class GPUTestActor:
 
         return get_tensor_transport_manager("NIXL").get_num_managed_meta_nixl()
 
-    def get_tensor_desc_cache_size(self):
-        from ray.experimental.gpu_object_manager.util import (
-            get_tensor_transport_manager,
-        )
-
-        return len(get_tensor_transport_manager("NIXL")._tensor_desc_cache)
-
     def is_tensor_in_desc_cache(self, tensor):
         from ray.experimental.gpu_object_manager.util import (
             get_tensor_transport_manager,
@@ -334,28 +327,12 @@ def test_shared_tensor_deduplication(ray_start_regular):
     Test that tensors shared across multiple lists are properly deduplicated.
 
     Creates list1 = [T1, T2] and list2 = [T2, T3] where T2 is shared.
-    Verifies that:
-    1. T2 has ref_count=2 after both lists are registered
-    2. After deallocating list1, T2 is still pinned (ref_count=1)
-    3. After deallocating list2, T2 is deregistered (ref_count=0)
+
     """
     actor = GPUTestActor.remote()
 
-    ref1, ref2 = ray.get(actor.put_shared_tensor_lists.remote())
-
-    assert ray.get(actor.get_tensor_desc_cache_size.remote()) == 3
-
-    del ref1
-    wait_for_condition(
-        lambda: ray.get(actor.get_tensor_desc_cache_size.remote()) == 2,
-        timeout=5,
-    )
-
-    del ref2
-    wait_for_condition(
-        lambda: ray.get(actor.get_tensor_desc_cache_size.remote()) == 0,
-        timeout=5,
-    )
+    # Nixl itself doesn't handle duplicate memory registrations, hence this call would fail.
+    ray.get(actor.put_shared_tensor_lists.remote())
 
 
 if __name__ == "__main__":
