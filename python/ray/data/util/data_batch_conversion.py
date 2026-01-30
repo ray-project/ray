@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Dict, List, Union
 import numpy as np
 
 from ray.air.data_batch_type import DataBatchType
+from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -59,9 +60,9 @@ def _convert_batch_type_to_pandas(
     "Convert to dictionary if DataBatchType is np.ndarray."
     "np.ndarray will be unsupported in future versions."
     if isinstance(data, np.ndarray):
-        data = {"__value__": data}
+        data = {TENSOR_COLUMN_NAME: data}
         warnings.warn(
-            "In future versions of Ray, DataBatch will not support np.ndarray.",
+            "In future versions of Ray, np.ndarray will not be supported as DataBatchType.",
             FutureWarning,
             stacklevel=2,
         )
@@ -113,7 +114,7 @@ def _convert_pandas_to_batch_type(
     elif type == BatchFormat.NUMPY:
         if len(data.columns) == 1:
             warnings.warn(
-                "In future versions of Ray, DataBatch will not support np.ndarray.",
+                "In future versions of Ray, np.ndarray will not be supported as DataBatchType.",
                 FutureWarning,
                 stacklevel=2,
             )
@@ -157,7 +158,7 @@ def _convert_batch_type_to_numpy(
 
     if isinstance(data, np.ndarray):
         warnings.warn(
-            "In future versions of Ray, DataBatch will not support np.ndarray as an input type.",
+            "In future versions of Ray, np.ndarray will not be supported as DataBatchType.",
             FutureWarning,
             stacklevel=2,
         )
@@ -174,6 +175,9 @@ def _convert_batch_type_to_numpy(
         return data
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
         from ray.data._internal.arrow_ops import transform_pyarrow
+        from ray.data._internal.tensor_extensions.arrow import (
+            get_arrow_extension_fixed_shape_tensor_types,
+        )
 
         column_values_ndarrays = []
 
@@ -185,6 +189,14 @@ def _convert_batch_type_to_numpy(
             column_values_ndarrays.append(
                 transform_pyarrow.to_numpy(combined_array, zero_copy_only=False)
             )
+
+        arrow_fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
+
+        # NOTE: This branch is here for backwards-compatibility
+        if data.column_names == [TENSOR_COLUMN_NAME] and (
+            isinstance(data.schema.types[0], arrow_fixed_shape_tensor_types)
+        ):
+            return column_values_ndarrays[0]
 
         return dict(zip(data.column_names, column_values_ndarrays))
     elif isinstance(data, pd.DataFrame):
