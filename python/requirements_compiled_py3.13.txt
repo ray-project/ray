@@ -1107,7 +1107,7 @@ ml-dtypes==0.5.4
     #   jaxlib
     #   keras
     #   tensorflow
-mlflow==2.22.0
+mlflow==3.5.0
     # via -r python/requirements/ml/core-requirements.txt
 mlflow-skinny==2.22.0
     # via mlflow
