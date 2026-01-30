@@ -48,11 +48,7 @@ def batch_blocks(
     if collate_fn is not None:
         batch_iter = collate(batch_iter, collate_fn=collate_fn, stats=stats)
 
-    unwrapped = _UnwrappingIterator(batch_iter)
-
-    # TODO restore
-    # return _user_timed_iter(unwrapped, stats)
-    return unwrapped
+    return _UserTimingIterator(_UnwrappingIterator(batch_iter), stats)
 
 
 def _user_timed_iter(
@@ -63,6 +59,49 @@ def _user_timed_iter(
         timer = stats.iter_user_s.timer() if stats else nullcontext()
         with timer:
             yield batch
+
+
+class _UserTimingIterator(Iterator[DataBatch]):
+
+    def __init__(self, iter: Iterator[DataBatch], stats: Optional[DatasetStats]):
+        self._iter = iter
+        self._stats = stats
+        self._active_timer = None
+
+    def __iter__(self) -> Iterator[DataBatch]:
+        return self
+
+    def __next__(self) -> DataBatch:
+        # Since we're tracking time spent in user-code, we stop
+        # the timer immediately when `__next__` is called
+        self._stop_timer()
+
+        try:
+            res = next(self._iter)
+            # Reset timer and return
+            #
+            # NOTE: It's crucial that we reset the timer only after we
+            #       retrieved the result to avoid starting the timer before
+            #       we retrieve the next value
+            self._reset_timer()
+            return res
+        except StopIteration:
+            self._stop_timer()
+            raise
+
+    def _stop_timer(self):
+        if not self._stats:
+            return
+
+        if self._active_timer:
+            self._active_timer.__exit__(None, None, None)
+
+    def _reset_timer(self):
+        if not self._stats:
+            return
+
+        self._active_timer = self._stats.iter_user_s.timer()
+        self._active_timer.__enter__()
 
 
 class _UnwrappingIterator(Iterator[DataBatch]):
