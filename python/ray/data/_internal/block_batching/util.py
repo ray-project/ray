@@ -134,9 +134,7 @@ class _BatchingIterator(Iterator[Batch]):
         # Try to get a batch from current batcher state
         while True:
             can_yield = self._batcher.has_batch() or (
-                self._batcher.has_any() and
-                self._done_adding and
-                not self._drop_last
+                self._batcher.has_any() and self._done_adding and not self._drop_last
             )
 
             if can_yield:
@@ -145,7 +143,7 @@ class _BatchingIterator(Iterator[Batch]):
 
                 res = Batch(
                     metadata=BatchMetadata(batch_idx=self._global_counter),
-                    data=next_batch
+                    data=next_batch,
                 )
 
                 self._global_counter += 1

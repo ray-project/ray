@@ -563,7 +563,9 @@ class _TransformingBatchIterator(Iterator[DataBatch]):
                 # calling the UDF.
                 # TODO(hchen): This workaround is because some all-to-all
                 # operators output empty blocks with no schema.
-                self._cur_output_iter = _ReleasingIterator(collections.deque([input_batch]))
+                self._cur_output_iter = _ReleasingIterator(
+                    collections.deque([input_batch])
+                )
             else:
                 try:
                     res = self._fn(input_batch)
@@ -572,7 +574,9 @@ class _TransformingBatchIterator(Iterator[DataBatch]):
                         # NOTE: It's critical that we're utilizing *releasing* iterator
                         #       to avoid capturing intermediate objects along the whole
                         #       iterator chain
-                        self._cur_output_iter = _ReleasingIterator(collections.deque([res]))
+                        self._cur_output_iter = _ReleasingIterator(
+                            collections.deque([res])
+                        )
                     else:
                         # In cases when UDF returns a generator we iterate over it
                         # as is (given that we can't release intermediate state from

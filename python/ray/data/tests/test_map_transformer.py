@@ -79,7 +79,9 @@ def test_chained_transforms_release_intermediates_between_batches():
         result = next(result_iter)
         assert result is not None
 
-        pd.testing.assert_frame_equal(result, pd.DataFrame({"id": [(i + 1) * 2 ** NUM_CHAINED_TRANSFORMS]}))
+        pd.testing.assert_frame_equal(
+            result, pd.DataFrame({"id": [(i + 1) * 2**NUM_CHAINED_TRANSFORMS]})
+        )
 
         # Trigger GC
         gc.collect()
@@ -87,19 +89,21 @@ def test_chained_transforms_release_intermediates_between_batches():
         print(f">>> {input_intermediates=}")
 
         # Extract current set of intermediate input refs
-        cur_intermediates = [input_intermediates.popleft() for _ in range(NUM_CHAINED_TRANSFORMS)]
+        cur_intermediates = [
+            input_intermediates.popleft() for _ in range(NUM_CHAINED_TRANSFORMS)
+        ]
         assert len(input_intermediates) == 0
 
-        alive_after_first = sum(
-            1 for ref in cur_intermediates if ref() is not None
-        )
+        alive_after_first = sum(1 for ref in cur_intermediates if ref() is not None)
 
         if alive_after_first > 0:
             print(">>> Found captured intermediate references!")
 
             _trace_back_refs(cur_intermediates, "After first batch")
 
-            pytest.fail(f"Expected 0 intermediates alive after first batch, found {alive_after_first}")
+            pytest.fail(
+                f"Expected 0 intermediates alive after first batch, found {alive_after_first}"
+            )
 
 
 def _trace_back_refs(intermediates: list, label: str = ""):

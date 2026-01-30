@@ -7,7 +7,7 @@ from ray.data._internal.block_batching.util import (
     collate,
     format_batches,
 )
-from ray.data._internal.stats import DatasetStats, Timer
+from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, DataBatch
 
 T = TypeVar("T")
@@ -55,7 +55,9 @@ def batch_blocks(
     return unwrapped
 
 
-def _user_timed_iter(iter: Iterator[DataBatch], stats: Optional[DatasetStats]) -> Iterator[DataBatch]:
+def _user_timed_iter(
+    iter: Iterator[DataBatch], stats: Optional[DatasetStats]
+) -> Iterator[DataBatch]:
     for batch in iter:
         # Track iteration's time spent in user code
         timer = stats.iter_user_s.timer() if stats else nullcontext()
@@ -64,8 +66,7 @@ def _user_timed_iter(iter: Iterator[DataBatch], stats: Optional[DatasetStats]) -
 
 
 class _UnwrappingIterator(Iterator[DataBatch]):
-    """Iterator that unwraps `Batch` into underlying `DataBatch`.
-    """
+    """Iterator that unwraps `Batch` into underlying `DataBatch`."""
 
     def __init__(
         self,

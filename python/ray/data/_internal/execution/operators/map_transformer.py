@@ -1,7 +1,17 @@
 import time
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -117,7 +127,9 @@ class MapTransformer:
     class _UDFTimingIterator(Iterator[MapTransformFnData]):
         """Iterator that times UDF execution"""
 
-        def __init__(self, input: Iterable[MapTransformFnData], transformer: "MapTransformer"):
+        def __init__(
+            self, input: Iterable[MapTransformFnData], transformer: "MapTransformer"
+        ):
             self._input = input
             self._transformer = transformer
 
@@ -473,5 +485,5 @@ class _RowBasedIterator(Iterator[Row]):
             block = next(self._blocks_iter)
 
             self._cur_row_iter = BlockAccessor.for_block(block).iter_rows(
-                    public_row_format=True
+                public_row_format=True
             )
