@@ -1105,7 +1105,7 @@ cdef class StreamingGeneratorExecutionContext:
 
 @dataclass(frozen=True)
 class StreamingGeneratorStats:
-    serialization_dur_s: float
+    object_creation_dur_s: float
 
 
 cdef report_streaming_generator_output(
@@ -1170,7 +1170,7 @@ cdef report_streaming_generator_output(
 
 
     return StreamingGeneratorStats(
-        serialization_dur_s=serialization_dur_s,
+        object_creation_dur_s=serialization_dur_s,
     )
 
 
