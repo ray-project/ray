@@ -218,7 +218,25 @@ class DeltaFileWriter:
         Returns:
             AddAction object with file metadata, or None if table is empty.
         """
-        from deltalake.transaction import AddAction
+        # Import AddAction - handle different deltalake versions
+        # AddAction is used to create file metadata for Delta transaction log
+        # deltalake.transaction.AddAction: https://delta-io.github.io/delta-rs/python/api/deltalake.transaction.html#deltalake.transaction.AddAction
+        try:
+            from deltalake.transaction import AddAction
+        except ImportError:
+            # Fallback: try importing from deltalake directly (some versions)
+            try:
+                from deltalake import AddAction
+            except ImportError:
+                # Last resort: try deltalake.writer (older versions)
+                try:
+                    from deltalake.writer import AddAction
+                except ImportError:
+                    raise ImportError(
+                        "Could not import AddAction from deltalake. "
+                        "This usually means deltalake is not installed or is an incompatible version. "
+                        "Please install/upgrade deltalake: pip install --upgrade deltalake"
+                    ) from None
 
         if len(table) == 0:
             return None
