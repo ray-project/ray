@@ -328,10 +328,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
     static Reference FromProto(const rpc::ObjectReferenceCount &ref_count);
-    /// Serialize to a protobuf.
-    /// When `deduct_local_ref` is true, one local ref should be removed
-    /// when determining if the object has actual local references.
-    void ToProto(rpc::ObjectReferenceCount *ref, bool deduct_local_ref = false) const;
+
+    /// Serialize to a protobuf object.
+    ///
+    /// \param[in] ref The protobuf object to populate.
+    /// \param[in] object_id The ObjectID corresponding to this reference.
+    /// \param[in] has_local_ref Whether this worker is still using the ObjectID locally.
+    void ToProto(rpc::ObjectReferenceCount *ref, const ObjectID &object_id, bool has_local_ref) const;
 
     /// The reference count. This number includes:
     /// - Python references to the ObjectID.

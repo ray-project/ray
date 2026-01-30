@@ -1105,8 +1105,8 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
           << ref.borrow().stored_in_objects.size();
 
       auto *proto_ref = borrowed_refs->Add();
-      ref.ToProto(proto_ref, deduct_local_ref);
-      proto_ref->mutable_reference()->set_object_id(object_id.Binary());
+      bool has_local_ref = ref.RefCount() > (deduct_local_ref ? 1 : 0);
+      ref.ToProto(proto_ref, object_id, has_local_ref);
 
       // Clear the local list of borrowers that we have accumulated. The receiver
       // of the returned borrowed_refs must merge this list into their own list
@@ -1800,11 +1800,13 @@ ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(
 }
 
 void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
-                                          bool deduct_local_ref) const {
+                                          const ObjectID &object_id,
+                                          bool has_local_ref) const {
+  ref->mutable_reference()->set_object_id(object_id.Binary());
   if (owner_address_) {
     ref->mutable_reference()->mutable_owner_address()->CopyFrom(*owner_address_);
   }
-  ref->set_has_local_ref(RefCount() > (deduct_local_ref ? 1 : 0));
+  ref->set_has_local_ref(has_local_ref);
   for (const auto &borrower : borrow().borrowers) {
     ref->add_borrowers()->CopyFrom(borrower);
   }
