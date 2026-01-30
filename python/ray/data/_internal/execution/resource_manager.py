@@ -568,7 +568,6 @@ class OpResourceAllocator(ABC):
                     self.last_output_time[op] = cur_time
                     self.last_detection_time[op] = cur_time
                 else:
-                    self.last_detection_time[op] = cur_time
                     self.print_warning_if_idle_for_too_long(
                         op, cur_time - self.last_output_time[op]
                     )
@@ -701,24 +700,34 @@ class OpResourceAllocator(ABC):
         if not op.output_dependencies:
             return True
 
-        # In some edge cases, the downstream operators may have no enough resources to
-        # launch tasks. Then we should temporarily unblock the streaming output
-        # backpressure by allowing reading at least 1 block. So the current operator
-        # can finish at least one task and yield resources to the downstream operators.
         for downstream_op in self._get_downstream_eligible_ops(op):
-            if not self.can_submit_new_task(downstream_op):
-                # Case 1: the downstream operator hasn't reserved the minimum resources
-                # to run at least one task.
-                return True
+            # To maintain liveness of the pipeline, we relax output backpressure
+            # in one of the following cases
+            if downstream_op.num_active_tasks() == 0:
+                downstream_op_state = self._topology[downstream_op]
 
-            # Case 2: the downstream operator has reserved the minimum resources, but
-            # the resources are preempted by non-Data tasks or actors.
-            # We don't have a good way to detect this case, so we'll unblock
-            # backpressure when the downstream operator has been idle for a while.
-            if self._idle_detector.detect_idle(downstream_op):
-                return True
+                # Case 1: Downstream operator
+                #   - Does *not* have running tasks and
+                #   - Is not able to schedule (resource constrained)
+                #
+                # In this case by relaxing output backpressure we allow upstream
+                # operator's task to complete sooner to free up resources
+                if not self.can_submit_new_task(downstream_op):
+                    return True
 
-        return False
+                # Case 2: Downstream operator
+                #   - Does *not* have running tasks and
+                #   - *Can* schedule new tasks
+                #   - Does *not* have any input blocks in the queue
+                #
+                # In this case we relax output backpressure to produce at least
+                # 1 block for downstream operator
+                elif downstream_op_state.total_enqueued_input_blocks() == 0:
+                    return True
+
+        # As a last resort we check whether operator has been idling (ie not
+        # producing any outputs) for a while, and unblock in that case
+        return self._idle_detector.detect_idle(op)
 
 
 class ReservationOpResourceAllocator(OpResourceAllocator):
