@@ -66,8 +66,7 @@ def _convert_batch_type_to_pandas(
             FutureWarning,
             stacklevel=2,
         )
-
-    if isinstance(data, dict):
+    elif isinstance(data, dict):
         tensor_dict = {}
         for col_name, col in data.items():
             if not isinstance(col, np.ndarray):
