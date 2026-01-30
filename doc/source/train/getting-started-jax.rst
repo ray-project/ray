@@ -73,7 +73,7 @@ GPU scaling configuration
 For GPU training, `ScalingConfig` is similar to other frameworks. Key fields include:
 
 * :class:`num_workers <ray.train.ScalingConfig>`: The number of distributed training worker processes.
-* :class:`use_gpu <ray.train.ScalingConfig>`: Whether each worker should use a GPU (or CPU).
+* :class:`use_gpu <ray.train.ScalingConfig>`: Whether each worker should use a GPU.
 
 .. testcode::
 
