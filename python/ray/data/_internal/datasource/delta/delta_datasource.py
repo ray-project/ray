@@ -66,7 +66,8 @@ class DeltaDatasource(Datasource):
         self.path = path
         self.version = version
         self.storage_options = storage_options or {}
-        self.partition_filters = partition_filters
+        # Normalize partition filters: convert values to strings per delta-rs requirements
+        self.partition_filters = self._normalize_partition_filters(partition_filters)
         self.filesystem = filesystem
         self.columns = columns
         self.partitioning = partitioning
@@ -101,8 +102,61 @@ class DeltaDatasource(Datasource):
             self._delta_table_storage_options = dict(self.storage_options)
         return self._delta_table
 
+    def _normalize_partition_filters(
+        self, partition_filters: Optional[List[tuple]]
+    ) -> Optional[List[tuple]]:
+        """Normalize partition filter values to strings per delta-rs requirements.
+
+        delta-rs requires partition filter values to be strings:
+        - Integers: 2024 -> "2024"
+        - None/null: None -> "" (empty string)
+        - Other types: converted to string
+
+        Args:
+            partition_filters: List of (column, op, value) tuples.
+
+        Returns:
+            Normalized partition filters with string values.
+        """
+        if partition_filters is None:
+            return None
+
+        normalized = []
+        for filter_tuple in partition_filters:
+            if len(filter_tuple) != 3:
+                raise ValueError(
+                    f"Partition filter must be (column, op, value) tuple, got: {filter_tuple}"
+                )
+            column, op, value = filter_tuple
+
+            # Validate operator
+            valid_ops = {"=", "!=", "in", "not in"}
+            if op not in valid_ops:
+                raise ValueError(
+                    f"Invalid partition filter operator '{op}'. Valid: {valid_ops}"
+                )
+
+            # Normalize value to string
+            if value is None:
+                normalized_value = ""  # NULL represented as empty string in delta-rs
+            elif isinstance(value, (list, tuple)):
+                # For "in" and "not in" operators
+                normalized_value = [
+                    "" if v is None else str(v) for v in value
+                ]
+            else:
+                normalized_value = str(value)
+
+            normalized.append((column, op, normalized_value))
+
+        return normalized
+
     def get_file_paths(self) -> List[str]:
-        """Get list of Parquet file paths from Delta table."""
+        """Get list of Parquet file paths from Delta table.
+
+        Uses file_uris() which returns absolute URIs. These are passed to
+        ParquetDatasource which handles URI resolution internally.
+        """
         if self.partition_filters is not None:
             return self.delta_table.file_uris(partition_filters=self.partition_filters)
         return self.delta_table.file_uris()

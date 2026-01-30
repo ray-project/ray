@@ -747,6 +747,24 @@ def get_storage_options(
     return options
 
 
+def create_filesystem_from_storage_options(
+    path: str, storage_options: Optional[Dict[str, str]] = None
+) -> pa.fs.FileSystem:
+    """Create PyArrow filesystem from path and storage options.
+
+    Args:
+        path: Path to create filesystem for.
+        storage_options: Optional storage authentication options.
+
+    Returns:
+        PyArrow filesystem instance.
+    """
+    from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+
+    _, filesystem = _resolve_paths_and_filesystem(path, None)
+    return filesystem
+
+
 def _get_aws_credentials() -> Dict[str, str]:
     try:
         import boto3
