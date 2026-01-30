@@ -107,7 +107,7 @@ class RayletClient : public RayletClientInterface {
       override;
 
   void CancelResourceReserve(
-      const BundleSpecification &bundle_spec,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
       override;
 

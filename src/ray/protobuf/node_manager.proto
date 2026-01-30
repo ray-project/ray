@@ -127,7 +127,7 @@ message CommitBundleResourcesReply {}
 
 message CancelResourceReserveRequest {
   // Bundle containing the requested resources.
-  Bundle bundle_spec = 1;
+  repeated Bundle bundle_specs = 1;
 }
 
 message CancelResourceReserveReply {}
