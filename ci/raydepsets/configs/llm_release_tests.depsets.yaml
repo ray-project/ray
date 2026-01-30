@@ -10,6 +10,7 @@ build_arg_sets:
     - --unsafe-package ray
     - --python-platform=linux
     - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+    - --override python/requirements/llm/torch-override.txt
   build_arg_sets:
     - cu128
 

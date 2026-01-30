@@ -1,4 +1,5 @@
 --index-url https://pypi.org/simple
+--extra-index-url http://localhost:9478/simple
 
 accessible-pygments==0.0.5 \
     --hash=sha256:40918d3e6a2b619ad424cb91e556bd3bd8865443d9f22f1dcdf79e33c8046872 \

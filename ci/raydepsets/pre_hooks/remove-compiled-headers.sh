@@ -12,7 +12,7 @@ fi
 
 mkdir -p /tmp/ray-deps
 
-# Remove the GPU constraints
+# Remove the GPU constraints, numpy pin, and scipy pin (LLM requires numpy>=2 and compatible scipy)
 cp "python/${FILENAME}" "/tmp/ray-deps/${FILENAME}"
-sed -e '/^--extra-index-url /d' -e '/^--find-links /d' "/tmp/ray-deps/${FILENAME}" > "/tmp/ray-deps/${FILENAME}.tmp"
+sed -e '/^--extra-index-url /d' -e '/^--find-links /d' -e '/^numpy==/d' -e '/^scipy==/d' "/tmp/ray-deps/${FILENAME}" > "/tmp/ray-deps/${FILENAME}.tmp"
 mv "/tmp/ray-deps/${FILENAME}.tmp" "/tmp/ray-deps/${FILENAME}"
