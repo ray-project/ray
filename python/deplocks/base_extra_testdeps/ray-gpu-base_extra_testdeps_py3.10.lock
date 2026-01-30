@@ -3173,7 +3173,6 @@ pandas==1.5.3 \
     --hash=sha256:e474390e60ed609cec869b0da796ad94f420bb057d86784191eefc62b65819ae \
     --hash=sha256:f76d097d12c82a535fda9dfe5e8dd4127952b45fea9b0276cb30cca5ea313fbc
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   petastorm
     #   ray
     #   xarray
