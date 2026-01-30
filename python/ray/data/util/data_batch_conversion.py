@@ -60,7 +60,7 @@ def _convert_batch_type_to_pandas(
     "Convert to dictionary if DataBatchType is np.ndarray."
     "np.ndarray will be unsupported in future versions."
     if isinstance(data, np.ndarray):
-        data = {TENSOR_COLUMN_NAME: data}
+        data = pd.DataFrame({TENSOR_COLUMN_NAME: _ndarray_to_column(data)})
         warnings.warn(
             "In future versions of Ray, np.ndarray will not be supported as DataBatchType.",
             FutureWarning,
