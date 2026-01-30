@@ -524,11 +524,19 @@ def try_get_deltatable(
 ) -> Optional["DeltaTable"]:
     """Return DeltaTable if it exists, None otherwise."""
     from deltalake import DeltaTable
-    from deltalake.exceptions import DeltaError, TableNotFoundError
+
+    # Try to import exceptions module (may not exist in all deltalake versions)
+    try:
+        from deltalake.exceptions import DeltaError, TableNotFoundError
+
+        exception_types = (FileNotFoundError, OSError, ValueError, TableNotFoundError, DeltaError)
+    except ImportError:
+        # Fallback: exceptions module doesn't exist, catch common exceptions
+        exception_types = (FileNotFoundError, OSError, ValueError)
 
     try:
         return DeltaTable(table_uri, storage_options=storage_options)
-    except (FileNotFoundError, OSError, ValueError, TableNotFoundError, DeltaError):
+    except exception_types:
         return None
 
 

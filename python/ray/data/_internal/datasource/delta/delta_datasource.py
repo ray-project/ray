@@ -160,7 +160,7 @@ class DeltaDatasource(Datasource):
     @property
     def supports_distributed_reads(self) -> bool:
         """Whether this datasource supports distributed reads.
-        
+
         Local filesystem reads require all tasks to run on the same node
         to ensure files are accessible.
         """
