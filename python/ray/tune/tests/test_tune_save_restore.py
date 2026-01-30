@@ -36,7 +36,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 
     def setUp(self):
         self.absolute_local_dir = None
-        ray.init(num_cpus=1, num_gpus=0)
+        ray.init(num_cpus=2, num_gpus=0)
 
     def tearDown(self):
         if self.absolute_local_dir is not None:
