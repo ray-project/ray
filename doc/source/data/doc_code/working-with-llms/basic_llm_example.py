@@ -160,7 +160,7 @@ ctx.checkpoint_config = CheckpointConfig(
 
 # __checkpoint_usage_example_start__
 processor_config = vLLMEngineProcessorConfig(
-    model_source="Qwen/Qwen3-0.6B",
+    model_source="unsloth/Llama-3.1-8B-Instruct",
     concurrency=1,
     batch_size=16,
     chat_template_stage=False,
