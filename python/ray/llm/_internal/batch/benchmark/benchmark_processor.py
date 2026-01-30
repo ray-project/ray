@@ -40,6 +40,7 @@ class Mode(Enum):
     SERVE_DEPLOYMENT = "serve_deployment"
     SHARED_SERVE_DEPLOYMENT = "shared_serve_deployment"
     CLASSIFY = "classify"
+    EMBEDDING = "embedding"
 
 
 # Default sampling parameters -- ensure a fair comparison by omitting sampling-induced variance
@@ -258,6 +259,44 @@ def build_classify_processor(
     )
 
 
+def build_embedding_processor(
+    batch_size: int,
+    concurrency: int,
+    model: str,
+    max_model_len: int = None,
+    distributed_executor_backend: str = None,
+):
+    """Build vLLM engine processor for embedding benchmark."""
+
+    engine_kwargs = VLLM_ENGINE_KWARGS.copy()
+    if distributed_executor_backend is not None:
+        engine_kwargs["distributed_executor_backend"] = distributed_executor_backend
+    if max_model_len is not None:
+        engine_kwargs["max_model_len"] = max_model_len
+
+    config = vLLMEngineProcessorConfig(
+        model_source=model,
+        task_type="embed",
+        batch_size=batch_size,
+        concurrency=concurrency,
+        chat_template_stage=ChatTemplateStageConfig(enabled=False),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
+        engine_kwargs=engine_kwargs,
+    )
+    return build_processor(
+        config,
+        preprocess=lambda row: dict(
+            prompt=row["prompt"],
+        ),
+        postprocess=lambda row: {
+            "embedding": row["embeddings"]
+            if row.get("embeddings") is not None
+            else None,
+        },
+    )
+
+
 def setup_serve_deployment(model: str, concurrency: int) -> tuple[str, str]:
     """Set up Ray Serve deployment for hosting the LLM model."""
     deployment_name = "benchmark_deployment"
@@ -456,6 +495,7 @@ def benchmark(
         Mode.SERVE_DEPLOYMENT: build_single_serve_deployment_processor,
         Mode.SHARED_SERVE_DEPLOYMENT: build_shared_serve_deployment_processor,
         Mode.CLASSIFY: build_classify_processor,
+        Mode.EMBEDDING: build_embedding_processor,
     }
 
     if mode not in mode_to_builder:
@@ -488,6 +528,16 @@ def benchmark(
             concurrency=concurrency,
             model=model,
             pooling_params=CLASSIFY_POOLING_PARAMS,
+            distributed_executor_backend=distributed_executor_backend,
+        )
+    elif mode == Mode.EMBEDDING:
+        return run_processor(
+            mode,
+            dataset,
+            builder,
+            batch_size=batch_size,
+            concurrency=concurrency,
+            model=model,
             distributed_executor_backend=distributed_executor_backend,
         )
     else:
