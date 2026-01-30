@@ -1,5 +1,4 @@
 --index-url https://pypi.org/simple
---extra-index-url http://localhost:9478/simple
 --extra-index-url https://download.pytorch.org/whl/cu128
 
 absl-py==2.3.1 \

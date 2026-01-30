@@ -1,5 +1,4 @@
 --index-url https://pypi.org/simple
---extra-index-url http://localhost:9478/simple
 
 absl-py==1.4.0 \
     --hash=sha256:0d3fe606adfa4f7db64792dd4c7aee4ee0c38ab75dfd353b7a83ed3e957fcb47 \
