@@ -8,12 +8,11 @@ This template shows how to train large language models using tensor parallelism 
 
 This tutorial provides a step-by-step guide covering:
 
-- Understanding 2D parallelism (Tensor Parallelism + Data Parallelism)
-- Setting up a 2D PyTorch `DeviceMesh`
-- Applying tensor parallelism with the Distributed Tensor API to transformer layers
-- Combining with FSDP2 for data parallelism
-- TP-aware data loading to ensure correct gradient computation
-- Distributed checkpointing with Ray Train
+- Understanding 2D parallelism (Tensor Parallelism + Data Parallelism) and 2D PyTorch `DeviceMesh`
+- Setting up a data loader compatible with 2D parallelism
+- Preparing the model with DTensor and FSDP2 APIs
+- Checkpointing
+- Distributed training with Ray Train
 
 **Note:** This tutorial uses PyTorch's native `DTensor` and `fully_shard` APIs. These require PyTorch 2.4 or later.
 
