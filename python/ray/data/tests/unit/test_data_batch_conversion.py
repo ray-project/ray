@@ -51,7 +51,7 @@ def test_numpy_to_numpy():
     np.testing.assert_array_equal(input_data["column_2"], expected_output["column_2"])
 
     input_data = np.arange(12).reshape(3, 4)
-    expected_output = input_data
+    expected_output = {TENSOR_COLUMN_NAME: input_data}
     actual_output = _convert_batch_type_to_numpy(input_data)
     np.testing.assert_array_equal(expected_output, actual_output)
 

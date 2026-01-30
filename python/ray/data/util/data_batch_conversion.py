@@ -111,22 +111,12 @@ def _convert_pandas_to_batch_type(
     if type == BatchFormat.PANDAS:
         return data
 
-    elif type == BatchFormat.NUMPY:
-        if len(data.columns) == 1:
-            warnings.warn(
-                "In future versions of Ray, np.ndarray will not be supported as DataBatchType.",
-                FutureWarning,
-                stacklevel=2,
-            )
-
-            # If just a single column, return as a single numpy array.
-            return data.iloc[:, 0].to_numpy()
-        else:
-            # Else return as a dict of numpy arrays.
-            output_dict = {}
-            for column in data:
-                output_dict[column] = data[column].to_numpy()
-            return output_dict
+    if type == BatchFormat.NUMPY:
+        # Return a dict of numpy arrays.
+        output_dict = {}
+        for column in data:
+            output_dict[column] = data[column].to_numpy()
+        return output_dict
 
     elif type == BatchFormat.ARROW:
         if not pyarrow:
@@ -145,7 +135,7 @@ def _convert_pandas_to_batch_type(
 
 def _convert_batch_type_to_numpy(
     data: DataBatchType,
-) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+) -> Dict[str, np.ndarray]:
     """Convert the provided data to a NumPy ndarray or dict of ndarrays.
 
     Args:
@@ -163,7 +153,7 @@ def _convert_batch_type_to_numpy(
             stacklevel=2,
         )
 
-        return data
+        return {TENSOR_COLUMN_NAME: data}
     elif isinstance(data, dict):
         for col_name, col in data.items():
             if not isinstance(col, np.ndarray):
@@ -196,7 +186,7 @@ def _convert_batch_type_to_numpy(
         if data.column_names == [TENSOR_COLUMN_NAME] and (
             isinstance(data.schema.types[0], arrow_fixed_shape_tensor_types)
         ):
-            return column_values_ndarrays[0]
+            return {TENSOR_COLUMN_NAME: column_values_ndarrays[0]}
 
         return dict(zip(data.column_names, column_values_ndarrays))
     elif isinstance(data, pd.DataFrame):
