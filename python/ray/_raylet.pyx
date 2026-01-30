@@ -37,6 +37,7 @@ import contextvars
 import concurrent.futures
 import collections
 
+from dataclasses import dataclass
 from libc.stdint cimport (
     int32_t,
     int64_t,
@@ -1101,6 +1102,12 @@ cdef class StreamingGeneratorExecutionContext:
 
         return self
 
+
+@dataclass(frozen=True)
+class StreamingGeneratorStats:
+    serialization_dur_s: float
+
+
 cdef report_streaming_generator_output(
     StreamingGeneratorExecutionContext context,
     output: object,
@@ -1162,7 +1169,9 @@ cdef report_streaming_generator_output(
             context.waiter))
 
 
-    return serialization_dur_s
+    return StreamingGeneratorStats(
+        serialization_dur_s=serialization_dur_s,
+    )
 
 
 cdef report_streaming_generator_exception(
@@ -1257,15 +1266,15 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     gen = context.generator
 
     try:
-        report_dur_s = None
+        stats = None
 
         while True:
             try:
                 # Send object serialization duration to the generator and retrieve
                 # next output
-                output = gen.send(report_dur_s)
+                output = gen.send(stats)
                 # Track serialization duration of the next output
-                report_dur_s = report_streaming_generator_output(context, output, gen_index, None)
+                stats = report_streaming_generator_output(context, output, gen_index, None)
 
                 gen_index += 1
 
@@ -1324,11 +1333,11 @@ async def execute_streaming_generator_async(
     interrupt_signal_event = threading.Event()
 
     try:
-        report_dur_s = None
+        stats = None
 
         while True:
             try:
-                output = await gen.asend(report_dur_s)
+                output = await gen.asend(stats)
                 # NOTE: Report of streaming generator output is done in a
                 # standalone thread-pool to avoid blocking the event loop,
                 # since serializing and actual RPC I/O is done with "nogil". We
@@ -1341,7 +1350,7 @@ async def execute_streaming_generator_async(
                 # are currently under backpressure. Then we need to wait for an
                 # ack from the caller (the reply for a possibly previous report
                 # RPC) that they have consumed more ObjectRefs.
-                report_dur_s = await loop.run_in_executor(
+                stats = await loop.run_in_executor(
                     executor,
                     report_streaming_generator_output,
                     context,
