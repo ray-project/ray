@@ -1100,6 +1100,10 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
   if (for_ref_removed || !ref.foreign_owner_already_monitoring) {
     // If this object_id has not been encountered yet, add it to borrowed_refs.
     if (encountered.insert(object_id).second) {
+      RAY_LOG(DEBUG).WithField(object_id)
+          << "Object has " << ref.borrow().borrowers.size() << " borrowers, stored in "
+          << ref.borrow().stored_in_objects.size();
+
       auto *proto_ref = borrowed_refs->Add();
       ref.ToProto(proto_ref, deduct_local_ref);
       proto_ref->mutable_reference()->set_object_id(object_id.Binary());
@@ -1373,13 +1377,6 @@ void ReferenceCounter::PublishRefRemovedInternal(const ObjectID &object_id) {
       /*for_ref_removed=*/true,
       /*deduct_local_ref=*/false,
       worker_ref_removed_message->mutable_borrowed_refs()));
-  /*
-  for (const auto &[id, ref] : borrowed_refs) {
-    RAY_LOG(DEBUG).WithField(id)
-        << "Object has " << ref.borrowers().size() << " borrowers, stored in "
-        << ref.stored_in_objects().size();
-  }
-  */
 
   // Send the owner information about any new borrowers.
   RAY_LOG(DEBUG).WithField(object_id)
