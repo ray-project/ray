@@ -21,7 +21,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
 )
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
-    TensorFormat,
+    FixedShapeTensorFormat,
     _extension_array_concat_supported,
 )
 from ray.data.block import BlockAccessor
@@ -1703,8 +1703,12 @@ def uniform_tensor_expected():
     tensor_format = ctx.arrow_fixed_shape_tensor_format
     # If arrow_fixed_shape_tensor_format is None, fallback to use_arrow_tensor_v2
     if tensor_format is None:
-        tensor_format = TensorFormat.V2 if ctx.use_arrow_tensor_v2 else TensorFormat.V1
-    if tensor_format == TensorFormat.V2:
+        tensor_format = (
+            FixedShapeTensorFormat.V2
+            if ctx.use_arrow_tensor_v2
+            else FixedShapeTensorFormat.V1
+        )
+    if tensor_format == FixedShapeTensorFormat.V2:
         tensor_type = ArrowTensorTypeV2
     else:
         tensor_type = ArrowTensorType
@@ -2853,7 +2857,9 @@ def unify_schemas_nested_struct_tensors_schemas():
     return {"with_tensor": schema1, "without_tensor": schema2, "expected": expected}
 
 
-@pytest.mark.parametrize("tensor_format", [TensorFormat.V1, TensorFormat.V2])
+@pytest.mark.parametrize(
+    "tensor_format", [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
+)
 @pytest.mark.skipif(
     get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
     reason="Requires Arrow version of at least 14.0.0",
@@ -2898,7 +2904,7 @@ def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(
 
     # Ensure that the result is correct
     # Determine expected tensor type based on current DataContext setting
-    if tensor_format == TensorFormat.V2:
+    if tensor_format == FixedShapeTensorFormat.V2:
         expected_tensor_type = ArrowTensorTypeV2((3, 3), pa.float32())
     else:
         expected_tensor_type = ArrowTensorType((3, 3), pa.float32())

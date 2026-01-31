@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from ray.data._internal.issue_detection.issue_detector_configuration import (
         IssueDetectorsConfiguration,
     )
-    from ray.data._internal.tensor_extensions.arrow import TensorFormat
+    from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
 
 logger = logging.getLogger(__name__)
 
@@ -383,7 +383,7 @@ class DataContext:
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
-            Options are None, TensorFormat.V1, TensorFormat.V2, and TensorFormat.NATIVE.
+            Options are None, FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2, and FixedShapeTensorFormat.ARROW_NATIVE.
             Default is None, which will fallback to use_arrow_tensor_v2.
         use_arrow_tensor_v2: [Deprecating]. Use ``arrow_fixed_shape_tensor_format`` instead.
             Config enabling V2 version of ArrowTensorArray supporting
@@ -568,7 +568,7 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
-    arrow_fixed_shape_tensor_format: Optional["TensorFormat"] = None
+    arrow_fixed_shape_tensor_format: Optional["FixedShapeTensorFormat"] = None
     use_arrow_tensor_v2: bool = DEFAULT_USE_ARROW_TENSOR_V2
     enable_fallback_to_arrow_object_ext_type: Optional[bool] = None
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS

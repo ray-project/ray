@@ -28,8 +28,8 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorType,
     ArrowTensorTypeV2,
+    FixedShapeTensorFormat,
     FixedShapeTensorType,
-    TensorFormat,
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import rows_same
@@ -1162,7 +1162,7 @@ def test_partitioning_in_dataset_kwargs_raises_error(
         )
 
 
-@pytest.mark.parametrize("new_tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("new_tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_in_tables_parquet(
     ray_start_regular_shared,
     tmp_path,
@@ -1252,12 +1252,12 @@ def test_tensors_in_tables_parquet(
 
     _assert_equal(ds.take_all(), expected_tuples)
 
-    if new_tensor_format == TensorFormat.NATIVE:
+    if new_tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
         if FixedShapeTensorType is None:
             expected_tensor_type = ArrowTensorType
         else:
             expected_tensor_type = FixedShapeTensorType
-    elif new_tensor_format == TensorFormat.V2:
+    elif new_tensor_format == FixedShapeTensorFormat.V2:
         expected_tensor_type = ArrowTensorTypeV2
     else:  # v1
         expected_tensor_type = ArrowTensorType

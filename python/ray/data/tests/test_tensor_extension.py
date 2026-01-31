@@ -18,8 +18,8 @@ from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
+    FixedShapeTensorFormat,
     FixedShapeTensorType,
-    TensorFormat,
     _are_contiguous_1d_views,
     _concat_ndarrays,
     _extension_array_concat_supported,
@@ -34,7 +34,7 @@ from ray.data._internal.tensor_extensions.utils import (
 )
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 @pytest.mark.parametrize(
     "values",
     [
@@ -104,7 +104,7 @@ def test_pandas_to_arrow_var_shape_tensor_conversion():
         np.testing.assert_array_equal(actual, expected)
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_arrow_scalar_tensor_array_roundtrip(restore_data_context, tensor_format):
     ctx = DataContext.get_current()
     ctx.arrow_fixed_shape_tensor_format = tensor_format
@@ -113,14 +113,14 @@ def test_arrow_scalar_tensor_array_roundtrip(restore_data_context, tensor_format
     ata = ArrowTensorArray.from_numpy(arr)
     assert isinstance(ata.type, pa.DataType)
     assert len(ata) == len(arr)
-    if tensor_format == TensorFormat.NATIVE:
+    if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
         out = ata.to_numpy_ndarray()
     else:
         out = ata.to_numpy()
     np.testing.assert_array_equal(out, arr)
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_arrow_scalar_tensor_array_roundtrip_boolean(
     restore_data_context, tensor_format
 ):
@@ -137,7 +137,7 @@ def test_arrow_scalar_tensor_array_roundtrip_boolean(
     np.testing.assert_array_equal(out, arr)
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_scalar_tensor_array_roundtrip(restore_data_context, tensor_format):
     ctx = DataContext.get_current()
     ctx.arrow_fixed_shape_tensor_format = tensor_format
@@ -153,14 +153,14 @@ def test_scalar_tensor_array_roundtrip(restore_data_context, tensor_format):
     ata = ta.__arrow_array__()
     assert isinstance(ata.type, pa.DataType)
     assert len(ata) == len(arr)
-    if ctx.arrow_fixed_shape_tensor_format == TensorFormat.NATIVE:
+    if ctx.arrow_fixed_shape_tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
         out = ata.to_numpy_ndarray()
     else:
         out = ata.to_numpy()
     np.testing.assert_array_equal(out, arr)
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_arrow_variable_shaped_tensor_array_validation(
     restore_data_context, tensor_format
 ):
@@ -422,7 +422,7 @@ def test_variable_shaped_tensor_array_slice(restore_data_context):
             np.testing.assert_array_equal(o, e)
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensor_array_ops(restore_data_context, tensor_format):
     ctx = DataContext.get_current()
     ctx.arrow_fixed_shape_tensor_format = tensor_format
@@ -452,7 +452,7 @@ def test_tensor_array_ops(restore_data_context, tensor_format):
     np.testing.assert_equal(apply_logical_ops(arr), apply_logical_ops(df["two"]))
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensor_array_array_protocol(restore_data_context, tensor_format):
     ctx = DataContext.get_current()
     ctx.arrow_fixed_shape_tensor_format = tensor_format
@@ -476,7 +476,7 @@ def test_tensor_array_array_protocol(restore_data_context, tensor_format):
     )
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensor_array_dataframe_repr(restore_data_context, tensor_format):
     ctx = DataContext.get_current()
     ctx.arrow_fixed_shape_tensor_format = tensor_format
@@ -497,7 +497,7 @@ def test_tensor_array_dataframe_repr(restore_data_context, tensor_format):
     assert repr(df) == expected_repr
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensor_array_scalar_cast(restore_data_context, tensor_format):
     ctx = DataContext.get_current()
     ctx.arrow_fixed_shape_tensor_format = tensor_format
@@ -518,7 +518,7 @@ def test_tensor_array_scalar_cast(restore_data_context, tensor_format):
     assert float(t_arr) == float(arr)
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensor_array_reductions(restore_data_context, tensor_format):
     ctx = DataContext.get_current()
     ctx.arrow_fixed_shape_tensor_format = tensor_format
@@ -542,7 +542,7 @@ def test_tensor_array_reductions(restore_data_context, tensor_format):
         np.testing.assert_equal(df["two"].agg(name), reducer(arr, axis=0, **np_kwargs))
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 @pytest.mark.parametrize("shape", [(2, 0), (2, 5, 0), (0, 5), (0, 0)])
 def test_zero_length_arrow_tensor_array_roundtrip(
     restore_data_context, tensor_format, shape
@@ -556,7 +556,7 @@ def test_zero_length_arrow_tensor_array_roundtrip(
     np.testing.assert_array_equal(out, arr)
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 @pytest.mark.parametrize("chunked", [False, True])
 def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format):
     ctx = DataContext.get_current()
@@ -599,7 +599,7 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
             # NOTE: In addition we verify that for existing ``ArrowTensorScalar``
             #       implements `__array__` method therefore implementing Numpy
             #       array protocol
-            if tensor_format != TensorFormat.NATIVE:
+            if tensor_format != FixedShapeTensorFormat.ARROW_NATIVE:
                 np.testing.assert_array_equal(item, arr[idx])
 
     # Test __iter__.
@@ -614,7 +614,7 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
             )
 
     # Test to_pylist.
-    if tensor_format == TensorFormat.NATIVE:
+    if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
         if FixedShapeTensorType is None:
             np.testing.assert_array_equal(t_arr.to_pylist(), list(arr))
         else:
@@ -641,7 +641,7 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
         chunked
         and pyarrow_version >= parse_version("8.0.0")
         and pyarrow_version < parse_version("9.0.0")
-        and tensor_format != TensorFormat.NATIVE
+        and tensor_format != FixedShapeTensorFormat.ARROW_NATIVE
     ):
         for idx in range(1, outer_dim):
             item = t_arr2[idx - 1]
@@ -661,7 +661,7 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
                 )
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 @pytest.mark.parametrize("chunked", [False, True])
 def test_arrow_variable_shaped_tensor_array_getitem(
     chunked, restore_data_context, tensor_format
@@ -736,7 +736,7 @@ def test_arrow_variable_shaped_tensor_array_getitem(
             np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 @pytest.mark.parametrize(
     "test_arr,dtype",
     [
@@ -780,7 +780,7 @@ pytest_tensor_array_concat_arr_combinations = list(
 )
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 @pytest.mark.parametrize("a1,a2", pytest_tensor_array_concat_arr_combinations)
 def test_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
     ctx = DataContext.get_current()
@@ -802,7 +802,7 @@ def test_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
             np.testing.assert_array_equal(arr, expected)
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 @pytest.mark.parametrize("a1,a2", pytest_tensor_array_concat_arr_combinations)
 def test_arrow_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
     ctx = DataContext.get_current()
@@ -814,11 +814,11 @@ def test_arrow_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
     assert len(ta) == a1.shape[0] + a2.shape[0]
 
     if a1.shape[1:] == a2.shape[1:]:
-        if tensor_format == TensorFormat.V1:
+        if tensor_format == FixedShapeTensorFormat.V1:
             tensor_type_class = ArrowTensorType
-        elif tensor_format == TensorFormat.V2:
+        elif tensor_format == FixedShapeTensorFormat.V2:
             tensor_type_class = ArrowTensorTypeV2
-        elif tensor_format == TensorFormat.NATIVE:
+        elif tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
             if FixedShapeTensorType is None:
                 tensor_type_class = ArrowTensorType
             else:
@@ -842,7 +842,7 @@ def test_arrow_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
             np.testing.assert_array_equal(arr, expected)
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_variable_shaped_tensor_array_chunked_concat(
     restore_data_context, tensor_format
 ):
@@ -868,7 +868,7 @@ def test_variable_shaped_tensor_array_chunked_concat(
         np.testing.assert_array_equal(arr, expected)
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_variable_shaped_tensor_array_uniform_dim(restore_data_context, tensor_format):
     ctx = DataContext.get_current()
     ctx.arrow_fixed_shape_tensor_format = tensor_format
@@ -884,15 +884,16 @@ def test_variable_shaped_tensor_array_uniform_dim(restore_data_context, tensor_f
         np.testing.assert_array_equal(a, expected)
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_large_arrow_tensor_array(restore_data_context, tensor_format):
     ctx = DataContext.get_current()
     ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     test_arr = np.ones((1000, 550), dtype=np.uint8)
 
-    if tensor_format == TensorFormat.V1 or (
-        tensor_format == TensorFormat.NATIVE and FixedShapeTensorType is None
+    if tensor_format == FixedShapeTensorFormat.V1 or (
+        tensor_format == FixedShapeTensorFormat.ARROW_NATIVE
+        and FixedShapeTensorType is None
     ):
         with pytest.raises(ArrowConversionError) as exc_info:
             ta = ArrowTensorArray.from_numpy([test_arr] * 4000)
@@ -908,7 +909,7 @@ def test_large_arrow_tensor_array(restore_data_context, tensor_format):
             assert arr.to_numpy().shape == (1000, 550)
 
 
-@pytest.mark.parametrize("tensor_format", list(TensorFormat))
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensor_array_string_tensors_simple(restore_data_context, tensor_format):
     """Simple test for fixed-shape string tensor arrays with pandas/arrow roundtrip."""
     DataContext.get_current().arrow_fixed_shape_tensor_format = tensor_format
@@ -965,9 +966,9 @@ class TestCreateArrowTensorType:
     @pytest.mark.parametrize(
         "tensor_format,expected_type",
         [
-            (TensorFormat.V1, ArrowTensorType),
-            (TensorFormat.V2, ArrowTensorTypeV2),
-            (TensorFormat.NATIVE, FixedShapeTensorType),
+            (FixedShapeTensorFormat.V1, ArrowTensorType),
+            (FixedShapeTensorFormat.V2, ArrowTensorTypeV2),
+            (FixedShapeTensorFormat.ARROW_NATIVE, FixedShapeTensorType),
         ],
     )
     @pytest.mark.parametrize(
@@ -997,7 +998,9 @@ class TestCreateArrowTensorType:
     def test_native_format_raises_error_on_unsupported_pyarrow_version(self):
         with pytest.raises(ValueError):
             create_arrow_fixed_shape_tensor_format(
-                shape=(1, 1), dtype=pa.int64(), tensor_format=TensorFormat.NATIVE
+                shape=(1, 1),
+                dtype=pa.int64(),
+                tensor_format=FixedShapeTensorFormat.ARROW_NATIVE,
             )
 
     @pytest.mark.parametrize(
@@ -1055,7 +1058,7 @@ class TestCreateArrowTensorType:
         )
         assert isinstance(tensor_type, ArrowTensorTypeV2)
 
-    @pytest.mark.parametrize("tensor_format", list(TensorFormat))
+    @pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
     @pytest.mark.parametrize(
         "dtype",
         [pa.int8(), pa.int16(), pa.int32(), pa.int64(), pa.float32(), pa.float64()],
@@ -1089,7 +1092,9 @@ def test_arrow_fixed_shape_tensor_format_eq_with_concat(restore_data_context):
     # Test ArrowTensorType V1
     tensor_type_v1 = ArrowTensorType((2, 3), pa.int64())
 
-    DataContext.get_current().arrow_fixed_shape_tensor_format = TensorFormat.V1
+    DataContext.get_current().arrow_fixed_shape_tensor_format = (
+        FixedShapeTensorFormat.V1
+    )
     first = ArrowTensorArray.from_numpy(np.ones((2, 2, 3), dtype=np.int64))
     second = ArrowTensorArray.from_numpy(np.zeros((3, 2, 3), dtype=np.int64))
 
@@ -1109,7 +1114,9 @@ def test_arrow_fixed_shape_tensor_format_eq_with_concat(restore_data_context):
     # Test ArrowTensorTypeV2
     tensor_type_v2 = ArrowTensorTypeV2((2, 3), pa.int64())
 
-    DataContext.get_current().arrow_fixed_shape_tensor_format = TensorFormat.V2
+    DataContext.get_current().arrow_fixed_shape_tensor_format = (
+        FixedShapeTensorFormat.V2
+    )
 
     first = ArrowTensorArray.from_numpy(np.ones((2, 2, 3), dtype=np.int64))
     second = ArrowTensorArray.from_numpy(np.ones((3, 2, 3), dtype=np.int64))

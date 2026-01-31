@@ -105,22 +105,22 @@ ARROW_EXTENSION_SERIALIZATION_CACHE_MAXSIZE = env_integer(
 logger = logging.getLogger(__name__)
 
 
-class TensorFormat(Enum):
+class FixedShapeTensorFormat(Enum):
     """Enum representing the different tensor type formats."""
 
     V1 = "v1"
     V2 = "v2"
-    NATIVE = "native"
+    ARROW_NATIVE = "native"
 
 
-def _resolve_tensor_format() -> "TensorFormat":
+def _resolve_tensor_format() -> "FixedShapeTensorFormat":
     """Resolve the tensor format from DataContext.
 
     If arrow_fixed_shape_tensor_format is set, use it.
     Otherwise, fallback to use_arrow_tensor_v2 (True -> V2, False -> V1).
 
     Returns:
-        The resolved TensorFormat.
+        The resolved FixedShapeTensorFormat.
     """
     from ray.data.context import DataContext
 
@@ -129,7 +129,11 @@ def _resolve_tensor_format() -> "TensorFormat":
 
     # If arrow_fixed_shape_tensor_format is None, fallback to use_arrow_tensor_v2
     if tensor_format is None:
-        tensor_format = TensorFormat.V2 if ctx.use_arrow_tensor_v2 else TensorFormat.V1
+        tensor_format = (
+            FixedShapeTensorFormat.V2
+            if ctx.use_arrow_tensor_v2
+            else FixedShapeTensorFormat.V1
+        )
 
     return tensor_format
 
@@ -776,7 +780,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
 def create_arrow_fixed_shape_tensor_format(
     shape: Tuple[int, ...],
     dtype: pa.DataType,
-    tensor_format: Optional[TensorFormat] = None,
+    tensor_format: Optional[FixedShapeTensorFormat] = None,
 ) -> pa.ExtensionType:
     """
     Factory method to create an Arrow tensor type.
@@ -805,7 +809,7 @@ def create_arrow_fixed_shape_tensor_format(
 
         # Native tensor format requires PyArrow 12+
         if (
-            tensor_format == TensorFormat.NATIVE
+            tensor_format == FixedShapeTensorFormat.ARROW_NATIVE
             and FixedShapeTensorType is None
             and log_once("native_fixed_shape_tensors_not_supported")
         ):
@@ -815,9 +819,9 @@ def create_arrow_fixed_shape_tensor_format(
                 UserWarning,
                 stacklevel=3,
             )
-            tensor_format = TensorFormat.V2
+            tensor_format = FixedShapeTensorFormat.V2
 
-    if tensor_format == TensorFormat.NATIVE:
+    if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
         if FixedShapeTensorType is None:
             raise ValueError(
                 # TODO(Justin): Use the min supported version variable
@@ -825,7 +829,7 @@ def create_arrow_fixed_shape_tensor_format(
                 "Please upgrade PyArrow or use V1/V2 format."
             )
         return pa.fixed_shape_tensor(dtype, shape)
-    elif tensor_format == TensorFormat.V2:
+    elif tensor_format == FixedShapeTensorFormat.V2:
         return ArrowTensorTypeV2(shape, dtype)
     else:  # V1
         return ArrowTensorType(shape, dtype)
