@@ -121,7 +121,7 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         "Can specify either 'bundle_per_worker' (auto-replicated by tp*pp) or 'bundles' "
         "(full list of resource dicts). Optionally include 'strategy' key "
         "('PACK', 'STRICT_PACK', 'SPREAD', or 'STRICT_SPREAD'). "
-        "Example with bundle_per_worker: {'bundle_per_worker': {'CPU': 1, 'GPU': 1}}. "
+        "Example with bundle_per_worker: {'bundle_per_worker': {'CPU': 1, 'GPU': 1}, 'strategy': 'SPREAD'}. "
         "Example with bundles: {'bundles': [{'CPU': 1, 'GPU': 1}] * 4, 'strategy': 'SPREAD'}.",
     )
 

@@ -332,6 +332,8 @@ config = vLLMEngineProcessorConfig(
 # __cross_node_parallelism_config_example_end__
 
 # __custom_placement_group_strategy_config_example_start__
+# Simple: specify resources per worker, auto-replicated by TP*PP (4 workers here)
+# Alternative: use "bundles": [{"GPU": 1}] * 4 for explicit bundle control
 config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     engine_kwargs={
@@ -345,7 +347,7 @@ config = vLLMEngineProcessorConfig(
     batch_size=32,
     concurrency=1,
     placement_group_config={
-        "bundles": [{"GPU": 1}] * 4,
+        "bundle_per_worker": {"GPU": 1},
         "strategy": "STRICT_PACK",
     },
 )
