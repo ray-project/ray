@@ -2634,11 +2634,21 @@ def test_write_parquet_include_row_number(
 def test_write_parquet_include_row_number_with_partitioning(
     max_rows_per_file, ray_start_regular_shared, tmp_path
 ):
-    ds = ray.data.range(1000)
-    ds.write_parquet(tmp_path, partition_cols=["id"], include_row_number=True)
+    # Use a partition column that groups many rows (id % 10) so we get multiple
+    # rows per file and can meaningfully verify _row_num is unique per file.
+    # Partitioning by "id" alone would give 1 row per partition (trivial).
+    from ray.data.expressions import col
+
+    ds = ray.data.range(1000).with_column("part", col("id") % 10)
+    ds.write_parquet(
+        tmp_path,
+        partition_cols=["part"],
+        include_row_number=True,
+        max_rows_per_file=max_rows_per_file,
+    )
     result = ray.data.read_parquet(tmp_path)
     assert result.count() == 1000
-    assert set(result.schema().names) == {"id", "_row_num"}
+    assert set(result.schema().names) == {"id", "part", "_row_num"}
 
     import polars as pl
 
