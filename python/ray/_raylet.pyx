@@ -1862,8 +1862,6 @@ cdef void execute_task(
                                      exc_info=True)
                     # Convert StopIteration to RuntimeError per PEP 479
                     # preserving original cause and name of the original exception
-                    # TODO (zac): #60625 This entire exception catch can be deleted
-                    # if we upgrade cython to v3.+
                     task_exception_instance = RuntimeError(
                         "generator raised " + type(e).__name__
                     )
