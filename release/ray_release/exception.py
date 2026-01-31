@@ -2,8 +2,6 @@ import enum
 
 
 class ExitCode(enum.Enum):
-    # If you change these, also change the `retry` section
-    # in `build_pipeline.py` and the `reason()` function in `run_e2e.sh`
     SUCCESS = 0  # Do not set/return this manually
     UNCAUGHT = 1  # Do not set/return this manually
 

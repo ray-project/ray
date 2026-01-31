@@ -7,13 +7,10 @@ import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-import ray
 from ray._private.ray_constants import env_bool, env_float, env_integer
-from ray._private.worker import WORKER_MODE
 from ray.data._internal.logging import update_dataset_logger_for_worker
 from ray.data.checkpoint.interfaces import CheckpointBackend, CheckpointConfig
 from ray.util.annotations import DeveloperAPI
-from ray.util.debug import log_once
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
 if TYPE_CHECKING:
@@ -139,9 +136,6 @@ DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
     "RAY_DATA_ENABLE_PROGRESS_BAR_NAME_TRUNCATION", True
 )
 
-# Progress bar log interval in seconds
-DEFAULT_PROGRESS_BAR_LOG_INTERVAL = env_integer("RAY_DATA_PROGRESS_LOG_INTERVAL", 5)
-
 # Globally enable or disable experimental rich progress bars. This is a new
 # interface to replace the old tqdm progress bar implementation.
 DEFAULT_ENABLE_RICH_PROGRESS_BARS = bool(
@@ -248,8 +242,9 @@ DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: int = env_integer(
 )
 
 
+# Disable dynamic output queue size backpressure by default.
 DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
-    "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", True
+    "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", False
 )
 
 
@@ -402,8 +397,6 @@ class DataContext:
             `ProgressBar.MAX_NAME_LENGTH`. Otherwise, the full operator name is shown.
         enable_rich_progress_bars: Whether to use the new rich progress bars instead
             of the tqdm TUI.
-        progress_bar_log_interval: The interval in seconds for logging progress bar
-            updates in non-interactive terminals.
         enable_get_object_locations_for_metrics: Whether to enable
             ``get_object_locations`` for metrics. This is useful for tracking whether
             the object input of a task is local (cache hit) or not local (cache miss)
@@ -573,14 +566,11 @@ class DataContext:
     use_ray_tqdm: bool = DEFAULT_USE_RAY_TQDM
     enable_progress_bars: bool = DEFAULT_ENABLE_PROGRESS_BARS
     # By default, enable the progress bar for operator-level progress.
-    # In __post_init__(), we disable operator-level progress
-    # bars when running in a Ray job.
     enable_operator_progress_bars: bool = True
     enable_progress_bar_name_truncation: bool = (
         DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
     )
     enable_rich_progress_bars: bool = DEFAULT_ENABLE_RICH_PROGRESS_BARS
-    progress_bar_log_interval: int = DEFAULT_PROGRESS_BAR_LOG_INTERVAL
     enable_get_object_locations_for_metrics: bool = (
         DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
     )
@@ -668,28 +658,6 @@ class DataContext:
         # Unique id of the current execution of the data pipeline.
         # This value increments only upon re-execution of the exact same pipeline.
         self._execution_idx = 0
-
-        is_ray_job = os.environ.get("RAY_JOB_ID") is not None
-        if is_ray_job:
-            is_driver = ray.get_runtime_context().worker.mode != WORKER_MODE
-            if is_driver and log_once(
-                "ray_data_disable_operator_progress_bars_in_ray_jobs"
-            ):
-                logger.info(
-                    "Disabling operator-level progress bars by default in Ray Jobs. "
-                    "To enable progress bars for all operators, set "
-                    "`ray.data.DataContext.get_current()"
-                    ".enable_operator_progress_bars = True`."
-                )
-            # Disable operator-level progress bars by default in Ray jobs.
-            # The global progress bar for the overall Dataset execution will
-            # still be enabled, unless the user also sets
-            # `ray.data.DataContext.get_current().enable_progress_bars = False`.
-            self.enable_operator_progress_bars = False
-        else:
-            # When not running in Ray job, operator-level progress
-            # bars are enabled by default.
-            self.enable_operator_progress_bars = True
 
     def __setattr__(self, name: str, value: Any) -> None:
         if (

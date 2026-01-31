@@ -250,14 +250,3 @@ class MinimalClusterManager(ClusterManager):
             raise ClusterEnvBuildError(
                 f"Unexpected cluster env build error: {e}"
             ) from e
-
-    def delete_configs(self):
-        if self.cluster_env_build_id:
-            self.sdk.delete_cluster_environment_build(self.cluster_env_build_id)
-        if self.cluster_env_id:
-            self.sdk.delete_cluster_environment(self.cluster_env_id)
-        if self.cluster_compute_id:
-            self.sdk.delete_cluster_compute(self.cluster_compute_id)
-
-    def get_cluster_address(self) -> str:
-        return f"anyscale://{self.project_name}/{self.cluster_name}"
