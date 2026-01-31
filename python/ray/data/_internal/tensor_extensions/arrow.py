@@ -98,7 +98,7 @@ class FixedShapeTensorFormat(Enum):
     ARROW_NATIVE = "native"
 
 
-def _resolve_tensor_format() -> "FixedShapeTensorFormat":
+def _resolve_fixed_shape_tensor_format() -> "FixedShapeTensorFormat":
     """Resolve the tensor format from DataContext.
 
     If arrow_fixed_shape_tensor_format is set, use it.
@@ -685,7 +685,6 @@ class _BaseFixedShapeArrowTensorType(
         return hash((self.extension_name, self.value_type, self._shape))
 
 
-@DeveloperAPI
 def fixed_shape_extension_scalar_to_ndarray(
     scalar: "pa.ExtensionScalar",
 ) -> np.ndarray:
@@ -790,7 +789,7 @@ def create_arrow_fixed_shape_tensor_format(
     is_variable_shaped = any(dim is None for dim in shape)
     assert not is_variable_shaped
     if tensor_format is None:
-        tensor_format = _resolve_tensor_format()
+        tensor_format = _resolve_fixed_shape_tensor_format()
 
         # Native tensor format requires PyArrow 12+
         if (
@@ -974,7 +973,7 @@ class ArrowTensorArray(pa.ExtensionArray):
             scalar_dtype, total_num_items, [None, data_buffer]
         )
 
-        tensor_format = _resolve_tensor_format()
+        tensor_format = _resolve_fixed_shape_tensor_format()
 
         pa_tensor_type_ = create_arrow_fixed_shape_tensor_format(
             element_shape, scalar_dtype, tensor_format=tensor_format
@@ -1422,7 +1421,6 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         )
 
     def to_var_shaped_tensor_array(self, ndim: int) -> "ArrowVariableShapedTensorArray":
-
         if ndim == self.type.ndim:
             return self
         elif ndim < self.type.ndim:
