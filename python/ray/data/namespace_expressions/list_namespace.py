@@ -24,19 +24,30 @@ def _ensure_array(arr: pyarrow.Array) -> pyarrow.Array:
     return arr
 
 
+def _is_list_like(pa_type: pyarrow.DataType) -> bool:
+    """Return True for list-like Arrow types (list, large_list, fixed_size_list)."""
+    return (
+        pyarrow.types.is_list(pa_type)
+        or pyarrow.types.is_large_list(pa_type)
+        or pyarrow.types.is_fixed_size_list(pa_type)
+        or (
+            hasattr(pyarrow.types, "is_list_view")
+            and pyarrow.types.is_list_view(pa_type)
+        )
+    )
+
+
 def _infer_flattened_dtype(expr: "Expr") -> DataType:
     """Infer the return DataType after flattening one level of list nesting."""
     if not expr.data_type.is_arrow_type():
         return DataType(object)
 
     arrow_type = expr.data_type.to_arrow_dtype()
-    outer_dtype = DataType.from_arrow(arrow_type)
-    if not outer_dtype.is_list_type():
+    if not _is_list_like(arrow_type):
         return DataType(object)
 
     child_type = arrow_type.value_type
-    child_dtype = DataType.from_arrow(child_type)
-    if not child_dtype.is_list_type():
+    if not _is_list_like(child_type):
         return DataType(object)
 
     if pyarrow.types.is_large_list(arrow_type):
@@ -47,14 +58,12 @@ def _infer_flattened_dtype(expr: "Expr") -> DataType:
 
 def _validate_nested_list(arr_type: pyarrow.DataType) -> None:
     """Raise TypeError if arr_type is not a list of lists."""
-    outer_dtype = DataType.from_arrow(arr_type)
-    if not outer_dtype.is_list_type():
+    if not _is_list_like(arr_type):
         raise TypeError(
             "list.flatten() requires a list column whose elements are also lists."
         )
 
-    child_dtype = DataType.from_arrow(arr_type.value_type)
-    if not child_dtype.is_list_type():
+    if not _is_list_like(arr_type.value_type):
         raise TypeError(
             "list.flatten() requires a list column whose elements are also lists."
         )
@@ -171,7 +180,7 @@ class _ListNamespace:
         order: Literal["ascending", "descending"] = "ascending",
         null_placement: Literal["at_start", "at_end"] = "at_end",
     ) -> "UDFExpr":
-        """Sort the elements within each list.
+        """Sort the elements within each (nested) list.
 
         Args:
             order: Sorting order, must be ``\"ascending\"`` or ``\"descending\"``.
@@ -179,6 +188,11 @@ class _ListNamespace:
 
         Returns:
             UDFExpr providing the sorted lists.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> # [[3,1],[2,None]] -> [[1,3],[2,None]]
+            >>> expr = col("items").list.sort()  # doctest: +SKIP
         """
 
         if order not in {"ascending", "descending"}:
@@ -217,6 +231,8 @@ class _ListNamespace:
                 child_type = arr_type.value_type
                 list_size = arr_type.list_size
                 if null_mask is not None:
+                    # Fill null rows with fixed-size null lists so each row keeps
+                    # the same list_size when we sort and rebuild offsets.
                     filler_values = pyarrow.nulls(len(arr) * list_size, type=child_type)
                     filler = pyarrow.FixedSizeListArray.from_arrays(
                         filler_values, list_size
