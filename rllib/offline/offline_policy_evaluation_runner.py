@@ -121,7 +121,6 @@ class OfflinePolicyPreEvaluator(OfflinePreLearner):
                 self._is_multi_agent,
                 batch,
                 to_numpy=True,
-                schema=SCHEMA | self.config.input_read_schema,
                 input_compress_columns=self.config.input_compress_columns,
             )[
                 "episodes"
@@ -147,13 +146,8 @@ class OfflinePolicyPreEvaluator(OfflinePreLearner):
         # Otherwise we map the batch to episodes.
         else:
             episodes: List[SingleAgentEpisode] = self._map_to_episodes(
-                self._is_multi_agent,
                 batch,
-                schema=SCHEMA | self.config.input_read_schema,
-                to_numpy=False,
-                input_compress_columns=self.config.input_compress_columns,
-                observation_space=self.observation_space,
-                action_space=self.action_space,
+                to_numpy=False
             )["episodes"]
 
         episode_dicts = []
