@@ -150,6 +150,36 @@ To view the full list of supported file formats, see the
             petal.width   float
             sepal.length  float
 
+    .. tab-item:: LeRobot
+
+        To read LeRobot robotics datasets from HuggingFace, call :func:`~ray.data.read_lerobot`.
+
+        .. note::
+
+            You need to install ``huggingface_hub`` and a video backend (``av`` or ``torchcodec``).
+            Note that ``torchcodec`` requires FFmpeg shared libraries to be installed on your system.
+            See :ref:`Working with Robotics Data <working_with_robotics>` for complete
+            installation instructions.
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            ds = ray.data.read_lerobot(
+                repo_id="lerobot/pusht",
+                root="",
+                delta_timestamps={
+                    "observation.state": [-0.1, -0.05, 0.0],
+                    "action": [0.0, 0.05, 0.1, 0.15],
+                }
+            )
+
+            print(ds.schema())
+
+        For a complete guide including video backend setup, episode filtering, and troubleshooting,
+        see :ref:`Working with Robotics Data <working_with_robotics>`.
+
 
 Reading files from local disk
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
