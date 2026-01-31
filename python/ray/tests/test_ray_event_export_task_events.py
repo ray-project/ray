@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import textwrap
 from typing import Optional
 
 import grpc
@@ -118,7 +119,7 @@ def get_job_id_and_driver_script_task_id_from_events(
 
 
 def check_task_event_base_fields(
-    event: json, preserve_proto_field_name: bool, head_node_id: str = None
+    event: json, preserve_proto_field_name: bool, head_node_id: str
 ):
     assert event["timestamp"] is not None
     assert event["severity"] == "INFO"
@@ -126,16 +127,14 @@ def check_task_event_base_fields(
         assert event["event_id"] is not None
         assert event["source_type"] == "CORE_WORKER"
         assert event["session_name"] is not None
-        if head_node_id is not None:
-            assert "node_id" in event
-            assert base64.b64decode(event["node_id"]).hex() == head_node_id
+        assert "node_id" in event
+        assert base64.b64decode(event["node_id"]).hex() == head_node_id
     else:
         assert event["eventId"] is not None
         assert event["sourceType"] == "CORE_WORKER"
         assert event["sessionName"] is not None
-        if head_node_id is not None:
-            assert "nodeId" in event
-            assert base64.b64decode(event["nodeId"]).hex() == head_node_id
+        assert "nodeId" in event
+        assert base64.b64decode(event["nodeId"]).hex() == head_node_id
 
 
 def check_task_lifecycle_event_states_and_error_info(
@@ -247,15 +246,17 @@ class TestNormalTaskEvents:
         httpserver,
         preserve_proto_field_name,
     ):
-        script = """
-import ray
-ray.init()
+        script = textwrap.dedent(
+            """
+            import ray
+            ray.init()
 
-@ray.remote
-def normal_task():
-    pass
-ray.get(normal_task.remote())
-    """
+            @ray.remote
+            def normal_task():
+                pass
+            ray.get(normal_task.remote())
+            """
+        )
 
         def validate_events(events, head_node_id):
             (
@@ -431,19 +432,21 @@ ray.get(normal_task.remote())
         httpserver,
         preserve_proto_field_name,
     ):
-        script = """
-import ray
+        script = textwrap.dedent(
+            """
+            import ray
 
-ray.init()
+            ray.init()
 
-@ray.remote(max_retries=1, retry_exceptions=[Exception])
-def normal_task():
-    raise Exception("test error")
-try:
-    ray.get(normal_task.remote())
-except Exception as e:
-    pass
-        """
+            @ray.remote(max_retries=1, retry_exceptions=[Exception])
+            def normal_task():
+                raise Exception("test error")
+            try:
+                ray.get(normal_task.remote())
+            except Exception as e:
+                pass
+            """
+        )
 
         def validate_events(events: json, head_node_id):
             (
@@ -656,21 +659,24 @@ except Exception as e:
         cluster = ray_start_cluster_head_with_env_vars
         node = cluster.add_node(num_cpus=2)
 
-        script = """
-import ray
-ray.init()
+        script = textwrap.dedent(
+            """
+            import ray
+            ray.init()
 
-@ray.remote(num_cpus=2, max_retries=0)
-def sleep():
-    import time
-    time.sleep(999)
+            @ray.remote(num_cpus=2, max_retries=0)
+            def sleep():
+                import time
+                time.sleep(999)
 
-x = sleep.options(name="node-killed").remote()
-try:
-    ray.get(x)
-except Exception as e:
-    pass
-        """
+            x = sleep.options(name="node-killed").remote()
+            try:
+                ray.get(x)
+            except Exception as e:
+                pass
+            """
+        )
+
         # Run the driver script and wait for the sleep task to be executing
         def validate_task_running(events: json, head_node_id):
             # Obtain the task id of the sleep task
@@ -914,22 +920,24 @@ class TestActorTaskEvents:
         httpserver,
         preserve_proto_field_name,
     ):
-        script = """
-import ray
-ray.init()
+        script = textwrap.dedent(
+            """
+            import ray
+            ray.init()
 
-@ray.remote(num_cpus=1)
-class Actor:
-    def __init__(self):
-        pass
+            @ray.remote(num_cpus=1)
+            class Actor:
+                def __init__(self):
+                    pass
 
-    def task(self, arg):
-        pass
+                def task(self, arg):
+                    pass
 
-actor = Actor.remote()
-obj = ray.put("test")
-ray.get(actor.task.remote(obj))
-        """
+            actor = Actor.remote()
+            obj = ray.put("test")
+            ray.get(actor.task.remote(obj))
+            """
+        )
 
         def validate_events(events: json, head_node_id):
             (
@@ -1217,25 +1225,27 @@ ray.get(actor.task.remote(obj))
         httpserver,
         preserve_proto_field_name,
     ):
-        script = """
-import ray
-import ray.util.state
-from ray._common.test_utils import wait_for_condition
-import time
+        script = textwrap.dedent(
+            """
+            import ray
+            import ray.util.state
+            from ray._common.test_utils import wait_for_condition
+            import time
 
-@ray.remote(num_cpus=1)
-class Actor:
-    def __init__(self):
-        time.sleep(1)
-        raise Exception("actor creation error")
+            @ray.remote(num_cpus=1)
+            class Actor:
+                def __init__(self):
+                    time.sleep(1)
+                    raise Exception("actor creation error")
 
-    def task(self):
-        pass
+                def task(self):
+                    pass
 
-actor = Actor.remote()
-wait_for_condition(lambda: ray.util.state.list_actors(filters=[("class_name", "=", "Actor")])[0]["state"] == "DEAD")
-ray.get(actor.task.options().remote())
-        """
+            actor = Actor.remote()
+            wait_for_condition(lambda: ray.util.state.list_actors(filters=[("class_name", "=", "Actor")])[0]["state"] == "DEAD")
+            ray.get(actor.task.options().remote())
+            """
+        )
 
         def validate_events(events: json, head_node_id):
             (
@@ -1535,21 +1545,23 @@ ray.get(actor.task.options().remote())
         httpserver,
         preserve_proto_field_name,
     ):
-        script = """
-import ray
-ray.init()
+        script = textwrap.dedent(
+            """
+            import ray
+            ray.init()
 
-@ray.remote(num_cpus=2)
-class Actor:
-    def __init__(self):
-        pass
+            @ray.remote(num_cpus=2)
+            class Actor:
+                def __init__(self):
+                    pass
 
-    def task(self):
-        pass
+                def task(self):
+                    pass
 
-actor = Actor.remote()
-ray.kill(actor)
-        """
+            actor = Actor.remote()
+            ray.kill(actor)
+            """
+        )
 
         def validate_events(events: json, head_node_id):
             (
@@ -1731,6 +1743,242 @@ ray.kill(actor)
 
         run_driver_script_and_wait_for_events(
             script, httpserver, ray_start_cluster_head_with_env_vars, validate_events
+        )
+
+    @_cluster_with_aggregator_target
+    def test_actor_restart(
+        self,
+        ray_start_cluster_head_with_env_vars,
+        httpserver,
+        preserve_proto_field_name,
+    ):
+        script = textwrap.dedent(
+            """
+            import ray
+            import time
+            ray.init()
+
+            @ray.remote(num_cpus=2, max_restarts=-1, max_task_retries=-1)
+            class Actor:
+                def __init__(self):
+                    pass
+
+                def actor_task(self):
+                    pass
+
+            actor = Actor.remote()
+            time.sleep(999) # Keep the actor alive
+            """
+        )
+
+        actor_creation_task_id = None
+
+        def validate_actor_creation(events: json, head_node_id):
+            nonlocal actor_creation_task_id
+            (
+                driver_script_job_id,
+                driver_task_id,
+            ) = get_job_id_and_driver_script_task_id_from_events(
+                events, preserve_proto_field_name
+            )
+
+            driver_task_definition_received = False
+            actor_creation_task_definition_received = False
+            for event in events:
+                if preserve_proto_field_name:
+                    if event["event_type"] == "TASK_DEFINITION_EVENT":
+                        check_task_event_base_fields(
+                            event, preserve_proto_field_name, head_node_id
+                        )
+
+                        if event["task_definition_event"]["task_type"] == "DRIVER_TASK":
+                            driver_task_definition_received = True
+                            assert event["task_definition_event"]["task_attempt"] == 0
+                            assert (
+                                event["task_definition_event"]["language"] == "PYTHON"
+                            )
+
+                        else:
+                            assert (
+                                event["task_definition_event"]["task_type"]
+                                == "ACTOR_CREATION_TASK"
+                            )
+                            actor_creation_task_definition_received = True
+                            actor_creation_task_id = event["task_definition_event"][
+                                "task_id"
+                            ]
+                            assert actor_creation_task_id is not None
+                            assert (
+                                event["task_definition_event"]["task_func"][
+                                    "python_function_descriptor"
+                                ]["module_name"]
+                                == "__main__"
+                            )
+                            assert (
+                                event["task_definition_event"]["task_func"][
+                                    "python_function_descriptor"
+                                ]["class_name"]
+                                == "Actor"
+                            )
+                            assert (
+                                event["task_definition_event"]["task_func"][
+                                    "python_function_descriptor"
+                                ]["function_name"]
+                                == "__init__"
+                            )
+                            assert (
+                                event["task_definition_event"]["task_func"][
+                                    "python_function_descriptor"
+                                ]["function_hash"]
+                                is not None
+                            )
+                            assert (
+                                event["task_definition_event"]["task_name"]
+                                == "Actor.__init__"
+                            )
+                            assert event["task_definition_event"][
+                                "required_resources"
+                            ] == {"CPU": 2.0}
+                            assert (
+                                event["task_definition_event"]["parent_task_id"]
+                                == driver_task_id
+                            )
+                            assert (
+                                event["task_definition_event"]["job_id"]
+                                == driver_script_job_id
+                            )
+                            assert event["task_definition_event"]["task_attempt"] == 0
+                            assert (
+                                event["task_definition_event"]["language"] == "PYTHON"
+                            )
+
+                    else:
+                        assert event["event_type"] == "TASK_LIFECYCLE_EVENT"
+                else:
+                    if event["eventType"] == "TASK_DEFINITION_EVENT":
+                        check_task_event_base_fields(
+                            event, preserve_proto_field_name, head_node_id
+                        )
+
+                        if event["taskDefinitionEvent"]["taskType"] == "DRIVER_TASK":
+                            driver_task_definition_received = True
+                            assert event["taskDefinitionEvent"]["taskAttempt"] == 0
+                            assert event["taskDefinitionEvent"]["language"] == "PYTHON"
+
+                        else:
+                            assert (
+                                event["taskDefinitionEvent"]["taskType"]
+                                == "ACTOR_CREATION_TASK"
+                            )
+                            actor_creation_task_definition_received = True
+                            actor_creation_task_id = event["taskDefinitionEvent"][
+                                "taskId"
+                            ]
+                            assert actor_creation_task_id is not None
+                            assert (
+                                event["taskDefinitionEvent"]["taskFunc"][
+                                    "pythonFunctionDescriptor"
+                                ]["moduleName"]
+                                == "__main__"
+                            )
+                            assert (
+                                event["taskDefinitionEvent"]["taskFunc"][
+                                    "pythonFunctionDescriptor"
+                                ]["className"]
+                                == "Actor"
+                            )
+                            assert (
+                                event["taskDefinitionEvent"]["taskFunc"][
+                                    "pythonFunctionDescriptor"
+                                ]["functionName"]
+                                == "__init__"
+                            )
+                            assert (
+                                event["taskDefinitionEvent"]["taskFunc"][
+                                    "pythonFunctionDescriptor"
+                                ]["functionHash"]
+                                is not None
+                            )
+                            assert (
+                                event["taskDefinitionEvent"]["taskName"]
+                                == "Actor.__init__"
+                            )
+                            assert event["taskDefinitionEvent"][
+                                "requiredResources"
+                            ] == {"CPU": 2.0}
+                            assert (
+                                event["taskDefinitionEvent"]["jobId"]
+                                == driver_script_job_id
+                            )
+                            assert (
+                                event["taskDefinitionEvent"]["parentTaskId"]
+                                == driver_task_id
+                            )
+                            assert event["taskDefinitionEvent"]["taskAttempt"] == 0
+                            assert event["taskDefinitionEvent"]["language"] == "PYTHON"
+                    else:
+                        assert event["eventType"] == "TASK_LIFECYCLE_EVENT"
+
+            assert driver_task_definition_received
+            assert actor_creation_task_definition_received
+
+            expected_driver_task_states = {"RUNNING"}
+            expected_actor_creation_task_states = {
+                "PENDING_ARGS_AVAIL",
+                "PENDING_NODE_ASSIGNMENT",
+                "RUNNING",
+                "FINISHED",
+            }
+            expected_task_id_states_dict = {
+                (driver_task_id, 0): expected_driver_task_states,
+                (actor_creation_task_id, 0): expected_actor_creation_task_states,
+            }
+            expected_task_id_error_info_dict = {}
+            check_task_lifecycle_event_states_and_error_info(
+                events,
+                expected_task_id_states_dict,
+                expected_task_id_error_info_dict,
+                preserve_proto_field_name,
+            )
+
+        def validate_actor_restart(events: json):
+            nonlocal actor_creation_task_id
+
+            # Check the actor creation task running state with attempt number 1
+            expected_actor_retry_task_states = {
+                "RUNNING",
+            }
+            expected_task_id_states_dict = {
+                (actor_creation_task_id, 1): expected_actor_retry_task_states,
+            }
+            check_task_lifecycle_event_states_and_error_info(
+                events,
+                expected_task_id_states_dict,
+                {},
+                preserve_proto_field_name,
+            )
+
+        # Add a node to the cluster and wait for it to be registered
+        cluster = ray_start_cluster_head_with_env_vars
+        node = cluster.add_node(num_cpus=2)
+
+        # Run the driver script for the actor to be created and actor task to be executed
+        run_driver_script_and_wait_for_events(
+            script,
+            httpserver,
+            ray_start_cluster_head_with_env_vars,
+            validate_actor_creation,
+        )
+
+        # Add a second node to the cluster for the actor to be restarted on
+        cluster.add_node(num_cpus=2)
+
+        # Kill the first node
+        cluster.remove_node(node)
+
+        # Wait for the actor to be restarted on the second node
+        wait_for_condition(
+            lambda: get_and_validate_events(httpserver, validate_actor_restart),
         )
 
 

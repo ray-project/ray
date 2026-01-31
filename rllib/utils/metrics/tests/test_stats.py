@@ -6,6 +6,7 @@ Therefore, we achieve a more comprehensive test coverage by testing tree-like ag
 """
 
 import time
+import warnings
 
 import numpy as np
 import pytest
@@ -754,6 +755,33 @@ def test_latest_merged_only_non_root_stats():
         match="latest_merged_only can only be used on aggregation stats objects",
     ):
         stats.peek(compile=True, latest_merged_only=True)
+
+
+def test_ema_stats_quiet_nanmean():
+    """Test that EmaStats suppresses 'Mean of empty slice' warnings.
+
+    np.nanmean can trigger a warning "Mean of empty slice". EmaStats should suppress this warning.
+    """
+    root_stats = EmaStats(ema_coeff=0.01, is_root=True, is_leaf=False)
+    child1 = EmaStats(ema_coeff=0.01, is_root=False, is_leaf=True)
+    child2 = EmaStats(ema_coeff=0.01, is_root=False, is_leaf=True)
+    root_stats.merge([child1, child2])
+    with warnings.catch_warnings(record=True) as caught_warnings:
+        warnings.simplefilter("always")
+        root_stats.peek(compile=True)
+
+        # Filter for RuntimeWarning about "Mean of empty slice"
+        empty_slice_warnings = [
+            w
+            for w in caught_warnings
+            if issubclass(w.category, RuntimeWarning)
+            and "Mean of empty slice" in str(w.message)
+        ]
+
+        # With the correct filter, no warning should be raised
+        assert (
+            len(empty_slice_warnings) == 0
+        ), f"Expected no 'Mean of empty slice' warning but got: {empty_slice_warnings}"
 
 
 if __name__ == "__main__":

@@ -1548,8 +1548,13 @@ def test_runtime_metrics(ray_start_regular_shared):
     total_time, total_percent = metrics_dict.pop("Total")
     assert total_percent == 100
 
+    # Tolerance for floating-point rounding errors (100ms)
+    # Individual operator times may appear slightly larger than total time
+    # due to rounding (e.g., 2.265s rounds to 2.27s for operator but 2.26s for total)
+    TOLERANCE = 0.02
+
     for time_s, percent in metrics_dict.values():
-        assert time_s <= total_time
+        assert time_s <= total_time + TOLERANCE
         # Check percentage, this is done with some expected loss of precision
         # due to rounding in the intital output.
         assert isclose(percent, time_s / total_time * 100, rel_tol=0.01)

@@ -558,8 +558,8 @@ Windows powershell users need additional escaping:
 @click.option(
     "--temp-dir",
     default=None,
-    help="manually specify the root temporary dir of the Ray process. Can be "
-    "specified per node.",
+    help="manually specify the root temporary dir of the Ray process, only "
+    "works when --head is specified",
 )
 @click.option(
     "--system-config",
@@ -771,6 +771,14 @@ def start(
                 cf.bold('--labels="key1=val1,key2=val2"'),
             )
     labels_dict = {**labels_from_file, **labels_from_string}
+    if temp_dir and not head:
+        cli_logger.warning(
+            f"`--temp-dir={temp_dir}` option will be ignored. "
+            "`--head` is a required flag to use `--temp-dir`. "
+            "temp_dir is only configurable from a head node. "
+            "All the worker nodes will use the same temp_dir as a head node. "
+        )
+        temp_dir = None
 
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
@@ -779,7 +787,18 @@ def start(
         system_reserved_memory=system_reserved_memory,
     )
 
-    redirect_output = None if not no_redirect_output else True
+    # - For non-worker processes, thread the behavior explicitly via RayParams.log_to_stderr.
+    # - For worker processes, stdout/stderr redirection is controlled in C++ via
+    #   `RAY_LOG_TO_STDERR`, so we pass it to the raylet/worker subprocess env via
+    #   RayParams.env_vars (without touching os.environ).
+    if no_redirect_output:
+        log_to_stderr = True
+        env_vars = {
+            ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE: "1",
+        }
+    else:
+        log_to_stderr = None
+        env_vars = None
 
     # no  client, no  port -> ok
     # no  port, has client -> default to 10001
@@ -802,7 +821,7 @@ def start(
         object_store_memory=object_store_memory,
         redis_username=redis_username,
         redis_password=redis_password,
-        redirect_output=redirect_output,
+        log_to_stderr=log_to_stderr,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
@@ -826,6 +845,7 @@ def start(
         ray_debugger_external=ray_debugger_external,
         include_log_monitor=include_log_monitor,
         resource_isolation_config=resource_isolation_config,
+        env_vars=env_vars,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
@@ -849,7 +869,8 @@ def start(
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
             ray_params.env_vars = {
-                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
+                **(ray_params.env_vars or {}),
+                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
             }
 
         if (
@@ -1379,6 +1400,89 @@ def stop(force: bool, grace_period: int):
     # temp_dir. This is fine since it will get overwritten the next time we
     # call `ray start`.
     ray._common.utils.reset_ray_address()
+
+
+@cli.command(name="kill-actor")
+@click.option(
+    "--address", required=False, type=str, help="Override the address to connect to."
+)
+@click.option(
+    "--name",
+    required=False,
+    type=str,
+    help="Named actor to kill.",
+)
+@click.option(
+    "--namespace",
+    required=False,
+    type=str,
+    help="Namespace for named actor (when using --name).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="If set, kill the actor forcefully. Otherwise, request graceful termination.",
+)
+@click.option(
+    "--no-restart",
+    is_flag=True,
+    default=False,
+    help="Disable automatic restart of the actor after kill."
+    "NOTE: This flag only takes effect when using --force.",
+)
+def kill_actor(
+    address: Optional[str],
+    name: Optional[str],
+    namespace: Optional[str],
+    force: bool,
+    no_restart: bool,
+):
+    """Kill an actor by name.
+    Args:
+        address: Override the address to connect to.
+        name: Named actor to kill.
+        namespace: Namespace for named actor.
+        force: If set, kill the actor forcefully. Otherwise attempt graceful termination.
+        no_restart: If set, the actor will not be restarted after being killed.
+
+    Examples:
+        ray kill-actor MyActor
+        ray kill-actor MyActor --namespace my_namespace
+        ray kill-actor MyActor --force
+        ray kill-actor MyActor --force --no-restart
+    """
+    # Validate input: require a name
+    if not name:
+        raise click.ClickException("Must specify --name to identify the actor.")
+
+    address = services.canonicalize_bootstrap_address_or_die(address)
+
+    # Respect token-based authentication when enabled.
+    ensure_token_if_auth_enabled(None, create_token_if_missing=False)
+
+    # Connect to the cluster (no driver logging)
+    if not ray.is_initialized():
+        ray.init(address=address, namespace=namespace, log_to_driver=False)
+
+    if not force and no_restart:
+        click.echo(
+            "WARNING: --no-restart flag is only effective with --force (graceful termination does not support controlling actor restart).",
+            err=True,
+        )
+
+    try:
+        actor_handle = ray.get_actor(name, namespace=namespace)
+    except ValueError:
+        raise click.ClickException(
+            f"No named actor found: {name} (namespace={namespace})"
+        )
+    if force:
+        ray.kill(actor_handle, no_restart=no_restart)
+        click.echo(f"Actor killed (force): {name}")
+    else:
+        actor_handle.__ray_terminate__.remote()
+        click.echo(f"Requested graceful termination for actor: {name}")
 
 
 @cli.command()
@@ -2065,10 +2169,11 @@ def timeline(address):
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = os.path.join(
-        ray.get_runtime_context().get_temp_dir(), f"ray-timeline-{time}.json"
+        ray._common.utils.get_user_temp_dir(), f"ray-timeline-{time}.json"
     )
     ray.timeline(filename=filename)
-    logger.info(f"Trace file written to {filename} in the ray temp directory.")
+    size = os.path.getsize(filename)
+    logger.info(f"Trace file written to {filename} ({size} bytes).")
     logger.info("You can open this with chrome://tracing in the Chrome browser.")
 
 
@@ -2745,6 +2850,7 @@ cli.add_command(check_open_ports)
 cli.add_command(sanity_check)
 cli.add_command(symmetric_run, name="symmetric-run")
 cli.add_command(get_auth_token)
+cli.add_command(kill_actor)
 
 try:
     from ray.util.state.state_cli import (
