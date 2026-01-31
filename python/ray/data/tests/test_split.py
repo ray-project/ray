@@ -1034,6 +1034,210 @@ def test_streaming_split_reports_and_clears_prefetched_bytes(
         ), f"Split {split_idx} stale bytes after 2nd epoch: {bytes_val}"
 
 
+class TestStreamingSplitWithReplicas:
+    """Tests for streaming_split with replicas_per_split > 1."""
+
+    @pytest.mark.parametrize(
+        "n_splits,replicas_per_split",
+        [
+            (2, 1),  # baseline: no replicas
+            (2, 2),  # 2 splits, 2 replicas each
+            (1, 4),  # single split, 4 replicas
+            (4, 2),  # 4 splits, 2 replicas each
+        ],
+    )
+    def test_returns_correct_number_of_iterators(
+        self, ray_start_regular_shared_2_cpus, n_splits, replicas_per_split
+    ):
+        """Test that streaming_split returns n_splits * replicas_per_split iterators."""
+        ds = ray.data.range(100, override_num_blocks=10)
+        iterators = ds.streaming_split(
+            n_splits, equal=True, replicas_per_split=replicas_per_split
+        )
+
+        assert len(iterators) == n_splits * replicas_per_split
+
+    @pytest.mark.parametrize(
+        "n_splits,replicas_per_split",
+        [
+            (2, 2),
+            (1, 3),
+            (3, 2),
+        ],
+    )
+    def test_replicas_in_same_split_receive_same_data_in_same_order(
+        self, ray_start_regular_shared_2_cpus, n_splits, replicas_per_split
+    ):
+        """Test that all replicas within the same split receive identical data in the same order."""
+        ds = ray.data.range(100, override_num_blocks=10)
+        iterators = ds.streaming_split(
+            n_splits, equal=True, replicas_per_split=replicas_per_split
+        )
+
+        # Group iterators by split - preserve order of data received
+        split_results = [[] for _ in range(n_splits)]
+
+        def consume(iterator, split_idx, replica_idx):
+            # Collect data in order received (not sorted)
+            data_in_order = []
+            for batch in iterator.iter_batches(batch_size=10):
+                data_in_order.extend(batch["id"].tolist())
+            split_results[split_idx].append((replica_idx, data_in_order))
+
+        threads = []
+        for i, iterator in enumerate(iterators):
+            split_idx = i // replicas_per_split
+            replica_idx = i % replicas_per_split
+            t = threading.Thread(
+                target=consume, args=(iterator, split_idx, replica_idx)
+            )
+            threads.append(t)
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Verify all replicas in each split received the same data in the same order
+        for split_idx in range(n_splits):
+            replica_data = split_results[split_idx]
+            assert len(replica_data) == replicas_per_split
+            first_replica_data = replica_data[0][1]
+            for replica_idx, data in replica_data[1:]:
+                # Verify same data (as sets)
+                assert set(data) == set(first_replica_data), (
+                    f"Split {split_idx}: replica {replica_idx} received different data "
+                    f"than replica 0"
+                )
+                # Verify same order
+                assert data == first_replica_data, (
+                    f"Split {split_idx}: replica {replica_idx} received data in different "
+                    f"order than replica 0.\nReplica 0: {first_replica_data[:20]}...\n"
+                    f"Replica {replica_idx}: {data[:20]}..."
+                )
+
+    def test_different_splits_receive_different_data(
+        self, ray_start_regular_shared_2_cpus
+    ):
+        """Test that different splits receive disjoint data partitions."""
+        n_splits = 2
+        replicas_per_split = 2
+        ds = ray.data.range(100, override_num_blocks=10)
+        iterators = ds.streaming_split(
+            n_splits, equal=True, replicas_per_split=replicas_per_split
+        )
+
+        split_data = [set() for _ in range(n_splits)]
+
+        def consume(iterator, split_idx):
+            for batch in iterator.iter_batches(batch_size=10):
+                split_data[split_idx].update(batch["id"].tolist())
+
+        # Only consume first replica from each split
+        threads = []
+        for split_idx in range(n_splits):
+            iterator = iterators[split_idx * replicas_per_split]
+            t = threading.Thread(target=consume, args=(iterator, split_idx))
+            threads.append(t)
+
+        # Also need to consume other replicas to avoid blocking
+        for split_idx in range(n_splits):
+            for replica_idx in range(1, replicas_per_split):
+                iterator = iterators[split_idx * replicas_per_split + replica_idx]
+                t = threading.Thread(target=consume, args=(iterator, split_idx))
+                threads.append(t)
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Verify splits received disjoint data
+        for i in range(n_splits):
+            for j in range(i + 1, n_splits):
+                intersection = split_data[i] & split_data[j]
+                assert (
+                    len(intersection) == 0
+                ), f"Splits {i} and {j} have overlapping data: {intersection}"
+
+        # Verify all data was consumed
+        all_data = set()
+        for data in split_data:
+            all_data.update(data)
+        assert all_data == set(range(100))
+
+    @pytest.mark.parametrize("replicas_per_split", [1, 2, 3])
+    def test_multiple_epochs_with_replicas(
+        self, ray_start_regular_shared_2_cpus, replicas_per_split
+    ):
+        """Test that multiple epochs work correctly with replicas."""
+        n_splits = 2
+        ds = ray.data.range(40, override_num_blocks=4)
+        iterators = ds.streaming_split(
+            n_splits, equal=True, replicas_per_split=replicas_per_split
+        )
+
+        for epoch in range(2):
+            epoch_results = []
+
+            def consume(iterator, idx):
+                data = []
+                for batch in iterator.iter_batches(batch_size=10):
+                    data.extend(batch["id"].tolist())
+                epoch_results.append((idx, data))
+
+            threads = [
+                threading.Thread(target=consume, args=(it, i))
+                for i, it in enumerate(iterators)
+            ]
+
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+            # Each iterator should have received data
+            total_rows = sum(len(r[1]) for r in epoch_results)
+            # Total rows = 40, but with replicas, data is duplicated
+            # Each split gets 20 rows, replicated to all replicas
+            expected_total = 40 * replicas_per_split
+            assert total_rows == expected_total, (
+                f"Epoch {epoch}: expected {expected_total} total rows "
+                f"(with replication), got {total_rows}"
+            )
+
+    def test_prefetched_bytes_cleared_with_replicas(
+        self, ray_start_regular_shared_2_cpus
+    ):
+        """Test that prefetched bytes are tracked and cleared correctly with replicas."""
+        n_splits = 2
+        replicas_per_split = 2
+        ds = ray.data.range(20, override_num_blocks=4)
+        iterators = ds.streaming_split(
+            n_splits, equal=True, replicas_per_split=replicas_per_split
+        )
+
+        coord = iterators[0]._coord_actor
+
+        def consume(iterator):
+            for _ in iterator.iter_batches(batch_size=5, prefetch_batches=1):
+                pass
+
+        threads = [threading.Thread(target=consume, args=(it,)) for it in iterators]
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Verify all client prefetched bytes are cleared after epoch end
+        client_bytes = ray.get(coord.get_client_prefetched_bytes.remote())
+        for client_idx, bytes_val in client_bytes.items():
+            assert (
+                bytes_val == 0
+            ), f"Client {client_idx} has stale prefetched bytes: {bytes_val}"
+
+
 if __name__ == "__main__":
     import sys
 
