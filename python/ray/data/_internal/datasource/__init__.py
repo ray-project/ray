@@ -20,9 +20,6 @@ from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.databricks_uc_datasource import (
     DatabricksUCDatasource,
 )
-from ray.data._internal.datasource.delta_sharing_datasource import (
-    DeltaSharingDatasource,
-)
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.huggingface_datasource import HuggingFaceDatasource
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
@@ -78,7 +75,6 @@ __all__ = [
     "ClickHouseDatasource",
     "ClickHouseTableSettings",
     "DatabricksUCDatasource",
-    "DeltaSharingDatasource",
     "HudiDatasource",
     "HuggingFaceDatasource",
     "IcebergDatasink",
