@@ -1,5 +1,4 @@
 import logging
-from collections import Counter
 from numbers import Number
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
@@ -7,7 +6,7 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import is_categorical_dtype
 
-from ray.data.aggregate import Mean
+from ray.data.aggregate import Mean, ValueCounter
 from ray.data.preprocessor import SerializablePreprocessorBase
 from ray.data.preprocessors.version_support import (
     SerializablePreprocessor as Serializable,
@@ -239,17 +238,25 @@ def _get_most_frequent_values(
     columns: List[str],
     key_gen: Callable[[str], str],
 ) -> Dict[str, Union[str, Number]]:
-    def get_pd_value_counts(df: pd.DataFrame) -> Dict[str, List[Counter]]:
-        return {col: [Counter(df[col].value_counts().to_dict())] for col in columns}
+    # Use ValueCounter aggregator for all columns at once
+    agg_fns: List[ValueCounter] = [ValueCounter(on=col) for col in columns]
+    aggregated_counts: Dict[str, Any] = dataset.aggregate(*agg_fns)
 
-    value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
-    final_counters = {col: Counter() for col in columns}
-    for batch in value_counts.iter_batches(batch_size=None):
-        for col, counters in batch.items():
-            for counter in counters:
-                final_counters[col] += counter
+    result: Dict[str, Union[str, Number]] = {}
+    for col in columns:
+        value_counter_key: str = f"value_counter({col})"
+        value_counts: Dict[str, Any] = aggregated_counts[value_counter_key]
 
-    return {
-        key_gen(column): final_counters[column].most_common(1)[0][0]  # noqa
-        for column in columns
-    }
+        # Single pass: find most frequent, break ties lexicographically (largest)
+        values: List[Any] = value_counts["values"]
+        counts: List[int] = value_counts["counts"]
+
+        # O(n) - no sorting needed
+        most_frequent: Union[str, Number] = max(
+            zip(values, counts),
+            key=lambda x: (x[1], str(x[0])),  # (count, lexicographic)
+        )[0]
+
+        result[key_gen(col)] = most_frequent
+
+    return result
