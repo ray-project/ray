@@ -30,7 +30,9 @@ from ci.ray_ci.docker_container import (
     RAY_REPO_MAP,
     RayType,
 )
-from ci.ray_ci.utils import ecr_docker_login
+from ci.ray_ci.utils import ci_init, ecr_docker_login
+
+from ray_release.configs.global_config import get_global_config
 
 VALID_IMAGE_TYPES = [rt.value for rt in RayType]
 
@@ -244,6 +246,37 @@ def _copy_image(reference: str, destination: str, dry_run: bool = False) -> None
         raise PushRayImageError(f"Crane copy failed: {e}")
 
 
+def _should_upload(pipeline_id: str, branch: str, rayci_schedule: str) -> bool:
+    """
+    Check if upload should proceed based on pipeline and branch context.
+
+    Mirrors the logic from RayDockerContainer._should_upload() to prevent
+    accidental pushes from feature branches or non-postmerge pipelines.
+
+    Returns True only if:
+    - Pipeline is a postmerge pipeline AND
+    - Branch is releases/* OR (branch is master AND schedule is nightly)
+    """
+    postmerge_pipelines = get_global_config()["ci_pipeline_postmerge"]
+    if pipeline_id not in postmerge_pipelines:
+        logger.info(
+            f"Pipeline {pipeline_id} is not a postmerge pipeline, skipping upload"
+        )
+        return False
+
+    if branch.startswith("releases/"):
+        return True
+
+    if branch == "master" and rayci_schedule == "nightly":
+        return True
+
+    logger.info(
+        f"Branch '{branch}' with schedule '{rayci_schedule}' is not eligible for upload. "
+        "Upload is only allowed for releases/* branches or master with nightly schedule."
+    )
+    return False
+
+
 @click.command()
 @click.option(
     "--python-version", type=click.Choice(list(PYTHON_VERSIONS.keys())), required=True
@@ -257,13 +290,13 @@ def _copy_image(reference: str, destination: str, dry_run: bool = False) -> None
 @click.option("--architecture", type=click.Choice(ARCHITECTURE), required=True)
 @click.option("--rayci-work-repo", type=str, required=True, envvar="RAYCI_WORK_REPO")
 @click.option("--rayci-build-id", type=str, required=True, envvar="RAYCI_BUILD_ID")
+@click.option("--pipeline-id", type=str, required=True, envvar="BUILDKITE_PIPELINE_ID")
 @click.option("--branch", type=str, required=True, envvar="BUILDKITE_BRANCH")
 @click.option("--commit", type=str, required=True, envvar="BUILDKITE_COMMIT")
 @click.option("--rayci-schedule", type=str, default="", envvar="RAYCI_SCHEDULE")
 @click.option(
     "--pull-request", type=str, default="false", envvar="BUILDKITE_PULL_REQUEST"
 )
-@click.option("--upload", is_flag=True, default=False)
 def main(
     python_version: str,
     platform: str,
@@ -271,11 +304,11 @@ def main(
     architecture: str,
     rayci_work_repo: str,
     rayci_build_id: str,
+    pipeline_id: str,
     branch: str,
     commit: str,
     rayci_schedule: str,
     pull_request: str,
-    upload: bool,
 ) -> None:
     """
     Publish a Wanda-cached ray image to Docker Hub.
@@ -283,9 +316,13 @@ def main(
     Tags are generated matching the original RayDockerContainer format:
     {version}{variation}{python_suffix}{platform}{architecture_suffix}
     """
-    dry_run = not upload
+    ci_init()
+
+    dry_run = not _should_upload(pipeline_id, branch, rayci_schedule)
     if dry_run:
-        logger.info("DRY RUN MODE - no images will be pushed")
+        logger.info(
+            "DRY RUN MODE - upload conditions not met, no images will be pushed"
+        )
 
     ctx = RayImagePushContext(
         ray_type=RayType(image_type),
