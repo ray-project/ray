@@ -16,6 +16,7 @@ import pyarrow as pa
 from packaging.version import parse as parse_version
 
 import ray.cloudpickle as cloudpickle
+from ray._private.arrow_utils import _check_pyarrow_version, get_pyarrow_version
 from ray._private.ray_constants import env_integer
 from ray.data._internal.numpy_support import (
     _convert_datetime_to_np_datetime,
@@ -32,10 +33,7 @@ from ray.data._internal.tensor_extensions.utils import (
     _should_convert_to_tensor,
     create_ragged_ndarray,
 )
-from ray.data._internal.utils.arrow_utils import (
-    _check_pyarrow_version,
-    get_pyarrow_version,
-)
+from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.common import INT32_MAX
@@ -113,6 +111,27 @@ class TensorFormat(Enum):
     V1 = "v1"
     V2 = "v2"
     NATIVE = "native"
+
+
+def _resolve_tensor_format() -> "TensorFormat":
+    """Resolve the tensor format from DataContext.
+
+    If arrow_fixed_shape_tensor_format is set, use it.
+    Otherwise, fallback to use_arrow_tensor_v2 (True -> V2, False -> V1).
+
+    Returns:
+        The resolved TensorFormat.
+    """
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    tensor_format = ctx.arrow_fixed_shape_tensor_format
+
+    # If arrow_fixed_shape_tensor_format is None, fallback to use_arrow_tensor_v2
+    if tensor_format is None:
+        tensor_format = TensorFormat.V2 if ctx.use_arrow_tensor_v2 else TensorFormat.V1
+
+    return tensor_format
 
 
 def _extension_array_concat_supported() -> bool:
@@ -782,18 +801,7 @@ def create_arrow_fixed_shape_tensor_format(
     is_variable_shaped = any(dim is None for dim in shape)
     assert not is_variable_shaped
     if tensor_format is None:
-
-        # When tensor_format is None, use context defaults
-        from ray.data.context import DataContext
-
-        ctx = DataContext.get_current()
-        tensor_format = ctx.arrow_fixed_shape_tensor_format
-
-        # If arrow_fixed_shape_tensor_format is None, fallback to use_arrow_tensor_v2
-        if tensor_format is None:
-            tensor_format = (
-                TensorFormat.V2 if ctx.use_arrow_tensor_v2 else TensorFormat.V1
-            )
+        tensor_format = _resolve_tensor_format()
 
         # Native tensor format requires PyArrow 12+
         if (
@@ -919,8 +927,6 @@ class ArrowTensorArray(pa.ExtensionArray):
         arr: np.ndarray,
     ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
 
-        from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
-
         if len(arr) > 0 and np.isscalar(arr[0]):
             # This is 1D tensor so a plain `pyarrow.Array` will work
             return pa.array(arr)
@@ -980,19 +986,10 @@ class ArrowTensorArray(pa.ExtensionArray):
             scalar_dtype, total_num_items, [None, data_buffer]
         )
 
-        from ray.data import DataContext
-
-        ctx = DataContext.get_current()
-        tensor_format = ctx.arrow_fixed_shape_tensor_format
-
-        # If arrow_fixed_shape_tensor_format is None, fallback to use_arrow_tensor_v2
-        if tensor_format is None:
-            tensor_format = (
-                TensorFormat.V2 if ctx.use_arrow_tensor_v2 else TensorFormat.V1
-            )
+        tensor_format = _resolve_tensor_format()
 
         pa_tensor_type_ = create_arrow_fixed_shape_tensor_format(
-            element_shape, scalar_dtype
+            element_shape, scalar_dtype, tensor_format=tensor_format
         )
 
         if _is_native_tensor_type(pa_tensor_type_):
@@ -1567,10 +1564,6 @@ def unify_tensor_arrays(
         Union[ArrowTensorArray, ArrowVariableShapedTensorArray, FixedShapeTensorArray]
     ]
 ) -> List[Union[ArrowTensorArray, ArrowVariableShapedTensorArray]]:
-    from ray.data._internal.utils.transform_pyarrow import (
-        _is_native_tensor_type,
-    )
-
     supported_tensor_types = get_arrow_extension_tensor_types()
 
     # Derive number of distinct tensor types
