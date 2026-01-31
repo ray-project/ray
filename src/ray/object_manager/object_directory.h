@@ -75,6 +75,13 @@ class IObjectDirectory {
   virtual void UnsubscribeObjectLocations(const UniqueID &callback_id,
                                           const ObjectID &object_id) = 0;
 
+  /// Refresh an object location subscription.
+  /// This forces the owner to republish the current object state,
+  /// which helps recover from missed updates or stale subscriptions.
+  ///
+  /// \param object_id The object id to refresh subscription for.
+  virtual void RefreshObjectLocationSubscription(const ObjectID &object_id) = 0;
+
   /// Report objects added to this node's store to the object directory.
   ///
   /// \param object_id The object id that was put into the store.
