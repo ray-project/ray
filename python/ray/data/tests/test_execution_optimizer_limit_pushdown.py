@@ -97,7 +97,11 @@ def test_limit_pushdown_through_mapbatches(ray_start_regular_shared_2_cpus):
     def f2(x):
         return x
 
-    ds = ray.data.range(100, override_num_blocks=100).map_batches(f2).limit(1)
+    ds = (
+        ray.data.range(100, override_num_blocks=100)
+        .map_batches(f2, udf_modifying_row_count=False)
+        .limit(1)
+    )
     _check_valid_plan_and_result(
         ds,
         "Read[ReadRange] -> Limit[limit=1] -> MapBatches[MapBatches(f2)]",
