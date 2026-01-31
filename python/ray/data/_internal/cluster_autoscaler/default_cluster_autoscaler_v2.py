@@ -150,7 +150,9 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
 
         if resource_utilization_calculator is None:
             resource_utilization_calculator = RollingLogicalUtilizationGauge(
-                resource_manager, cluster_util_avg_window_s=cluster_util_avg_window_s
+                resource_manager,
+                cluster_util_avg_window_s=cluster_util_avg_window_s,
+                execution_id=execution_id,
             )
 
         if autoscaling_coordinator is None:
