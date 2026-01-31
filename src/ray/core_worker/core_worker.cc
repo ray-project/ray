@@ -857,7 +857,8 @@ CoreWorker::GetAllReferenceCounts() const {
 }
 
 std::vector<TaskID> CoreWorker::GetPendingChildrenTasks(const TaskID &task_id) const {
-  return task_manager_->GetPendingChildrenTasks(task_id);
+  auto result = task_manager_->GetPendingChildrenTasks(task_id);
+  return std::vector<TaskID>(result.begin(), result.end());
 }
 
 const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
@@ -969,8 +970,10 @@ Status CoreWorker::Put(const RayObject &object,
   SubscribeToNodeChanges();
   *object_id = ObjectID::FromIndex(worker_context_->GetCurrentInternalTaskId(),
                                    worker_context_->GetNextPutIndex());
+  absl::InlinedVector<ObjectID, 8> contained_ids(contained_object_ids.begin(),
+                                                 contained_object_ids.end());
   reference_counter_->AddOwnedObject(*object_id,
-                                     contained_object_ids,
+                                     contained_ids,
                                      rpc_address_,
                                      CurrentCallSite(),
                                      object.GetSize(),
@@ -1054,10 +1057,12 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
   rpc::Address real_owner_address =
       owner_address != nullptr ? *owner_address : rpc_address_;
   bool owned_by_us = real_owner_address.worker_id() == rpc_address_.worker_id();
+  absl::InlinedVector<ObjectID, 8> contained_ids(contained_object_ids.begin(),
+                                                 contained_object_ids.end());
   if (owned_by_us) {
     SubscribeToNodeChanges();
     reference_counter_->AddOwnedObject(*object_id,
-                                       contained_object_ids,
+                                       contained_ids,
                                        rpc_address_,
                                        CurrentCallSite(),
                                        data_size + metadata->Size(),
@@ -1106,8 +1111,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     // Must call `AddNestedObjectIds` after finished assign owner.
     // Otherwise, it will cause the reference count of those contained objects
     // to be less than expected. Details: https://github.com/ray-project/ray/issues/30341
-    reference_counter_->AddNestedObjectIds(
-        *object_id, contained_object_ids, real_owner_address);
+    reference_counter_->AddNestedObjectIds(*object_id, contained_ids, real_owner_address);
   }
 
   if (options_.is_local_mode && owned_by_us && inline_small_object) {
@@ -1360,7 +1364,9 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto start_time = current_time_ms();
 
-  StatusSet<StatusT::NotFound> objects_have_owners = reference_counter_->HasOwner(ids);
+  absl::InlinedVector<ObjectID, 8> ids_vec(ids.begin(), ids.end());
+  StatusSet<StatusT::NotFound> objects_have_owners =
+      reference_counter_->HasOwner(ids_vec);
 
   if (objects_have_owners.has_error()) {
     return std::visit(
@@ -1403,8 +1409,8 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
     // the transport type again and return them for the original direct call ids.
 
     // Prepare object ids vector and owner addresses vector
-    std::vector<ObjectID> object_ids =
-        std::vector<ObjectID>(plasma_object_ids.begin(), plasma_object_ids.end());
+    absl::InlinedVector<ObjectID, 8> object_ids(plasma_object_ids.begin(),
+                                                plasma_object_ids.end());
     auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids);
 
     int64_t local_timeout_ms = timeout_ms;
@@ -1414,7 +1420,10 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
     }
     RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
-        object_ids, owner_addresses, local_timeout_ms, &result_map));
+        std::vector<ObjectID>(object_ids.begin(), object_ids.end()),
+        owner_addresses,
+        local_timeout_ms,
+        &result_map));
   }
 
   // Loop through `ids` and fill each entry for the `results` vector,
@@ -1559,12 +1568,12 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     // these objects.
     if (!plasma_object_ids.empty()) {
       // Prepare object ids map
-      std::vector<ObjectID> object_ids =
-          std::vector<ObjectID>(plasma_object_ids.begin(), plasma_object_ids.end());
+      absl::InlinedVector<ObjectID, 8> object_ids(plasma_object_ids.begin(),
+                                                  plasma_object_ids.end());
       auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids);
 
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
-          object_ids,
+          std::vector<ObjectID>(object_ids.begin(), object_ids.end()),
           owner_addresses,
           std::min(static_cast<int>(plasma_object_ids.size()),
                    num_objects - static_cast<int>(ready.size())),
@@ -2763,8 +2772,9 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
       // this method may be called multiple times for the same return object
       // but it's fine since AddNestedObjectIds is idempotent.
       // See https://github.com/ray-project/ray/issues/57997
-      reference_counter_->AddNestedObjectIds(
-          object_id, contained_object_ids, owner_address);
+      absl::InlinedVector<ObjectID, 8> contained_ids(contained_object_ids.begin(),
+                                                     contained_object_ids.end());
+      reference_counter_->AddNestedObjectIds(object_id, contained_ids, owner_address);
     }
 
     // Allocate a buffer for the return object.
@@ -2973,14 +2983,15 @@ Status CoreWorker::ExecuteTask(
   // task) are still borrowing. It will also notify the caller of any new IDs
   // that were contained in a borrowed ID that we (or a nested task) are now
   // borrowing.
-  std::vector<ObjectID> deleted;
+  absl::InlinedVector<ObjectID, 8> deleted;
   if (!borrowed_ids.empty()) {
-    reference_counter_->PopAndClearLocalBorrowers(borrowed_ids, borrowed_refs, &deleted);
+    absl::InlinedVector<ObjectID, 8> borrowed(borrowed_ids.begin(), borrowed_ids.end());
+    reference_counter_->PopAndClearLocalBorrowers(borrowed, borrowed_refs, &deleted);
   }
   if (dynamic_return_objects != nullptr) {
     for (const auto &dynamic_return : *dynamic_return_objects) {
-      reference_counter_->PopAndClearLocalBorrowers(
-          {dynamic_return.first}, borrowed_refs, &deleted);
+      absl::InlinedVector<ObjectID, 8> dynamic_ids = {dynamic_return.first};
+      reference_counter_->PopAndClearLocalBorrowers(dynamic_ids, borrowed_refs, &deleted);
     }
   }
   memory_store_->Delete(deleted);
@@ -3140,11 +3151,14 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
 
   // Resolve owner address of return id
-  std::vector<ObjectID> object_ids = {return_id};
+  absl::InlinedVector<ObjectID, 8> object_ids = {return_id};
   auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids);
 
-  Status status =
-      plasma_store_provider_->Get(object_ids, owner_addresses, 0, &result_map);
+  Status status = plasma_store_provider_->Get(
+      std::vector<ObjectID>(object_ids.begin(), object_ids.end()),
+      owner_addresses,
+      0,
+      &result_map);
   // Remove the temporary ref.
   RemoveLocalReference(return_id);
 
@@ -3215,7 +3229,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
     SerializeReturnObject(dynamic_return_object.first,
                           dynamic_return_object.second,
                           request.mutable_returned_object());
-    std::vector<ObjectID> deleted;
+    absl::InlinedVector<ObjectID, 8> deleted;
     // When we allocate a dynamic return ID (AllocateDynamicReturnId),
     // we borrow the object. When the object value is allocatd, the
     // memory store is updated. We should clear borrowers and memory store
@@ -3417,11 +3431,13 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
         by_ref_ids, -1, *worker_context_, &result_map, &got_exception));
   } else {
     // Resolve owner addresses of by-ref ids
-    std::vector<ObjectID> object_ids =
-        std::vector<ObjectID>(by_ref_ids.begin(), by_ref_ids.end());
+    absl::InlinedVector<ObjectID, 8> object_ids(by_ref_ids.begin(), by_ref_ids.end());
     auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids);
-    RAY_RETURN_NOT_OK(
-        plasma_store_provider_->Get(object_ids, owner_addresses, -1, &result_map));
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
+        std::vector<ObjectID>(object_ids.begin(), object_ids.end()),
+        owner_addresses,
+        -1,
+        &result_map));
   }
   for (const auto &it : result_map) {
     for (size_t idx : by_ref_indices[it.first]) {
@@ -4285,11 +4301,12 @@ Status CoreWorker::DeleteImpl(const std::vector<ObjectID> &object_ids, bool loca
   // Release the object from plasma. This does not affect the object's ref
   // count. If this was called from a non-owning worker, then a warning will be
   // logged and the object will not get released.
-  reference_counter_->FreePlasmaObjects(object_ids);
+  absl::InlinedVector<ObjectID, 8> ids(object_ids.begin(), object_ids.end());
+  reference_counter_->FreePlasmaObjects(ids);
 
   // Store an error in the in-memory store to indicate that the plasma value is
   // no longer reachable.
-  memory_store_->Delete(object_ids);
+  memory_store_->Delete(ids);
   for (const auto &object_id : object_ids) {
     RAY_LOG(DEBUG).WithField(object_id) << "Freeing object";
     memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_FREED),
@@ -4429,7 +4446,7 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
   const auto &borrower_address = request.borrower_address();
   const std::string &call_site = request.call_site();
   // Get a list of contained object ids.
-  std::vector<ObjectID> contained_object_ids;
+  absl::InlinedVector<ObjectID, 8> contained_object_ids;
   contained_object_ids.reserve(request.contained_object_ids_size());
   for (const auto &id_binary : request.contained_object_ids()) {
     contained_object_ids.push_back(ObjectID::FromBinary(id_binary));

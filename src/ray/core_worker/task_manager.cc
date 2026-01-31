@@ -90,9 +90,9 @@ absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
   return result;
 }
 
-std::vector<ObjectID> ObjectRefStream::PopUnconsumedItems() {
+absl::InlinedVector<ObjectID, 8> ObjectRefStream::PopUnconsumedItems() {
   // Get all unconsumed refs.
-  std::vector<ObjectID> unconsumed_ids;
+  absl::InlinedVector<ObjectID, 8> unconsumed_ids;
   for (int64_t index = 0; index <= max_index_seen_; index++) {
     const auto &object_id = GetObjectRefAtIndex(index);
     auto it = refs_written_to_stream_.find(object_id);
@@ -246,7 +246,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                  << " retries, " << max_oom_retries << " oom retries";
 
   // Add references for the dependencies to the task.
-  std::vector<ObjectID> task_deps;
+  absl::InlinedVector<ObjectID, 8> task_deps;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
       task_deps.push_back(spec.ArgObjectId(i));
@@ -269,7 +269,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   size_t num_returns = spec.NumReturns();
   std::vector<rpc::ObjectReference> returned_refs;
   returned_refs.reserve(num_returns);
-  std::vector<ObjectID> return_ids;
+  absl::InlinedVector<ObjectID, 8> return_ids;
   return_ids.reserve(num_returns);
   auto tensor_transport = spec.TensorTransport();
   for (size_t i = 0; i < num_returns; i++) {
@@ -352,7 +352,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 }
 
 std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
-    const TaskID &task_id, std::vector<ObjectID> *task_deps) {
+    const TaskID &task_id, absl::InlinedVector<ObjectID, 8> *task_deps) {
   RAY_CHECK(task_deps->empty());
   TaskSpecification spec;
   bool should_queue_generator_resubmit = false;
@@ -436,8 +436,8 @@ void TaskManager::SetupTaskEntryForResubmit(TaskEntry &task_entry) {
   }
 }
 
-void TaskManager::UpdateReferencesForResubmit(const TaskSpecification &spec,
-                                              std::vector<ObjectID> *task_deps) {
+void TaskManager::UpdateReferencesForResubmit(
+    const TaskSpecification &spec, absl::InlinedVector<ObjectID, 8> *task_deps) {
   task_deps->reserve(spec.NumArgs());
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
@@ -462,12 +462,13 @@ void TaskManager::UpdateReferencesForResubmit(const TaskSpecification &spec,
       // Delete the old in-memory marker that indicated that the object was
       // freed. Now workers that attempt to get the object will be able to get
       // the reconstructed value.
-      in_memory_store_.Delete({task_dep});
+      in_memory_store_.Delete(absl::InlinedVector<ObjectID, 8>{task_dep});
     }
   }
   if (spec.IsActorTask()) {
     const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
-    reference_counter_.UpdateResubmittedTaskReferences({actor_creation_return_id});
+    reference_counter_.UpdateResubmittedTaskReferences(
+        absl::InlinedVector<ObjectID, 8>{actor_creation_return_id});
   }
 }
 
@@ -610,7 +611,7 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
 
   rpc::Address owner_address;
   if (reference_counter_.GetOwner(object_id, &owner_address) && !nested_refs.empty()) {
-    std::vector<ObjectID> nested_ids;
+    absl::InlinedVector<ObjectID, 8> nested_ids;
     nested_ids.reserve(nested_refs.size());
     for (const auto &nested_ref : nested_refs) {
       nested_ids.emplace_back(ObjectRefToId(nested_ref));
@@ -711,7 +712,7 @@ bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
 
   // Remove any unconsumed refs from the stream metadata in-memory store.
   auto unconsumed_ids = stream_it->second.PopUnconsumedItems();
-  std::vector<ObjectID> deleted;
+  absl::InlinedVector<ObjectID, 8> deleted;
   reference_counter_.TryReleaseLocalRefs(unconsumed_ids, &deleted);
   in_memory_store_.Delete(deleted);
 
@@ -915,9 +916,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   bool first_execution = false;
   const auto store_in_plasma_ids =
       GetTaskReturnObjectsToStoreInPlasma(task_id, &first_execution);
-  std::vector<ObjectID> dynamic_return_ids;
-  std::vector<ObjectID> dynamic_returns_in_plasma;
-  std::vector<ObjectID> direct_return_ids;
+  absl::InlinedVector<ObjectID, 8> dynamic_return_ids;
+  absl::InlinedVector<ObjectID, 8> dynamic_returns_in_plasma;
+  absl::InlinedVector<ObjectID, 8> direct_return_ids;
   if (reply.dynamic_return_objects_size() > 0) {
     RAY_CHECK(reply.return_objects_size() == 1)
         << "Dynamic generators only supported for num_returns=1";
@@ -1397,9 +1398,9 @@ void TaskManager::ShutdownIfNeeded() {
 }
 
 void TaskManager::OnTaskDependenciesInlined(
-    const std::vector<ObjectID> &inlined_dependency_ids,
-    const std::vector<ObjectID> &contained_ids) {
-  std::vector<ObjectID> deleted;
+    const absl::InlinedVector<ObjectID, 8> &inlined_dependency_ids,
+    const absl::InlinedVector<ObjectID, 8> &contained_ids) {
+  absl::InlinedVector<ObjectID, 8> deleted;
   reference_counter_.UpdateSubmittedTaskReferences(
       /*return_ids=*/{},
       /*argument_ids_to_add=*/contained_ids,
@@ -1413,9 +1414,9 @@ void TaskManager::RemoveFinishedTaskReferences(
     bool release_lineage,
     const rpc::Address &borrower_addr,
     const ReferenceCounterInterface::ReferenceTableProto &borrowed_refs) {
-  std::vector<ObjectID> plasma_dependencies = ExtractPlasmaDependencies(spec);
+  absl::InlinedVector<ObjectID, 8> plasma_dependencies = ExtractPlasmaDependencies(spec);
 
-  std::vector<ObjectID> return_ids;
+  absl::InlinedVector<ObjectID, 8> return_ids;
   size_t num_returns = spec.NumReturns();
   return_ids.reserve(num_returns);
   for (size_t i = 0; i < num_returns; i++) {
@@ -1434,7 +1435,7 @@ void TaskManager::RemoveFinishedTaskReferences(
     }
   }
 
-  std::vector<ObjectID> deleted;
+  absl::InlinedVector<ObjectID, 8> deleted;
   reference_counter_.UpdateFinishedTaskReferences(return_ids,
                                                   plasma_dependencies,
                                                   release_lineage,
@@ -1444,8 +1445,8 @@ void TaskManager::RemoveFinishedTaskReferences(
   in_memory_store_.Delete(deleted);
 }
 
-int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
-                                            std::vector<ObjectID> *released_objects) {
+int64_t TaskManager::RemoveLineageReference(
+    const ObjectID &object_id, absl::InlinedVector<ObjectID, 8> *released_objects) {
   absl::MutexLock lock(&mu_);
   const int64_t total_lineage_footprint_bytes_prev(total_lineage_footprint_bytes_);
 
@@ -1642,9 +1643,9 @@ std::optional<TaskSpecification> TaskManager::GetTaskSpec(const TaskID &task_id)
   return it->second.spec_;
 }
 
-std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
+absl::InlinedVector<TaskID, 8> TaskManager::GetPendingChildrenTasks(
     const TaskID &parent_task_id) const {
-  std::vector<TaskID> ret_vec;
+  absl::InlinedVector<TaskID, 8> ret_vec;
   absl::MutexLock lock(&mu_);
   for (const auto &it : submissible_tasks_) {
     if (it.second.IsPending() && (it.second.spec_.ParentTaskId() == parent_task_id)) {
@@ -1826,8 +1827,9 @@ ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
   return it->second.spec_.ReturnId(0);
 }
 
-std::vector<ObjectID> ExtractPlasmaDependencies(const TaskSpecification &spec) {
-  std::vector<ObjectID> plasma_dependencies;
+absl::InlinedVector<ObjectID, 8> ExtractPlasmaDependencies(
+    const TaskSpecification &spec) {
+  absl::InlinedVector<ObjectID, 8> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
       plasma_dependencies.push_back(spec.ArgObjectId(i));

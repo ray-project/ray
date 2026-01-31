@@ -51,8 +51,8 @@ class MockTaskManager : public MockTaskManagerInterface {
 
   void CancelTask(const TaskID &task_id) { cancelled_tasks.insert(task_id); }
 
-  std::optional<rpc::ErrorType> ResubmitTask(const TaskID &task_id,
-                                             std::vector<ObjectID> *task_deps) override {
+  std::optional<rpc::ErrorType> ResubmitTask(
+      const TaskID &task_id, absl::InlinedVector<ObjectID, 8> *task_deps) override {
     if (task_specs.find(task_id) == task_specs.end()) {
       return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED;
     }
@@ -171,7 +171,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
               memory_store_->Put(data, object_id, ref_counter_->HasReference(object_id));
             }) {
     ref_counter_->SetReleaseLineageCallback(
-        [](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
+        [](const ObjectID &, absl::InlinedVector<ObjectID, 8> *args) { return 0; });
   }
 
   void TearDown() override {
