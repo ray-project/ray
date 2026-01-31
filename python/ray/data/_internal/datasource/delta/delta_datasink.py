@@ -130,6 +130,14 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         if not self.table_root or not self.table_root.strip():
             raise ValueError("Delta table path cannot be empty")
 
+        # Ensure table root directory exists (for local filesystems)
+        # Cloud storage doesn't need explicit directory creation
+        try:
+            raw_filesystem.create_dir(self.table_root, recursive=True)
+        except (FileExistsError, pa_fs.FileNotFoundError, OSError):
+            # Directory exists or cloud storage - both are OK
+            pass
+
         # Create SubTreeFileSystem rooted at table path
         # This ensures all filesystem operations use relative paths from table root
         # PyArrow SubTreeFileSystem: https://arrow.apache.org/docs/python/api/filesystems.html#pyarrow.fs.SubTreeFileSystem
@@ -519,9 +527,25 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         # Recreate filesystem on worker using storage_options (serializable)
         # This ensures workers use the same credentials as the driver
         data_context = DataContext.get_current()
-        _, raw_filesystem = _resolve_paths_and_filesystem(self.table_uri, None)
+        resolved_paths, raw_filesystem = _resolve_paths_and_filesystem(self.table_uri, None)
+        if len(resolved_paths) != 1:
+            raise ValueError(
+                f"Expected exactly one path for Delta table, got {len(resolved_paths)} paths"
+            )
+        table_root = resolved_paths[0]
+
+        # Ensure table root directory exists (for local filesystems)
+        # Cloud storage doesn't need explicit directory creation
+        try:
+            # Check if it's a local filesystem by trying to create the directory
+            # This will fail gracefully for cloud storage
+            raw_filesystem.create_dir(table_root, recursive=True)
+        except (FileExistsError, pa_fs.FileNotFoundError, OSError):
+            # Directory exists or cloud storage - both are OK
+            pass
+
         # Recreate SubTreeFileSystem rooted at table path
-        filesystem = pa_fs.SubTreeFileSystem(self.table_root, raw_filesystem)
+        filesystem = pa_fs.SubTreeFileSystem(table_root, raw_filesystem)
         filesystem = RetryingPyFileSystem.wrap(
             filesystem, retryable_errors=data_context.retried_io_errors
         )
@@ -873,19 +897,11 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         if not self._write_uuid:
             return False
 
-        try:
-            app_transaction = create_app_transaction_id(self._write_uuid)
-            app_id = "ray.data.write_delta"
-            # Check transaction_version for this app_id
-            # If it matches our expected version, commit succeeded
-            # Note: delta-rs may not expose transaction_version directly,
-            # so we check if table version increased (heuristic)
-            # For now, return False to be safe (don't delete potentially committed files)
-            # TODO: Use delta-rs transaction_version API when available
-            return False  # Conservative: assume commit may have succeeded
-        except Exception:
-            # If we can't check, be conservative and assume commit may have succeeded
-            return False
+        # TODO: Implement transaction_version checking when delta-rs API is available
+        # For now, we can't reliably check if commit succeeded, so return False
+        # to be conservative (don't delete potentially committed files)
+        # Note: app_transactions are added in on_write_complete() for future use
+        return False  # Conservative: assume commit may have succeeded
 
     def _commit_by_mode(
         self,
