@@ -160,7 +160,7 @@ class MapTransformer:
         self._transform_fns = []
         self._init_fn = init_fn if init_fn is not None else lambda: None
         self._output_block_size_option_override = output_block_size_option_override
-        self._udf_time = 0
+        self._udf_time_s = 0
 
         # Add transformations
         self.add_transform_fns(transform_fns)
@@ -202,7 +202,7 @@ class MapTransformer:
             try:
                 start = time.perf_counter()
                 output = next(input)
-                self._udf_time += time.perf_counter() - start
+                self._udf_time_s += time.perf_counter() - start
                 yield output
             except StopIteration:
                 break
@@ -274,8 +274,11 @@ class MapTransformer:
     ) -> list[Any]:
         return ones + others
 
-    def udf_time(self) -> float:
-        return self._udf_time
+    def udf_time_s(self, reset: bool) -> float:
+        cur_time_s = self._udf_time_s
+        if reset:
+            self._udf_time_s = 0
+        return cur_time_s
 
 
 # Below are subclasses of MapTransformFn.

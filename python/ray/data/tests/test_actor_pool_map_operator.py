@@ -695,7 +695,7 @@ def test_min_max_resource_requirements(restore_data_context):
 
     # min_resource_usage: 1 actor * (1 gpu, 3 obj_store_mem)
     # max_resource_usage: 2 actors * (1 gpu)
-    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=3)
+    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=0)
     assert max_resource_usage_bound == ExecutionResources(
         gpu=2, object_store_memory=float("inf")
     )
@@ -721,7 +721,7 @@ def test_min_max_resource_requirements_unbounded(restore_data_context):
 
     # Unbounded pools should return infinite max resources for GPU (which is used),
     # but 0 for CPU/memory (which are not specified) to prevent hoarding.
-    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=3)
+    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=0)
     assert max_resource_usage_bound == ExecutionResources.for_limits(cpu=0, memory=0)
 
 

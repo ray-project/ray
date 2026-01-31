@@ -3,6 +3,7 @@ import os
 import posixpath
 import time
 from collections import defaultdict
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -12,6 +13,9 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockExecStats, BlockMetadata
@@ -24,6 +28,24 @@ from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import _ray_start
 from ray.util.debug import reset_log_once
 from ray.util.state import list_actors
+
+
+def mock_all_to_all_op(input_op, name="MockAllToAll"):
+    """Create a mock AllToAllOperator for testing.
+
+    Creates an AllToAllOperator which is NOT eligible for resource allocation
+    (throttling_disabled=True) but is a blocking materializing operator.
+
+    Note: Creating this operator automatically adds it to input_op._output_dependencies.
+    """
+    op = AllToAllOperator(
+        bulk_fn=MagicMock(),
+        input_op=input_op,
+        data_context=ray.data.DataContext.get_current(),
+        name=name,
+    )
+    op.start = MagicMock(side_effect=lambda _: None)
+    return op
 
 
 @pytest.fixture(scope="module")

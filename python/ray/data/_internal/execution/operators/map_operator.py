@@ -3,6 +3,7 @@ import functools
 import itertools
 import logging
 from abc import ABC, abstractmethod
+from dataclasses import replace
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
 
 import ray
 from ray import ObjectRef
-from ray._raylet import ObjectRefGenerator
+from ray._raylet import ObjectRefGenerator, StreamingGeneratorStats
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
@@ -746,7 +747,9 @@ def _map_task(
     )
     DataContext._set_current(data_context)
     ctx.kwargs.update(kwargs)
+
     TaskContext.set_current(ctx)
+
     stats = BlockExecStats.builder()
     map_transformer.override_target_max_block_size(ctx.target_max_block_size_override)
     block_iter: Iterable[Block]
@@ -756,17 +759,26 @@ def _map_task(
         block_iter = iter(blocks)
 
     with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
-        for b_out in map_transformer.apply_transform(block_iter, ctx):
-            # TODO(Clark): Add input file propagation from input blocks.
-            m_out = BlockAccessor.for_block(b_out).get_metadata()
-            s_out = BlockAccessor.for_block(b_out).schema()
-            m_out.exec_stats = stats.build()
-            m_out.exec_stats.udf_time_s = map_transformer.udf_time()
-            m_out.exec_stats.task_idx = ctx.task_idx
-            m_out.exec_stats.max_uss_bytes = profiler.estimate_max_uss()
-            meta_with_schema = BlockMetadataWithSchema(metadata=m_out, schema=s_out)
-            yield b_out
-            yield meta_with_schema
+        for block in map_transformer.apply_transform(block_iter, ctx):
+            block_meta = BlockAccessor.for_block(block).get_metadata()
+            block_schema = BlockAccessor.for_block(block).schema()
+
+            # Derive block execution stats
+            exec_stats = stats.build()
+            # Yield block and retrieve its Ray object serialization timing
+            stats: StreamingGeneratorStats = yield block
+            if stats:
+                exec_stats.block_ser_time_s = stats.object_creation_dur_s
+
+            exec_stats.udf_time_s = map_transformer.udf_time_s(reset=True)
+            exec_stats.task_idx = ctx.task_idx
+            exec_stats.max_uss_bytes = profiler.estimate_max_uss()
+
+            yield BlockMetadataWithSchema(
+                metadata=replace(block_meta, exec_stats=exec_stats), schema=block_schema
+            )
+
+            # Reset trackers
             stats = BlockExecStats.builder()
             profiler.reset()
 

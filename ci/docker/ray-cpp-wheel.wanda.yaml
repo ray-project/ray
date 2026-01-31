@@ -5,7 +5,7 @@ name: "ray-cpp-wheel$ARCH_SUFFIX"
 froms:
   - "rayproject/manylinux2014:$MANYLINUX_VERSION-jdk-$HOSTTYPE"
   - "cr.ray.io/rayproject/ray-core-py$PYTHON_VERSION$ARCH_SUFFIX"       # C++ binaries (ray_pkg.zip)
-  - "cr.ray.io/rayproject/ray-cpp-core-py$PYTHON_VERSION$ARCH_SUFFIX"   # C++ headers/libs (ray_cpp_pkg.zip)
+  - "cr.ray.io/rayproject/ray-cpp-core$ARCH_SUFFIX"                     # C++ headers/libs (ray_cpp_pkg.zip)
   - "cr.ray.io/rayproject/ray-java-build$ARCH_SUFFIX"                   # Java JARs
   - "cr.ray.io/rayproject/ray-dashboard$ARCH_SUFFIX"                    # Dashboard
 dockerfile: ci/docker/ray-cpp-wheel.Dockerfile
@@ -23,6 +23,6 @@ build_args:
   - BUILDKITE_COMMIT
   - ARCH_SUFFIX
   - RAY_CORE_IMAGE=cr.ray.io/rayproject/ray-core-py$PYTHON_VERSION$ARCH_SUFFIX
-  - RAY_CPP_CORE_IMAGE=cr.ray.io/rayproject/ray-cpp-core-py$PYTHON_VERSION$ARCH_SUFFIX
+  - RAY_CPP_CORE_IMAGE=cr.ray.io/rayproject/ray-cpp-core$ARCH_SUFFIX
   - RAY_JAVA_IMAGE=cr.ray.io/rayproject/ray-java-build$ARCH_SUFFIX
   - RAY_DASHBOARD_IMAGE=cr.ray.io/rayproject/ray-dashboard$ARCH_SUFFIX

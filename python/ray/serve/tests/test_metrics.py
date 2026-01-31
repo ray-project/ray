@@ -24,6 +24,9 @@ from ray._private.test_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,
 )
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+)
 from ray.serve._private.test_utils import (
     TEST_METRICS_EXPORT_PORT,
     check_metric_float_eq,
@@ -385,7 +388,6 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
 def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for not found."""
-
     # Should generate 404 responses
     broken_url = "http://127.0.0.1:8000/fake_route"
     _ = httpx.get(broken_url).text
@@ -478,7 +480,6 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
     """Test that HTTP disconnect metrics are reported correctly."""
-
     signal = SignalActor.remote()
 
     @serve.deployment
@@ -515,7 +516,6 @@ def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
 
 def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     """Test that gRPC disconnect metrics are reported correctly."""
-
     signal = SignalActor.remote()
 
     @serve.deployment
@@ -628,6 +628,9 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
     """Verify that 2xx and 3xx status codes aren't errors, others are."""
+    # TODO(eicherseiji): Remove skip when HAProxy is open-sourced.
+    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
 
     def check_request_count_metrics(
         expected_error_count: int,
