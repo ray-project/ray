@@ -2,10 +2,24 @@ load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_library(
+    name = "rayci_auth",
+    srcs = ["rayci_auth.py"],
+    visibility = [
+        "//.buildkite:__pkg__",
+        "//ci/ray_ci/automation:__pkg__",
+    ],
+    deps = [
+        ci_require("boto3"),
+        ci_require("aws_requests_auth"),
+    ],
+)
+
+py_library(
     name = "ray_ci_lib",
     srcs = glob(
         ["*.py"],
         exclude = [
+            "rayci_auth.py",
             "test_*.py",
             "test_in_docker.py",
             "build_in_docker.py",

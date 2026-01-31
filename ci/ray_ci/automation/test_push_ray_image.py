@@ -466,13 +466,20 @@ class TestMultiplePlatforms:
     POSTMERGE_PIPELINE_ID = "test-postmerge-pipeline-id"
     WORK_REPO = "123456789.dkr.ecr.us-west-2.amazonaws.com/rayci-work"
 
+    @mock.patch("ci.ray_ci.automation.push_ray_image.docker_hub_login")
     @mock.patch("ci.ray_ci.automation.push_ray_image.ci_init")
     @mock.patch("ci.ray_ci.automation.push_ray_image.ecr_docker_login")
     @mock.patch("ci.ray_ci.automation.push_ray_image._copy_image")
     @mock.patch("ci.ray_ci.automation.push_ray_image._image_exists")
     @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
     def test_multiple_platforms_processed(
-        self, mock_config, mock_exists, mock_copy, mock_ecr_login, mock_ci_init
+        self,
+        mock_config,
+        mock_exists,
+        mock_copy,
+        mock_ecr_login,
+        mock_ci_init,
+        mock_docker_login,
     ):
         """Test that multiple platforms are each processed with correct source refs."""
         from click.testing import CliRunner
@@ -527,13 +534,20 @@ class TestMultiplePlatforms:
             for src, dest in copy_calls
         )
 
+    @mock.patch("ci.ray_ci.automation.push_ray_image.docker_hub_login")
     @mock.patch("ci.ray_ci.automation.push_ray_image.ci_init")
     @mock.patch("ci.ray_ci.automation.push_ray_image.ecr_docker_login")
     @mock.patch("ci.ray_ci.automation.push_ray_image._copy_image")
     @mock.patch("ci.ray_ci.automation.push_ray_image._image_exists")
     @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
     def test_multiple_platforms_fails_if_one_missing(
-        self, mock_config, mock_exists, mock_copy, mock_ecr_login, mock_ci_init
+        self,
+        mock_config,
+        mock_exists,
+        mock_copy,
+        mock_ecr_login,
+        mock_ci_init,
+        mock_docker_login,
     ):
         """Test that processing fails if any platform's source image is missing."""
         from click.testing import CliRunner
