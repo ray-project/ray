@@ -1460,6 +1460,7 @@ py_test(
     tags = [
         "data_non_parallel",
         "exclusive",
+        "skip-on-premerge",
         "team:data",
     ],
     deps = [
