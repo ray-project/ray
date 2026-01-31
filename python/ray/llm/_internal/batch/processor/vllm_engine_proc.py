@@ -84,6 +84,14 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         description="The task type to use. If not specified, will use "
         "'generate' by default.",
     )
+    log_engine_metrics: bool = Field(
+        default=True,
+        description="Enable vLLM engine metrics export via Ray's Prometheus endpoint. "
+        "When enabled, metrics like prefix cache hit rate, TTFT, TPOT, KV cache "
+        "utilization, and scheduler state are available at Ray's metrics endpoint. "
+        "Requires Ray to be initialized with _metrics_export_port "
+        "(e.g., ray.init(_metrics_export_port=8080)).",
+    )
     # LoRA configurations.
     dynamic_lora_loading_path: Optional[str] = Field(
         default=None,
@@ -276,6 +284,7 @@ def build_vllm_engine_processor(
                 dynamic_lora_loading_path=config.dynamic_lora_loading_path,
                 placement_group_config=config.placement_group_config,
                 should_continue_on_error=config.should_continue_on_error,
+                log_engine_metrics=config.log_engine_metrics,
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
