@@ -30,7 +30,6 @@ from ci.ray_ci.docker_container import (
     RAY_REPO_MAP,
     RayType,
 )
-from ci.ray_ci.rayci_auth import docker_hub_login
 from ci.ray_ci.utils import ci_init, ecr_docker_login
 
 from ray_release.configs.global_config import get_global_config
@@ -338,10 +337,6 @@ def main(
 
     ecr_registry = rayci_work_repo.split("/")[0]
     ecr_docker_login(ecr_registry)
-
-    if not dry_run:
-        logger.info("Logging in to Docker Hub...")
-        docker_hub_login()
 
     all_tags = []
     for plat in platforms:
