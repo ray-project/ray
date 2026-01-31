@@ -35,12 +35,12 @@ def generate_worker_group_poll_status(num_workers, num_ckpt, num_dummy, num_none
     ckpt_tr = _TrainingReport(
         metrics={},
         checkpoint=Checkpoint("mock://bucket/path"),
-        validation_spec=None,
+        validation=False,
     )
     dummy_tr = _TrainingReport(
         metrics={},
         checkpoint=None,
-        validation_spec=None,
+        validation=False,
     )
     ckpt_ws = WorkerStatus(running=True, error=None, training_report=ckpt_tr)
     dummy_ws = WorkerStatus(running=True, error=None, training_report=dummy_tr)

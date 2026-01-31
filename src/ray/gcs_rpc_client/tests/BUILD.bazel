@@ -28,6 +28,10 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
+    features = select({
+        "@platforms//os:windows": ["compiler_param_file"],
+        "//conditions:default": [],
+    }),
     tags = ["team:core"],
     deps = [
         "//src/ray/common:test_utils",
@@ -55,6 +59,10 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
+    features = select({
+        "@platforms//os:windows": ["compiler_param_file"],
+        "//conditions:default": [],
+    }),
     tags = [
         "exclusive",
         "no_tsan",

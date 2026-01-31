@@ -21,9 +21,6 @@ from ray._common.test_utils import is_named_tuple
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{"local_mode": True}, {"local_mode": False}], indirect=True
-)
 def test_simple_serialization(ray_start_regular):
     primitive_objects = [
         # Various primitive types.
@@ -89,9 +86,6 @@ def test_simple_serialization(ray_start_regular):
             assert type(obj) is type(new_obj_2)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{"local_mode": True}, {"local_mode": False}], indirect=True
-)
 def test_complex_serialization(ray_start_regular):
     def assert_equal(obj1, obj2):
         module_numpy = (
@@ -352,9 +346,6 @@ def test_inspect_serialization(enable_pickle_debug):
     assert list(results[1])[0].obj == lock, results
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{"local_mode": True}, {"local_mode": False}], indirect=True
-)
 def test_serialization_final_fallback(ray_start_regular):
     pytest.importorskip("catboost")
     # This test will only run when "catboost" is installed.
@@ -517,7 +508,7 @@ def test_register_class(ray_start_2_cpus):
         assert not hasattr(c2, "method1")
 
 
-def test_deserialized_from_buffer_immutable(ray_start_shared_local_modes):
+def test_deserialized_from_buffer_immutable(ray_start_regular_shared):
     x = np.full((2, 2), 1.0)
     o = ray.put(x)
     y = ray.get(o)
@@ -525,7 +516,7 @@ def test_deserialized_from_buffer_immutable(ray_start_shared_local_modes):
         y[0, 0] = 9.0
 
 
-def test_reducer_override_no_reference_cycle(ray_start_shared_local_modes):
+def test_reducer_override_no_reference_cycle(ray_start_regular_shared):
     # bpo-39492: reducer_override used to induce a spurious reference cycle
     # inside the Pickler object, that could prevent all serialized objects
     # from being garbage-collected without explicity invoking gc.collect.
@@ -562,7 +553,7 @@ def test_reducer_override_no_reference_cycle(ray_start_shared_local_modes):
     assert new_obj() is None
 
 
-def test_buffer_alignment(ray_start_shared_local_modes):
+def test_buffer_alignment(ray_start_regular_shared):
     # Deserialized large numpy arrays should be 64-byte aligned.
     x = np.random.normal(size=(10, 20, 30))
     y = ray.get(ray.put(x))
@@ -587,7 +578,7 @@ def test_buffer_alignment(ray_start_shared_local_modes):
         assert y.ctypes.data % 8 == 0
 
 
-def test_custom_serializer(ray_start_shared_local_modes):
+def test_custom_serializer(ray_start_regular_shared):
     import threading
 
     class A:
@@ -614,7 +605,7 @@ def test_custom_serializer(ray_start_shared_local_modes):
     ray.util.deregister_serializer(A)
 
 
-def test_numpy_ufunc(ray_start_shared_local_modes):
+def test_numpy_ufunc(ray_start_regular_shared):
     @ray.remote
     def f():
         # add reference to the numpy ufunc
@@ -633,7 +624,7 @@ class _SelfDereferenceObject:
         return ray.get, (self.ref,)
 
 
-def test_recursive_resolve(ray_start_shared_local_modes):
+def test_recursive_resolve(ray_start_regular_shared):
     ref = ray.put(42)
     for _ in range(10):
         ref = ray.put(_SelfDereferenceObject(ref))
