@@ -553,7 +553,7 @@ feather-format==0.4.1
     # via -r python/requirements/test-requirements.txt
 ffmpy==0.3.1
     # via gradio
-filelock==3.17.0
+filelock==3.20.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
