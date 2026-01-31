@@ -11,10 +11,9 @@ build_arg_sets:
   append_flags:
     - --python-version=3.11
     - --unsafe-package ray
-    # Use manylinux_2_31 for vllm 0.15.0 wheel compatibility
-    - --python-platform=x86_64-manylinux_2_31
+    - --python-platform=linux
     - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
-    - --override python/requirements/llm/torch-override.txt
+    - --override python/requirements/llm/llm-override.txt
   build_arg_sets:
     - cpu
     - cu128

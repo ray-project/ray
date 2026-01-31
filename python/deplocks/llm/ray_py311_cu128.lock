@@ -1231,7 +1231,7 @@ numpy==2.2.6 \
     --hash=sha256:fee4236c876c4e8369388054d02d0e9bb84821feb1a64dd59e137e6511a551f8
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
-    #   --override python/requirements/llm/torch-override.txt
+    #   --override python/requirements/llm/llm-override.txt
     #   -r python/requirements.txt
     #   cupy-cuda12x
     #   gymnasium
@@ -1373,7 +1373,7 @@ pandas==3.0.0 \
     --hash=sha256:fedabf175e7cd82b69b74c30adbaa616de301291a5231138d7242596fc296a8d
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
-    #   --override python/requirements/llm/torch-override.txt
+    #   --override python/requirements/llm/llm-override.txt
     #   -r python/requirements.txt
 platformdirs==3.11.0 \
     --hash=sha256:cf8ee52a3afdb965072dcc652433e0c7e3e40cf5ea1477cd4b3b1d2eb75495b3 \
@@ -2030,7 +2030,7 @@ scipy==1.17.0 \
     --hash=sha256:fe508b5690e9eaaa9467fc047f833af58f1152ae51a0d0aed67aa5801f4dd7d6
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
-    #   --override python/requirements/llm/torch-override.txt
+    #   --override python/requirements/llm/llm-override.txt
     #   -r python/requirements.txt
 shellingham==1.5.4 \
     --hash=sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686 \

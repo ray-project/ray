@@ -2008,7 +2008,7 @@ numpy==2.2.6 \
     --hash=sha256:fe27749d33bb772c80dcd84ae7e8df2adc920ae8297400dabec45f0dedb3f6de \
     --hash=sha256:fee4236c876c4e8369388054d02d0e9bb84821feb1a64dd59e137e6511a551f8
     # via
-    #   --override python/requirements/llm/torch-override.txt
+    #   --override python/requirements/llm/llm-override.txt
     #   -r python/requirements.txt
     #   cupy-cuda12x
     #   gymnasium
@@ -2175,7 +2175,7 @@ pandas==3.0.0 \
     --hash=sha256:f0b853319dec8d5e0c8b875374c078ef17f2269986a78168d9bd57e49bf650ae \
     --hash=sha256:fedabf175e7cd82b69b74c30adbaa616de301291a5231138d7242596fc296a8d
     # via
-    #   --override python/requirements/llm/torch-override.txt
+    #   --override python/requirements/llm/llm-override.txt
     #   -r python/requirements.txt
 pandocfilters==1.5.0 \
     --hash=sha256:0b679503337d233b4339a817bfc8c50064e2eff681314376a47cb582305a7a38 \
@@ -3136,7 +3136,7 @@ scipy==1.17.0 \
     --hash=sha256:fc02c37a5639ee67d8fb646ffded6d793c06c5622d36b35cfa8fe5ececb8f042 \
     --hash=sha256:fe508b5690e9eaaa9467fc047f833af58f1152ae51a0d0aed67aa5801f4dd7d6
     # via
-    #   --override python/requirements/llm/torch-override.txt
+    #   --override python/requirements/llm/llm-override.txt
     #   -r python/requirements.txt
 send2trash==1.8.3 \
     --hash=sha256:0c31227e0bd08961c7665474a3d1ef7193929fedda4233843689baa056be46c9 \

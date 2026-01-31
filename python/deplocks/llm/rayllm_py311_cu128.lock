@@ -2275,7 +2275,7 @@ numpy==2.2.6 \
     --hash=sha256:fee4236c876c4e8369388054d02d0e9bb84821feb1a64dd59e137e6511a551f8
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
-    #   --override python/requirements/llm/torch-override.txt
+    #   --override python/requirements/llm/llm-override.txt
     #   -r python/requirements.txt
     #   cupy-cuda12x
     #   flashinfer-python
@@ -2639,7 +2639,7 @@ pandas==3.0.0 \
     --hash=sha256:fedabf175e7cd82b69b74c30adbaa616de301291a5231138d7242596fc296a8d
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
-    #   --override python/requirements/llm/torch-override.txt
+    #   --override python/requirements/llm/llm-override.txt
     #   -r python/requirements.txt
 partial-json-parser==0.2.1.1.post5 \
     --hash=sha256:627715aaa3cb3fb60a65b0d62223243acaa6c70846520a90326fef3a2f0b61ca \
@@ -4058,7 +4058,7 @@ scipy==1.17.0 \
     --hash=sha256:fe508b5690e9eaaa9467fc047f833af58f1152ae51a0d0aed67aa5801f4dd7d6
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
-    #   --override python/requirements/llm/torch-override.txt
+    #   --override python/requirements/llm/llm-override.txt
     #   -r python/requirements.txt
     #   librosa
     #   scikit-learn
@@ -4407,7 +4407,7 @@ torch==2.9.1+cu128 \
     --hash=sha256:2a1da940f0757621d098c9755f7504d791a72a40920ec85a4fd98b20253fca4e
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
-    #   --override python/requirements/llm/torch-override.txt
+    #   --override python/requirements/llm/llm-override.txt
     #   compressed-tensors
     #   flashinfer-python
     #   nixl

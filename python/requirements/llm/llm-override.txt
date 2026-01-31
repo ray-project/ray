@@ -1,10 +1,9 @@
 # Override vLLM's torch==2.9.1+cpu requirement to allow CUDA variants
 torch>=2.9.0
-# Override numpy constraint for LLM builds (opencv-python-headless>=4.13.0 requires numpy>=2)
+# Override numpy constraint (vLLM requires opencv-python-headless>=4.13.0 which requires numpy>=2)
 # Upper bound <2.3 due to cupy-cuda12x==13.4.0 compatibility
 numpy>=2.0.0,<2.3
 # Override scipy to allow version compatible with numpy 2.x (scipy>=1.14 supports numpy 2.x)
 scipy>=1.14.0
 # Override pandas to allow version compatible with numpy 2.x (pandas>=2.0 supports numpy 2.x)
-# pandas 1.5.3 (from data-requirements.txt) is incompatible with numpy 2.x
 pandas>=2.0.0

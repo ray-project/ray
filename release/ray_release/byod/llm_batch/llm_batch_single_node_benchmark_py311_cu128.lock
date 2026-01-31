@@ -1421,7 +1421,7 @@ numpy==2.2.6 \
     --hash=sha256:fe27749d33bb772c80dcd84ae7e8df2adc920ae8297400dabec45f0dedb3f6de \
     --hash=sha256:fee4236c876c4e8369388054d02d0e9bb84821feb1a64dd59e137e6511a551f8
     # via
-    #   --override python/requirements/llm/torch-override.txt
+    #   --override python/requirements/llm/llm-override.txt
     #   -r python/requirements.txt
     #   cupy-cuda12x
     #   datasets
@@ -1580,7 +1580,7 @@ pandas==2.3.3 \
     --hash=sha256:f086f6fe114e19d92014a1966f43a3e62285109afe874f067f5abbdcbb10e59c \
     --hash=sha256:f8bfc0e12dc78f777f323f55c58649591b2cd0c43534e8355c51d3fede5f4dee
     # via
-    #   --override python/requirements/llm/torch-override.txt
+    #   --override python/requirements/llm/llm-override.txt
     #   -r python/requirements.txt
     #   datasets
 platformdirs==4.5.0 \
@@ -2260,7 +2260,7 @@ scipy==1.16.3 \
     --hash=sha256:fb4b29f4cf8cc5a8d628bc8d8e26d12d7278cd1f219f22698a378c3d67db5e4b \
     --hash=sha256:ffa6eea95283b2b8079b821dc11f50a17d0571c92b43e2b5b12764dc5f9b285d
     # via
-    #   --override python/requirements/llm/torch-override.txt
+    #   --override python/requirements/llm/llm-override.txt
     #   -r python/requirements.txt
 shellingham==1.5.4 \
     --hash=sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686 \

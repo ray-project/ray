@@ -31,7 +31,7 @@ scikit-learn
 scipy
 tblib
 terminado
-tensorboardx>=2.6.2.2
+tensorboardx==2.6.2.2
 tensorflow
 trueskill
 tqdm
