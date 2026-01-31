@@ -186,6 +186,7 @@ message ClusterInfoType {
     TIMELINE = 5;
     PING = 6;
     DASHBOARD_URL = 7;
+    AVAILABLE_RESOURCES_PER_NODE = 8;
   }
 }
 
