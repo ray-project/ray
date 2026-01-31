@@ -16,6 +16,15 @@ RUN \
 
 set -euo pipefail
 
+if [[ "$HOSTTYPE" =~ ^x86_64 ]]; then
+    ARCH="x86_64"
+elif [[ "$HOSTTYPE" =~ ^aarch64 ]]; then
+    ARCH="aarch64"
+else
+    echo "Unsupported architecture $HOSTTYPE" >/dev/stderr
+    exit 1
+fi
+
 apt-get update
 apt-get upgrade -y
 apt-get install -y ca-certificates curl zip unzip sudo gnupg tzdata git apt-transport-https lsb-release
@@ -51,10 +60,20 @@ Signed-by: /etc/apt/keyrings/microsoft.gpg" | tee /etc/apt/sources.list.d/azure-
 
 apt-get update
 apt-get install -y \
-  awscli nodejs build-essential python-is-python3 \
-  python3-pip openjdk-8-jre wget jq \
+  nodejs build-essential python-is-python3 \
+  python3-pip python3-docutils openjdk-8-jre wget jq \
   "docker-ce-cli=5:28.5.2-1~ubuntu.22.04~jammy" \
   azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
+
+# Install awscli v2
+AWSCLI_TMP="$(mktemp -d)"
+(
+    cd "${AWSCLI_TMP}"
+    curl -sfL "https://awscli.amazonaws.com/awscli-exe-linux-${ARCH}.zip" -o "awscliv2.zip"
+    unzip -q awscliv2.zip
+    sudo ./aws/install
+)
+rm -rf "${AWSCLI_TMP}"
 
 # Install uv
 curl -fsSL https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
