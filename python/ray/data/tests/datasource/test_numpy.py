@@ -9,8 +9,9 @@ import ray
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     FixedShapeTensorFormat,
+    FixedShapeTensorType,
+    resolve_fixed_shape_tensor_format,
 )
-from ray.data.context import DataContext
 from ray.data.dataset import Schema
 from ray.data.extensions.tensor_extension import ArrowTensorType
 from ray.data.tests.conftest import *  # noqa
@@ -20,20 +21,15 @@ from ray.tests.conftest import *  # noqa
 
 
 def _get_tensor_type():
-    ctx = DataContext.get_current()
-    tensor_format = ctx.arrow_fixed_shape_tensor_format
-    # If arrow_fixed_shape_tensor_format is None, fallback to use_arrow_tensor_v2
-    if tensor_format is None:
-        tensor_format = (
-            FixedShapeTensorFormat.V2
-            if ctx.use_arrow_tensor_v2
-            else FixedShapeTensorFormat.V1
-        )
-    return (
-        ArrowTensorTypeV2
-        if tensor_format == FixedShapeTensorFormat.V2
-        else ArrowTensorType
-    )
+    tensor_format = resolve_fixed_shape_tensor_format()
+    if (
+        FixedShapeTensorType is not None
+        and tensor_format == FixedShapeTensorFormat.ARROW_NATIVE
+    ):
+        return FixedShapeTensorType
+    elif tensor_format == FixedShapeTensorFormat.V2:
+        return ArrowTensorTypeV2
+    return ArrowTensorType
 
 
 @pytest.mark.parametrize("from_ref", [False, True])

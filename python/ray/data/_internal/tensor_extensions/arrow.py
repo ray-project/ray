@@ -101,7 +101,7 @@ class FixedShapeTensorFormat(Enum):
     ARROW_NATIVE = "native"
 
 
-def _resolve_fixed_shape_tensor_format() -> "FixedShapeTensorFormat":
+def resolve_fixed_shape_tensor_format() -> "FixedShapeTensorFormat":
     """Resolve the tensor format from DataContext.
 
     If arrow_fixed_shape_tensor_format is set, use it.
@@ -792,20 +792,20 @@ def create_arrow_fixed_shape_tensor_format(
     is_variable_shaped = any(dim is None for dim in shape)
     assert not is_variable_shaped
     if tensor_format is None:
-        tensor_format = _resolve_fixed_shape_tensor_format()
+        tensor_format = resolve_fixed_shape_tensor_format()
 
         # Native tensor format requires PyArrow 12+
         if (
             tensor_format == FixedShapeTensorFormat.ARROW_NATIVE
             and FixedShapeTensorType is None
-            and log_once("native_fixed_shape_tensors_not_supported")
         ):
-            warnings.warn(
-                f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} "
-                "to enable native tensor arrays. Falling back to V2.",
-                UserWarning,
-                stacklevel=3,
-            )
+            if log_once("native_fixed_shape_tensors_not_supported"):
+                warnings.warn(
+                    f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} "
+                    "to enable native tensor arrays. Falling back to V2.",
+                    UserWarning,
+                    stacklevel=3,
+                )
             tensor_format = FixedShapeTensorFormat.V2
 
     if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:

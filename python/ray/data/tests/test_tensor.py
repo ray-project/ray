@@ -7,7 +7,6 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
     ArrowTensorArray,
@@ -15,6 +14,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     create_arrow_fixed_shape_tensor_format,
 )
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.dataset import Schema

@@ -8,7 +8,6 @@ import pyarrow as pa
 import pytest
 from packaging.version import parse as parse_version
 
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import DataContext
 from ray.data._internal.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
@@ -32,6 +31,7 @@ from ray.data._internal.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.data._internal.tensor_extensions.utils import (
     create_ragged_ndarray,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 
 @pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
@@ -1007,13 +1007,23 @@ class TestCreateArrowTensorType:
         "use_v2,use_native,expected_type_if_native_available,expected_type_fallback",
         [
             # V1 fallback: both settings off
-            (False, False, ArrowTensorType, ArrowTensorType),
+            (False, None, ArrowTensorType, ArrowTensorType),
             # V2: v2 on, native off
-            (True, False, ArrowTensorTypeV2, ArrowTensorTypeV2),
+            (True, None, ArrowTensorTypeV2, ArrowTensorTypeV2),
             # NATIVE with V2 fallback: both on, falls back to V2 if NATIVE unavailable
-            (True, True, FixedShapeTensorType, ArrowTensorTypeV2),
+            (
+                True,
+                FixedShapeTensorFormat.ARROW_NATIVE,
+                FixedShapeTensorType,
+                ArrowTensorTypeV2,
+            ),
             # NATIVE with V1 fallback: native on, v2 off, falls back to V1 if NATIVE unavailable
-            (False, True, FixedShapeTensorType, ArrowTensorType),
+            (
+                False,
+                FixedShapeTensorFormat.ARROW_NATIVE,
+                FixedShapeTensorType,
+                ArrowTensorType,
+            ),
         ],
     )
     def test_context_defaults(

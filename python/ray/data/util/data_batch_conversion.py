@@ -168,13 +168,11 @@ def _convert_batch_type_to_numpy(
                 transform_pyarrow.to_numpy(combined_array, zero_copy_only=False)
             )
 
-        arrow_fixed_shape_tensor_formats = (
-            get_arrow_extension_fixed_shape_tensor_types()
-        )
+        arrow_fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
 
         # NOTE: This branch is here for backwards-compatibility
         if data.column_names == [TENSOR_COLUMN_NAME] and (
-            isinstance(data.schema.types[0], arrow_fixed_shape_tensor_formats)
+            isinstance(data.schema.types[0], arrow_fixed_shape_tensor_types)
         ):
             return column_values_ndarrays[0]
 
