@@ -526,7 +526,7 @@ def _iter_rows_from_batch_with_tensors(
         column_names: The column names to use in the output dictionaries.
 
     Yields:
-        Dictionaries mapping column names to values for each row.
+        Dict[str, Any]: Dictionaries mapping column names to values for each row.
     """
     from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
 
