@@ -54,6 +54,7 @@ def _should_convert_to_tensor(
     # We convert passed in column values into a tensor representation (involving
     # Arrow/Pandas extension types) in either of the following cases:
     return (
+        # - Column name is `TENSOR_COLUMN_NAME` (for compatibility)
         column_name == TENSOR_COLUMN_NAME
         # - Provided column values are already represented by a Numpy tensor (ie
         #   ndarray with ndim > 1)
