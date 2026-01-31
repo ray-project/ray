@@ -111,11 +111,10 @@ All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02
 See also how to use `parametric-actions in DQN <rllib-models.html#variable-length-parametric-action-spaces>`__.
 
 **Tuned examples:**
-`PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/pong-dqn.yaml>`__,
-`Rainbow configuration <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/pong-rainbow.yaml>`__,
-`{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/atari-dqn.yaml>`__,
-`with Dueling and Double-Q <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/atari-duel-ddqn.yaml>`__,
-`with Distributional DQN <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/atari-dist-dqn.yaml>`__.
+`Cartpole-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/cartpole_dqn.py>`__,
+`Atari (Pong-v5) with Rainbow <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/atari_rainbow.py>`__,
+`with LSTM <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/stateless_cartpole_dqn_with_lstm.py>`__,
+`Multi-Agent <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/tictactoe.py>`__,
 
 .. hint::
     For a complete `rainbow <https://arxiv.org/pdf/1710.02298.pdf>`__ setup,

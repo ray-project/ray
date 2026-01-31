@@ -10,6 +10,8 @@ from ray.rllib.utils.spaces.space_utils import batch as batch_func
 
 
 class RandomRLModule(RLModule):
+    framework = "torch"
+
     @override(RLModule)
     def _forward(self, batch, **kwargs):
         obs_batch_size = len(tree.flatten(batch[SampleBatch.OBS])[0])
