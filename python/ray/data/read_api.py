@@ -3913,7 +3913,7 @@ def read_iceberg(
     Returns:
         :class:`~ray.data.Dataset` with rows from the Iceberg table.
     """
-    from ray.data._internal.datasource import IcebergDatasource
+    from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 
     # Deprecation warning for row_filter parameter
     if row_filter is not None:
