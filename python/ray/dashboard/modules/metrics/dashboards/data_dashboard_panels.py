@@ -1131,6 +1131,71 @@ MAX_BYTES_TO_READ_PANEL = Panel(
     stack=False,
 )
 
+# Ray Data Metrics (Cluster Autoscaler)
+# Default threshold for scaling up is 75%.
+DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD = 75
+
+CLUSTER_CPU_UTILIZATION_PANEL = Panel(
+    id=122,
+    title="Cluster utilization % (CPU)",
+    description="Average cluster CPU utilization percentage used by Ray Data. When utilization exceeds the scaling threshold (default 75%), the cluster autoscaler may request additional resources.",
+    unit="percent",
+    targets=[
+        Target(
+            expr="sum(ray_data_cluster_cpu_utilization{{{global_filters}}}) by (dataset)",
+            legend="CPU Utilization %: {{dataset}}",
+        ),
+        # Constant threshold line rendered as dotted via seriesOverrides for legend "MAX"
+        Target(
+            expr=str(DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD),
+            legend="MAX",
+        ),
+    ],
+    fill=0,
+    stack=False,
+    template=PanelTemplate.GRAPH,
+)
+
+CLUSTER_GPU_UTILIZATION_PANEL = Panel(
+    id=123,
+    title="Cluster utilization % (GPU)",
+    description="Average cluster GPU utilization percentage used by Ray Data. When utilization exceeds the scaling threshold (default 75%), the cluster autoscaler may request additional resources.",
+    unit="percent",
+    targets=[
+        Target(
+            expr="sum(ray_data_cluster_gpu_utilization{{{global_filters}}}) by (dataset)",
+            legend="GPU Utilization %: {{dataset}}",
+        ),
+        Target(
+            expr=str(DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD),
+            legend="MAX",
+        ),
+    ],
+    fill=0,
+    stack=False,
+    template=PanelTemplate.GRAPH,
+)
+
+CLUSTER_OBJECT_STORE_MEMORY_UTILIZATION_PANEL = Panel(
+    id=124,
+    title="Cluster utilization % (Object Store Memory)",
+    description="Average cluster object store memory utilization percentage used by Ray Data. When utilization exceeds the scaling threshold (default 75%), the cluster autoscaler may request additional resources.",
+    unit="percent",
+    targets=[
+        Target(
+            expr="sum(ray_data_cluster_object_store_memory_utilization{{{global_filters}}}) by (dataset)",
+            legend="Object Store Memory Utilization %: {{dataset}}",
+        ),
+        Target(
+            expr=str(DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD),
+            legend="MAX",
+        ),
+    ],
+    fill=0,
+    stack=False,
+    template=PanelTemplate.GRAPH,
+)
+
 # Budget Panels
 CPU_BUDGET_PANEL = Panel(
     id=51,
@@ -1424,6 +1489,17 @@ DATA_GRAFANA_ROWS = [
         id=106,
         panels=[
             SCHEDULING_LOOP_DURATION_PANEL,
+        ],
+        collapsed=True,
+    ),
+    # Cluster Autoscaler Row
+    Row(
+        title="Cluster Autoscaler",
+        id=109,
+        panels=[
+            CLUSTER_CPU_UTILIZATION_PANEL,
+            CLUSTER_GPU_UTILIZATION_PANEL,
+            CLUSTER_OBJECT_STORE_MEMORY_UTILIZATION_PANEL,
         ],
         collapsed=True,
     ),
