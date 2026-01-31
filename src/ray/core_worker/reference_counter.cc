@@ -1215,6 +1215,7 @@ void ReferenceCounter::CleanupBorrowersOnRefRemoved(
     const ObjectID &object_id,
     const rpc::Address &borrower_addr) {
   absl::MutexLock lock(&mutex_);
+  MergeRemoteBorrowers(object_id, borrower_addr, new_borrower_refs);
 
   // Erase the previous borrower.
   auto it = object_id_refs_.find(object_id);
@@ -1231,21 +1232,12 @@ void ReferenceCounter::CleanupBorrowersOnRefRemoved(
     return;
   }
 
-  MergeRemoteBorrowers(object_id, borrower_addr, new_borrower_refs);
-
-  // Re-check after MergeRemoteBorrowers (it may have modified object_id_refs_)
-  it = object_id_refs_.find(object_id);
-  if (it == object_id_refs_.end()) {
-    return;
-  }
-
   // Check if this borrower was already removed (duplicate callback from race condition
   // between message_published_callback and publisher_failed_callback).
   if (it->second.mutable_borrow()->borrowers.erase(borrower_addr) == 0) {
     RAY_LOG(DEBUG) << "CleanupBorrowersOnRefRemoved: borrower "
                    << WorkerID::FromBinary(borrower_addr.worker_id())
                    << " already removed for " << object_id;
-    return;
   }
 
   DeleteReferenceInternal(it, nullptr);
