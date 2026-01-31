@@ -2,7 +2,7 @@ import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 import ray
 from ray.data._internal.issue_detection.issue_detector import (
@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 class HangingExecutionState:
     operator_id: str
     task_idx: int
+    task_id: ray.TaskID
     task_state: Optional[TaskState]
     bytes_output: int
     start_time_hanging: float
@@ -112,7 +113,7 @@ class HangingExecutionIssueDetector(IssueDetector):
                     attempt_number = state.task_state.attempt_number
 
                 message = (
-                    f"A task of operator {op_name} (pid={pid}, node_id={node_id}, attempt={attempt_number}) has been running for {duration:.2f}s, which is longer"
+                    f"A task (task_id={state.task_id}) of operator {op_name} (pid={pid}, node_id={node_id}, attempt={attempt_number}) has been running for {duration:.2f}s, which is longer"
                     f" than the average task duration of this operator ({avg_duration:.2f}s)."
                     f" If this message persists, please check the stack trace of the "
                     "task for potential hanging issues."
@@ -153,29 +154,11 @@ class HangingExecutionIssueDetector(IssueDetector):
                         prev_state_value is None
                         or bytes_output != prev_state_value.bytes_output
                     ):
-                        task_state = None
-                        try:
-                            task_state: Union[
-                                TaskState, List[TaskState]
-                            ] = ray.util.state.get_task(
-                                task_info.task_id.hex(),
-                                timeout=1.0,
-                                _explain=True,
-                            )
-                            if isinstance(task_state, list):
-                                # get the latest task
-                                task_state = max(
-                                    task_state, key=lambda ts: ts.attempt_number
-                                )
-                        except Exception as e:
-                            logger.debug(
-                                f"Failed to grab task state with task_index={task_idx}, task_id={task_info.task_id}: {e}"
-                            )
-                            pass
                         self._state_map[operator.id][task_idx] = HangingExecutionState(
                             operator_id=operator.id,
                             task_idx=task_idx,
-                            task_state=task_state,
+                            task_id=task_info.task_id,
+                            task_state=None,
                             bytes_output=bytes_output,
                             start_time_hanging=time.perf_counter(),
                         )
@@ -194,6 +177,10 @@ class HangingExecutionIssueDetector(IssueDetector):
             for task_idx, state_value in op_state_values.items():
                 curr_time = time.perf_counter() - state_value.start_time_hanging
                 if op_task_stats.count() >= self._op_task_stats_min_count:
+                    if state_value.task_state is None:
+                        state_value.task_state = get_latest_state_for_task(
+                            state_value.task_id
+                        )
                     mean = op_task_stats.mean()
                     stddev = op_task_stats.stddev()
                     threshold = mean + self._op_task_stats_std_factor_threshold * stddev
@@ -211,3 +198,20 @@ class HangingExecutionIssueDetector(IssueDetector):
 
     def detection_time_interval_s(self) -> float:
         return self._detector_cfg.detection_time_interval_s
+
+
+def get_latest_state_for_task(task_id: ray.TaskID) -> TaskState | None:
+    try:
+        task_state: TaskState | List[TaskState] | None = ray.util.state.get_task(
+            task_id.hex(),
+            timeout=1.0,
+            _explain=True,
+        )
+        if isinstance(task_state, list):
+            # get the latest task
+            task_state = max(task_state, key=lambda ts: ts.attempt_number)
+        return task_state
+    except Exception as e:
+        logger.debug(f"Failed to grab task state with task_id={task_id}: {e}")
+        pass
+    return None
