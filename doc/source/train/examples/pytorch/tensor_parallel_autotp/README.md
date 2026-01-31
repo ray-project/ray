@@ -423,15 +423,17 @@ def setup_model_with_autotp(
 
     # [6] Build DeepSpeed config
     batch_size_per_gpu = config.get("batch_size_per_gpu", 1)
+    gradient_accumulation_steps = config.get("gradient_accumulation_steps", 1)
+    zero_stage = config.get("zero_stage", 1)
     effective_dp = dp_size if tp_size > 1 else world_size
 
     ds_config = {
-        "train_batch_size": batch_size_per_gpu * effective_dp,
+        "train_batch_size": batch_size_per_gpu * effective_dp * gradient_accumulation_steps,
         "train_micro_batch_size_per_gpu": batch_size_per_gpu,
-        "gradient_accumulation_steps": 1,
+        "gradient_accumulation_steps": gradient_accumulation_steps,
         "gradient_clipping": config.get("max_grad_norm", 1.0),
         "zero_optimization": {
-            "stage": 1,
+            "stage": zero_stage,
             "overlap_comm": True,
         },
         "tensor_parallel": {
