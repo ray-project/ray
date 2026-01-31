@@ -1,0 +1,7 @@
+pyarrow==20.0.0
+
+torch
+tensorflow
+jax
+jaxlib
+torchvision
