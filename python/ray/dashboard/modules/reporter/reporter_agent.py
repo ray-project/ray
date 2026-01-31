@@ -1824,7 +1824,7 @@ class ReporterAgent(
             # Autoscaler v2 only - get cluster_status from gcs via RPC(get_cluster_status())
             autoscaler_v2_enabled = is_autoscaler_v2(gcs_client=self._gcs_client)
             if self._is_head_node and autoscaler_v2_enabled:
-                cluster_stats = await asyncio.to_thread(self._get_cluster_stats_v2)
+                cluster_stats = self._get_cluster_stats_v2()
 
             records = self._to_records(stats, cluster_stats)
 
