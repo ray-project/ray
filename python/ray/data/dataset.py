@@ -30,8 +30,13 @@ from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.dataset_repr import _build_dataset_ascii_repr
-from ray.data._internal.datasource import (
-    BigQueryDatasink,
+
+# Import datasinks from submodules here only. This file is part of a circular
+# dependency (dataset -> datasource -> huggingface_datasource -> dataset), so we
+# cannot use "from ray.data._internal.datasource import ..." per issue #60204
+# constraint: resolve circular dependencies where the package import would trigger them.
+from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
+from ray.data._internal.datasource.clickhouse_datasink import (
     ClickHouseDatasink,
     ClickHouseTableSettings,
     CSVDatasink,
