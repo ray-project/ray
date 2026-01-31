@@ -81,21 +81,6 @@ else:
     FixedShapeTensorType = None
 
 
-# List of scalar types supported by Arrow's FixedShapeTensorArray
-_FIXED_SHAPE_TENSOR_ARRAY_SUPPORTED_SCALAR_TYPES = (
-    pa.int8(),
-    pa.uint8(),
-    pa.int16(),
-    pa.uint16(),
-    pa.uint32(),
-    pa.int32(),
-    pa.uint64(),
-    pa.int64(),
-    pa.float16(),
-    pa.float32(),
-    pa.float64(),
-)
-
 # 100,000 entries, about 10MB in memory.
 # Most users tables should have less than 100K columns.
 ARROW_EXTENSION_SERIALIZATION_CACHE_MAXSIZE = env_integer(
