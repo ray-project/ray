@@ -29,7 +29,8 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
-    create_bundle_queue,
+    FIFOBundleQueue,
+    ReorderingBundleQueue,
 )
 from ray.data._internal.execution.interfaces import (
     BlockSlice,
@@ -441,7 +442,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def start(self, options: "ExecutionOptions"):
         super().start(options)
         # Create output queue with desired ordering semantics.
-        self._output_queue = create_bundle_queue()
+        if options.preserve_order:
+            self._output_queue = ReorderingBundleQueue()
+        else:
+            self._output_queue = FIFOBundleQueue()
 
         if options.locality_with_output:
             if isinstance(options.locality_with_output, list):
@@ -925,8 +929,6 @@ def _splitrange(n, k):
 
 
 def _split_blocks(blocks: Iterable[Block], split_factor: float) -> Iterable[Block]:
-    import time
-
     for block in blocks:
         block = BlockAccessor.for_block(block)
         offset = 0
@@ -934,13 +936,7 @@ def _split_blocks(blocks: Iterable[Block], split_factor: float) -> Iterable[Bloc
         for size in split_sizes:
             if size <= 0:
                 continue
-            now = time.time()
-            x = block.slice(offset, offset + size, copy=False)
-            end = time.time()
-            print(f"split = {end - now}")
-            yield x
-            end2 = time.time()
-            print(f"split (yield) = {end2 - end}")
+            yield block.slice(offset, offset + size, copy=False)
             offset += size
 
 
