@@ -894,7 +894,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         upsert_keys: Optional[pa.Table],
     ) -> None:
         """Commit files to existing table based on write mode.
-        
+
         Note: app_transactions are added in on_write_complete() before calling this.
         """
         if self.mode == SaveMode.UPSERT:
