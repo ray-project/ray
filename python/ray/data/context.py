@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from ray.data._internal.issue_detection.issue_detector_configuration import (
         IssueDetectorsConfiguration,
     )
+    from ray.data._internal.tensor_extensions.arrow import TensorFormat
 
 logger = logging.getLogger(__name__)
 
@@ -381,7 +382,11 @@ class DataContext:
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
-        use_arrow_tensor_v2: Config enabling V2 version of ArrowTensorArray supporting
+        arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
+            Options are None, TensorFormat.V1, TensorFormat.V2, and TensorFormat.NATIVE.
+            Default is None, which will fallback to use_arrow_tensor_v2.
+        use_arrow_tensor_v2: [Deprecating]. Use ``arrow_fixed_shape_tensor_format`` instead.
+            Config enabling V2 version of ArrowTensorArray supporting
             tensors > 2Gb in size (off by default)
         enable_fallback_to_arrow_object_ext_type: Enables fallback to serialize column
             values not suppported by Arrow natively (like user-defined custom Python
@@ -563,9 +568,7 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
-    use_arrow_native_fixed_shape_tensor_type: bool = (
-        DEFAULT_USE_ARROW_NATIVE_FIXED_SHAPE_TENSOR_TYPE
-    )
+    arrow_fixed_shape_tensor_format: Optional["TensorFormat"] = None
     use_arrow_tensor_v2: bool = DEFAULT_USE_ARROW_TENSOR_V2
     enable_fallback_to_arrow_object_ext_type: Optional[bool] = None
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
@@ -726,6 +729,13 @@ class DataContext:
                 DeprecationWarning,
             )
             self.use_polars_sort = value
+
+        elif name == "use_arrow_tensor_v2":
+            warnings.warn(
+                "`use_arrow_tensor_v2` is deprecated! Configure "
+                "`arrow_fixed_shape_tensor_format` instead.",
+                DeprecationWarning,
+            )
 
         super().__setattr__(name, value)
 

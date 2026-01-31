@@ -87,6 +87,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, _StatsManager
 from ray.data._internal.tensor_extensions.arrow import (
+    ArrowVariableShapedTensorType,
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import (
@@ -6915,7 +6916,7 @@ class Schema:
         from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
         from ray.data._internal.tensor_extensions.arrow import (
-            create_arrow_tensor_type,
+            create_arrow_fixed_shape_tensor_format,
         )
         from ray.data.extensions import TensorDtype
 
@@ -6938,9 +6939,15 @@ class Schema:
         for dtype in self.base_schema.types:
             if isinstance(dtype, TensorDtype):
                 pa_dtype = _convert_to_pa_type(dtype._dtype)
-                tensor_type = create_arrow_tensor_type(
-                    shape=dtype._shape, dtype=pa_dtype
-                )
+                if any(dim is None for dim in dtype._shape):
+                    # variable shaped
+                    tensor_type = ArrowVariableShapedTensorType(
+                        pa_dtype, len(dtype._shape)
+                    )
+                else:
+                    tensor_type = create_arrow_fixed_shape_tensor_format(
+                        shape=dtype._shape, dtype=pa_dtype
+                    )
                 arrow_types.append(tensor_type)
 
             else:

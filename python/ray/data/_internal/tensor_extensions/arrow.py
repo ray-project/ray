@@ -751,7 +751,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
 
 
 @DeveloperAPI
-def create_arrow_tensor_type(
+def create_arrow_fixed_shape_tensor_format(
     shape: Tuple[int, ...],
     dtype: pa.DataType,
     tensor_format: Optional[TensorFormat] = None,
@@ -762,11 +762,8 @@ def create_arrow_tensor_type(
     Args:
         shape: Shape of the tensor.
         dtype: PyArrow data type of tensor elements.
-        tensor_format: The tensor format to use. If None, uses DataContext defaults:
-            1. NATIVE if ``use_arrow_native_fixed_shape_tensor_type`` is True
-               (requires PyArrow 12+)
-            2. V2 if ``use_arrow_tensor_v2`` is True
-            3. V1 as fallback
+        tensor_format: The tensor format to use. If None, uses
+            ``DataContext.arrow_fixed_shape_tensor_format``.
 
             Explicit values:
             - V1: ArrowTensorType (legacy, limited to <4GB)
@@ -779,46 +776,43 @@ def create_arrow_tensor_type(
     Raises:
         ValueError: If NATIVE format is requested but PyArrow < 12.0.0.
     """
+    is_variable_shaped = any(dim is None for dim in shape)
+    assert not is_variable_shaped
     if tensor_format is None:
 
-        # When tensor_format is None, use context defaults with priority: NATIVE > V2 > V1
+        # When tensor_format is None, use context defaults
         from ray.data.context import DataContext
 
         ctx = DataContext.get_current()
-        # Native tensor format requires fully-known shapes (no None dims)
-        is_variable_shaped = any(dim is None for dim in shape)
+        tensor_format = ctx.arrow_fixed_shape_tensor_format
 
+        # If arrow_fixed_shape_tensor_format is None, fallback to use_arrow_tensor_v2
+        if tensor_format is None:
+            tensor_format = (
+                TensorFormat.V2 if ctx.use_arrow_tensor_v2 else TensorFormat.V1
+            )
+
+        # Native tensor format requires PyArrow 12+
         if (
-            ctx.use_arrow_native_fixed_shape_tensor_type
-            and not is_variable_shaped
+            tensor_format == TensorFormat.NATIVE
             and FixedShapeTensorType is None
             and log_once("native_fixed_shape_tensors_not_supported")
         ):
             warnings.warn(
                 f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} "
-                "to enable native tensor arrays",
+                "to enable native tensor arrays. Falling back to V2.",
                 UserWarning,
                 stacklevel=3,
             )
-
-        if (
-            ctx.use_arrow_native_fixed_shape_tensor_type
-            and not is_variable_shaped
-            and FixedShapeTensorType is not None
-        ):
-            tensor_format = TensorFormat.NATIVE
-        elif ctx.use_arrow_tensor_v2:
             tensor_format = TensorFormat.V2
-        else:
-            tensor_format = TensorFormat.V1
 
     if tensor_format == TensorFormat.NATIVE:
         if FixedShapeTensorType is None:
             raise ValueError(
+                # TODO(Justin): Use the min supported version variable
                 "Native tensor format requires PyArrow 12.0.0+. "
                 "Please upgrade PyArrow or use V1/V2 format."
             )
-        # Note: pa.fixed_shape_tensor takes (dtype, shape), opposite of our classes
         return pa.fixed_shape_tensor(dtype, shape)
     elif tensor_format == TensorFormat.V2:
         return ArrowTensorTypeV2(shape, dtype)
@@ -922,6 +916,8 @@ class ArrowTensorArray(pa.ExtensionArray):
         arr: np.ndarray,
     ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
 
+        from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
+
         if len(arr) > 0 and np.isscalar(arr[0]):
             # This is 1D tensor so a plain `pyarrow.Array` will work
             return pa.array(arr)
@@ -984,17 +980,20 @@ class ArrowTensorArray(pa.ExtensionArray):
         from ray.data import DataContext
 
         ctx = DataContext.get_current()
-        if (
-            ctx.use_arrow_native_fixed_shape_tensor_type
-            and scalar_dtype in _FIXED_SHAPE_TENSOR_ARRAY_SUPPORTED_SCALAR_TYPES
-            and FixedShapeTensorArray is not None
-        ):
+        tensor_format = ctx.arrow_fixed_shape_tensor_format
+
+        # If arrow_fixed_shape_tensor_format is None, fallback to use_arrow_tensor_v2
+        if tensor_format is None:
+            tensor_format = (
+                TensorFormat.V2 if ctx.use_arrow_tensor_v2 else TensorFormat.V1
+            )
+
+        pa_tensor_type_ = create_arrow_fixed_shape_tensor_format(
+            element_shape, scalar_dtype
+        )
+
+        if _is_native_tensor_type(pa_tensor_type_):
             return FixedShapeTensorArray.from_numpy_ndarray(arr)
-        else:
-            if ctx.use_arrow_tensor_v2:
-                pa_tensor_type_ = ArrowTensorTypeV2(element_shape, scalar_dtype)
-            else:
-                pa_tensor_type_ = ArrowTensorType(element_shape, scalar_dtype)
 
         offset_dtype = pa_tensor_type_.OFFSET_DTYPE.to_pandas_dtype()
 

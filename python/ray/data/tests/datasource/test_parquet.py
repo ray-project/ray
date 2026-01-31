@@ -1237,10 +1237,7 @@ def test_tensors_in_tables_parquet(
     #
 
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = (
-        new_tensor_format == TensorFormat.NATIVE
-    )
-    ctx.use_arrow_tensor_v2 = new_tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = new_tensor_format
 
     tensor_v2_path = f"{tmp_path}/tensor_new_{new_tensor_format}"
 

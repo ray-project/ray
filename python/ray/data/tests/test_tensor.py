@@ -12,7 +12,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
     ArrowTensorArray,
     TensorFormat,
-    create_arrow_tensor_type,
+    create_arrow_fixed_shape_tensor_format,
 )
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data.block import BlockAccessor
@@ -41,8 +41,7 @@ def test_large_tensor_creation(
     hanging."""
 
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     start_time = time.time()
     ray.data.range_tensor(1000, override_num_blocks=1000, shape=(80, 80, 100, 100))
@@ -55,11 +54,12 @@ def test_large_tensor_creation(
 @pytest.mark.parametrize("tensor_format", list(TensorFormat))
 def test_tensors_basic(ray_start_regular_shared, restore_data_context, tensor_format):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     # Determine expected tensor type based on format
-    expected_type = create_arrow_tensor_type(shape=(3, 5), dtype=pa.int64())
+    expected_type = create_arrow_fixed_shape_tensor_format(
+        shape=(3, 5), dtype=pa.int64()
+    )
 
     # Create directly.
     tensor_shape = (3, 5)
@@ -239,8 +239,7 @@ def test_tensors_basic(ray_start_regular_shared, restore_data_context, tensor_fo
 @pytest.mark.parametrize("tensor_format", list(TensorFormat))
 def test_batch_tensors(ray_start_regular_shared, restore_data_context, tensor_format):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     ds = ray.data.from_items(
         [np.array([0, 0]) for _ in range(40)], override_num_blocks=40
@@ -254,8 +253,7 @@ def test_batch_tensors(ray_start_regular_shared, restore_data_context, tensor_fo
 @pytest.mark.parametrize("tensor_format", list(TensorFormat))
 def test_tensors_shuffle(ray_start_regular_shared, restore_data_context, tensor_format):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     # Test Arrow table representation.
     tensor_shape = (3, 5)
@@ -296,8 +294,7 @@ def test_tensors_shuffle(ray_start_regular_shared, restore_data_context, tensor_
 @pytest.mark.parametrize("tensor_format", list(TensorFormat))
 def test_tensors_sort(ray_start_regular_shared, restore_data_context, tensor_format):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     # Test Arrow table representation.
     t = pa.table({"a": TensorArray(np.arange(32).reshape((2, 4, 4))), "b": [1, 2]})
@@ -339,18 +336,17 @@ def test_tensors_inferred_from_map(
     ray_start_regular_shared, restore_data_context, tensor_format
 ):
     ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
+
     if (
         tensor_format == TensorFormat.NATIVE
         and get_pyarrow_version() >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY
     ):
-        ctx.use_arrow_native_fixed_shape_tensor_type = True
         expected_type = FixedShapeTensorType
         assert expected_type is not None
     elif tensor_format == TensorFormat.V2:
-        ctx.use_arrow_tensor_v2 = True
         expected_type = ArrowTensorTypeV2
     else:
-        ctx.use_arrow_tensor_v2 = False
         expected_type = ArrowTensorType
 
     # Test map.
@@ -415,11 +411,7 @@ def test_tensors_inferred_from_map(
     schema = ds.schema()
     assert schema.names == ["a"]
     dtype = schema.types[0]
-    if ctx.use_arrow_native_fixed_shape_tensor_type:
-        # Because the dataset is using variable shaped tensors, native fixed shapes
-        # cannot be used.
-        expected_type = ArrowTensorTypeV2
-    assert isinstance(dtype, expected_type)
+    assert isinstance(dtype, ArrowVariableShapedTensorType)
     assert tuple(dtype.shape) == (None, None)
     assert dtype.value_type == pa.float64()
 
@@ -427,8 +419,7 @@ def test_tensors_inferred_from_map(
 @pytest.mark.parametrize("tensor_format", list(TensorFormat))
 def test_tensor_array_block_slice(restore_data_context, tensor_format):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     # Test that ArrowBlock slicing works with tensor column extension type.
     def check_for_copy(table1, table2, a, b, is_copy):
@@ -597,8 +588,7 @@ def test_tensors_in_tables_from_pandas(
     ray_start_regular_shared, restore_data_context, tensor_format
 ):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -620,8 +610,7 @@ def test_tensors_in_tables_from_pandas_variable_shaped(
     ray_start_regular_shared, restore_data_context, tensor_format
 ):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
@@ -648,8 +637,7 @@ def test_tensors_in_tables_pandas_roundtrip(
     tensor_format,
 ):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -674,8 +662,7 @@ def test_tensors_in_tables_pandas_roundtrip_variable_shaped(
     tensor_format,
 ):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
@@ -701,8 +688,7 @@ def test_tensors_in_tables_parquet_roundtrip(
     ray_start_regular_shared, tmp_path, restore_data_context, tensor_format
 ):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -725,8 +711,7 @@ def test_tensors_in_tables_parquet_roundtrip_variable_shaped(
     ray_start_regular_shared, tmp_path, restore_data_context, tensor_format
 ):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
@@ -754,8 +739,7 @@ def test_tensors_in_tables_parquet_with_schema(
     tensor_format,
 ):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -766,7 +750,7 @@ def test_tensors_in_tables_parquet_with_schema(
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
 
-    tensor_type = create_arrow_tensor_type(
+    tensor_type = create_arrow_fixed_shape_tensor_format(
         shape=inner_shape,
         dtype=pa.from_numpy_dtype(arr.dtype),
     )
@@ -785,8 +769,7 @@ def test_tensors_in_tables_parquet_pickle_manual_serde(
     import pickle
 
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -833,8 +816,7 @@ def test_tensors_in_tables_parquet_bytes_manual_serde(
     ray_start_regular_shared, tmp_path, restore_data_context, tensor_format
 ):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -880,8 +862,7 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
     ray_start_regular_shared, tmp_path, restore_data_context, tensor_format
 ):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -928,8 +909,7 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
     ray_start_regular_shared, tmp_path, restore_data_context, tensor_format
 ):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -989,8 +969,7 @@ def test_tensors_in_tables_parquet_bytes_with_schema(
     ray_start_regular_shared, tmp_path, restore_data_context, tensor_format
 ):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -1002,7 +981,7 @@ def test_tensors_in_tables_parquet_bytes_with_schema(
     )
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
-    tensor_type = create_arrow_tensor_type(
+    tensor_type = create_arrow_fixed_shape_tensor_format(
         shape=inner_shape,
         dtype=pa.from_numpy_dtype(arr.dtype),
     )
@@ -1022,8 +1001,7 @@ def test_tensors_in_tables_iter_batches(
     tensor_format,
 ):
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -1062,8 +1040,7 @@ def test_ragged_tensors(ray_start_regular_shared, restore_data_context, tensor_f
     import numpy as np
 
     ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == TensorFormat.NATIVE
-    ctx.use_arrow_tensor_v2 = tensor_format == TensorFormat.V2
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     ds = ray.data.from_items(
         [

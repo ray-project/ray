@@ -479,26 +479,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
             for batch in table.to_batches(max_chunksize=self._max_chunk_size):
 
                 if contains_native_tensor_columns:
-                    # HACK: For v1 and v2 tensors, we can control what is returned by overiding the
-                    # `https://arrow.apache.org/docs/python/generated/pyarrow.ExtensionScalar.html#pyarrow.ExtensionScalar.as_py`
-                    # method . See `ArrowTensorScalar` for example implementation. However for pyarrow native FixedShapeTensorArrays,
-                    # we cannot, and therefore must manually convert them to ndarrays, which preserve its shape/ndim. Without the
-                    # logic below, the FixedShapeTensorArrays would be translated to contiguous 1d arrays. See
-                    # https://arrow.apache.org/docs/python/generated/pyarrow.FixedShapeTensorArray.html#pyarrow.FixedShapeTensorArray.to_numpy_ndarray
-                    # for more details.
-                    col_values = []
-                    for column in batch.itercolumns():
-                        if _is_native_tensor_type(column.type):
-                            col_values.append(column.to_numpy_ndarray())
-                        else:
-                            col_values.append(column.to_pylist())
-
-                    # Convert to row-wise
-                    for idx in range(batch.num_rows):
-                        yield {
-                            name: col[idx]
-                            for name, col in zip(table.column_names, col_values)
-                        }
+                    # HACK: For v1 and v2 tensors, we can control what is returned
+                    # by overriding ExtensionScalar.as_py (see ArrowTensorScalar).
+                    # For pyarrow native FixedShapeTensorArrays we cannot, so we
+                    # use _iter_rows_from_batch_with_tensors to handle conversion.
+                    yield from _iter_rows_from_batch_with_tensors(
+                        batch, table.column_names
+                    )
                 else:
                     yield from batch.to_pylist()
         else:
@@ -520,6 +507,38 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         # Use PyArrow's built-in filter method
         return self._table.filter(mask)
+
+
+def _iter_rows_from_batch_with_tensors(
+    batch: "pyarrow.RecordBatch",
+    column_names: List[str],
+) -> Iterator[Dict[str, Any]]:
+    """Iterate over rows in a batch that may contain native tensor columns.
+
+    For pyarrow native FixedShapeTensorArrays, we must manually convert them
+    to ndarrays which preserve shape/ndim. Without this, FixedShapeTensorArrays
+    would be translated to contiguous 1d arrays.
+
+    See: https://arrow.apache.org/docs/python/generated/pyarrow.FixedShapeTensorArray.html
+
+    Args:
+        batch: A PyArrow RecordBatch that may contain tensor columns.
+        column_names: The column names to use in the output dictionaries.
+
+    Yields:
+        Dictionaries mapping column names to values for each row.
+    """
+    from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
+
+    col_values = []
+    for column in batch.itercolumns():
+        if _is_native_tensor_type(column.type):
+            col_values.append(column.to_numpy_ndarray())
+        else:
+            col_values.append(column.to_pylist())
+
+    for idx in range(batch.num_rows):
+        yield {name: col[idx] for name, col in zip(column_names, col_values)}
 
 
 class ArrowBlockColumnAccessor(BlockColumnAccessor):
