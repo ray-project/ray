@@ -460,5 +460,122 @@ class TestCopyImage:
             _copy_image("src", "dest", dry_run=False)
 
 
+class TestMultiplePlatforms:
+    """Test main function handling of multiple platforms."""
+
+    POSTMERGE_PIPELINE_ID = "test-postmerge-pipeline-id"
+    WORK_REPO = "123456789.dkr.ecr.us-west-2.amazonaws.com/rayci-work"
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image.ci_init")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.ecr_docker_login")
+    @mock.patch("ci.ray_ci.automation.push_ray_image._copy_image")
+    @mock.patch("ci.ray_ci.automation.push_ray_image._image_exists")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
+    def test_multiple_platforms_processed(
+        self, mock_config, mock_exists, mock_copy, mock_ecr_login, mock_ci_init
+    ):
+        """Test that multiple platforms are each processed with correct source refs."""
+        from click.testing import CliRunner
+
+        from ci.ray_ci.automation.push_ray_image import main
+
+        mock_config.return_value = {
+            "ci_pipeline_postmerge": [self.POSTMERGE_PIPELINE_ID]
+        }
+        mock_exists.return_value = True
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "--python-version",
+                "3.10",
+                "--platform",
+                "cpu",
+                "--platform",
+                "cu12.1.1-cudnn8",
+                "--image-type",
+                "ray",
+                "--architecture",
+                "x86_64",
+                "--rayci-work-repo",
+                self.WORK_REPO,
+                "--rayci-build-id",
+                "build123",
+                "--pipeline-id",
+                self.POSTMERGE_PIPELINE_ID,
+                "--branch",
+                "releases/2.44.0",
+                "--commit",
+                "abc123def456",
+            ],
+        )
+
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        # Should check image exists for both platforms
+        assert mock_exists.call_count == 2
+        exists_calls = [call[0][0] for call in mock_exists.call_args_list]
+        assert any("ray-py3.10-cpu" in call for call in exists_calls)
+        assert any("ray-py3.10-cu12.1.1-cudnn8" in call for call in exists_calls)
+        # Should have tags from both platforms
+        copy_calls = [call.args for call in mock_copy.call_args_list]
+        assert any(
+            "ray-py3.10-cpu" in src and "-cpu" in dest for src, dest in copy_calls
+        )
+        assert any(
+            "ray-py3.10-cu12.1.1-cudnn8" in src and "-cu121" in dest
+            for src, dest in copy_calls
+        )
+
+    @mock.patch("ci.ray_ci.automation.push_ray_image.ci_init")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.ecr_docker_login")
+    @mock.patch("ci.ray_ci.automation.push_ray_image._copy_image")
+    @mock.patch("ci.ray_ci.automation.push_ray_image._image_exists")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
+    def test_multiple_platforms_fails_if_one_missing(
+        self, mock_config, mock_exists, mock_copy, mock_ecr_login, mock_ci_init
+    ):
+        """Test that processing fails if any platform's source image is missing."""
+        from click.testing import CliRunner
+
+        from ci.ray_ci.automation.push_ray_image import PushRayImageError, main
+
+        mock_config.return_value = {
+            "ci_pipeline_postmerge": [self.POSTMERGE_PIPELINE_ID]
+        }
+        mock_exists.side_effect = [True, False]  # First exists, second doesn't
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "--python-version",
+                "3.10",
+                "--platform",
+                "cpu",
+                "--platform",
+                "cu12.1.1-cudnn8",
+                "--image-type",
+                "ray",
+                "--architecture",
+                "x86_64",
+                "--rayci-work-repo",
+                self.WORK_REPO,
+                "--rayci-build-id",
+                "build123",
+                "--pipeline-id",
+                self.POSTMERGE_PIPELINE_ID,
+                "--branch",
+                "releases/2.44.0",
+                "--commit",
+                "abc123def456",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert isinstance(result.exception, PushRayImageError)
+        assert "Source image not found" in str(result.exception)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))
