@@ -1,53 +1,11 @@
 import argparse
 import os
-import subprocess
 import sys
-import time
 from collections import OrderedDict
 
 import requests
-from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 
-
-def retry(f):
-    def inner():
-        resp = None
-        for _ in range(5):
-            resp = f()
-            print("Getting Presigned URL, status_code", resp.status_code)
-            if resp.status_code >= 500:
-                print("errored, retrying...")
-                print(resp.text)
-                time.sleep(5)
-            else:
-                return resp
-        if resp is None or resp.status_code >= 500:
-            print("still errorred after many retries")
-            sys.exit(1)
-
-    return inner
-
-
-@retry
-def perform_auth():
-    auth = BotoAWSRequestsAuth(
-        aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
-        aws_region="us-west-2",
-        aws_service="execute-api",
-    )
-    resp = requests.get(
-        "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
-        auth=auth,
-        params={"job_id": os.environ["BUILDKITE_JOB_ID"]},
-    )
-    return resp
-
-
-def handle_docker_login(resp):
-    pwd = resp.json()["docker_password"]
-    subprocess.check_call(
-        ["docker", "login", "--username", "raydockerreleaser", "--password", pwd]
-    )
+from ci.ray_ci.rayci_auth import docker_hub_login, get_rayci_api_response
 
 
 def gather_paths(dir_path):
@@ -117,11 +75,10 @@ if __name__ == "__main__":
     assert "BUILDKITE_JOB_ID" in os.environ
     assert "BUILDKITE_COMMIT" in os.environ
 
-    resp = perform_auth()
-
     if args.destination == "docker_login":
-        handle_docker_login(resp)
+        docker_hub_login()
     else:
+        resp = get_rayci_api_response()
         paths = gather_paths(args.path)
         print("Planning to upload", paths)
         upload_paths(paths, resp, args.destination)
