@@ -70,7 +70,11 @@ For TPU training, use :class:`~ray.train.ScalingConfig` to define your TPU slice
 GPU scaling configuration
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-For GPU training, use :class:`~ray.train.ScalingConfig` to define your GPU configuration. Each worker is one Ray Train process. By default, this will request one GPU per training worker. Sometimes you might want to allocate multiple GPUs for a worker. For example, you can specify `resources_per_worker={"GPU": 2}` in the :class:`~ray.train.ScalingConfig` if you want to assign 2 GPUs for each worker.
+For GPU training, use :class:`~ray.train.ScalingConfig` to define your GPU configuration.
+Each worker is one Ray Train process. By default, this will request one GPU per worker.
+Sometimes you might want to allocate multiple GPUs per worker. For example, you can
+specify `resources_per_worker={"GPU": 2}` in the :class:`~ray.train.ScalingConfig` to
+assign 2 GPUs per worker.
 
 * :class:`num_workers <ray.train.ScalingConfig>`: The number of distributed training worker processes.
 * :class:`use_gpu <ray.train.ScalingConfig>`: Whether each worker should use a GPU.
