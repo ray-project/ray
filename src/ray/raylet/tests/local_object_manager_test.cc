@@ -364,6 +364,10 @@ class LocalObjectManagerTestWithMinSpillingSize {
 
   int64_t NumBytesPendingSpill() { return manager.num_bytes_pending_spill_; }
 
+  void SetMaxSpillingFileSize(int64_t max_spilling_file_size) {
+    manager.max_spilling_file_size_ = max_spilling_file_size;
+  }
+
   int64_t GetCurrentSpilledBytes() { return manager.spilled_bytes_current_; }
 
   size_t GetCurrentSpilledCount() { return manager.spilled_objects_url_.size(); }
@@ -449,7 +453,7 @@ class LocalObjectManagerMaxFileSizeFusedTest
  public:
   LocalObjectManagerMaxFileSizeFusedTest()
       : LocalObjectManagerTestWithMinSpillingSize(
-            /*min_spilling_size=*/100,
+            /*min_spilling_size=*/60,
             /*max_fused_object_count=*/15,
             /*max_spilling_file_size=*/60) {}
 };
@@ -494,8 +498,9 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
-    auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
-    auto object = std::make_unique<RayObject>(
+    std::shared_ptr<Buffer> data_buffer =
+        std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
+    std::unique_ptr<RayObject> object = std::make_unique<RayObject>(
         data_buffer, nullptr, std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
@@ -1591,8 +1596,9 @@ TEST_F(LocalObjectManagerMaxFileSizeFusedTest, TestMaxSpillingFileSizeMaxFusionC
   for (int i = 0; i < 40; i++) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
-    auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
-    auto object = std::make_unique<RayObject>(
+    std::shared_ptr<Buffer> data_buffer =
+        std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
+    std::unique_ptr<RayObject> object = std::make_unique<RayObject>(
         data_buffer, nullptr, std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
@@ -1639,6 +1645,42 @@ TEST_F(LocalObjectManagerMaxFileSizeFusedTest, TestMaxSpillingFileSizeMaxFusionC
 
   ASSERT_EQ(GetCurrentSpilledCount(), 40);
   ASSERT_EQ(GetCurrentSpilledBytes(), 40 * object_size);
+}
+
+TEST_F(LocalObjectManagerMaxFileSizeFusedTest,
+       TestMaxSpillingFileSizeAllowsOversizedObject) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  const int64_t large_object_size = 70;
+
+  std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+
+  ObjectID object_id = ObjectID::FromRandom();
+  object_ids.push_back(object_id);
+
+  std::shared_ptr<Buffer> data_buffer =
+      std::make_shared<MockObjectBuffer>(large_object_size, object_id, unpins);
+  std::unique_ptr<RayObject> object = std::make_unique<RayObject>(
+      data_buffer, nullptr, std::vector<rpc::ObjectReference>());
+  objects.push_back(std::move(object));
+
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
+
+  manager.SpillObjectUptoMaxThroughput();
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+
+  ASSERT_EQ(worker_pool.io_worker_client->spill_request_object_counts.size(), 1);
+  ASSERT_EQ(worker_pool.io_worker_client->spill_request_object_counts[0], 1);
+
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects({BuildURL("url", 0)}));
+  while (owner_client->ReplyUpdateObjectLocationBatch()) {
+  }
+
+  ASSERT_EQ(GetCurrentSpilledCount(), 1);
+  ASSERT_EQ(GetCurrentSpilledBytes(), large_object_size);
 }
 
 TEST_F(LocalObjectManagerTest, TestPinBytes) {

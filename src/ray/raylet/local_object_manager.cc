@@ -187,9 +187,12 @@ bool LocalObjectManager::TryToSpillObjects() {
     return false;
   }
 
+  const std::string max_spilling_file_size_str =
+      max_spilling_file_size_ <= 0 ? "unlimited"
+                                   : std::to_string(max_spilling_file_size_);
   RAY_LOG(DEBUG) << "Choosing objects to spill with minimum total size "
                  << min_spilling_size_ << ", max fused file size "
-                 << max_spilling_file_size_
+                 << max_spilling_file_size_str
                  << " or with total # of objects = " << max_fused_object_count_;
   int64_t bytes_to_spill = 0;
   std::vector<ObjectID> objects_to_spill;
