@@ -1,5 +1,7 @@
+import importlib
 import logging
 import math
+import os
 import threading
 import time
 import typing
@@ -16,7 +18,10 @@ from ray.data._internal.execution.backpressure_policy import (
     get_backpressure_policies,
 )
 from ray.data._internal.execution.dataset_state import DatasetState
-from ray.data._internal.execution.execution_callback import get_execution_callbacks
+from ray.data._internal.execution.execution_callback import (
+    EXECUTION_CALLBACKS_ENV_VAR,
+    ExecutionCallback,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     Executor,
@@ -84,6 +89,7 @@ class StreamingExecutor(Executor, threading.Thread):
         dataset_id: str = "unknown_dataset",
     ):
         self._data_context = data_context
+        self._callbacks = self._construct_callbacks()
         self._ranker = create_ranker()
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
@@ -126,6 +132,37 @@ class StreamingExecutor(Executor, threading.Thread):
         Executor.__init__(self, self._data_context.execution_options)
         thread_name = f"StreamingExecutor-{self._dataset_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
+
+    def _construct_callbacks(self) -> List[ExecutionCallback]:
+        callbacks = []
+
+        # 1. Defaults from DataContext
+        if hasattr(self._data_context, "default_callback_classes"):
+            for cls in self._data_context.default_callback_classes:
+                callback = cls.from_executor(self)
+
+                if callback:
+                    callbacks.append(callback)
+
+        # 2. From Environment Variable
+        env_str = os.environ.get(EXECUTION_CALLBACKS_ENV_VAR)
+        if env_str:
+            for path in env_str.split(","):
+                path = path.strip()
+                if not path:
+                    continue
+                try:
+                    module_path, class_name = path.rsplit(".", 1)
+                    module = importlib.import_module(module_path)
+                    cls = getattr(module, class_name)
+
+                    callback = cls.from_executor(self)
+                    if callback:
+                        callbacks.append(callback)
+                except (ImportError, AttributeError, ValueError, TypeError) as e:
+                    logger.warning(f"Failed to load callback {path}: {e}")
+
+        return callbacks
 
     def _initialize_metrics_gauges(self) -> None:
         """Initialize all Prometheus-style metrics gauges for monitoring execution."""
@@ -233,7 +270,7 @@ class StreamingExecutor(Executor, threading.Thread):
             TopologyMetadata.create_topology_metadata(dag, op_to_id),
             self._data_context,
         )
-        for callback in get_execution_callbacks(self._data_context):
+        for callback in self._callbacks:
             callback.before_execution_starts(self)
 
         self.start()
@@ -313,10 +350,10 @@ class StreamingExecutor(Executor, threading.Thread):
             )
 
             if exception is None:
-                for callback in get_execution_callbacks(self._data_context):
+                for callback in self._callbacks:
                     callback.after_execution_succeeds(self)
             else:
-                for callback in get_execution_callbacks(self._data_context):
+                for callback in self._callbacks:
                     callback.after_execution_fails(self, exception)
 
             self._cluster_autoscaler.on_executor_shutdown()
@@ -356,7 +393,7 @@ class StreamingExecutor(Executor, threading.Thread):
                         sched_loop_duration
                     )
 
-                for callback in get_execution_callbacks(self._data_context):
+                for callback in self._callbacks:
                     callback.on_execution_step(self)
                 if not continue_sched or self._shutdown:
                     break
