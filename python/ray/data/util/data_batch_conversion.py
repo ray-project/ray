@@ -37,7 +37,6 @@ class BatchFormat(str, Enum):
     # TODO: Remove once Arrow is deprecated as user facing batch format
     ARROW = "arrow"
     NUMPY = "numpy"  # Either a single numpy array or a Dict of numpy arrays.
-    # numpy array will be removed in future Ray versions.
 
 
 def _convert_batch_type_to_pandas(
