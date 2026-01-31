@@ -37,10 +37,6 @@ from ray.data._internal.datasource.kafka_datasource import (
 )
 from ray.data._internal.datasource.lance_datasink import LanceDatasink
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
-from ray.data._internal.datasource.mcap_datasource import (
-    MCAPDatasource,
-    TimeRange,
-)
 from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
@@ -86,7 +82,6 @@ __all__ = [
     "KafkaDatasource",
     "LanceDatasink",
     "LanceDatasource",
-    "MCAPDatasource",
     "MongoDatasink",
     "MongoDatasource",
     "NumpyDatasink",
@@ -102,7 +97,6 @@ __all__ = [
     "TFRecordDatasource",
     "TFXReadOptions",
     "TextDatasource",
-    "TimeRange",
     "TorchDatasource",
     "UnityCatalogConnector",
     "VideoDatasource",
