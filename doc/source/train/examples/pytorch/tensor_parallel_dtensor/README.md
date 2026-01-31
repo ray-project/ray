@@ -427,7 +427,7 @@ def train_func(config):
         logger.info(f"Worker started: world_rank={world_rank}, world_size={world_size}")
 
     # Set up model with 2D parallelism
-    model, tp_mesh, dp_mesh, tp_rank, dp_rank = setup_model_with_tp(
+    model, _, _, _, dp_rank = setup_model_with_tp(
         model_name=config["model_name"],
         tp_size=tp_size,
         dp_size=dp_size,
