@@ -425,6 +425,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (c_bool(const CTaskID &c_task_id) nogil) cancel_async_actor_task
         (void() noexcept nogil) actor_shutdown_callback
         (void(c_string *stack_out) nogil) get_lang_stack
+        c_bool is_local_mode
         int num_workers
         (c_bool(const CTaskID &) nogil) kill_main
         CCoreWorkerOptions()

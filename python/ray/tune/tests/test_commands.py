@@ -36,7 +36,7 @@ class Capturing:
 
 @pytest.fixture
 def start_ray():
-    ray.init(log_to_driver=False)
+    ray.init(log_to_driver=False, local_mode=True)
     yield
     ray.shutdown()
 

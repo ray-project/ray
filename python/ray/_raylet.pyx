@@ -37,6 +37,7 @@ import contextvars
 import concurrent.futures
 import collections
 
+from dataclasses import dataclass
 from libc.stdint cimport (
     int32_t,
     int64_t,
@@ -1121,6 +1122,12 @@ cdef class StreamingGeneratorExecutionContext:
 
         return self
 
+
+@dataclass(frozen=True)
+class StreamingGeneratorStats:
+    object_creation_dur_s: float
+
+
 cdef report_streaming_generator_output(
     StreamingGeneratorExecutionContext context,
     output: object,
@@ -1141,6 +1148,8 @@ cdef report_streaming_generator_output(
     cdef:
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
+
+    start = time.perf_counter()
 
     # Report the intermediate result if there was no error.
     create_generator_return_obj(
@@ -1168,6 +1177,8 @@ cdef report_streaming_generator_output(
             return_obj.first,
             is_plasma_object(return_obj.second)))
 
+    serialization_dur_s = time.perf_counter() - start
+
     with nogil:
         check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
             return_obj,
@@ -1176,6 +1187,11 @@ cdef report_streaming_generator_output(
             generator_index,
             context.attempt_number,
             context.waiter))
+
+
+    return StreamingGeneratorStats(
+        object_creation_dur_s=serialization_dur_s,
+    )
 
 
 cdef report_streaming_generator_exception(
@@ -1270,9 +1286,20 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     gen = context.generator
 
     try:
-        for output in gen:
-            report_streaming_generator_output(context, output, gen_index, None)
-            gen_index += 1
+        stats = None
+
+        while True:
+            try:
+                # Send object serialization duration to the generator and retrieve
+                # next output
+                output = gen.send(stats)
+                # Track serialization duration of the next output
+                stats = report_streaming_generator_output(context, output, gen_index, None)
+
+                gen_index += 1
+
+            except StopIteration:
+                break
     except Exception as e:
         report_streaming_generator_exception(context, e, gen_index, None)
 
@@ -1326,8 +1353,11 @@ async def execute_streaming_generator_async(
     interrupt_signal_event = threading.Event()
 
     try:
-        try:
-            async for output in gen:
+        stats = None
+
+        while True:
+            try:
+                output = await gen.asend(stats)
                 # NOTE: Report of streaming generator output is done in a
                 # standalone thread-pool to avoid blocking the event loop,
                 # since serializing and actual RPC I/O is done with "nogil". We
@@ -1340,7 +1370,7 @@ async def execute_streaming_generator_async(
                 # are currently under backpressure. Then we need to wait for an
                 # ack from the caller (the reply for a possibly previous report
                 # RPC) that they have consumed more ObjectRefs.
-                await loop.run_in_executor(
+                stats = await loop.run_in_executor(
                     executor,
                     report_streaming_generator_output,
                     context,
@@ -1349,9 +1379,13 @@ async def execute_streaming_generator_async(
                     interrupt_signal_event,
                 )
                 cur_generator_index += 1
-        except Exception as e:
-            # Report the exception to the owner of the task.
-            report_streaming_generator_exception(context, e, cur_generator_index, None)
+
+            except StopAsyncIteration:
+                break
+
+    except Exception as e:
+        # Report the exception to the owner of the task.
+        report_streaming_generator_exception(context, e, cur_generator_index, None)
 
     except BaseException as be:
         # NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
@@ -2708,12 +2742,14 @@ cdef class CoreWorker:
     def __cinit__(self, worker_type, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port,
-                  driver_name,
+                  local_mode, driver_name,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
                   WorkerID worker_id, session_name, cluster_id, entrypoint,
                   worker_launch_time_ms, worker_launched_time_ms, debug_source):
+        self.is_local_mode = local_mode
+
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
-        if worker_type == ray.SCRIPT_MODE:
+        if worker_type in (ray.LOCAL_MODE, ray.SCRIPT_MODE):
             self.is_driver = True
             options.worker_type = WORKER_TYPE_DRIVER
         elif worker_type == ray.WORKER_MODE:
@@ -2754,6 +2790,7 @@ cdef class CoreWorker:
         options.unhandled_exception_handler = unhandled_exception_handler
         options.cancel_async_actor_task = cancel_async_actor_task
         options.get_lang_stack = get_py_stack
+        options.is_local_mode = local_mode
         options.kill_main = kill_main_task
         options.actor_shutdown_callback = call_actor_shutdown
         options.serialized_job_config = serialized_job_config
@@ -3160,6 +3197,7 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
+            c_vector[CObjectReference] contained_object_refs
             shared_ptr[CBuffer] metadata = string_to_buffer(
                 serialized_object.metadata)
             unique_ptr[CAddress] c_owner_address = self._convert_python_address(
@@ -3191,14 +3229,24 @@ cdef class CoreWorker:
         if total_bytes > 0:
             (<SerializedObject>serialized_object).write_to(
                 Buffer.make(data))
-
-        with nogil:
-            check_status(
-                CCoreWorkerProcess.GetCoreWorker().SealOwned(
-                            c_object_id,
-                            pin_object,
-                            move(c_owner_address)))
-
+        if self.is_local_mode:
+            contained_object_refs = (
+                    CCoreWorkerProcess.GetCoreWorker().
+                    GetObjectRefs(contained_object_ids))
+            if owner_address is not None:
+                raise Exception(
+                    "cannot put data into memory store directly"
+                    " and assign owner at the same time")
+            check_status(CCoreWorkerProcess.GetCoreWorker().Put(
+                    CRayObject(data, metadata, contained_object_refs),
+                    contained_object_ids, c_object_id))
+        else:
+            with nogil:
+                check_status(
+                    CCoreWorkerProcess.GetCoreWorker().SealOwned(
+                                c_object_id,
+                                pin_object,
+                                move(c_owner_address)))
         return c_object_id.Binary()
 
     def wait(self,
@@ -4099,10 +4147,18 @@ cdef class CoreWorker:
             if return_ptr.get().HasData():
                 (<SerializedObject>serialized_object).write_to(
                     Buffer.make(return_ptr.get().GetData()))
-            with nogil:
+            if self.is_local_mode:
                 check_status(
-                    CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
-                        return_id, return_ptr[0], generator_id, caller_address))
+                    CCoreWorkerProcess.GetCoreWorker().Put(
+                        CRayObject(return_ptr.get().GetData(),
+                                   return_ptr.get().GetMetadata(),
+                                   c_vector[CObjectReference]()),
+                        c_vector[CObjectID](), return_id))
+            else:
+                with nogil:
+                    check_status(
+                        CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
+                            return_id, return_ptr[0], generator_id, caller_address))
             return True
         else:
             with nogil:
