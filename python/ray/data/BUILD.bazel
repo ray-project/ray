@@ -1256,6 +1256,20 @@ py_test(
 )
 
 py_test(
+    name = "test_map_transformer",
+    size = "small",
+    srcs = ["tests/test_map_transformer.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_limit_operator",
     size = "small",
     srcs = ["tests/test_limit_operator.py"],

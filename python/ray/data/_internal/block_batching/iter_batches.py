@@ -341,7 +341,8 @@ def _format_in_threadpool(
             formatted_batch_iter = collate(
                 formatted_batch_iter, collate_fn=collate_fn, stats=stats
             )
-        yield from formatted_batch_iter
+
+        return formatted_batch_iter
 
     if num_threadpool_workers > 0:
         collated_iter = make_async_gen(
@@ -352,6 +353,7 @@ def _format_in_threadpool(
         )
     else:
         collated_iter = threadpool_computations_format_collate(batch_iter)
+
     return collated_iter
 
 

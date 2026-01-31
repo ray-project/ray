@@ -993,14 +993,6 @@ python/ray/data/_internal/block_batching/iter_batches.py
 python/ray/data/_internal/block_batching/util.py
     DOC402: Function `resolve_block_refs` has "yield" statements, but the docstring does not have a "Yields" section
     DOC404: Function `resolve_block_refs` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
-    DOC402: Function `blocks_to_batches` has "yield" statements, but the docstring does not have a "Yields" section
-    DOC404: Function `blocks_to_batches` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
-    DOC402: Function `format_batches` has "yield" statements, but the docstring does not have a "Yields" section
-    DOC404: Function `format_batches` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
-    DOC402: Function `collate` has "yield" statements, but the docstring does not have a "Yields" section
-    DOC404: Function `collate` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
-    DOC402: Function `finalize_batches` has "yield" statements, but the docstring does not have a "Yields" section
-    DOC404: Function `finalize_batches` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
 --------------------
 python/ray/data/_internal/datasource/lance_datasink.py
     DOC101: Method `LanceDatasink.__init__`: Docstring contains fewer arguments than in function signature.
