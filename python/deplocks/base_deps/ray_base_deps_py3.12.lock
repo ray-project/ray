@@ -466,9 +466,8 @@ cython==0.29.37 \
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   -r docker/base-deps/requirements.in
-flatbuffers==23.5.26 \
-    --hash=sha256:9ea1144cac05ce5d86e2859f431c6cd5e66cd9c78c558317c7955fb8d4c78d89 \
-    --hash=sha256:c0ff356da363087b915fde4b8b45bdda73432fc17cddb3c8157472eab1422ad1
+flatbuffers==25.12.19 \
+    --hash=sha256:7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   -r docker/base-deps/requirements.in
@@ -560,9 +559,9 @@ fsspec==2023.12.1 \
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   adlfs
-google-api-core==2.24.2 \
-    --hash=sha256:810a63ac95f3c441b7c0e43d344e372887f62ce9071ba972eacf32672e072de9 \
-    --hash=sha256:81718493daf06d96d6bc76a91c23874dbf2fac0adbbf542831b805ee6e974696
+google-api-core==2.29.0 \
+    --hash=sha256:84181be0f8e6b04006df75ddfe728f24489f0af57c96a529ff7cf45bc28797f7 \
+    --hash=sha256:d30bc60980daa36e314b5d5a3e5958b0200cb44ca8fa1be2b614e932b75a3ea9
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   google-api-python-client
@@ -686,9 +685,9 @@ google-resumable-media==2.6.0 \
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   google-cloud-storage
-googleapis-common-protos==1.61.0 \
-    --hash=sha256:22f1915393bb3245343f6efe87f6fe868532efc12aa26b391b15132e1279f1c0 \
-    --hash=sha256:8a64866a97f6304a7179873a465d6eee97b7a24ec6cfd78e0f575e96b821240b
+googleapis-common-protos==1.72.0 \
+    --hash=sha256:4299c5a82d5ae1a9702ada957347726b167f9f8d1fc352477702a1e851ff4038 \
+    --hash=sha256:e55a601c1b32b52d7a3e65f43563e2aa61bcd737998ee672ac9b951cd49319f5
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.12.lock
     #   google-api-core
