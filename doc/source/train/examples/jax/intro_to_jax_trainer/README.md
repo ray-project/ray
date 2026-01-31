@@ -6,7 +6,7 @@ This template shows you how to distribute a JAX/Flax training loop with [Ray Tra
 
 Ray Train lets you keep your training code in a normal Python function, then runs that function on a set of Ray workers. `JaxTrainer` handles the orchestration (starting workers, setting up the distributed context, and collecting metrics/checkpoints) so you can focus on the model and the input pipeline.
 
-This tutorial is inspired by Andrey Karpathy’s [nanoGPT](https://github.com/karpathy/nanoGPT/tree/master) and Google’s [Train a GPT-2 model with JAX on TPU for free](https://developers.googleblog.com/en/train-gpt2-model-with-jax-on-tpu/).
+This tutorial is inspired by Andrej Karpathy’s [nanoGPT](https://github.com/karpathy/nanoGPT/tree/master) and Google’s [Train a GPT-2 model with JAX on TPU for free](https://developers.googleblog.com/en/train-gpt2-model-with-jax-on-tpu/).
 
 In this tutorial, you will:
 
@@ -160,9 +160,9 @@ After running the script, you should have two files in shared storage:
 
 ## Step 2: Load the dataset with Ray Data.
 
-Next, let's load these files with Ray Data. 
+Next, let's load these files with Ray Data. Ray Data can read and preprocess data in parallel, then shard it across workers so each training process streams its own batches. This keeps the input pipeline scalable as you add more GPUs or TPU hosts.
 
-For more details about Ray Data, check out the [Ray Data documentation](https://docs.ray.io/en/master/data/data.html#data).
+For more details about Ray Data, check out the [Ray Data documentation](https://docs.ray.io/en/latest/data/data.html).
 
 
 
@@ -652,25 +652,27 @@ from ray.train.v2.jax import JaxTrainer
 ```
 
 Let's define the `scaling_config` that we want to scale the training process.
-`JaxTrainer` now supports both GPU training and TPU training. See [`ScalingConfig` API reference](https://docs.ray.io/en/master/train/api/doc/ray.train.ScalingConfig.html#ray.train.ScalingConfig) for more details. 
+`JaxTrainer` now supports both GPU training and TPU training. 
 
+For a walkthrough on configuring `ScalingConfig`, see [Get Started with Distributed Training using JAX](https://docs.ray.io/en/latest/train/getting-started-jax.html).   
 
-* In order to use GPUs, you will need to set `use_gpu=True` like other framework trainer.
-* In order to use TPUs, you will need to set `use_tpu=True` and set the TPU topology/accelerator type. For more information about TPU clusters with Ray on Kubernetes, see the [KubeRay TPU guide](https://docs.ray.io/en/master/cluster/kubernetes/user-guides/tpu.html#kuberay-tpu).
+For API details, see the [`ScalingConfig` API reference](https://docs.ray.io/en/master/train/api/doc/ray.train.ScalingConfig.html#ray.train.ScalingConfig).
 
 
 ```python
 # In this example, we use 2 GPUs.
 gpu_scaling_config = ScalingConfig(
     use_gpu=True,
-    num_workers=2,  # Change this to match on your GPU cluster setting.
-    resources_per_worker={"GPU": 1},
+    num_workers=2,  # Change this to match on your GPU cluster setting, by default, each worker uses one GPU.
 )
 # If you plan to use TPUs, see an example below.
+# This ScalingConfig requires a KubeRay cluster configured for a TPU v6e 4x4 slice with 4 TPU VMs.
+# For more information about TPU clusters with Ray on Kubernetes, see the
+# KubeRay TPU guide: https://docs.ray.io/en/master/cluster/kubernetes/user-guides/tpu.html#kuberay-tpu
 # tpu_scaling_config = ScalingConfig(
 #     use_tpu=True,
 #     num_workers=4,
-#     topology="2x2x4",
+#     topology="4x4",
 #     accelerator_type="TPU-V6E",
 #     resources_per_worker={"TPU": 4},
 # )
