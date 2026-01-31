@@ -934,6 +934,35 @@ class DeploymentSnapshot(BaseModel):
         )
 
 
+class ApplicationSnapshot(BaseModel):
+    """Application-level autoscaling snapshot for observability."""
+
+    snapshot_type: str = "application"
+    timestamp_str: str
+    app: str
+    num_deployments: int
+    total_current_replicas: int
+    total_target_replicas: int
+    scaling_status: str
+    policy_name: str
+    errors: List[str]
+
+    def is_scaling_equivalent(self, other: "ApplicationSnapshot") -> bool:
+        """Return True if scaling-related fields are equal.
+
+        Used for autoscaling snapshot log deduplication. Compares only:
+        app, total_target_replicas, scaling_status, num_deployments
+        """
+        if not isinstance(other, ApplicationSnapshot):
+            return False
+        return (
+            self.app == other.app
+            and self.total_target_replicas == other.total_target_replicas
+            and self.scaling_status == other.scaling_status
+            and self.num_deployments == other.num_deployments
+        )
+
+
 RUNNING_REQUESTS_KEY = "running_requests"
 ONGOING_REQUESTS_KEY = "ongoing_requests"
 QUEUED_REQUESTS_KEY = "queued_requests"
