@@ -164,6 +164,35 @@ DEFAULT_RETRIED_IO_ERRORS = (
     "AWS Error SERVICE_UNAVAILABLE",
 )
 
+DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS = env_integer(
+    "RAY_DATA_ICEBERG_WRITE_FILE_MAX_ATTEMPTS", 10
+)
+DEFAULT_ICEBERG_WRITE_FILE_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_ICEBERG_WRITE_FILE_RETRY_MAX_BACKOFF_S", 32
+)
+
+DEFAULT_ICEBERG_CATALOG_MAX_ATTEMPTS = env_integer(
+    "RAY_DATA_ICEBERG_CATALOG_MAX_ATTEMPTS", 5
+)
+DEFAULT_ICEBERG_CATALOG_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_ICEBERG_CATALOG_RETRY_MAX_BACKOFF_S", 16
+)
+DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS = (
+    "429",
+    "503",
+    "502",
+    "500",
+    "Too Many Requests",
+    "Service Unavailable",
+    "Internal Server Error",
+    "Connection reset",
+    "Connection refused",
+    "Connection timed out",
+    "Read timed out",
+    "UNAVAILABLE",
+    "DEADLINE_EXCEEDED",
+)
+
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
 
 DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
@@ -448,6 +477,19 @@ class DataContext:
         retried_io_errors: A list of substrings of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
+        iceberg_write_file_max_attempts: Maximum number of retry attempts when writing
+            Iceberg data files to storage. Defaults to 10.
+        iceberg_write_file_retry_max_backoff_s: Maximum backoff time in seconds between
+            Iceberg write retry attempts. Uses exponential backoff with jitter.
+            Defaults to 32.
+        iceberg_catalog_max_attempts: Maximum number of retry attempts for Iceberg
+            catalog operations (load catalog, load table, commit transactions).
+            Defaults to 5.
+        iceberg_catalog_retry_max_backoff_s: Maximum backoff time in seconds between
+            Iceberg catalog retry attempts. Defaults to 16.
+        iceberg_catalog_retried_errors: A list of substrings of error messages that
+            should trigger a retry for Iceberg catalog operations. Includes common
+            HTTP error codes and connection errors.
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
@@ -601,6 +643,17 @@ class DataContext:
     max_tasks_in_flight_per_actor: Optional[int] = None
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
+    )
+    iceberg_write_file_max_attempts: int = DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS
+    iceberg_write_file_retry_max_backoff_s: int = (
+        DEFAULT_ICEBERG_WRITE_FILE_RETRY_MAX_BACKOFF_S
+    )
+    iceberg_catalog_max_attempts: int = DEFAULT_ICEBERG_CATALOG_MAX_ATTEMPTS
+    iceberg_catalog_retry_max_backoff_s: int = (
+        DEFAULT_ICEBERG_CATALOG_RETRY_MAX_BACKOFF_S
+    )
+    iceberg_catalog_retried_errors: List[str] = field(
+        default_factory=lambda: list(DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS)
     )
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
