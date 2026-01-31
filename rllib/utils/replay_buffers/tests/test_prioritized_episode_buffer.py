@@ -88,6 +88,24 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
             == {"3", "4", "5", "6", "7", "8", "9", "G"}
         )
 
+        # Test for issue #54284. The issue occurred when the episode to be
+        # evicted is being re-added. An incorrect lookup was being performed,
+        # causing a ValueError.
+        buffer.add(self._get_episode(id_="H", episode_len=9))
+        self.assertTrue(buffer.get_num_timesteps() == 100)
+        self.assertTrue(
+            {eps.id_ for eps in buffer.episodes}
+            == {"3", "4", "5", "6", "7", "8", "9", "G", "H"}
+        )
+        # Episode 3 is next for eviction.
+        buffer.add([
+            self._get_episode(id_="3", episode_len=1),
+        ])
+        self.assertTrue(
+            {eps.id_ for eps in buffer.episodes}
+            == {"4", "5", "6", "7", "8", "9", "G", "H"}
+        )
+
     def test_buffer_sample_logic(self):
         buffer = PrioritizedEpisodeReplayBuffer(capacity=10000)
 
