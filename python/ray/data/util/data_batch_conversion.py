@@ -56,15 +56,15 @@ def _convert_batch_type_to_pandas(
     """
     pd = _lazy_import_pandas()
 
-    "Convert to dictionary if DataBatchType is np.ndarray."
     if isinstance(data, np.ndarray):
-        data = {TENSOR_COLUMN_NAME: data}
         warnings.warn(
             "In future versions of Ray, np.ndarray will not be supported as DataBatchType.",
             FutureWarning,
             stacklevel=2,
         )
-    if isinstance(data, dict):
+
+        data = pd.DataFrame({TENSOR_COLUMN_NAME: _ndarray_to_column(data)})
+    elif isinstance(data, dict):
         tensor_dict = {}
         for col_name, col in data.items():
             if not isinstance(col, np.ndarray):
@@ -105,16 +105,19 @@ def _convert_pandas_to_batch_type(
     """
     if cast_tensor_columns:
         data = _cast_ndarray_columns_to_tensor_extension(data)
+
     if type == BatchFormat.PANDAS:
         return data
-
-    if type == BatchFormat.NUMPY:
-        # Return a dict of numpy arrays.
-        output_dict = {}
-        for column in data:
-            output_dict[column] = data[column].to_numpy()
-        return output_dict
-
+    elif type == BatchFormat.NUMPY:
+        if len(data.columns) == 1:
+            # If just a single column, return as a single numpy array.
+            return data.iloc[:, 0].to_numpy()
+        else:
+            # Else return as a dict of numpy arrays.
+            output_dict = {}
+            for column in data:
+                output_dict[column] = data[column].to_numpy()
+            return output_dict
     elif type == BatchFormat.ARROW:
         if not pyarrow:
             raise ValueError(
@@ -132,7 +135,7 @@ def _convert_pandas_to_batch_type(
 
 def _convert_batch_type_to_numpy(
     data: DataBatchType,
-) -> Dict[str, np.ndarray]:
+) -> Union[np.ndarray, Dict[str, np.ndarray]]:
     """Convert the provided data to a NumPy ndarray or dict of ndarrays.
 
     Args:
@@ -150,7 +153,7 @@ def _convert_batch_type_to_numpy(
             stacklevel=2,
         )
 
-        return {TENSOR_COLUMN_NAME: data}
+        return data
     elif isinstance(data, dict):
         for col_name, col in data.items():
             if not isinstance(col, np.ndarray):
@@ -183,7 +186,7 @@ def _convert_batch_type_to_numpy(
         if data.column_names == [TENSOR_COLUMN_NAME] and (
             isinstance(data.schema.types[0], arrow_fixed_shape_tensor_types)
         ):
-            return {TENSOR_COLUMN_NAME: column_values_ndarrays[0]}
+            return column_values_ndarrays[0]
 
         return dict(zip(data.column_names, column_values_ndarrays))
     elif isinstance(data, pd.DataFrame):

@@ -466,7 +466,7 @@ def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors)
     assert isinstance(with_pandas.transform_batch(np_single_column), pd.DataFrame)
     assert isinstance(with_pandas.transform_batch(np_multi_column), pd.DataFrame)
 
-    assert isinstance(with_numpy.transform_batch(np_data), dict)
+    assert isinstance(with_numpy.transform_batch(np_data), np.ndarray)
     assert isinstance(with_numpy.transform_batch(np_single_column), dict)
     assert isinstance(with_numpy.transform_batch(np_multi_column), dict)
 
@@ -478,7 +478,9 @@ def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors)
         with_pandas_and_numpy.transform_batch(np_multi_column), pd.DataFrame
     )
 
-    assert isinstance(with_pandas_and_numpy_preferred.transform_batch(np_data), dict)
+    assert isinstance(
+        with_pandas_and_numpy_preferred.transform_batch(np_data), np.ndarray
+    )
     assert isinstance(
         with_pandas_and_numpy_preferred.transform_batch(np_single_column), dict
     )

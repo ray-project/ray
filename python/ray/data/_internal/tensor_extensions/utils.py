@@ -10,6 +10,7 @@ from typing import (
 
 import numpy as np
 
+from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 
@@ -53,9 +54,10 @@ def _should_convert_to_tensor(
     # We convert passed in column values into a tensor representation (involving
     # Arrow/Pandas extension types) in either of the following cases:
     return (
+        column_name == TENSOR_COLUMN_NAME
         # - Provided column values are already represented by a Numpy tensor (ie
         #   ndarray with ndim > 1)
-        _is_ndarray_tensor(column_values)
+        or _is_ndarray_tensor(column_values)
         # - Provided collection is already implementing Ndarray protocol like
         #   `torch.Tensor`, `pd.Series`, etc (but *excluding* `pyarrow.Array`,
         #   `pyarrow.ChunkedArray`)
