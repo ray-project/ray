@@ -9,6 +9,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
@@ -20,9 +21,9 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
 )
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
+    FixedShapeTensorFormat,
     _extension_array_concat_supported,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.extensions import (
@@ -1698,7 +1699,16 @@ def uniform_tensor_blocks():
 @pytest.fixture
 def uniform_tensor_expected():
     """Fixture for expected results from uniform tensor concatenation."""
-    if DataContext.get_current().use_arrow_tensor_v2:
+    ctx = DataContext.get_current()
+    tensor_format = ctx.arrow_fixed_shape_tensor_format
+    # If arrow_fixed_shape_tensor_format is None, fallback to use_arrow_tensor_v2
+    if tensor_format is None:
+        tensor_format = (
+            FixedShapeTensorFormat.V2
+            if ctx.use_arrow_tensor_v2
+            else FixedShapeTensorFormat.V1
+        )
+    if tensor_format == FixedShapeTensorFormat.V2:
         tensor_type = ArrowTensorTypeV2
     else:
         tensor_type = ArrowTensorType
@@ -2847,15 +2857,17 @@ def unify_schemas_nested_struct_tensors_schemas():
     return {"with_tensor": schema1, "without_tensor": schema2, "expected": expected}
 
 
-@pytest.mark.parametrize("use_arrow_tensor_v2", [True, False])
+@pytest.mark.parametrize(
+    "tensor_format", [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
+)
 @pytest.mark.skipif(
     get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
     reason="Requires Arrow version of at least 14.0.0",
 )
 def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(
-    use_arrow_tensor_v2, restore_data_context
+    tensor_format, restore_data_context
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = use_arrow_tensor_v2
+    DataContext.get_current().arrow_fixed_shape_tensor_format = tensor_format
 
     num_rows = 1024
 
@@ -2892,7 +2904,7 @@ def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(
 
     # Ensure that the result is correct
     # Determine expected tensor type based on current DataContext setting
-    if use_arrow_tensor_v2:
+    if tensor_format == FixedShapeTensorFormat.V2:
         expected_tensor_type = ArrowTensorTypeV2((3, 3), pa.float32())
     else:
         expected_tensor_type = ArrowTensorType((3, 3), pa.float32())

@@ -56,26 +56,30 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators import (
-    Count,
-    Filter,
-    FlatMap,
-    InputData,
-    Join,
-    Limit,
-    MapBatches,
-    MapRows,
-    Project,
+from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
     Sort,
+)
+from ray.data._internal.logical.operators.count_operator import Count
+from ray.data._internal.logical.operators.input_data_operator import InputData
+from ray.data._internal.logical.operators.join_operator import Join
+from ray.data._internal.logical.operators.map_operator import (
+    Filter,
+    FlatMap,
+    MapBatches,
+    MapRows,
+    Project,
     StreamingRepartition,
-    StreamingSplit,
+)
+from ray.data._internal.logical.operators.n_ary_operator import (
     Union as UnionLogicalOperator,
-    Write,
     Zip,
 )
+from ray.data._internal.logical.operators.one_to_one_operator import Limit
+from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
+from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -83,7 +87,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, _StatsManager
 from ray.data._internal.tensor_extensions.arrow import (
-    ArrowTensorTypeV2,
+    ArrowVariableShapedTensorType,
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import (
@@ -6914,7 +6918,10 @@ class Schema:
         import pyarrow as pa
         from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
-        from ray.data.extensions import ArrowTensorType, TensorDtype
+        from ray.data._internal.tensor_extensions.arrow import (
+            create_arrow_fixed_shape_tensor_format,
+        )
+        from ray.data.extensions import TensorDtype
 
         def _convert_to_pa_type(
             dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
@@ -6934,18 +6941,17 @@ class Schema:
         arrow_types = []
         for dtype in self.base_schema.types:
             if isinstance(dtype, TensorDtype):
-                if self._context.use_arrow_tensor_v2:
-                    pa_tensor_type_class = ArrowTensorTypeV2
-                else:
-                    pa_tensor_type_class = ArrowTensorType
-
-                # Manually convert our Pandas tensor extension type to Arrow.
-                arrow_types.append(
-                    pa_tensor_type_class(
-                        shape=dtype._shape,
-                        dtype=_convert_to_pa_type(dtype._dtype),
+                pa_dtype = _convert_to_pa_type(dtype._dtype)
+                if any(dim is None for dim in dtype._shape):
+                    # variable shaped
+                    tensor_type = ArrowVariableShapedTensorType(
+                        pa_dtype, len(dtype._shape)
                     )
-                )
+                else:
+                    tensor_type = create_arrow_fixed_shape_tensor_format(
+                        shape=dtype._shape, dtype=pa_dtype
+                    )
+                arrow_types.append(tensor_type)
 
             else:
                 try:

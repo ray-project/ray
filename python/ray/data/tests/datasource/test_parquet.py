@@ -17,6 +17,7 @@ from pyarrow.fs import FSSpecHandler, PyFileSystem
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import FileShuffleConfig, Schema
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
@@ -25,11 +26,13 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorType,
     ArrowTensorTypeV2,
+    FixedShapeTensorFormat,
+    FixedShapeTensorType,
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import rows_same
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
@@ -1159,9 +1162,11 @@ def test_partitioning_in_dataset_kwargs_raises_error(
         )
 
 
+@pytest.mark.parametrize("new_tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_in_tables_parquet(
     ray_start_regular_shared,
     tmp_path,
+    new_tensor_format,
     restore_data_context,
     target_max_block_size_infinite_or_default,
 ):
@@ -1226,12 +1231,15 @@ def test_tensors_in_tables_parquet(
     _assert_equal(ds.take_all(), expected_tuples)
 
     #
-    # Test #2: Verify writing tensors as ArrowTensorTypeV2
+    # Test #2: Verify writing tensors as either
+    #   - ArrowTensorTypeV2 or
+    #   - (Arrow-native) FixedShapeTensorType
     #
 
-    DataContext.get_current().use_arrow_tensor_v2 = True
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = new_tensor_format
 
-    tensor_v2_path = f"{tmp_path}/tensor_v2"
+    tensor_v2_path = f"{tmp_path}/tensor_new_{new_tensor_format}"
 
     ds = ray.data.from_pandas([df])
     ds.write_parquet(tensor_v2_path)
@@ -1242,11 +1250,22 @@ def test_tensors_in_tables_parquet(
         override_num_blocks=10,
     )
 
-    assert isinstance(
-        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorTypeV2
-    )
-
     _assert_equal(ds.take_all(), expected_tuples)
+
+    if new_tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
+        if FixedShapeTensorType is None:
+            expected_tensor_type = ArrowTensorType
+        else:
+            expected_tensor_type = FixedShapeTensorType
+    elif new_tensor_format == FixedShapeTensorFormat.V2:
+        expected_tensor_type = ArrowTensorTypeV2
+    else:  # v1
+        expected_tensor_type = ArrowTensorType
+
+    assert isinstance(
+        ds.schema().base_schema.field_by_name(tensor_col_name).type,
+        expected_tensor_type,
+    )
 
 
 def test_multiple_files_with_ragged_arrays(

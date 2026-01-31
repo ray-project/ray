@@ -6,7 +6,10 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.tensor_extensions.arrow import ArrowTensorTypeV2
+from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    FixedShapeTensorFormat,
+)
 from ray.data.context import DataContext
 from ray.data.dataset import Schema
 from ray.data.extensions.tensor_extension import ArrowTensorType
@@ -17,9 +20,18 @@ from ray.tests.conftest import *  # noqa
 
 
 def _get_tensor_type():
+    ctx = DataContext.get_current()
+    tensor_format = ctx.arrow_fixed_shape_tensor_format
+    # If arrow_fixed_shape_tensor_format is None, fallback to use_arrow_tensor_v2
+    if tensor_format is None:
+        tensor_format = (
+            FixedShapeTensorFormat.V2
+            if ctx.use_arrow_tensor_v2
+            else FixedShapeTensorFormat.V1
+        )
     return (
         ArrowTensorTypeV2
-        if DataContext.get_current().use_arrow_tensor_v2
+        if tensor_format == FixedShapeTensorFormat.V2
         else ArrowTensorType
     )
 

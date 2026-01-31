@@ -7,7 +7,13 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
+from ray._private.arrow_utils import get_pyarrow_version
+from ray.data._internal.tensor_extensions.arrow import (
+    MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
+    ArrowTensorArray,
+    FixedShapeTensorFormat,
+    create_arrow_fixed_shape_tensor_format,
+)
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
@@ -17,6 +23,7 @@ from ray.data.extensions.tensor_extension import (
     ArrowTensorTypeV2,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
+    FixedShapeTensorType,
     TensorArray,
     TensorDtype,
 )
@@ -26,14 +33,15 @@ from ray.tests.conftest import *  # noqa
 
 
 # https://github.com/ray-project/ray/issues/33695
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_large_tensor_creation(
     ray_start_regular_shared, restore_data_context, tensor_format
 ):
     """Tests that large tensor read task creation can complete successfully without
     hanging."""
 
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     start_time = time.time()
     ray.data.range_tensor(1000, override_num_blocks=1000, shape=(80, 80, 100, 100))
@@ -43,19 +51,21 @@ def test_large_tensor_creation(
     assert end_time - start_time < 20
 
 
-@pytest.mark.parametrize(
-    "tensor_format, tensor_type", [("v1", ArrowTensorType), ("v2", ArrowTensorTypeV2)]
-)
-def test_tensors_basic(
-    ray_start_regular_shared, restore_data_context, tensor_format, tensor_type
-):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
+def test_tensors_basic(ray_start_regular_shared, restore_data_context, tensor_format):
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
+
+    # Determine expected tensor type based on format
+    expected_type = create_arrow_fixed_shape_tensor_format(
+        shape=(3, 5), dtype=pa.int64()
+    )
 
     # Create directly.
     tensor_shape = (3, 5)
     ds = ray.data.range_tensor(6, shape=tensor_shape, override_num_blocks=6)
     assert ds.count() == 6
-    assert ds.schema() == Schema(pa.schema([("data", tensor_type((3, 5), pa.int64()))]))
+    assert ds.schema() == Schema(pa.schema([("data", expected_type)]))
     # The actual size is slightly larger due to metadata.
     # We add 6 (one per tensor) offset values of 8 bytes each to account for the
     # in-memory representation of the PyArrow LargeList type
@@ -226,9 +236,10 @@ def test_tensors_basic(
     assert extract_values("data", res) == list(range(1, 11))
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_batch_tensors(ray_start_regular_shared, restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     ds = ray.data.from_items(
         [np.array([0, 0]) for _ in range(40)], override_num_blocks=40
@@ -239,9 +250,10 @@ def test_batch_tensors(ray_start_regular_shared, restore_data_context, tensor_fo
     assert batch["item"].shape == (40, 2)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_shuffle(ray_start_regular_shared, restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     # Test Arrow table representation.
     tensor_shape = (3, 5)
@@ -279,9 +291,10 @@ def test_tensors_shuffle(ray_start_regular_shared, restore_data_context, tensor_
     )
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_sort(ray_start_regular_shared, restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     # Test Arrow table representation.
     t = pa.table({"a": TensorArray(np.arange(32).reshape((2, 4, 4))), "b": [1, 2]})
@@ -318,11 +331,24 @@ def test_tensors_sort(ray_start_regular_shared, restore_data_context, tensor_for
     )
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_inferred_from_map(
     ray_start_regular_shared, restore_data_context, tensor_format
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
+
+    if (
+        tensor_format == FixedShapeTensorFormat.ARROW_NATIVE
+        and get_pyarrow_version() >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY
+    ):
+        expected_type = FixedShapeTensorType
+        assert expected_type is not None
+    elif tensor_format == FixedShapeTensorFormat.V2:
+        expected_type = ArrowTensorTypeV2
+    else:
+        expected_type = ArrowTensorType
+
     # Test map.
     ds = ray.data.range(10, override_num_blocks=10).map(
         lambda _: {"data": np.ones((4, 4))}
@@ -332,10 +358,9 @@ def test_tensors_inferred_from_map(
     schema = ds.schema()
     assert schema.names == ["data"]
     dtype = schema.types[0]
-    expected_type = ArrowTensorTypeV2 if tensor_format == "v2" else ArrowTensorType
     assert isinstance(dtype, expected_type)
-    assert dtype.shape == (4, 4)
-    assert dtype.scalar_type == pa.float64()
+    assert tuple(dtype.shape) == (4, 4)
+    assert dtype.value_type == pa.float64()
 
     # Test map_batches.
     ds = ray.data.range(16, override_num_blocks=4).map_batches(
@@ -346,10 +371,9 @@ def test_tensors_inferred_from_map(
     schema = ds.schema()
     assert schema.names == ["data"]
     dtype = schema.types[0]
-    expected_type = ArrowTensorTypeV2 if tensor_format == "v2" else ArrowTensorType
     assert isinstance(dtype, expected_type)
-    assert dtype.shape == (4, 4)
-    assert dtype.scalar_type == pa.float64()
+    assert tuple(dtype.shape) == (4, 4)
+    assert dtype.value_type == pa.float64()
 
     # Test flat_map.
     ds = ray.data.range(10, override_num_blocks=10).flat_map(
@@ -360,10 +384,10 @@ def test_tensors_inferred_from_map(
     schema = ds.schema()
     assert schema.names == ["data"]
     dtype = schema.types[0]
-    expected_type = ArrowTensorTypeV2 if tensor_format == "v2" else ArrowTensorType
+
     assert isinstance(dtype, expected_type)
-    assert dtype.shape == (4, 4)
-    assert dtype.scalar_type == pa.float64()
+    assert tuple(dtype.shape) == (4, 4)
+    assert dtype.value_type == pa.float64()
 
     # Test map_batches ndarray column.
     ds = ray.data.range(16, override_num_blocks=4).map_batches(
@@ -374,10 +398,9 @@ def test_tensors_inferred_from_map(
     schema = ds.schema()
     assert schema.names == ["a"]
     dtype = schema.types[0]
-    expected_type = ArrowTensorTypeV2 if tensor_format == "v2" else ArrowTensorType
     assert isinstance(dtype, expected_type)
-    assert dtype.shape == (4, 4)
-    assert dtype.scalar_type == pa.float64()
+    assert tuple(dtype.shape) == (4, 4)
+    assert dtype.value_type == pa.float64()
 
     ds = ray.data.range(16, override_num_blocks=4).map_batches(
         lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}),
@@ -388,15 +411,15 @@ def test_tensors_inferred_from_map(
     schema = ds.schema()
     assert schema.names == ["a"]
     dtype = schema.types[0]
-    expected_type = ArrowTensorTypeV2 if tensor_format == "v2" else ArrowTensorType
-    assert isinstance(dtype, expected_type)
-    assert dtype.shape == (None, None)
-    assert dtype.scalar_type == pa.float64()
+    assert isinstance(dtype, ArrowVariableShapedTensorType)
+    assert tuple(dtype.shape) == (None, None)
+    assert dtype.value_type == pa.float64()
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensor_array_block_slice(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     # Test that ArrowBlock slicing works with tensor column extension type.
     def check_for_copy(table1, table2, a, b, is_copy):
@@ -412,10 +435,16 @@ def test_tensor_array_block_slice(restore_data_context, tensor_format):
                 expected_offset = 0 if is_copy else a
                 assert chunk2.offset == expected_offset
                 assert len(chunk2) == b - a
+                index = 1
+                if (
+                    tensor_format == FixedShapeTensorFormat.ARROW_NATIVE
+                    and FixedShapeTensorType is not None
+                ):
+                    index = 2
                 if is_copy:
-                    assert bufs2[1].address != bufs1[1].address
+                    assert bufs2[index].address != bufs1[index].address
                 else:
-                    assert bufs2[1].address == bufs1[1].address
+                    assert bufs2[index].address == bufs1[index].address
 
     n = 20
     one_arr = np.arange(4 * n).reshape(n, 2, 2)
@@ -426,12 +455,27 @@ def test_tensor_array_block_slice(restore_data_context, tensor_format):
 
     # Test with copy.
     table2 = block_accessor.slice(a, b, True)
-    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), one_arr[a:b, :, :])
+    if (
+        tensor_format == FixedShapeTensorFormat.ARROW_NATIVE
+        and FixedShapeTensorType is not None
+    ):
+        res = table2["one"].chunk(0).to_numpy_ndarray()
+    else:
+        res = table2["one"].chunk(0).to_numpy()
+
+    np.testing.assert_array_equal(res, one_arr[a:b, :, :])
     check_for_copy(table, table2, a, b, is_copy=True)
 
-    # Test without copy.
+    # Test without copy. arrow_native requires a copy
     table2 = block_accessor.slice(a, b, False)
-    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), one_arr[a:b, :, :])
+    if (
+        tensor_format == FixedShapeTensorFormat.ARROW_NATIVE
+        and FixedShapeTensorType is not None
+    ):
+        res = table2["one"].chunk(0).to_numpy_ndarray()
+    else:
+        res = table2["one"].chunk(0).to_numpy()
+    np.testing.assert_array_equal(res, one_arr[a:b, :, :])
     check_for_copy(table, table2, a, b, is_copy=False)
 
 
@@ -545,11 +589,12 @@ def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data
     )
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_in_tables_from_pandas(
     ray_start_regular_shared, restore_data_context, tensor_format
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -566,11 +611,12 @@ def test_tensors_in_tables_from_pandas(
         np.testing.assert_equal(v, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_in_tables_from_pandas_variable_shaped(
     ray_start_regular_shared, restore_data_context, tensor_format
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
@@ -589,14 +635,15 @@ def test_tensors_in_tables_from_pandas_variable_shaped(
         np.testing.assert_equal(v, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_in_tables_pandas_roundtrip(
     ray_start_regular_shared,
     enable_automatic_tensor_extension_cast,
     restore_data_context,
     tensor_format,
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -613,14 +660,15 @@ def test_tensors_in_tables_pandas_roundtrip(
     pd.testing.assert_frame_equal(ds_df, expected_df)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_in_tables_pandas_roundtrip_variable_shaped(
     ray_start_regular_shared,
     enable_automatic_tensor_extension_cast,
     restore_data_context,
     tensor_format,
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
@@ -641,11 +689,12 @@ def test_tensors_in_tables_pandas_roundtrip_variable_shaped(
     pd.testing.assert_frame_equal(ds_df, expected_df)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_in_tables_parquet_roundtrip(
     ray_start_regular_shared, tmp_path, restore_data_context, tensor_format
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -663,11 +712,12 @@ def test_tensors_in_tables_parquet_roundtrip(
         np.testing.assert_equal(v, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_in_tables_parquet_roundtrip_variable_shaped(
     ray_start_regular_shared, tmp_path, restore_data_context, tensor_format
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
@@ -687,15 +737,15 @@ def test_tensors_in_tables_parquet_roundtrip_variable_shaped(
         np.testing.assert_equal(v, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_in_tables_parquet_with_schema(
     ray_start_regular_shared,
     tmp_path,
     restore_data_context,
     tensor_format,
-    tensor_type=ArrowTensorType,
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -706,19 +756,11 @@ def test_tensors_in_tables_parquet_with_schema(
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
 
-    if tensor_format == "v1":
-        tensor_type_class = tensor_type
-    elif tensor_format == "v2":
-        tensor_type_class = ArrowTensorTypeV2
-    else:
-        raise ValueError(f"unexpected format: {tensor_format}")
-
-    schema = pa.schema(
-        [
-            ("one", pa.int32()),
-            ("two", tensor_type_class(inner_shape, pa.from_numpy_dtype(arr.dtype))),
-        ]
+    tensor_type = create_arrow_fixed_shape_tensor_format(
+        shape=inner_shape,
+        dtype=pa.from_numpy_dtype(arr.dtype),
     )
+    schema = pa.schema([("one", pa.int32()), ("two", tensor_type)])
     ds = ray.data.read_parquet(str(tmp_path), schema=schema)
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
@@ -726,13 +768,14 @@ def test_tensors_in_tables_parquet_with_schema(
         np.testing.assert_equal(v, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_in_tables_parquet_pickle_manual_serde(
     ray_start_regular_shared, tmp_path, restore_data_context, tensor_format
 ):
     import pickle
 
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -774,11 +817,12 @@ def test_tensors_in_tables_parquet_pickle_manual_serde(
         np.testing.assert_equal(v, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_in_tables_parquet_bytes_manual_serde(
     ray_start_regular_shared, tmp_path, restore_data_context, tensor_format
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -819,11 +863,12 @@ def test_tensors_in_tables_parquet_bytes_manual_serde(
         np.testing.assert_equal(v, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
     ray_start_regular_shared, tmp_path, restore_data_context, tensor_format
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -837,29 +882,20 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
 
-    # Manually deserialize the tensor bytes and cast to a TensorArray.
-    def np_deser_udf(block: pa.Table):
-        # NOTE(Clark): We use NumPy to consolidate these potentially
-        # non-contiguous buffers, and to do buffer bookkeeping in general.
-        np_col = np.array(
-            [
-                np.ndarray(inner_shape, buffer=buf.as_buffer(), dtype=arr.dtype)
-                for buf in block.column(tensor_col_name)
-            ]
-        )
+    ds = ray.data.read_parquet(
+        str(tmp_path),
+        tensor_column_schema={tensor_col_name: (np.dtype(np.int64), inner_shape)},
+    )
 
-        return block.set_column(
-            block._ensure_integer_index(tensor_col_name),
-            tensor_col_name,
-            ArrowTensorArray.from_numpy(np_col),
-        )
-
-    ds = ray.data.read_parquet(str(tmp_path), _block_udf=np_deser_udf)
-
-    if tensor_format == "v1":
+    if tensor_format == FixedShapeTensorFormat.V1:
         expected_tensor_type = ArrowTensorType
-    elif tensor_format == "v2":
+    elif tensor_format == FixedShapeTensorFormat.V2:
         expected_tensor_type = ArrowTensorTypeV2
+    elif tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
+        if FixedShapeTensorType is None:
+            expected_tensor_type = ArrowTensorType
+        else:
+            expected_tensor_type = FixedShapeTensorType
     else:
         raise ValueError(f"Unexpected tensor format: {tensor_format}")
 
@@ -874,11 +910,12 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
         np.testing.assert_equal(v, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
     ray_start_regular_shared, tmp_path, restore_data_context, tensor_format
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -895,7 +932,7 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
     def _block_udf(block: pa.Table):
         df = block.to_pandas()
         df[tensor_col_name] += 1
-        return pa.Table.from_pandas(df)
+        return pa.Table.from_pandas(df, schema=block.schema)
 
     ds = ray.data.read_parquet(
         str(tmp_path),
@@ -903,10 +940,15 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
         _block_udf=_block_udf,
     )
 
-    if tensor_format == "v1":
+    if tensor_format == FixedShapeTensorFormat.V1:
         expected_tensor_type = ArrowTensorType
-    elif tensor_format == "v2":
+    elif tensor_format == FixedShapeTensorFormat.V2:
         expected_tensor_type = ArrowTensorTypeV2
+    elif tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
+        if FixedShapeTensorType is None:
+            expected_tensor_type = ArrowTensorType
+        else:
+            expected_tensor_type = FixedShapeTensorType
     else:
         raise ValueError(f"Unexpected tensor format: {tensor_format}")
 
@@ -928,9 +970,13 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
         "https://issues.apache.org/jira/browse/ARROW-5890#"
     )
 )
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_in_tables_parquet_bytes_with_schema(
-    ray_start_regular_shared, tmp_path
+    ray_start_regular_shared, tmp_path, restore_data_context, tensor_format
 ):
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
+
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -941,12 +987,11 @@ def test_tensors_in_tables_parquet_bytes_with_schema(
     )
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
-    schema = pa.schema(
-        [
-            ("one", pa.int32()),
-            ("two", ArrowTensorType(inner_shape, pa.from_numpy_dtype(arr.dtype))),
-        ]
+    tensor_type = create_arrow_fixed_shape_tensor_format(
+        shape=inner_shape,
+        dtype=pa.from_numpy_dtype(arr.dtype),
     )
+    schema = pa.schema([("one", pa.int32()), ("two", tensor_type)])
     ds = ray.data.read_parquet(str(tmp_path), schema=schema)
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
@@ -954,14 +999,15 @@ def test_tensors_in_tables_parquet_bytes_with_schema(
         np.testing.assert_equal(v, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_in_tables_iter_batches(
     ray_start_regular_shared,
     enable_automatic_tensor_extension_cast,
     restore_data_context,
     tensor_format,
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -993,13 +1039,14 @@ def test_tensors_in_tables_iter_batches(
         pd.testing.assert_frame_equal(batch, expected_batch)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_ragged_tensors(ray_start_regular_shared, restore_data_context, tensor_format):
     """Test Arrow type promotion between ArrowTensorType and
     ArrowVariableShapedTensorType when a column contains ragged tensors."""
     import numpy as np
 
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     ds = ray.data.from_items(
         [
@@ -1007,7 +1054,7 @@ def test_ragged_tensors(ray_start_regular_shared, restore_data_context, tensor_f
             {"spam": np.zeros((64, 64, 5))},
         ]
     )
-    new_type = ds.schema().types[0].scalar_type
+    new_type = ds.schema().types[0].value_type
     assert ds.schema().types == [
         ArrowVariableShapedTensorType(dtype=new_type, ndim=3),
     ]

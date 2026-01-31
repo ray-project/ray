@@ -8,28 +8,33 @@ import pyarrow as pa
 import pytest
 from packaging.version import parse as parse_version
 
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import DataContext
 from ray.data._internal.tensor_extensions.arrow import (
+    MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
     ArrowConversionError,
     ArrowTensorArray,
     ArrowTensorType,
     ArrowTensorTypeV2,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
+    FixedShapeTensorFormat,
+    FixedShapeTensorType,
     _are_contiguous_1d_views,
     _concat_ndarrays,
     _extension_array_concat_supported,
     concat_tensor_arrays,
+    create_arrow_fixed_shape_tensor_format,
+    fixed_shape_extension_scalar_to_ndarray,
     unify_tensor_arrays,
 )
 from ray.data._internal.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.data._internal.tensor_extensions.utils import (
     create_ragged_ndarray,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 @pytest.mark.parametrize(
     "values",
     [
@@ -38,7 +43,8 @@ from ray.data._internal.utils.arrow_utils import get_pyarrow_version
     ],
 )
 def test_create_ragged_ndarray(values, restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     ragged_array = create_ragged_ndarray(values)
     assert len(ragged_array) == len(values)
@@ -58,8 +64,6 @@ def test_tensor_array_validation():
     with pytest.raises(TypeError):
         TensorArray([object(), object()])
 
-
-def test_pandas_to_arrow_fixed_shape_tensor_conversion():
     # First, convert Pandas serise w/ nulls to numpy
     array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy().reshape((2, 2))
 
@@ -100,23 +104,28 @@ def test_pandas_to_arrow_var_shape_tensor_conversion():
         np.testing.assert_array_equal(actual, expected)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_arrow_scalar_tensor_array_roundtrip(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     arr = np.arange(1000).reshape((10, 1, 100))
     ata = ArrowTensorArray.from_numpy(arr)
     assert isinstance(ata.type, pa.DataType)
     assert len(ata) == len(arr)
-    out = ata.to_numpy()
+    if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
+        out = ata.to_numpy_ndarray()
+    else:
+        out = ata.to_numpy()
     np.testing.assert_array_equal(out, arr)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_arrow_scalar_tensor_array_roundtrip_boolean(
     restore_data_context, tensor_format
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     arr = np.array([True, False, False, True])
     ata = ArrowTensorArray.from_numpy(arr)
@@ -128,9 +137,10 @@ def test_arrow_scalar_tensor_array_roundtrip_boolean(
     np.testing.assert_array_equal(out, arr)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_scalar_tensor_array_roundtrip(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     arr = np.arange(1000).reshape(10, 1, 100)
     ta = TensorArray(arr)
@@ -143,15 +153,19 @@ def test_scalar_tensor_array_roundtrip(restore_data_context, tensor_format):
     ata = ta.__arrow_array__()
     assert isinstance(ata.type, pa.DataType)
     assert len(ata) == len(arr)
-    out = ata.to_numpy()
+    if ctx.arrow_fixed_shape_tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
+        out = ata.to_numpy_ndarray()
+    else:
+        out = ata.to_numpy()
     np.testing.assert_array_equal(out, arr)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_arrow_variable_shaped_tensor_array_validation(
     restore_data_context, tensor_format
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     # Test tensor elements with differing dimensions raises ValueError.
     with pytest.raises(ValueError):
@@ -408,9 +422,10 @@ def test_variable_shaped_tensor_array_slice(restore_data_context):
             np.testing.assert_array_equal(o, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensor_array_ops(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -437,9 +452,10 @@ def test_tensor_array_ops(restore_data_context, tensor_format):
     np.testing.assert_equal(apply_logical_ops(arr), apply_logical_ops(df["two"]))
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensor_array_array_protocol(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -460,9 +476,10 @@ def test_tensor_array_array_protocol(restore_data_context, tensor_format):
     )
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensor_array_dataframe_repr(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2)
@@ -480,9 +497,10 @@ def test_tensor_array_dataframe_repr(restore_data_context, tensor_format):
     assert repr(df) == expected_repr
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensor_array_scalar_cast(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (1,)
@@ -500,9 +518,10 @@ def test_tensor_array_scalar_cast(restore_data_context, tensor_format):
     assert float(t_arr) == float(arr)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensor_array_reductions(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -523,12 +542,12 @@ def test_tensor_array_reductions(restore_data_context, tensor_format):
         np.testing.assert_equal(df["two"].agg(name), reducer(arr, axis=0, **np_kwargs))
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 @pytest.mark.parametrize("shape", [(2, 0), (2, 5, 0), (0, 5), (0, 0)])
 def test_zero_length_arrow_tensor_array_roundtrip(
     restore_data_context, tensor_format, shape
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    DataContext.get_current().arrow_fixed_shape_tensor_format = tensor_format
 
     arr = np.empty(shape, dtype=np.int8)
     t_arr = ArrowTensorArray.from_numpy(arr)
@@ -537,10 +556,11 @@ def test_zero_length_arrow_tensor_array_roundtrip(
     np.testing.assert_array_equal(out, arr)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 @pytest.mark.parametrize("chunked", [False, True])
 def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -553,6 +573,7 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
         t_arr = pa.chunked_array(t_arr)
 
     pyarrow_version = get_pyarrow_version()
+
     if (
         chunked
         and pyarrow_version >= parse_version("8.0.0")
@@ -565,14 +586,41 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
             np.testing.assert_array_equal(item, arr[idx])
     else:
         for idx in range(outer_dim):
-            np.testing.assert_array_equal(t_arr[idx], arr[idx])
+            item = t_arr[idx]
+            if pyarrow_version >= parse_version("16.0.0"):
+                # Returns native FixedShapeTensorScalar
+                np.testing.assert_array_equal(item.to_numpy(), arr[idx])
+            else:
+                # Returns an ExtensionScalar, item.type: FixedShapeTensorType
+                np.testing.assert_array_equal(
+                    fixed_shape_extension_scalar_to_ndarray(item), arr[idx]
+                )
+
+            # NOTE: In addition we verify that for existing ``ArrowTensorScalar``
+            #       implements `__array__` method therefore implementing Numpy
+            #       array protocol
+            if tensor_format != FixedShapeTensorFormat.ARROW_NATIVE:
+                np.testing.assert_array_equal(item, arr[idx])
 
     # Test __iter__.
     for t_subarr, subarr in zip(t_arr, arr):
-        np.testing.assert_array_equal(t_subarr, subarr)
+        if pyarrow_version >= parse_version("16.0.0"):
+            # Returns native FixedShapeTensorScalar
+            np.testing.assert_array_equal(t_subarr.to_numpy(), subarr)
+        else:
+            # Returns an ExtensionScalar
+            np.testing.assert_array_equal(
+                fixed_shape_extension_scalar_to_ndarray(t_subarr), subarr
+            )
 
     # Test to_pylist.
-    np.testing.assert_array_equal(t_arr.to_pylist(), list(arr))
+    if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
+        if FixedShapeTensorType is None:
+            np.testing.assert_array_equal(t_arr.to_pylist(), list(arr))
+        else:
+            np.testing.assert_array_equal(t_arr.to_pylist(), arr.reshape(outer_dim, -1))
+    else:
+        np.testing.assert_array_equal(t_arr.to_pylist(), list(arr))
 
     # Test slicing and indexing.
     t_arr2 = t_arr[1:]
@@ -583,9 +631,9 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
         # TODO(Clark): Fix this in Arrow by (1) providing an ExtensionArray hook for
         # concatenation, and (2) using that + a to_numpy() call on the resulting
         # ExtensionArray.
-        t_arr2_npy = t_arr2.chunk(0).to_numpy()
+        t_arr2_npy = t_arr2.chunk(0).to_numpy_ndarray()
     else:
-        t_arr2_npy = t_arr2.to_numpy()
+        t_arr2_npy = t_arr2.to_numpy_ndarray()
 
     np.testing.assert_array_equal(t_arr2_npy, arr[1:])
 
@@ -593,6 +641,7 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
         chunked
         and pyarrow_version >= parse_version("8.0.0")
         and pyarrow_version < parse_version("9.0.0")
+        and tensor_format != FixedShapeTensorFormat.ARROW_NATIVE
     ):
         for idx in range(1, outer_dim):
             item = t_arr2[idx - 1]
@@ -601,15 +650,24 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
             np.testing.assert_array_equal(item, arr[idx])
     else:
         for idx in range(1, outer_dim):
-            np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
+            item = t_arr2[idx - 1]
+            if pyarrow_version >= parse_version("16.0.0"):
+                # Returns native FixedShapeTensorScalar
+                np.testing.assert_array_equal(item.to_numpy(), arr[idx])
+            else:
+                # Returns an ExtensionScalar
+                np.testing.assert_array_equal(
+                    fixed_shape_extension_scalar_to_ndarray(item), arr[idx]
+                )
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 @pytest.mark.parametrize("chunked", [False, True])
 def test_arrow_variable_shaped_tensor_array_getitem(
     chunked, restore_data_context, tensor_format
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     shapes = [(2, 2), (3, 3), (4, 4)]
     outer_dim = len(shapes)
@@ -678,7 +736,7 @@ def test_arrow_variable_shaped_tensor_array_getitem(
             np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 @pytest.mark.parametrize(
     "test_arr,dtype",
     [
@@ -693,7 +751,7 @@ def test_arrow_variable_shaped_tensor_array_getitem(
     ],
 )
 def test_arrow_tensor_array_slice(test_arr, dtype, restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    DataContext.get_current().arrow_fixed_shape_tensor_format = tensor_format
 
     # Test that ArrowTensorArray slicing works as expected.
     arr = np.array(test_arr, dtype=dtype)
@@ -722,10 +780,11 @@ pytest_tensor_array_concat_arr_combinations = list(
 )
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 @pytest.mark.parametrize("a1,a2", pytest_tensor_array_concat_arr_combinations)
 def test_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     ta1 = TensorArray(a1)
     ta2 = TensorArray(a2)
@@ -743,28 +802,37 @@ def test_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
             np.testing.assert_array_equal(arr, expected)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 @pytest.mark.parametrize("a1,a2", pytest_tensor_array_concat_arr_combinations)
 def test_arrow_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     ta1 = ArrowTensorArray.from_numpy(a1)
     ta2 = ArrowTensorArray.from_numpy(a2)
     ta = concat_tensor_arrays([ta1, ta2])
     assert len(ta) == a1.shape[0] + a2.shape[0]
+
     if a1.shape[1:] == a2.shape[1:]:
-        if tensor_format == "v1":
+        if tensor_format == FixedShapeTensorFormat.V1:
             tensor_type_class = ArrowTensorType
-        elif tensor_format == "v2":
+        elif tensor_format == FixedShapeTensorFormat.V2:
             tensor_type_class = ArrowTensorTypeV2
+        elif tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
+            if FixedShapeTensorType is None:
+                tensor_type_class = ArrowTensorType
+            else:
+                tensor_type_class = FixedShapeTensorType
         else:
             raise ValueError(f"unexpected format: {tensor_format}")
 
         assert isinstance(ta.type, tensor_type_class)
         assert ta.type.storage_type == ta1.type.storage_type
         assert ta.type.storage_type == ta2.type.storage_type
-        assert ta.type.shape == a1.shape[1:]
-        np.testing.assert_array_equal(ta.to_numpy(), np.concatenate([a1, a2]))
+        assert tuple(ta.type.shape) == a1.shape[1:]
+
+        np.testing.assert_array_equal(ta.to_numpy_ndarray(), np.concatenate([a1, a2]))
+
     else:
         assert isinstance(ta.type, ArrowVariableShapedTensorType)
         assert pa.types.is_struct(ta.type.storage_type)
@@ -774,11 +842,12 @@ def test_arrow_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
             np.testing.assert_array_equal(arr, expected)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_variable_shaped_tensor_array_chunked_concat(
     restore_data_context, tensor_format
 ):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     # Test that chunking a tensor column and concatenating its chunks preserves typing
     # and underlying data.
@@ -799,9 +868,10 @@ def test_variable_shaped_tensor_array_chunked_concat(
         np.testing.assert_array_equal(arr, expected)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_variable_shaped_tensor_array_uniform_dim(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     shape1 = (3, 2, 2)
     shape2 = (3, 4, 4)
@@ -814,13 +884,17 @@ def test_variable_shaped_tensor_array_uniform_dim(restore_data_context, tensor_f
         np.testing.assert_array_equal(a, expected)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_large_arrow_tensor_array(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
 
     test_arr = np.ones((1000, 550), dtype=np.uint8)
 
-    if tensor_format == "v1":
+    if tensor_format == FixedShapeTensorFormat.V1 or (
+        tensor_format == FixedShapeTensorFormat.ARROW_NATIVE
+        and FixedShapeTensorType is None
+    ):
         with pytest.raises(ArrowConversionError) as exc_info:
             ta = ArrowTensorArray.from_numpy([test_arr] * 4000)
 
@@ -832,13 +906,13 @@ def test_large_arrow_tensor_array(restore_data_context, tensor_format):
         ta = ArrowTensorArray.from_numpy([test_arr] * 4000)
         assert len(ta) == 4000
         for arr in ta:
-            assert np.asarray(arr).shape == (1000, 550)
+            assert arr.to_numpy().shape == (1000, 550)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_tensor_array_string_tensors_simple(restore_data_context, tensor_format):
     """Simple test for fixed-shape string tensor arrays with pandas/arrow roundtrip."""
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+    DataContext.get_current().arrow_fixed_shape_tensor_format = tensor_format
 
     # Create fixed-shape string tensor
     string_tensors = np.array(
@@ -886,11 +960,126 @@ def test_tensor_type_equality_checks():
     assert vs_tensor_type != fs_tensor_type_v2
 
 
+class TestCreateArrowTensorType:
+    """Tests for the create_arrow_fixed_shape_tensor_format factory function."""
+
+    @pytest.mark.parametrize(
+        "tensor_format,expected_type",
+        [
+            (FixedShapeTensorFormat.V1, ArrowTensorType),
+            (FixedShapeTensorFormat.V2, ArrowTensorTypeV2),
+            (FixedShapeTensorFormat.ARROW_NATIVE, FixedShapeTensorType),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "shape,dtype",
+        [
+            ((2, 3), pa.int64()),
+            ((4, 5, 6), pa.float32()),
+            ((10,), pa.float64()),
+        ],
+    )
+    @pytest.mark.skipif(
+        get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
+        reason="Requires pyarrow>=12 for FixedShapeTensorTypes",
+    )
+    def test_explicit_v1_v2_format(self, tensor_format, expected_type, shape, dtype):
+        tensor_type = create_arrow_fixed_shape_tensor_format(
+            shape=shape, dtype=dtype, tensor_format=tensor_format
+        )
+        assert isinstance(tensor_type, expected_type)
+        assert tuple(tensor_type.shape) == shape
+        assert tensor_type.value_type == dtype
+
+    @pytest.mark.skipif(
+        get_pyarrow_version() >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
+        reason="Requires pyarrow<12 for non-FixedShapeTensorTypes",
+    )
+    def test_native_format_raises_error_on_unsupported_pyarrow_version(self):
+        with pytest.raises(ValueError):
+            create_arrow_fixed_shape_tensor_format(
+                shape=(1, 1),
+                dtype=pa.int64(),
+                tensor_format=FixedShapeTensorFormat.ARROW_NATIVE,
+            )
+
+    @pytest.mark.parametrize(
+        "use_v2,use_native,expected_type_if_native_available,expected_type_fallback",
+        [
+            # V1 fallback: both settings off
+            (False, False, ArrowTensorType, ArrowTensorType),
+            # V2: v2 on, native off
+            (True, False, ArrowTensorTypeV2, ArrowTensorTypeV2),
+            # NATIVE with V2 fallback: both on, falls back to V2 if NATIVE unavailable
+            (True, True, FixedShapeTensorType, ArrowTensorTypeV2),
+            # NATIVE with V1 fallback: native on, v2 off, falls back to V1 if NATIVE unavailable
+            (False, True, FixedShapeTensorType, ArrowTensorType),
+        ],
+    )
+    def test_context_defaults(
+        self,
+        restore_data_context,
+        use_v2,
+        use_native,
+        expected_type_if_native_available,
+        expected_type_fallback,
+    ):
+        """Test default tensor type based on context settings with fallback behavior."""
+        ctx = DataContext.get_current()
+        ctx.use_arrow_tensor_v2 = use_v2
+        ctx.use_arrow_native_fixed_shape_tensor_type = use_native
+
+        tensor_type = create_arrow_fixed_shape_tensor_format(
+            shape=(2, 3), dtype=pa.int64()
+        )
+
+        if FixedShapeTensorType is not None:
+            assert isinstance(tensor_type, expected_type_if_native_available)
+        else:
+            assert isinstance(tensor_type, expected_type_fallback)
+
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (None, 3),
+            (2, None),
+            (None, None, 3),
+        ],
+    )
+    def test_variable_shape_skips_native(self, restore_data_context, shape):
+        """Test NATIVE is skipped for variable shapes (containing None)."""
+        ctx = DataContext.get_current()
+        ctx.use_arrow_native_fixed_shape_tensor_type = True
+        ctx.use_arrow_tensor_v2 = True
+
+        # Shape with None should fall back to V2 (not NATIVE), regardless of PyArrow version
+        tensor_type = create_arrow_fixed_shape_tensor_format(
+            shape=shape, dtype=pa.int64()
+        )
+        assert isinstance(tensor_type, ArrowTensorTypeV2)
+
+    @pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
+    @pytest.mark.parametrize(
+        "dtype",
+        [pa.int8(), pa.int16(), pa.int32(), pa.int64(), pa.float32(), pa.float64()],
+    )
+    @pytest.mark.skipif(
+        get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
+        reason="Requires pyarrow>=12 for FixedShapeTensorTypes",
+    )
+    def test_various_dtypes(self, tensor_format, dtype):
+        """Test factory works with various PyArrow dtypes across all formats."""
+        tensor_type = create_arrow_fixed_shape_tensor_format(
+            shape=(2, 2), dtype=dtype, tensor_format=tensor_format
+        )
+        assert tensor_type.value_type == dtype
+
+
 @pytest.mark.skipif(
     not _extension_array_concat_supported(),
     reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
 )
-def test_arrow_fixed_shape_tensor_type_eq_with_concat(restore_data_context):
+def test_arrow_fixed_shape_tensor_format_eq_with_concat(restore_data_context):
     """Test that ArrowTensorType and ArrowTensorTypeV2 __eq__ methods work correctly
     when concatenating Arrow arrays with the same tensor type."""
     from ray.data.context import DataContext
@@ -903,7 +1092,9 @@ def test_arrow_fixed_shape_tensor_type_eq_with_concat(restore_data_context):
     # Test ArrowTensorType V1
     tensor_type_v1 = ArrowTensorType((2, 3), pa.int64())
 
-    DataContext.get_current().use_arrow_tensor_v2 = False
+    DataContext.get_current().arrow_fixed_shape_tensor_format = (
+        FixedShapeTensorFormat.V1
+    )
     first = ArrowTensorArray.from_numpy(np.ones((2, 2, 3), dtype=np.int64))
     second = ArrowTensorArray.from_numpy(np.zeros((3, 2, 3), dtype=np.int64))
 
@@ -923,7 +1114,9 @@ def test_arrow_fixed_shape_tensor_type_eq_with_concat(restore_data_context):
     # Test ArrowTensorTypeV2
     tensor_type_v2 = ArrowTensorTypeV2((2, 3), pa.int64())
 
-    DataContext.get_current().use_arrow_tensor_v2 = True
+    DataContext.get_current().arrow_fixed_shape_tensor_format = (
+        FixedShapeTensorFormat.V2
+    )
 
     first = ArrowTensorArray.from_numpy(np.ones((2, 2, 3), dtype=np.int64))
     second = ArrowTensorArray.from_numpy(np.ones((3, 2, 3), dtype=np.int64))
@@ -1256,7 +1449,7 @@ def test_arrow_extension_serialize_deserialize_cache():
         )
         assert mock_deserialize.call_count == 1
         assert deserialized1.shape == (2, 3)
-        assert deserialized1.scalar_type == pa.int64()
+        assert deserialized1.value_type == pa.int64()
 
         # Second deserialization with same key should use cache (no additional call)
         deserialized2 = ArrowTensorType.__arrow_ext_deserialize__(
@@ -1264,7 +1457,7 @@ def test_arrow_extension_serialize_deserialize_cache():
         )
         assert mock_deserialize.call_count == 1  # Still 1, proving cache hit
         assert deserialized1.shape == deserialized2.shape
-        assert deserialized1.scalar_type == deserialized2.scalar_type
+        assert deserialized1.value_type == deserialized2.value_type
         assert deserialized1.extension_name == deserialized2.extension_name
 
     # Test 3: Different serialized data produces different cache entries
@@ -1278,7 +1471,7 @@ def test_arrow_extension_serialize_deserialize_cache():
     )
     # Should be different from previous deserialization
     assert deserialized3.shape == (3, 4)
-    assert deserialized3.scalar_type == pa.int32()
+    assert deserialized3.value_type == pa.int32()
     assert deserialized3.shape != deserialized1.shape
 
     # Test 4: Cache parameter generation works correctly
@@ -1345,7 +1538,7 @@ def test_arrow_extension_serialize_deserialize_cache():
         assert mock_deserialize_shared.call_count == 0
         # Both should be equal (cache hit)
         assert deserialized_a.shape == deserialized_b.shape
-        assert deserialized_a.scalar_type == deserialized_b.scalar_type
+        assert deserialized_a.value_type == deserialized_b.value_type
         assert deserialized_a.extension_name == deserialized_b.extension_name
 
 
@@ -1403,7 +1596,7 @@ def test_arrow_extension_deserialize_cache_per_class():
 
         # Verify they have the same shape and dtype (same logical content)
         assert deserialized_v1_1.shape == deserialized_v2_1.shape
-        assert deserialized_v1_1.scalar_type == deserialized_v2_1.scalar_type
+        assert deserialized_v1_1.value_type == deserialized_v2_1.value_type
 
         # But different extension names (different classes)
         assert deserialized_v1_1.extension_name != deserialized_v2_1.extension_name
@@ -1461,7 +1654,7 @@ def test_arrow_extension_serialize_deserialize_cache_thread_safety():
     assert len(results) == 10
     for result in results[1:]:
         assert result.shape == results[0].shape
-        assert result.scalar_type == results[0].scalar_type
+        assert result.value_type == results[0].value_type
 
 
 if __name__ == "__main__":
