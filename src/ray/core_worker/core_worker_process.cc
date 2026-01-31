@@ -41,7 +41,7 @@
 #include "ray/util/event.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
-#include "ray/util/process.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/subreaper.h"
