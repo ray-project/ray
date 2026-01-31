@@ -22,8 +22,6 @@ from ray.data._internal.datasource.databricks_uc_datasource import (
 )
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.huggingface_datasource import HuggingFaceDatasource
-from ray.data._internal.datasource.image_datasink import ImageDatasink
-from ray.data._internal.datasource.image_datasource import ImageDatasource
 from ray.data._internal.datasource.json_datasink import JSONDatasink
 from ray.data._internal.datasource.json_datasource import (
     ArrowJSONDatasource,
@@ -71,8 +69,6 @@ __all__ = [
     "DatabricksUCDatasource",
     "HudiDatasource",
     "HuggingFaceDatasource",
-    "ImageDatasink",
-    "ImageDatasource",
     "JSONDatasink",
     "KafkaAuthConfig",
     "KafkaDatasource",
