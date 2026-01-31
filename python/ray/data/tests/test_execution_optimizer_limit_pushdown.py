@@ -471,7 +471,7 @@ def test_limit_pushdown_union_maps_projects(ray_start_regular_shared_2_cpus):
     # Left branch.
     left = (
         ray.data.range(30)
-        .map_batches(lambda b: b)
+        .map_batches(lambda b: b, udf_modifying_row_count=False)
         .map(lambda r: {"id": r["id"]})
         .select_columns(["id"])
     )
@@ -479,7 +479,7 @@ def test_limit_pushdown_union_maps_projects(ray_start_regular_shared_2_cpus):
     # Right branch with shifted ids.
     right = (
         ray.data.range(30)
-        .map_batches(lambda b: b)
+        .map_batches(lambda b: b, udf_modifying_row_count=False)
         .map(lambda r: {"id": r["id"] + 100})
         .select_columns(["id"])
     )
