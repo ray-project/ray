@@ -634,13 +634,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     for sa_eps in eps.agent_episodes.values()
                 },
             )
-            module_episode_returns = defaultdict(
-                float,
-                {
-                    sa_eps.module_id: sa_eps.get_return()
-                    for sa_eps in eps.agent_episodes.values()
-                },
-            )
+            # Multiple agents can point to same module_id so we need to accumulate returns per module_id.
+            module_episode_returns = defaultdict(float)
+            for sa_eps in eps.agent_episodes.values():
+                module_episode_returns[sa_eps.module_id] += sa_eps.get_return()
 
             # Don't forget about the already returned chunks of this episode.
             if eps.id_ in self._ongoing_episodes_for_metrics:

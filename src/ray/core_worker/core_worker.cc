@@ -381,19 +381,18 @@ CoreWorker::CoreWorker(
                                   std::placeholders::_5,
                                   std::placeholders::_6,
                                   std::placeholders::_7,
-                                  std::placeholders::_8);
+                                  std::placeholders::_8,
+                                  std::placeholders::_9);
     actor_task_execution_arg_waiter_ = std::make_unique<ActorTaskExecutionArgWaiter>(
         [this](const std::vector<rpc::ObjectReference> &args, int64_t tag) {
           RAY_CHECK_OK(raylet_ipc_client_->WaitForActorCallArgs(args, tag))
               << "WaitForActorCallArgs IPC failed unexpectedly";
         });
-    task_receiver_ = std::make_unique<TaskReceiver>(
-        task_execution_service_,
-        *task_event_buffer_,
-        execute_task,
-        *actor_task_execution_arg_waiter_,
-        options_.initialize_thread_callback,
-        [this] { return raylet_ipc_client_->ActorCreationTaskDone(); });
+    task_receiver_ = std::make_unique<TaskReceiver>(task_execution_service_,
+                                                    *task_event_buffer_,
+                                                    execute_task,
+                                                    *actor_task_execution_arg_waiter_,
+                                                    options_.initialize_thread_callback);
   }
 
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
@@ -2804,6 +2803,7 @@ Status CoreWorker::ExecuteTask(
     std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
     ReferenceCounterInterface::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
+    std::string *actor_repr_name,
     std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
 
@@ -2852,19 +2852,18 @@ Status CoreWorker::ExecuteTask(
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
-  // Modify the worker's per function counters.
-  std::string actor_repr_name;
-  {
-    absl::MutexLock lock(&mutex_);
-    actor_repr_name = actor_repr_name_;
-  }
   if (!options_.is_local_mode) {
+    // Modify the worker's per-function counters.
     task_counter_.MovePendingToRunning(func_name, is_retry);
 
-    const auto update =
-        (task_spec.IsActorTask() && !actor_repr_name.empty())
-            ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name, pid_)
-            : worker::TaskStatusEvent::TaskStateUpdate(pid_);
+    worker::TaskStatusEvent::TaskStateUpdate update;
+    {
+      absl::MutexLock lock(&mutex_);
+      update = (task_spec.IsActorTask() && !actor_repr_name_.empty())
+                   ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name_, pid_)
+                   : worker::TaskStatusEvent::TaskStateUpdate(pid_);
+    }
+
     RAY_UNUSED(
         task_event_buffer_->RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
                                                           task_spec.JobId(),
@@ -2877,6 +2876,7 @@ Status CoreWorker::ExecuteTask(
     worker_context_->SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
   }
+
   {
     absl::MutexLock lock(&mutex_);
     running_tasks_.emplace(task_spec.TaskId(), task_spec);
@@ -2956,6 +2956,7 @@ Status CoreWorker::ExecuteTask(
       streaming_generator_returns,
       creation_task_exception_pb_bytes,
       is_retryable_error,
+      actor_repr_name,
       application_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
@@ -3007,6 +3008,12 @@ Status CoreWorker::ExecuteTask(
     if (task_spec.IsNormalTask()) {
       resource_ids_.clear();
     }
+
+    // Cache the returned actor repr name as an instance variable.
+    // This is currently only used for exporting task events from the actor.
+    if (!actor_repr_name->empty()) {
+      actor_repr_name_ = *actor_repr_name;
+    }
   }
 
   if (!options_.is_local_mode) {
@@ -3014,6 +3021,11 @@ Status CoreWorker::ExecuteTask(
   }
   RAY_LOG(DEBUG).WithField(task_spec.TaskId())
       << "Finished executing task, status=" << status;
+
+  if (!options_.is_local_mode && task_spec.IsActorCreationTask()) {
+    RAY_CHECK_OK(raylet_ipc_client_->ActorCreationTaskDone())
+        << "Unexpected error in IPC to the Raylet; the Raylet has most likely crashed.";
+  }
 
   std::ostringstream stream;
   if (status.IsCreationTaskError()) {
@@ -3301,6 +3313,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   auto old_id = GetActorId();
   SetActorId(actor_id);
   bool is_retryable_error = false;
+  std::string actor_repr_name;
   std::string application_error;
   // TODO(swang): Support DynamicObjectRefGenerators in local mode?
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
@@ -3312,6 +3325,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
                          &streaming_generator_returns,
                          &borrowed_refs,
                          &is_retryable_error,
+                         &actor_repr_name,
                          &application_error));
   SetActorId(old_id);
   return returned_refs;
@@ -3691,51 +3705,41 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
   }
 }
 
-void CoreWorker::ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
-                                         rpc::ChannelType channel_type,
-                                         const std::string &key_id,
-                                         const NodeID &subscriber_id) {
-  object_info_publisher_->RegisterSubscription(channel_type, subscriber_id, key_id);
+StatusSet<StatusT::InvalidArgument> CoreWorker::ProcessSubscribeMessage(
+    const rpc::SubMessage &sub_message,
+    rpc::ChannelType channel_type,
+    const std::string &key_id,
+    const NodeID &subscriber_id) {
+  StatusSet<StatusT::InvalidArgument> result =
+      object_info_publisher_->RegisterSubscription(channel_type, subscriber_id, key_id);
+  if (result.has_error()) {
+    return result;
+  }
+
+  if (!sub_message.has_worker_object_eviction_message() &&
+      !sub_message.has_worker_ref_removed_message() &&
+      !sub_message.has_worker_object_locations_message()) {
+    return StatusT::InvalidArgument(
+        absl::StrFormat("Unexpected subscribe command has been received: %s"
+                        "Expected worker_object_eviction, worker_ref_removed, or "
+                        "worker_object_locations message",
+                        sub_message.DebugString()));
+  }
 
   if (sub_message.has_worker_object_eviction_message()) {
     ProcessSubscribeForObjectEviction(sub_message.worker_object_eviction_message());
   } else if (sub_message.has_worker_ref_removed_message()) {
     ProcessSubscribeForRefRemoved(sub_message.worker_ref_removed_message());
-  } else if (sub_message.has_worker_object_locations_message()) {
+  } else {  // worker_object_locations_message case
     ProcessSubscribeObjectLocations(sub_message.worker_object_locations_message());
-  } else {
-    RAY_LOG(FATAL)
-        << "Invalid command has received: "
-        << static_cast<int>(sub_message.sub_message_one_of_case())
-        << " has received. If you see this message, please report to Ray Github.";
   }
-}
-
-void CoreWorker::ProcessPubsubCommands(const Commands &commands,
-                                       const NodeID &subscriber_id) {
-  for (const auto &command : commands) {
-    if (command.has_unsubscribe_message()) {
-      object_info_publisher_->UnregisterSubscription(
-          command.channel_type(), subscriber_id, command.key_id());
-    } else if (command.has_subscribe_message()) {
-      ProcessSubscribeMessage(command.subscribe_message(),
-                              command.channel_type(),
-                              command.key_id(),
-                              subscriber_id);
-    } else {
-      RAY_LOG(FATAL) << "Invalid command has received, "
-                     << static_cast<int>(command.command_message_one_of_case())
-                     << ". If you see this message, please "
-                        "report to Ray "
-                        "Github.";
-    }
-  }
+  return StatusT::OK();
 }
 
 void CoreWorker::HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
                                          rpc::PubsubLongPollingReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
+  const NodeID subscriber_id = NodeID::FromBinary(request.subscriber_id());
   RAY_LOG(DEBUG).WithField(subscriber_id) << "Got a long polling request from a node";
   object_info_publisher_->ConnectToSubscriber(request,
                                               reply->mutable_publisher_id(),
@@ -3746,8 +3750,38 @@ void CoreWorker::HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
 void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,
                                           rpc::PubsubCommandBatchReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
-  ProcessPubsubCommands(request.commands(), subscriber_id);
+  const NodeID subscriber_id = NodeID::FromBinary(request.subscriber_id());
+  for (const auto &command : request.commands()) {
+    if (!command.has_unsubscribe_message() && !command.has_subscribe_message()) {
+      send_reply_callback(Status::InvalidArgument(absl::StrFormat(
+                              "Unexpected pubsub command has been received: %s."
+                              "Expected either unsubscribe or subscribe message",
+                              command.DebugString())),
+                          nullptr,
+                          nullptr);
+      return;
+    }
+
+    if (command.has_unsubscribe_message()) {
+      object_info_publisher_->UnregisterSubscription(
+          command.channel_type(), subscriber_id, command.key_id());
+    } else {  // subscribe_message case
+      StatusSet<StatusT::InvalidArgument> result =
+          ProcessSubscribeMessage(command.subscribe_message(),
+                                  command.channel_type(),
+                                  command.key_id(),
+                                  subscriber_id);
+      if (result.has_error()) {
+        // Terminate the worker if the subscribe message is invalid.
+        send_reply_callback(
+            Status::InvalidArgument(
+                std::get<StatusT::InvalidArgument>(result.error()).message()),
+            nullptr,
+            nullptr);
+        return;
+      }
+    }
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -4521,14 +4555,6 @@ void CoreWorker::SetActorId(const ActorID &actor_id) {
     RAY_CHECK(actor_id_.IsNil());
   }
   actor_id_ = actor_id;
-}
-
-void CoreWorker::SetActorReprName(const std::string &repr_name) {
-  RAY_CHECK(task_receiver_ != nullptr);
-  task_receiver_->SetActorReprName(repr_name);
-
-  absl::MutexLock lock(&mutex_);
-  actor_repr_name_ = repr_name;
 }
 
 rpc::JobConfig CoreWorker::GetJobConfig() const {

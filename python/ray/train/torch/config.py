@@ -70,6 +70,15 @@ class TorchConfig(BackendConfig):
         return TorchConfigContextManager
 
 
+def _is_backend_nccl(backend: str) -> bool:
+    # Check containment because comma separated lists of backends like cpu:gloo,cuda:nccl are supported.
+    return backend == "nccl" or any(
+        item.split(":")[1] == "nccl"
+        for item in backend.split(",")
+        if item.startswith("cuda:")
+    )
+
+
 def _setup_torch_process_group(
     backend: str,
     world_rank: int,
@@ -98,7 +107,7 @@ def _setup_torch_process_group(
         )
     logger.debug(f"using {backend}")
 
-    if backend == "nccl":
+    if _is_backend_nccl(backend):
         # See https://github.com/pytorch/pytorch/blob/c263bd43e8e8502d4726643bc6fd046f0130ac0e/torch/distributed/distributed_c10d.py#L803-L823 # noqa: E501
         # We do not use TORCH_NCCL_BLOCKING_WAIT due to performance overhead.
         if Version(torch.__version__) < Version("2.2.0"):

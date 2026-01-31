@@ -151,52 +151,9 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
                                    rpc::ReportActorOutOfScopeReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Register actor asynchronously.
-  ///
-  /// \param request Contains the meta info to create the actor.
-  /// \param success_callback Will be invoked after the actor is created successfully or
-  /// be invoked immediately if the actor is already registered to `registered_actors_`
-  /// and its state is `ALIVE`.
-  /// \return Status::AlreadyExists if this is a named actor and an
-  /// actor with the specified name already exists. The callback will not be called in
-  /// this case.
-  Status RegisterActor(const rpc::RegisterActorRequest &request,
-                       std::function<void(Status)> success_callback);
-
   /// Set actors on the node as preempted and publish the actor information.
   /// If the node is already dead, this method is a no-op.
   void SetPreemptedAndPublish(const NodeID &node_id);
-
-  /// Create actor asynchronously.
-  ///
-  /// \param request Contains the meta info to create the actor.
-  /// \param callback Will be invoked after the actor is created successfully or if the
-  /// actor creation is cancelled (e.g. due to the actor going out-of-scope or being
-  /// killed before actor creation has been completed), or will be invoked immediately if
-  /// the actor is already registered to `registered_actors_` and its state is `ALIVE`.
-  /// \return Status::Invalid if this is a named actor and an actor with the specified
-  /// name already exists. The callback will not be called in this case.
-  Status CreateActor(const rpc::CreateActorRequest &request,
-                     CreateActorCallback callback);
-
-  /// Get the actor ID for the named actor. Returns nil if the actor was not found.
-  /// \param name The name of the detached actor to look up.
-  /// \returns ActorID The ID of the actor. Nil if the actor was not found.
-  ActorID GetActorIDByName(const std::string &name,
-                           const std::string &ray_namespace) const;
-
-  /// Remove the actor name from the name registry if actor has the name.
-  /// If the actor doesn't have the name, it is no-op.
-  /// \param actor The actor to remove name from the entry.
-  void RemoveActorNameFromRegistry(const std::shared_ptr<GcsActor> &actor);
-
-  /// Get names of named actors.
-  //
-  /// \param[in] all_namespaces Whether to include actors from all Ray namespaces.
-  /// \param[in] namespace The namespace to filter to if all_namespaces is false.
-  /// \returns List of <namespace, name> pairs.
-  std::vector<std::pair<std::string, std::string>> ListNamedActors(
-      bool all_namespaces, const std::string &ray_namespace) const;
 
   /// Schedule actors in the `pending_actors_` queue.
   /// This method should be called when new nodes are registered or resources
@@ -230,9 +187,6 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
                     const std::string &disconnect_detail,
                     const rpc::RayException *creation_task_exception = nullptr);
 
-  /// Testing only.
-  void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id);
-
   /// Handle actor creation task failure. This should be called
   /// - when scheduling an actor creation task is infeasible.
   /// - when actor cannot be created to the cluster (e.g., runtime environment ops
@@ -261,30 +215,59 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// \param gcs_init_data.
   void Initialize(const GcsInitData &gcs_init_data);
 
-  /// Get the created actors.
-  ///
-  /// \return The created actors.
-  const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>
-      &GetCreatedActors() const;
-
-  const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &GetRegisteredActors()
-      const;
-
   std::string DebugString() const;
 
   /// Collect stats from gcs actor manager in-memory data structures.
   void RecordMetrics() const;
-
-  // Visible for testing.
-  int64_t CountFor(rpc::ActorTableData::ActorState state, const std::string &name) const {
-    return actor_state_counter_->Get(std::make_pair(state, name));
-  }
 
   void SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
     usage_stats_client_ = usage_stats_client;
   }
 
  private:
+  /// Register actor asynchronously.
+  ///
+  /// \param request Contains the meta info to create the actor.
+  /// \param success_callback Will be invoked after the actor is created successfully or
+  /// be invoked immediately if the actor is already registered to `registered_actors_`
+  /// and its state is `ALIVE`.
+  /// \return Status::AlreadyExists if this is a named actor and an
+  /// actor with the specified name already exists. The callback will not be called in
+  /// this case.
+  Status RegisterActor(const rpc::RegisterActorRequest &request,
+                       std::function<void(Status)> success_callback);
+
+  /// Create actor asynchronously.
+  ///
+  /// \param request Contains the meta info to create the actor.
+  /// \param callback Will be invoked after the actor is created successfully or if the
+  /// actor creation is cancelled (e.g. due to the actor going out-of-scope or being
+  /// killed before actor creation has been completed), or will be invoked immediately if
+  /// the actor is already registered to `registered_actors_` and its state is `ALIVE`.
+  /// \return Status::Invalid if this is a named actor and an actor with the specified
+  /// name already exists. The callback will not be called in this case.
+  Status CreateActor(const rpc::CreateActorRequest &request,
+                     CreateActorCallback callback);
+
+  /// Get the actor ID for the named actor. Returns nil if the actor was not found.
+  /// \param name The name of the detached actor to look up.
+  /// \returns ActorID The ID of the actor. Nil if the actor was not found.
+  ActorID GetActorIDByName(const std::string &name,
+                           const std::string &ray_namespace) const;
+
+  /// Remove the actor name from the name registry if actor has the name.
+  /// If the actor doesn't have the name, it is no-op.
+  /// \param actor The actor to remove name from the entry.
+  void RemoveActorNameFromRegistry(const std::shared_ptr<GcsActor> &actor);
+
+  /// Get names of named actors.
+  //
+  /// \param[in] all_namespaces Whether to include actors from all Ray namespaces.
+  /// \param[in] namespace The namespace to filter to if all_namespaces is false.
+  /// \returns List of <namespace, name> pairs.
+  std::vector<std::pair<std::string, std::string>> ListNamedActors(
+      bool all_namespaces, const std::string &ray_namespace) const;
+
   const ray::rpc::ActorDeathCause GenNodeDiedCause(
       const ray::gcs::GcsActor *actor, std::shared_ptr<const rpc::GcsNodeInfo> node);
   /// A data structure representing an actor's owner.
@@ -432,6 +415,18 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   void RunAndClearActorCreationCallbacks(const std::shared_ptr<GcsActor> &actor,
                                          const rpc::PushTaskReply &creation_task_reply,
                                          const Status &creation_task_status);
+  /// Testing only.
+  void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id);
+
+  const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>
+      &GetCreatedActors() const;
+
+  const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &GetRegisteredActors()
+      const;
+
+  int64_t CountFor(rpc::ActorTableData::ActorState state, const std::string &name) const {
+    return actor_state_counter_->Get(std::make_pair(state, name));
+  }
 
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
@@ -537,6 +532,42 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
   FRIEND_TEST(GcsActorManagerTest, TestKillActorWhenActorIsCreating);
+  FRIEND_TEST(GcsActorManagerTest, TestBasic);
+  FRIEND_TEST(GcsActorManagerTest, TestDeadCount);
+  FRIEND_TEST(GcsActorManagerTest, TestSchedulingFailed);
+  FRIEND_TEST(GcsActorManagerTest, TestWorkerFailure);
+  FRIEND_TEST(GcsActorManagerTest, TestNodeFailure);
+  FRIEND_TEST(GcsActorManagerTest, TestActorStateMetrics);
+  FRIEND_TEST(GcsActorManagerTest, TestActorReconstruction);
+  FRIEND_TEST(GcsActorManagerTest, TestActorRestartWhenOwnerDead);
+  FRIEND_TEST(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead);
+  FRIEND_TEST(GcsActorManagerTest, TestActorWithEmptyName);
+  FRIEND_TEST(GcsActorManagerTest, TestNamedActors);
+  FRIEND_TEST(GcsActorManagerTest, TestNamedActorDeletionWorkerFailure);
+  FRIEND_TEST(GcsActorManagerTest, TestNamedActorDeletionNodeFailure);
+  FRIEND_TEST(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed);
+  FRIEND_TEST(GcsActorManagerTest, TestDestroyActorBeforeActorCreationCompletes);
+  FRIEND_TEST(GcsActorManagerTest, TestRaceConditionCancelLease);
+  FRIEND_TEST(GcsActorManagerTest, TestRegisterActor);
+  FRIEND_TEST(GcsActorManagerTest, TestOwnerWorkerDieBeforeActorDependenciesResolved);
+  FRIEND_TEST(GcsActorManagerTest,
+              TestOwnerWorkerDieBeforeDetachedActorDependenciesResolved);
+  FRIEND_TEST(GcsActorManagerTest, TestOwnerNodeDieBeforeActorDependenciesResolved);
+  FRIEND_TEST(GcsActorManagerTest,
+              TestOwnerNodeDieBeforeDetachedActorDependenciesResolved);
+  FRIEND_TEST(GcsActorManagerTest, TestOwnerAndChildDiedAtTheSameTimeRaceCondition);
+  FRIEND_TEST(GcsActorManagerTest, TestRayNamespace);
+  FRIEND_TEST(GcsActorManagerTest, TestReuseActorNameInNamespace);
+  FRIEND_TEST(GcsActorManagerTest, TestGetAllActorInfoFilters);
+  FRIEND_TEST(GcsActorManagerTest, TestRestartActorForLineageReconstruction);
+  FRIEND_TEST(GcsActorManagerTest,
+              TestRestartPermanentlyDeadActorForLineageReconstruction);
+  FRIEND_TEST(GcsActorManagerTest, TestIdempotencyOfRestartActorForLineageReconstruction);
+  FRIEND_TEST(GcsActorManagerTest, TestDestroyActorWhenActorIsCreating);
+  FRIEND_TEST(GcsActorManagerTest, TestRestartPreemptedActor);
+  FRIEND_TEST(GcsActorManagerTest, TestGetAllActorInfoLimit);
+  FRIEND_TEST(GcsActorManagerTest, TestDestroyWhileRegistering);
+
   friend class GcsActorManagerTest;
 };
 

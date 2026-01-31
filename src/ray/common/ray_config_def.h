@@ -38,6 +38,9 @@ RAY_CONFIG(bool, enable_cluster_auth, true)
 /// use GetAuthenticationMode() to get the authentication mode enum value.
 RAY_CONFIG(std::string, AUTH_MODE, "disabled")
 
+/// Whether to enable Kubernetes token-based authentication for RPC calls.
+RAY_CONFIG(bool, ENABLE_K8S_TOKEN_AUTH, false)
+
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available
 /// in the associated process's log file.
@@ -501,6 +504,11 @@ RAY_CONFIG(uint64_t, task_events_max_num_profile_events_buffer_on_worker, 10 * 1
 /// Setting the value to -1 allows unlimited dropped task attempts in a single
 /// report to GCS.
 RAY_CONFIG(int64_t, task_events_dropped_task_attempt_batch_size, 10 * 1000)
+
+/// Timeout in milliseconds to wait for task events to be flushed during shutdown.
+/// During graceful shutdown, the TaskEventBuffer and RayEventRecorder will wait up to
+/// this duration for in-flight gRPC calls to complete before stopping the io_service.
+RAY_CONFIG(int64_t, task_events_shutdown_flush_timeout_ms, 5000)
 
 /// The delay in ms that GCS should mark any running tasks from a job as failed.
 /// Setting this value too smaller might result in some finished tasks marked as failed by

@@ -1,7 +1,7 @@
 # __example_code_start__
+from transformers import pipeline
 from fastapi import FastAPI
 import torch
-from transformers import pipeline
 
 from ray import serve
 from ray.serve.handle import DeploymentHandle

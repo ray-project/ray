@@ -134,7 +134,16 @@ class CloudModelDownloader(CloudModelAccessor):
         if bucket_uri is None:
             return self.model_id
 
-        lock_path = self._get_lock_path()
+        # Use different lock paths for different download types to avoid race conditions
+        # where a tokenizer-only download completes and subsequent full model downloads
+        # incorrectly assume the model weights are already cached.
+        if tokenizer_only:
+            lock_suffix = "-tokenizer"
+        elif exclude_safetensors:
+            lock_suffix = "-exclude-safetensors"
+        else:
+            lock_suffix = "-full"
+        lock_path = self._get_lock_path(suffix=lock_suffix)
         path = self._get_model_path()
         storage_type = self.mirror_config.storage_type
 

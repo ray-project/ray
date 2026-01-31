@@ -1,13 +1,10 @@
 import copy
 import logging
-from typing import Dict, List
+from typing import TYPE_CHECKING, Dict, List
 
 import ray
 import ray.train
 from ray.actor import ActorHandle
-from ray.data import DataIterator
-from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
-from ray.data.context import DataContext
 from ray.exceptions import GetTimeoutError
 from ray.train.v2._internal.data_integration.interfaces import (
     DatasetShardMetadata,
@@ -25,17 +22,21 @@ from ray.train.v2._internal.execution.worker_group.worker_group import (
 )
 from ray.types import ObjectRef
 
+if TYPE_CHECKING:
+    from ray.data import DataIterator
+    from ray.data.context import DataContext
+
 logger = logging.getLogger(__name__)
 
 
 class RayDatasetShardProvider:
     """A shard provider that Train workers use to access a DataIterator for a dataset."""
 
-    def __init__(self, ds_iterators: Dict[str, DataIterator]):
+    def __init__(self, ds_iterators: Dict[str, "DataIterator"]):
         # Maps dataset_name to a DataIterator.
         self._dataset_iterators = ds_iterators
 
-    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> DataIterator:
+    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> "DataIterator":
         if dataset_info.dataset_name not in self._dataset_iterators:
             raise KeyError(
                 f"Dataset shard for '{dataset_info.dataset_name}' not found. "
@@ -64,6 +65,8 @@ class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
         # 3. Lastly, when the worker group is initialized, the Controller
         #    will call the `after_worker_group_start` callback to propagate
         #    the DataContext to Train workers.
+        from ray.data.context import DataContext
+
         self._data_context = copy.deepcopy(DataContext.get_current())
 
     def get_train_total_resources(
@@ -74,12 +77,15 @@ class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
         return scaling_config.total_resources
 
     def _get_coordinator_actors(
-        self, ds_iterators_per_rank: List[Dict[str, DataIterator]]
+        self, ds_iterators_per_rank: List[Dict[str, "DataIterator"]]
     ) -> List[ActorHandle]:
         """
         Returns a list of each unique SplitCoordinator actor handle given the iterators per rank.
         These handles will later be used to call shutdown on the actors.
         """
+        from ray.data._internal.iterator.stream_split_iterator import (
+            StreamSplitDataIterator,
+        )
 
         # Note: Currently, we only need to check rank 0 for split iterators.
         # In the future, if datasets can be split across only a subset of ranks,
@@ -133,7 +139,9 @@ class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
 
     def after_worker_group_start(self, worker_group: WorkerGroup):
         # Propagate DataContext
-        def _propagate_data_context(ctx: DataContext):
+        from ray.data.context import DataContext
+
+        def _propagate_data_context(ctx: "DataContext"):
             DataContext._set_current(ctx)
 
         worker_group.execute(

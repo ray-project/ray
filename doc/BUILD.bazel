@@ -720,6 +720,8 @@ filegroup(
         "source/ray-overview/examples/**/ci/gce.yaml",
         "source/serve/tutorials/**/ci/aws.yaml",
         "source/serve/tutorials/**/ci/gce.yaml",
+        "source/train/tutorials/ci/aws.yaml",
+        "source/train/tutorials/ci/gce.yaml",
     ]) + [
         "//doc/source/data/examples:data_examples_ci_configs",
         "//doc/source/tune/examples:tune_examples_ci_configs",

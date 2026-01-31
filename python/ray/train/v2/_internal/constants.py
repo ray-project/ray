@@ -41,7 +41,7 @@ DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S: float = 10 * 60
 
 # Timeout in seconds for the worker group to start.
 WORKER_GROUP_START_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S"
-DEFAULT_WORKER_GROUP_START_TIMEOUT_S: float = 30.0
+DEFAULT_WORKER_GROUP_START_TIMEOUT_S: float = 60.0
 
 # Time in seconds for collective operations before raising a timeout error.
 COLLECTIVE_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_COLLECTIVE_TIMEOUT_S"

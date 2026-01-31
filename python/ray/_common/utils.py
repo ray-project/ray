@@ -3,7 +3,6 @@ import binascii
 import errno
 import importlib
 import inspect
-import logging
 import os
 import random
 import string
@@ -15,14 +14,7 @@ from inspect import signature
 from types import ModuleType
 from typing import Any, Coroutine, Dict, Optional, Tuple
 
-import ray
-from ray._raylet import GcsClient, NodeID
-from ray.core.generated.gcs_pb2 import GcsNodeInfo
-from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
-
 import psutil
-
-logger = logging.getLogger(__name__)
 
 
 def import_module_and_attr(
@@ -224,58 +216,7 @@ def get_call_location(back: int = 1):
         return "UNKNOWN"
 
 
-def resolve_user_ray_temp_dir(gcs_client: GcsClient, node_id: str):
-    """
-    Get the ray temp directory.
-
-    If a temp dir was specified for this node, this function will
-    retrieve the information from GCS. Otherwise, it will fallback to the
-    default ray temp directory.
-
-    Args:
-        gcs_client: The GCS client.
-        node_id: The ID of the node to fetch the temp dir for.
-                 E.g.: "1a9904d8aa3de65367830e2aef6313a5b2e9d4b0e3725e0dceeacb1b"
-                        (hex string representation of the node ID)
-
-    Returns:
-        The path to the ray temp directory.
-    """
-    # check if temp dir is available from runtime context
-    if ray.is_initialized() and ray.get_runtime_context().get_node_id() == node_id:
-        return ray.get_runtime_context().get_temp_dir()
-
-    # Fetch temp dir as specified by --temp-dir at creation time.
-    try:
-        # Create node selector for node_id filter
-        node_selector = GetAllNodeInfoRequest.NodeSelector()
-        node_selector.node_id = NodeID.from_hex(node_id).binary()
-
-        node_infos = gcs_client.get_all_node_info(
-            node_selectors=[node_selector],
-            state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
-        ).values()
-    except Exception as e:
-        raise Exception(
-            f"Failed to get node info from GCS when fetching tempdir for node {node_id}: {e}"
-        )
-    if not node_infos:
-        raise Exception(
-            f"No node info associated with ALIVE state found for node {node_id} in GCS"
-        )
-
-    node_info = next(iter(node_infos))
-    if node_info is not None:
-        temp_dir = getattr(node_info, "temp_dir", None)
-        if temp_dir is not None:
-            return temp_dir
-        else:
-            raise Exception(
-                "Node temp_dir was not found in NodeInfo. did the node's raylet start successfully?"
-            )
-
-
-def get_default_system_temp_dir():
+def get_user_temp_dir():
     if "RAY_TMPDIR" in os.environ:
         return os.environ["RAY_TMPDIR"]
     elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
@@ -286,17 +227,16 @@ def get_default_system_temp_dir():
         tempdir = os.path.join(os.sep, "tmp")
     else:
         tempdir = tempfile.gettempdir()
-
     return tempdir
 
 
-def get_default_ray_temp_dir():
-    return os.path.join(get_default_system_temp_dir(), "ray")
+def get_ray_temp_dir():
+    return os.path.join(get_user_temp_dir(), "ray")
 
 
 def get_ray_address_file(temp_dir: Optional[str]):
     if temp_dir is None:
-        temp_dir = get_default_ray_temp_dir()
+        temp_dir = get_ray_temp_dir()
     return os.path.join(temp_dir, "ray_current_cluster")
 
 

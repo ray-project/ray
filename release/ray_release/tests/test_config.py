@@ -26,7 +26,7 @@ VALID_TEST = {
     "name": "validation_test",
     "group": "validation_group",
     "working_dir": "validation_dir",
-    "python": "3.9",
+    "python": "3.10",
     "frequency": "nightly",
     "team": "release",
     "cluster": {

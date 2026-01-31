@@ -87,7 +87,7 @@ class InstanceReconcileConfig:
     )
     # The timeout for waiting for a ALLOCATED instance to be RAY_RUNNING.
     allocate_status_timeout_s: int = env_integer(
-        "RAY_AUTOSCALER_RECONCILE_ALLOCATE_STATUS_TIMEOUT_S", 300
+        "RAY_AUTOSCALER_RECONCILE_ALLOCATE_STATUS_TIMEOUT_S", 60 * 60
     )
     # The timeout for waiting for a RAY_INSTALLING instance to be RAY_RUNNING.
     ray_install_status_timeout_s: int = env_integer(

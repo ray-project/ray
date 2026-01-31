@@ -224,17 +224,19 @@ def ray_deps_setup():
         patch_args = ["-p1"],
     )
 
+    # WARNING: Upgrading the OTEL version caused a major regression in actor creation/task throughput.
+    # Verify that this regression is fixed before upgrading the below two OTEL versions.
     auto_http_archive(
         name = "io_opentelemetry_cpp",
-        url = "https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.22.0.zip",
-        sha256 = "814e494d4fdc6361a81ae1d40a2a195bb1152b9081bc7feff14893f9ddf63fd7",
+        url = "https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.19.0.zip",
+        sha256 = "8ef0a63f4959d5dfc3d8190d62229ef018ce41eef36e1f3198312d47ab2de05a",
     )
 
     auto_http_archive(
         name = "com_github_opentelemetry_proto",
-        url = "https://github.com/open-telemetry/opentelemetry-proto/archive/refs/tags/v1.7.0.zip",
+        url = "https://github.com/open-telemetry/opentelemetry-proto/archive/refs/tags/v1.2.0.zip",
         build_file = "@io_opentelemetry_cpp//bazel:opentelemetry_proto.BUILD",
-        sha256 = "ddb80357ff146f5e3bda584907185b1f635412a4b31edf6f96b102a18b8e05dc",
+        sha256 = "b3cf4fefa4eaea43879ade612639fa7029c624c1b959f019d553b86ad8e01e82",
     )
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.

@@ -161,9 +161,9 @@ class OfflineProcessorConfig(ProcessorConfig):
     should_continue_on_error: bool = Field(
         default=False,
         description="If True, continue processing when inference fails for a row "
-        "instead of raising an exception. Failed rows will have a non-null "
+        "instead of raising an exception. Failed rows will have a non-empty "
         "'__inference_error__' column containing the error message, and other "
-        "output columns will be None. Error rows bypass postprocess. "
+        "output columns will be empty strings. Error rows bypass postprocess. "
         "If False (default), any inference error will raise an exception.",
     )
 
@@ -342,7 +342,7 @@ class Processor:
         )
 
         # When should_continue_on_error is enabled, include __inference_error__ column
-        # in all output rows for consistent schema (None for success, message for error).
+        # in all output rows for consistent schema (Empty string for success, message for error).
         include_error_column = getattr(config, "should_continue_on_error", False)
         self.postprocess = wrap_postprocess(
             postprocess,

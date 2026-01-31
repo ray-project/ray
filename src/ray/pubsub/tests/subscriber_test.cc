@@ -990,6 +990,26 @@ TEST_F(SubscriberTest, TestIsSubscribed) {
   ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
 }
 
+TEST_F(SubscriberTest, TestCommandBatchInvalidArgumentStatusIsFatal) {
+  auto subscription_callback = [](const rpc::PubMessage &msg) {};
+  auto failure_callback = EMPTY_FAILURE_CALLBACK;
+
+  const auto owner_addr = GenerateOwnerAddress();
+  const auto object_id = ObjectID::FromRandom();
+
+  subscriber_->Subscribe(GenerateSubMessage(object_id),
+                         channel,
+                         owner_addr,
+                         object_id.Binary(),
+                         /*subscribe_done_callback=*/nullptr,
+                         subscription_callback,
+                         failure_callback);
+
+  ASSERT_DEATH(
+      owner_client->ReplyCommandBatch(Status::InvalidArgument("Invalid channel type")),
+      "Invalid channel type");
+}
+
 }  // namespace pubsub
 
 }  // namespace ray

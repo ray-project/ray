@@ -58,21 +58,25 @@ def test_schema(ray_start_regular):
         last_snapshot,
     )
 
-    assert str(ds2) == "Dataset(num_rows=10, schema={id: int64})"
+    ds2_schema = ds2.schema(fetch_if_missing=False)
+    assert ds2_schema is not None
+    assert ds2_schema.names == ["id"]
+    assert not isinstance(ds2, MaterializedDataset)
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={}), last_snapshot
     )
 
-    assert (
-        str(ds3) == "MaterializedDataset(num_blocks=5, num_rows=10, schema={id: int64})"
-    )
+    ds3_schema = ds3.schema(fetch_if_missing=False)
+    assert ds3_schema is not None
+    assert ds3_schema.names == ["id"]
+    assert isinstance(ds3, MaterializedDataset)
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={}), last_snapshot
     )
-    assert (
-        str(ds4) == "MaterializedDataset(num_blocks=1, num_rows=5, "
-        "schema={a: string, b: double})"
-    )
+    ds4_schema = ds4.schema(fetch_if_missing=False)
+    assert ds4_schema is not None
+    assert ds4_schema.names == ["a", "b"]
+    assert isinstance(ds4, MaterializedDataset)
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={}), last_snapshot
     )
@@ -380,65 +384,60 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     _check_none_computed(ds)
 
 
-def test_dataset_repr(ray_start_regular_shared):
-    ds = ray.data.range(10, override_num_blocks=10)
-    assert repr(ds) == "Dataset(num_rows=10, schema={id: int64})"
-    ds = ds.map_batches(lambda x: x)
+def test_dataset_repr_not_materialized(ray_start_regular_shared, restore_data_context):
+    ds = ray.data.range(5)
     assert repr(ds) == (
-        "MapBatches(<lambda>)\n+- Dataset(num_rows=10, schema={id: int64})"
-    )
-    ds = ds.filter(lambda x: x["id"] > 0)
-    assert repr(ds) == (
-        "Filter(<lambda>)\n"
-        "+- MapBatches(<lambda>)\n"
-        "   +- Dataset(num_rows=10, schema={id: int64})"
-    )
-    ds = ds.random_shuffle()
-    assert repr(ds) == (
-        "RandomShuffle\n"
-        "+- Filter(<lambda>)\n"
-        "   +- MapBatches(<lambda>)\n"
-        "      +- Dataset(num_rows=10, schema={id: int64})"
-    )
-    ds = ds.materialize()
-    assert (
-        repr(ds) == "MaterializedDataset(num_blocks=10, num_rows=9, schema={id: int64})"
-    )
-    ds = ds.map_batches(lambda x: x)
-
-    assert repr(ds) == (
-        "MapBatches(<lambda>)\n+- Dataset(num_rows=9, schema={id: int64})"
-    )
-    ds1, ds2 = ds.split(2)
-    assert (
-        repr(ds1) == f"MaterializedDataset(num_blocks=5, num_rows={ds1.count()}, "
-        "schema={id: int64})"
-    )
-    assert (
-        repr(ds2) == f"MaterializedDataset(num_blocks=5, num_rows={ds2.count()}, "
-        "schema={id: int64})"
+        "shape: (5, 1)\n"
+        "╭───────╮\n"
+        "│ id    │\n"
+        "│ ---   │\n"
+        "│ int64 │\n"
+        "╰───────╯\n"
+        "(Dataset isn't materialized)"
     )
 
-    # TODO(scottjlee): include all of the input datasets to union()
-    # in the repr output, instead of only the resulting unioned dataset.
-    # TODO(@bveeramani): Handle schemas for n-ary operators like `Union`.
-    # ds3 = ds1.union(ds2)
-    # assert repr(ds3) == ("Union\n+- Dataset(num_rows=9, schema={id: int64})")
-    # ds = ds.zip(ds3)
-    # assert repr(ds) == (
-    #     "Zip\n"
-    #     "+- MapBatches(<lambda>)\n"
-    #     "+- Union\n"
-    #     "   +- Dataset(num_rows=9, schema={id: int64})"
-    # )
 
-    def my_dummy_fn(x):
-        return x
+def test_dataset_repr_materialized(ray_start_regular_shared, restore_data_context):
+    materialized = ray.data.range(5).materialize()
+    assert repr(materialized) == (
+        "shape: (5, 1)\n"
+        "╭───────╮\n"
+        "│ id    │\n"
+        "│ ---   │\n"
+        "│ int64 │\n"
+        "╞═══════╡\n"
+        "│ 0     │\n"
+        "│ 1     │\n"
+        "│ 2     │\n"
+        "│ 3     │\n"
+        "│ 4     │\n"
+        "╰───────╯\n"
+        "(Showing 5 of 5 rows)"
+    )
 
-    ds = ray.data.range(10, override_num_blocks=10)
-    ds = ds.map_batches(my_dummy_fn)
-    assert repr(ds) == (
-        "MapBatches(my_dummy_fn)\n+- Dataset(num_rows=10, schema={id: int64})"
+
+def test_dataset_repr_gap(ray_start_regular_shared, restore_data_context):
+    ds_with_gap = ray.data.range(20).materialize()
+    assert repr(ds_with_gap) == (
+        "shape: (20, 1)\n"
+        "╭───────╮\n"
+        "│ id    │\n"
+        "│ ---   │\n"
+        "│ int64 │\n"
+        "╞═══════╡\n"
+        "│ 0     │\n"
+        "│ 1     │\n"
+        "│ 2     │\n"
+        "│ 3     │\n"
+        "│ 4     │\n"
+        "│ …     │\n"
+        "│ 15    │\n"
+        "│ 16    │\n"
+        "│ 17    │\n"
+        "│ 18    │\n"
+        "│ 19    │\n"
+        "╰───────╯\n"
+        "(Showing 10 of 20 rows)"
     )
 
 
@@ -863,41 +862,6 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
     schema = ds.schema()
     ds.stats()
     assert schema == ds.schema()
-
-
-def test_dataset_plan_as_string(ray_start_cluster):
-    ds = ray.data.read_parquet("example://iris.parquet", override_num_blocks=8)
-    assert ds._plan.get_plan_as_string(type(ds)) == (
-        "Dataset(\n"
-        "   num_rows=?,\n"
-        "   schema={\n"
-        "      sepal.length: double,\n"
-        "      sepal.width: double,\n"
-        "      petal.length: double,\n"
-        "      petal.width: double,\n"
-        "      variety: string\n"
-        "   }\n"
-        ")"
-    )
-    for _ in range(5):
-        ds = ds.map_batches(lambda x: x)
-    assert ds._plan.get_plan_as_string(type(ds)) == (
-        "MapBatches(<lambda>)\n"
-        "+- MapBatches(<lambda>)\n"
-        "   +- MapBatches(<lambda>)\n"
-        "      +- MapBatches(<lambda>)\n"
-        "         +- MapBatches(<lambda>)\n"
-        "            +- Dataset(\n"
-        "                  num_rows=?,\n"
-        "                  schema={\n"
-        "                     sepal.length: double,\n"
-        "                     sepal.width: double,\n"
-        "                     petal.length: double,\n"
-        "                     petal.width: double,\n"
-        "                     variety: string\n"
-        "                  }\n"
-        "               )"
-    )
 
 
 if __name__ == "__main__":

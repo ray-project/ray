@@ -395,11 +395,17 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=3,
-               num_rows=3,
-               schema={food: string, price: double}
-            )
+            shape: (3, 2)
+            ╭────────┬────────╮
+            │ food   ┆ price  │
+            │ ---    ┆ ---    │
+            │ string ┆ double │
+            ╞════════╪════════╡
+            │ spam   ┆ 9.34   │
+            │ ham    ┆ 5.37   │
+            │ eggs   ┆ 0.94   │
+            ╰────────┴────────╯
+            (Showing 3 of 3 rows)
 
         You can also create a :class:`~ray.data.dataset.Dataset` from a list of regular
         Python objects. In the schema, the column name defaults to "item". 
@@ -414,7 +420,19 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(num_blocks=5, num_rows=5, schema={item: int64})
+            shape: (5, 1)
+            ╭───────╮
+            │ item  │
+            │ ---   │
+            │ int64 │
+            ╞═══════╡
+            │ 1     │
+            │ 2     │
+            │ 3     │
+            │ 4     │
+            │ 5     │
+            ╰───────╯
+            (Showing 5 of 5 rows)
 
     .. tab-item:: NumPy
 
@@ -427,18 +445,24 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             import numpy as np
             import ray
 
-            array = np.ones((3, 2, 2))
+            array = np.arange(3)
             ds = ray.data.from_numpy(array)
 
             print(ds)
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=1,
-               num_rows=3,
-               schema={data: ArrowTensorTypeV2(shape=(2, 2), dtype=double)}
-            )
+            shape: (3, 1)
+            ╭───────╮
+            │ data  │
+            │ ---   │
+            │ int64 │
+            ╞═══════╡
+            │ 0     │
+            │ 1     │
+            │ 2     │
+            ╰───────╯
+            (Showing 3 of 3 rows)
 
     .. tab-item:: pandas
 
@@ -460,11 +484,17 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=1,
-               num_rows=3,
-               schema={food: object, price: float64}
-            )
+            shape: (3, 2)
+            ╭────────┬────────╮
+            │ food   ┆ price  │
+            │ ---    ┆ ---    │
+            │ object ┆ double │
+            ╞════════╪════════╡
+            │ spam   ┆ 9.34   │
+            │ ham    ┆ 5.37   │
+            │ eggs   ┆ 0.94   │
+            ╰────────┴────────╯
+            (Showing 3 of 3 rows)
 
     .. tab-item:: PyArrow
 
@@ -485,11 +515,17 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=1,
-               num_rows=3,
-               schema={food: string, price: double}
-            )
+            shape: (3, 2)
+            ╭────────┬────────╮
+            │ food   ┆ price  │
+            │ ---    ┆ ---    │
+            │ string ┆ double │
+            ╞════════╪════════╡
+            │ spam   ┆ 9.34   │
+            │ ham    ┆ 5.37   │
+            │ eggs   ┆ 0.94   │
+            ╰────────┴────────╯
+            (Showing 3 of 3 rows)
 
 .. _loading_datasets_from_distributed_df:
 
