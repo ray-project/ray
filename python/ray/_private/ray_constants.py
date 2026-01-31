@@ -205,8 +205,8 @@ DEFAULT_ACTOR_CREATION_CPU_SPECIFIED = 1
 # Default number of return values for each actor method.
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
-# Wait 30 seconds for client to reconnect after unexpected disconnection
-DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD = 30
+# Wait 45 seconds for client to reconnect after unexpected disconnection
+DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD = 45
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
