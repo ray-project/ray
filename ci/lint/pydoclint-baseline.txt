@@ -1203,6 +1203,7 @@ python/ray/data/context.py
     DOC201: Method `DataContext.get_current` does not have a return section in docstring
     DOC201: Method `DataContext.get_config` does not have a return section in docstring
 --------------------
+<<<<<<< HEAD
 python/ray/data/dataset.py
     DOC103: Method `Dataset.map`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**ray_remote_args: ]. Arguments in the docstring but not in the function signature: [ray_remote_args: ].
     DOC201: Method `Dataset.map` does not have a return section in docstring
@@ -1238,6 +1239,8 @@ python/ray/data/dataset.py
     DOC201: Method `Dataset.has_serializable_lineage` does not have a return section in docstring
     DOC106: Method `Dataset._repr_mimebundle_`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
 --------------------
+=======
+>>>>>>> 756c7365e0 (Fixed docstrings in 'dataset.py')
 python/ray/data/datasource/file_datasink.py
     DOC101: Method `_FileDatasink.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `_FileDatasink.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [mode: SaveMode].
