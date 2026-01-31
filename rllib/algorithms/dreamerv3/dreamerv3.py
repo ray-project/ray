@@ -608,6 +608,15 @@ class DreamerV3(Algorithm):
                         sample["actions_ints"],
                         depth=single_action_space.n,
                     )
+                elif isinstance(single_action_space, gym.spaces.MultiDiscrete):
+                    # Convert multi-int actions to concatenated one-hot vectors.
+                    import numpy as np
+                    sample["actions_ints"] = sample[Columns.ACTIONS]
+                    one_hots = [
+                        one_hot(sample[Columns.ACTIONS][..., i], depth=n)
+                        for i, n in enumerate(single_action_space.nvec)
+                    ]
+                    sample[Columns.ACTIONS] = np.concatenate(one_hots, axis=-1)
 
                 # Perform the actual update via our learner group.
                 learner_results = self.learner_group.update(
