@@ -30,6 +30,7 @@
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/metrics.h"
 #include "ray/raylet/worker_pool.h"
+#include "ray/util/logging.h"
 #include "ray/util/time.h"
 
 namespace ray {
@@ -72,6 +73,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
         on_objects_freed_(std::move(on_objects_freed)),
         last_free_objects_at_ms_(current_time_ms()),
         min_spilling_size_(RayConfig::instance().min_spilling_size()),
+        max_spilling_file_size_(RayConfig::instance().max_spilling_file_size()),
         num_active_workers_(0),
         max_active_workers_(max_io_workers),
         is_plasma_object_spillable_(std::move(is_plasma_object_spillable)),
@@ -81,7 +83,13 @@ class LocalObjectManager : public LocalObjectManagerInterface {
         core_worker_subscriber_(core_worker_subscriber),
         object_directory_(object_directory),
         object_store_memory_gauge_(object_store_memory_gauge),
-        spill_manager_metrics_(spill_manager_metrics) {}
+        spill_manager_metrics_(spill_manager_metrics) {
+    if (max_spilling_file_size_ > 0) {
+      RAY_CHECK_GE(max_spilling_file_size_, min_spilling_size_)
+          << "max_spilling_file_size=" << max_spilling_file_size_
+          << " must be >= min_spilling_size=" << min_spilling_size_;
+    }
+  }
 
   /// Pin objects.
   ///
@@ -323,6 +331,10 @@ class LocalObjectManager : public LocalObjectManagerInterface {
 
   /// Minimum bytes to spill to a single IO spill worker.
   int64_t min_spilling_size_;
+
+  /// Maximum bytes to include in a single spill request (i.e. fused spill file).
+  /// If <= 0, the limit is disabled.
+  int64_t max_spilling_file_size_;
 
   /// The current number of active spill workers.
   std::atomic<int64_t> num_active_workers_;
