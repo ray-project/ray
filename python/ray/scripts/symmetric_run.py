@@ -1,4 +1,9 @@
-"""Symmetric Run for Ray."""
+"""Symmetric Run for Ray.
+
+This script is intended for environments where the same command is executed on every node
+(e.g. SLURM). It decides whether a given node should be the head or a worker, starts Ray, runs
+the entrypoint on the head, and then shuts the cluster down.
+"""
 
 import socket
 import subprocess
@@ -11,11 +16,16 @@ import click
 import ray
 from ray._private.ray_constants import env_integer
 from ray._raylet import GcsClient
-from ray.exceptions import RpcError
 
 import psutil
 
 CLUSTER_WAIT_TIMEOUT = env_integer("RAY_SYMMETRIC_RUN_CLUSTER_WAIT_TIMEOUT", 30)
+
+
+class SymmetricRunCommand(click.Command):
+    def parse_args(self, ctx, args):
+        ctx.meta["raw_args"] = list(args)
+        return super().parse_args(ctx, args)
 
 
 def check_ray_already_started() -> bool:
@@ -26,14 +36,14 @@ def check_ray_already_started() -> bool:
     return len(running_gcs_addresses) > 0
 
 
-def check_cluster_ready(nnodes, timeout=CLUSTER_WAIT_TIMEOUT):
+def check_cluster_ready(address, nnodes, timeout=CLUSTER_WAIT_TIMEOUT):
     """Wait for all nodes to start.
 
     Raises an exception if the nodes don't start in time.
     """
     start_time = time.time()
     current_nodes = 1
-    ray.init(ignore_reinit_error=True)
+    ray.init(address=address, ignore_reinit_error=True)
 
     while time.time() - start_time < timeout:
         time.sleep(5)
@@ -48,14 +58,19 @@ def check_cluster_ready(nnodes, timeout=CLUSTER_WAIT_TIMEOUT):
 
 
 def check_head_node_ready(address: str, timeout=CLUSTER_WAIT_TIMEOUT):
+    from ray.exceptions import RpcError
+
     start_time = time.time()
     gcs_client = GcsClient(address=address)
     while time.time() - start_time < timeout:
         try:
+            # check_alive returns a list of dead node IDs from the input list.
+            # If it runs without raising an exception, the GCS is ready.
             gcs_client.check_alive([], timeout=1)
             click.echo("Ray cluster is ready!")
             return True
         except RpcError:
+            # GCS not ready yet, keep retrying
             pass
         time.sleep(5)
     return False
@@ -67,15 +82,16 @@ def curate_and_validate_ray_start_args(run_and_start_args: List[str]) -> List[st
     cleaned_args = list(ctx.params["ray_args_and_entrypoint"])
 
     for arg in cleaned_args:
-        if arg == "--head":
+        normalized = arg.split("=", 1)[0]
+        if normalized == "--head":
             raise click.ClickException("Cannot use --head option in symmetric_run.")
-        if arg == "--node-ip-address":
+        if normalized == "--node-ip-address":
             raise click.ClickException(
                 "Cannot use --node-ip-address option in symmetric_run."
             )
-        if arg == "--port":
+        if normalized == "--port":
             raise click.ClickException("Cannot use --port option in symmetric_run.")
-        if arg == "--block":
+        if normalized == "--block":
             raise click.ClickException("Cannot use --block option in symmetric_run.")
 
     return cleaned_args
@@ -83,6 +99,7 @@ def curate_and_validate_ray_start_args(run_and_start_args: List[str]) -> List[st
 
 @click.command(
     name="symmetric_run",
+    cls=SymmetricRunCommand,
     context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
     help="""Command to start Ray across all nodes and execute an entrypoint command.
 
@@ -135,24 +152,20 @@ SEPARATOR REQUIREMENT:
     help="If provided, wait for this number of nodes to start.",
 )
 @click.argument("ray_args_and_entrypoint", nargs=-1, type=click.UNPROCESSED)
-def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
-    all_args = sys.argv[1:]
-
-    if all_args and all_args[0] == "symmetric-run":
-        all_args = all_args[1:]
-
+@click.pass_context
+def symmetric_run(ctx, address, min_nodes, ray_args_and_entrypoint):
+    raw_args = ctx.meta.get("raw_args", [])
     try:
-        separator = all_args.index("--")
+        separator = raw_args.index("--")
     except ValueError:
         raise click.ClickException(
             "No separator '--' found in arguments. Please use '--' to "
             "separate Ray start arguments and the entrypoint command."
+            f" Got arguments: {raw_args}"
         )
 
-    run_and_start_args, entrypoint_on_head = (
-        all_args[:separator],
-        all_args[separator + 1 :],
-    )
+    run_and_start_args = raw_args[:separator]
+    entrypoint_on_head = raw_args[separator + 1 :]
 
     ray_start_args = curate_and_validate_ray_start_args(run_and_start_args)
 
@@ -219,7 +232,7 @@ def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
             subprocess.run(ray_start_cmd, check=True, capture_output=True)
             click.echo("Head node started.")
             click.echo("=======================")
-            if min_nodes > 1 and not check_cluster_ready(min_nodes):
+            if min_nodes > 1 and not check_cluster_ready(address, min_nodes):
                 raise click.ClickException(
                     "Timed out waiting for other nodes to start."
                 )
