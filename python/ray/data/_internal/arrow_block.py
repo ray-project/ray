@@ -612,5 +612,5 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
 
         return self._column.to_numpy(zero_copy_only=zero_copy_only)
 
-    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+    def _to_arrow_compatible_container(self) -> Union[List[Any], "pyarrow.Array"]:
         return self._column
