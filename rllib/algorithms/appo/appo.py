@@ -85,6 +85,7 @@ class APPOConfig(IMPALAConfig):
 
     def __init__(self, algo_class=None):
         """Initializes a APPOConfig instance."""
+
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.
