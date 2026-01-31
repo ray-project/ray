@@ -269,12 +269,6 @@ class GPUObjectStore:
                     )
                     if is_same_tensors:
                         return dst_obj_id
-                    if tensor_transport != "NIXL":
-                        raise ValueError(
-                            f"Some of the tensors in this object are still in scope as part of another RDT object. "
-                            f"Ensure that ObjectRef({src_obj_id}) is out of scope before creating this object."
-                            f"We support tensor level deduplication for NIXL, but not for other transport backends."
-                        )
             return None
 
     def wait_and_pop_object(
