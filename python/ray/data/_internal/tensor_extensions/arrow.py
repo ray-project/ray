@@ -16,7 +16,6 @@ import pyarrow as pa
 from packaging.version import parse as parse_version
 
 import ray.cloudpickle as cloudpickle
-from ray.data._internal.utils.arrow_utils import _check_pyarrow_version, get_pyarrow_version
 from ray._private.ray_constants import env_integer
 from ray.data._internal.numpy_support import (
     _convert_datetime_to_np_datetime,
@@ -32,6 +31,10 @@ from ray.data._internal.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     _should_convert_to_tensor,
     create_ragged_ndarray,
+)
+from ray.data._internal.utils.arrow_utils import (
+    _check_pyarrow_version,
+    get_pyarrow_version,
 )
 from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
 from ray.util import log_once
@@ -960,6 +963,13 @@ class ArrowTensorArray(pa.ExtensionArray):
         total_num_items = arr.size
         num_items_per_element = np.prod(element_shape) if element_shape else 1
 
+        pa_tensor_type_ = create_arrow_fixed_shape_tensor_format(
+            element_shape, scalar_dtype
+        )
+
+        if _is_native_tensor_type(pa_tensor_type_):
+            return FixedShapeTensorArray.from_numpy_ndarray(arr)
+
         # Shape up data buffer
         if pa.types.is_boolean(scalar_dtype):
             # NumPy doesn't represent boolean arrays as bit-packed, so we manually
@@ -972,15 +982,6 @@ class ArrowTensorArray(pa.ExtensionArray):
         data_array = pa.Array.from_buffers(
             scalar_dtype, total_num_items, [None, data_buffer]
         )
-
-        tensor_format = _resolve_fixed_shape_tensor_format()
-
-        pa_tensor_type_ = create_arrow_fixed_shape_tensor_format(
-            element_shape, scalar_dtype, tensor_format=tensor_format
-        )
-
-        if _is_native_tensor_type(pa_tensor_type_):
-            return FixedShapeTensorArray.from_numpy_ndarray(arr)
 
         offset_dtype = pa_tensor_type_.OFFSET_DTYPE.to_pandas_dtype()
 

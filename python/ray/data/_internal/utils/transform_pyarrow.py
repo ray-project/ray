@@ -1,5 +1,3 @@
-from ray.data._internal.tensor_extensions.arrow import concat_tensor_arrays
-
 try:
     import pyarrow
 except ImportError:
@@ -38,6 +36,7 @@ def _concatenate_extension_column(
         Array: the concatenate extension column.
     """
     from ray.data._internal.tensor_extensions.arrow import (
+        concat_tensor_arrays,
         get_arrow_extension_tensor_types,
     )
 
