@@ -272,7 +272,7 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
 
         # Run a few training iterations.
         results = []
-        for i in range(4):
+        for i in range(5):
             results.append(algo.train())
 
         # Ensure that we evaluated every 2 training iterations.
@@ -280,11 +280,12 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         self.assertIn(EVALUATION_RESULTS, results[1])
         self.assertIn(EVALUATION_RESULTS, results[2])
         self.assertIn(EVALUATION_RESULTS, results[3])
+        self.assertIn(EVALUATION_RESULTS, results[4])
         # Also ensure we have no evaluation results in the first iteration.
         self.assertNotIn(EVALUATION_RESULTS, results[0])
 
         # Ensure that we did 2 iterations over the dataset in each evaluation.
-        for eval_idx in [1, 2, 3]:
+        for eval_idx in [1, 2, 3, 4]:
             eval_metrics = results[eval_idx][EVALUATION_RESULTS]
             eval_metrics = eval_metrics[OFFLINE_EVAL_RUNNER_RESULTS]
             if (eval_idx + 1) % self.config.offline_evaluation_interval == 0:
