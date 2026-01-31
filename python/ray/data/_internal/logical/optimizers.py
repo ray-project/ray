@@ -11,6 +11,7 @@ from ray.data._internal.logical.interfaces import (
 from ray.data._internal.logical.rules import (
     CombineShuffles,
     ConfigureMapTaskMemoryUsingOutputSize,
+    ConstantFoldingRule,
     FuseOperators,
     InheritBatchFormatRule,
     InheritTargetMaxBlockSizeRule,
@@ -24,6 +25,7 @@ from ray.util.annotations import DeveloperAPI
 _LOGICAL_RULESET = Ruleset(
     [
         InheritBatchFormatRule,
+        ConstantFoldingRule,
         LimitPushdownRule,
         ProjectionPushdown,
         PredicatePushdown,

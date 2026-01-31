@@ -5,6 +5,7 @@ from .configure_map_task_memory import (
     ConfigureMapTaskMemoryRule,
     ConfigureMapTaskMemoryUsingOutputSize,
 )
+from .constant_folding import ConstantFoldingRule
 from .inherit_batch_format import InheritBatchFormatRule
 from .inherit_target_max_block_size import InheritTargetMaxBlockSizeRule
 from .limit_pushdown import LimitPushdownRule
@@ -20,6 +21,7 @@ __all__ = [
     "CombineShuffles",
     "ConfigureMapTaskMemoryRule",
     "ConfigureMapTaskMemoryUsingOutputSize",
+    "ConstantFoldingRule",
     "FuseOperators",
     "InheritBatchFormatRule",
     "InheritTargetMaxBlockSizeRule",
