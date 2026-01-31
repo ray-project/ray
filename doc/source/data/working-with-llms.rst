@@ -153,8 +153,8 @@ First, load a vision dataset:
 
 .. literalinclude:: doc_code/working-with-llms/vlm_image_example.py
     :language: python
-    :start-after: def load_vision_dataset():
-    :end-before: def create_vlm_config():
+    :start-after: __vlm_image_load_dataset_example_start__
+    :end-before: __vlm_image_load_dataset_example_end__
     :dedent: 0
 
 Next, configure the VLM processor with the essential settings:
@@ -183,8 +183,8 @@ Finally, run the VLM inference:
 
 .. literalinclude:: doc_code/working-with-llms/vlm_image_example.py
     :language: python
-    :start-after: def run_vlm_example():
-    :end-before: # __vlm_run_example_end__
+    :start-after: __vlm_run_example_start__
+    :end-before: __vlm_run_example_end__
     :dedent: 0
 
 Video batch inference with vision language model (VLM)
@@ -194,8 +194,8 @@ First, load a video dataset:
 
 .. literalinclude:: doc_code/working-with-llms/vlm_video_example.py
     :language: python
-    :start-after: def load_video_dataset():
-    :end-before: def create_vlm_video_config():
+    :start-after: __vlm_video_load_dataset_example_start__
+    :end-before: __vlm_video_load_dataset_example_end__
     :dedent: 0
 
 Next, configure the VLM processor with the essential settings:
@@ -218,8 +218,8 @@ Finally, run the VLM inference:
 
 .. literalinclude:: doc_code/working-with-llms/vlm_video_example.py
     :language: python
-    :start-after: def run_vlm_video_example():
-    :end-before: # __vlm_video_run_example_end__
+    :start-after: __vlm_video_run_example_start__
+    :end-before: __vlm_video_run_example_end__
     :dedent: 0
 
 Audio batch inference with omni-modal model
@@ -229,8 +229,8 @@ First, load an audio dataset:
 
 .. literalinclude:: doc_code/working-with-llms/omni_audio_example.py
     :language: python
-    :start-after: def load_audio_dataset():
-    :end-before: def create_omni_audio_config():
+    :start-after: __omni_audio_load_dataset_example_start__
+    :end-before: __omni_audio_load_dataset_example_end__
     :dedent: 0
 
 Next, configure the omni-modal processor with the essential settings:
@@ -259,8 +259,8 @@ Finally, run the omni-modal inference:
 
 .. literalinclude:: doc_code/working-with-llms/omni_audio_example.py
     :language: python
-    :start-after: def run_omni_audio_example():
-    :end-before: # __omni_audio_run_example_end__
+    :start-after: __omni_audio_run_example_start__
+    :end-before: __omni_audio_run_example_end__
     :dedent: 0
 
 .. _embedding_models:

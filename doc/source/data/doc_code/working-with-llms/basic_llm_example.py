@@ -163,9 +163,6 @@ processor_config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     concurrency=1,
     batch_size=16,
-    chat_template_stage=False,
-    tokenize_stage=True,
-    detokenize_stage=False,
 )
 
 processor = build_processor(

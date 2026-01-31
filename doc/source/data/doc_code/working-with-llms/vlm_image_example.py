@@ -136,6 +136,7 @@ def vision_postprocess(row: dict) -> dict:
 
 
 def load_vision_dataset():
+# __vlm_image_load_dataset_example_start__
     """
     Load vision dataset from Hugging Face.
 
@@ -161,6 +162,7 @@ def load_vision_dataset():
     except Exception as e:
         print(f"Error loading dataset: {e}")
         return None
+# __vlm_image_load_dataset_example_end__
 
 
 def create_vlm_config():
@@ -181,6 +183,7 @@ def create_vlm_config():
 
 
 def run_vlm_example():
+# __vlm_run_example_start__
     """Run the complete VLM example workflow."""
     config = create_vlm_config()
     vision_dataset = load_vision_dataset()
@@ -196,7 +199,7 @@ def run_vlm_example():
         print(f"Has multimodal support: {config.prepare_multimodal_stage.get('enabled', False)}")
         result = processor(vision_dataset).take_all()
         return config, processor, result
-    # __vlm_run_example_end__
+# __vlm_run_example_end__
     return None, None, None
 
 

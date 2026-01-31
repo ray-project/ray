@@ -112,6 +112,7 @@ def audio_postprocess(row: dict) -> dict:
 
 
 def load_audio_dataset():
+# __omni_audio_load_dataset_example_start__
     """
     Load audio dataset from MRSAudio Hugging Face dataset.
     """
@@ -151,6 +152,7 @@ def load_audio_dataset():
     except Exception as e:
         print(f"Error loading dataset: {e}")
         return None
+# __omni_audio_load_dataset_example_end__
 
 
 def create_omni_audio_config():
@@ -174,8 +176,8 @@ def create_omni_audio_config():
         detokenize_stage=True,
     )
 
-
 def run_omni_audio_example():
+# __omni_audio_run_example_start__
     """Run the complete Omni audio example workflow."""
     config = create_omni_audio_config()
     audio_dataset = load_audio_dataset()
@@ -191,7 +193,7 @@ def run_omni_audio_example():
         print(f"Has multimodal support: {config.prepare_multimodal_stage.get('enabled', False)}")
         result = processor(audio_dataset).take_all()
         return config, processor, result
-    # __omni_audio_run_example_end__
+# __omni_audio_run_example_end__
     return None, None, None
 
 
