@@ -554,7 +554,7 @@ def train_func(config):
         logger.info(f"Worker started: world_rank={world_rank}, world_size={world_size}")
 
     # Set up model with DeepSpeed AutoTP
-    engine, tp_group, dp_group, tp_rank, dp_rank = setup_model_with_autotp(
+    engine, _, _, _, dp_rank = setup_model_with_autotp(
         model_name=config["model_name"],
         tp_size=tp_size,
         dp_size=dp_size,
