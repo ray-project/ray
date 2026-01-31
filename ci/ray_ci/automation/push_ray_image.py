@@ -281,7 +281,13 @@ def _should_upload(pipeline_id: str, branch: str, rayci_schedule: str) -> bool:
 @click.option(
     "--python-version", type=click.Choice(list(PYTHON_VERSIONS.keys())), required=True
 )
-@click.option("--platform", type=click.Choice(list(PLATFORMS_RAY)), required=True)
+@click.option(
+    "--platform",
+    type=click.Choice(list(PLATFORMS_RAY)),
+    required=True,
+    multiple=True,
+    help="Platform(s) to push. Can be specified multiple times.",
+)
 @click.option(
     "--image-type",
     type=click.Choice(VALID_IMAGE_TYPES),
@@ -299,7 +305,7 @@ def _should_upload(pipeline_id: str, branch: str, rayci_schedule: str) -> bool:
 )
 def main(
     python_version: str,
-    platform: str,
+    platform: tuple,
     image_type: str,
     architecture: str,
     rayci_work_repo: str,
@@ -311,10 +317,12 @@ def main(
     pull_request: str,
 ) -> None:
     """
-    Publish a Wanda-cached ray image to Docker Hub.
+    Publish Wanda-cached ray image(s) to Docker Hub.
 
     Tags are generated matching the original RayDockerContainer format:
     {version}{variation}{python_suffix}{platform}{architecture_suffix}
+
+    Multiple platforms can be specified to push in a single invocation.
     """
     ci_init()
 
@@ -324,36 +332,47 @@ def main(
             "DRY RUN MODE - upload conditions not met, no images will be pushed"
         )
 
-    ctx = RayImagePushContext(
-        ray_type=RayType(image_type),
-        python_version=python_version,
-        platform=platform,
-        architecture=architecture,
-        branch=branch,
-        commit=commit,
-        rayci_schedule=rayci_schedule,
-        rayci_build_id=rayci_build_id,
-        pull_request=pull_request,
-    )
-
-    ctx.assert_published_image_type()
+    platforms = list(platform)
+    logger.info(f"Processing {len(platforms)} platform(s): {platforms}")
 
     ecr_registry = rayci_work_repo.split("/")[0]
     ecr_docker_login(ecr_registry)
 
-    src_ref = f"{rayci_work_repo}:{ctx.wanda_tag}"
-    logger.info(f"Verifying source image in Wanda cache: {src_ref}")
-    if not _image_exists(src_ref):
-        raise PushRayImageError(f"Source image not found in Wanda cache: {src_ref}")
+    all_tags = []
+    for plat in platforms:
+        logger.info(f"\n{'='*60}\nProcessing platform: {plat}\n{'='*60}")
 
-    destination_tags = ctx.destination_tags()
-    for tag in destination_tags:
-        dest_ref = f"{ctx.docker_hub_repo}:{tag}"
-        _copy_image(src_ref, dest_ref, dry_run=dry_run)
+        ctx = RayImagePushContext(
+            ray_type=RayType(image_type),
+            python_version=python_version,
+            platform=plat,
+            architecture=architecture,
+            branch=branch,
+            commit=commit,
+            rayci_schedule=rayci_schedule,
+            rayci_build_id=rayci_build_id,
+            pull_request=pull_request,
+        )
+
+        ctx.assert_published_image_type()
+
+        src_ref = f"{rayci_work_repo}:{ctx.wanda_tag}"
+        logger.info(f"Verifying source image in Wanda cache: {src_ref}")
+        if not _image_exists(src_ref):
+            raise PushRayImageError(f"Source image not found in Wanda cache: {src_ref}")
+
+        destination_tags = ctx.destination_tags()
+        for tag in destination_tags:
+            dest_ref = f"{ctx.docker_hub_repo}:{tag}"
+            _copy_image(src_ref, dest_ref, dry_run=dry_run)
+
+        all_tags.extend(destination_tags)
+        logger.info(f"Completed platform {plat} with tags: {destination_tags}")
 
     logger.info(
-        f"Successfully pushed {ctx.ray_type.value} image with tags: {destination_tags}"
+        f"\nSuccessfully processed {len(platforms)} platform(s) for {image_type}"
     )
+    logger.info(f"Total tags: {len(all_tags)}")
 
 
 if __name__ == "__main__":
