@@ -850,6 +850,103 @@ def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_
     )
 
 
+def test_automatic_size_estimation_without_hint(ray_start_regular_shared_2_cpus):
+    """Test that join works correctly with automatic size estimation (no hint provided)."""
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
+    # Create datasets with known sizes
+    doubles = ray.data.range(100).map(
+        lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
+    )
+
+    squares = ray.data.range(100).map(
+        lambda row: {"id": row["id"], "square": int(row["id"]) ** 2}
+    )
+
+    # Join WITHOUT partition_size_hint - should use automatic estimation
+    result = doubles.join(
+        squares,
+        join_type="inner",
+        num_partitions=4,
+        on=("id",),
+        # No partition_size_hint provided - automatic estimation should be used
+    )
+
+    # Verify join produces correct results
+    result_df = result.to_pandas().sort_values(by=["id"]).reset_index(drop=True)
+    assert len(result_df) == 100
+    assert list(result_df.columns) == ["id", "double", "square"]
+    assert result_df["double"].iloc[10] == 20
+    assert result_df["square"].iloc[10] == 100
+
+
+def test_partition_size_hint_as_fallback(ray_start_regular_shared_2_cpus):
+    """Test that partition_size_hint is used as fallback when automatic estimation is unavailable."""
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
+    doubles = ray.data.range(100).map(
+        lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
+    )
+
+    squares = ray.data.range(100).map(
+        lambda row: {"id": row["id"], "square": int(row["id"]) ** 2}
+    )
+
+    # Join WITH partition_size_hint - should still work (as fallback)
+    result = doubles.join(
+        squares,
+        join_type="inner",
+        num_partitions=4,
+        on=("id",),
+        partition_size_hint=1 * MiB,  # Explicit hint provided as fallback
+    )
+
+    # Verify join produces correct results
+    result_df = result.to_pandas().sort_values(by=["id"]).reset_index(drop=True)
+    assert len(result_df) == 100
+    assert list(result_df.columns) == ["id", "double", "square"]
+
+
+def test_automatic_estimation_with_different_dataset_sizes(
+    ray_start_regular_shared_2_cpus,
+):
+    """Test automatic size estimation works correctly with various dataset sizes."""
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
+    test_cases = [
+        (50, 50),  # Equal sizes
+        (100, 50),  # Left larger
+        (50, 100),  # Right larger
+        (10, 200),  # Asymmetric
+    ]
+
+    for left_size, right_size in test_cases:
+        doubles = ray.data.range(left_size).map(
+            lambda row: {"id": row["id"], "value": int(row["id"]) * 2}
+        )
+
+        squares = ray.data.range(right_size).map(
+            lambda row: {"id": row["id"], "value": int(row["id"]) ** 2}
+        )
+
+        # Join without hint - automatic estimation should handle all cases
+        result = doubles.join(
+            squares,
+            join_type="inner",
+            num_partitions=4,
+            on=("id",),
+            left_suffix="_left",
+            right_suffix="_right",
+        )
+
+        result_df = result.to_pandas()
+        expected_len = min(left_size, right_size)
+        assert len(result_df) == expected_len, (
+            f"Failed for sizes ({left_size}, {right_size}): "
+            f"expected {expected_len} rows, got {len(result_df)}"
+        )
+
+
 if __name__ == "__main__":
     import sys
 
