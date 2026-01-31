@@ -1843,13 +1843,31 @@ cdef void execute_task(
                     # Special casing these two because Ray can raise them
                     raise
                 except (StopIteration, StopAsyncIteration) as e:
+                    # Determine if this exception should be retried before converting
+                    is_retryable_error[0] = determine_if_retryable(
+                                    should_retry_exceptions,
+                                    e,
+                                    serialized_retry_exception_allowlist,
+                                    function_descriptor,
+                                )
+                    if is_retryable_error[0]:
+                        logger.debug("Task failed with retryable exception:"
+                                     " {}.".format(
+                                        core_worker.get_current_task_id()),
+                                     exc_info=True)
+                    else:
+                        logger.debug("Task failed with unretryable exception:"
+                                     " {}.".format(
+                                        core_worker.get_current_task_id()),
+                                     exc_info=True)
                     # Convert StopIteration to RuntimeError per PEP 479
                     # preserving original cause and name of the original exception
+                    # TODO (zac): #60625 This entire exception catch can be deleted
+                    # if we upgrade cython to v3.+
                     task_exception_instance = RuntimeError(
                         "generator raised " + type(e).__name__
                     )
                     task_exception_instance.__cause__ = e
-                    raise task_exception_instance
                 except BaseException as e:
                     is_retryable_error[0] = determine_if_retryable(
                                     should_retry_exceptions,
