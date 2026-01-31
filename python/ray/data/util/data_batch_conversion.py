@@ -57,12 +57,6 @@ def _convert_batch_type_to_pandas(
     pd = _lazy_import_pandas()
 
     if isinstance(data, np.ndarray):
-        warnings.warn(
-            "In future versions of Ray, np.ndarray will not be supported as DataBatchType.",
-            FutureWarning,
-            stacklevel=2,
-        )
-
         data = pd.DataFrame({TENSOR_COLUMN_NAME: _ndarray_to_column(data)})
     elif isinstance(data, dict):
         tensor_dict = {}
@@ -147,12 +141,6 @@ def _convert_batch_type_to_numpy(
     pd = _lazy_import_pandas()
 
     if isinstance(data, np.ndarray):
-        warnings.warn(
-            "In future versions of Ray, np.ndarray will not be supported as DataBatchType.",
-            FutureWarning,
-            stacklevel=2,
-        )
-
         return data
     elif isinstance(data, dict):
         for col_name, col in data.items():

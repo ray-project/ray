@@ -296,32 +296,6 @@ def test_arrow_tensor_pandas(cast_tensor_columns):
     assert arrow_output.equals(input_data)
 
 
-def test_to_pandas_future_warning():
-    input_data = np.arange(12).reshape(
-        (
-            3,
-            2,
-            2,
-        )
-    )
-
-    with pytest.warns(FutureWarning):
-        _convert_batch_type_to_pandas(input_data)
-
-
-def test_to_numpy_future_warning():
-    input_data = np.arange(12).reshape(
-        (
-            3,
-            2,
-            2,
-        )
-    )
-
-    with pytest.warns(FutureWarning):
-        _convert_batch_type_to_numpy(input_data)
-
-
 if __name__ == "__main__":
     import sys
 
