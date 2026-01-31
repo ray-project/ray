@@ -37,7 +37,6 @@ from ray.data.block import (
     BlockType,
     U,
 )
-from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
 from ray.data.expressions import Expr
 
@@ -249,9 +248,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return cls(reader.read_all())
 
     @staticmethod
-    def _build_tensor_row(
-        row: ArrowRow, row_idx: int, col_name: str = TENSOR_COLUMN_NAME
-    ) -> np.ndarray:
+    def _build_tensor_row(row: ArrowRow, row_idx: int, col_name: str) -> np.ndarray:
 
         element = row[col_name][row_idx]
         arr = element.as_py()
