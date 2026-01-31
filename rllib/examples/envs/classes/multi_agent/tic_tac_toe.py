@@ -87,6 +87,7 @@ class TicTacToe(MultiAgentEnv):
     # __sphinx_doc_4_begin__
     def step(self, action_dict):
         action = action_dict[self.current_player]
+
         opponent = "player2" if self.current_player == "player1" else "player1"
         self.timestep += 1
 
@@ -151,6 +152,8 @@ class TicTacToe(MultiAgentEnv):
         self.board = [-x for x in self.board]
         reward = {self.current_player: 0.0}
         self.current_player = opponent
+        self.timestep += 1
+        self.board = [-x for x in self.board]
 
         return (
             {opponent: np.array(self.board, np.float32)},
@@ -178,34 +181,3 @@ class TicTacToe(MultiAgentEnv):
             rows.append(" " + " | ".join(row_cells) + " ")
         separator = "-----------"
         return "\n" + f"\n{separator}\n".join(rows) + "\n"
-
-
-# if __name__ == "__main__":
-#     from ray.rllib.algorithms import PPOConfig
-#     from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-#     config = (
-#         PPOConfig()
-#         .environment(TicTacToe)
-#         .multi_agent(policies={"P0"}, policy_mapping_fn=lambda _, __: "P0")
-#     )
-#     env_runner = MultiAgentEnvRunner(config)
-#     episode = env_runner.sample(num_episodes=1, random_actions=True)[0]
-#     print(f'{episode=}')
-#     for agent_id, sa_episode in episode.agent_episodes.items():
-#         print(f'{agent_id=}')
-#         observations = sa_episode.get_observations()
-#         actions = sa_episode.get_actions()
-#         rewards = sa_episode.get_rewards()
-#         is_terminated = sa_episode.is_terminated
-#         is_truncated = sa_episode.is_truncated
-#
-#         for obs, action, reward, next_obs in zip(observations[:-1], actions, rewards, observations[1:]):
-#             print(f'{obs=}, {action=}, {reward=}, {next_obs=}')
-#         print(f'{is_terminated=}, {is_truncated=}')
-#         print()
-#
-#     final_obs = episode.agent_episodes["player1"].get_observations(-1)
-#     env = TicTacToe()
-#     env.board = final_obs.astype(int)
-#     print('X is current player, O is the opponent')
-#     print(env.render())
