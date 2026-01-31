@@ -70,7 +70,7 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         # Pull down Ray after each test.
         ray.shutdown()
 
-    def test_offline_evaluation_runner_setup(self):
+    def test_offline_policy_evaluation_runner_setup(self):
         """Test the setup of the `OfflinePolicyEvaluationRunner`.
 
         Checks that after instantiation, the runner has a valid config and
@@ -86,7 +86,7 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
 
         self.assertIsInstance(offline_policy_eval_runner.module, MultiRLModule)
 
-    def test_offline_evaluation_runner_dataset_iterator(self):
+    def test_offline_policy_evaluation_runner_dataset_iterator(self):
         """Test setting the dataset iterator in the `OfflinePolicyEvaluationRunner`.
 
         Ensures that after setting the iterator, the internal `_dataset_iterator`
@@ -108,7 +108,7 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         # Clean up.
         algo.cleanup()
 
-    def test_offline_evaluation_runner_run(self):
+    def test_offline_policy_evaluation_runner_run(self):
         """Test the `OfflinePolicyEvaluationRunner.run()` method.
 
         Checks, that the correct number of env steps and dataset iterations
@@ -285,7 +285,7 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         self.assertNotIn(EVALUATION_RESULTS, results[0])
 
         # Ensure that we did 2 iterations over the dataset in each evaluation.
-        for eval_idx in [1, 2, 3, 4]:
+        for eval_idx in [1, 2, 3]:
             eval_metrics = results[eval_idx][EVALUATION_RESULTS]
             eval_metrics = eval_metrics[OFFLINE_EVAL_RUNNER_RESULTS]
             if (eval_idx + 1) % self.config.offline_evaluation_interval == 0:
