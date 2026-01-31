@@ -1132,7 +1132,7 @@ class MultiStreamEncoderConfig(ModelConfig):
 
     @property
     def output_dims(self):
-        return (self.output_layer_dim,)
+        return (self.output_layer_dim or self.hidden_layer_dims[-1],)
 
     def _validate(self, framework: str = "torch"):
         """Makes sure that settings are valid."""
@@ -1143,6 +1143,7 @@ class MultiStreamEncoderConfig(ModelConfig):
                 "non-empty dictionary mapping stream names to their respective "
                 "encoder configurations!"
             )
+
         if self.input_dims is not None and len(self.input_dims) != 1:
             raise ValueError(
                 f"`input_dims` ({self.input_dims}) of MultiStreamEncoderConfig must be 1D, "
