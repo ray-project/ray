@@ -118,6 +118,9 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.datasource import TFXReadOptions
+    from ray.data._internal.datasource.databricks_credentials import (
+        DatabricksCredentialProvider,
+    )
 
 T = TypeVar("T")
 
@@ -2655,7 +2658,7 @@ def read_databricks_tables(
     query: Optional[str] = None,
     catalog: Optional[str] = None,
     schema: Optional[str] = None,
-    credential_provider: Optional[DatabricksCredentialProvider] = None,
+    credential_provider: Optional["DatabricksCredentialProvider"] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
