@@ -113,6 +113,7 @@ from ray.data.block import (
     U,
     UserDefinedFunction,
     _apply_batch_format,
+    _take_first_non_empty_schema,
 )
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
@@ -2093,10 +2094,10 @@ class Dataset:
                 f"doesn't equal the number of splits {n}."
             )
 
-        bundle: RefBundle = self._plan.execute()
+        bundle, stats = self._plan.execute()
+        self._cached_stats = stats
         # We should not free blocks since we will materialize the Datasets.
         owned_by_consumer = False
-        stats = self._plan.stats()
         block_refs, metadata = zip(*bundle.blocks)
 
         if locality_hints is None:
@@ -2294,14 +2295,15 @@ class Dataset:
         if indices[0] < 0:
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
-        bundle: RefBundle = self._plan.execute()
+        bundle, stats = self._plan.execute()
+        self._cached_stats = stats
         blocks, metadata = _split_at_indices(
             bundle.blocks,
             indices,
             False,
         )
         split_duration = time.perf_counter() - start_time
-        parent_stats = self._plan.stats()
+        parent_stats = stats
         splits = []
 
         for bs, ms in zip(blocks, metadata):
@@ -3637,7 +3639,8 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        # TODO (kyuds): add caching here too: limited_ds._plan.stats()
+        if limited_ds._cached_stats is not None:
+            self._cached_stats = limited_ds._cached_stats
         return res
 
     @ConsumptionAPI
@@ -3688,7 +3691,8 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        # TODO (kyuds): add caching here too: limited_ds._plan.stats()
+        if limited_ds._cached_stats is not None:
+            self._cached_stats = limited_ds._cached_stats
         return output
 
     @ConsumptionAPI
@@ -3842,22 +3846,31 @@ class Dataset:
             schema is not known and fetch_if_missing is False.
         """
 
+        def _get_schema(dataset: "Dataset", fetch_if_missing: bool = False):
+            schema = dataset._logical_plan.dag.infer_schema()
+            if schema is None and fetch_if_missing:
+                iter_ref_bundles, stats, executor = dataset._plan.execute_to_iterator()
+                dataset._cached_stats = stats
+                with executor:
+                    schema = _take_first_non_empty_schema(
+                        bundle.schema for bundle in iter_ref_bundles
+                    )
+            return schema
+
         context = self._plan._context
 
-        # First check if the schema is already known from materialized blocks.
-        base_schema = self._plan.schema(fetch_if_missing=False)
-        if base_schema is not None:
-            return Schema(base_schema, data_context=context)
-
-        # Lazily execute only the first block to minimize computation. We achieve this
-        # by appending a Limit[1] operation to a copy of this Dataset, which we then
-        # execute to get its schema.
-        base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
-        if base_schema is not None:
-            self._plan.cache_schema(base_schema)
-            return Schema(base_schema, data_context=context)
+        if self._cached_schema is not None:
+            base_schema = self._cached_schema
         else:
-            return None
+            base_schema = _get_schema(self, fetch_if_missing=False)
+
+        if base_schema is None:
+            base_schema = _get_schema(self.limit(1), fetch_if_missing=fetch_if_missing)
+
+        if base_schema is not None:
+            self._cached_schema = base_schema
+            return Schema(base_schema, data_context=context)
+        return None
 
     @ConsumptionAPI(
         if_more_than_read=True,
@@ -3931,7 +3944,9 @@ class Dataset:
         if self._logical_plan.dag.infer_metadata().size_bytes is not None:
             return self._logical_plan.dag.infer_metadata().size_bytes
 
-        metadata = self._plan.execute().metadata
+        bundle, stats = self._plan.execute()
+        self._cached_stats = stats
+        metadata = bundle.metadata
         if not metadata or metadata[0].size_bytes is None:
             return None
         return sum(m.size_bytes for m in metadata)
@@ -6226,7 +6241,8 @@ class Dataset:
         """
         import pyarrow as pa
 
-        ref_bundle: RefBundle = self._plan.execute()
+        ref_bundle, stats = self._plan.execute()
+        self._cached_stats = stats
         block_refs: List[
             ObjectRef["pyarrow.Table"]
         ] = _ref_bundles_iterator_to_block_refs_list([ref_bundle])
@@ -6312,7 +6328,8 @@ class Dataset:
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
 
-        bundle: RefBundle = copy._plan.execute()
+        bundle, stats = copy._plan.execute()
+        self._cached_stats = stats
         blocks_with_metadata = bundle.blocks
 
         # TODO(hchen): Here we generate the same number of blocks as
@@ -6330,7 +6347,7 @@ class Dataset:
         ]
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
         output = MaterializedDataset(
-            ExecutionPlan(copy._plan.stats(), data_context=copy.context),
+            ExecutionPlan(stats, data_context=copy.context),
             logical_plan,
         )
         # Metrics are tagged with `copy`s uuid, update the output uuid with
@@ -6373,8 +6390,8 @@ class Dataset:
         """
         if self._current_executor:
             return self._current_executor.get_stats().to_summary().to_string()
-        elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
-            return self._write_ds.stats()
+        elif self._write_ds is not None and self._write_ds._cached_stats is not None:
+            return self._write_ds._cached_stats
         return self._get_stats_summary().to_string()
 
     @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
@@ -6415,7 +6432,9 @@ class Dataset:
         print(self._plan.explain())
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
-        return self._plan.stats().to_summary()
+        if self._cached_stats is not None:
+            return self._cached_stats.to_summary()
+        return DatasetStats(metadata={}, parent=None).to_summary()
 
     @ConsumptionAPI(pattern="Examples:")
     @DeveloperAPI
@@ -6434,7 +6453,8 @@ class Dataset:
         Returns:
             An iterator over this Dataset's ``RefBundles``.
         """
-        iter_ref_bundles, _, _ = self._plan.execute_to_iterator()
+        iter_ref_bundles, stats, _ = self._plan.execute_to_iterator()
+        self._cached_stats = stats
         self._synchronize_progress_bar()
 
         return iter_ref_bundles
@@ -6460,7 +6480,9 @@ class Dataset:
             "`Dataset.get_internal_block_refs()` is deprecated. Use "
             "`Dataset.iter_internal_ref_bundles()` instead.",
         )
-        block_refs = self._plan.execute().block_refs
+        bundle, stats = self._plan.execute()
+        self._cached_stats = stats
+        block_refs = bundle.block_refs
         self._synchronize_progress_bar()
         return block_refs
 
@@ -6816,6 +6838,8 @@ class Dataset:
         # Capture current executor to be able to clean it up properly, once
         # dataset is garbage-collected
         self._current_executor = executor
+        # Cache the executor stats here.
+        self._cached_stats = stats
 
         return bundle_iter, stats, executor
 

@@ -1,9 +1,7 @@
 import copy
 import itertools
 import logging
-from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Type, Union
-
-import pyarrow
+from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Type
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
@@ -335,30 +333,6 @@ class ExecutionPlan:
         after applying execution plan optimizations, but prior to
         fully executing the dataset."""
         return self._logical_plan.dag.estimated_num_outputs()
-
-    def schema(
-        self, fetch_if_missing: bool = False
-    ) -> Union[type, "pyarrow.lib.Schema"]:
-        """Get the schema after applying all execution plan optimizations,
-        but prior to fully executing the dataset
-        (unless `fetch_if_missing` is set to True).
-
-        Args:
-            fetch_if_missing: Whether to execute the plan to fetch the schema.
-
-        Returns:
-            The schema of the output dataset.
-        """
-        schema = self._logical_plan.dag.infer_schema()
-
-        if schema is None and fetch_if_missing:
-            iter_ref_bundles, executor = self.execute_to_iterator()
-            with executor:
-                schema = _take_first_non_empty_schema(
-                    bundle.schema for bundle in iter_ref_bundles
-                )
-
-        return schema
 
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
