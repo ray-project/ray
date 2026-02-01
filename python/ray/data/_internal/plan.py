@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import (
         StreamingExecutor,
     )
-    from ray.data.dataset import Dataset
+    from ray.data.dataset import Dataset, Schema
 
 
 # Scheduling strategy can be inherited from prev operator if not specified.
@@ -143,8 +143,14 @@ class ExecutionPlan:
             curr_max_depth = max(curr_max_depth, input_max_depth)
         return curr_str, curr_max_depth
 
-    def get_plan_as_string(self, dataset_cls: Type["Dataset"]) -> str:
+    def get_plan_as_string(
+        self, dataset_cls: Type["Dataset"], schema: Optional["Schema"]
+    ) -> str:
         """Create a cosmetic string representation of this execution plan.
+
+        Args:
+            dataset_cls: Dataset class type.
+            schema: The schema for this plan.
 
         Returns:
             The string representation of this execution plan.
@@ -186,7 +192,6 @@ class ExecutionPlan:
                 self._context,
             )
             plan.link_logical_plan(LogicalPlan(dag, plan._context))
-            schema = plan.schema()
             count = plan.meta_count()
 
         if schema is None:

@@ -6491,7 +6491,7 @@ class Dataset:
         if self._current_executor:
             return self._current_executor.get_stats().to_summary().to_string()
         elif self._write_ds is not None and self._write_ds._cached_stats is not None:
-            return self._write_ds._cached_stats
+            return self._write_ds._cached_stats.to_summary().to_string()
         return self._get_stats_summary().to_string()
 
     @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
@@ -6870,7 +6870,7 @@ class Dataset:
     def _tabular_repr(self) -> str:
         schema = self.schema(fetch_if_missing=False)
         if schema is None or not isinstance(schema, Schema):
-            return self._plan.get_plan_as_string(self.__class__)
+            return self._plan.get_plan_as_string(self.__class__, schema)
 
         is_materialized = isinstance(self, MaterializedDataset)
         return _build_dataset_ascii_repr(self, schema, is_materialized)
@@ -6950,12 +6950,16 @@ class Dataset:
             "plan": self._plan,
             "uuid": self._uuid,
             "logical_plan": self._logical_plan,
+            "cached_stats": self._cached_stats,
+            "cached_schema": self._cached_schema,
         }
 
     def __setstate__(self, state):
         self._plan = state["plan"]
         self._uuid = state["uuid"]
         self._logical_plan = state["logical_plan"]
+        self._cached_stats = state["cached_stats"]
+        self._cached_schema = state["cached_schema"]
         self._current_executor = None
 
     def __del__(self):
