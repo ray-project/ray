@@ -15,7 +15,7 @@ import pyarrow as pa
 from packaging.version import parse as parse_version
 
 import ray.cloudpickle as cloudpickle
-from ray._private.ray_constants import env_integer
+from ray._common.utils import env_integer
 from ray.data._internal.numpy_support import (
     _convert_datetime_to_np_datetime,
     convert_to_numpy,

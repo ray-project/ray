@@ -14,7 +14,51 @@ from inspect import signature
 from types import ModuleType
 from typing import Any, Coroutine, Dict, Optional, Tuple
 
+import logging
+
 import psutil
+
+logger = logging.getLogger(__name__)
+
+
+def env_integer(key, default):
+    if key in os.environ:
+        value = os.environ[key]
+        if value.isdigit():
+            return int(os.environ[key])
+
+        logger.debug(
+            f"Found {key} in environment, but value must "
+            f"be an integer. Got: {value}. Returning "
+            f"provided default {default}."
+        )
+        return default
+    return default
+
+
+def env_float(key, default):
+    if key in os.environ:
+        value = os.environ[key]
+        try:
+            return float(value)
+        except ValueError:
+            logger.debug(
+                f"Found {key} in environment, but value must "
+                f"be a float. Got: {value}. Returning "
+                f"provided default {default}."
+            )
+            return default
+    return default
+
+
+def env_bool(key, default):
+    if key in os.environ:
+        return (
+            True
+            if os.environ[key].lower() == "true" or os.environ[key] == "1"
+            else False
+        )
+    return default
 
 
 def import_module_and_attr(
