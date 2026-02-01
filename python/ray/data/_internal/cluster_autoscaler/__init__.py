@@ -52,7 +52,7 @@ def create_cluster_autoscaler(
     else:
         valid_values = [version.value for version in ClusterAutoscalerVersion]
         raise ValueError(
-            f"Cluster autoscaler version of {DEFAULT_CLUSTER_AUTOSCALER_VERSION}"
+            f"Cluster autoscaler version of {DEFAULT_CLUSTER_AUTOSCALER_VERSION} "
             f"isn't a valid option. Valid options are: {valid_values}."
         )
 
