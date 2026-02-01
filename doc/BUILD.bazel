@@ -665,7 +665,7 @@ doctest(
 
 doctest(
     name = "doctest[train]",
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     files = glob(
         include = [
             "source/train/**/*.md",
@@ -688,7 +688,7 @@ doctest(
         "source/train/user-guides/data-loading-preprocessing.rst",
         "source/train/user-guides/using-gpus.rst",
     ],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = ["team:ml"],
     gpu = True,
 )

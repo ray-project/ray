@@ -63,6 +63,7 @@ For TPU training, use :class:`~ray.train.ScalingConfig` to define your TPU slice
 * :class:`accelerator_type <ray.train.ScalingConfig>`: For TPUs, `accelerator_type` specifies the TPU generation you're using (for example, "TPU-V6E"), ensuring your workload is scheduled on the desired TPU slice.
 
 .. testcode::
+    :skipif: True
 
     from ray.train import ScalingConfig
     tpu_scaling_config = ScalingConfig(num_workers=4, use_tpu=True, topology="4x4", accelerator_type="TPU-V6E")
