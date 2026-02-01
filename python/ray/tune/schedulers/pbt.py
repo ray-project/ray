@@ -17,7 +17,7 @@ from ray.tune.experiment import Trial
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.search import SearchGenerator
-from ray.tune.search.sample import Domain, Function
+from ray.tune.search.sample import Domain, Float, Function
 from ray.tune.search.variant_generator import format_vars
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util import PublicAPI
@@ -141,7 +141,7 @@ def _explore(
                 perturbation_factor = random.choice(perturbation_factors)
                 new_config[key] = config[key] * perturbation_factor
                 operations[key] = f"* {perturbation_factor}"
-            if isinstance(config[key], int):
+            if isinstance(config[key], int) and not isinstance(distribution, Float):
                 # If this hyperparameter started out as an integer (ex: `batch_size`),
                 # convert the new value back
                 new_config[key] = int(new_config[key])
