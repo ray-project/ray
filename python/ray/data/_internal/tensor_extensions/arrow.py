@@ -808,7 +808,8 @@ def create_arrow_fixed_shape_tensor_format(
                     stacklevel=3,
                 )
                 tensor_format = FixedShapeTensorFormat.V2
-            if np.prod(shape) == 0 or outer_len == 0:
+            if len(shape) > 0 and (np.prod(shape) == 0 or outer_len == 0):
+                # FixedShapeTensor types don't support 0 size shapes
                 tensor_format = FixedShapeTensorFormat.V2
 
     if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
