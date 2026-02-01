@@ -11,6 +11,7 @@ import numpy as np
 from ray.rllib.algorithms.dreamerv3.torch.models.actor_network import ActorNetwork
 from ray.rllib.algorithms.dreamerv3.torch.models.critic_network import CriticNetwork
 from ray.rllib.algorithms.dreamerv3.torch.models.world_model import WorldModel
+from ray.rllib.algorithms.dreamerv3.utils import multidiscrete_onehot_to_ints
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import inverse_symlog
 
@@ -359,10 +360,6 @@ class DreamerModel(nn.Module):
             ret["actions_ints_dreamed_t0_to_H_B"] = torch.argmax(a_dreamed_H_B, dim=-1)
         elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
             # Convert concatenated one-hot to integer actions per sub-action.
-            from ray.rllib.algorithms.dreamerv3.utils import (
-                multidiscrete_onehot_to_ints,
-            )
-
             ret["actions_ints_dreamed_t0_to_H_B"] = multidiscrete_onehot_to_ints(
                 a_dreamed_H_B, self.action_space.nvec
             )
@@ -545,10 +542,6 @@ class DreamerModel(nn.Module):
             )
         elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
             # Convert concatenated one-hot to integer actions per sub-action.
-            from ray.rllib.algorithms.dreamerv3.utils import (
-                multidiscrete_onehot_to_ints,
-            )
-
             ret[re.sub("^actions_", "actions_ints_", key)] = (
                 multidiscrete_onehot_to_ints(a_t0_to_H_B, self.action_space.nvec)
             )
