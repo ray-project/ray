@@ -1961,9 +1961,7 @@ ROW_GROUP_LIMIT_CASES = [
 )
 def test_choose_row_group_limits_parameterized(case):
     """Validate the helper across representative inputs."""
-    from ray.data._internal.datasource.parquet_datasink import (
-        choose_row_group_limits,
-    )
+    from ray.data._internal.datasource import choose_row_group_limits
 
     result = choose_row_group_limits(
         case.row_group_size, case.min_rows_per_file, case.max_rows_per_file
@@ -1983,9 +1981,7 @@ def test_choose_row_group_limits_parameterized(case):
 def test_write_parquet_large_min_rows_per_file_exceeds_arrow_default(
     tmp_path, ray_start_regular_shared
 ):
-    from ray.data._internal.datasource.parquet_datasink import (
-        ARROW_DEFAULT_MAX_ROWS_PER_GROUP,
-    )
+    from ray.data._internal.datasource import ARROW_DEFAULT_MAX_ROWS_PER_GROUP
 
     """Test that min_rows_per_file > ARROW_DEFAULT_MAX_ROWS_PER_GROUP triggers max_rows_per_group setting."""
     # ARROW_DEFAULT_MAX_ROWS_PER_GROUP = 1024 * 1024 = 1048576
@@ -2232,9 +2228,7 @@ def test_get_parquet_dataset_fs_serialization_fallback(
     # 4) Helper should succeed (fallback re-resolves to LocalFileSystem inside worker)
     @ray.remote
     def call_helper(paths, fs, kwargs):
-        from ray.data._internal.datasource.parquet_datasource import (
-            get_parquet_dataset,
-        )
+        from ray.data._internal.datasource import get_parquet_dataset
 
         return get_parquet_dataset(paths, fs, kwargs)
 
