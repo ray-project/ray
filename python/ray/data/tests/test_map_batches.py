@@ -798,6 +798,34 @@ def test_map_batches_async_generator_fast_yield(
     assert len(output) == len(expected_output), (len(output), len(expected_output))
 
 
+def test_map_batches_struct_field_type_divergence(shutdown_only):
+    """Test map_batches with struct fields that have diverging primitive types."""
+    def generator_fn(batch):
+        for i, row_id in enumerate(batch["id"]):
+            if i % 2 == 0:
+                # Yield struct with fields (a: int64, b: string)
+                yield {"data": [{"a": 1, "b": "hello"}]}
+            else:
+                # Yield struct with fields (a: float64, c: int32)
+                # Field 'a' has different type, field 'b' missing, field 'c' new
+                yield {"data": [{"a": 1.5, "c": 100}]}
+
+    ds = ray.data.range(4, override_num_blocks=1)
+    ds = ds.map_batches(generator_fn, batch_size=4)
+    result = ds.materialize()
+
+    rows = result.take_all()
+    assert len(rows) == 4
+
+    # Rows 0 and 2 should have int cast to float, with c=None
+    assert rows[0]["data"] == {"a": 1.0, "b": "hello", "c": None}
+    assert rows[2]["data"] == {"a": 1.0, "b": "hello", "c": None}
+
+    # Rows 1 and 3 should have float a, with b=None
+    assert rows[1]["data"] == {"a": 1.5, "b": None, "c": 100}
+    assert rows[3]["data"] == {"a": 1.5, "b": None, "c": 100}
+
+
 if __name__ == "__main__":
     import sys
 
