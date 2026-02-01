@@ -64,6 +64,10 @@ def test_tensor_array_validation():
     with pytest.raises(TypeError):
         TensorArray([object(), object()])
 
+@pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
+def test_pandas_to_arrow_fixed_shape_tensor_conversion(tensor_format):
+    ctx = DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
     # First, convert Pandas serise w/ nulls to numpy
     array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy().reshape((2, 2))
 
@@ -71,7 +75,7 @@ def test_tensor_array_validation():
     input_tensor = np.stack([array, array])
 
     pa_tensor = ArrowTensorArray.from_numpy(input_tensor)
-    res_tensor = pa_tensor.to_numpy()
+    res_tensor = pa_tensor.to_numpy_ndarray()
 
     np.testing.assert_array_equal(res_tensor, np.stack([array.astype(np.float64)] * 2))
 
@@ -81,7 +85,7 @@ def test_tensor_array_validation():
     input_tensor = create_ragged_ndarray([array, array])
 
     pa_tensor = ArrowTensorArray.from_numpy(input_tensor)
-    res_tensor = pa_tensor.to_numpy()
+    res_tensor = pa_tensor.to_numpy_ndarray()
     np.testing.assert_array_equal(res_tensor, np.stack([array.astype(np.float64)] * 2))
 
 
