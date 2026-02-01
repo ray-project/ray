@@ -3,7 +3,7 @@
 It should be deleted once we fully move to the new executor backend.
 """
 import logging
-from typing import Iterator, Optional, Tuple
+from typing import Iterator, Tuple
 
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces import (
@@ -11,14 +11,10 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
-from ray.data._internal.execution.interfaces.executor import OutputIterator
-from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import (
-    BlockMetadata,
-    BlockMetadataWithSchema,
     _take_first_non_empty_schema,
 )
 
@@ -46,59 +42,7 @@ def execute_to_legacy_bundle_iterator(
         plan,
         preserve_order=False,
     )
-
-    bundle_iter = executor.execute(dag, initial_stats=stats)
-
-    topology: "Topology" = executor._topology
-
-    class CacheMetadataIterator(OutputIterator):
-        """Wrapper for `bundle_iterator` above.
-
-        For a given iterator which yields output RefBundles,
-        collect the metadata from each output bundle, and yield the
-        original RefBundle. Only after the entire iterator is exhausted,
-        we cache the resulting metadata to the execution plan."""
-
-        def __init__(self, base_iterator: OutputIterator):
-            # Note: the base_iterator should be of type StreamIterator,
-            # defined within `StreamingExecutor.execute()`. It must
-            # support the `get_next()` method.
-            self._base_iterator = base_iterator
-            self._collected_metadata = BlockMetadata(
-                num_rows=0,
-                size_bytes=0,
-                input_files=None,
-                exec_stats=None,
-            )
-
-        def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
-            try:
-                bundle = self._base_iterator.get_next(output_split_idx)
-                self._collect_metadata(bundle)
-                return bundle
-            except StopIteration:
-                # Once the iterator is completely exhausted, we are done
-                # collecting metadata. We can add this cached metadata to the plan.
-
-                # Traverse the topology backwards and find the first available schema
-                schema = next(reversed(topology.values()))._schema
-
-                meta_with_schema = BlockMetadataWithSchema(
-                    metadata=self._collected_metadata,
-                    schema=schema,
-                )
-                plan._snapshot_metadata_schema = meta_with_schema
-                raise
-
-        def _collect_metadata(self, bundle: RefBundle) -> RefBundle:
-            """Collect the metadata from each output bundle and accumulate
-            results, so we can access important information, such as
-            row count, schema, etc., after iteration completes."""
-            self._collected_metadata.num_rows += bundle.num_rows()
-            self._collected_metadata.size_bytes += bundle.size_bytes()
-            return bundle
-
-    return CacheMetadataIterator(bundle_iter)
+    return executor.execute(dag, initial_stats=stats)
 
 
 def execute_to_legacy_block_list(
@@ -155,8 +99,6 @@ def _get_execution_dag(
 
 
 def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
-    if plan._snapshot_bundle is not None:
-        return plan._snapshot_stats
     # For Datasets created from "read_xxx", `plan._in_stats` contains useless data.
     # For Datasets created from "from_xxx", we need to use `plan._in_stats` as
     # the initial stats. Because the `FromXxx` logical operators will be translated to

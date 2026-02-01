@@ -286,6 +286,10 @@ class Dataset:
 
         self._set_uuid(_StatsManager.gen_dataset_id_from_stats_actor())
 
+        # Cached
+        self._cached_stats: Optional[DatasetStats] = None
+        self._cached_schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None
+
     @staticmethod
     def copy(
         ds: "Dataset", _deep_copy: bool = False, _as: Optional[type] = None
@@ -3633,7 +3637,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._snapshot_stats = limited_ds._plan.stats()
+        # TODO (kyuds): add caching here too: limited_ds._plan.stats()
         return res
 
     @ConsumptionAPI
@@ -3684,7 +3688,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._snapshot_stats = limited_ds._plan.stats()
+        # TODO (kyuds): add caching here too: limited_ds._plan.stats()
         return output
 
     @ConsumptionAPI
@@ -6540,7 +6544,7 @@ class Dataset:
         plan_copy = self._plan.deep_copy()
         logical_plan_copy = copy.copy(self._plan._logical_plan)
         ds = Dataset(plan_copy, logical_plan_copy)
-        ds._plan.clear_snapshot()
+        # TODO (kyuds): clear caching here.
         ds._set_uuid(self._get_uuid())
 
         def _reduce_remote_fn(rf: ray.remote_function.RemoteFunction):
