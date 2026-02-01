@@ -135,11 +135,15 @@ def resolve_fixed_shape_tensor_format() -> "FixedShapeTensorFormat":
 
 
 def _native_tensor_value_type_can_convert_to_numpy(t: "FixedShapeTensorType") -> bool:
+    """Pyarrow native fixed shaped tensors support most types. However, when converting 
+    between numpy representions using their built-in `to_numpy_ndarray()` or `from_numpy_ndarray()`,
+    numbers (floating or integer) are only supported. It is possible to handle this logic using
+    other methods (`as_py()`, or `to_numpy()`), but for simplicity, we leave it at numbers only.
+    In the future, we may want to support more datatypes.
+    """
     return (
         pa.types.is_floating(t)
         or pa.types.is_integer(t)
-        or pa.types.is_signed_integer(t)
-        or pa.types.is_unsigned_integer(t)
     )
 
 
@@ -824,20 +828,19 @@ def create_arrow_fixed_shape_tensor_format(
 
         # Native tensor format requires PyArrow 12+
         if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
-            if FixedShapeTensorType is None and log_once(
-                "native_fixed_shape_tensors_not_supported"
-            ):
-                warnings.warn(
-                    f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} "
-                    "to enable native tensor arrays. Falling back to V2.",
-                    UserWarning,
-                    stacklevel=3,
-                )
+            if FixedShapeTensorType is None:
+                if log_once("native_fixed_shape_tensors_not_supported"):
+                    warnings.warn(
+                        f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} "
+                        "to enable native tensor arrays. Falling back to V2.",
+                        UserWarning,
+                        stacklevel=3,
+                    )
                 tensor_format = fallback
-            if len(shape) > 0 and (np.prod(shape) == 0 or outer_len == 0):
+            elif len(shape) > 0 and (np.prod(shape) == 0 or outer_len == 0):
                 # FixedShapeTensor types don't support 0 size shapes
                 tensor_format = fallback
-            if not _native_tensor_value_type_can_convert_to_numpy(dtype):
+            elif not _native_tensor_value_type_can_convert_to_numpy(dtype):
                 tensor_format = fallback
 
     if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:

@@ -25,10 +25,6 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.tensor_extensions.arrow import (
-    ArrowTensorType,
-    ArrowTensorTypeV2,
-    FixedShapeTensorFormat,
-    FixedShapeTensorType,
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import rows_same
@@ -1162,17 +1158,16 @@ def test_partitioning_in_dataset_kwargs_raises_error(
         )
 
 
-@pytest.mark.parametrize("new_tensor_format", list(FixedShapeTensorFormat))
 def test_tensors_in_tables_parquet(
     ray_start_regular_shared,
     tmp_path,
-    new_tensor_format,
-    restore_data_context,
+    tensor_format_context,
     target_max_block_size_infinite_or_default,
 ):
     """This test verifies both V1 and V2 Tensor Type extensions of
     Arrow Array types
     """
+    new_tensor_format = tensor_format_context
 
     num_rows = 10_000
     num_groups = 10
@@ -1252,19 +1247,11 @@ def test_tensors_in_tables_parquet(
 
     _assert_equal(ds.take_all(), expected_tuples)
 
-    if new_tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
-        if FixedShapeTensorType is None:
-            expected_tensor_type = ArrowTensorType
-        else:
-            expected_tensor_type = FixedShapeTensorType
-    elif new_tensor_format == FixedShapeTensorFormat.V2:
-        expected_tensor_type = ArrowTensorTypeV2
-    else:  # v1
-        expected_tensor_type = ArrowTensorType
-
+    # With tensor_format_context, ARROW_NATIVE only runs when supported,
+    # so to_type() is safe to use without fallback
     assert isinstance(
         ds.schema().base_schema.field_by_name(tensor_col_name).type,
-        expected_tensor_type,
+        new_tensor_format.to_type(),
     )
 
 
