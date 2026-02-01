@@ -325,4 +325,25 @@ def replica_queue_length_autoscaling_policy(
     return _core_replica_queue_length_policy(ctx)
 
 
+@PublicAPI(stability="beta")
+def async_inference_autoscaling_policy(
+    ctx: AutoscalingContext,
+) -> Tuple[Union[int, float], Dict[str, Any]]:
+    """The default autoscaling policy based on basic thresholds for scaling."""
+    num_running_replicas = ctx.current_num_replicas
+
+    # Calculate total workload = queue tasks + HTTP requests
+    total_workload = ctx.total_num_requests + ctx.async_inference_task_queue_length
+
+    config = ctx.config
+    if num_running_replicas == 0:
+        raise ValueError("Number of replicas cannot be zero")
+    target_num_requests = config.get_target_ongoing_requests() * num_running_replicas
+    error_ratio = total_workload / target_num_requests
+    desired_num_replicas = num_running_replicas * error_ratio
+    return desired_num_replicas, {}
+
+
 default_autoscaling_policy = replica_queue_length_autoscaling_policy
+
+default_async_inference_autoscaling_policy = async_inference_autoscaling_policy

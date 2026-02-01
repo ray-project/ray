@@ -83,6 +83,7 @@ class AutoscalingContext:
         last_scale_down_time: Optional[float],
         current_time: Optional[float],
         config: Optional[Any],
+        async_inference_task_queue_length: int = 0,
     ):
         # Deployment information
         self.deployment_id = deployment_id  #: Unique identifier for the deployment.
@@ -133,6 +134,9 @@ class AutoscalingContext:
         # Config
         self.config = config  #: Autoscaling configuration for this deployment.
 
+        # Async inference task queue length (from QueueMonitor)
+        self._async_inference_task_queue_length = async_inference_task_queue_length
+
     @cached_property
     def aggregated_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, float]]]:
         if callable(self._aggregated_metrics_value):
@@ -162,6 +166,11 @@ class AutoscalingContext:
         # NOTE: for non-additive aggregation functions, total_running_requests is not
         # accurate, consider this is an approximation.
         return self.total_num_requests - self.total_queued_requests
+
+    @property
+    def async_inference_task_queue_length(self) -> int:
+        """Broker task queue length for async inference autoscaling."""
+        return self._async_inference_task_queue_length
 
 
 @PublicAPI(stability="alpha")

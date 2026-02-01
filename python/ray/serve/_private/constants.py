@@ -364,6 +364,11 @@ RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     get_env_float("RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S", 10.0),
 )
 
+# Async inference task queue metrics push interval.
+RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S = get_env_float(
+    "RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S", 10.0
+)
+
 # Serve multiplexed matching timeout.
 # This is the timeout for the matching process of multiplexed requests. To avoid
 # thundering herd problem, the timeout value will be randomized between this value
@@ -431,6 +436,11 @@ RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S = get_env_float(
 # The default autoscaling policy to use if none is specified.
 DEFAULT_AUTOSCALING_POLICY_NAME = (
     "ray.serve.autoscaling_policy:default_autoscaling_policy"
+)
+
+# The default async inference autoscaling policy to use for TaskConsumers if none is specified.
+DEFAULT_ASYNC_INFERENCE_AUTOSCALING_POLICY = (
+    "ray.serve.autoscaling_policy:default_async_inference_autoscaling_policy"
 )
 
 # Feature flag to enable collecting all queued and ongoing request
