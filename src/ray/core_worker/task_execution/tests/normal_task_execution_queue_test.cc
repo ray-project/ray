@@ -19,6 +19,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/core_worker/task_execution/common.h"
 
 namespace ray {
 namespace core {
@@ -26,20 +27,22 @@ namespace core {
 TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
   std::unique_ptr<NormalTaskExecutionQueue> queue =
       std::make_unique<NormalTaskExecutionQueue>();
+
   int n_ok = 0;
   int n_rej = 0;
-  auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
-                       rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](const TaskSpecification &task_spec,
-                         const Status &status,
-                         rpc::SendReplyCallback callback) { n_rej++; };
+
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
+  TaskToExecute task = TaskToExecute(
+      [&n_ok](const TaskSpecification &task_spec) { n_ok++; },
+      [&n_rej](const TaskSpecification &task_spec, const Status &status) { n_rej++; },
+      task_spec);
+
+  queue->EnqueueTask(task);
+  queue->EnqueueTask(task);
+  queue->EnqueueTask(task);
+  queue->EnqueueTask(task);
+  queue->EnqueueTask(task);
   ASSERT_TRUE(queue->CancelTaskIfFound(TaskID::Nil()));
   queue->ExecuteQueuedTasks();
   ASSERT_EQ(n_ok, 4);
@@ -51,23 +54,24 @@ TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
 TEST(NormalTaskExecutionQueueTest, StopCancelsQueuedTasks) {
   std::unique_ptr<NormalTaskExecutionQueue> queue =
       std::make_unique<NormalTaskExecutionQueue>();
+
   int n_ok = 0;
   std::atomic<int> n_rej{0};
-  auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
-                       rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](const TaskSpecification &task_spec,
-                         const Status &status,
-                         rpc::SendReplyCallback callback) {
-    ASSERT_TRUE(status.IsSchedulingCancelled());
-    n_rej.fetch_add(1);
-  };
+
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
+  TaskToExecute task =
+      TaskToExecute([&n_ok](const TaskSpecification &task_spec) { n_ok++; },
+                    [&n_rej](const TaskSpecification &task_spec, const Status &status) {
+                      ASSERT_TRUE(status.IsSchedulingCancelled());
+                      n_rej.fetch_add(1);
+                    },
+                    task_spec);
 
   // Enqueue several normal tasks but do not schedule them.
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, task_spec);
+  queue->EnqueueTask(task);
+  queue->EnqueueTask(task);
+  queue->EnqueueTask(task);
 
   // Stopping should cancel all queued tasks without running them.
   queue->Stop();

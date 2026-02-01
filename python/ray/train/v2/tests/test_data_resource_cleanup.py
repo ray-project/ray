@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, create_autospec
 import pytest
 
 import ray
-from ray.data._internal.execution.autoscaling_requester import (
-    get_or_create_autoscaling_requester_actor,
+from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
+    get_or_create_autoscaling_coordinator,
 )
 from ray.data._internal.iterator.stream_split_iterator import (
     SplitCoordinator,
@@ -101,16 +101,15 @@ def test_after_worker_group_shutdown():
 def test_split_coordinator_shutdown_executor(ray_start_4_cpus):
     """Tests that the SplitCoordinator properly requests resources for the data executor and cleans up after it is shutdown"""
 
-    def get_resources_when_updated(requester, prev_requests=None, timeout=3.0):
-        """Retrieve resource requests within the specified timeout. Returns after a new request is made or when the time expires."""
-        prev_requests = prev_requests or {}
+    def get_ongoing_requests(coordinator, timeout=3.0):
+        """Retrieve ongoing requests from the AutoscalingCoordinator."""
         deadline = time.time() + timeout
         requests = {}
         while time.time() < deadline:
             requests = ray.get(
-                requester.__ray_call__.remote(lambda r: r._resource_requests)
+                coordinator.__ray_call__.remote(lambda c: dict(c._ongoing_reqs))
             )
-            if requests != prev_requests:
+            if requests:
                 break
             time.sleep(0.05)
         return requests
@@ -123,34 +122,28 @@ def test_split_coordinator_shutdown_executor(ray_start_4_cpus):
     )
     ray.get(coord.start_epoch.remote(0))
 
-    # Explicity trigger autoscaling
+    # Explicitly trigger autoscaling
     ray.get(
         coord.__ray_call__.remote(
             lambda coord: coord._executor._cluster_autoscaler.try_trigger_scaling()
         )
     )
 
-    # Collect requests
-    requester = get_or_create_autoscaling_requester_actor()
-    requests = get_resources_when_updated(requester)
+    # Collect requests from the AutoscalingCoordinator
+    coordinator = get_or_create_autoscaling_coordinator()
+    requests = get_ongoing_requests(coordinator)
 
-    # One request made, with non-empty resource bundle
+    # One request made (V2 registers with the coordinator)
     assert len(requests) == 1
-    resource_bundles = list(requests.values())[0][0]
-    assert isinstance(resource_bundles, list)
-    bundle = resource_bundles[0]
-    assert bundle != {}
+    requester_id = list(requests.keys())[0]
+    assert requester_id.startswith("data-")
 
     # Shutdown data executor
     ray.get(coord.shutdown_executor.remote())
 
-    requests = get_resources_when_updated(requester, prev_requests=requests)
-
-    # Old resource request overwritten by new cleanup request
-    assert len(requests) == 1
-    resource_bundles = list(requests.values())[0][0]
-    assert isinstance(resource_bundles, dict)
-    assert resource_bundles == {}
+    # Verify that the request is cancelled (removed from ongoing requests)
+    requests = ray.get(coordinator.__ray_call__.remote(lambda c: dict(c._ongoing_reqs)))
+    assert len(requests) == 0, "Resource request was not cancelled"
 
 
 if __name__ == "__main__":
