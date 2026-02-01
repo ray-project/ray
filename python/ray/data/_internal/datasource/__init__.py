@@ -77,6 +77,9 @@ from ray.data._internal.datasource.parquet_datasource import (
     read_fragments,
 )
 from ray.data._internal.datasource.range_datasource import RangeDatasource
+
+# Import Connection/SQL* before huggingface_datasource to avoid circular import:
+# huggingface_datasource -> dataset -> context/datasource -> Connection not yet defined.
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.sql_datasource import (
     Connection,
