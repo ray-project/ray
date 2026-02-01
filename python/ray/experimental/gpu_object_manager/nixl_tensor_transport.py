@@ -1,6 +1,7 @@
 import threading
 import time
 import traceback
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, List, Optional
 
@@ -10,6 +11,7 @@ from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     TensorTransportManager,
     TensorTransportMetadata,
 )
+from ray._private.ray_constants import NIXL_REMOTE_AGENT_CACHE_MAXSIZE
 
 if TYPE_CHECKING:
     import torch
@@ -27,11 +29,15 @@ class NixlTransportMetadata(TensorTransportMetadata):
     Args:
         nixl_serialized_descs: Serialized tensor descriptors for NIXL transport.
         nixl_agent_meta: The additional metadata of the remote NIXL agent.
+        nixl_agent_name: The name of the NIXL agent.
+        reset_remote_agent: Whether to reset the remote NIXL agent (when receving the metadata).
     """
 
     nixl_reg_descs: Optional[Any] = None
     nixl_serialized_descs: Optional[bytes] = None
     nixl_agent_meta: Optional[bytes] = None
+    nixl_agent_name: Optional[str] = None
+    reset_remote_agent: Optional[bool] = None
 
     __eq__ = object.__eq__
     __hash__ = object.__hash__
@@ -43,6 +49,13 @@ class NixlTensorTransport(TensorTransportManager):
         self._nixl_agent = None
         self._aborted_transfer_obj_ids = set()
         self._aborted_transfer_obj_ids_lock = threading.Lock()
+
+        # LRU cache of remote agent names. When full, the least
+        # recently used remote agent is evicted and remove_remote_agent is called.
+        self._remote_agents: OrderedDict = OrderedDict()
+        self._nixl_memory_lock = threading.Lock()
+        # Label showing whether there has been any nixl memory deregistered.
+        self._memory_deregistered = False
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
@@ -132,13 +145,25 @@ class NixlTensorTransport(TensorTransportManager):
                 # has been created because nixl doesn't guarantee it will.
                 for dev in devices:
                     torch.cuda.synchronize(dev)
-            nixl_agent = self.get_nixl_agent()
-            reg_descs = nixl_agent.register_memory(gpu_object)
-            serialized_descs = nixl_agent.get_serialized_descs(reg_descs.trim())
-            agent_meta = nixl_agent.get_agent_metadata()
+            with self._nixl_memory_lock:
+                nixl_agent = self.get_nixl_agent()
+                reg_descs = nixl_agent.register_memory(gpu_object)
+                serialized_descs = nixl_agent.get_serialized_descs(reg_descs.trim())
+                agent_meta = nixl_agent.get_agent_metadata()
+                agent_name = nixl_agent.name
+                # If there is any memory deregistered before the registration of this gpu object, we need to tell the receiver to reset the remote agent.
+                # Note, we can remove this limit once nixl supports metadata updates.
+                reset_remote_agent = self._memory_deregistered
+                self._memory_deregistered = False
 
         else:
-            reg_descs, serialized_descs, agent_meta = None, None, None
+            reg_descs, serialized_descs, agent_meta, agent_name, reset_remote_agent = (
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
 
         ret = NixlTransportMetadata(
             tensor_meta=tensor_meta,
@@ -146,6 +171,8 @@ class NixlTensorTransport(TensorTransportManager):
             nixl_reg_descs=reg_descs,
             nixl_serialized_descs=serialized_descs,
             nixl_agent_meta=agent_meta,
+            nixl_agent_name=agent_name,
+            reset_remote_agent=reset_remote_agent,
         )
         gpu_object_store.record_managed_meta_nixl(obj_id, ret)
         return ret
@@ -157,6 +184,17 @@ class NixlTensorTransport(TensorTransportManager):
         backend: Optional[str] = None,
     ) -> NixlCommunicatorMetadata:
         return NixlCommunicatorMetadata()
+
+    def _update_remote_agent_cache(self, remote_name: str) -> None:
+        """Update LRU cache for remote agents; evict least recently used when full."""
+        if remote_name in self._remote_agents:
+            self._remote_agents.move_to_end(remote_name)
+        else:
+            if len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE:
+                evicted_agent_name, _ = self._remote_agents.popitem(last=False)
+                self.get_nixl_agent().remove_remote_agent(evicted_agent_name)
+
+            self._remote_agents[remote_name] = None
 
     def recv_multiple_tensors(
         self,
@@ -191,7 +229,23 @@ class NixlTensorTransport(TensorTransportManager):
             nixl_agent = self.get_nixl_agent()
             remote_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
             local_descs = nixl_agent.register_memory(tensors)
+
+            remote_name = tensor_transport_metadata.nixl_agent_name
+            # The sender's nixl agent tells whether we need to reset the remote agent.
+            reset_remote_agent = tensor_transport_metadata.reset_remote_agent
+            if (
+                remote_name is not None
+                and remote_name in self._remote_agents
+                and reset_remote_agent is not None
+                and reset_remote_agent
+            ):
+                nixl_agent.remove_remote_agent(remote_name)
+
             remote_name = nixl_agent.add_remote_agent(remote_nixl_agent_meta)
+            if isinstance(remote_name, bytes):
+                remote_name = remote_name.decode("utf-8")
+
+            self._update_remote_agent_cache(remote_name)
 
             xfer_handle = nixl_agent.initialize_xfer(
                 # "UUID" here is just a placeholder, can be any bytes, but without it,
@@ -236,8 +290,6 @@ class NixlTensorTransport(TensorTransportManager):
                 self._aborted_transfer_obj_ids.discard(obj_id)
             if xfer_handle:
                 nixl_agent.release_xfer_handle(xfer_handle)
-            if remote_name:
-                nixl_agent.remove_remote_agent(remote_name)
             if local_descs:
                 nixl_agent.deregister_memory(local_descs)
 
@@ -264,7 +316,9 @@ class NixlTensorTransport(TensorTransportManager):
         if count == 0:
             descs = tensor_transport_meta.nixl_reg_descs
             if descs is not None:
-                self.get_nixl_agent().deregister_memory(descs)
+                with self._nixl_memory_lock:
+                    self._memory_deregistered = True
+                    self.get_nixl_agent().deregister_memory(descs)
 
     def abort_transport(
         self,
