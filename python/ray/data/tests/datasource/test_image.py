@@ -8,7 +8,7 @@ from fsspec.implementations.local import LocalFileSystem
 from PIL import Image
 
 import ray
-from ray.data._internal.datasource.image_datasource import (
+from ray.data._internal.datasource import (
     ImageDatasource,
     ImageFileMetadataProvider,
 )
