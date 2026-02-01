@@ -29,13 +29,15 @@ class NixlTransportMetadata(TensorTransportMetadata):
     Args:
         nixl_serialized_descs: Serialized tensor descriptors for NIXL transport.
         nixl_agent_meta: The additional metadata of the remote NIXL agent.
+        nixl_agent_name: The name of the NIXL agent.
+        reset_remote_agent: Whether to reset the remote NIXL agent (when receving the metadata).
     """
 
     nixl_reg_descs: Optional[Any] = None
     nixl_serialized_descs: Optional[bytes] = None
     nixl_agent_meta: Optional[bytes] = None
     nixl_agent_name: Optional[str] = None
-    nixl_agent_partial_meta: Optional[bytes] = None
+    reset_remote_agent: Optional[bool] = None
 
     __eq__ = object.__eq__
     __hash__ = object.__hash__
@@ -52,7 +54,7 @@ class NixlTensorTransport(TensorTransportManager):
         # recently used remote agent is evicted and remove_remote_agent is called.
         self._remote_agents: OrderedDict = OrderedDict()
         self._nixl_memory_lock = threading.Lock()
-        # Label showing whether there was nixl memory deregistered.
+        # Label showing whether there has been any nixl memory deregistered.
         self._memory_deregistered = False
 
     def tensor_transport_backend(self) -> str:
@@ -108,19 +110,6 @@ class NixlTensorTransport(TensorTransportManager):
             )
         )
 
-    def _update_remote_agent_cache(self, remote_name: str, nixl_agent: Any) -> None:
-        """Update LRU cache for remote agents; evict least recently used when full."""
-        if remote_name in self._remote_agents:
-            self._remote_agents.move_to_end(remote_name)
-        else:
-            if len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE:
-                evicted_agent_name, _ = self._remote_agents.popitem(last=False)
-                try:
-                    nixl_agent.remove_remote_agent(evicted_agent_name)
-                except Exception as e:
-                    print(f"Warning: Failed to remove remote agent: {e}")
-            self._remote_agents[remote_name] = None
-
     def extract_tensor_transport_metadata(
         self,
         obj_id: str,
@@ -162,16 +151,13 @@ class NixlTensorTransport(TensorTransportManager):
                 serialized_descs = nixl_agent.get_serialized_descs(reg_descs.trim())
                 agent_meta = nixl_agent.get_agent_metadata()
                 agent_name = nixl_agent.name
-                if self._memory_deregistered:
-                    agent_partial_meta = None
-                else:
-                    agent_partial_meta = nixl_agent.get_partial_agent_metadata(
-                        reg_descs, inc_conn_info=False, backends=["UCX"]
-                    )
+                # If there is any memory deregistered before the registration of this gpu object, we need to tell the receiver to reset the remote agent.
+                # Note, we can remove this limit once nixl supports metadata updates.
+                reset_remote_agent = self._memory_deregistered
                 self._memory_deregistered = False
 
         else:
-            reg_descs, serialized_descs, agent_meta, agent_name, agent_partial_meta = (
+            reg_descs, serialized_descs, agent_meta, agent_name, reset_remote_agent = (
                 None,
                 None,
                 None,
@@ -186,7 +172,7 @@ class NixlTensorTransport(TensorTransportManager):
             nixl_serialized_descs=serialized_descs,
             nixl_agent_meta=agent_meta,
             nixl_agent_name=agent_name,
-            nixl_agent_partial_meta=agent_partial_meta,
+            reset_remote_agent=reset_remote_agent,
         )
         gpu_object_store.record_managed_meta_nixl(obj_id, ret)
         return ret
@@ -198,6 +184,17 @@ class NixlTensorTransport(TensorTransportManager):
         backend: Optional[str] = None,
     ) -> NixlCommunicatorMetadata:
         return NixlCommunicatorMetadata()
+
+    def _update_remote_agent_cache(self, remote_name: str) -> None:
+        """Update LRU cache for remote agents; evict least recently used when full."""
+        if remote_name in self._remote_agents:
+            self._remote_agents.move_to_end(remote_name)
+        else:
+            if len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE:
+                evicted_agent_name, _ = self._remote_agents.popitem(last=False)
+                self.get_nixl_agent().remove_remote_agent(evicted_agent_name)
+
+            self._remote_agents[remote_name] = None
 
     def recv_multiple_tensors(
         self,
@@ -234,20 +231,21 @@ class NixlTensorTransport(TensorTransportManager):
             local_descs = nixl_agent.register_memory(tensors)
 
             remote_name = tensor_transport_metadata.nixl_agent_name
-            if remote_name is not None and remote_name in self._remote_agents:
-                if tensor_transport_metadata.nixl_agent_partial_meta is not None:
-                    nixl_agent.add_remote_agent(
-                        tensor_transport_metadata.nixl_agent_partial_meta
-                    )
-                else:
-                    nixl_agent.remove_remote_agent(remote_name)
-                    nixl_agent.add_remote_agent(remote_nixl_agent_meta)
-            else:
-                remote_name = nixl_agent.add_remote_agent(remote_nixl_agent_meta)
-                if isinstance(remote_name, bytes):
-                    remote_name = remote_name.decode("utf-8")
+            # The sender's nixl agent tells whether we need to reset the remote agent.
+            reset_remote_agent = tensor_transport_metadata.reset_remote_agent
+            if (
+                remote_name is not None
+                and remote_name in self._remote_agents
+                and reset_remote_agent is not None
+                and reset_remote_agent
+            ):
+                nixl_agent.remove_remote_agent(remote_name)
 
-            self._update_remote_agent_cache(remote_name, nixl_agent)
+            remote_name = nixl_agent.add_remote_agent(remote_nixl_agent_meta)
+            if isinstance(remote_name, bytes):
+                remote_name = remote_name.decode("utf-8")
+
+            self._update_remote_agent_cache(remote_name)
 
             xfer_handle = nixl_agent.initialize_xfer(
                 # "UUID" here is just a placeholder, can be any bytes, but without it,
