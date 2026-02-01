@@ -767,6 +767,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
 def create_arrow_fixed_shape_tensor_format(
     shape: Tuple[int, ...],
     dtype: pa.DataType,
+    outer_len: Optional[int] = None,
     tensor_format: Optional[FixedShapeTensorFormat] = None,
 ) -> pa.ExtensionType:
     """
@@ -775,6 +776,7 @@ def create_arrow_fixed_shape_tensor_format(
     Args:
         shape: Shape of the tensor.
         dtype: PyArrow data type of tensor elements.
+        outer_len: Optional, the # of tensors
         tensor_format: The tensor format to use. If None, uses
             ``DataContext.arrow_fixed_shape_tensor_format``.
 
@@ -795,18 +797,19 @@ def create_arrow_fixed_shape_tensor_format(
         tensor_format = resolve_fixed_shape_tensor_format()
 
         # Native tensor format requires PyArrow 12+
-        if (
-            tensor_format == FixedShapeTensorFormat.ARROW_NATIVE
-            and FixedShapeTensorType is None
-        ):
-            if log_once("native_fixed_shape_tensors_not_supported"):
+        if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
+            if FixedShapeTensorType is None and log_once(
+                "native_fixed_shape_tensors_not_supported"
+            ):
                 warnings.warn(
                     f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} "
                     "to enable native tensor arrays. Falling back to V2.",
                     UserWarning,
                     stacklevel=3,
                 )
-            tensor_format = FixedShapeTensorFormat.V2
+                tensor_format = FixedShapeTensorFormat.V2
+            if np.prod(shape) == 0 or outer_len == 0:
+                tensor_format = FixedShapeTensorFormat.V2
 
     if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
         if FixedShapeTensorType is None:
@@ -964,7 +967,7 @@ class ArrowTensorArray(pa.ExtensionArray):
         num_items_per_element = np.prod(element_shape) if element_shape else 1
 
         pa_tensor_type_ = create_arrow_fixed_shape_tensor_format(
-            element_shape, scalar_dtype
+            element_shape, scalar_dtype, outer_len=outer_len
         )
 
         if _is_native_tensor_type(pa_tensor_type_):
