@@ -218,11 +218,26 @@ def test_concurrent_dataset_logging_separate_files(shutdown_only):
 
     This test addresses issue #48633 by verifying that when multiple Ray Data
     operations run concurrently, each writes to its own log file.
+
+    Improvements:
+    - Uses num_cpus=0 to prevent resource deadlock
+    - Captures existing logs to avoid false positives (with directory check)
+    - Polls for log files with timeout instead of fixed sleep
+    - Sorts by modification time for deterministic file selection
     """
     reset_logging()
     ray.init()
 
-    @ray.remote
+    # Capture existing log files before test to avoid checking old logs
+    log_dir = get_log_directory()
+    # Create directory if it doesn't exist and get existing logs
+    if os.path.exists(log_dir):
+        existing_logs = set(os.listdir(log_dir))
+    else:
+        existing_logs = set()
+
+    # Use num_cpus=0 to avoid blocking CPU resources needed by nested Ray Data tasks
+    @ray.remote(num_cpus=0)
     def create_dataset(dataset_id):
         # Create and materialize a dataset
         # ray.data.range returns {"id": n}, not {"value": n}
@@ -234,17 +249,26 @@ def test_concurrent_dataset_logging_separate_files(shutdown_only):
     futures = [create_dataset.remote(i) for i in range(3)]
     ray.get(futures)
 
-    # Give some time for logs to be flushed
-    time.sleep(1)
+    # Poll for new log files with timeout instead of fixed sleep
+    def wait_for_new_logs(expected_count, timeout=10):
+        """Wait for at least expected_count new log files to appear."""
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if not os.path.exists(log_dir):
+                time.sleep(0.2)
+                continue
+            current_logs = set(os.listdir(log_dir))
+            new_logs = current_logs - existing_logs
+            # Filter for dataset-specific log files (ray-data-{uuid}.log)
+            dataset_logs = [
+                f for f in new_logs if f.startswith("ray-data-") and f != "ray-data.log"
+            ]
+            if len(dataset_logs) >= expected_count:
+                return dataset_logs
+            time.sleep(0.2)
+        return []
 
-    # Verify that multiple dataset-specific log files were created
-    log_dir = get_log_directory()
-    log_files = os.listdir(log_dir)
-
-    # Filter for dataset-specific log files (ray-data-{uuid}.log)
-    dataset_logs = [
-        f for f in log_files if f.startswith("ray-data-") and f != "ray-data.log"
-    ]
+    dataset_logs = wait_for_new_logs(expected_count=3)
 
     # Should have at least 3 dataset-specific log files
     assert (
@@ -252,7 +276,15 @@ def test_concurrent_dataset_logging_separate_files(shutdown_only):
     ), f"Expected at least 3 log files, got {len(dataset_logs)}: {dataset_logs}"
 
     # Verify each log file contains execution information
-    for log_file in dataset_logs[:3]:  # Check first 3 files
+    # Sort by modification time to ensure we check the most recent files
+    dataset_logs_with_time = [
+        (f, os.path.getmtime(os.path.join(log_dir, f))) for f in dataset_logs
+    ]
+    dataset_logs_sorted = sorted(
+        dataset_logs_with_time, key=lambda x: x[1], reverse=True
+    )
+
+    for log_file, _ in dataset_logs_sorted[:3]:  # Check 3 most recent files
         log_path = os.path.join(log_dir, log_file)
         with open(log_path) as f:
             content = f.read()
@@ -273,7 +305,14 @@ def test_concurrent_dataset_logging_no_interference(shutdown_only):
     reset_logging()
     ray.init()
 
-    @ray.remote
+    # Capture existing logs with directory check
+    log_dir = get_log_directory()
+    if os.path.exists(log_dir):
+        existing_logs = set(os.listdir(log_dir))
+    else:
+        existing_logs = set()
+
+    @ray.remote(num_cpus=0)
     def create_dataset(dataset_num):
         # Simple dataset creation - logs will be automatically generated
         ds = ray.data.range(50, override_num_blocks=5)
@@ -284,14 +323,24 @@ def test_concurrent_dataset_logging_no_interference(shutdown_only):
     futures = [create_dataset.remote(i) for i in range(3)]
     ray.get(futures)
 
-    time.sleep(1)
+    # Poll for new log files
+    def wait_for_new_logs(expected_count, timeout=10):
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if not os.path.exists(log_dir):
+                time.sleep(0.2)
+                continue
+            current_logs = set(os.listdir(log_dir))
+            new_logs = current_logs - existing_logs
+            dataset_logs = [
+                f for f in new_logs if f.startswith("ray-data-") and f != "ray-data.log"
+            ]
+            if len(dataset_logs) >= expected_count:
+                return dataset_logs
+            time.sleep(0.2)
+        return []
 
-    # Verify separate log files were created
-    log_dir = get_log_directory()
-    log_files = os.listdir(log_dir)
-    dataset_logs = [
-        f for f in log_files if f.startswith("ray-data-") and f != "ray-data.log"
-    ]
+    dataset_logs = wait_for_new_logs(expected_count=3)
 
     # Should have at least 3 separate dataset log files
     assert (
@@ -300,7 +349,14 @@ def test_concurrent_dataset_logging_no_interference(shutdown_only):
 
     # Verify each log file has unique content and is non-empty
     log_contents = []
-    for log_file in dataset_logs[:3]:
+    dataset_logs_with_time = [
+        (f, os.path.getmtime(os.path.join(log_dir, f))) for f in dataset_logs
+    ]
+    dataset_logs_sorted = sorted(
+        dataset_logs_with_time, key=lambda x: x[1], reverse=True
+    )
+
+    for log_file, _ in dataset_logs_sorted[:3]:
         log_path = os.path.join(log_dir, log_file)
         with open(log_path) as f:
             content = f.read()
@@ -325,7 +381,14 @@ def test_concurrent_logging_issue_48633_repro(shutdown_only):
     reset_logging()
     ray.init()
 
-    @ray.remote
+    # Capture existing logs with directory check
+    log_dir = get_log_directory()
+    if os.path.exists(log_dir):
+        existing_logs = set(os.listdir(log_dir))
+    else:
+        existing_logs = set()
+
+    @ray.remote(num_cpus=0)
     def f():
         # This is the exact repro from issue #48633
         ray.data.range(1).materialize()
@@ -333,14 +396,24 @@ def test_concurrent_logging_issue_48633_repro(shutdown_only):
     # Run 2 concurrent tasks (from the issue repro)
     ray.get([f.remote() for _ in range(2)])
 
-    time.sleep(1)
+    # Poll for new log files
+    def wait_for_new_logs(expected_count, timeout=10):
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if not os.path.exists(log_dir):
+                time.sleep(0.2)
+                continue
+            current_logs = set(os.listdir(log_dir))
+            new_logs = current_logs - existing_logs
+            dataset_logs = [
+                f for f in new_logs if f.startswith("ray-data-") and f != "ray-data.log"
+            ]
+            if len(dataset_logs) >= expected_count:
+                return dataset_logs
+            time.sleep(0.2)
+        return []
 
-    # Verify separate log files were created
-    log_dir = get_log_directory()
-    log_files = os.listdir(log_dir)
-    dataset_logs = [
-        f for f in log_files if f.startswith("ray-data-") and f != "ray-data.log"
-    ]
+    dataset_logs = wait_for_new_logs(expected_count=2)
 
     # Should have at least 2 separate log files
     assert (
