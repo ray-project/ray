@@ -26,7 +26,6 @@ import os
 import numpy as np
 from gymnasium.spaces import Discrete
 
-import ray
 from ray import tune
 from ray.rllib.algorithms.ppo.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.ppo.ppo_tf_policy import (
