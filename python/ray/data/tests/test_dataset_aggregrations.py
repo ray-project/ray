@@ -46,8 +46,7 @@ def test_count_after_caching_after_execution(ray_start_regular):
     ds = ray.data.read_csv(paths)
     # Row count should be unknown before execution.
     assert "num_rows=?" in str(ds)
-    # After iterating over bundles and completing execution, row count should be known.
-    list(ds.iter_internal_ref_bundles())
+    ds.materialize()
     assert f"num_rows={DS_ROW_COUNT}" in str(ds)
     assert ds.count() == DS_ROW_COUNT
 
