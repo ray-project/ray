@@ -214,7 +214,7 @@ def find_user_process_by_port_and_status(
     for pid in psutil.pids():
         process = psutil.Process(pid)
         try:
-            conns = process.connections()
+            conns = process.net_connections()
             for conn in conns:
                 if conn.laddr.port == port:
                     if statuses_to_check is None or conn.status in statuses_to_check:
@@ -574,7 +574,7 @@ def make_sure_dashboard_http_port_unused():
     for process in psutil.process_iter():
         should_kill = False
         try:
-            for conn in process.connections():
+            for conn in process.net_connections():
                 if conn.laddr.port == ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT:
                     should_kill = True
                     break

@@ -264,7 +264,7 @@ def test_gcs_connection_no_leak(ray_start_cluster):
 
     def get_gcs_num_of_connections():
         p = psutil.Process(gcs_server_pid)
-        num_connections = len(p.connections())
+        num_connections = len(p.net_connections())
         print(">>", num_connections)
         return num_connections
 
@@ -455,7 +455,7 @@ def test_gcs_fd_usage(shutdown_only):
     )
     gcs_process = ray._private.worker._global_node.all_processes["gcs_server"][0]
     gcs_process = psutil.Process(gcs_process.process.pid)
-    print("GCS connections", len(gcs_process.connections()))
+    print("GCS connections", len(gcs_process.net_connections()))
 
     @ray.remote(runtime_env={"env_vars": {"Hello": "World"}})
     class A:
@@ -466,13 +466,13 @@ def test_gcs_fd_usage(shutdown_only):
     aa = [A.remote() for _ in range(32)]
     for a in aa:
         assert ray.get(a.f.remote()) == "World"
-    base_fd_num = len(gcs_process.connections())
+    base_fd_num = len(gcs_process.net_connections())
     print("GCS connections", base_fd_num)
 
     bb = [A.remote() for _ in range(16)]
     for b in bb:
         assert ray.get(b.f.remote()) == "World"
-    new_fd_num = len(gcs_process.connections())
+    new_fd_num = len(gcs_process.net_connections())
     print("GCS connections", new_fd_num)
     # each worker has two connections:
     #   GCS -> CoreWorker
