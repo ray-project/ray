@@ -326,11 +326,12 @@ def replica_queue_length_autoscaling_policy(
 
 
 @PublicAPI(stability="beta")
-@_apply_autoscaling_config
-def async_inference_autoscaling_policy(ctx: AutoscalingContext) -> Tuple[Union[int, float], Dict[str, Any]]:
+def async_inference_autoscaling_policy(
+    ctx: AutoscalingContext,
+) -> Tuple[Union[int, float], Dict[str, Any]]:
     """The default autoscaling policy based on basic thresholds for scaling."""
     num_running_replicas = ctx.current_num_replicas
-    
+
     # Calculate total workload = queue tasks + HTTP requests
     total_workload = ctx.total_num_requests + ctx.async_inference_task_queue_length
 
