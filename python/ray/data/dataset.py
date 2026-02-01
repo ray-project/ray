@@ -6369,7 +6369,10 @@ class Dataset:
         """
         if self._current_executor:
             return self._current_executor.get_stats().to_summary().to_string()
-        elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
+        elif (
+            self._write_ds is not None
+            and self._write_ds._plan._snapshot_stats is not None
+        ):
             return self._write_ds.stats()
         return self._get_stats_summary().to_string()
 
