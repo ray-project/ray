@@ -611,6 +611,7 @@ class DreamerV3(Algorithm):
                 elif isinstance(single_action_space, gym.spaces.MultiDiscrete):
                     # Convert multi-int actions to concatenated one-hot vectors.
                     import numpy as np
+
                     sample["actions_ints"] = sample[Columns.ACTIONS]
                     one_hots = [
                         one_hot(sample[Columns.ACTIONS][..., i], depth=n)

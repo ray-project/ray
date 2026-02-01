@@ -447,8 +447,10 @@ class DreamerModel(nn.Module):
             elif use_random_actions_in_dream:
                 if isinstance(self.action_space, gym.spaces.Discrete):
                     a = torch.randint(
-                        self.action_space.n, (B,),
-                        dtype=torch.int64, device=actions.device
+                        self.action_space.n,
+                        (B,),
+                        dtype=torch.int64,
+                        device=actions.device,
                     )
                     a = torch.nn.functional.one_hot(
                         a, num_classes=self.action_space.n
@@ -458,10 +460,9 @@ class DreamerModel(nn.Module):
                     one_hots = [
                         torch.nn.functional.one_hot(
                             torch.randint(
-                                int(n), (B,),
-                                dtype=torch.int64, device=actions.device
+                                int(n), (B,), dtype=torch.int64, device=actions.device
                             ),
-                            num_classes=int(n)
+                            num_classes=int(n),
                         )
                         for n in self.action_space.nvec
                     ]

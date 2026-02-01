@@ -54,9 +54,9 @@ class MultiDiscreteOneHotDistribution:
 
     def entropy(self):
         """Compute total entropy as sum of entropies over all sub-actions."""
-        return torch.stack(
-            [dist.entropy() for dist in self.distributions], dim=-1
-        ).sum(dim=-1)
+        return torch.stack([dist.entropy() for dist in self.distributions], dim=-1).sum(
+            dim=-1
+        )
 
     def sample(self):
         """Sample from all sub-action distributions and concatenate."""
