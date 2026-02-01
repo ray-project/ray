@@ -1,6 +1,5 @@
 import os
 import sys
-import time
 
 import pytest
 import redis
@@ -9,7 +8,10 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
-from ray.serve._private.queue_monitor import QueueMonitorActor
+from ray.serve._private.queue_monitor import (
+    create_queue_monitor_actor,
+    kill_queue_monitor_actor,
+)
 from ray.tests.conftest import external_redis  # noqa: F401
 
 TEST_DEPLOYMENT_ID = DeploymentID("test_deployment", "test_app")
@@ -35,42 +37,40 @@ def redis_broker_url(external_redis):  # noqa: F811
 
 
 @pytest.fixture
-def queue_monitor(serve_instance, redis_broker_url):
+def queue_monitor(serve_instance, redis_broker_url):  # noqa: F811
     """Create a QueueMonitor with the real Serve controller."""
     controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
-    monitor = QueueMonitorActor.options(
-        name=f"test_queue_monitor_{time.time()}",
-        namespace=SERVE_NAMESPACE,
-    ).remote(
+    monitor = create_queue_monitor_actor(
+        deployment_id=TEST_DEPLOYMENT_ID,
         broker_url=redis_broker_url,
         queue_name=TEST_QUEUE_NAME,
-        deployment_id=TEST_DEPLOYMENT_ID,
         controller_handle=controller,
+        namespace=SERVE_NAMESPACE,
     )
     yield monitor
-    ray.kill(monitor, no_restart=True)
+    kill_queue_monitor_actor(TEST_DEPLOYMENT_ID.name, namespace=SERVE_NAMESPACE)
 
 
 class TestQueueMonitorActor:
     """Integration tests for QueueMonitorActor with real Redis and Serve controller."""
 
-    def test_queue_length_refresh(self, redis_client, queue_monitor):
-        """Test QueueMonitor correctly fetches and caches queue length from broker."""
+    def test_queue_length_fetch(self, redis_client, queue_monitor):
+        """Test QueueMonitor correctly fetches queue length from broker."""
         for i in range(30):
             redis_client.lpush(TEST_QUEUE_NAME, f"message_{i}")
 
-        def check_cached_length():
-            return ray.get(queue_monitor.get_cached_queue_length.remote()) == 30
+        def check_length():
+            return ray.get(queue_monitor.get_queue_length.remote()) == 30
 
-        wait_for_condition(check_cached_length, timeout=30)
+        wait_for_condition(check_length, timeout=30)
 
     def test_queue_length_updates_on_change(self, redis_client, queue_monitor):
-        """Test QueueMonitor updates cached length when queue changes."""
+        """Test QueueMonitor returns updated length when queue changes."""
         for i in range(10):
             redis_client.lpush(TEST_QUEUE_NAME, f"message_{i}")
 
         def check_initial_length():
-            return ray.get(queue_monitor.get_cached_queue_length.remote()) == 10
+            return ray.get(queue_monitor.get_queue_length.remote()) == 10
 
         wait_for_condition(check_initial_length, timeout=30)
 
@@ -78,7 +78,7 @@ class TestQueueMonitorActor:
             redis_client.lpush(TEST_QUEUE_NAME, f"message_{i}")
 
         def check_updated_length():
-            return ray.get(queue_monitor.get_cached_queue_length.remote()) == 25
+            return ray.get(queue_monitor.get_queue_length.remote()) == 25
 
         wait_for_condition(check_updated_length, timeout=30)
 

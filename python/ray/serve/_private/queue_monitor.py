@@ -66,47 +66,54 @@ class QueueMonitorActor:
 
         self._broker = Broker(self._broker_url, http_api=self._rabbitmq_http_url)
 
-        # Cached queue length for metrics pushing
-        self._cached_queue_length: int = 0
-
-        # Set up metrics pusher if controller handle is provided
+        # MetricsPusher is created here but tasks are registered in start_metrics_pusher()
+        # because asyncio.create_task() requires a running event loop (not available in __init__)
         self._metrics_pusher: Optional[MetricsPusher] = None
+        self._metrics_pusher_started: bool = False
         if self._controller_handle is not None:
             self._metrics_pusher = MetricsPusher()
+
+    def start_metrics_pusher(self):
+        """Start the metrics pusher to periodically push metrics to the controller.
+
+        Idempotent - safe to call multiple times. Must be called after the actor
+        is created (when the event loop is running).
+        """
+        if self._metrics_pusher is not None and not self._metrics_pusher_started:
             self._metrics_pusher.register_or_update_task(
                 self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
                 self._push_metrics_to_controller,
                 RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S,
             )
             self._metrics_pusher.start()
+            self._metrics_pusher_started = True
 
-    async def __ray_shutdown__(self):
+    def __ray_shutdown__(self):
+        # Note: This must be synchronous (not async) because Ray's core code
+        # in _raylet.pyx calls __ray_shutdown__() without awaiting.
         if self._metrics_pusher is not None:
-            await self._metrics_pusher.graceful_shutdown()
+            self._metrics_pusher.stop_tasks()
             self._metrics_pusher = None
         if self._broker is not None:
             self._broker.close()
             self._broker = None
 
-    def get_cached_queue_length(self) -> int:
-        """Returns the cached queue length (last fetched from broker).
+    async def get_queue_length(self) -> int:
+        """
+        Fetch queue length from the broker.
 
         Returns:
             Number of pending tasks in the queue.
-        """
-        return self._cached_queue_length
-
-    async def _refresh_queue_length(self):
-        """
-        Fetch queue length from the broker and update the cache.
-
-        Returns:
-            None
 
         Raises:
             ValueError: If queue is not found in broker response or
                 if queue data is missing the 'messages' field.
         """
+        # Lazy initialization: ensure metrics pusher is started on first async call.
+        # This handles actor restarts where __init__ runs but start_metrics_pusher
+        # isn't called externally.
+        self.start_metrics_pusher()
+
         queues = await self._broker.queues([self._queue_name])
         if queues is not None:
             for q in queues:
@@ -116,9 +123,7 @@ class QueueMonitorActor:
                         raise ValueError(
                             f"Queue '{self._queue_name}' is missing 'messages' field"
                         )
-                    # Cache the queue length for metrics pushing
-                    self._cached_queue_length = queue_length
-                    return
+                    return queue_length
 
         raise ValueError(f"Queue '{self._queue_name}' not found in broker response")
 
@@ -127,18 +132,17 @@ class QueueMonitorActor:
         if self._controller_handle is None:
             return
 
-        # Refresh queue length before pushing
         try:
-            await self._refresh_queue_length()
+            queue_length = await self.get_queue_length()
         except Exception as e:
             logger.warning(
-                f"[{self._deployment_id}] Failed to refresh queue length for metrics push: {e}"
+                f"[{self._deployment_id}] Failed to get queue length for metrics push: {e}"
             )
             return
 
         report = AsyncInferenceTaskQueueMetricReport(
             deployment_id=self._deployment_id,
-            queue_length=self._cached_queue_length,
+            queue_length=queue_length,
             timestamp_s=time.time(),
         )
         # Fire-and-forget push to controller
@@ -190,6 +194,9 @@ def create_queue_monitor_actor(
             controller_handle=controller_handle,
             rabbitmq_http_url=rabbitmq_http_url,
         )
+
+        # Start metrics pusher after actor is created (event loop is now running)
+        actor.start_metrics_pusher.remote()
 
         logger.info(
             f"Created QueueMonitor actor '{actor_name}' in namespace '{namespace}'"
