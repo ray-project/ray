@@ -153,7 +153,9 @@ class NixlTensorTransport(TensorTransportManager):
                 agent_name = nixl_agent.name
                 # If there is any memory deregistered before the registration of this gpu object, we need to tell the receiver to reset the remote agent.
                 # Note, we can remove this limit once nixl supports metadata updates.
-                reset_remote_agent = self._memory_deregistered
+                reset_remote_agent = (
+                    self._memory_deregistered and NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0
+                )
                 self._memory_deregistered = False
 
         else:
@@ -245,7 +247,8 @@ class NixlTensorTransport(TensorTransportManager):
             if isinstance(remote_name, bytes):
                 remote_name = remote_name.decode("utf-8")
 
-            self._update_remote_agent_cache(remote_name)
+            if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
+                self._update_remote_agent_cache(remote_name)
 
             xfer_handle = nixl_agent.initialize_xfer(
                 # "UUID" here is just a placeholder, can be any bytes, but without it,
@@ -290,6 +293,8 @@ class NixlTensorTransport(TensorTransportManager):
                 self._aborted_transfer_obj_ids.discard(obj_id)
             if xfer_handle:
                 nixl_agent.release_xfer_handle(xfer_handle)
+            if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and remote_name:
+                nixl_agent.remove_remote_agent(remote_name)
             if local_descs:
                 nixl_agent.deregister_memory(local_descs)
 

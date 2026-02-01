@@ -631,5 +631,5 @@ RAY_ENABLE_ZERO_COPY_TORCH_TENSORS = env_bool(
 )
 
 # Max number of cached NIXL remote agents. When exceeded, the least recently used
-# remote agent is evicted.
+# remote agent is evicted. When set to 0, there will be no remote agent reuse.
 NIXL_REMOTE_AGENT_CACHE_MAXSIZE = env_integer("RAY_NIXL_REMOTE_AGENT_CACHE_MAXSIZE", 64)
