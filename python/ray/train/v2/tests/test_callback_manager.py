@@ -9,13 +9,15 @@ from ray.train.v2.api.exceptions import ControllerError
 
 
 def test_invoke_callback_without_hook():
-    """Test that callbacks without the hook method are skipped."""
-    callback = MagicMock()
+    """Test that callbacks without the hook method raise an error."""
 
-    manager = CallbackManager([callback])
-    result = manager.invoke("test_hook", "arg1")
+    class CallbackWithoutHook:
+        pass
 
-    assert result is None
+    manager = CallbackManager([CallbackWithoutHook()])
+    with pytest.raises(ControllerError) as exc_info:
+        manager.invoke("test_hook", "arg1")
+    assert isinstance(exc_info.value.controller_failure, AttributeError)
 
 
 def test_invoke_multiple_callbacks_all_succeed():
@@ -48,11 +50,11 @@ def test_invoke_with_real_controller_callback_error_returned():
 
     manager = CallbackManager([callback])
     train_run_context = MagicMock()
-    result = manager.invoke("after_controller_start", train_run_context)
+    with pytest.raises(ControllerError) as exc_info:
+        manager.invoke("after_controller_start", train_run_context)
 
     assert callback.called is True
-    assert isinstance(result, ControllerError)
-    assert isinstance(result.controller_failure, ValueError)
+    assert isinstance(exc_info.value.controller_failure, ValueError)
 
 
 def test_invoke_callback_error_returns_controller_error():
@@ -60,10 +62,10 @@ def test_invoke_callback_error_returns_controller_error():
     callback.test_hook = MagicMock(side_effect=ValueError("Original hook error"))
 
     manager = CallbackManager([callback])
-    result = manager.invoke("test_hook", "arg1", key1="value1")
+    with pytest.raises(ControllerError) as exc_info:
+        manager.invoke("test_hook", "arg1", key1="value1")
 
-    assert isinstance(result, ControllerError)
-    assert isinstance(result.controller_failure, ValueError)
+    assert isinstance(exc_info.value.controller_failure, ValueError)
 
 
 if __name__ == "__main__":

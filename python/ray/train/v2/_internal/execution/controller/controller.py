@@ -199,17 +199,16 @@ class TrainController:
         invoke_failure_decision_callbacks: bool = False,
         **context,
     ) -> Optional["TrainControllerLoopIterationResult"]:
-        optional_error = self._controller_callback_manager.invoke(
-            hook_name, *args, **context
-        )
-        if optional_error:
+        try:
+            self._controller_callback_manager.invoke(hook_name, *args, **context)
+        except ControllerError as error:
             failure_decision = self._failure_policy.make_decision(
-                training_failed_error=optional_error,
+                training_failed_error=error,
             )
             # Avoid re-entering controller callback hooks while handling a callback failure.
             return self._execute_failure_decision(
                 failure_decision,
-                training_failed_error=optional_error,
+                training_failed_error=error,
                 invoke_failure_decision_callbacks=invoke_failure_decision_callbacks,
             )
         return None
