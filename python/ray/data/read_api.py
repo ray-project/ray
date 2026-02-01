@@ -30,6 +30,7 @@ from ray.data._internal.datasource import (
     BinaryDatasource,
     ClickHouseDatasource,
     CSVDatasource,
+    DatabricksCredentialProvider,
     DeltaSharingDatasource,
     HudiDatasource,
     ImageDatasource,
@@ -51,9 +52,6 @@ from ray.data._internal.datasource import (
     UnityCatalogConnector,
     VideoDatasource,
     WebDatasetDatasource,
-)
-from ray.data._internal.datasource.databricks_credentials import (
-    DatabricksCredentialProvider,
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -117,9 +115,9 @@ if TYPE_CHECKING:
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
-    from ray.data._internal.datasource import TFXReadOptions
-    from ray.data._internal.datasource.databricks_credentials import (
+    from ray.data._internal.datasource import (
         DatabricksCredentialProvider,
+        TFXReadOptions,
     )
 
 T = TypeVar("T")
@@ -2059,9 +2057,7 @@ def read_tfrecords(
         and tfx_read
         and not tf_schema
     ):
-        from ray.data._internal.datasource.tfrecords_datasource import (
-            _infer_schema_and_transform,
-        )
+        from ray.data._internal.datasource import _infer_schema_and_transform
 
         return _infer_schema_and_transform(ds)
 
@@ -2714,9 +2710,7 @@ def read_databricks_tables(
         .. testcode::
             :skipif: True
 
-            from ray.data._internal.datasource.databricks_credentials import (
-                DatabricksCredentialProvider,
-            )
+            from ray.data._internal.datasource import DatabricksCredentialProvider
 
             class MyCredentialProvider(DatabricksCredentialProvider):
                 def get_token(self) -> str:
@@ -2774,8 +2768,6 @@ def read_databricks_tables(
     # Resolve credential provider (single source of truth for token and host)
     from ray.data._internal.datasource import (
         DatabricksUCDatasource,
-    )
-    from ray.data._internal.datasource.databricks_credentials import (
         resolve_credential_provider,
     )
 
@@ -3913,7 +3905,7 @@ def read_iceberg(
     Returns:
         :class:`~ray.data.Dataset` with rows from the Iceberg table.
     """
-    from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
+    from ray.data._internal.datasource import IcebergDatasource
 
     # Deprecation warning for row_filter parameter
     if row_filter is not None:
@@ -4172,9 +4164,7 @@ def read_unity_catalog(
 
         Read using a custom credential provider:
 
-        >>> from ray.data._internal.datasource.databricks_credentials import (  # doctest: +SKIP
-        ...     StaticCredentialProvider,
-        ... )
+        >>> from ray.data._internal.datasource import StaticCredentialProvider  # doctest: +SKIP
         >>> provider = StaticCredentialProvider(  # doctest: +SKIP
         ...     token="dapi...",
         ...     host="https://dbc-XXXXXXX-XXXX.cloud.databricks.com",
@@ -4208,7 +4198,7 @@ def read_unity_catalog(
     Returns:
         A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
     """  # noqa: E501
-    from ray.data._internal.datasource.databricks_credentials import (
+    from ray.data._internal.datasource import (
         StaticCredentialProvider,
         resolve_credential_provider,
     )

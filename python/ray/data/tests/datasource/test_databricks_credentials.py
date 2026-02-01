@@ -5,7 +5,7 @@ from unittest import mock
 
 import pytest
 
-from ray.data._internal.datasource.databricks_credentials import (
+from ray.data._internal.datasource import (
     DatabricksCredentialProvider,
     EnvironmentCredentialProvider,
     StaticCredentialProvider,
