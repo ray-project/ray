@@ -93,7 +93,9 @@ This tutorial uses [DeepSpeed AutoTP](https://github.com/deepspeedai/DeepSpeed/b
 
 1. **Automatic partitioning**: For supported models, AutoTP automatically identifies which parameters should be partitioned and in which dimensions. You don't need to manually define partitioning patterns. Most popular models including Llama and Qwen series are already supported out of the box.
 
-2. **Efficient combination with ZeRO**: DeepSpeed has a series of memory optimization techniques called ZeRO stage 1, 2, and 3, which drastically reduces the memory usage of data prallelism. AutoTP integrates seamlessly with DeepSpeed's ZeRO (stage 1 and 2). This combination allows you to scale to larger models while maintaining high training throughput.
+2. **Efficient combination with ZeRO**: DeepSpeed has a series of memory optimization techniques called ZeRO stage 1, 2, and 3, which drastically reduce the memory usage of data parallelism. AutoTP integrates seamlessly with DeepSpeed's ZeRO (stage 1 and 2). This combination allows you to scale to larger models while maintaining high training throughput.
+
+You can also build tensor parallelism with PyTorch DTensor and FSDP, but you must explicitly define which parameters shard on which dimensions (for example, with `parallelize_module`) and maintain that plan as your model changes. AutoTP removes that step when the model is supported. The trade-off is that AutoTP doesn't support ZeRO stage 3 parameter sharding across data parallel ranks. If you need full parameter sharding to minimize memory, FSDP + DTensor is the better fit, though it can add communication overhead at larger data parallel sizes. For details on DTensor-based tensor parallelism, see the [PyTorch DTensor TP docs](https://docs.pytorch.org/docs/stable/distributed.tensor.parallel.html).
 
 ## When to Use Tensor Parallelism vs ZeRO stage 3
 
