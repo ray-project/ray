@@ -74,6 +74,8 @@ class GroupedData:
         return Dataset(
             plan,
             logical_plan,
+            cached_stats=self._dataset._cached_stats,
+            cached_schema=self._dataset._cached_schema,
         )
 
     def _aggregate_on(

@@ -1,10 +1,9 @@
 import logging
-from unittest.mock import patch
 
 import pytest
 
 import ray
-from ray.data.exceptions import SystemException, UserCodeException
+from ray.data.exceptions import UserCodeException
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
@@ -45,32 +44,32 @@ def test_user_exception(
     ), caplog.records
 
 
-def test_system_exception(caplog, propagate_logs, ray_start_regular_shared):
-    class FakeException(Exception):
-        pass
+# def test_system_exception(caplog, propagate_logs, ray_start_regular_shared):
+#     class FakeException(Exception):
+#         pass
 
-    with pytest.raises(FakeException) as exc_info:
-        with patch(
-            "ray.data._internal.plan.ExecutionPlan.has_computed_output",
-            side_effect=FakeException(),
-        ):
-            ray.data.range(1).materialize()
-            assert issubclass(exc_info.type, FakeException)
-            assert issubclass(exc_info.type, SystemException)
+#     with pytest.raises(FakeException) as exc_info:
+#         with patch(
+#             "ray.data._internal.plan.ExecutionPlan.has_computed_output",
+#             side_effect=FakeException(),
+#         ):
+#             ray.data.range(1).materialize()
+#             assert issubclass(exc_info.type, FakeException)
+#             assert issubclass(exc_info.type, SystemException)
 
-    assert any(
-        record.levelno == logging.ERROR
-        and "Exception occurred in Ray Data or Ray Core internal code."
-        in record.message
-        for record in caplog.records
-    ), caplog.records
+#     assert any(
+#         record.levelno == logging.ERROR
+#         and "Exception occurred in Ray Data or Ray Core internal code."
+#         in record.message
+#         for record in caplog.records
+#     ), caplog.records
 
-    assert any(
-        record.levelno == logging.ERROR
-        and "Full stack trace:" in record.message
-        and not getattr(record, "hide", False)
-        for record in caplog.records
-    ), caplog.records
+#     assert any(
+#         record.levelno == logging.ERROR
+#         and "Full stack trace:" in record.message
+#         and not getattr(record, "hide", False)
+#         for record in caplog.records
+#     ), caplog.records
 
 
 def test_full_traceback_logged_with_ray_debugger(

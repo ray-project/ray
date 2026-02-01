@@ -268,6 +268,11 @@ class Dataset:
         self,
         plan: ExecutionPlan,
         logical_plan: LogicalPlan,
+        *,
+        # Used for "copy" operations and transferring cached values
+        # from one dataset to the new one.
+        cached_stats: Optional[DatasetStats] = None,
+        cached_schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
     ):
         """Construct a Dataset (internal API).
 
@@ -288,8 +293,8 @@ class Dataset:
         self._set_uuid(_StatsManager.gen_dataset_id_from_stats_actor())
 
         # Cached
-        self._cached_stats: Optional[DatasetStats] = None
-        self._cached_schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None
+        self._cached_stats: Optional[DatasetStats] = cached_stats
+        self._cached_schema: Optional[Union[type, "pyarrow.lib.Schema"]] = cached_schema
 
     @staticmethod
     def copy(
@@ -298,9 +303,19 @@ class Dataset:
         if not _as:
             _as = type(ds)
         if _deep_copy:
-            return _as(ds._plan.deep_copy(), ds._logical_plan)
+            return _as(
+                ds._plan.deep_copy(),
+                ds._logical_plan,
+                cached_stats=ds._cached_stats,
+                cached_schema=ds._cached_schema,
+            )
         else:
-            return _as(ds._plan.copy(), ds._logical_plan)
+            return _as(
+                ds._plan.copy(),
+                ds._logical_plan,
+                cached_stats=ds._cached_stats,
+                cached_schema=ds._cached_schema,
+            )
 
     @PublicAPI(api_group=BT_API_GROUP)
     def map(
@@ -447,7 +462,12 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset(
+            plan,
+            logical_plan,
+            cached_stats=self._cached_stats,
+            cached_schema=self._cached_schema,
+        )
 
     @Deprecated(message="Use set_name() instead", warning=True)
     def _set_name(self, name: Optional[str]):
@@ -816,7 +836,12 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_batches_op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset(
+            plan,
+            logical_plan,
+            cached_stats=self._cached_stats,
+            cached_schema=self._cached_schema,
+        )
 
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
     def with_column(
@@ -915,7 +940,12 @@ class Dataset:
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(project_op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset(
+            plan,
+            logical_plan,
+            cached_stats=self._cached_stats,
+            cached_schema=self._cached_schema,
+        )
 
     @Deprecated(message="Use `with_column` API instead")
     @PublicAPI(api_group=BT_API_GROUP)
@@ -1168,7 +1198,12 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(select_op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset(
+            plan,
+            logical_plan,
+            cached_stats=self._cached_stats,
+            cached_schema=self._cached_schema,
+        )
 
     @PublicAPI(api_group=BT_API_GROUP)
     def rename_columns(
@@ -1293,7 +1328,12 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(select_op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset(
+            plan,
+            logical_plan,
+            cached_stats=self._cached_stats,
+            cached_schema=self._cached_schema,
+        )
 
     @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(
@@ -1434,7 +1474,12 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset(
+            plan,
+            logical_plan,
+            cached_stats=self._cached_stats,
+            cached_schema=self._cached_schema,
+        )
 
     @PublicAPI(api_group=BT_API_GROUP)
     def filter(
@@ -1632,7 +1677,12 @@ class Dataset:
 
         plan = self._plan.copy()
         logical_plan = LogicalPlan(filter_op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset(
+            plan,
+            logical_plan,
+            cached_stats=self._cached_stats,
+            cached_schema=self._cached_schema,
+        )
 
     @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
@@ -1757,7 +1807,12 @@ class Dataset:
             )
 
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset(
+            plan,
+            logical_plan,
+            cached_stats=self._cached_stats,
+            cached_schema=self._cached_schema,
+        )
 
     @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
@@ -1807,7 +1862,12 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset(
+            plan,
+            logical_plan,
+            cached_stats=self._cached_stats,
+            cached_schema=self._cached_schema,
+        )
 
     @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
@@ -1844,7 +1904,12 @@ class Dataset:
             seed=seed,
         )
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset(
+            plan,
+            logical_plan,
+            cached_stats=self._cached_stats,
+            cached_schema=self._cached_schema,
+        )
 
     @PublicAPI(api_group=BT_API_GROUP)
     def random_sample(
@@ -2013,7 +2078,12 @@ class Dataset:
             locality_hints=locality_hints,
         )
         logical_plan = LogicalPlan(op, self.context)
-        split_dataset = Dataset(plan, logical_plan)
+        split_dataset = Dataset(
+            plan,
+            logical_plan,
+            cached_stats=self._cached_stats,
+            cached_schema=self._cached_schema,
+        )
         split_dataset._set_uuid(self._uuid)
 
         return StreamSplitDataIterator.create(split_dataset, n, locality_hints)
@@ -2919,7 +2989,12 @@ class Dataset:
             aggregator_ray_remote_args=aggregator_ray_remote_args,
         )
 
-        return Dataset(plan, LogicalPlan(op, self.context))
+        return Dataset(
+            plan,
+            LogicalPlan(op, self.context),
+            cached_stats=self._cached_stats,
+            cached_schema=self._cached_schema,
+        )
 
     @AllToAllAPI
     @PublicAPI(api_group=GGA_API_GROUP)
@@ -3511,7 +3586,12 @@ class Dataset:
             sort_key=sort_key,
         )
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset(
+            plan,
+            logical_plan,
+            cached_stats=self._cached_stats,
+            cached_schema=self._cached_schema,
+        )
 
     @PublicAPI(api_group=SMJ_API_GROUP)
     def zip(self, *other: List["Dataset"]) -> "Dataset":
@@ -3553,7 +3633,12 @@ class Dataset:
         plan = self._plan.copy()
         op = Zip(self._logical_plan.dag, *[other._logical_plan.dag for other in other])
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset(
+            plan,
+            logical_plan,
+            cached_stats=self._cached_stats,
+            cached_schema=self._cached_schema,
+        )
 
     @PublicAPI(api_group=BT_API_GROUP)
     def limit(self, limit: int) -> "Dataset":
@@ -3580,7 +3665,12 @@ class Dataset:
         plan = self._plan.copy()
         op = Limit(self._logical_plan.dag, limit=limit)
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
+        return Dataset(
+            plan,
+            logical_plan,
+            cached_stats=self._cached_stats,
+            cached_schema=self._cached_schema,
+        )
 
     @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
@@ -3803,7 +3893,12 @@ class Dataset:
         #       data when we're only interested in the total count
         count_op = Count(Project(self._logical_plan.dag, exprs=[]))
         logical_plan = LogicalPlan(count_op, self.context)
-        count_ds = Dataset(plan, logical_plan)
+        count_ds = Dataset(
+            plan,
+            logical_plan,
+            cached_stats=self._cached_stats,
+            cached_schema=self._cached_schema,
+        )
 
         count = 0
         for batch in count_ds.iter_batches(batch_size=None):
@@ -5391,9 +5486,14 @@ class Dataset:
                     )
                     return
 
-            self._write_ds = Dataset(plan, logical_plan).materialize()
+            self._write_ds = Dataset(
+                plan,
+                logical_plan,
+                cached_stats=self._cached_stats,
+                cached_schema=self._cached_schema,
+            ).materialize()
 
-            iter_, stats, _ = self._write_ds._execute_to_iterator()
+            iter_, _, _ = self._write_ds._execute_to_iterator()
             write_results = []
 
             for bundle in iter_:
@@ -6566,7 +6666,8 @@ class Dataset:
         plan_copy = self._plan.deep_copy()
         logical_plan_copy = copy.copy(self._plan._logical_plan)
         ds = Dataset(plan_copy, logical_plan_copy)
-        # TODO (kyuds): clear caching here.
+        self._cached_schema = None
+        self._cached_stats = None
         ds._set_uuid(self._get_uuid())
 
         def _reduce_remote_fn(rf: ray.remote_function.RemoteFunction):
