@@ -14,6 +14,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.progress.base_progress import NoopSubProgressBar
 from ray.data.block import BlockAccessor
@@ -215,6 +216,50 @@ def test_input_data_buffer_does_not_free_inputs():
     # `InputDataBuffer` should still hold a reference to the input block even after
     # `get_next` is called.
     assert len(gc.get_referrers(block_ref)) > 0
+
+
+def test_union_operator_throttling_disabled(ray_start_regular_shared):
+    """Test that UnionOperator has throttling disabled.
+
+    UnionOperator only manipulates bundle metadata and doesn't launch any tasks,
+    so it should not be allocated resources.
+    """
+    ctx = DataContext.get_current()
+
+    # Create input buffers with some test data
+    input_bundles_1 = make_ref_bundles([[1, 2, 3]])
+    input_bundles_2 = make_ref_bundles([[4, 5, 6]])
+
+    input_op1 = InputDataBuffer(ctx, input_bundles_1)
+    input_op2 = InputDataBuffer(ctx, input_bundles_2)
+
+    # Create union operator
+    union_op = UnionOperator(ctx, input_op1, input_op2)
+
+    # Verify that throttling_disabled() returns True
+    assert union_op.throttling_disabled() is True
+
+
+def test_union_operator_throttling_matches_similar_operators(ray_start_regular_shared):
+    """Test that UnionOperator's throttling behavior matches other metadata-only operators."""
+    from ray.data._internal.execution.operators.limit_operator import LimitOperator
+    from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+
+    ctx = DataContext.get_current()
+
+    # Create input buffer
+    input_bundles = make_ref_bundles([[1, 2, 3]])
+    input_op = InputDataBuffer(ctx, input_bundles)
+
+    # Create operators that only manipulate metadata
+    union_op = UnionOperator(ctx, input_op)
+    limit_op = LimitOperator(10, input_op, ctx)
+    output_splitter = OutputSplitter(input_op, 2, False, ctx)
+
+    # All three operators should have throttling disabled
+    assert union_op.throttling_disabled() is True
+    assert limit_op.throttling_disabled() is True
+    assert output_splitter.throttling_disabled() is True
 
 
 if __name__ == "__main__":
