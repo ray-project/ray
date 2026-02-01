@@ -64,6 +64,7 @@ def test_tensor_array_validation():
     with pytest.raises(TypeError):
         TensorArray([object(), object()])
 
+
 @pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
 def test_pandas_to_arrow_fixed_shape_tensor_conversion(tensor_format):
     ctx = DataContext.get_current()
@@ -745,13 +746,14 @@ def test_arrow_variable_shaped_tensor_array_getitem(
     "test_arr,dtype",
     [
         ([[1, 2], [3, 4], [5, 6], [7, 8]], None),
-        # ([[1, 2], [3, 4], [5, 6], [7, 8]], np.int32),
-        # ([[1, 2], [3, 4], [5, 6], [7, 8]], np.int16),
-        # ([[1, 2], [3, 4], [5, 6], [7, 8]], np.longlong),
-        # ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], None),
-        # ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], np.float32),
-        # ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], np.float16),
-        # ([[False, True], [True, False], [True, True], [False, False]], None),
+        ([[1, 2], [3, 4], [5, 6], [7, 8]], np.int32),
+        ([[1, 2], [3, 4], [5, 6], [7, 8]], np.int16),
+        ([[1, 2], [3, 4], [5, 6], [7, 8]], np.longlong),
+        ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], None),
+        ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], np.float32),
+        ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], np.float16),
+        ([["B", "A"], ["A", "B"], ["A", "A"], ["B", "B"]], None),
+        ([[False, True], [True, False], [True, True], [False, False]], None),
     ],
 )
 def test_arrow_tensor_array_slice(test_arr, dtype, restore_data_context, tensor_format):

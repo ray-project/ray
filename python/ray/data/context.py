@@ -376,7 +376,8 @@ class DataContext:
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
             Options are None, FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2, and FixedShapeTensorFormat.ARROW_NATIVE.
-            Default is None, which will fallback to use_arrow_tensor_v2.
+            Default is None, which will fallback to use_arrow_tensor_v2. NOTE: For ARROW_NATIVE,
+            only numbers (integers, floats) are currently supported.
         use_arrow_tensor_v2: [Deprecating]. Use ``arrow_fixed_shape_tensor_format`` instead.
             Config enabling V2 version of ArrowTensorArray supporting
             tensors > 2Gb in size (off by default)

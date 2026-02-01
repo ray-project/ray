@@ -123,7 +123,16 @@ def resolve_fixed_shape_tensor_format() -> "FixedShapeTensorFormat":
             else FixedShapeTensorFormat.V1
         )
 
-    return tensor_format
+    return tensor_format, None
+
+
+def _native_tensor_can_convert_to_numpy(t: "FixedShapeTensorType") -> bool:
+    return (
+        pa.types.is_floating(t.value_type)
+        and pa.types.is_integer(t.value_type)
+        and pa.types.is_signed_integer(t.value_type)
+        and pa.types.is_unsigned_integer(t.value_type)
+    )
 
 
 def _extension_array_concat_supported() -> bool:
@@ -796,6 +805,15 @@ def create_arrow_fixed_shape_tensor_format(
     if tensor_format is None:
         tensor_format = resolve_fixed_shape_tensor_format()
 
+        from ray.data.context import DataContext
+
+        ctx = DataContext.get_current()
+        fallback = (
+            FixedShapeTensorFormat.V2
+            if ctx.use_arrow_tensor_v2
+            else FixedShapeTensorFormat.V1
+        )
+
         # Native tensor format requires PyArrow 12+
         if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
             if FixedShapeTensorType is None and log_once(
@@ -810,7 +828,9 @@ def create_arrow_fixed_shape_tensor_format(
                 tensor_format = FixedShapeTensorFormat.V2
             if len(shape) > 0 and (np.prod(shape) == 0 or outer_len == 0):
                 # FixedShapeTensor types don't support 0 size shapes
-                tensor_format = FixedShapeTensorFormat.V2
+                tensor_format = fallback
+            if not _native_tensor_can_convert_to_numpy(dtype):
+                tensor_format = fallback
 
     if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
         if FixedShapeTensorType is None:
