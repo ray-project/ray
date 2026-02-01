@@ -962,14 +962,7 @@ def test_tensor_type_equality_checks():
 class TestCreateFixedShapeTensorType:
     """Tests for the create_arrow_fixed_shape_tensor_format factory function."""
 
-    @pytest.mark.parametrize(
-        "tensor_format,expected_type",
-        [
-            (FixedShapeTensorFormat.V1, ArrowTensorType),
-            (FixedShapeTensorFormat.V2, ArrowTensorTypeV2),
-            (FixedShapeTensorFormat.ARROW_NATIVE, FixedShapeTensorType),
-        ],
-    )
+    @pytest.mark.parametrize("tensor_format", list(FixedShapeTensorFormat))
     @pytest.mark.parametrize(
         "shape,dtype",
         [
@@ -982,11 +975,11 @@ class TestCreateFixedShapeTensorType:
         get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
         reason="Requires pyarrow>=12 for FixedShapeTensorTypes",
     )
-    def test_explicit_v1_v2_format(self, tensor_format, expected_type, shape, dtype):
+    def test_explicit_v1_v2_format(self, tensor_format, shape, dtype):
         tensor_type = create_arrow_fixed_shape_tensor_format(
             shape=shape, dtype=dtype, tensor_format=tensor_format
         )
-        assert isinstance(tensor_type, expected_type)
+        assert isinstance(tensor_type, tensor_format.to_type())
         assert tuple(tensor_type.shape) == shape
         assert tensor_type.value_type == dtype
 

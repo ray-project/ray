@@ -1106,10 +1106,7 @@ def test_tensor_format_conversion_v1_v2_to_native(
     schema = ds.schema()
     col_index = schema.names.index(tensor_col_name)
     initial_type = schema.types[col_index]
-    if write_format == FixedShapeTensorFormat.V1:
-        assert isinstance(initial_type, ArrowTensorType)
-    else:
-        assert isinstance(initial_type, ArrowTensorTypeV2)
+    assert isinstance(initial_type, write_format.to_type())
 
     # Write to first path
     path1 = tmp_path / "v1_v2_data"

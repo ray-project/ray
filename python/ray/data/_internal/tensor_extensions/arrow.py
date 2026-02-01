@@ -100,6 +100,14 @@ class FixedShapeTensorFormat(Enum):
     V2 = "v2"
     ARROW_NATIVE = "native"
 
+    def to_type(self) -> pa.DataType:
+        if self == FixedShapeTensorFormat.V1:
+            return ArrowTensorType
+        if self == FixedShapeTensorFormat.V2:
+            return ArrowTensorTypeV2
+        assert FixedShapeTensorType is not None
+        return FixedShapeTensorType
+
 
 def resolve_fixed_shape_tensor_format() -> "FixedShapeTensorFormat":
     """Resolve the tensor format from DataContext.
@@ -123,15 +131,15 @@ def resolve_fixed_shape_tensor_format() -> "FixedShapeTensorFormat":
             else FixedShapeTensorFormat.V1
         )
 
-    return tensor_format, None
+    return tensor_format
 
 
-def _native_tensor_can_convert_to_numpy(t: "FixedShapeTensorType") -> bool:
+def _native_tensor_value_type_can_convert_to_numpy(t: "FixedShapeTensorType") -> bool:
     return (
-        pa.types.is_floating(t.value_type)
-        and pa.types.is_integer(t.value_type)
-        and pa.types.is_signed_integer(t.value_type)
-        and pa.types.is_unsigned_integer(t.value_type)
+        pa.types.is_floating(t)
+        or pa.types.is_integer(t)
+        or pa.types.is_signed_integer(t)
+        or pa.types.is_unsigned_integer(t)
     )
 
 
@@ -825,11 +833,11 @@ def create_arrow_fixed_shape_tensor_format(
                     UserWarning,
                     stacklevel=3,
                 )
-                tensor_format = FixedShapeTensorFormat.V2
+                tensor_format = fallback
             if len(shape) > 0 and (np.prod(shape) == 0 or outer_len == 0):
                 # FixedShapeTensor types don't support 0 size shapes
                 tensor_format = fallback
-            if not _native_tensor_can_convert_to_numpy(dtype):
+            if not _native_tensor_value_type_can_convert_to_numpy(dtype):
                 tensor_format = fallback
 
     if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
