@@ -553,7 +553,7 @@ flask-cors==4.0.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   moto
-flatbuffers==23.5.26
+flatbuffers==25.12.19
     # via
     #   onnxruntime
     #   tensorflow
@@ -615,7 +615,7 @@ glfw==2.6.3
     #   mujoco
 glom==22.1.0
     # via semgrep
-google-api-core==2.24.2
+google-api-core==2.29.0
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   google-api-python-client
@@ -673,7 +673,7 @@ google-resumable-media==2.6.0
     # via
     #   google-cloud-bigquery
     #   google-cloud-storage
-googleapis-common-protos==1.61.0
+googleapis-common-protos==1.72.0
     # via
     #   google-api-core
     #   grpcio-status
@@ -697,7 +697,7 @@ graphviz==0.20.3
     # via -r python/requirements/test-requirements.txt
 greenlet==3.0.1
     # via sqlalchemy
-grpcio==1.74.0
+grpcio==1.76.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -2386,6 +2386,7 @@ typing-extensions==4.15.0
     #   gradio
     #   gradio-client
     #   graphene
+    #   grpcio
     #   gymnasium
     #   huggingface-hub
     #   lightning-utilities
