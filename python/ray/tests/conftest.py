@@ -175,7 +175,7 @@ def is_process_listen_to_port(pid, port):
     for _ in range(retry_num):
         try:
             proc = psutil.Process(pid)
-            for conn in proc.connections():
+            for conn in proc.net_connections():
                 if conn.status == "LISTEN" and conn.laddr.port == port:
                     return True
         except Exception:

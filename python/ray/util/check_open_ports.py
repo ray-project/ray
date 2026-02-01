@@ -35,7 +35,7 @@ def _get_ray_ports() -> List[int]:
             corpus = proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_args)
             if keyword in corpus:
                 try:
-                    for connection in proc.connections():
+                    for connection in proc.net_connections():
                         if connection.status == psutil.CONN_LISTEN:
                             unique_ports.add(connection.laddr.port)
                 except psutil.AccessDenied:

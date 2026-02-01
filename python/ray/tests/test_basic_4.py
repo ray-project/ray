@@ -172,7 +172,7 @@ def test_listen_on_localhost(start_ray, request):
             if keyword not in corpus:
                 continue
 
-            for connection in proc.connections():
+            for connection in proc.net_connections():
                 if connection.status != psutil.CONN_LISTEN:
                     continue
                 # ip can be 127.0.0.1 or ::127.0.0.1
