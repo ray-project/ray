@@ -6,12 +6,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, List, Optional
 
 import ray
+from ray._private.ray_constants import NIXL_REMOTE_AGENT_CACHE_MAXSIZE
 from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     CommunicatorMetadata,
     TensorTransportManager,
     TensorTransportMetadata,
 )
-from ray._private.ray_constants import NIXL_REMOTE_AGENT_CACHE_MAXSIZE
 
 if TYPE_CHECKING:
     import torch

@@ -277,5 +277,33 @@ def test_nixl_borrow_after_abort(ray_start_regular):
     assert ray.get(actors[1].borrow_and_sum.remote([nixl_ref])) == 15
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_reset_remote_agent_after_gc(ray_start_regular):
+    """
+    We reuse nixl remote agent by default. But if sender GCs an
+    object (memory deregistered) between transfers, receiver
+    should still get the latest gpu object (remote agent should
+    be successfully reset).
+    """
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    src_actor, dst_actor = actors[0], actors[1]
+
+    # First transfer
+    ref1 = src_actor.echo.remote(torch.tensor([1, 2, 3]).to("cuda"), "cuda")
+    assert ray.get(dst_actor.sum.remote(ref1, "cuda")) == 6
+    del ref1
+
+    # Wait for GC to free the tensor on sender (triggers _memory_deregistered)
+    wait_for_condition(
+        lambda: ray.get(src_actor.get_num_managed_meta_nixl.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+    # Second transfer after GC - receiver must reset remote agent before add
+    ref2 = src_actor.echo.remote(torch.tensor([4, 5, 6]).to("cuda"), "cuda")
+    assert ray.get(dst_actor.sum.remote(ref2, "cuda")) == 15
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
