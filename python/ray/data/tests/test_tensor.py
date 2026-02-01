@@ -1060,6 +1060,135 @@ def test_ragged_tensors(ray_start_regular_shared, restore_data_context, tensor_f
     ]
 
 
+@pytest.mark.parametrize(
+    "write_format",
+    [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2],
+)
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
+    reason="Requires pyarrow>=12 for native FixedShapeTensorType",
+)
+def test_tensor_format_conversion_v1_v2_to_native(
+    ray_start_regular_shared, tmp_path, restore_data_context, write_format
+):
+    """Test that data written in V1/V2 format can be read with native format
+    and written back while preserving types and data.
+
+    Steps:
+    1. Write tensor data using V1 or V2 format
+    2. Set context to use arrow_native format
+    3. Read the data back (should convert to native format)
+    4. Write to a different path
+    5. Read again and verify types/shapes/data are preserved in native format
+    """
+    ctx = DataContext.get_current()
+
+    # Step 1: Write data using V1 or V2 format
+    ctx.arrow_fixed_shape_tensor_format = write_format
+
+    outer_dim = 4
+    inner_shape = (3, 2)
+    shape = (outer_dim,) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items, dtype=np.float64).reshape(shape)
+
+    # Create dataset with tensor column
+    tensor_col_name = "tensor"
+    df = pd.DataFrame(
+        {
+            "id": list(range(outer_dim)),
+            tensor_col_name: list(arr),
+        }
+    )
+    ds = ray.data.from_pandas([df])
+
+    # Verify initial format matches write_format
+    schema = ds.schema()
+    col_index = schema.names.index(tensor_col_name)
+    initial_type = schema.types[col_index]
+    if write_format == FixedShapeTensorFormat.V1:
+        assert isinstance(initial_type, ArrowTensorType)
+    else:
+        assert isinstance(initial_type, ArrowTensorTypeV2)
+
+    # Write to first path
+    path1 = tmp_path / "v1_v2_data"
+    ds.write_parquet(str(path1))
+
+    # Step 2: Switch context to native format
+    ctx.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.ARROW_NATIVE
+
+    # Step 3: Read data back - note that reading preserves original format
+    ds_read = ray.data.read_parquet(str(path1))
+
+    # Reading parquet preserves the original extension type (V1 or V2)
+    # The context setting only affects NEW tensor arrays
+    schema_read = ds_read.schema()
+    col_index = schema_read.names.index(tensor_col_name)
+    read_type = schema_read.types[col_index]
+    if write_format == FixedShapeTensorFormat.V1:
+        assert isinstance(
+            read_type, ArrowTensorType
+        ), f"Expected ArrowTensorType when reading V1 data, got {type(read_type).__name__}"
+    else:
+        assert isinstance(
+            read_type, ArrowTensorTypeV2
+        ), f"Expected ArrowTensorTypeV2 when reading V2 data, got {type(read_type).__name__}"
+
+    # Step 4: Apply a transformation that recreates tensor arrays in native format
+    # map_batches with identity function will convert to native format
+    def convert_to_native(batch):
+        # This forces recreation of the tensor arrays using the current context format
+        return batch
+
+    ds_converted = ds_read.map_batches(convert_to_native, batch_format="numpy")
+
+    # Now verify the format is native
+    schema_converted = ds_converted.schema()
+    col_index = schema_converted.names.index(tensor_col_name)
+    converted_type = schema_converted.types[col_index]
+    assert isinstance(converted_type, FixedShapeTensorType), (
+        f"Expected FixedShapeTensorType after conversion, "
+        f"got {type(converted_type).__name__}"
+    )
+
+    # Verify shape is preserved
+    assert (
+        tuple(converted_type.shape) == inner_shape
+    ), f"Shape mismatch: expected {inner_shape}, got {converted_type.shape}"
+
+    # Step 5: Write to different path
+    path2 = tmp_path / "native_data"
+    ds_converted.write_parquet(str(path2))
+
+    # Step 6: Read again and verify native format is preserved
+    ds_final = ray.data.read_parquet(str(path2))
+
+    schema_final = ds_final.schema()
+    col_index = schema_final.names.index(tensor_col_name)
+    final_type = schema_final.types[col_index]
+    assert isinstance(final_type, FixedShapeTensorType), (
+        f"Expected FixedShapeTensorType after round-trip, "
+        f"got {type(final_type).__name__}"
+    )
+
+    # Verify shape is still correct
+    assert tuple(final_type.shape) == inner_shape, (
+        f"Shape mismatch after round-trip: expected {inner_shape}, "
+        f"got {final_type.shape}"
+    )
+
+    # Verify data is preserved
+    final_values = ds_final.take()
+    for i, row in enumerate(sorted(final_values, key=lambda x: x["id"])):
+        assert row["id"] == i
+        np.testing.assert_array_equal(
+            row[tensor_col_name],
+            arr[i],
+            err_msg=f"Data mismatch at row {i}",
+        )
+
+
 if __name__ == "__main__":
     import sys
 
