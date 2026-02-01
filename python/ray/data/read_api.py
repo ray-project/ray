@@ -53,6 +53,7 @@ from ray.data._internal.datasource import (
     VideoDatasource,
     WebDatasetDatasource,
 )
+from ray.data._internal.datasource.sql_datasource import Connection
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
@@ -83,7 +84,6 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
-    Connection,
     Datasource,
     PathPartitionFilter,
 )

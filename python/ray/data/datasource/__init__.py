@@ -1,5 +1,4 @@
 from ray.data._internal.datasource import (
-    Connection,
     DeltaSharingDatasource,
     MCAPDatasource,
     TimeRange,
@@ -44,7 +43,6 @@ from ray.data.datasource.partitioning import (
 # ray.data.from_huggingface() or HuggingFaceDatasource() directly.
 __all__ = [
     "BaseFileMetadataProvider",
-    "Connection",
     "Datasink",
     "Datasource",
     "DefaultFileMetadataProvider",

@@ -52,6 +52,7 @@ from ray.data._internal.datasource.clickhouse_datasink import (
     TFRecordDatasink,
     WebDatasetDatasink,
 )
+from ray.data._internal.datasource.sql_datasource import Connection
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -120,7 +121,7 @@ from ray.data.block import (
     _apply_batch_format,
 )
 from ray.data.context import DataContext
-from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
+from ray.data.datasource import Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.datatype import DataType
