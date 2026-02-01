@@ -135,16 +135,13 @@ def resolve_fixed_shape_tensor_format() -> "FixedShapeTensorFormat":
 
 
 def _native_tensor_value_type_can_convert_to_numpy(t: "FixedShapeTensorType") -> bool:
-    """Pyarrow native fixed shaped tensors support most types. However, when converting 
+    """Pyarrow native fixed shaped tensors support most types. However, when converting
     between numpy representions using their built-in `to_numpy_ndarray()` or `from_numpy_ndarray()`,
     numbers (floating or integer) are only supported. It is possible to handle this logic using
     other methods (`as_py()`, or `to_numpy()`), but for simplicity, we leave it at numbers only.
     In the future, we may want to support more datatypes.
     """
-    return (
-        pa.types.is_floating(t)
-        or pa.types.is_integer(t)
-    )
+    return pa.types.is_floating(t) or pa.types.is_integer(t)
 
 
 def _extension_array_concat_supported() -> bool:

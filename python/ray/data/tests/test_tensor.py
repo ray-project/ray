@@ -45,7 +45,6 @@ def test_large_tensor_creation(ray_start_regular_shared, tensor_format_context):
 
 
 def test_tensors_basic(ray_start_regular_shared, tensor_format_context):
-    tensor_format = tensor_format_context
 
     # Determine expected tensor type based on format
     expected_type = create_arrow_fixed_shape_tensor_format(
@@ -310,9 +309,7 @@ def test_tensors_sort(ray_start_regular_shared, tensor_format_context):
     )
 
 
-def test_tensors_inferred_from_map(
-    ray_start_regular_shared, tensor_format_context
-):
+def test_tensors_inferred_from_map(ray_start_regular_shared, tensor_format_context):
     tensor_format = tensor_format_context
     # With tensor_format_context, ARROW_NATIVE only runs when supported,
     # so to_type() is safe to use
@@ -556,9 +553,7 @@ def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data
     )
 
 
-def test_tensors_in_tables_from_pandas(
-    ray_start_regular_shared, tensor_format_context
-):
+def test_tensors_in_tables_from_pandas(ray_start_regular_shared, tensor_format_context):
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -879,7 +874,6 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
 def test_tensors_in_tables_parquet_bytes_with_schema(
     ray_start_regular_shared, tmp_path, tensor_format_context
 ):
-    tensor_format = tensor_format_context
 
     outer_dim = 3
     inner_shape = (2, 2, 2)
