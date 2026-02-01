@@ -515,7 +515,10 @@ def test_ray_intentional_errors(shutdown_only):
         def exit_normal(self):
             exit(0)
 
-    ray.init(num_cpus=1)
+    # Avoid worker-dead marking racing with max_calls task completion.
+    sys_config = _SYSTEM_CONFIG.copy()
+    sys_config["gcs_mark_task_failed_on_worker_dead_delay_ms"] = 30000
+    ray.init(num_cpus=1, _system_config=sys_config)
 
     a = Actor.remote()
     ray.get(a.ready.remote())

@@ -15,6 +15,15 @@ if TYPE_CHECKING:
 
     from ray.data.block import Schema
 
+__all__ = [
+    "AbstractAllToAll",
+    "Aggregate",
+    "RandomShuffle",
+    "RandomizeBlocks",
+    "Repartition",
+    "Sort",
+]
+
 
 class AbstractAllToAll(LogicalOperator):
     """Abstract class for logical operators should be converted to physical
@@ -59,16 +68,16 @@ class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThro
         self._seed = seed
 
     def infer_metadata(self) -> "BlockMetadata":
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        assert isinstance(self._input_dependencies[0], LogicalOperator)
-        return self._input_dependencies[0].infer_metadata()
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        return self.input_dependencies[0].infer_metadata()
 
     def infer_schema(
         self,
     ) -> Optional["Schema"]:
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        assert isinstance(self._input_dependencies[0], LogicalOperator)
-        return self._input_dependencies[0].infer_schema()
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        return self.input_dependencies[0].infer_schema()
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Randomizing block order doesn't affect filtering correctness
@@ -97,16 +106,16 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
         self._seed = seed
 
     def infer_metadata(self) -> "BlockMetadata":
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        assert isinstance(self._input_dependencies[0], LogicalOperator)
-        return self._input_dependencies[0].infer_metadata()
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        return self.input_dependencies[0].infer_metadata()
 
     def infer_schema(
         self,
     ) -> Optional["Schema"]:
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        assert isinstance(self._input_dependencies[0], LogicalOperator)
-        return self._input_dependencies[0].infer_schema()
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        return self.input_dependencies[0].infer_schema()
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Random shuffle doesn't affect filtering correctness
@@ -144,16 +153,16 @@ class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough)
         self._sort = sort
 
     def infer_metadata(self) -> "BlockMetadata":
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        assert isinstance(self._input_dependencies[0], LogicalOperator)
-        return self._input_dependencies[0].infer_metadata()
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        return self.input_dependencies[0].infer_metadata()
 
     def infer_schema(
         self,
     ) -> Optional["Schema"]:
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        assert isinstance(self._input_dependencies[0], LogicalOperator)
-        return self._input_dependencies[0].infer_schema()
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        return self.input_dependencies[0].infer_schema()
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Repartition doesn't affect filtering correctness
@@ -182,16 +191,16 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
         self._batch_format = batch_format
 
     def infer_metadata(self) -> "BlockMetadata":
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        assert isinstance(self._input_dependencies[0], LogicalOperator)
-        return self._input_dependencies[0].infer_metadata()
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        return self.input_dependencies[0].infer_metadata()
 
     def infer_schema(
         self,
     ) -> Optional["Schema"]:
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        assert isinstance(self._input_dependencies[0], LogicalOperator)
-        return self._input_dependencies[0].infer_schema()
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        return self.input_dependencies[0].infer_schema()
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Sort doesn't affect filtering correctness

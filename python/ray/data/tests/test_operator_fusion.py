@@ -11,15 +11,15 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.map_operator import (
+from ray.data._internal.logical.operators import (
     Filter,
     FlatMap,
+    InputData,
     MapBatches,
     MapRows,
     Project,
+    Read,
 )
-from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner import create_planner
@@ -839,6 +839,68 @@ def test_filter_operator_no_upstream_fusion(ray_start_regular_shared_2_cpus, cap
     captured = capsys.readouterr().out.strip()
     assert "TaskPoolMapOperator[MapBatches(<lambda>)]" in captured
     assert "TaskPoolMapOperator[MapBatches(<lambda>)->Filter(<lambda>)]" in captured
+
+
+def test_combine_repartition_aggregate(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method, capsys
+):
+    ds = ray.data.range(100)
+    # Apply repartition with shuffle
+    ds = ds.repartition(5, shuffle=True)
+    # Apply groupby aggregate (creates Aggregate operator)
+    ds = ds.groupby("id").count()
+
+    ds.explain()
+
+    captured = capsys.readouterr().out
+    # Verify the first shuffle (Repartition) was dropped and Aggregate connects directly to Read
+    expected_optimized_plan = (
+        "-------- Logical Plan (Optimized) --------\n"
+        "Aggregate[Aggregate]\n"
+        "+- Read[ReadRange]"
+    )
+    assert expected_optimized_plan in captured
+
+
+def test_combine_streaming_repartition_to_shuffle_repartition(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method, capsys
+):
+    ds = ray.data.range(100, override_num_blocks=10)
+    # Apply StreamingRepartition (local repartition)
+    ds = ds.repartition(target_num_rows_per_block=20)
+    # Apply shuffle Repartition (global repartition)
+    ds = ds.repartition(num_blocks=3, shuffle=True)
+
+    ds.explain()
+
+    captured = capsys.readouterr().out
+    # Verify the first shuffle (StreamingRepartition) was dropped and Repartition connects directly to Read
+    expected_optimized_plan = (
+        "-------- Logical Plan (Optimized) --------\n"
+        "Repartition[Repartition]\n"
+        "+- Read[ReadRange]"
+    )
+    assert expected_optimized_plan in captured
+
+
+def test_combine_sort_sort(ray_start_regular_shared_2_cpus, capsys):
+    data = [{"a": i, "b": 100 - i} for i in range(50)]
+    ds = ray.data.from_items(data)
+    # Apply first sort on column 'a'
+    ds = ds.sort("a")
+    # Apply second sort on column 'b'
+    ds = ds.sort("b")
+
+    ds.explain()
+
+    captured = capsys.readouterr().out
+    # Verify the first shuffle (first Sort) was dropped and only the second Sort remains
+    expected_optimized_plan = (
+        "-------- Logical Plan (Optimized) --------\n"
+        "Sort[Sort]\n"
+        "+- FromItems[FromItems]"
+    )
+    assert expected_optimized_plan in captured
 
 
 if __name__ == "__main__":

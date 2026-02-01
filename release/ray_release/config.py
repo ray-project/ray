@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import jsonschema
 import yaml
 
-from ray_release.anyscale_util import find_cloud_by_name
 from ray_release.bazel import bazel_runfile
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
@@ -262,12 +261,11 @@ def validate_test(test: Test, schema: Optional[Dict] = None) -> Optional[str]:
 def validate_byod_type(byod_type: str, python_version: str) -> None:
     if byod_type not in ALLOWED_BYOD_TYPES:
         raise Exception(f"Invalid BYOD type: {byod_type}")
-    if byod_type == "gpu" and python_version not in ["3.9", "3.10"]:
-        raise Exception("GPU BYOD tests must use Python 3.9 or 3.10")
+    if byod_type == "gpu" and python_version != "3.10":
+        raise Exception("GPU BYOD tests must use Python 3.10")
     if byod_type == "llm-cu124" and python_version != "3.11":
         raise Exception("LLM BYOD tests must use Python 3.11")
     if byod_type in ["cpu", "cu123"] and python_version not in [
-        "3.9",
         "3.10",
         "3.11",
         "3.12",
@@ -348,21 +346,7 @@ def parse_python_version(version: str) -> Tuple[int, int]:
 
 
 def get_test_cloud_id(test: Test) -> str:
-    cloud_id = test["cluster"].get("cloud_id", None)
-    cloud_name = test["cluster"].get("cloud_name", None)
-    if cloud_id and cloud_name:
-        raise RuntimeError(
-            f"You can't supply both a `cloud_name` ({cloud_name}) and a "
-            f"`cloud_id` ({cloud_id}) in the test cluster configuration. "
-            f"Please provide only one."
-        )
-    elif cloud_name and not cloud_id:
-        cloud_id = find_cloud_by_name(cloud_name)
-        if not cloud_id:
-            raise RuntimeError(f"Couldn't find cloud with name `{cloud_name}`.")
-    else:
-        cloud_id = cloud_id or str(DEFAULT_CLOUD_ID)
-    return cloud_id
+    return test.get("cluster", {}).get("cloud_id", str(DEFAULT_CLOUD_ID))
 
 
 def get_test_project_id(test: Test, default_project_id: Optional[str] = None) -> str:

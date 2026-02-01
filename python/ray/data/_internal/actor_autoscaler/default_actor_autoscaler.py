@@ -231,6 +231,10 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             actor_pool: Actor pool to validate configuration thereof.
             op: ``PhysicalOperator`` using target actor pool.
         """
+        # Fixed-size pools don't autoscale by design
+        if actor_pool.min_size() == actor_pool.max_size():
+            return
+
         max_tasks_in_flight_per_actor = actor_pool.max_tasks_in_flight_per_actor()
         max_concurrency = actor_pool.max_actor_concurrency()
 

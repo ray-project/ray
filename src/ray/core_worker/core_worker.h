@@ -372,16 +372,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
     return worker_context_->GetCurrentTask()->ShouldRetryExceptions();
   }
 
-  /// Sets the actor's repr name.
-  ///
-  /// This is set explicitly rather than included as part of actor creation task spec
-  /// because it's only available after running the creation task as it might depend on
-  /// fields to be be initialized during actor creation task. The repr name will be
-  /// included as part of actor creation task reply (PushTaskReply) to GCS.
-  ///
-  /// \param repr_name Actor repr name.
-  void SetActorReprName(const std::string &repr_name);
-
   void SetCallerCreationTimestamp();
 
   /// Increase the reference count for this object ID.
@@ -1210,6 +1200,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                                rpc::SendReplyCallback send_reply_callback);
 
   // Implements gRPC server handler.
+  // A single endpoint to process different types of pubsub commands.
+  // Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
+  // messages.
   void HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,
                                 rpc::PubsubCommandBatchReply *reply,
                                 rpc::SendReplyCallback send_reply_callback);
@@ -1499,9 +1492,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// arguments and recursively, any object IDs that were contained in those objects.
   /// \param is_retryable_error[out] Whether the task failed with a retryable
   /// error.
-  /// \param application_error[out] The error message if the task failed during
-  /// execution or cancelled.
-  /// \return Status.
+  /// \param actor_repr_name[out] The user-specified repr name for the actor in this
+  /// process if one has been set. \param application_error[out] The error message if the
+  /// task failed during execution or cancelled. \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,
       std::optional<ResourceMappingType> resource_ids,
@@ -1511,6 +1504,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       ReferenceCounterInterface::ReferenceTableProto *borrowed_refs,
       bool *is_retryable_error,
+      std::string *actor_repr_name,
       std::string *application_error);
 
   /// Put an object in the local plasma store.
@@ -1600,15 +1594,14 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
 
   /// Process the subscribe message received from the subscriber.
-  void ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
-                               rpc::ChannelType channel_type,
-                               const std::string &key_id,
-                               const NodeID &subscriber_id);
-
-  /// A single endpoint to process different types of pubsub commands.
-  /// Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
-  /// messages.
-  void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);
+  ///
+  /// \return StatusT::OK() if successful.
+  /// \return StatusT::InvalidArgument() if the channel or command type is invalid.
+  StatusSet<StatusT::InvalidArgument> ProcessSubscribeMessage(
+      const rpc::SubMessage &sub_message,
+      rpc::ChannelType channel_type,
+      const std::string &key_id,
+      const NodeID &subscriber_id);
 
   void AddSpilledObjectLocationOwner(const ObjectID &object_id,
                                      const std::string &spilled_url,
@@ -1887,9 +1880,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// of that resource allocated for this worker. This is set on task assignment.
   ResourceMappingType resource_ids_ ABSL_GUARDED_BY(mutex_);
 
-  /// Used to notify the task receiver when the arguments of a queued
-  /// actor task are ready.
-  std::unique_ptr<DependencyWaiterImpl> task_argument_waiter_;
+  /// Used to wait for actor task arguments to be ready before executing the task.
+  std::unique_ptr<ActorTaskExecutionArgWaiter> actor_task_execution_arg_waiter_;
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<TaskReceiver> task_receiver_;

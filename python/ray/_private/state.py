@@ -1024,14 +1024,7 @@ def timeline(filename=None):
     Returns:
         If filename is not provided, this returns a list of profiling events.
             Each profile event is a dictionary.
-
-    Raises:
-        RuntimeError: An exception is raised if ray.init() has not been called yet.
     """
-    if not ray.is_initialized():
-        raise RuntimeError(
-            "Ray has not been started yet. Timeline requires Ray to be initialized first."
-        )
     return state.chrome_tracing_dump(filename=filename)
 
 

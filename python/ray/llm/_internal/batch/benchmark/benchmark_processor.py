@@ -44,16 +44,14 @@ class Mode(Enum):
 
 # Default sampling parameters -- ensure a fair comparison by omitting sampling-induced variance
 VLLM_SAMPLING_PARAMS = {
+    "top_p": 1.0,
     "temperature": 1.0,
     "max_tokens": 100,
-    "top_p": 1.0,
     "ignore_eos": True,
 }
 
 # Default vLLM engine kwargs
 VLLM_ENGINE_KWARGS = {
-    "enable_prefix_caching": True,
-    "enable_chunked_prefill": True,
     "max_num_batched_tokens": 4096,
 }
 
@@ -228,8 +226,13 @@ def build_classify_processor(
     model: str,
     pooling_params: dict = CLASSIFY_POOLING_PARAMS,
     max_model_len: int = 512,
+    distributed_executor_backend: str = None,
 ):
     """Build vLLM engine processor for classification benchmark."""
+
+    engine_kwargs = VLLM_ENGINE_KWARGS.copy()
+    if distributed_executor_backend is not None:
+        engine_kwargs["distributed_executor_backend"] = distributed_executor_backend
 
     config = vLLMEngineProcessorConfig(
         model_source=model,
@@ -239,10 +242,7 @@ def build_classify_processor(
         chat_template_stage=ChatTemplateStageConfig(enabled=False),
         tokenize_stage=TokenizerStageConfig(enabled=True),
         detokenize_stage=DetokenizeStageConfig(enabled=False),
-        engine_kwargs={
-            "enforce_eager": True,
-            "max_model_len": max_model_len,
-        },
+        engine_kwargs=engine_kwargs,
     )
     return build_processor(
         config,
@@ -488,6 +488,7 @@ def benchmark(
             concurrency=concurrency,
             model=model,
             pooling_params=CLASSIFY_POOLING_PARAMS,
+            distributed_executor_backend=distributed_executor_backend,
         )
     else:
         return run_processor(
@@ -571,9 +572,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--distributed-executor-backend",
         type=str,
-        default="mp",
-        choices=["ray", "mp"],
+        default=None,
+        choices=["ray", "mp", "uni"],
         help="Distributed executor backend for vLLM engine",
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help="Maximum number of tokens to generate per request (default: 100)",
     )
     # Ray Data worker configuration
     parser.add_argument(
@@ -603,13 +610,18 @@ def main() -> None:
         prompts = dataset.sample(args.num_prompts)
 
         dataset = data.from_items(prompts)
+
+        sampling_params = VLLM_SAMPLING_PARAMS.copy()
+        if args.max_tokens is not None:
+            sampling_params["max_tokens"] = args.max_tokens
+
         result = benchmark(
             Mode(args.mode),
             dataset,
             batch_size=args.batch_size,
             concurrency=args.concurrency,
             model=args.model,
-            sampling_params=VLLM_SAMPLING_PARAMS,
+            sampling_params=sampling_params,
             pipeline_parallel_size=args.pipeline_parallel_size,
             tensor_parallel_size=args.tensor_parallel_size,
             distributed_executor_backend=args.distributed_executor_backend,

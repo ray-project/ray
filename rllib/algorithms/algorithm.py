@@ -1210,12 +1210,12 @@ class Algorithm(Checkpointable, Trainable):
             # `self.iteration` gets incremented after this function returns,
             # meaning that e.g. the first time this function is called,
             # self.iteration will be 0.
-            evaluate_this_iter = (
+            evaluate_this_iter = bool(
                 self.config.evaluation_interval
                 and (self.iteration + 1) % self.config.evaluation_interval == 0
             )
 
-            evaluate_offline_this_iter = (
+            evaluate_offline_this_iter = bool(
                 self.config.offline_evaluation_interval
                 and (self.iteration + 1) % self.config.offline_evaluation_interval == 0
             )
