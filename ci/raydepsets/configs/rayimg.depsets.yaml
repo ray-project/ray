@@ -67,7 +67,6 @@ depsets:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
-      - --prerelease=allow
     build_arg_sets:
       - py311
 
