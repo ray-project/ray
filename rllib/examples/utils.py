@@ -471,7 +471,6 @@ def run_rllib_example_script_experiment(
     # Initialize Ray.
     ray.init(
         num_cpus=args.num_cpus or None,
-        local_mode=args.local_mode,
         ignore_reinit_error=True,
     )
 

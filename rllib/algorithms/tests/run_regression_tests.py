@@ -245,7 +245,6 @@ if __name__ == "__main__":
         # and unless the yaml explicitly tells us to disable eager tracing.
         if (
             (args.framework == "tf2" or exp["config"].get("framework") == "tf2")
-            and not args.local_mode
             # Note: This check will always fail for python configs, b/c normally,
             # algorithm configs have `self.eager_tracing=False` by default.
             # Thus, you'd have to set `eager_tracing` to True explicitly in your python
@@ -283,7 +282,7 @@ if __name__ == "__main__":
         for i in range(3):
             # Try starting a new ray cluster.
             try:
-                ray.init(num_cpus=args.num_cpus, local_mode=args.local_mode)
+                ray.init(num_cpus=args.num_cpus)
             # Allow running this script on existing cluster as well.
             except ConnectionError:
                 ray.init()

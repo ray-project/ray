@@ -258,7 +258,6 @@ class CentralizedCritic(PPO):
 
 
 if __name__ == "__main__":
-    ray.init(local_mode=True)
     args = parser.parse_args()
 
     ModelCatalog.register_custom_model(

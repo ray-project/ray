@@ -126,7 +126,7 @@ if __name__ == "__main__":
         # Construct the Algorithm instance based on the given config.
         leaking = True
         try:
-            ray.init(num_cpus=5, local_mode=args.local_mode)
+            ray.init(num_cpus=5)
             if isinstance(experiment["run"], str):
                 algo_cls = get_trainable_cls(experiment["run"])
             else:
