@@ -34,6 +34,10 @@ def _is_list_like(pa_type: pyarrow.DataType) -> bool:
             hasattr(pyarrow.types, "is_list_view")
             and pyarrow.types.is_list_view(pa_type)
         )
+        or (
+            hasattr(pyarrow.types, "is_large_list_view")
+            and pyarrow.types.is_large_list_view(pa_type)
+        )
     )
 
 
