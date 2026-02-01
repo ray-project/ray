@@ -358,11 +358,13 @@ class DreamerModel(nn.Module):
         if isinstance(self.action_space, gym.spaces.Discrete):
             ret["actions_ints_dreamed_t0_to_H_B"] = torch.argmax(a_dreamed_H_B, dim=-1)
         elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
-            # Split concatenated one-hot and argmax per sub-action
-            split_sizes = list(self.action_space.nvec)
-            split_actions = torch.split(a_dreamed_H_B, split_sizes, dim=-1)
-            ret["actions_ints_dreamed_t0_to_H_B"] = torch.stack(
-                [torch.argmax(a, dim=-1) for a in split_actions], dim=-1
+            # Convert concatenated one-hot to integer actions per sub-action.
+            from ray.rllib.algorithms.dreamerv3.utils import (
+                multidiscrete_onehot_to_ints,
+            )
+
+            ret["actions_ints_dreamed_t0_to_H_B"] = multidiscrete_onehot_to_ints(
+                a_dreamed_H_B, self.action_space.nvec
             )
 
         return ret
@@ -542,11 +544,13 @@ class DreamerModel(nn.Module):
                 a_t0_to_H_B, dim=-1
             )
         elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
-            # Split concatenated one-hot and argmax per sub-action
-            split_sizes = list(self.action_space.nvec)
-            split_actions = torch.split(a_t0_to_H_B, split_sizes, dim=-1)
-            ret[re.sub("^actions_", "actions_ints_", key)] = torch.stack(
-                [torch.argmax(a, dim=-1) for a in split_actions], dim=-1
+            # Convert concatenated one-hot to integer actions per sub-action.
+            from ray.rllib.algorithms.dreamerv3.utils import (
+                multidiscrete_onehot_to_ints,
+            )
+
+            ret[re.sub("^actions_", "actions_ints_", key)] = (
+                multidiscrete_onehot_to_ints(a_t0_to_H_B, self.action_space.nvec)
             )
 
         return ret

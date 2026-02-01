@@ -12,6 +12,7 @@ import logging
 from typing import Any, Dict, Optional, Union
 
 import gymnasium as gym
+import numpy as np
 from typing_extensions import Self
 
 from ray.rllib.algorithms.algorithm import Algorithm
@@ -610,8 +611,6 @@ class DreamerV3(Algorithm):
                     )
                 elif isinstance(single_action_space, gym.spaces.MultiDiscrete):
                     # Convert multi-int actions to concatenated one-hot vectors.
-                    import numpy as np
-
                     sample["actions_ints"] = sample[Columns.ACTIONS]
                     one_hots = [
                         one_hot(sample[Columns.ACTIONS][..., i], depth=n)

@@ -166,3 +166,22 @@ def do_symlog_obs(observation_space, symlog_obs_user_setting):
         if symlog_obs_user_setting == "auto"
         else symlog_obs_user_setting
     )
+
+
+def multidiscrete_onehot_to_ints(actions_onehot, nvec):
+    """Convert concatenated one-hot actions to integer actions for MultiDiscrete.
+
+    Args:
+        actions_onehot: Tensor of concatenated one-hot actions [..., sum(nvec)].
+        nvec: List or array of action dimensions for each sub-action.
+
+    Returns:
+        Tensor of integer actions [..., len(nvec)].
+    """
+    # Import here to avoid framework dependency at module load time.
+    from ray.rllib.utils.framework import try_import_torch
+
+    torch, _ = try_import_torch()
+    split_sizes = list(nvec)
+    split_actions = torch.split(actions_onehot, split_sizes, dim=-1)
+    return torch.stack([torch.argmax(a, dim=-1) for a in split_actions], dim=-1)

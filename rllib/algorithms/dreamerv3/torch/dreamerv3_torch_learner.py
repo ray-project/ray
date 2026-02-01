@@ -566,29 +566,16 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
 
         # Compute log(p)s of all possible actions in the dream.
         action_space = self.module[module_id].unwrapped().actor.action_space
-        if isinstance(action_space, gym.spaces.Discrete):
-            # Note that when we create the Categorical action distributions, we compute
-            # unimix probs, then math.log these and provide these log(p) as "logits" to
-            # the Categorical. So here, we'll continue to work with log(p)s (not
-            # really "logits")!
+        # Discrete and MultiDiscrete: Use REINFORCE-style loss.
+        # Note that when we create the Categorical action distributions, we compute
+        # unimix probs, then math.log these and provide these log(p) as "logits" to
+        # the Categorical. So here, we'll continue to work with log(p)s (not
+        # really "logits")!
+        if isinstance(action_space, (gym.spaces.Discrete, gym.spaces.MultiDiscrete)):
             logp_actions_t0_to_Hm1_B = actions_dreamed_dist_params_t0_to_Hm1_B
 
             # Log probs of actions actually taken in the dream.
-            logp_actions_dreamed_t0_to_Hm1_B = torch.sum(
-                actions_dreamed * logp_actions_t0_to_Hm1_B,
-                dim=-1,
-            )
-            # First term of loss function. [1] eq. 11.
-            logp_loss_H_B = (
-                logp_actions_dreamed_t0_to_Hm1_B
-                * scaled_value_targets_t0_to_Hm1_B.detach()
-            )
-        # MultiDiscrete: Use REINFORCE-style loss like Discrete.
-        elif isinstance(action_space, gym.spaces.MultiDiscrete):
-            # For MultiDiscrete, we have concatenated log-probs for each sub-action.
-            # Sum log-probs element-wise with one-hot actions to get log-prob of taken
-            # actions, then sum over all sub-action dimensions.
-            logp_actions_t0_to_Hm1_B = actions_dreamed_dist_params_t0_to_Hm1_B
+            # For MultiDiscrete, this sums log-probs across all sub-action dimensions.
             logp_actions_dreamed_t0_to_Hm1_B = torch.sum(
                 actions_dreamed * logp_actions_t0_to_Hm1_B,
                 dim=-1,
