@@ -389,10 +389,8 @@ class ExecutionPlan:
         """
         dag = self._logical_plan.dag
         if dag.infer_metadata().num_rows is not None:
-            num_rows = dag.infer_metadata().num_rows
-        else:
-            num_rows = None
-        return num_rows
+            return dag.infer_metadata().num_rows
+        return None
 
     @omit_traceback_stdout
     def execute_to_iterator(
