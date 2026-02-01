@@ -6,7 +6,7 @@ from collections import defaultdict
 from functools import reduce
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
-from ray._private.ray_constants import env_bool, env_float
+from ray._common.utils import env_bool, env_float
 from ray.data._internal.execution import create_resource_allocator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,

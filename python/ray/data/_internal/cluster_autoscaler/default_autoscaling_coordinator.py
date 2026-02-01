@@ -14,7 +14,7 @@ from .base_autoscaling_coordinator import (
     ResourceDict,
     ResourceRequestPriority,
 )
-from ray.autoscaler._private.constants import env_integer
+from ray._common.utils import env_integer
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
