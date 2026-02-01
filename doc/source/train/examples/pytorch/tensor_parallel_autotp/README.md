@@ -89,7 +89,7 @@ This alternating pattern allows consecutive layers to be computed efficiently wh
 
 ## Why DeepSpeed AutoTP?
 
-This tutorial uses [DeepSpeed AutoTP](https://github.com/deepspeedai/DeepSpeed/blob/master/blogs/huggingface-tp/README.md) for tensor parallelism, which provides two key benefits:
+This tutorial uses [DeepSpeed AutoTP](https://github.com/deepspeedai/DeepSpeed/blob/master/blogs/huggingface-tp/README.md) for tensor parallelism, which provides two key benefits. For a complete overview of AutoTP, see the [DeepSpeed AutoTP docs](https://deepspeed.readthedocs.io/en/latest/training.html#automatic-tensor-parallel-training).
 
 1. **Automatic partitioning**: For supported models, AutoTP automatically identifies which parameters should be partitioned and in which dimensions. You don't need to manually define partitioning patterns. Most popular models including Llama and Qwen series are already supported out of the box.
 
