@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/stats/tag_defs.h"
 
@@ -188,12 +189,15 @@ bool LocalObjectManager::TryToSpillObjects() {
   }
 
   const std::string max_spilling_file_size_str =
-      max_spilling_file_size_ <= 0 ? "unlimited"
-                                   : std::to_string(max_spilling_file_size_);
-  RAY_LOG(DEBUG) << "Choosing objects to spill with minimum total size "
-                 << min_spilling_size_ << ", max fused file size "
-                 << max_spilling_file_size_str
-                 << " or with total # of objects = " << max_fused_object_count_;
+      max_spilling_file_size_ <= 0
+          ? "unlimited"
+          : absl::StrFormat("%lld", static_cast<long long>(max_spilling_file_size_));
+  RAY_LOG(DEBUG) << absl::StrFormat(
+      "Choosing objects to spill with minimum total size %lld, max fused file size %s "
+      "or with total # of objects = %lld",
+      static_cast<long long>(min_spilling_size_),
+      max_spilling_file_size_str,
+      static_cast<long long>(max_fused_object_count_));
   int64_t bytes_to_spill = 0;
   std::vector<ObjectID> objects_to_spill;
   int64_t num_to_spill = 0;

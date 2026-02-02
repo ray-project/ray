@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
@@ -85,9 +86,11 @@ class LocalObjectManager : public LocalObjectManagerInterface {
         object_store_memory_gauge_(object_store_memory_gauge),
         spill_manager_metrics_(spill_manager_metrics) {
     if (max_spilling_file_size_ > 0) {
-      RAY_CHECK_GE(max_spilling_file_size_, min_spilling_size_)
-          << "max_spilling_file_size=" << max_spilling_file_size_
-          << " must be >= min_spilling_size=" << min_spilling_size_;
+      RAY_CHECK_GE(max_spilling_file_size_, min_spilling_size_) << absl::StrFormat(
+          "Misconfiguration: max_spilling_file_size (%lld) must be >= "
+          "min_spilling_size (%lld). Set max_spilling_file_size <= 0 to disable.",
+          static_cast<long long>(max_spilling_file_size_),
+          static_cast<long long>(min_spilling_size_));
     }
   }
 
