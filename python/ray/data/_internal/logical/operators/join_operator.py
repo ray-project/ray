@@ -12,6 +12,12 @@ if TYPE_CHECKING:
     from ray.data.dataset import Schema
     from ray.data.expressions import Expr
 
+__all__ = [
+    "Join",
+    "JoinSide",
+    "JoinType",
+]
+
 
 class JoinType(Enum):
     INNER = "inner"

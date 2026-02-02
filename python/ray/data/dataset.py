@@ -56,30 +56,26 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
+    Count,
+    Filter,
+    FlatMap,
+    InputData,
+    Join,
+    Limit,
+    MapBatches,
+    MapRows,
+    Project,
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
     Sort,
-)
-from ray.data._internal.logical.operators.count_operator import Count
-from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.join_operator import Join
-from ray.data._internal.logical.operators.map_operator import (
-    Filter,
-    FlatMap,
-    MapBatches,
-    MapRows,
-    Project,
     StreamingRepartition,
-)
-from ray.data._internal.logical.operators.n_ary_operator import (
+    StreamingSplit,
     Union as UnionLogicalOperator,
+    Write,
     Zip,
 )
-from ray.data._internal.logical.operators.one_to_one_operator import Limit
-from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
-from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -892,8 +888,7 @@ class Dataset:
             A new dataset with the added column evaluated via the expression.
         """
         # TODO: update schema based on the expression AST.
-        from ray.data._internal.logical.operators.map_operator import Project
-        from ray.data._internal.logical.operators.one_to_one_operator import Download
+        from ray.data._internal.logical.operators import Download, Project
 
         # TODO: Once the expression API supports UDFs, we can clean up the code here.
         from ray.data.expressions import DownloadExpr
@@ -2714,7 +2709,7 @@ class Dataset:
             >>> import ray
             >>> ds1 = ray.data.range(2)
             >>> ds2 = ray.data.range(3)
-            >>> ds1.union(ds2).take_all()
+            >>> ds1.union(ds2).take_all()  # doctest: +SKIP
             [{'id': 0}, {'id': 1}, {'id': 0}, {'id': 1}, {'id': 2}]
 
         Args:
@@ -5522,6 +5517,7 @@ class Dataset:
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        pin_memory: bool = False,
     ) -> Iterable[TorchBatchType]:
         """Return an iterable over batches of data represented as Torch tensors.
 
@@ -5597,6 +5593,8 @@ class Dataset:
                 the buffer, the remaining rows in the buffer are drained.
                 ``batch_size`` must also be specified when using local shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            pin_memory: [Alpha] If True, copies the tensor to pinned memory. Note that
+                `pin_memory` is only supported when using `DefaultCollateFn`.
 
         Returns:
             An iterable over Torch Tensor batches.
@@ -5614,6 +5612,7 @@ class Dataset:
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
+            pin_memory=pin_memory,
         )
 
     @ConsumptionAPI

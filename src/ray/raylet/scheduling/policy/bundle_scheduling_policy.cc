@@ -42,6 +42,22 @@ BundleSchedulingPolicy::SelectCandidateNodes(const SchedulingContext *context) c
   return result;
 }
 
+bool BundleSchedulingPolicy::IsRequestFeasible(
+    const std::vector<const ResourceRequest *> &resource_request_list,
+    const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes) const {
+  for (const auto &request : resource_request_list) {
+    bool bundle_feasible = std::any_of(
+        candidate_nodes.begin(), candidate_nodes.end(), [&](const auto &entry) {
+          // Validates both resource and label constraints are feasible.
+          return entry.second->GetLocalView().IsFeasible(*request);
+        });
+    if (!bundle_feasible) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::pair<std::vector<int>, std::vector<const ResourceRequest *>>
 BundleSchedulingPolicy::SortRequiredResources(
     const std::vector<const ResourceRequest *> &resource_request_list) {
@@ -154,6 +170,11 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
   const auto &sorted_index = sorted_result.first;
   const auto &sorted_resource_request_list = sorted_result.second;
 
+  if (!IsRequestFeasible(sorted_resource_request_list, candidate_nodes)) {
+    RAY_LOG(DEBUG) << "Request requires labels or resources not present in the cluster.";
+    return SchedulingResult::Infeasible();
+  }
+
   std::vector<scheduling::NodeID> result_nodes;
   result_nodes.resize(sorted_resource_request_list.size());
   std::list<std::pair<int, const ResourceRequest *>> required_resources_list_copy;
@@ -230,6 +251,11 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
   auto sorted_result = SortRequiredResources(resource_request_list);
   const auto &sorted_index = sorted_result.first;
   const auto &sorted_resource_request_list = sorted_result.second;
+
+  if (!IsRequestFeasible(sorted_resource_request_list, candidate_nodes)) {
+    RAY_LOG(DEBUG) << "Request requires labels or resources not present in the cluster.";
+    return SchedulingResult::Infeasible();
+  }
 
   std::vector<scheduling::NodeID> result_nodes;
   absl::flat_hash_map<scheduling::NodeID, const Node *> selected_nodes;
@@ -378,6 +404,11 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
   auto sorted_result = SortRequiredResources(resource_request_list);
   const auto &sorted_index = sorted_result.first;
   const auto &sorted_resource_request_list = sorted_result.second;
+
+  if (!IsRequestFeasible(sorted_resource_request_list, candidate_nodes)) {
+    RAY_LOG(DEBUG) << "Request requires labels or resources not present in the cluster.";
+    return SchedulingResult::Infeasible();
+  }
 
   std::vector<scheduling::NodeID> result_nodes;
   for (const auto &resource_request : sorted_resource_request_list) {
