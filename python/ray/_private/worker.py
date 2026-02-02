@@ -97,7 +97,7 @@ from ray.exceptions import (
     RaySystemError,
     RayTaskError,
 )
-from ray.experimental import tqdm_ray
+from ray.experimental import GetTensorOptions, tqdm_ray
 from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -907,7 +907,7 @@ class Worker:
         self,
         serialized_objects,
         object_refs,
-        use_object_store: bool = False,
+        get_tensor_options: Optional[GetTensorOptions] = None,
     ):
         gpu_objects: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
@@ -920,10 +920,8 @@ class Worker:
             if object_id not in gpu_objects:
                 # If using a non-object store transport, then tensors will be sent
                 # out-of-band. Get them before deserializing the object store data.
-                # The user can set use_object_store to fetch the RDT object
-                # through the object store.
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
-                    object_id, use_object_store
+                    object_id, get_tensor_options
                 )
 
         # Function actor manager or the import thread may call pickle.loads
@@ -942,7 +940,7 @@ class Worker:
         timeout: Optional[float] = None,
         return_exceptions: bool = False,
         skip_deserialization: bool = False,
-        use_object_store: bool = False,
+        _get_tensor_options: Optional[GetTensorOptions] = None,
     ) -> Tuple[List[serialization.SerializedRayObject], bytes]:
         """Get the values in the object store associated with the IDs.
 
@@ -961,7 +959,7 @@ class Worker:
                 raised.
             skip_deserialization: If true, only the buffer will be released and
                 the object associated with the buffer will not be deserialized.
-            use_object_store: [Alpha] To fetch an RDT object through the object store.
+            _get_tensor_options: [Alpha] Special options for Ray Direct Transport.
         Returns:
             list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
@@ -998,7 +996,7 @@ class Worker:
             return None, debugger_breakpoint
 
         values = self.deserialize_objects(
-            serialized_objects, object_refs, use_object_store
+            serialized_objects, object_refs, _get_tensor_options
         )
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
@@ -2868,7 +2866,7 @@ def get(
     ],
     *,
     timeout: Optional[float] = None,
-    _use_object_store: bool = False,
+    _get_tensor_options: Optional[GetTensorOptions] = None,
 ) -> Union[Any, List[Any]]:
     """Get a remote object or a list of remote objects from the object store.
 
@@ -2904,12 +2902,8 @@ def get(
             corresponding object becomes available. Setting ``timeout=0`` will
             return the object immediately if it's available, else raise
             GetTimeoutError in accordance with the above docstring.
-        _use_object_store: [Alpha] To fetch an RDT object through the object store
-            instead of using its designated tensor transport. You can set this to True
-            for cases where the caller does not support the object's tensor transport,
-            e.g., the tensor transport is "nccl" and the caller is not part of the collective.
-            When this is False (default), Ray will use the object store for normal objects,
-            and attempt to use the object's tensor transport for RDT objects.
+        _get_tensor_options: [Alpha] Special options for Ray Direct Transport.
+            See :class:`~GetTensorOptions` for more details.
     Returns:
         A Python object or a list of Python objects.
 
@@ -2973,7 +2967,7 @@ def get(
             )
 
         values, debugger_breakpoint = worker.get_objects(
-            object_refs, timeout, use_object_store=_use_object_store
+            object_refs, timeout, _get_tensor_options=_get_tensor_options
         )
         for i, value in enumerate(values):
             if isinstance(value, RayError):

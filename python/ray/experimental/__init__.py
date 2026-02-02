@@ -1,6 +1,7 @@
 from ray.experimental.dynamic_resources import set_resource
 from ray.experimental.gpu_object_manager import (
     CommunicatorMetadata,
+    GetTensorOptions,
     GPUObjectManager,
     TensorTransportManager,
     TensorTransportMetadata,
@@ -16,6 +17,7 @@ __all__ = [
     "GPUObjectManager",
     "wait_tensor_freed",
     "register_tensor_transport",
+    "GetTensorOptions",
     "TensorTransportManager",
     "TensorTransportMetadata",
     "CommunicatorMetadata",

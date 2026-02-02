@@ -4,6 +4,7 @@ import pytest
 import torch
 
 import ray
+from ray.experimental import GetTensorOptions
 
 
 @ray.remote(enable_tensor_transport=True)
@@ -45,7 +46,7 @@ def test_colocated_actors(ray_start_regular):
     ray.get(dst_actor.double.remote(gpu_ref))
     # Check that the tensor is modified in place, and is reflected on the source actor
     assert torch.equal(
-        ray.get(gpu_ref, _use_object_store=True),
+        ray.get(gpu_ref, GetTensorOptions(use_object_store=True)),
         torch.tensor([2, 4, 6], device="cuda"),
     )
 
@@ -123,7 +124,7 @@ def test_ref_freed(ray_start_regular):
     assert free_res == "freed"
 
     assert torch.equal(
-        ray.get(res_ref, _use_object_store=True),
+        ray.get(res_ref, GetTensorOptions(use_object_store=True)),
         torch.tensor([2, 4, 6], device="cuda"),
     )
 
@@ -145,7 +146,7 @@ def test_source_actor_fails_after_transfer(ray_start_regular):
     # Trigger tensor transfer from src to dst actor
     res_ref = dst_actor.double.remote(gpu_ref)
     assert torch.equal(
-        ray.get(res_ref, _use_object_store=True),
+        ray.get(res_ref, GetTensorOptions(use_object_store=True)),
         torch.tensor([2, 4, 6], device="cuda"),
     )
 
@@ -156,7 +157,7 @@ def test_source_actor_fails_after_transfer(ray_start_regular):
 
     # Check that the tensor is still available on the destination actor.
     assert torch.equal(
-        ray.get(res_ref, _use_object_store=True),
+        ray.get(res_ref, GetTensorOptions(use_object_store=True)),
         torch.tensor([2, 4, 6], device="cuda"),
     )
 
@@ -177,7 +178,7 @@ def test_source_actor_fails_before_transfer(ray_start_regular):
 
     # Wait for object to be created.
     assert torch.equal(
-        ray.get(gpu_ref, _use_object_store=True),
+        ray.get(gpu_ref, GetTensorOptions(use_object_store=True)),
         torch.tensor([1, 2, 3], device="cuda"),
     )
 
@@ -189,7 +190,7 @@ def test_source_actor_fails_before_transfer(ray_start_regular):
     # Check that the tensor is still available on the destination actor.
     with pytest.raises(ray.exceptions.RayTaskError):
         res_ref = dst_actor.double.remote(gpu_ref)
-        ray.get(res_ref, _use_object_store=True)
+        ray.get(res_ref, GetTensorOptions(use_object_store=True))
 
 
 if __name__ == "__main__":

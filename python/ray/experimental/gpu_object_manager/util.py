@@ -21,6 +21,26 @@ if TYPE_CHECKING:
     import torch
 
 
+@PublicAPI(stability="alpha")
+class GetTensorOptions(NamedTuple):
+    """
+    Options to pass into ray.get when used with Ray Direct Transport.
+
+    Attributes:
+        use_object_store: To fetch an RDT object through the object store
+            instead of using its designated tensor transport. You can set this to True
+            for cases where the caller does not support the object's tensor transport,
+            e.g., the tensor transport is "nccl" and the caller is not part of the collective.
+            When this is False (default), Ray will use the object store for normal objects,
+            and attempt to use the object's tensor transport for RDT objects.
+        tensor_buffers: If provided, RDT will directly receive into these buffers,
+            avoiding any intermediate copies if possible.
+    """
+
+    use_object_store: bool = False
+    tensor_buffers: Optional[List["torch.Tensor"]] = None
+
+
 class TransportManagerInfo(NamedTuple):
     transport_manager_class: type[TensorTransportManager]
     # list of support device types for the transport

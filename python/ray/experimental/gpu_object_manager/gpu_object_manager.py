@@ -19,6 +19,7 @@ from typing import (
 import ray
 from ray._private import ray_constants
 from ray._raylet import ObjectRef
+from ray.experimental.gpu_object_manager.util import GetTensorOptions
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -411,7 +412,7 @@ class GPUObjectManager:
     def _fetch_object(
         self,
         obj_id: str,
-        use_object_store: bool,
+        get_tensor_options: Optional[GetTensorOptions] = None,
     ):
         """
         Fetches the GPU object from the source actor's GPU object store via the object store
@@ -423,8 +424,7 @@ class GPUObjectManager:
 
         Args:
             obj_id: The object ID of the RDT object.
-            use_object_store: Whether to fetch the RDT object through the
-                object store or through its designated tensor transport.
+            get_tensor_options: Optional user-specified options from ray.get.
 
         Returns:
             None
@@ -443,7 +443,10 @@ class GPUObjectManager:
         gpu_object_meta = self.get_gpu_object_metadata(obj_id)
         assert gpu_object_meta is not None
 
-        if use_object_store:
+        if get_tensor_options and get_tensor_options.use_object_store:
+            assert (
+                not get_tensor_options.tensor_buffer
+            ), "tensor_buffer is not supported when use_object_store is True"
             src_actor = gpu_object_meta.src_actor
             tensors = ray.get(
                 src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
@@ -480,6 +483,9 @@ class GPUObjectManager:
                 tensor_transport_meta,
                 communicator_meta,
                 tensor_transport,
+                tensor_buffer=get_tensor_options.tensor_buffer
+                if get_tensor_options
+                else None,
             )
 
     def queue_or_trigger_out_of_band_tensor_transfer(
@@ -638,22 +644,21 @@ class GPUObjectManager:
     def get_gpu_object(
         self,
         object_id: str,
-        use_object_store: bool = False,
+        get_tensor_options: Optional[GetTensorOptions] = None,
     ) -> List["torch.Tensor"]:
         """
         Get the RDT object for a given object ID.
 
         Args:
             object_id: The object ID of the RDT object.
-            use_object_store: Whether to fetch the RDT object
-                through the object store or through its designated tensor transport.
+            get_tensor_options: Optional user-specified options from ray.get.
 
         Returns:
             The RDT object.
         """
         gpu_object_store = self.gpu_object_store
         if self.is_managed_object(object_id):
-            self._fetch_object(object_id, use_object_store)
+            self._fetch_object(object_id, get_tensor_options)
 
         # If the GPU object is the primary copy, it means the transfer is intra-actor.
         # In this case, we should not remove the GPU object after it is consumed once,
