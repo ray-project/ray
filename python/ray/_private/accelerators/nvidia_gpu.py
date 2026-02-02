@@ -4,6 +4,7 @@ import re
 from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,7 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
     def set_current_process_visible_accelerator_ids(
         visible_cuda_devices: List[str],
     ) -> None:
-        if os.environ.get(NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR):
+        if env_bool(NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR, False):
             return
 
         os.environ[

@@ -1,4 +1,6 @@
 group: reef tests
+depends_on:
+  - forge
 steps:
   - label: ":test_tube: test-rules"
     key: test-rules
@@ -18,8 +20,6 @@ steps:
           --build-name forge
           --build-type skip
     instance_type: small
-    depends_on:
-      - forge
     tags: tools
   - label: ":coral: reef: raydepsets tests"
     key: raydepsets-tests
@@ -30,8 +30,6 @@ steps:
           --build-name forge
           --build-type skip
     instance_type: small
-    depends_on:
-      - forge
     tags: tools
   - label: ":coral: reef: privileged container tests"
     commands:
@@ -42,9 +40,7 @@ steps:
           --build-type cgroup
           --privileged
     instance_type: small
-    depends_on:
-      - oss-ci-base_test-multipy
-      - forge
+    depends_on: oss-ci-base_test-multipy
     tags: tools
   - label: ":coral: reef: iwyu tests"
     commands:

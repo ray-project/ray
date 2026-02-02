@@ -15,14 +15,13 @@ Run with --help to see all options.
 """
 
 import logging
-import os
 import sys
 from datetime import datetime, timezone as tz
-from typing import Optional
 
 import click
 
 from ci.ray_ci.automation.crane_lib import (
+    CraneError,
     call_crane_copy,
     call_crane_manifest,
 )
@@ -41,7 +40,7 @@ class CopyWandaImageError(Exception):
     """Error raised when copying Wanda-cached images fails."""
 
 
-def _generate_destination_tag(commit: str, tag_suffix: Optional[str] = None) -> str:
+def _generate_destination_tag(commit: str, tag_suffix: str) -> str:
     """
     Generate a destination tag in the format: YYMMDD.{commit_prefix}{suffix}
 
@@ -51,15 +50,17 @@ def _generate_destination_tag(commit: str, tag_suffix: Optional[str] = None) -> 
     """
     date_str = datetime.now(tz.utc).strftime("%y%m%d")
     commit_prefix = commit[:7]
-    if tag_suffix:
-        return f"{date_str}.{commit_prefix}{tag_suffix}"
-    return f"{date_str}.{commit_prefix}"
+
+    return f"{date_str}.{commit_prefix}{tag_suffix}"
 
 
 def _image_exists(tag: str) -> bool:
     """Check if a container image manifest exists using crane."""
-    return_code, _ = call_crane_manifest(tag)
-    return return_code == 0
+    try:
+        call_crane_manifest(tag)
+        return True
+    except CraneError:
+        return False
 
 
 def _copy_image(source: str, destination: str, dry_run: bool = False) -> None:
@@ -69,42 +70,52 @@ def _copy_image(source: str, destination: str, dry_run: bool = False) -> None:
         return
 
     logger.info(f"Copying {source} -> {destination}")
-    return_code, output = call_crane_copy(source, destination)
-    if return_code != 0:
-        raise CopyWandaImageError(f"Crane copy failed: {output}")
+    call_crane_copy(source, destination)
     logger.info(f"Successfully copied to {destination}")
 
 
 @click.command()
 @click.option(
     "--rayci-work-repo",
+    envvar="RAYCI_WORK_REPO",
+    required=True,
     type=str,
-    default=None,
-    help="RAYCI work repository URL. Defaults to RAYCI_WORK_REPO env var.",
+    help="RAYCI work repository URL. Falls back to reading from RAYCI_WORK_REPO.",
 )
 @click.option(
     "--rayci-build-id",
+    envvar="RAYCI_BUILD_ID",
+    required=True,
     type=str,
-    default=None,
-    help="RAYCI build ID. Defaults to RAYCI_BUILD_ID env var.",
+    help="RAYCI build ID. Falls back to reading from RAYCI_BUILD_ID.",
 )
 @click.option(
     "--wanda-image-name",
+    envvar="WANDA_IMAGE_NAME",
+    required=True,
     type=str,
-    default=None,
-    help="Name of the Wanda-cached image (e.g., 'forge'). Defaults to WANDA_IMAGE_NAME env var.",
+    help="Name of the Wanda-cached image (e.g., 'forge'). Falls back to reading from WANDA_IMAGE_NAME.",
 )
 @click.option(
     "--destination-repository",
+    envvar="DESTINATION_REPOSITORY",
+    required=True,
     type=str,
-    default=None,
-    help="Destination repository to copy the image to. Defaults to DESTINATION_REPOSITORY env var.",
+    help="Destination repository to copy the image to. Falls back to reading from DESTINATION_REPOSITORY.",
 )
 @click.option(
     "--tag-suffix",
     type=str,
-    default=None,
-    help="Suffix for the tag (e.g., '-x86_64', '-jdk-x86_64'). Defaults to TAG_SUFFIX env var.",
+    envvar="TAG_SUFFIX",
+    required=True,
+    help="Suffix for the tag (e.g., '-x86_64', '-jdk-x86_64'). Falls back to reading from TAG_SUFFIX.",
+)
+@click.option(
+    "--buildkite-commit",
+    envvar="BUILDKITE_COMMIT",
+    required=True,
+    type=str,
+    help="Buildkite commit. Falls back to reading from BUILDKITE_COMMIT.",
 )
 @click.option(
     "--upload",
@@ -113,11 +124,12 @@ def _copy_image(source: str, destination: str, dry_run: bool = False) -> None:
     help="Upload the image to the registry. Without this flag, runs in dry-run mode.",
 )
 def main(
-    rayci_work_repo: Optional[str],
-    rayci_build_id: Optional[str],
-    wanda_image_name: Optional[str],
-    destination_repository: Optional[str],
-    tag_suffix: Optional[str],
+    rayci_work_repo: str,
+    rayci_build_id: str,
+    wanda_image_name: str,
+    destination_repository: str,
+    tag_suffix: str,
+    buildkite_commit: str,
     upload: bool,
 ) -> None:
     """
@@ -134,28 +146,8 @@ def main(
     if not upload:
         logger.info("DRY RUN MODE - no images will be copied")
 
-    rayci_work_repo = rayci_work_repo or os.environ.get("RAYCI_WORK_REPO")
-    rayci_build_id = rayci_build_id or os.environ.get("RAYCI_BUILD_ID")
-    wanda_image_name = wanda_image_name or os.environ.get("WANDA_IMAGE_NAME")
-    destination_repository = destination_repository or os.environ.get(
-        "DESTINATION_REPOSITORY"
-    )
-    tag_suffix = tag_suffix or os.environ.get("TAG_SUFFIX")
-    commit = os.environ.get("BUILDKITE_COMMIT")
-
-    required = {
-        "RAYCI_WORK_REPO": rayci_work_repo,
-        "RAYCI_BUILD_ID": rayci_build_id,
-        "WANDA_IMAGE_NAME": wanda_image_name,
-        "DESTINATION_REPOSITORY": destination_repository,
-        "BUILDKITE_COMMIT": commit,
-    }
-    missing = [k for k, v in required.items() if not v]
-    if missing:
-        raise CopyWandaImageError(f"Missing required values: {', '.join(missing)}")
-
     source_tag = f"{rayci_work_repo}:{rayci_build_id}-{wanda_image_name}"
-    destination_tag = _generate_destination_tag(commit, tag_suffix)
+    destination_tag = _generate_destination_tag(buildkite_commit, tag_suffix)
     full_destination = f"{destination_repository}:{destination_tag}"
 
     logger.info(f"Source tag (Wanda): {source_tag}")

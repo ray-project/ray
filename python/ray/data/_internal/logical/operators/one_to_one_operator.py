@@ -11,6 +11,12 @@ if TYPE_CHECKING:
 
     from ray.data.block import Schema
 
+__all__ = [
+    "AbstractOneToOne",
+    "Download",
+    "Limit",
+]
+
 
 class AbstractOneToOne(LogicalOperator):
     """Abstract class for one-to-one logical operators, which
@@ -44,7 +50,7 @@ class AbstractOneToOne(LogicalOperator):
 
     @property
     def input_dependency(self) -> LogicalOperator:
-        return self._input_dependencies[0]
+        return self.input_dependencies[0]
 
     def can_modify_num_rows(self) -> bool:
         """Whether this operator can modify the number of rows,
@@ -78,23 +84,23 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
     def infer_schema(
         self,
     ) -> Optional["Schema"]:
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        assert isinstance(self._input_dependencies[0], LogicalOperator)
-        return self._input_dependencies[0].infer_schema()
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        return self.input_dependencies[0].infer_schema()
 
     def _num_rows(self):
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        assert isinstance(self._input_dependencies[0], LogicalOperator)
-        input_rows = self._input_dependencies[0].infer_metadata().num_rows
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        input_rows = self.input_dependencies[0].infer_metadata().num_rows
         if input_rows is not None:
             return min(input_rows, self._limit)
         else:
             return None
 
     def _input_files(self):
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        assert isinstance(self._input_dependencies[0], LogicalOperator)
-        return self._input_dependencies[0].infer_metadata().input_files
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        return self.input_dependencies[0].infer_metadata().input_files
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Pushing filter through limit is safe: Filter(Limit(data, n), pred)

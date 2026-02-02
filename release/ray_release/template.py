@@ -28,7 +28,7 @@ _test_env = None
 _bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
 
-def get_test_environment():
+def _get_test_environment():
     global _test_env
     if _test_env:
         return _test_env
@@ -38,11 +38,11 @@ def get_test_environment():
 
 
 def get_test_env_var(key: str, default: Optional[str] = None):
-    test_env = get_test_environment()
+    test_env = _get_test_environment()
     return test_env.get(key, default)
 
 
-def load_and_render_yaml_template(
+def _load_and_render_yaml_template(
     template_path: str, env: Optional[Dict] = None
 ) -> Optional[Dict]:
     if not template_path:
@@ -56,10 +56,10 @@ def load_and_render_yaml_template(
     with open(template_path, "rt") as f:
         content = f.read()
 
-    return render_yaml_template(template=content, env=env)
+    return _render_yaml_template(template=content, env=env)
 
 
-def render_yaml_template(template: str, env: Optional[Dict] = None):
+def _render_yaml_template(template: str, env: Optional[Dict] = None):
     render_env = copy.deepcopy(os.environ)
     if env:
         render_env.update(env)
@@ -103,12 +103,12 @@ def load_test_cluster_compute(
     cluster_compute_file = test["cluster"]["cluster_compute"]
     working_dir = get_working_dir(test, test_definition_root)
     f = os.path.join(working_dir, cluster_compute_file)
-    env = populate_cluster_compute_variables(test)
-    return load_and_render_yaml_template(f, env=env)
+    env = _populate_cluster_compute_variables(test)
+    return _load_and_render_yaml_template(f, env=env)
 
 
-def populate_cluster_compute_variables(test: "Test") -> Dict:
-    env = get_test_environment()
+def _populate_cluster_compute_variables(test: "Test") -> Dict:
+    env = _get_test_environment()
 
     cloud_id = get_test_cloud_id(test)
     env["ANYSCALE_CLOUD_ID"] = cloud_id
