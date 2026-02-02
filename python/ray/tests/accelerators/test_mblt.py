@@ -7,15 +7,12 @@ import pytest
 import ray
 from ray._private.accelerators import MBLTAcceleratorManager as Accelerator
 
-# --- helper: mock_mblt를 maccel 네임스페이스에 주입 ---
 def _inject_mock_mblt(num_devices: int, *, install=True):
     import importlib
     import types
     mock = importlib.import_module("tests.mock_mblt") if "tests.mock_mblt" in sys.modules else importlib.import_module("mock_mblt")
-    # 동적으로 디바이스 개수 변경
     setattr(mock, "NUM_DEVICES", num_devices)
 
-    # maccel 패키지/서브모듈로 주입
     maccel_pkg = types.ModuleType("maccel")
     accel_mod = types.ModuleType("maccel.accelerator")
     accel_mod.Accelerator = mock.accelerator.Accelerator
@@ -34,7 +31,6 @@ def test_autodetect_num_mblt_devices():
 
 def test_autodetect_num_mblt_devices_without_any():
     with patch.dict(sys.modules, clear=False):
-        # 존재하지 않게 만들기: 존재 확인 시 항상 예외
         import types
         maccel_pkg = types.ModuleType("maccel")
         accel_mod = types.ModuleType("maccel.accelerator")
@@ -53,7 +49,6 @@ def test_autodetect_num_mblt_devices_without_any():
 def test_mblt_accelerator_manager_api():
     assert Accelerator.get_resource_name() == "MBLT"
     assert Accelerator.get_visible_accelerator_ids_env_var() == "MBLT_VISIBLE_DEVICES"
-    # 정책: 오직 1만 허용
     assert Accelerator.validate_resource_request_quantity(1) == (True, None)
     assert Accelerator.validate_resource_request_quantity(0.5)[0] is False
     assert Accelerator.validate_resource_request_quantity(2)[0] is False
@@ -100,7 +95,6 @@ def test_get_current_process_visible_accelerator_ids(monkeypatch, shutdown_only)
 
 
 def test_set_current_process_visible_accelerator_ids(shutdown_only):
-    # 구현이 "첫 번째만 반영"이라면 아래 assert가 맞음.
     Accelerator.set_current_process_visible_accelerator_ids(["0"])
     assert os.environ["MBLT_VISIBLE_DEVICES"] == "0"
 
