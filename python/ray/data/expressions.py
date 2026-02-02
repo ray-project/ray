@@ -1304,6 +1304,7 @@ class DownloadExpr(Expr):
     """Expression that represents a download operation."""
 
     uri_column_name: str
+    filesystem: "pyarrow.fs.FileSystem" = None
     data_type: DataType = field(default_factory=lambda: DataType.binary(), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
@@ -1448,7 +1449,10 @@ def star() -> StarExpr:
 
 
 @PublicAPI(stability="alpha")
-def download(uri_column_name: str) -> DownloadExpr:
+def download(
+    uri_column_name: str,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+) -> DownloadExpr:
     """
     Create a download expression that downloads content from URIs.
 
@@ -1458,6 +1462,8 @@ def download(uri_column_name: str) -> DownloadExpr:
 
     Args:
         uri_column_name: The name of the column containing URIs to download from
+        filesystem: PyArrow filesystem to use for reading remote files.
+            If None, the filesystem is auto-detected from the path scheme.
     Returns:
         A DownloadExpr that will download content from the specified URI column
 
@@ -1472,7 +1478,7 @@ def download(uri_column_name: str) -> DownloadExpr:
         >>> # Add downloaded bytes column
         >>> ds_with_bytes = ds.with_column("bytes", download("uri"))
     """
-    return DownloadExpr(uri_column_name=uri_column_name)
+    return DownloadExpr(uri_column_name=uri_column_name, filesystem=filesystem)
 
 
 # ──────────────────────────────────────
