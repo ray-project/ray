@@ -45,19 +45,19 @@ if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
 
 @pytest.fixture
 def ray_shutdown():
-    serve.shutdown()
     if ray.is_initialized():
+        serve.shutdown()
         ray.shutdown()
     yield
-    serve.shutdown()
     if ray.is_initialized():
+        serve.shutdown()
         ray.shutdown()
 
 
 @pytest.fixture
 def ray_cluster():
-    serve.shutdown()
     if ray.is_initialized():
+        serve.shutdown()
         ray.shutdown()
     cluster = Cluster()
     yield cluster
@@ -68,8 +68,8 @@ def ray_cluster():
 
 @pytest.fixture
 def ray_autoscaling_cluster(request):
-    serve.shutdown()
     if ray.is_initialized():
+        serve.shutdown()
         ray.shutdown()
     # NOTE(zcin): We have to make a deepcopy here because AutoscalingCluster
     # modifies the dictionary that's passed in.
@@ -147,8 +147,8 @@ def _shared_serve_instance():
     # os.environ["SERVE_DEBUG_LOG"] = "1" <- Do not uncomment this.
 
     # Ensure Ray is not already running before starting this session-scoped instance
-    serve.shutdown()
     if ray.is_initialized():
+        serve.shutdown()
         ray.shutdown()
 
     # Overriding task_retry_delay_ms to relaunch actors more quickly
