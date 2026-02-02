@@ -728,7 +728,7 @@ def fixed_shape_extension_scalar_to_ndarray(
 class ArrowTensorType(_BaseFixedShapeArrowTensorType):
     """Arrow ExtensionType (v1) for tensors.
 
-    NOTE: This type does *NOT* support tensors larger than 4Gb (due to
+    NOTE: This type does *NOT* support tensors larger than 2Gb (due to
           overflow of int32 offsets utilized inside Pyarrow `ListType`)
     """
 
@@ -757,7 +757,7 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
 
 @PublicAPI(stability="alpha")
 class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
-    """Arrow ExtensionType (v2) for tensors (supporting tensors > 4Gb)."""
+    """Arrow ExtensionType (v2) for tensors (supporting tensors > 2Gb)."""
 
     OFFSET_DTYPE = pa.int64()
 
@@ -800,8 +800,8 @@ def create_arrow_fixed_shape_tensor_format(
             ``DataContext.arrow_fixed_shape_tensor_format``.
 
             Explicit values:
-            - V1: ArrowTensorType (legacy, limited to <4GB)
-            - V2: ArrowTensorTypeV2 (supports >4GB tensors)
+            - V1: ArrowTensorType (legacy, limited to <2GB)
+            - V2: ArrowTensorTypeV2 (supports >2GB tensors)
             - NATIVE: PyArrow's native FixedShapeTensorType (requires PyArrow 12+)
 
     Returns:
