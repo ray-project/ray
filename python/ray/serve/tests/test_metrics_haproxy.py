@@ -34,7 +34,6 @@ from ray._private.test_utils import (
     fetch_prometheus_metrics,
 )
 from ray.serve import HTTPOptions
-from ray.serve._private.constants import RAY_SERVE_ENABLE_HAPROXY
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
 from ray.serve._private.test_utils import (
     get_application_url,
@@ -43,12 +42,6 @@ from ray.serve._private.utils import block_until_http_ready
 from ray.serve.tests.conftest import TEST_METRICS_EXPORT_PORT
 from ray.serve.tests.test_metrics import get_metric_dictionaries
 from ray.util.state import list_actors
-
-# Skip all tests in this module if the HAProxy feature flag is not enabled
-pytestmark = pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_HAPROXY,
-    reason="RAY_SERVE_ENABLE_HAPROXY not set.",
-)
 
 
 @pytest.fixture
