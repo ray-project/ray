@@ -77,9 +77,9 @@ config = (
     )
     .rl_module(
         model_config=DefaultModelConfig(
+            vf_share_layers=True,
             fcnet_hiddens=[32],
             fcnet_activation="linear",
-            vf_share_layers=True,
         ),
     )
 )

@@ -219,9 +219,9 @@ config = (
         train_batch_size_per_learner=args.rollout_fragment_length
         * (args.num_env_runners or 1),
         lr=1e-4,
-        entropy_coeff=0.01,
+        entropy_coeff=0.025,
         num_epochs=10,
-        minibatch_size=128,
+        minibatch_size=256,
     )
     .multi_agent(
         policies={
