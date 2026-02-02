@@ -186,7 +186,6 @@ def test_train_state_actor_create_and_get_run(ray_start_regular):
             train_loop_config=None,
             backend_config=BackendConfigSchema(framework=None, config={}),
             scaling_config=ScalingConfigSchema(
-                trainer_resources=None,
                 num_workers=1,
                 use_gpu=False,
                 resources_per_worker=None,
