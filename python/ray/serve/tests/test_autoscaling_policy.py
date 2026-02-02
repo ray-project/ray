@@ -1531,6 +1531,7 @@ def test_autoscaling_status_changes(serve_instance):
     print("Statuses are as expected.")
 
 
+# Serve applies autoscaling config to custom policies at registration time.
 def custom_autoscaling_policy(ctx: AutoscalingContext):
     if ctx.total_num_requests > 50:
         return 3, {}
@@ -1542,7 +1543,7 @@ def custom_autoscaling_policy(ctx: AutoscalingContext):
     "policy",
     [
         {
-            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
+            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy",
         },
         AutoscalingPolicy(
             policy_function="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"

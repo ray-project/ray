@@ -324,6 +324,7 @@ py_binary(
     deps = [
         ":crane_lib",
         "//ci/ray_ci:ray_ci_lib",
+        "//release:ray_release",
         ci_require("click"),
     ],
 )

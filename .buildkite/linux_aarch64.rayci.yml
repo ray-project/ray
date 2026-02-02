@@ -38,6 +38,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
     instance_type: builder-arm64
     env:
       PYTHON_VERSION: "{{matrix}}"
@@ -50,6 +51,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
     instance_type: builder-arm64
     env:
       PYTHON_VERSION: "{{matrix}}"
@@ -69,6 +71,7 @@ steps:
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
         cuda:
           - "11.7.1-cudnn8"
           - "11.8.0-cudnn8"
@@ -94,6 +97,7 @@ steps:
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
         cuda:
           - "11.7.1-cudnn8"
           - "11.8.0-cudnn8"
@@ -164,7 +168,7 @@ steps:
       - ray-dashboard-build-aarch64
     instance_type: builder-arm64
 
-  - label: ":s3: upload: wheel py{{matrix}} (aarch64)"
+  - label: ":arrow_up: upload: wheel py{{matrix}} (aarch64)"
     key: linux_wheels_upload_aarch64
     instance_type: small  # x86_64 instance since crane is currently only x86_64
     commands:
@@ -181,7 +185,7 @@ steps:
       - forge
     tags:
       - release_wheels
-      - skip-on-premerge
+      - linux_wheels
       - oss
 
   - name: ray-cpp-core-build-aarch64
@@ -189,7 +193,6 @@ steps:
     wanda: ci/docker/ray-cpp-core.wanda.yaml
     env_file: rayci.env
     env:
-      PYTHON_VERSION: "3.10"  # Used for upstream images; output is Python-agnostic
       ARCH_SUFFIX: "-aarch64"
       HOSTTYPE: "aarch64"
     tags:
@@ -216,7 +219,7 @@ steps:
       - ray-dashboard-build-aarch64
     instance_type: builder-arm64
 
-  - label: ":s3: upload: cpp wheel (aarch64)"
+  - label: ":arrow_up: upload: cpp wheel (aarch64)"
     key: linux_cpp_wheels_upload_aarch64
     instance_type: small  # x86_64 instance since crane is currently only x86_64
     commands:
@@ -228,7 +231,7 @@ steps:
       - forge
     tags:
       - release_wheels
-      - skip-on-premerge
+      - linux_wheels
       - oss
 
   - label: ":tapioca: build: ray-extra py{{matrix}} docker (aarch64)"
@@ -257,6 +260,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
 
   - label: ":tapioca: build: ray py{{matrix}} docker (aarch64)"
     key: ray_images_aarch64
@@ -284,6 +288,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
 
   - label: ":ray: core: wheel-aarch64 tests"
     tags: linux_wheels
