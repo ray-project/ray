@@ -53,13 +53,12 @@ targets.
 from torch.nn.init import orthogonal_
 
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
-
 
 parser = add_rllib_example_script_args(
     default_iters=1_000,
