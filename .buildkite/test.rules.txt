@@ -26,6 +26,7 @@ python/ray/air/
 
 python/ray/llm/
 doc/source/llm/
+doc/source/data/doc_code/working-with-llms/
 .buildkite/llm.rayci.yml
 ci/docker/llm.build.Dockerfile
 python/deplocks/llm/*.lock

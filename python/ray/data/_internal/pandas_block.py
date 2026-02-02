@@ -575,7 +575,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         # extension columns separately.
         memory_usage = self._table.memory_usage(index=True, deep=False)
 
-        # TensorDtype for ray.air.util.tensor_extensions.pandas.TensorDtype
+        # TensorDtype for ray.data._internal.tensor_extensions.pandas.TensorDtype
         object_need_check = (TensorDtype,)
         max_sample_count = _PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT
 
