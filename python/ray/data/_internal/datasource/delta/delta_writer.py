@@ -156,7 +156,9 @@ class DeltaFileWriter:
             # Use dictionary encode to get unique groups and indices
             # This gives us O(n) grouping instead of O(k*n) Python loops
             dict_encoded = pc.dictionary_encode(struct_array)
-            dictionary = dict_encoded.dictionary  # Unique struct values (partition keys)
+            dictionary = (
+                dict_encoded.dictionary
+            )  # Unique struct values (partition keys)
             indices = dict_encoded.indices  # Dictionary index for each row
 
             # Check partition count

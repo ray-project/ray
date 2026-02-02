@@ -305,7 +305,10 @@ def test_write_delta_upsert_basic(ray_start_regular_shared, temp_delta_path):
     # Upsert: update id=1, insert id=3
     upsert_data = [{"id": 1, "value": "updated"}, {"id": 3, "value": "new"}]
     _write_to_delta(
-        upsert_data, temp_delta_path, mode=SaveMode.UPSERT, upsert_kwargs={"join_cols": ["id"]}
+        upsert_data,
+        temp_delta_path,
+        mode=SaveMode.UPSERT,
+        upsert_kwargs={"join_cols": ["id"]},
     )
 
     # Verify results
@@ -332,7 +335,9 @@ def test_write_delta_upsert_requires_existing_table(
         )
 
 
-def test_write_delta_upsert_requires_join_cols(ray_start_regular_shared, temp_delta_path):
+def test_write_delta_upsert_requires_join_cols(
+    ray_start_regular_shared, temp_delta_path
+):
     """Test that upsert mode requires join_cols."""
     from ray.data import SaveMode
 
@@ -344,7 +349,9 @@ def test_write_delta_upsert_requires_join_cols(ray_start_regular_shared, temp_de
         _write_to_delta([{"id": 2}], temp_delta_path, mode=SaveMode.UPSERT)
 
 
-def test_write_delta_upsert_kwargs_validation(ray_start_regular_shared, temp_delta_path):
+def test_write_delta_upsert_kwargs_validation(
+    ray_start_regular_shared, temp_delta_path
+):
     """Test that upsert_kwargs requires upsert mode."""
     from ray.data import SaveMode
 

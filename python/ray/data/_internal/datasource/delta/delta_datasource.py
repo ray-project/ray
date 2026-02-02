@@ -147,9 +147,7 @@ class DeltaDatasource(Datasource):
                 normalized_value = ""  # NULL represented as empty string in delta-rs
             elif isinstance(value, (list, tuple)):
                 # For "in" and "not in" operators
-                normalized_value = [
-                    "" if v is None else str(v) for v in value
-                ]
+                normalized_value = ["" if v is None else str(v) for v in value]
             else:
                 normalized_value = str(value)
 

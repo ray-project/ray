@@ -47,7 +47,9 @@ def validate_file_actions(
         # filesystem is SubTreeFileSystem, so action.path is relative from table root
         file_info = get_file_info_with_retry(filesystem, action.path)
         if file_info.type == pa_fs.FileType.NotFound:
-            raise ValueError(f"File does not exist: {action.path} (relative to table root)")
+            raise ValueError(
+                f"File does not exist: {action.path} (relative to table root)"
+            )
         if file_info.size == 0:
             raise ValueError(f"File is empty: {action.path}")
 
@@ -245,7 +247,9 @@ def infer_schema(
         raise ValueError(f"Failed to read schema from {first_action.path}: {e}") from e
 
     if len(schema) == 0:
-        raise ValueError(f"Cannot infer schema from file with no columns: {first_action.path}")
+        raise ValueError(
+            f"Cannot infer schema from file with no columns: {first_action.path}"
+        )
 
     # Add partition columns to schema if not present
     if partition_cols:

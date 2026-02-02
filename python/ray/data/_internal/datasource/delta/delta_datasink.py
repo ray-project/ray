@@ -109,7 +109,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         # Internal state
         self._skip_write = False
         self._table_existed_at_start: bool = False
-        self._new_columns_to_add: List[tuple] = []  # List of (name, type, nullable) tuples for schema evolution
+        self._new_columns_to_add: List[
+            tuple
+        ] = []  # List of (name, type, nullable) tuples for schema evolution
         self._write_uuid: Optional[str] = None  # Store write_uuid for app_transactions
 
         # Store unresolved path (original URI) for deltalake APIs which need the scheme
@@ -200,7 +202,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     def _validate_schema_mode(self, schema_mode: Any) -> str:
         """Validate schema_mode parameter."""
         if not isinstance(schema_mode, str):
-            raise ValueError(f"schema_mode must be a string, got {type(schema_mode).__name__}")
+            raise ValueError(
+                f"schema_mode must be a string, got {type(schema_mode).__name__}"
+            )
 
         schema_mode_lower = schema_mode.lower()
         if schema_mode_lower == "overwrite":
@@ -343,7 +347,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             # Validate schema compatibility and handle schema evolution
             if self.schema is not None:
                 existing_schema = to_pyarrow_schema(existing_table.schema())
-                self._validate_and_evolve_schema(existing_table, existing_schema, self.schema)
+                self._validate_and_evolve_schema(
+                    existing_table, existing_schema, self.schema
+                )
 
         # Validate mode-specific constraints
         if self.mode == SaveMode.ERROR and existing_table:
@@ -526,7 +532,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         # Recreate filesystem on worker using storage_options (serializable)
         # This ensures workers use the same credentials as the driver
         data_context = DataContext.get_current()
-        resolved_paths, raw_filesystem = _resolve_paths_and_filesystem(self.table_uri, None)
+        resolved_paths, raw_filesystem = _resolve_paths_and_filesystem(
+            self.table_uri, None
+        )
         if len(resolved_paths) != 1:
             raise ValueError(
                 f"Expected exactly one path for Delta table, got {len(resolved_paths)} paths"
@@ -576,7 +584,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         # Validate race conditions and handle early returns
         # May update existing_table and _table_existed_at_start if table was created concurrently
-        existing_table = self._validate_race_conditions(existing_table, all_written_files)
+        existing_table = self._validate_race_conditions(
+            existing_table, all_written_files
+        )
 
         # IGNORE mode: if table was created concurrently, files were cleaned up and we should return
         # Check if IGNORE mode handled the race condition (existing_table is None but table existed before validation)
@@ -631,7 +641,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         try:
             self._reconcile_schemas(all_schemas, existing_table)
             validate_file_actions(all_file_actions, self.table_uri, self.filesystem)
-            self._commit_files(existing_table, all_file_actions, upsert_keys, all_written_files)
+            self._commit_files(
+                existing_table, all_file_actions, upsert_keys, all_written_files
+            )
         except Exception as commit_error:
             # On commit exception, be conservative: don't delete files
             # We can't reliably check if commit succeeded with current delta-rs API
@@ -701,7 +713,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             # Validate partition columns match the concurrently-created table
             # (on_write_start skipped this validation since table didn't exist then)
             try:
-                validate_partition_columns_match_existing(existing_table, self.partition_cols)
+                validate_partition_columns_match_existing(
+                    existing_table, self.partition_cols
+                )
             except ValueError:
                 # Partition validation failed - clean up written files before raising error
                 self._cleanup_files(all_written_files)
@@ -788,7 +802,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 existing_table, all_file_actions, upsert_keys, all_written_files
             )
         else:
-            self._commit_to_new_table(existing_table, all_file_actions, all_written_files)
+            self._commit_to_new_table(
+                existing_table, all_file_actions, all_written_files
+            )
 
     def _commit_to_existing_table_state(
         self,
