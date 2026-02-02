@@ -41,7 +41,7 @@ constexpr char kAuthorizationAPIVersion[] = "authorization.k8s.io/v1";
 
 constexpr char kRayResourceGroup[] = "ray.io";
 constexpr char kRayClusterResourceName[] = "rayclusters";
-constexpr char kRayClusterRayUserVerb[] = "ray-user";
+constexpr char kRayClusterRayUserVerb[] = "ray:write";
 
 }  // namespace k8s
 }  // namespace rpc

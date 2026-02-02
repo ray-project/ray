@@ -11,7 +11,7 @@ from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.logical.optimizers import LogicalOptimizer
-from ray.data._internal.logical.rules.projection_pushdown import (
+from ray.data._internal.logical.rules import (
     ProjectionPushdown,
 )
 from ray.data._internal.util import rows_same
