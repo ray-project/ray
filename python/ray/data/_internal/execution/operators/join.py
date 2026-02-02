@@ -3,7 +3,6 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Type
 
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES,
@@ -15,8 +14,9 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     ShuffleAggregation,
     _combine,
 )
-from ray.data._internal.logical.operators.join_operator import JoinType
+from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import GiB, MiB
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
 from ray.data.block import Block
 from ray.data.context import DataContext
