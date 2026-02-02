@@ -1145,7 +1145,7 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
     assert "[🛑] open ports detected" in result.output
 
 
-def test_ray_drain_node(monkeypatch):
+def test_ray_drain_node(monkeypatch, shutdown_only):
     monkeypatch.setenv("RAY_py_gcs_connect_timeout_s", "1")
     ray.init()
 
@@ -1370,6 +1370,138 @@ def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
         )
 
         _check_output_via_pattern("test_ray_cluster_dump.txt", result)
+
+
+def test_kill_actor_by_name_via_cli(ray_start_regular):
+    """Test killing a named actor via CLI (both force and graceful termination). Covers regular and detached actors."""
+    address = ray_start_regular["address"]
+    runner = CliRunner()
+    # Kill non-existing actor
+    result = runner.invoke(
+        scripts.kill_actor,
+        [
+            "--address",
+            address,
+            "--name",
+            "non_existing_actor",
+            "--namespace",
+            "ns",
+            "--force",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "No named actor found: non_existing_actor (namespace=ns)" in result.output
+
+    @ray.remote(max_restarts=-1)
+    class Actor:
+        def ping(self):
+            return "pong"
+
+        def crash(self):
+            raise RuntimeError("intentional")
+
+    # Regular named actor with namespace
+    # Kill without --no-restart flag
+    actor = Actor.options(name="test_actor", namespace="ns").remote()
+    assert ray.util.list_named_actors(all_namespaces=True) == [
+        {"name": "test_actor", "namespace": "ns"}
+    ]
+    try:
+        ray.get(actor.crash.remote())
+    except ray.exceptions.RayTaskError:
+        pass
+    wait_for_condition(lambda: ray.get(actor.ping.remote()) == "pong", timeout=10)
+
+    result = runner.invoke(
+        scripts.kill_actor,
+        [
+            "--address",
+            address,
+            "--name",
+            "test_actor",
+            "--namespace",
+            "ns",
+            "--force",
+        ],
+    )
+    _die_on_error(result)
+    wait_for_condition(
+        lambda: ray.util.list_named_actors(all_namespaces=True)
+        == [{"name": "test_actor", "namespace": "ns"}],
+        timeout=10,
+    )
+    wait_for_condition(lambda: ray.get(actor.ping.remote()) == "pong", timeout=10)
+    # Kill with --no-restart flag
+    result = runner.invoke(
+        scripts.kill_actor,
+        [
+            "--address",
+            address,
+            "--name",
+            "test_actor",
+            "--namespace",
+            "ns",
+            "--force",
+            "--no-restart",
+        ],
+    )
+    _die_on_error(result)
+    wait_for_condition(
+        lambda: ray.util.list_named_actors(all_namespaces=True) == [], timeout=10
+    )
+
+    # Detached named actor
+    detached_actor = Actor.options(
+        name="detached_test_actor", namespace="ns", lifetime="detached"
+    ).remote()
+    assert ray.get(detached_actor.ping.remote()) == "pong"
+    assert ray.util.list_named_actors(all_namespaces=True) == [
+        {"name": "detached_test_actor", "namespace": "ns"}
+    ]
+    result = runner.invoke(
+        scripts.kill_actor,
+        [
+            "--address",
+            address,
+            "--name",
+            "detached_test_actor",
+            "--namespace",
+            "ns",
+            "--force",
+            "--no-restart",
+        ],
+    )
+    _die_on_error(result)
+    wait_for_condition(
+        lambda: ray.util.list_named_actors(all_namespaces=True) == [], timeout=10
+    )
+    # Test graceful termination of named actor
+    def check_killed(actorhandle):
+        try:
+            ray.get(actorhandle.ping.remote(), timeout=1)
+            return False
+        except Exception:
+            return True
+
+    graceful_actor = Actor.options(name="graceful_actor", namespace="ns").remote()
+    assert ray.get(graceful_actor.ping.remote()) == "pong"
+
+    result = runner.invoke(
+        scripts.kill_actor,
+        [
+            "--address",
+            address,
+            "--name",
+            "graceful_actor",
+            "--namespace",
+            "ns",
+        ],
+    )
+    _die_on_error(result)
+    wait_for_condition(lambda: check_killed(graceful_actor), timeout=10)
+    wait_for_condition(
+        lambda: ray.util.list_named_actors(all_namespaces=True) == [], timeout=10
+    )
 
 
 if __name__ == "__main__":
