@@ -157,10 +157,10 @@ class OfflinePreLearner:
                 self.config.prelearner_buffer_class
                 or self.default_prelearner_buffer_class
             )
-            prelearner_buffer_kwargs = self.config.prelearner_buffer_kwargs | {
+            prelearner_buffer_kwargs = {
                 "capacity": self.config.train_batch_size_per_learner * 10,
                 "batch_size_B": self.config.train_batch_size_per_learner,
-            }
+            } | self.config.prelearner_buffer_kwargs
             self.episode_buffer = prelearner_buffer_class(
                 **prelearner_buffer_kwargs,
             )
