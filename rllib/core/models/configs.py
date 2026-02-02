@@ -1132,7 +1132,18 @@ class MultiStreamEncoderConfig(ModelConfig):
 
     @property
     def output_dims(self):
-        return (self.output_layer_dim or self.hidden_layer_dims[-1],)
+        # If output layer is present, its dim is the output dim.
+        if self.output_layer_dim is not None:
+            return (self.output_layer_dim,)
+        # If no output layer, the output dim is the last hidden layer's dim.
+        elif self.hidden_layer_dims:
+            return (self.hidden_layer_dims[-1],)
+        # No output layer and no hidden layers: output is concatenated embeddings.
+        else:
+            total_embed_dim = sum(
+                cfg.output_dims[0] for cfg in self.base_encoder_configs.values()
+            )
+            return (total_embed_dim,)
 
     def _validate(self, framework: str = "torch"):
         """Makes sure that settings are valid."""
