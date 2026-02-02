@@ -26,11 +26,9 @@ using ProcessEnvironment = absl::flat_hash_map<std::string, std::string>;
 
 /**
  * @class ProcessInterface
- * @details This interface is used to abstract the process implementation
- *          and provide easy injection of fake process for testing.
- *          The process implementation is used to track the lifetime of the
- *          underlying OS process, and provides wrappers to the system calls
- *          to interact with the process.
+ * @details The Implementations of this interface are used to track the lifetime
+ *          of the underlying OS process, and provides wrappers to the system
+ *          calls to interact with the process.
  */
 class ProcessInterface {
  public:
