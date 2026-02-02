@@ -136,6 +136,8 @@ set -euo pipefail
 
 EOF
 
+ENV DOCKER_API_VERSION=1.43
+
 CMD ["echo", "ray forge"]
 
 
