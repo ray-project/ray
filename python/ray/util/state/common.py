@@ -819,6 +819,7 @@ class TaskState(StateSchema):
     call_site: Optional[str] = state_column(detail=True, filterable=False)
     #: The label selector for the task.
     label_selector: Optional[dict] = state_column(detail=True, filterable=False)
+    fallback_strategy: Optional[dict] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
