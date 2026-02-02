@@ -13,12 +13,7 @@ from typing import Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._common.network_utils import (
-    build_address,
-    get_localhost_ip,
-    is_localhost,
-    parse_address,
-)
+from ray._common.network_utils import build_address, parse_address
 from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
@@ -119,9 +114,7 @@ class AutoscalerMonitor:
                         AUTOSCALER_METRIC_PORT
                     )
                 )
-                kwargs = (
-                    {"addr": get_localhost_ip()} if is_localhost(head_node_ip) else {}
-                )
+                kwargs = {"addr": "127.0.0.1"} if head_node_ip == "127.0.0.1" else {}
                 prometheus_client.start_http_server(
                     port=AUTOSCALER_METRIC_PORT,
                     registry=prom_metrics.registry,

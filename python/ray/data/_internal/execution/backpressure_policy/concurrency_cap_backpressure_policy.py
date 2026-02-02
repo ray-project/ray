@@ -4,6 +4,9 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Dict
 
 from .backpressure_policy import BackpressurePolicy
+from .downstream_capacity_backpressure_policy import (
+    get_available_object_store_budget_fraction,
+)
 from ray._private.ray_constants import env_float
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
@@ -154,14 +157,14 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             not isinstance(op, MapOperator)
             or not self._resource_manager.is_op_eligible(op)
             or not self.enable_dynamic_output_queue_size_backpressure
-            or self._resource_manager.has_materializing_downstream_op(op)
+            or self._resource_manager._is_blocking_materializing_op(op)
         ):
             return num_tasks_running < self._concurrency_caps[op]
 
         # For this Op, if the objectstore budget (available) to total
         # ratio is above threshold, skip dynamic output queue size backpressure.
-        available_budget_fraction = (
-            self._resource_manager.get_available_object_store_budget_fraction(op)
+        available_budget_fraction = get_available_object_store_budget_fraction(
+            self._resource_manager, op, consider_downstream_ineligible_ops=True
         )
         if (
             available_budget_fraction is not None
@@ -175,7 +178,9 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         # Current total queued bytes (this op + downstream)
         current_queue_size_bytes = self._resource_manager.get_mem_op_internal(
             op
-        ) + self._resource_manager.get_op_outputs_object_store_usage_with_downstream(op)
+        ) + self._resource_manager.get_mem_op_outputs(
+            op, include_ineligible_downstream=True
+        )
 
         # Update EWMA state (level & dev) and compute effective cap. Note that
         # we don't update the EWMA state if the objectstore budget (available) vs total

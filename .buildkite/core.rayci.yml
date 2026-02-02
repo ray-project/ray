@@ -261,6 +261,7 @@ steps:
       - python
       - dashboard
       - oss
+      - min_build
     instance_type: medium
     commands:
       # validate minimal installation
@@ -403,7 +404,7 @@ steps:
     instance_type: gpu-large
     soft_fail: true
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //python/ray/dag/... //doc/... core
         --install-mask all-ray-libraries
         --run-flaky-tests
         --gpus 4
@@ -432,7 +433,6 @@ steps:
     tags:
       - java
       - python
-      - oss
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
@@ -484,7 +484,6 @@ steps:
     # avoid running them for every C++ code change.
     tags:
       - spark_on_ray
-      - oss
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core

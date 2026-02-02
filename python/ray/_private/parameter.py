@@ -4,7 +4,6 @@ import pathlib
 from typing import Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
-from ray._common.network_utils import get_localhost_ip
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.utils import get_ray_client_dependency_error
 
@@ -50,6 +49,9 @@ class RayParams:
             be started.
         redirect_output: True if stdout and stderr for non-worker
             processes should be redirected to files and false otherwise.
+        log_to_stderr: If set, controls whether non-worker stdout/stderr should be
+            written to stderr (True) or redirected to log files (False). This is the
+            preferred replacement for the deprecated `redirect_output` field.
         external_addresses: The address of external Redis server to
             connect to, in format of "ip1:port1,ip2:port2,...".  If this
             address is provided, then ray won't start Redis instances in the
@@ -76,9 +78,10 @@ class RayParams:
             UI, which displays the status of the Ray cluster. If this value is
             None, then the UI will be started if the relevant dependencies are
             present.
-        dashboard_host: The host to bind the dashboard server to. Use localhost
-            (127.0.0.1/::1) for local access, the node IP for remote access, or
-            0.0.0.0/:: for all interfaces (not recommended). Defaults to localhost.
+        dashboard_host: The host to bind the web UI server to. Can either be
+            localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
+            By default, this is set to localhost to prevent access from
+            external machines.
         dashboard_port: The port to bind the dashboard server to.
             Defaults to 8265.
         dashboard_agent_listen_port: The port for dashboard agents to listen on
@@ -143,6 +146,7 @@ class RayParams:
         ray_client_server_port: Optional[int] = None,
         driver_mode=None,
         redirect_output: Optional[bool] = None,
+        log_to_stderr: Optional[bool] = None,
         external_addresses: Optional[List[str]] = None,
         num_redis_shards: Optional[int] = None,
         redis_max_clients: Optional[int] = None,
@@ -154,7 +158,7 @@ class RayParams:
         setup_worker_path: Optional[str] = None,
         huge_pages: Optional[bool] = False,
         include_dashboard: Optional[bool] = None,
-        dashboard_host: Optional[str] = get_localhost_ip(),
+        dashboard_host: Optional[str] = ray_constants.DEFAULT_DASHBOARD_IP,
         dashboard_port: Optional[bool] = ray_constants.DEFAULT_DASHBOARD_PORT,
         dashboard_agent_listen_port: Optional[
             int
@@ -200,6 +204,7 @@ class RayParams:
         self.ray_client_server_port = ray_client_server_port
         self.driver_mode = driver_mode
         self.redirect_output = redirect_output
+        self.log_to_stderr = log_to_stderr
         self.external_addresses = external_addresses
         self.num_redis_shards = num_redis_shards
         self.redis_max_clients = redis_max_clients

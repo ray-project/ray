@@ -852,9 +852,7 @@ def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool):
         IN_KUBERNETES_POD=True,
         ENABLE_K8S_DISK_USAGE=enable_k8s_disk_usage,
     ):
-        root_usage = ReporterAgent._get_disk_usage(
-            ray._common.utils.get_default_ray_temp_dir()
-        )["/"]
+        root_usage = ReporterAgent._get_disk_usage()["/"]
         if enable_k8s_disk_usage:
             # Since K8s disk usage is enabled, we shouuld get non-dummy values.
             assert root_usage.total != 1
@@ -1202,13 +1200,16 @@ async def test_reporter_raylet_agent(ray_start_with_dashboard):
 
     a = MyActor.remote()
     worker_pid = ray.get(a.get_pid.remote())
-    node = ray._private.worker.global_worker.node
     dashboard_agent = MagicMock()
-    dashboard_agent.gcs_address = build_address(node.node_ip_address, 6379)
-    dashboard_agent.ip = node.node_ip_address
-    dashboard_agent.node_manager_port = node.node_manager_port
-    dashboard_agent.session_dir = node.get_session_dir_path()
-    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.ip = "127.0.0.1"
+    dashboard_agent.node_manager_port = (
+        ray._private.worker.global_worker.node.node_manager_port
+    )
+    dashboard_agent.session_dir = (
+        ray._private.worker.global_worker.node.get_session_dir_path()
+    )
+    dashboard_agent.node_id = ray._private.worker.global_worker.node.unique_id
     agent = ReporterAgent(dashboard_agent)
     pids = await agent._async_get_worker_pids_from_raylet()
     assert len(pids) == 2
@@ -1229,13 +1230,14 @@ async def test_reporter_raylet_agent(ray_start_with_dashboard):
 async def test_reporter_dashboard_and_runtime_env_agent(
     ray_start_with_dashboard, tmp_path
 ):
-    node = ray._private.worker.global_worker.node
     dashboard_agent = MagicMock()
-    dashboard_agent.gcs_address = build_address(node.node_ip_address, 6379)
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     dashboard_agent.session_dir = str(tmp_path)
     dashboard_agent.node_id = ray.NodeID.from_random().hex()
-    dashboard_agent.ip = node.node_ip_address
-    dashboard_agent.node_manager_port = node.node_manager_port
+    dashboard_agent.ip = "127.0.0.1"
+    dashboard_agent.node_manager_port = (
+        ray._private.worker.global_worker.node.node_manager_port
+    )
     agent = ReporterAgent(dashboard_agent)
     agent_pids = await agent._async_get_agent_pids_from_raylet()
     assert len(agent_pids) == 2

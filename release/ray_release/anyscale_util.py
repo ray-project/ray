@@ -31,23 +31,12 @@ class Anyscale:
 
         return self._anyscale_pkg
 
-    def cloud_id_by_name(self, cloud_name: str) -> Optional[str]:
-        cloud = self._anyscale().cloud.get(name=cloud_name)
-        return cloud.id if cloud else None
-
     def project_name_by_id(self, project_id: str) -> str:
         return self._anyscale().project.get(project_id).name
 
 
 # Global singleton for the V2 Anyscale SDK.
 the_v2_sdk = Anyscale()
-
-
-def find_cloud_by_name(
-    cloud_name: str, sdk: Optional[Anyscale] = None
-) -> Optional[str]:
-    sdk = sdk or the_v2_sdk
-    return sdk.cloud_id_by_name(cloud_name)
 
 
 def get_project_name(
