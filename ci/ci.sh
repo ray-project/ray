@@ -58,8 +58,7 @@ compile_pip_dependencies() {
     --index-strategy unsafe-best-match \
     --python-version 3.10 \
     --python 3.11 \
-    --index https://download.pytorch.org/whl/cpu \
-    --find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html \
+    --emit-index-url \
     -o "python/$TARGET" \
     python/requirements.txt \
     python/requirements/lint-requirements.txt \
@@ -77,28 +76,6 @@ compile_pip_dependencies() {
     python/requirements/ml/tune-requirements.txt \
     python/requirements/ml/tune-test-requirements.txt \
     python/requirements/security-requirements.txt
-    # pip-compile --verbose --resolver=backtracking \
-    #   --pip-args --no-deps --strip-extras --no-header \
-    #   --unsafe-package ray \
-    #   --unsafe-package pip \
-    #   --unsafe-package setuptools \
-    #   -o "python/$TARGET" \
-    # python/requirements.txt \
-    # python/requirements/lint-requirements.txt \
-    # python/requirements/test-requirements.txt \
-    # python/requirements/cloud-requirements.txt \
-    # python/requirements/docker/ray-docker-requirements.txt \
-    # python/requirements/ml/core-requirements.txt \
-    # python/requirements/ml/data-requirements.txt \
-    # python/requirements/ml/data-test-requirements.txt \
-    # python/requirements/ml/dl-cpu-requirements.txt \
-    # python/requirements/ml/rllib-requirements.txt \
-    # python/requirements/ml/rllib-test-requirements.txt \
-    # python/requirements/ml/train-requirements.txt \
-    # python/requirements/ml/train-test-requirements.txt \
-    # python/requirements/ml/tune-requirements.txt \
-    # python/requirements/ml/tune-test-requirements.txt \
-    # python/requirements/security-requirements.txt
 
     # Delete local installation
     sed -i "/@ file/d" "python/$TARGET"

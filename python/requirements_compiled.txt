@@ -1,3 +1,6 @@
+--index-url https://pypi.org/simple
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 absl-py==1.4.0
     # via
     #   array-record
