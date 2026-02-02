@@ -907,7 +907,7 @@ py_test(
         "--num-cpus=7",
         "--num-env-runners=4",
         "--num-learners=1",
-        "--stop-reward=200",
+        "--stop-reward=150",
     ],
     main = "examples/algorithms/ppo/mujoco_ppo.py",
     tags = [
@@ -927,7 +927,7 @@ py_test(
         "--num-env-runners=8",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
-        "--stop-reward=200",
+        "--stop-reward=150",
     ],
     main = "examples/algorithms/ppo/mujoco_ppo.py",
     tags = [

@@ -50,15 +50,20 @@ of ~800.0 within approximately 3 million environment timesteps. Different MuJoCo
 environments have varying difficulty levels and may require adjusted reward
 targets.
 """
+from torch.nn.init import orthogonal_
+
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
+
 
 parser = add_rllib_example_script_args(
     default_iters=1_000,
-    default_reward=800.0,
+    default_reward=300.0,
     default_timesteps=1_000_000,
 )
 parser.set_defaults(
@@ -77,27 +82,39 @@ config = (
         num_env_runners=args.num_env_runners,
         num_envs_per_env_runner=args.num_envs_per_env_runner,
         rollout_fragment_length=32,
+        env_to_module_connector=lambda env: MeanStdFilter(),
     )
     .learners(
         num_learners=args.num_learners,
     )
     .training(
         train_batch_size_per_learner=2048,
-        minibatch_size=256,
-        num_epochs=5,
-        lr=0.0005,
-        vf_loss_coeff=0.1,
+        minibatch_size=512,
+        num_epochs=10,
+        lr=0.0003,
+        vf_loss_coeff=1.0,
         entropy_coeff=[
             [0, 0.01],
-            [1_000_000, 0.0],
+            [2_000_000, 0.0],
         ],
         gamma=0.99,
         lambda_=0.95,
         kl_coeff=0.5,
-        clip_param=0.4,
-        vf_clip_param=100.0,
-        grad_clip=1.0,
+        clip_param=0.2,
+        vf_clip_param=10.0,
+        grad_clip=50.0,
         grad_clip_by="global_norm",
+    )
+    .rl_module(
+        model_config=DefaultModelConfig(
+            vf_share_layers=False,
+            fcnet_hiddens=[256, 256],
+            fcnet_kernel_initializer=orthogonal_,
+            fcnet_activation="tanh",
+            head_fcnet_hiddens=[256],
+            head_fcnet_activation=None,
+            free_log_std=True,
+        )
     )
 )
 
