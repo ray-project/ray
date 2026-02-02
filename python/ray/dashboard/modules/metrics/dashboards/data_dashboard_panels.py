@@ -684,7 +684,7 @@ TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr='increase(ray_data_task_completion_time_without_backpressure{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])',
+            expr='increase(ray_data_task_completion_time_excl_backpressure_s{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])',
             legend="Task Completion Time w/o Backpressure: {{dataset}}, {{operator}}",
         ),
     ],

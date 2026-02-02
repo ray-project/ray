@@ -545,6 +545,14 @@ def train_fn(config):
             checkpoint_upload_fn=wait_async_save,
         )
 
+trainer = TorchTrainer(
+   train_fn,
+   train_loop_config={"num_epochs": 3},
+   scaling_config=train.ScalingConfig(num_workers=2, use_gpu=True),
+   # we need a cpu backend for async_save and a gpu backend for training
+   torch_config=train.torch.TorchConfig(backend="cpu:gloo,cuda:nccl"),
+   run_config=train.RunConfig(storage_path="s3://bucket/")
+)
 
 # __checkpoint_upload_fn_end__
 
@@ -560,8 +568,7 @@ def train_fn():
         ray.train.report(
             metrics,
             checkpoint=checkpoint,
-            validate_fn=...,
-            validate_config=...,
+            validation=...,
         )
 
     # Get committed checkpoints which may still have ongoing validations.

@@ -21,7 +21,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
     RandomShuffle,
     Repartition,
     Sort,

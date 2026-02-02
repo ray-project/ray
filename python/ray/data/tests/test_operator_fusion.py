@@ -11,15 +11,15 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.map_operator import (
+from ray.data._internal.logical.operators import (
     Filter,
     FlatMap,
+    InputData,
     MapBatches,
     MapRows,
     Project,
+    Read,
 )
-from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner import create_planner

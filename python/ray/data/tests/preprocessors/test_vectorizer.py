@@ -116,8 +116,8 @@ def test_hashing_vectorizer():
     transformed = vectorizer.transform(ds)
     out_df = transformed.to_pandas()
 
-    processed_col_a = [[2, 1, 3], [0, 4, 1]]
-    processed_col_b = [[1, 0, 0], [0, 3, 0]]
+    processed_col_a = [[0, 4, 2], [0, 5, 0]]
+    processed_col_b = [[0, 0, 1], [3, 0, 0]]
 
     expected_df = pd.DataFrame.from_dict({"A": processed_col_a, "B": processed_col_b})
 

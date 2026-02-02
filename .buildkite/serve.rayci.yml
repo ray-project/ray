@@ -45,7 +45,7 @@ steps:
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
-        --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
+        --except-tags post_wheel_build,gpu,ha_integration,serve_tracing,direct_ingress
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servebuild-py3.10 --test-env=EXPECTED_PYTHON_VERSION=3.10 --python-version 3.10
     depends_on: servebuild-multipy
@@ -74,7 +74,7 @@ steps:
     soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
-        --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
+        --except-tags post_wheel_build,gpu,ha_integration,serve_tracing,direct_ingress
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servepydantic1build --test-env=EXPECTED_PYTHON_VERSION=3.10 --test-env=EXPECTED_PYDANTIC_VERSION=1.10.12
         --python-version 3.10
@@ -90,7 +90,7 @@ steps:
     soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
-        --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
+        --except-tags post_wheel_build,gpu,ha_integration,serve_tracing,direct_ingress
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servebuild-py3.10 --test-env=EXPECTED_PYTHON_VERSION=3.10 --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
         --python-version 3.10
@@ -104,7 +104,7 @@ steps:
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
-        --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
+        --except-tags post_wheel_build,gpu,ha_integration,serve_tracing,direct_ingress
         --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
         --python-version {{matrix.python}}
         --test-env=EXPECTED_PYTHON_VERSION={{matrix.python}}
@@ -234,6 +234,35 @@ steps:
         --only-tags serve_tracing --build-name servetracingbuild
         --python-version 3.10
     depends_on: servetracingbuild
+
+  - label: ":ray-serve: serve: direct ingress tests"
+    tags:
+      - serve
+      - python
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- $(cat ci/ray_ci/serve_di_test_names.txt) serve
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --build-name servebuild-py3.10 --python-version 3.10
+        --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=1
+        --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
+        --test-env=RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
+    depends_on: servebuild-multipy
+
+  - label: ":ray-serve: serve: direct ingress tests (same loop)"
+    tags:
+      - serve
+      - python
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- $(cat ci/ray_ci/serve_di_test_names.txt) serve
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --build-name servebuild-py3.10 --python-version 3.10
+        --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=1
+        --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
+        --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
+        --test-env=RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
+    depends_on: servebuild-multipy
 
   - label: ":ray-serve: serve: doc gpu tests"
     tags:

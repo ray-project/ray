@@ -7,6 +7,7 @@ import pytest
 
 import ray
 from ray._private.internal_api import memory_summary
+from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import (
@@ -96,7 +97,7 @@ def _build_dataset(
 
     def producer(batch):
         for i in range(num_blocks):
-            print("Producing block", i, time.time())
+            print(f"[{time.time()}] Producing block #{i} ({block_size=})")
             yield {
                 "id": [i],
                 "data": [np.zeros(block_size, dtype=np.uint8)],
@@ -104,7 +105,7 @@ def _build_dataset(
 
     def consumer(batch):
         assert len(batch["id"]) == 1
-        print("Consuming block", batch["id"][0], time.time())
+        print(f"[{time.time()}] Consuming block #{batch['id'][0]}")
         time.sleep(0.01)
         del batch["data"]
         return batch
@@ -255,19 +256,22 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
 
         def prepare_read(self, parallelism, n):
             def range_(i):
+                print(f">>> Read task: {i=}")
+
                 ray.get(self.counter.increment.remote())
                 return [
                     pd.DataFrame({"data": np.ones((n // parallelism * 1024 * 1024,))})
                 ]
 
             sz = (n // parallelism) * 1024 * 1024 * 8
-            print("Block size", sz)
+
+            print(f">>> Block size: {sz}")
 
             return [
                 ReadTask(
                     lambda i=i: range_(i),
                     BlockMetadata(
-                        num_rows=n // parallelism,
+                        num_rows=1,
                         size_bytes=sz,
                         input_files=None,
                         exec_stats=None,
@@ -279,18 +283,26 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
     source = CountingRangeDatasource()
     ctx = ray.data.DataContext.get_current()
     ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
-        object_store_memory=10e6
+        object_store_memory=100 * MiB,
+        cpu=1,
     )
 
-    # 10GiB dataset.
+    # Create 10 GiB dataset
     ds = ray.data.read_datasource(source, n=10000, override_num_blocks=1000)
-    it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
+    it = iter(ds.iter_internal_ref_bundles())
+    # Dequeue 1 block
     next(it)
+    # Let it bake for some time
     time.sleep(3)
+
     launched = ray.get(source.counter.get.remote())
 
-    # If backpressure is broken we'll launch 15+.
-    assert launched <= 12, launched
+    # We'd launch exactly 3 tasks
+    #   - (Budget=100Mb) First task scheduled (produces first output)
+    #   - (Budget=20Mb) Second task scheduled (produces second output)
+    #   - (Budget=0Mb) First output dequed
+    #   - (Budget=20Mb) Third task scheduled
+    assert launched == 3, launched
 
 
 def test_streaming_backpressure_e2e(

@@ -27,7 +27,7 @@ class TempFileLock:
         self.path = path
         temp_dir = Path(ray._common.utils.get_user_temp_dir()).resolve()
         self._lock_dir = temp_dir / RAY_LOCKFILE_DIR
-        self._path_hash = hashlib.sha1(
+        self._path_hash = hashlib.sha256(
             str(Path(self.path).resolve()).encode("utf-8")
         ).hexdigest()
         self._lock_path = self._lock_dir / f"{self._path_hash}.lock"

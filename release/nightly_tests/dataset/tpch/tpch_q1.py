@@ -1,62 +1,19 @@
-import argparse
-
-from benchmark import Benchmark
-
 import ray
-
-# TODO: We should make these public again.
 from ray.data.aggregate import Count, Mean, Sum
-from ray.data.expressions import col, udf
-from ray.data.datatype import DataType
-import pyarrow as pa
-import pyarrow.compute as pc
-
-
-@udf(return_dtype=DataType.float64())
-def to_f64(arr: pa.Array) -> pa.Array:
-    """Cast any numeric type to float64."""
-    return pc.cast(arr, pa.float64())
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="TPCH Q1")
-    parser.add_argument("--sf", choices=[1, 10, 100, 1000, 10000], type=int, default=1)
-    return parser.parse_args()
+from ray.data.expressions import col
+from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
 
 
 def main(args):
-    path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
-    benchmark = Benchmark()
-
     def benchmark_fn():
         # The TPC-H queries are a widely used set of benchmarks to measure the
         # performance of data processing systems. See
-        # https://examples.citusdata.com/tpch_queries.html.
+        # https://www.tpc.org/tpch/
         from datetime import datetime
 
-        ds = (
-            ray.data.read_parquet(path)
-            .rename_columns(
-                {
-                    "column00": "l_orderkey",
-                    "column02": "l_suppkey",
-                    "column03": "l_linenumber",
-                    "column04": "l_quantity",
-                    "column05": "l_extendedprice",
-                    "column06": "l_discount",
-                    "column07": "l_tax",
-                    "column08": "l_returnflag",
-                    "column09": "l_linestatus",
-                    "column10": "l_shipdate",
-                    "column11": "l_commitdate",
-                    "column12": "l_receiptdate",
-                    "column13": "l_shipinstruct",
-                    "column14": "l_shipmode",
-                    "column15": "l_comment",
-                }
-            )
-            .filter(expr=col("l_shipdate") <= datetime(1998, 9, 2))
-        )
+        ds = load_table("lineitem", args.sf)
+
+        ds = ds.filter(expr=col("l_shipdate") <= datetime(1998, 9, 2))
 
         # Build float views + derived columns
         ds = (
@@ -117,11 +74,10 @@ def main(args):
         # Report arguments for the benchmark.
         return vars(args)
 
-    benchmark.run_fn("main", benchmark_fn)
-    benchmark.write_result()
+    run_tpch_benchmark("tpch_q1", benchmark_fn)
 
 
 if __name__ == "__main__":
     ray.init()
-    args = parse_args()
+    args = parse_tpch_args()
     main(args)

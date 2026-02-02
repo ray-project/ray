@@ -455,7 +455,7 @@ py_test(
 # Pendulum
 py_test(
     name = "learning_tests_pendulum_cql",
-    size = "large",
+    size = "enormous",
     srcs = ["examples/algorithms/cql/pendulum_cql.py"],
     args = [
         "--as-test",
@@ -468,35 +468,7 @@ py_test(
     tags = [
         "exclusive",
         "learning_tests",
-        "learning_tests_use_all_core",
         "team:rllib",
-        # Disabled: https://github.com/ray-project/ray/issues/43808
-        "manual",
-    ],
-)
-
-# GPU training.
-py_test(
-    name = "learning_tests_pendulum_cql_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/cql/pendulum_cql.py"],
-    args = [
-        "--as-test",
-        "--num-gpus-per-learner=1",
-    ],
-    # Include the zipped json data file as well.
-    data = [
-        "offline/tests/data/pendulum/pendulum-v1_enormous",
-    ],
-    main = "examples/algorithms/cql/pendulum_cql.py",
-    tags = [
-        "exclusive",
-        "gpu",
-        "learning_tests",
-        "learning_tests_use_all_core",
-        "team:rllib",
-        # Disabled: https://github.com/ray-project/ray/issues/50538
-        "manual",
     ],
 )
 
@@ -1707,6 +1679,17 @@ py_test(
     name = "test_dqn",
     size = "large",
     srcs = ["algorithms/dqn/tests/test_dqn.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "test_dqn_rl_module",
+    size = "small",
+    srcs = ["algorithms/dqn/tests/test_dqn_rl_module.py"],
     tags = [
         "algorithms",
         "team:rllib",
@@ -3133,7 +3116,6 @@ py_test(
         "no_main",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # ----------------------
@@ -3150,7 +3132,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3164,7 +3145,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # ----------------------
@@ -3184,7 +3164,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3199,7 +3178,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3218,7 +3196,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3238,7 +3215,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: algorithms/
@@ -3255,7 +3231,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3278,7 +3253,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3293,7 +3267,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: catalogs/
@@ -3308,7 +3281,6 @@ py_test(
         "no_main",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3321,7 +3293,6 @@ py_test(
         "no_main",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: checkpoints/
@@ -3342,7 +3313,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3360,7 +3330,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3376,7 +3345,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3395,7 +3363,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 #@OldAPIStack
@@ -3410,7 +3377,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3423,7 +3389,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: connectors/
@@ -3445,7 +3410,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3466,7 +3430,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # IMPALA
@@ -3485,7 +3448,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3506,7 +3468,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # Nested observation spaces (flattening).
@@ -3527,7 +3488,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3547,7 +3507,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # IMPALA
@@ -3568,7 +3527,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3591,7 +3549,6 @@ py_test(
         # Test is failing: https://github.com/ray-project/ray/issues/47717
         "manual",
     ],
-    deps = [":conftest"],
 )
 
 # Prev-r/prev actions + LSTM example.
@@ -3613,7 +3570,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3636,7 +3592,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # MeanStd filtering example.
@@ -3661,7 +3616,6 @@ py_test(
         # Disabled: https://github.com/ray-project/ray/issues/47435
         "manual",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3684,7 +3638,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3701,7 +3654,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3717,7 +3669,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: curiosity/
@@ -3735,7 +3686,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3751,7 +3701,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3768,7 +3717,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # TODO (sven): Learns, but very slowly. Needs further tuning.
@@ -3797,7 +3745,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3818,7 +3765,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: debugging/
@@ -3838,7 +3784,6 @@ py_test(
         "multi_gpu",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3857,7 +3802,6 @@ py_test(
         "multi_gpu",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: envs/
@@ -3876,7 +3820,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3893,7 +3836,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3910,7 +3852,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3926,7 +3867,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3942,7 +3882,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3958,7 +3897,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3976,7 +3914,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -3992,7 +3929,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4008,7 +3944,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 #@OldAPIStack
@@ -4022,7 +3957,6 @@ py_test(
         "no_main",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4033,7 +3967,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: evaluation/
@@ -4054,7 +3987,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4075,7 +4007,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4095,7 +4026,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4118,7 +4048,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4140,7 +4069,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4162,7 +4090,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4183,7 +4110,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4205,7 +4131,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -4228,7 +4153,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -4253,7 +4177,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: fault_tolerance/
@@ -4273,7 +4196,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4292,7 +4214,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4312,7 +4233,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4332,7 +4252,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: gpus/
@@ -4352,7 +4271,6 @@ py_test(
         "gpu",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4372,7 +4290,6 @@ py_test(
         "gpu",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4389,7 +4306,6 @@ py_test(
         "gpu",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4409,7 +4325,6 @@ py_test(
         "multi_gpu",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4429,7 +4344,6 @@ py_test(
         "gpu",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: hierarchical/
@@ -4452,7 +4366,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: inference/
@@ -4470,7 +4383,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4487,7 +4399,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4503,7 +4414,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4520,7 +4430,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 #@OldAPIStack
@@ -4558,7 +4467,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 #@OldAPIStack
@@ -4576,7 +4484,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: learners/
@@ -4593,7 +4500,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4608,7 +4514,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4623,7 +4528,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: metrics/
@@ -4639,7 +4543,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4655,7 +4558,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: multi_agent/
@@ -4677,7 +4579,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4695,7 +4596,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4716,7 +4616,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4739,7 +4638,6 @@ py_test(
         "multi_gpu",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4758,7 +4656,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4778,7 +4675,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # TODO (sven): Activate this test once this script is ready.
@@ -4812,7 +4708,6 @@ py_test(
         "no_main",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4831,7 +4726,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4853,7 +4747,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4871,7 +4764,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4889,7 +4781,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4909,7 +4800,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -4931,7 +4821,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -4953,7 +4842,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4973,7 +4861,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -4989,7 +4876,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -5008,7 +4894,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: offline_rl/
@@ -5041,7 +4926,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # @HybridAPIStack
@@ -5071,7 +4955,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: ray_serve/
@@ -5093,7 +4976,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # subdirectory: ray_tune/
@@ -5108,7 +4990,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -5121,7 +5002,6 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -5134,7 +5014,27 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
-    deps = [":conftest"],
+)
+
+py_test(
+    name = "examples/ray_tune/appo_hyperparameter_tune",
+    size = "large",
+    srcs = ["examples/ray_tune/appo_hyperparameter_tune.py"],
+    args = [
+        "--num-env-runners=4",
+        "--num-envs-per-env-runner=6",
+        "--num-gpus-per-learner=1",
+        "--num-learners=1",
+        "--num-samples=8",
+        "--max-concurrent-trials=4",
+    ],
+    main = "examples/ray_tune/appo_hyperparameter_tune.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "multi_gpu",
+        "team:rllib",
+    ],
 )
 
 # subdirectory: rl_modules/
@@ -5151,7 +5051,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -5166,7 +5065,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -5181,7 +5079,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -5194,7 +5091,6 @@ py_test(
         "no_main",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -5206,7 +5102,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -5218,7 +5113,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -5237,7 +5131,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 py_test(
@@ -5248,7 +5141,6 @@ py_test(
         "examples",
         "team:rllib",
     ],
-    deps = [":conftest"],
 )
 
 # --------------------------------------------------------------------

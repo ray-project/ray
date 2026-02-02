@@ -78,12 +78,12 @@ class FuseOperators(Rule):
         return new_plan
 
     def _remove_output_deps(self, op: PhysicalOperator) -> None:
-        for input in op._input_dependencies:
+        for input in op.input_dependencies:
             input._output_dependencies = []
             self._remove_output_deps(input)
 
     def _update_output_deps(self, op: PhysicalOperator) -> None:
-        for input in op._input_dependencies:
+        for input in op.input_dependencies:
             input._output_dependencies.append(op)
             self._update_output_deps(input)
 
@@ -229,7 +229,7 @@ class FuseOperators(Rule):
 
         # If the downstream operator takes no input, it cannot be fused with
         # the upstream operator.
-        if not down_logical_op._input_dependencies:
+        if not down_logical_op.input_dependencies:
             return False
 
         # We currently only support fusing for the following cases:

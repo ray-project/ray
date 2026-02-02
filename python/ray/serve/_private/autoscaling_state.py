@@ -1,7 +1,8 @@
 import logging
+import math
 import time
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
@@ -28,6 +29,10 @@ from ray.serve._private.metrics_utils import (
 )
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
+from ray.serve.autoscaling_policy import (
+    _apply_app_level_autoscaling_config,
+    _apply_autoscaling_config,
+)
 from ray.serve.config import AutoscalingContext, AutoscalingPolicy
 from ray.util import metrics
 
@@ -52,7 +57,9 @@ class DeploymentAutoscalingState:
         self._deployment_info = None
         self._config = None
         self._policy: Optional[
-            Callable[[AutoscalingContext], Tuple[int, Optional[Dict[str, Any]]]]
+            Callable[
+                [AutoscalingContext], Tuple[Union[int, float], Optional[Dict[str, Any]]]
+            ]
         ] = None
         # user defined policy returns a dictionary of state that is persisted between autoscaling decisions
         # content of the dictionary is determined by the user defined policy
@@ -113,7 +120,8 @@ class DeploymentAutoscalingState:
 
         self._deployment_info = info
         self._config = config
-        self._policy = self._config.policy.get_policy()
+        # Apply default autoscaling config to the policy
+        self._policy = _apply_autoscaling_config(self._config.policy.get_policy())
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
@@ -305,6 +313,9 @@ class DeploymentAutoscalingState:
         # Time the policy execution
         start_time = time.time()
         decision_num_replicas, self._policy_state = self._policy(autoscaling_context)
+        # The policy can return a float value.
+        if isinstance(decision_num_replicas, float):
+            decision_num_replicas = math.ceil(decision_num_replicas)
         policy_execution_time_ms = (time.time() - start_time) * 1000
 
         self.record_autoscaling_metrics(
@@ -815,7 +826,10 @@ class ApplicationAutoscalingState:
         self._policy: Optional[
             Callable[
                 [Dict[DeploymentID, AutoscalingContext]],
-                Tuple[Dict[DeploymentID, int], Optional[Dict[DeploymentID, Dict]]],
+                Tuple[
+                    Dict[DeploymentID, Union[int, float]],
+                    Optional[Dict[DeploymentID, Dict]],
+                ],
             ]
         ] = None
         # user defined policy returns a dictionary of state that is persisted between autoscaling decisions
@@ -837,7 +851,10 @@ class ApplicationAutoscalingState:
         Args:
             autoscaling_policy: The autoscaling policy to register.
         """
-        self._policy = autoscaling_policy.get_policy()
+        # Apply default autoscaling config to the policy
+        self._policy = _apply_app_level_autoscaling_config(
+            autoscaling_policy.get_policy()
+        )
         self._policy_state = {}
 
         # Log when custom autoscaling policy is used for application
@@ -974,10 +991,10 @@ class ApplicationAutoscalingState:
                 )
                 results[deployment_id] = (
                     self._deployment_autoscaling_states[deployment_id].apply_bounds(
-                        num_replicas
+                        math.ceil(num_replicas)
                     )
                     if not _skip_bound_check
-                    else num_replicas
+                    else math.ceil(num_replicas)
                 )
             return results
         else:
