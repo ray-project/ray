@@ -41,6 +41,13 @@ enum WorkFootprint {
 // WorkFootprints are not, such as leased workers on a node.
 using WorkArtifact = std::variant<WorkFootprint, scheduling::ResourceID>;
 
+/// Tracks idle state for a work artifact, including optional saved state
+/// for speculative busy marking (used only for WorkFootprints).
+struct IdleTimeState {
+  std::optional<absl::Time> current;  // Current idle time (nullopt = busy)
+  std::optional<absl::Time> saved;    // Saved time for speculative marking
+};
+
 using rpc::autoscaler::DrainNodeReason;
 
 /// Class manages the resources of the local node.
@@ -229,11 +236,10 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Resources of local node.
   NodeResourceInstances local_resources_;
 
-  /// A map storing when the resource was last idle.
-  absl::flat_hash_map<WorkArtifact, std::optional<absl::Time>> last_idle_times_;
-  /// Saved idle times for footprints marked busy via MaybeMarkFootprintAsBusy().
-  /// Used to restore idle time when the speculative busy state is cleared.
-  absl::flat_hash_map<WorkFootprint, absl::Time> saved_footprint_idle_times_;
+  /// A map storing idle state for resources and work footprints.
+  /// Each entry tracks the current idle time (or nullopt if busy) and optionally
+  /// a saved time for speculative busy marking (used only for WorkFootprints).
+  absl::flat_hash_map<WorkArtifact, IdleTimeState> idle_time_states_;
   /// Function to get current time. Defaults to absl::Now() if not provided.
   std::function<absl::Time()> now_fn_;
   /// Function to get used object store memory.

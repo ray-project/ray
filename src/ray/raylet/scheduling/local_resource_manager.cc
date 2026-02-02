@@ -50,7 +50,7 @@ LocalResourceManager::LocalResourceManager(
   local_resources_.labels = node_resources.labels;
   const auto now = now_fn_();
   for (const auto &resource_id : node_resources.total.ExplicitResourceIds()) {
-    last_idle_times_[resource_id] = now;
+    idle_time_states_[resource_id] = IdleTimeState{now, absl::nullopt};
   }
   RAY_LOG(DEBUG) << "local resources: " << local_resources_.DebugString();
 }
@@ -66,7 +66,7 @@ void LocalResourceManager::AddLocalResourceInstances(
 void LocalResourceManager::DeleteLocalResource(scheduling::ResourceID resource_id) {
   local_resources_.available.Remove(resource_id);
   local_resources_.total.Remove(resource_id);
-  last_idle_times_.erase(resource_id);
+  idle_time_states_.erase(resource_id);
   OnResourceOrStateChanged();
 }
 
@@ -126,63 +126,67 @@ void LocalResourceManager::FreeTaskResourceInstances(
   }
 }
 void LocalResourceManager::MarkFootprintAsBusy(WorkFootprint item) {
-  auto prev = last_idle_times_.find(item);
-  if (prev != last_idle_times_.end() && !prev->second.has_value()) {
+  auto prev = idle_time_states_.find(item);
+  if (prev != idle_time_states_.end() && !prev->second.current.has_value()) {
     return;
   }
-  last_idle_times_[item] = absl::nullopt;
+  idle_time_states_[item].current = absl::nullopt;
   // If actual work starts (NODE_WORKERS busy), invalidate any speculative
   // PULLING_TASK_ARGUMENTS state. This ensures that if a task was speculatively
   // marked as pulling arguments but then actually runs, the idle time will be
   // correctly reset to Now() rather than restored to the old saved time.
   if (item == WorkFootprint::NODE_WORKERS) {
-    saved_footprint_idle_times_.erase(WorkFootprint::PULLING_TASK_ARGUMENTS);
+    auto pulling_it = idle_time_states_.find(WorkFootprint::PULLING_TASK_ARGUMENTS);
+    if (pulling_it != idle_time_states_.end()) {
+      pulling_it->second.saved = absl::nullopt;
+    }
   }
   OnResourceOrStateChanged();
 }
 
 void LocalResourceManager::MaybeMarkFootprintAsBusy(WorkFootprint item) {
-  auto it = last_idle_times_.find(item);
+  auto it = idle_time_states_.find(item);
 
   // If the footprint is already busy, do nothing.
-  if (it != last_idle_times_.end() && !it->second.has_value()) {
+  if (it != idle_time_states_.end() && !it->second.current.has_value()) {
     return;
   }
 
   // If the footprint was idle, save its idle time.
-  if (it != last_idle_times_.end()) {
+  if (it != idle_time_states_.end()) {
     // It must have a value because we checked for the busy case above.
-    saved_footprint_idle_times_[item] = it->second.value();
+    it->second.saved = it->second.current.value();
   } else {
     // If the footprint wasn't tracked, it was implicitly idle.
     // Save InfinitePast as a marker.
-    saved_footprint_idle_times_[item] = absl::InfinitePast();
+    idle_time_states_[item].saved = absl::InfinitePast();
   }
 
   // Mark as busy.
-  last_idle_times_[item] = absl::nullopt;
+  idle_time_states_[item].current = absl::nullopt;
   OnResourceOrStateChanged();
 }
 
 void LocalResourceManager::MarkFootprintAsIdle(WorkFootprint item) {
-  auto prev = last_idle_times_.find(item);
-  bool state_change = prev == last_idle_times_.end() || !prev->second.has_value();
+  auto prev = idle_time_states_.find(item);
+  bool state_change =
+      prev == idle_time_states_.end() || !prev->second.current.has_value();
 
   // Check if there's a saved idle time from MaybeMarkFootprintAsBusy().
   // If so, restore it instead of using Now() to preserve the original idle duration.
   // This handles speculative busy marking where no actual work occurred.
-  auto saved_it = saved_footprint_idle_times_.find(item);
-  if (saved_it != saved_footprint_idle_times_.end()) {
-    if (saved_it->second == absl::InfinitePast()) {
+  if (prev != idle_time_states_.end() && prev->second.saved.has_value()) {
+    if (prev->second.saved.value() == absl::InfinitePast()) {
       // InfinitePast is a marker indicating the footprint wasn't tracked before.
       // Remove it from the map to restore the original state.
-      last_idle_times_.erase(item);
+      idle_time_states_.erase(item);
     } else {
-      last_idle_times_[item] = saved_it->second;
+      prev->second.current = prev->second.saved.value();
+      prev->second.saved = absl::nullopt;
     }
-    saved_footprint_idle_times_.erase(saved_it);
   } else {
-    last_idle_times_[item] = now_fn_();
+    idle_time_states_[item].current = now_fn_();
+    idle_time_states_[item].saved = absl::nullopt;
   }
 
   if (state_change) {
@@ -248,22 +252,22 @@ void LocalResourceManager::SetResourceNonIdle(const scheduling::ResourceID &reso
   if (resource_id.IsImplicitResource()) {
     return;
   }
-  last_idle_times_[resource_id] = absl::nullopt;
+  idle_time_states_[resource_id].current = absl::nullopt;
 }
 
 void LocalResourceManager::SetResourceIdle(const scheduling::ResourceID &resource_id) {
   if (resource_id.IsImplicitResource()) {
     return;
   }
-  last_idle_times_[resource_id] = now_fn_();
+  idle_time_states_[resource_id].current = now_fn_();
 }
 
 std::optional<absl::Time> LocalResourceManager::GetResourceIdleTime() const {
   // If all the resources are idle.
   absl::Time all_idle_time = absl::InfinitePast();
 
-  for (const auto &iter : last_idle_times_) {
-    const auto &idle_time_or_busy = iter.second;
+  for (const auto &iter : idle_time_states_) {
+    const auto &idle_time_or_busy = iter.second.current;
 
     if (idle_time_or_busy == absl::nullopt) {
       // One resource is busy, entire resources should be considered non-idle.
@@ -337,11 +341,11 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
     if (used == 0.0) {
       // Set it to idle as of now.
       RAY_LOG(INFO) << "Object store memory is idle.";
-      last_idle_times_[ResourceID::ObjectStoreMemory()] = now_fn_();
+      idle_time_states_[ResourceID::ObjectStoreMemory()].current = now_fn_();
     } else {
       // Clear the idle info since we know it's being used.
       RAY_LOG(DEBUG) << "Object store memory is not idle.";
-      last_idle_times_[ResourceID::ObjectStoreMemory()] = absl::nullopt;
+      idle_time_states_[ResourceID::ObjectStoreMemory()].current = absl::nullopt;
     }
 
     OnResourceOrStateChanged();
@@ -391,8 +395,8 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   resource_view_sync_message.set_is_draining(IsLocalNodeDraining());
   resource_view_sync_message.set_draining_deadline_timestamp_ms(GetDrainingDeadline());
 
-  for (const auto &iter : last_idle_times_) {
-    if (iter.second == absl::nullopt) {
+  for (const auto &iter : idle_time_states_) {
+    if (iter.second.current == absl::nullopt) {
       // If it is a WorkFootprint
       if (iter.first.index() == 0) {
         switch (std::get<WorkFootprint>(iter.first)) {
