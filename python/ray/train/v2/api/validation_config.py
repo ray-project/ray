@@ -24,13 +24,18 @@ class ValidationTaskConfig:
         fn_kwargs: json-serializable keyword arguments to pass to the validation function.
             Note that we always pass `checkpoint` as the first argument to the
             validation function.
+        ray_remote_kwargs: Keyword arguments to pass to `ray.remote()` for the validation task.
+            This can be used to specify resource requirements, number of retries, etc.
     """
 
     fn_kwargs: Optional[Dict[str, Any]] = None
+    ray_remote_kwargs: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if self.fn_kwargs is None:
             self.fn_kwargs = {}
+        if self.ray_remote_kwargs is None:
+            self.ray_remote_kwargs = {}
 
 
 @PublicAPI(stability="alpha")
