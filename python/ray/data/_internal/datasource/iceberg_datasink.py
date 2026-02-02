@@ -166,12 +166,13 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         Returns:
             The result of calling func.
         """
+        iceberg_config = self._data_context.iceberg_config
         return call_with_retry(
             func,
             description=description,
-            match=self._data_context.iceberg_catalog_retried_errors,
-            max_attempts=self._data_context.iceberg_catalog_max_attempts,
-            max_backoff_s=self._data_context.iceberg_catalog_retry_max_backoff_s,
+            match=iceberg_config.catalog_retried_errors,
+            max_attempts=iceberg_config.catalog_max_attempts,
+            max_backoff_s=iceberg_config.catalog_retry_max_backoff_s,
         )
 
     def _get_catalog(self) -> "Catalog":
@@ -415,12 +416,13 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                         )
                     )
 
+                iceberg_config = self._data_context.iceberg_config
                 data_files = call_with_retry(
                     _write_data_files,
                     description=f"write data files to Iceberg table '{self.table_identifier}'",
                     match=self._data_context.retried_io_errors,
-                    max_attempts=self._data_context.iceberg_write_file_max_attempts,
-                    max_backoff_s=self._data_context.iceberg_write_file_retry_max_backoff_s,
+                    max_attempts=iceberg_config.write_file_max_attempts,
+                    max_backoff_s=iceberg_config.write_file_retry_max_backoff_s,
                 )
                 all_data_files.extend(data_files)
 

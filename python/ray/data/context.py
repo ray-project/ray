@@ -284,6 +284,36 @@ DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
 
 @DeveloperAPI
 @dataclass
+class IcebergConfig:
+    """Configuration for Iceberg datasource operations.
+
+    Args:
+        write_file_max_attempts: Maximum number of retry attempts when writing
+            Iceberg data files to storage. Defaults to 10.
+        write_file_retry_max_backoff_s: Maximum backoff time in seconds between
+            Iceberg write retry attempts. Uses exponential backoff with jitter.
+            Defaults to 32.
+        catalog_max_attempts: Maximum number of retry attempts for Iceberg
+            catalog operations (load catalog, load table, commit transactions).
+            Defaults to 5.
+        catalog_retry_max_backoff_s: Maximum backoff time in seconds between
+            Iceberg catalog retry attempts. Defaults to 16.
+        catalog_retried_errors: A list of substrings of error messages that
+            should trigger a retry for Iceberg catalog operations. Includes common
+            HTTP error codes and connection errors.
+    """
+
+    write_file_max_attempts: int = DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS
+    write_file_retry_max_backoff_s: int = DEFAULT_ICEBERG_WRITE_FILE_RETRY_MAX_BACKOFF_S
+    catalog_max_attempts: int = DEFAULT_ICEBERG_CATALOG_MAX_ATTEMPTS
+    catalog_retry_max_backoff_s: int = DEFAULT_ICEBERG_CATALOG_RETRY_MAX_BACKOFF_S
+    catalog_retried_errors: List[str] = field(
+        default_factory=lambda: list(DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS)
+    )
+
+
+@DeveloperAPI
+@dataclass
 class AutoscalingConfig:
     """Configuration for autoscaling of Ray Data.
 
@@ -477,19 +507,9 @@ class DataContext:
         retried_io_errors: A list of substrings of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
-        iceberg_write_file_max_attempts: Maximum number of retry attempts when writing
-            Iceberg data files to storage. Defaults to 10.
-        iceberg_write_file_retry_max_backoff_s: Maximum backoff time in seconds between
-            Iceberg write retry attempts. Uses exponential backoff with jitter.
-            Defaults to 32.
-        iceberg_catalog_max_attempts: Maximum number of retry attempts for Iceberg
-            catalog operations (load catalog, load table, commit transactions).
-            Defaults to 5.
-        iceberg_catalog_retry_max_backoff_s: Maximum backoff time in seconds between
-            Iceberg catalog retry attempts. Defaults to 16.
-        iceberg_catalog_retried_errors: A list of substrings of error messages that
-            should trigger a retry for Iceberg catalog operations. Includes common
-            HTTP error codes and connection errors.
+        iceberg_config: Configuration for Iceberg datasource operations including
+            retry settings for file writes and catalog operations. See
+            :class:`IcebergConfig` for details.
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
@@ -644,17 +664,7 @@ class DataContext:
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
-    iceberg_write_file_max_attempts: int = DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS
-    iceberg_write_file_retry_max_backoff_s: int = (
-        DEFAULT_ICEBERG_WRITE_FILE_RETRY_MAX_BACKOFF_S
-    )
-    iceberg_catalog_max_attempts: int = DEFAULT_ICEBERG_CATALOG_MAX_ATTEMPTS
-    iceberg_catalog_retry_max_backoff_s: int = (
-        DEFAULT_ICEBERG_CATALOG_RETRY_MAX_BACKOFF_S
-    )
-    iceberg_catalog_retried_errors: List[str] = field(
-        default_factory=lambda: list(DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS)
-    )
+    iceberg_config: IcebergConfig = field(default_factory=IcebergConfig)
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1

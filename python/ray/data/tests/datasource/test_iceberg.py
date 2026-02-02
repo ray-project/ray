@@ -124,19 +124,20 @@ def fast_retry_config():
     from ray.data.context import DataContext
 
     ctx = DataContext.get_current()
-    original_max_attempts = ctx.iceberg_write_file_max_attempts
-    original_max_backoff = ctx.iceberg_write_file_retry_max_backoff_s
+    iceberg_config = ctx.iceberg_config
+    original_max_attempts = iceberg_config.write_file_max_attempts
+    original_max_backoff = iceberg_config.write_file_retry_max_backoff_s
     original_errors = ctx.retried_io_errors
 
-    ctx.iceberg_write_file_max_attempts = 3
-    ctx.iceberg_write_file_retry_max_backoff_s = 1
+    iceberg_config.write_file_max_attempts = 3
+    iceberg_config.write_file_retry_max_backoff_s = 1
     ctx.retried_io_errors = list(original_errors) + ["TestTransientError"]
 
     yield ctx
 
     # Restore original settings
-    ctx.iceberg_write_file_max_attempts = original_max_attempts
-    ctx.iceberg_write_file_retry_max_backoff_s = original_max_backoff
+    iceberg_config.write_file_max_attempts = original_max_attempts
+    iceberg_config.write_file_retry_max_backoff_s = original_max_backoff
     ctx.retried_io_errors = original_errors
 
 
