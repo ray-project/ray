@@ -665,6 +665,7 @@ doctest(
 
 doctest(
     name = "doctest[train]",
+    # TODO: [V2] Migrate
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     files = glob(
         include = [
