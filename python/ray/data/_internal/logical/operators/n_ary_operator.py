@@ -6,6 +6,12 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
 )
 
+__all__ = [
+    "NAry",
+    "Union",
+    "Zip",
+]
+
 
 class NAry(LogicalOperator):
     """Base class for n-ary operators, which take multiple input operators."""
@@ -33,7 +39,7 @@ class Zip(NAry):
 
     def estimated_num_outputs(self):
         total_num_outputs = 0
-        for input in self._input_dependencies:
+        for input in self.input_dependencies:
             num_outputs = input.estimated_num_outputs()
             if num_outputs is None:
                 return None
@@ -52,7 +58,7 @@ class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
 
     def estimated_num_outputs(self):
         total_num_outputs = 0
-        for input in self._input_dependencies:
+        for input in self.input_dependencies:
             num_outputs = input.estimated_num_outputs()
             if num_outputs is None:
                 return None
