@@ -87,7 +87,7 @@ def env_runner_config(runner_type, num_envs_per_env_runner, gym_env_vectorize_mo
 
     if runner_type == "single_agent":
         return (
-            AlgorithmConfig()
+            PPOConfig()
             .environment("CartPole-v1")
             .env_runners(
                 num_envs_per_env_runner=num_envs_per_env_runner,
@@ -611,52 +611,27 @@ class TestEnvRunnerEpisodeContinuation:
 
 
 class TestEnvRunnerStateManagement:
-    """Tests for state management common to both runner types.
+    """Tests for state management common to both runner types."""
 
-    Note: SingleAgentEnvRunner with AlgorithmConfig (not PPOConfig) doesn't create
-    a module by default, so get_state() fails. These tests use PPOConfig for both
-    runner types to ensure modules are created.
-    """
-
-    def test_get_state_returns_dict(self, runner_type, env_runner_cls, ray_init):
+    def test_get_state_returns_dict(
+        self, env_runner, env_runner_config, env_runner_cls
+    ):
         """Test that get_state returns a dictionary."""
-        # Use PPOConfig for both to ensure module is created
-        if runner_type == "single_agent":
-            config = (
-                PPOConfig()
-                .environment("CartPole-v1")
-                .env_runners(num_envs_per_env_runner=1, rollout_fragment_length=10)
-            )
-            runner = SingleAgentEnvRunner(config=config)
-        elif runner_type == "multi_agent":
-            config = (
-                PPOConfig()
-                .environment(MultiAgentCartPole, env_config={"num_agents": 2})
-                .multi_agent(
-                    policies={"p0", "p1"},
-                    policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
-                )
-                .env_runners(num_envs_per_env_runner=1, rollout_fragment_length=10)
-            )
-            runner = MultiAgentEnvRunner(config=config)
-        else:
-            raise ValueError(f"Unknown runner type: {runner_type}")
+        state = env_runner.get_state()
+        assert isinstance(state, dict)
+        assert "rl_module" in state
+
+        env_runner.sample(num_episodes=1, random_actions=True)
+
+        # recheck after sample
+        state = env_runner.get_state()
+        assert isinstance(state, dict)
+        assert "rl_module" in state
+
+        # check that a new env runner can be updated based on an older state
+        new_runner = env_runner_cls(config=env_runner_config)
 
         try:
-            state = runner.get_state()
-            assert isinstance(state, dict)
-            assert "rl_module" in runner.get_state()
-
-            runner.sample(num_episodes=1, random_actions=True)
-
-            # recheck after sample
-            state = runner.get_state()
-            assert isinstance(state, dict)
-            assert "rl_module" in runner.get_state()
-
-            # check that a new env runner can be updated based on an older state
-            new_runner = env_runner_cls(config=config)
-
             # Check the states are not identical
             new_state = new_runner.get_state()
             assert set(state.keys()) == set(new_state.keys())
@@ -665,17 +640,14 @@ class TestEnvRunnerStateManagement:
             ):
                 check(state, new_state)
 
-            try:
-                new_runner.set_state(state)
+            new_runner.set_state(state)
 
-                # roundtrip the runner state
-                new_state = new_runner.get_state()
-                assert set(state.keys()) == set(new_state.keys())
-                check(state, new_state)
-            finally:
-                new_runner.stop()
+            # roundtrip the runner state
+            new_state = new_runner.get_state()
+            assert set(state.keys()) == set(new_state.keys())
+            check(state, new_state)
         finally:
-            runner.stop()
+            new_runner.stop()
 
 
 class TestEnvRunnerMetrics:
@@ -1006,18 +978,23 @@ class TestEnvRunnerConnectors:
         """Test env_to_module connector is called during environment reset."""
         env_runner = env_runner_with_env_to_module_tracker
 
+        records = EnvToModuleConnectorTracker.call_records
+        assert len(records) == 0
+
         # Initial reset happens during construction, sample triggers it
-        env_runner.sample(num_timesteps=1, random_actions=True)
+        env_runner.sample(num_timesteps=0, random_actions=True)
 
         # Should have records for each vectorized env after reset
-        records = EnvToModuleConnectorTracker.call_records
-        assert len(records) >= env_runner.num_envs
+        assert len(records) == env_runner.num_envs
 
         # First records should be at timestep 0 (reset)
         reset_records = [r for r in records if r["timestep"] == 0]
-        assert len(reset_records) >= env_runner.num_envs
+        assert len(reset_records) == env_runner.num_envs
 
-    def test_env_to_module_called_per_step(self, env_runner_with_env_to_module_tracker):
+    @pytest.mark.parametrize("num_timesteps", [8, 25, 50, 100])
+    def test_env_to_module_called_per_step(
+        self, env_runner_with_env_to_module_tracker, num_timesteps
+    ):
         """Test env_to_module connector is called after each environment step."""
         env_runner = env_runner_with_env_to_module_tracker
         num_timesteps = 5
@@ -1031,41 +1008,6 @@ class TestEnvRunnerConnectors:
 
         min_expected_calls = 1 + math.ceil(num_timesteps / env_runner.num_envs)
         assert call_count >= min_expected_calls
-
-    def test_env_to_module_postprocess_done_episodes_multi_agent(self, ray_init):
-        """Test that MultiAgent runner calls env_to_module for done episode postprocessing.
-
-        This is specific to MultiAgentEnvRunner which has an extra connector call
-        for done episodes to postprocess artifacts like one-hot encoded observations.
-        """
-        EnvToModuleConnectorTracker.reset()
-
-        num_episodes = 3
-        config = (
-            PPOConfig()
-            .environment(MultiAgentCartPole, env_config={"num_agents": 1})
-            .multi_agent(
-                policies={"p0"},
-                policy_mapping_fn=lambda aid, *a, **kw: "p0",
-            )
-            .env_runners(
-                num_envs_per_env_runner=1,
-                env_to_module_connector=make_env_to_module_connector_tracker,
-            )
-        )
-        env_runner = MultiAgentEnvRunner(config=config)
-
-        try:
-            episodes = env_runner.sample(num_episodes=num_episodes, random_actions=True)
-            assert len(episodes) == num_episodes
-
-            # Check that done episodes were recorded
-            done_records = EnvToModuleConnectorTracker.get_done_episode_records()
-            # Each done episode should have at least one record where is_done=True
-            assert len(done_records) == num_episodes
-        finally:
-            env_runner.stop()
-            EnvToModuleConnectorTracker.reset()
 
     def test_module_to_env_called_only_with_rl_module(
         self, env_runner_with_module_to_env_tracker

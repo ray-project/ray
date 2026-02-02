@@ -1,5 +1,10 @@
 import unittest
 
+from rllib.env.tests.test_env_runner import (
+    EnvToModuleConnectorTracker,
+    make_env_to_module_connector_tracker,
+)
+
 import ray
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
@@ -157,6 +162,42 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
             == module_episode_returns_mean
             == sum_agent_episode_returns_mean
         )
+
+    def test_env_to_module_postprocess_done_episodes_multi_agent(self, ray_init):
+        """Test that MultiAgent runner calls env_to_module for done episode postprocessing.
+
+        This is specific to MultiAgentEnvRunner which has an extra connector call
+        for done episodes to postprocess artifacts like one-hot encoded observations.
+        """
+        EnvToModuleConnectorTracker.reset()
+
+        num_episodes = 3
+        config = (
+            PPOConfig()
+            .environment(MultiAgentCartPole, env_config={"num_agents": 1})
+            .multi_agent(
+                policies={"p0"},
+                policy_mapping_fn=lambda aid, *a, **kw: "p0",
+            )
+            .env_runners(
+                num_envs_per_env_runner=1,
+                env_to_module_connector=make_env_to_module_connector_tracker,
+            )
+        )
+        env_runner = MultiAgentEnvRunner(config=config)
+
+        try:
+            episodes = env_runner.sample(num_episodes=num_episodes, random_actions=True)
+            assert len(episodes) == num_episodes
+
+            # Check that done episodes were recorded
+            done_records = EnvToModuleConnectorTracker.get_done_episode_records()
+            # Each done episode should have at least one record where is_done=True
+            assert len(done_records) == num_episodes
+        finally:
+            env_runner.stop()
+            EnvToModuleConnectorTracker.reset()
+
 
 if __name__ == "__main__":
     import sys
