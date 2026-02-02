@@ -16,7 +16,7 @@ class _ImageNamespace:
 
     _expr: "Expr"
 
-    def compose(self, transforms: List) -> "UDFExpr":
+    def compose(self, transforms: List[Callable]) -> "UDFExpr":
         """Apply a pipeline of torchvision transforms to images.
 
         Reuses the transform logic from TorchVisionPreprocessor with batched=False,
