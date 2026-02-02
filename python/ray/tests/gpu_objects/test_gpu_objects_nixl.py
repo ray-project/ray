@@ -92,7 +92,7 @@ class GPUTestActor:
             get_tensor_transport_manager,
         )
 
-        return get_tensor_transport_manager("NIXL").get_num_managed_meta_nixl()
+        return get_tensor_transport_manager("NIXL")._get_num_managed_meta_nixl()
 
     def is_tensor_in_desc_cache(self, tensor):
         from ray.experimental.gpu_object_manager.util import (
@@ -112,6 +112,22 @@ class GPUTestActor:
         if key in cache:
             return cache[key].ref_count
         return 0
+
+    def put_shared_tensor_lists(self):
+        """Create two tensor lists that share a common tensor and put them with NIXL transport."""
+        t1 = torch.tensor([1, 2, 3]).to("cuda")
+        t2 = torch.tensor([4, 5, 6]).to("cuda")
+        t3 = torch.tensor([7, 8, 9]).to("cuda")
+
+        list1 = [t1, t2]
+        list2 = [t2, t3]
+
+        ref1 = ray.put(list1, _tensor_transport="nixl")
+        # Nixl itself doesn't handle duplicate memory registrations,
+        # hence this call would fail without proper deduplication.
+        ref2 = ray.put(list2, _tensor_transport="nixl")
+
+        return ref1, ref2
 
     @ray.method(concurrency_group="_ray_system")
     def block_background_thread(self, signal_actor):
@@ -314,19 +330,8 @@ def test_shared_tensor_deduplication(ray_start_regular):
 
     Creates list1 = [T1, T2] and list2 = [T2, T3] where T2 is shared.
     """
-    t1 = torch.tensor([1, 2, 3]).to("cuda")
-    t2 = torch.tensor([4, 5, 6]).to("cuda")
-    t3 = torch.tensor([7, 8, 9]).to("cuda")
-
-    list1 = [t1, t2]
-    list2 = [t2, t3]
-
-    ref1 = ray.put(list1, _tensor_transport="nixl")
-    # Nixl itself doesn't handle duplicate memory registrations, hence this call would fail.
-    ref2 = ray.put(list2, _tensor_transport="nixl")
-
-    ray.get(ref1)
-    ray.get(ref2)
+    actor = GPUTestActor.remote()
+    ray.get(actor.put_shared_tensor_lists.remote())
 
 
 if __name__ == "__main__":

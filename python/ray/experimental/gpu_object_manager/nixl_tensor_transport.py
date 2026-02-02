@@ -56,7 +56,7 @@ class NixlTensorTransport(TensorTransportManager):
         # The lifetime of _managed_meta_nixl is tied to the object ref and freed when the ref goes out of scope.
         self._managed_meta_nixl: Dict[str, Any] = {}
         # Lock protecting _tensor_desc_cache and _managed_meta_nixl since they can be
-        # accessed from the user's python thread or the _ray_system thread.
+        # accessed from the main task execution thread or the _ray_system thread.
         self._cache_lock = threading.Lock()
 
     def tensor_transport_backend(self) -> str:
@@ -122,7 +122,7 @@ class NixlTensorTransport(TensorTransportManager):
         with self._cache_lock:
             device = None
             tensor_meta = []
-            duplicate_meta = self.record_and_get_meta_if_duplicate(obj_id, gpu_object)
+            duplicate_meta = self._record_and_get_meta_if_duplicate(obj_id, gpu_object)
             if duplicate_meta is not None:
                 return duplicate_meta
 
@@ -145,7 +145,7 @@ class NixlTensorTransport(TensorTransportManager):
                         and self._tensor_desc_cache[t.data_ptr()].nbytes != t.nbytes
                     ):
                         raise ValueError(
-                            "All tensors in an RDT object can not be partially overlapping"
+                            "Tensors in an RDT object can not be partially overlapping with already registered tensors"
                         )
                     tensor_meta.append((t.shape, t.dtype))
                     devices.add(t.device)
@@ -156,15 +156,7 @@ class NixlTensorTransport(TensorTransportManager):
                         torch.cuda.synchronize(dev)
 
                 nixl_agent = self.get_nixl_agent()
-                for tensor in gpu_object:
-                    key = tensor.data_ptr()
-                    if key in self._tensor_desc_cache:
-                        self._tensor_desc_cache[key].ref_count += 1
-                    else:
-                        reg_desc = nixl_agent.register_memory([tensor])
-                        self._tensor_desc_cache[key] = TensorDesc(
-                            reg_desc, 1, tensor.nbytes
-                        )
+                self._add_tensor_descs(gpu_object)
                 xfer_descs = nixl_agent.get_xfer_descs(gpu_object)
                 serialized_descs = nixl_agent.get_serialized_descs(xfer_descs)
                 agent_meta = nixl_agent.get_agent_metadata()
@@ -177,7 +169,7 @@ class NixlTensorTransport(TensorTransportManager):
                 nixl_serialized_descs=serialized_descs,
                 nixl_agent_meta=agent_meta,
             )
-            self._managed_meta_nixl[obj_id] = ret
+            self._put_meta(obj_id, ret)
             return ret
 
     def get_communicator_metadata(
@@ -291,6 +283,8 @@ class NixlTensorTransport(TensorTransportManager):
         with self._cache_lock:
             assert isinstance(tensor_transport_meta, NixlTransportMetadata)
             gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+            if not gpu_object_store.has_object(obj_id):
+                return
             self._managed_meta_nixl.pop(obj_id, None)
             tensors = gpu_object_store.get_object(obj_id)
             for tensor in tensors:
@@ -310,7 +304,8 @@ class NixlTensorTransport(TensorTransportManager):
         with self._aborted_transfer_obj_ids_lock:
             self._aborted_transfer_obj_ids.add(obj_id)
 
-    def record_and_get_meta_if_duplicate(
+    # NOTE: The below methods are intended to be used internally hence they assume the caller is already holding the cache lock.
+    def _record_and_get_meta_if_duplicate(
         self, src_obj_id: str, src_gpu_object: List["torch.Tensor"]
     ) -> Optional[NixlTransportMetadata]:
         """
@@ -324,15 +319,42 @@ class NixlTensorTransport(TensorTransportManager):
             src_obj_id, src_gpu_object, tensor_transport="NIXL"
         )
         if duplicate_obj_id is not None:
-            meta = self._managed_meta_nixl[duplicate_obj_id]
-            self._managed_meta_nixl[src_obj_id] = meta
-            for tensor in src_gpu_object:
-                key = tensor.data_ptr()
-                if key in self._tensor_desc_cache:
-                    self._tensor_desc_cache[key].ref_count += 1
-            return meta
+            self._put_meta(src_obj_id, self._get_meta(duplicate_obj_id))
+            self._add_tensor_descs(src_gpu_object)
+            return self._get_meta(src_obj_id)
         return None
 
-    def get_num_managed_meta_nixl(self) -> int:
+    def _get_num_managed_meta_nixl(self) -> int:
         with self._cache_lock:
             return len(self._managed_meta_nixl)
+
+    def _get_meta(self, object_id: str) -> Optional[NixlTransportMetadata]:
+        """
+        Get the NIXL transport metadata for the given object ID if it exists
+        """
+        if object_id in self._managed_meta_nixl:
+            return self._managed_meta_nixl[object_id]
+        return None
+
+    def _put_meta(self, object_id: str, meta: NixlTransportMetadata):
+        """
+        Store the NIXL transport metadata for the given object ID
+        """
+        self._managed_meta_nixl[object_id] = meta
+
+    def _add_tensor_descs(self, tensors: List["torch.Tensor"]):
+        """
+        If this is the first time the tensor is being added, we register the memory with NIXL.
+        Otherwise, we increment the reference count.
+        """
+        for tensor in tensors:
+            key = tensor.data_ptr()
+            if key in self._tensor_desc_cache:
+                if tensor.nbytes != self._tensor_desc_cache[key].nbytes:
+                    raise ValueError(
+                        "Tensors in an RDT object cannot partially overlap with each other."
+                    )
+                self._tensor_desc_cache[key].ref_count += 1
+            else:
+                reg_desc = self.get_nixl_agent().register_memory([tensor])
+                self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1, tensor.nbytes)

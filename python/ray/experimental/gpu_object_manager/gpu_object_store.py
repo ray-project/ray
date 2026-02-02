@@ -249,7 +249,10 @@ class GPUObjectStore:
         src_gpu_object: List["torch.Tensor"],
         tensor_transport: Optional[str] = None,
     ) -> Optional[str]:
-        """Get another object ID of the GPU object that duplicates the given GPU object."""
+        """
+        Get another object ID of the GPU object that duplicates the given GPU object.
+        Returns the object id if there is a duplicate, None if there is no duplicate.
+        """
         with self._lock:
             if len(src_gpu_object) == 0:
                 return None
