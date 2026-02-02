@@ -15,7 +15,7 @@ def main(args):
         nation = load_table("nation", args.sf)
 
         # Q9 parameters
-        part_name_pattern = "GREEN"
+        part_name_pattern = "green"
 
         # Filter part by name pattern
         part_filtered = part.filter(expr=col("p_name").str.contains(part_name_pattern))
