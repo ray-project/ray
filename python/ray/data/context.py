@@ -378,7 +378,7 @@ class DataContext:
             Options are None, FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2, and FixedShapeTensorFormat.ARROW_NATIVE.
             Default is None, which will fallback to use_arrow_tensor_v2. NOTE: For ARROW_NATIVE,
             only numbers (integers, floats) are currently supported.
-        use_arrow_tensor_v2: [Will be deprecated]. Use ``arrow_fixed_shape_tensor_format`` instead.
+        use_arrow_tensor_v2: [Will be deprecated in 2.56]. Use ``arrow_fixed_shape_tensor_format`` instead.
             Config enabling V2 version of ArrowTensorArray supporting
             tensors > 2Gb in size (off by default)
         enable_fallback_to_arrow_object_ext_type: Enables fallback to serialize column
@@ -701,7 +701,7 @@ class DataContext:
 
         elif name == "use_arrow_tensor_v2":
             warnings.warn(
-                "`use_arrow_tensor_v2` will be deprecated! Configure "
+                "`use_arrow_tensor_v2` will be deprecated in 2.56! Configure "
                 "`arrow_fixed_shape_tensor_format` instead.",
                 DeprecationWarning,
             )
