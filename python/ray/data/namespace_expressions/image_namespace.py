@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Callable, List
 
 from ray.data.datatype import DataType
 from ray.data.expressions import pyarrow_udf
@@ -45,13 +45,7 @@ class _ImageNamespace:
         if not transforms:
             raise ValueError("transforms list must not be empty")
 
-        try:
-            from torchvision import transforms as T
-        except ImportError:
-            raise ImportError(
-                "torchvision is required for image.compose(). "
-                "Install it with: pip install torchvision"
-            )
+        from torchvision import transforms as T
 
         from ray.data.preprocessors import TorchVisionPreprocessor
 
