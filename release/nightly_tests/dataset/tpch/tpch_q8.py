@@ -22,6 +22,7 @@ def main(args):
         date2 = datetime(1997, 1, 1)
         region_name = "AMERICA"
         part_type = "ECONOMY ANODIZED STEEL"
+        nation_name = "BRAZIL"  # Specific nation for market share calculation
 
         # Filter region
         region_filtered = region.filter(expr=col("r_name") == region_name)
@@ -45,9 +46,9 @@ def main(args):
         )
 
         # Join supplier with nation (for supplier nation)
-        # Note: For Q8, suppliers should also be in the same region
+        # Note: For Q8, suppliers can be from ALL nations, not just the region
         supplier_nation = supplier.join(
-            nation_region,
+            nation,
             join_type="inner",
             num_partitions=100,
             on=("s_nationkey",),
@@ -110,45 +111,54 @@ def main(args):
             col("o_orderdate").dt.year(),
         )
 
-        # For Q8, we need to calculate market share per supplier nation per year
-        # Market share = (volume for a specific supplier nation) / (total volume in region)
+        # For Q8, we need to calculate market share for a specific nation (e.g., BRAZIL)
+        # Market share = (volume from specific nation suppliers) / (total volume in region)
 
-        # First, calculate total volume per year (all suppliers in the region)
+        # Create a conditional column for volume from the specific nation
+        # Use conditional expression: if n_name_supp == nation_name then volume else 0
+        # Convert boolean to numeric: True -> 1, False -> 0, then multiply by volume
+        ds = ds.with_column(
+            "is_nation",
+            to_f64((col("n_name_supp") == nation_name)),
+        )
+        ds = ds.with_column(
+            "nation_volume",
+            col("is_nation") * col("volume"),
+        )
+
+        # Calculate total volume per year (all suppliers, for customers in the region)
         total_by_year = ds.groupby("o_year").aggregate(
             Sum(on="volume", alias_name="total_volume")
         )
 
-        # Calculate volume per supplier nation per year
-        supplier_by_year = ds.groupby(["o_year", "n_name_supp"]).aggregate(
-            Sum(on="volume", alias_name="supplier_volume")
+        # Calculate volume from specific nation per year (conditional sum)
+        nation_by_year = ds.groupby("o_year").aggregate(
+            Sum(on="nation_volume", alias_name="nation_volume")
         )
 
         # Join to get total volume for each year
-        result = supplier_by_year.join(
+        result = nation_by_year.join(
             total_by_year,
             join_type="inner",
             num_partitions=100,
             on=("o_year",),
         )
 
-        # Calculate market share for each supplier nation
+        # Calculate market share for the specific nation
         result = result.with_column(
             "mkt_share",
-            col("supplier_volume") / col("total_volume"),
+            col("nation_volume") / col("total_volume"),
         )
 
-        # For Q8, we aggregate market share by year (sum of all supplier nations' market shares per year)
-        # Or we might need to select a specific supplier nation - let's aggregate by year
-        # Actually, Q8 typically outputs one market share value per year for the region
-        # So we sum the market shares (which should equal 1.0) or we might need different logic
-        # Based on the comment, output should be (o_year, mkt_share), so let's aggregate
-        result = (
-            result.groupby("o_year")
-            .aggregate(Sum(on="mkt_share", alias_name="mkt_share"))
+        # Select and sort by year
+        _ = (
+            result.select_columns(["o_year", "mkt_share"])
             .sort(key="o_year")
+            .materialize()
         )
 
-        return result
+        # Report arguments for the benchmark.
+        return vars(args)
 
     run_tpch_benchmark("tpch_q8", benchmark_fn)
 

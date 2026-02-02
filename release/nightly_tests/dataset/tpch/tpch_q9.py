@@ -81,13 +81,15 @@ def main(args):
         )
 
         # Aggregate by nation and year
-        result = (
+        _ = (
             ds.groupby(["n_name", "o_year"])
             .aggregate(Sum(on="profit", alias_name="profit"))
             .sort(key=["n_name", "o_year"], descending=[False, True])
+            .materialize()
         )
 
-        return result
+        # Report arguments for the benchmark.
+        return vars(args)
 
     run_tpch_benchmark("tpch_q9", benchmark_fn)
 

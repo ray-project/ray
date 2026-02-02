@@ -95,13 +95,15 @@ def main(args):
         )
 
         # Aggregate by supplier nation, customer nation, and year
-        result = (
+        _ = (
             ds.groupby(["n_name_supp", "n_name_cust", "l_year"])
             .aggregate(Sum(on="revenue", alias_name="revenue"))
             .sort(key=["n_name_supp", "n_name_cust", "l_year"])
+            .materialize()
         )
 
-        return result
+        # Report arguments for the benchmark.
+        return vars(args)
 
     run_tpch_benchmark("tpch_q7", benchmark_fn)
 

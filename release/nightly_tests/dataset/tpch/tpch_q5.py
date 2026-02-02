@@ -80,13 +80,15 @@ def main(args):
         )
 
         # Aggregate by nation name
-        result = (
+        _ = (
             ds.groupby("n_name")
             .aggregate(Sum(on="revenue", alias_name="revenue"))
             .sort(key="revenue", descending=True)
+            .materialize()
         )
 
-        return result
+        # Report arguments for the benchmark.
+        return vars(args)
 
     run_tpch_benchmark("tpch_q5", benchmark_fn)
 
