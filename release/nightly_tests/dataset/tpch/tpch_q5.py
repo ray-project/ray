@@ -64,17 +64,14 @@ def main(args):
             right_on=("o_custkey",),
         )
 
-        # Join with lineitem
+        # Join with lineitem on order key and supplier key
         ds = ds.join(
             lineitem,
             join_type="inner",
             num_partitions=100,
-            on=("o_orderkey",),
-            right_on=("l_orderkey",),
+            on=["o_orderkey", "s_suppkey"],
+            right_on=["l_orderkey", "l_suppkey"],
         )
-
-        # Filter lineitem by supplier key
-        ds = ds.filter(expr=col("l_suppkey") == col("s_suppkey"))
 
         # Calculate revenue
         ds = ds.with_column(
