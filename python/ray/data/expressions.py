@@ -28,6 +28,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 if TYPE_CHECKING:
     from ray.data.namespace_expressions.arr_namespace import _ArrayNamespace
     from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
+    from ray.data.namespace_expressions.image_namespace import _ImageNamespace
     from ray.data.namespace_expressions.list_namespace import _ListNamespace
     from ray.data.namespace_expressions.string_namespace import _StringNamespace
     from ray.data.namespace_expressions.struct_namespace import _StructNamespace
@@ -661,6 +662,23 @@ class Expr(ABC):
         from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
 
         return _DatetimeNamespace(self)
+
+    @property
+    def image(self) -> "_ImageNamespace":
+        """Access image operations for this expression.
+
+        Returns:
+            An _ImageNamespace that provides image-specific operations.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> from torchvision import transforms
+            >>> augmentation = [transforms.ToTensor(), transforms.RandomResizedCrop(224)]
+            >>> ds.with_column("augmented", col("image").image.compose(augmentation))
+        """
+        from ray.data.namespace_expressions.image_namespace import _ImageNamespace
+
+        return _ImageNamespace(self)
 
     def _unalias(self) -> "Expr":
         return self
@@ -1500,6 +1518,7 @@ __all__ = [
     "download",
     "star",
     "_ArrayNamespace",
+    "_ImageNamespace",
     "_ListNamespace",
     "_StringNamespace",
     "_StructNamespace",
@@ -1513,6 +1532,10 @@ def __getattr__(name: str):
         from ray.data.namespace_expressions.arr_namespace import _ArrayNamespace
 
         return _ArrayNamespace
+    elif name == "_ImageNamespace":
+        from ray.data.namespace_expressions.image_namespace import _ImageNamespace
+
+        return _ImageNamespace
     elif name == "_ListNamespace":
         from ray.data.namespace_expressions.list_namespace import _ListNamespace
 
