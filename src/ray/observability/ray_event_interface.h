@@ -58,6 +58,10 @@ class RayEventInterface {
   virtual ray::rpc::events::RayEvent Serialize() && = 0;
 
   virtual ray::rpc::events::RayEvent::EventType GetEventType() const = 0;
+
+  // Get an estimate of the serialized size in bytes.
+  // Used to batch events by size.
+  virtual size_t GetSerializedSizeEstimate() const = 0;
 };
 
 }  // namespace observability

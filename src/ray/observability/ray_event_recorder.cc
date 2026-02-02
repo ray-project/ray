@@ -66,20 +66,31 @@ void RayEventRecorder::ExportEvents() {
       RayConfig::instance().ray_event_recorder_send_batch_size_bytes();
 
   // Group events by entity_id + type (events with same key are merged).
+  // Stop grouping when batch size limit is reached.
   std::list<std::unique_ptr<RayEventInterface>> grouped_events;
   absl::flat_hash_map<RayEventKey,
                       std::list<std::unique_ptr<RayEventInterface>>::iterator>
       event_key_to_iterator;
 
   size_t processed = 0;
+  size_t estimated_batch_size = 0;
   for (auto it = buffer_.begin(); it != buffer_.end(); ++it, ++processed) {
     auto &event = *it;
     auto key = std::make_pair(event->GetEntityId(), event->GetEventType());
     auto [map_it, inserted] = event_key_to_iterator.try_emplace(key);
     if (inserted) {
+      // New event - check if adding it would exceed batch size
+      size_t estimated_size = event->GetSerializedSizeEstimate();
+      if (!grouped_events.empty() && 
+          estimated_batch_size + estimated_size >= max_batch_size_bytes) {
+        // leave remaining events in the buffer
+        break;
+      }
       grouped_events.push_back(std::move(event));
       event_key_to_iterator[key] = std::prev(grouped_events.end());
+      estimated_batch_size += estimated_size;
     } else {
+      // Merge into existing event (doesn't significantly change size)
       (*map_it->second)->Merge(std::move(*event));
     }
   }
@@ -87,29 +98,14 @@ void RayEventRecorder::ExportEvents() {
   // Remove processed events from buffer
   buffer_.erase(buffer_.begin(), buffer_.begin() + processed);
 
-  // Serialize events and add to request, checking byte size
+  // Serialize events and add to request
   rpc::events::AddEventsRequest request;
   size_t num_events = 0;
-  auto it = grouped_events.begin();
-  while (it != grouped_events.end()) {
-    rpc::events::RayEvent ray_event = std::move(**it).Serialize();
+  for (auto &event : grouped_events) {
+    rpc::events::RayEvent ray_event = std::move(*event).Serialize();
     ray_event.set_node_id(node_id_.Binary());
-
-    // Check if adding this event would exceed the byte limit
-    // Always send at least one event even if it exceeds the limit
-    if (num_events > 0 &&
-        request.ByteSizeLong() + ray_event.ByteSizeLong() >= max_batch_size_bytes) {
-      // Put remaining unsent events back at the front of the buffer
-      while (it != grouped_events.end()) {
-        buffer_.push_front(std::move(*it));
-        ++it;
-      }
-      break;
-    }
-
     *request.mutable_events_data()->mutable_events()->Add() = std::move(ray_event);
     ++num_events;
-    ++it;
   }
 
   // Send with callback to record metrics
