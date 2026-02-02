@@ -273,7 +273,7 @@ class ExecutionOptions:
     Some options may not be supported on all executors (e.g., resource limits).
 
     Attributes:
-        resource_limits: Set a soft limit on the resource usage during execution.
+        resource_limits: Set a limit on the logical resources a Dataset can use.
             Autodetected by default.
         exclude_resources: Amount of resources to exclude from Ray Data.
             Set this if you have other workloads running on the same cluster.

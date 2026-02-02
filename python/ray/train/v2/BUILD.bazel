@@ -151,7 +151,7 @@ py_test(
 
 py_test(
     name = "test_controller",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_controller.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
@@ -167,10 +167,11 @@ py_test(
 
 py_test(
     name = "test_data_integration",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_data_integration.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
+        "data_integration",
         "exclusive",
         "team:ml",
         "train_v2",
@@ -183,7 +184,7 @@ py_test(
 
 py_test(
     name = "test_data_parallel_trainer",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_data_parallel_trainer.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
@@ -203,6 +204,7 @@ py_test(
     srcs = ["tests/test_data_resource_cleanup.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
+        "data_integration",
         "exclusive",
         "team:ml",
         "train_v2",
@@ -247,7 +249,7 @@ py_test(
 
 py_test(
     name = "test_jax_trainer",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_jax_trainer.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
@@ -267,6 +269,10 @@ py_test(
     srcs = ["tests/test_jax_gpu.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
+        # Temporarily disabled in CI: Ray GPU CI is on CUDA 12.1, but JAX wheels
+        # do not support CUDA 12.1 (and older JAX versions were removed from PyPI).
+        # Tagging as 'manual' excludes it from Ray's default Bazel CI runs.
+        "manual",
         "exclusive",
         "team:ml",
         "train_v2_gpu",
@@ -377,6 +383,22 @@ py_test(
     name = "test_placement_group_cleaner",
     size = "small",
     srcs = ["tests/test_placement_group_cleaner.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_placement_group_handle",
+    size = "medium",
+    srcs = ["tests/test_placement_group_handle.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
@@ -551,7 +573,7 @@ py_test(
 
 py_test(
     name = "test_torch_gpu",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_torch_gpu.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
@@ -715,6 +737,7 @@ py_test(
     srcs = ["tests/test_data_config.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
+        "data_integration",
         "exclusive",
         "team:ml",
         "train_v2",
