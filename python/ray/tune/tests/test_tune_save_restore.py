@@ -12,6 +12,7 @@ from ray.tune.utils import validate_save_restore
 
 
 class SerialTuneRelativeLocalDirTest(unittest.TestCase):
+    local_mode = True
     prefix = "Serial"
 
     class MockTrainable(Trainable):
@@ -36,7 +37,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 
     def setUp(self):
         self.absolute_local_dir = None
-        ray.init(num_cpus=2, num_gpus=0)
+        ray.init(num_cpus=1, num_gpus=0, local_mode=self.local_mode)
 
     def tearDown(self):
         if self.absolute_local_dir is not None:
