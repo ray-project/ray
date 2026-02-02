@@ -46,9 +46,9 @@ from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.offline.input_reader import InputReader
+from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.offline_data import OfflineData
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
-from ray.rllib.offline.io_context import IOContext
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, force_list, merge_dicts

@@ -26,7 +26,7 @@ from ray.rllib.core import (
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.offline.offline_prelearner import SCHEMA, OfflinePreLearner
+from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
@@ -146,8 +146,7 @@ class OfflinePolicyPreEvaluator(OfflinePreLearner):
         # Otherwise we map the batch to episodes.
         else:
             episodes: List[SingleAgentEpisode] = self._map_to_episodes(
-                batch,
-                to_numpy=False
+                batch, to_numpy=False
             )["episodes"]
 
         episode_dicts = []

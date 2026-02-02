@@ -6,7 +6,6 @@ from pathlib import Path
 import gymnasium as gym
 
 import ray
-from ray.rllib.env import env_context
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import COMPONENT_RL_MODULE, Columns
@@ -183,7 +182,7 @@ class TestOfflinePreLearner(unittest.TestCase):
 
     def test_offline_prelearner_sample_from_old_sample_batch_data(self):
         """Tests sampling from a `SampleBatch` dataset.
-        
+
         Creates a dataset of `SampleBatch`es and use the `OfflinePreLearner` to transform them to episodes.
         Checks that the transformed data is a batch of size `train_batch_size_per_learner`.
         """
@@ -255,12 +254,10 @@ class TestOfflinePreLearner(unittest.TestCase):
             .environment(
                 env="CartPole-v1",
             )
-            .training(
-                train_batch_size_per_learner=256
-            )
+            .training(train_batch_size_per_learner=256)
             .env_runners(
                 batch_mode="complete_episodes",
-                num_env_runners=1,
+                # num_env_runners=1,
             )
             .offline_data(
                 output=data_path,
@@ -280,7 +277,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         )
 
         algo = self.config.build()
-        
+
         episode_ds = ray.data.read_parquet(data_path)
         episode_batch = episode_ds.take_batch(64)
         module_state = algo.offline_data.learner_handles[0].get_state(

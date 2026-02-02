@@ -6,7 +6,6 @@ import gymnasium as gym
 import numpy as np
 
 from ray._common.deprecation import deprecation_warning
-
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -16,12 +15,9 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.compression import unpack_if_needed
-from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
+from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils.typing import EpisodeType, ModuleID
 from ray.util.annotations import PublicAPI
-from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
-    EpisodeReplayBuffer
-)
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -54,9 +50,10 @@ SCHEMA = {
 
 logger = logging.getLogger(__name__)
 
+
 def _validate_deprecated_map_args(kwargs: dict, config: "AlgorithmConfig") -> Set:
     """Handles deprecated args for OfflinePreLearner's map functions
-    
+
     If a user of this API tries to use deprecated arguments, we print a deprecation
     messages.
 
@@ -75,7 +72,7 @@ def _validate_deprecated_map_args(kwargs: dict, config: "AlgorithmConfig") -> Se
         is_multi_agent = kwargs["is_multi_agent"]
     else:
         is_multi_agent = config.is_multi_agent
-    
+
     if "schema" in kwargs:
         deprecation_warning(
             old="OfflinePreLearner._map_sample_batch_to_episode(schema)",
@@ -85,7 +82,7 @@ def _validate_deprecated_map_args(kwargs: dict, config: "AlgorithmConfig") -> Se
         schema = kwargs["schema"]
     else:
         schema = SCHEMA | config.input_read_schema
-    
+
     if "input_compress_columns" in kwargs:
         deprecation_warning(
             old="OfflinePreLearner._map_sample_batch_to_episode(input_compress_columns)",
@@ -95,7 +92,7 @@ def _validate_deprecated_map_args(kwargs: dict, config: "AlgorithmConfig") -> Se
         input_compress_columns = kwargs["input_compress_columns"] or []
     else:
         input_compress_columns = config.input_compress_columns or []
-    
+
     return is_multi_agent, schema, input_compress_columns
 
 
@@ -127,7 +124,7 @@ class OfflinePreLearner:
     will then use the custom class in its data pipeline.
     """
 
-    # Note: EpisodeReplayBuffer can not handle fragments from episodes 
+    # Note: EpisodeReplayBuffer can not handle fragments from episodes
     # that do not arrive in the order of their timesteps.
     default_prelearner_buffer_class = EpisodeReplayBuffer
 
@@ -160,13 +157,10 @@ class OfflinePreLearner:
                 self.config.prelearner_buffer_class
                 or self.default_prelearner_buffer_class
             )
-            prelearner_buffer_kwargs = (
-                self.config.prelearner_buffer_kwargs |
-                {
-                    "capacity": self.config.train_batch_size_per_learner * 10,
-                    "batch_size_B": self.config.train_batch_size_per_learner,
-                }
-            )
+            prelearner_buffer_kwargs = self.config.prelearner_buffer_kwargs | {
+                "capacity": self.config.train_batch_size_per_learner * 10,
+                "batch_size_B": self.config.train_batch_size_per_learner,
+            }
             self.episode_buffer = prelearner_buffer_class(
                 **prelearner_buffer_kwargs,
             )
@@ -199,10 +193,7 @@ class OfflinePreLearner:
         elif self.config.input_read_sample_batches:
             episodes: List[
                 SingleAgentEpisode
-            ] = OfflinePreLearner._map_sample_batch_to_episode(
-                batch,
-                to_numpy=True,
-            )[
+            ] = OfflinePreLearner._map_sample_batch_to_episode(batch, to_numpy=True,)[
                 "episodes"
             ]
             episodes = self._postprocess_and_sample(episodes)
@@ -335,20 +326,24 @@ class OfflinePreLearner:
     ) -> Dict[str, List[EpisodeType]]:
         """Maps a batch of data to episodes."""
 
-        is_multi_agent, schema, input_compress_columns = _validate_deprecated_map_args(kwargs, self)
+        is_multi_agent, schema, input_compress_columns = _validate_deprecated_map_args(
+            kwargs, self
+        )
 
         episodes = []
         for i, obs in enumerate(batch[schema[Columns.OBS]]):
             if is_multi_agent:
                 # TODO (simon): Add support for multi-agent episodes.
-                raise NotImplemented("Loading multi-agent episodes is currently not supported.")
+                raise NotImplementedError(
+                    "Loading multi-agent episodes is currently not supported."
+                )
             else:
                 unpacked_obs = (
                     unpack_if_needed(obs)
                     if Columns.OBS in input_compress_columns
                     else obs
                 )
-                
+
                 unpacked_next_obs = (
                     unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i])
                     if Columns.OBS in input_compress_columns
@@ -426,7 +421,9 @@ class OfflinePreLearner:
     ) -> Dict[str, List[EpisodeType]]:
         """Maps an old stack `SampleBatch` to new stack episodes."""
 
-        is_multi_agent, schema, input_compress_columns = _validate_deprecated_map_args(kwargs, self)
+        is_multi_agent, schema, input_compress_columns = _validate_deprecated_map_args(
+            kwargs, self
+        )
 
         # Set `input_compress_columns` to an empty `list` if `None`.
         input_compress_columns = input_compress_columns or []
@@ -443,7 +440,9 @@ class OfflinePreLearner:
         for i, obs in enumerate(batch[schema[Columns.OBS]]):
             if is_multi_agent:
                 # TODO (simon): Add support for multi-agent episodes.
-                raise NotImplemented("Loading multi-agent episodes from sample batches is currently not supported.")
+                raise NotImplementedError(
+                    "Loading multi-agent episodes from sample batches is currently not supported."
+                )
             else:
                 # Unpack observations, if needed. Note, observations could
                 # be either compressed in their entirety (the column) or individually (each row).
@@ -560,6 +559,6 @@ class OfflinePreLearner:
                 if to_numpy:
                     episode.to_numpy()
                 episodes.append(episode)
-        
+
         # Note: `ray.data.Dataset.map_batches` expects a `Dict`
         return {"episodes": episodes}
