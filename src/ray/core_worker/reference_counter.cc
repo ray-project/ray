@@ -1030,6 +1030,8 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
     ReferenceTableProto *proto,
     std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
+  // Reuse the `encountered_ids` set to deduplicate object IDs across loop iterations.
+  absl::flat_hash_set<ObjectID> encountered_ids;
   for (const auto &borrowed_id : borrowed_ids) {
     // Setting `deduct_local_ref` to true to decrease the ref count for each of the
     // borrowed IDs. This is because we artificially increment each borrowed ID to
@@ -1038,7 +1040,8 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
     RAY_CHECK(GetAndClearLocalBorrowersInternal(borrowed_id,
                                                 /*for_ref_removed=*/false,
                                                 /*deduct_local_ref=*/true,
-                                                proto))
+                                                proto,
+                                                encountered_ids))
         << borrowed_id;
   }
 
