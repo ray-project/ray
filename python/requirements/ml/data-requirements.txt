@@ -3,7 +3,7 @@
 
 getdaft==0.4.3
 dask[complete]>=2023.6.1
-distributed==2025.5.0
+distributed>=2025.5.0
 aioboto3==12.1.0
 crc32c==2.3
 flask_cors

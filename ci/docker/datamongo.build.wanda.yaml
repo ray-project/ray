@@ -1,6 +1,6 @@
 name: "datamongobuild-py$PYTHON"
 froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON"]
-dockerfile: t
+dockerfile: ci/docker/data.build.Dockerfile
 srcs:
   - ci/env/install-dependencies.sh
   - python/requirements.txt
