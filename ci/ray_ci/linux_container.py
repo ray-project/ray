@@ -4,7 +4,11 @@ import subprocess
 import sys
 from typing import List, Optional, Tuple
 
-from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
+from ci.ray_ci.configs import (
+    COMPATIBLE_DOCKER_API_VERSION,
+    DEFAULT_ARCHITECTURE,
+    DEFAULT_PYTHON_VERSION,
+)
 from ci.ray_ci.container import Container, get_docker_image
 
 _DOCKER_CAP_ADD = [
@@ -50,6 +54,8 @@ class LinuxContainer(Container):
 
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"
+        # Keep Docker client API compatible with older daemons on CI runners.
+        env.setdefault("DOCKER_API_VERSION", COMPATIBLE_DOCKER_API_VERSION)
         build_cmd = [
             "docker",
             "build",
