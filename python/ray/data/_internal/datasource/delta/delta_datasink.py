@@ -87,7 +87,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             schema_mode: How to handle schema changes when writing to existing table:
                 - "error": Reject new columns (default, safest)
                 - "merge": Add new columns using DeltaTable.alter.add_columns()
-                - "overwrite": Replace table schema (not recommended)
+                - "overwrite": Not supported for delta-rs writes
             **write_kwargs: Additional options passed to Delta writer.
         """
         _check_import(self, module="deltalake", package="deltalake")
@@ -111,7 +111,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         self._table_existed_at_start: bool = False
         self._new_columns_to_add: List[tuple] = []  # List of (name, type, nullable) tuples for schema evolution
         self._write_uuid: Optional[str] = None  # Store write_uuid for app_transactions
-        self._new_columns_to_add: List[tuple] = []  # List of (name, type, nullable) tuples
 
         # Store unresolved path (original URI) for deltalake APIs which need the scheme
         self.table_uri = path
@@ -204,7 +203,13 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             raise ValueError(f"schema_mode must be a string, got {type(schema_mode).__name__}")
 
         schema_mode_lower = schema_mode.lower()
-        valid_modes = ["error", "merge", "overwrite"]
+        if schema_mode_lower == "overwrite":
+            raise ValueError(
+                "schema_mode='overwrite' is not supported for delta-rs writes. "
+                "Use schema_mode='merge' to add columns or 'error' to reject changes."
+            )
+
+        valid_modes = ["error", "merge"]
         if schema_mode_lower not in valid_modes:
             raise ValueError(
                 f"Invalid schema_mode '{schema_mode}'. Supported: {valid_modes}"
@@ -303,12 +308,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 ]
                 logger.info(
                     f"Schema evolution enabled: {len(new_columns)} new columns will be added: {new_columns}"
-                )
-            elif self.schema_mode == "overwrite":
-                # Schema overwrite - no action needed here, handled in commit
-                logger.warning(
-                    "schema_mode='overwrite' will replace the table schema. "
-                    "This may cause data loss if columns are removed."
                 )
 
     def on_write_start(self, schema: Optional[pa.Schema] = None) -> None:
@@ -606,14 +605,28 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 write_uuid = first_result.write_uuid
 
         if write_uuid:
+            from deltalake.transaction import CommitProperties
+
             app_transaction = create_app_transaction_id(write_uuid)
             existing_props = normalize_commit_properties(
                 self.write_kwargs.get("commit_properties")
             )
-            self.write_kwargs["commit_properties"] = {
-                **existing_props,
-                **app_transaction,
-            }
+
+            # Merge commit properties with app_transaction
+            if existing_props is None:
+                self.write_kwargs["commit_properties"] = CommitProperties(
+                    custom_metadata=None,
+                    max_commit_retries=None,
+                    app_transactions=[app_transaction],
+                )
+            else:
+                # Merge app_transactions with existing properties
+                existing_app_txns = existing_props.app_transactions or []
+                self.write_kwargs["commit_properties"] = CommitProperties(
+                    custom_metadata=existing_props.custom_metadata,
+                    max_commit_retries=existing_props.max_commit_retries,
+                    app_transactions=existing_app_txns + [app_transaction],
+                )
 
         try:
             self._reconcile_schemas(all_schemas, existing_table)
@@ -687,7 +700,12 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         ):
             # Validate partition columns match the concurrently-created table
             # (on_write_start skipped this validation since table didn't exist then)
-            validate_partition_columns_match_existing(existing_table, self.partition_cols)
+            try:
+                validate_partition_columns_match_existing(existing_table, self.partition_cols)
+            except ValueError:
+                # Partition validation failed - clean up written files before raising error
+                self._cleanup_files(all_written_files)
+                raise
             # Update state to reflect that table now exists
             self._table_existed_at_start = True
             return existing_table
@@ -881,27 +899,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             # Use alter.add_columns to evolve schema
             # DeltaTable.alter API: https://delta-io.github.io/delta-rs/python/api/deltalake.table.html#deltalake.table.DeltaTable.alter
             existing_table.alter.add_columns(delta_fields)
-
-    def _check_commit_succeeded(self, table: "DeltaTable") -> bool:
-        """Check if commit succeeded using app_transactions.
-
-        Uses transaction_version to verify if our app_transaction was recorded,
-        indicating the commit succeeded even if client saw an exception.
-
-        Args:
-            table: DeltaTable to check.
-
-        Returns:
-            True if commit succeeded (transaction_version matches), False otherwise.
-        """
-        if not self._write_uuid:
-            return False
-
-        # TODO: Implement transaction_version checking when delta-rs API is available
-        # For now, we can't reliably check if commit succeeded, so return False
-        # to be conservative (don't delete potentially committed files)
-        # Note: app_transactions are added in on_write_complete() for future use
-        return False  # Conservative: assume commit may have succeeded
 
     def _commit_by_mode(
         self,

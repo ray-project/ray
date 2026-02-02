@@ -17,7 +17,7 @@ import pyarrow.fs as pa_fs
 
 if TYPE_CHECKING:
     from deltalake import DeltaTable
-    from deltalake.transaction import AddAction
+    from deltalake.transaction import AddAction, CommitProperties, Transaction
 
 # =============================================================================
 # Constants
@@ -276,19 +276,42 @@ def types_compatible(expected: pa.DataType, actual: pa.DataType) -> bool:
 
 def normalize_commit_properties(
     commit_properties: Optional[Dict[str, str]],
-) -> Dict[str, str]:
+) -> Optional["CommitProperties"]:
     """Normalize commit properties for Delta Lake transactions.
 
     Args:
-        commit_properties: Optional dict of commit properties.
+        commit_properties: Optional dict of commit properties or CommitProperties.
 
     Returns:
-        Normalized commit properties dict (never None).
-        delta-rs accepts dict directly for commit_properties.
+        CommitProperties object or None.
     """
     if commit_properties is None:
-        return {}
-    return dict(commit_properties)
+        return None
+
+    from deltalake.transaction import CommitProperties
+
+    # Handle both dict and CommitProperties input
+    if isinstance(commit_properties, CommitProperties):
+        return commit_properties
+
+    if not isinstance(commit_properties, dict):
+        raise TypeError(
+            "commit_properties must be a dict of string keys and values or "
+            "a deltalake.transaction.CommitProperties object"
+        )
+
+    for key, value in commit_properties.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise TypeError(
+                "commit_properties must be a dict of string keys and values"
+            )
+
+    # Convert dict to CommitProperties
+    return CommitProperties(
+        custom_metadata=dict(commit_properties),
+        max_commit_retries=None,
+        app_transactions=None,
+    )
 
 
 def validate_schema_type_compatibility(
@@ -798,8 +821,8 @@ def _get_gcs_credentials() -> Dict[str, str]:
         return {}
 
 
-def create_app_transaction_id(write_uuid: Optional[str]) -> Dict[str, str]:
-    """Create app_transaction ID for idempotent commits.
+def create_app_transaction_id(write_uuid: Optional[str]) -> "Transaction":
+    """Create app_transaction for idempotent commits.
 
     Uses write_uuid to generate a deterministic transaction ID that can be
     checked after commit failures to determine if commit succeeded.
@@ -808,9 +831,11 @@ def create_app_transaction_id(write_uuid: Optional[str]) -> Dict[str, str]:
         write_uuid: Unique identifier for this write operation.
 
     Returns:
-        Dict with app_transaction ID for commit_properties.
+        Transaction object for app_transactions in CommitProperties.
     """
     import hashlib
+
+    from deltalake.transaction import Transaction
 
     if write_uuid is None:
         # Fallback: generate from timestamp (less ideal but better than nothing)
@@ -825,8 +850,12 @@ def create_app_transaction_id(write_uuid: Optional[str]) -> Dict[str, str]:
     # Hash write_uuid to get a deterministic integer version
     version = int(hashlib.md5(write_uuid.encode()).hexdigest()[:8], 16)
 
-    # Format: "app_id:version" as required by delta-rs
-    return {"app_transactions": f"{app_id}:{version}"}
+    # Return Transaction object as required by delta-rs
+    return Transaction(
+        app_id=app_id,
+        version=version,
+        last_updated=None,
+    )
 
 
 # =============================================================================

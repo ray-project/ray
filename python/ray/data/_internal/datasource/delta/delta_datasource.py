@@ -63,6 +63,12 @@ class DeltaDatasource(Datasource):
         if not path or not path.strip():
             raise ValueError("Delta table path cannot be empty")
 
+        # Validate version type
+        if version is not None and not isinstance(version, (int, str)):
+            raise TypeError(
+                f"version must be int or str (ISO 8601 timestamp), got {type(version).__name__}"
+            )
+
         self.path = path
         self.version = version
         self.storage_options = storage_options or {}
