@@ -38,7 +38,7 @@ class ResourceAndLabelSpec:
             num_cpus: The CPUs allocated for this raylet.
             num_gpus: The GPUs allocated for this raylet.
             memory: The memory allocated for this raylet.
-            available_memory: The memory available for this raylet.
+            available_memory: Memory available for use on this node in bytes.
             object_store_memory: The object store memory allocated for this raylet.
             resources: The custom resources allocated for this raylet.
             labels: The labels associated with this node. Labels can be used along

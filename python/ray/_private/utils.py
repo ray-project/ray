@@ -537,20 +537,20 @@ def resolve_object_store_memory(
     Returns:
         The resolved object store memory size in bytes.
     """
-    object_store_memory_cap = ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
-
-    # Cap by shm size by default to avoid low performance, but don't
-    # go lower than REQUIRE_SHM_SIZE_THRESHOLD.
-    if sys.platform == "linux" or sys.platform == "linux2":
-        # Multiple by 0.95 to give a bit of wiggle-room.
-        # https://github.com/ray-project/ray/pull/23034/files
-        shm_avail = get_shared_memory_bytes() * 0.95
-        shm_cap = max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail)
-
-        object_store_memory_cap = min(object_store_memory_cap, shm_cap)
-
     # Derive default object store memory if not specified
     if object_store_memory is None:
+        object_store_memory_cap = ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
+
+        # Cap by shm size by default to avoid low performance, but don't
+        # go lower than REQUIRE_SHM_SIZE_THRESHOLD.
+        if sys.platform == "linux" or sys.platform == "linux2":
+            # Multiple by 0.95 to give a bit of wiggle-room.
+            # https://github.com/ray-project/ray/pull/23034/files
+            shm_avail = get_shared_memory_bytes() * 0.95
+            shm_cap = max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail)
+
+            object_store_memory_cap = min(object_store_memory_cap, shm_cap)
+
         object_store_memory = int(
             available_memory * ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
         )
@@ -563,16 +563,16 @@ def resolve_object_store_memory(
                 object_store_memory, ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT
             )
 
-    # Cap memory to avoid memory waste and perf issues on large nodes
-    if object_store_memory > object_store_memory_cap:
-        logger.debug(
-            "Warning: Capping object memory store to {}GB. ".format(
-                object_store_memory_cap // 1e9
+        # Cap memory to avoid memory waste and perf issues on large nodes
+        if object_store_memory > object_store_memory_cap:
+            logger.debug(
+                "Warning: Capping object memory store to {}GB. ".format(
+                    object_store_memory_cap // 1e9
+                )
+                + "To increase this further, specify `object_store_memory` "
+                "when calling ray.init() or ray start."
             )
-            + "To increase this further, specify `object_store_memory` "
-            "when calling ray.init() or ray start."
-        )
-        object_store_memory = object_store_memory_cap
+            object_store_memory = object_store_memory_cap
 
     return object_store_memory
 

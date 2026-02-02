@@ -31,7 +31,7 @@ class RayParams:
             of that resource available.
         labels: The key-value labels of the node.
         memory: Total available memory for workers requesting memory.
-        available_memory: The memory available for the raylet in bytes.
+        available_memory: The memory available for use on this node in bytes.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
         object_manager_port int: The port to use for the object manager.

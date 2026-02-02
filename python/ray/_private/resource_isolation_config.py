@@ -92,8 +92,9 @@ class ResourceIsolationConfig:
 
         if object_store_memory is None:
             raise ValueError(
-                "object_store_memory must be resolved before creating a ResourceIsolationConfig."
-                "when resource isolation is enabled."
+                "object_store_memory must be resolved before creating a ResourceIsolationConfig "
+                "when resource isolation is enabled. This is likely a bug in Ray, "
+                "please report it at https://github.com/ray-project/ray/issues/new/choose."
             )
 
         self.system_reserved_cpu_weight = self._validate_and_get_system_reserved_cpu(
