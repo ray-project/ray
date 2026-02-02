@@ -16,6 +16,15 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "graceful_shutdown",
+    hdrs = ["graceful_shutdown.h"],
+    deps = [
+        ":logging",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
     name = "thread_utils",
     hdrs = ["thread_utils.h"],
     deps = [
