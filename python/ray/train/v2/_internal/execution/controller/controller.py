@@ -196,7 +196,7 @@ class TrainController:
         self,
         hook_name: str,
         *args,
-        invoke_failure_decision_callbacks: bool = False,
+        invoke_failure_decision_callbacks: bool = True,
         **context,
     ) -> Optional["TrainControllerLoopIterationResult"]:
         try:
