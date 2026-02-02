@@ -714,8 +714,8 @@ print(result)
 
 In this notebook, you:
 
-- Built a GPT-2-style model with JAX and Flax NNX.
-- Wrapped the training step in a `train_loop_per_worker` and scaled it out using Ray Train `JaxTrainer` with GPUs or TPUs.
-- Streamed data to distributed workers and reported metrics and checkpoints through Ray Train.
+1. Prepared and the `OpenWebText` dataset and wrapped with Ray Data.
+2. Defined a basic GPT2 model and train step in Jax/Flax.
+3. Wrapped the training loop in a `train_loop_per_worker` function and scaled it out using Ray Train `JaxTrainer` with GPUs or TPUs!
 
 
