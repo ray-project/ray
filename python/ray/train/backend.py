@@ -35,7 +35,7 @@ class BackendConfig(ABC):
     @abstractmethod
     def to_dict(self) -> Dict[str, Any]:
         """Serialize this backend config to a dict for runtime use."""
-        raise NotImplementedError
+        pass
 
 
 @DeveloperAPI

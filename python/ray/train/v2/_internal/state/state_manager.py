@@ -80,7 +80,7 @@ class TrainStateManager:
             storage_path=run_config.storage_path,
         )
 
-        scaling_config = ScalingConfigSchema(
+        scaling_config_schema = ScalingConfigSchema(
             num_workers=scaling_config.num_workers,
             use_gpu=scaling_config.use_gpu,
             resources_per_worker=scaling_config.resources_per_worker,
@@ -91,15 +91,15 @@ class TrainStateManager:
             bundle_label_selector=scaling_config.bundle_label_selector,
         )
 
-        backend_config = BackendConfigSchema(
+        backend_config_schema = BackendConfigSchema(
             framework=backend_config.framework,
             config=backend_config.to_dict(),
         )
 
         run_settings = RunSettings(
             train_loop_config=train_loop_config,
-            backend_config=backend_config,
-            scaling_config=scaling_config,
+            backend_config=backend_config_schema,
+            scaling_config=scaling_config_schema,
             datasets=list(datasets.keys()),
             data_config=construct_data_config(dataset_config),
             run_config=run_config_schema,
