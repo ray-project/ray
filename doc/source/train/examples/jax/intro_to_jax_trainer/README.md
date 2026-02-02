@@ -631,11 +631,10 @@ def train_loop_per_worker(config_dict: dict) -> None:
 
 ```
 
+## Step 5: Define the `ScalingConfig`
 
+Let's define the `ScalingConfig` that we want to scale the training process.  
 
-## Step 5: Define the scaling config
-
-Let's define the `scaling_config` that we want to scale the training process.
 `JaxTrainer` now supports both GPU training and TPU training. 
 
 For a walkthrough on configuring `ScalingConfig`, see [Get Started with Distributed Training using JAX](https://docs.ray.io/en/latest/train/getting-started-jax.html).   
