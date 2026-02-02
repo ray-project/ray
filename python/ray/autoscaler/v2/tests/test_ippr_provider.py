@@ -822,7 +822,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
     @patch(
         "ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider.RayletClient"
     )
-    def test_do_ippr_requests_memory_limit_not_below_spec_limit(
+    def test_do_ippr_requests_memory_limit_drops_below_spec_limit(
         self, mock_raylet_client_cls
     ):
         # Setup specs and pod with memory limits present; request downsize below spec limit
@@ -869,8 +869,8 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
 
         patch_ops = self.k8s.get_patches("pods/ray-worker-1/resize")
         mem_limits = next(p for p in patch_ops if p["path"].endswith("limits/memory"))
-        # Limit must not drop below spec limit (8Gi)
-        assert mem_limits["value"] == 8 * 1024 * 1024 * 1024
+        # Limit must drop below spec limit (8Gi)
+        assert mem_limits["value"] == 2 * 1024 * 1024 * 1024
         assert mock_raylet_client.async_resize_local_resource_instances.call_count == 1
         sent_req = mock_raylet_client.async_resize_local_resource_instances.call_args[
             0

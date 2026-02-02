@@ -221,7 +221,7 @@ class KubeRayIPPRProvider:
             )
             if ippr_status:
                 self._ippr_statuses[ippr_status.cloud_instance_id] = ippr_status
-            if container_resource:
+            if ippr_status and container_resource:
                 self._container_resources[
                     ippr_status.cloud_instance_id
                 ] = container_resource
@@ -344,16 +344,7 @@ class KubeRayIPPRProvider:
             patch.append(
                 replace_patch(
                     f"{path_prefix}/limits/memory",
-                    # Ensure the memory limit never drop below the pod spec's limit.
-                    # Kubernetes does not allow lower memory limit than the current spec.
-                    max(
-                        resize.desired_memory,
-                        int(
-                            parse_quantity(
-                                container_resource["spec"]["limits"].get("memory", 0)
-                            )
-                        ),
-                    ),
+                    resize.desired_memory,
                 )
             )
             patch.append(
@@ -383,8 +374,7 @@ async def _get_node_info(
 def _get_raylet_host_port(
     gcs_client: GcsClient, raylet_id: str
 ) -> Optional[tuple[str, int]]:
-    # Cache the mapping from raylet_id to address to avoid repeated GCS calls
-    # during a scaling loop.
+    # Cache the mapping from raylet_id to address to avoid repeated GCS calls.
     node_info_dict = asyncio.run(_get_node_info(gcs_client, raylet_id))
     if not node_info_dict:
         return None
@@ -420,12 +410,6 @@ def _get_ippr_status_from_pod(
     if not ippr_group_spec:
         return (None, None)
 
-    pod_spec_requests = (
-        pod["spec"]["containers"][0].get("resources", {}).get("requests", {})
-    )
-    pod_spec_limits = (
-        pod["spec"]["containers"][0].get("resources", {}).get("limits", {})
-    )
     container_status = {}
     other_container_resources = []
     for status in pod.get("status", {}).get("containerStatuses", []):
@@ -437,6 +421,13 @@ def _get_ippr_status_from_pod(
             requests = status.get("resources", {}).get("requests")
             if requests:
                 other_container_resources.append(requests)
+
+    pod_spec_requests = (
+        pod["spec"]["containers"][0].get("resources", {}).get("requests", {})
+    )
+    pod_spec_limits = (
+        pod["spec"]["containers"][0].get("resources", {}).get("limits", {})
+    )
     pod_status_requests = container_status.get("resources", {}).get(
         "requests", pod_spec_requests
     )
@@ -539,6 +530,12 @@ def _get_ippr_status_from_pod(
                         + diff
                         - other_container_cpu_requests
                     )
+                    if ippr_status.queue_resize_request(
+                        desired_cpu=ippr_status.suggested_max_cpu
+                    ):
+                        logger.info(
+                            f"Apply resize suggestions for {ippr_status.cloud_instance_id} to cpu={ippr_status.suggested_max_cpu}"
+                        )
                 else:
                     diff = parse_quantity(
                         pod_status_limits.get("memory")
@@ -553,13 +550,12 @@ def _get_ippr_status_from_pod(
                         + diff
                         - other_container_memory_requests
                     )
-                if ippr_status.queue_resize_request(
-                    desired_cpu=ippr_status.suggested_max_cpu,
-                    desired_memory=ippr_status.suggested_max_memory,
-                ):
-                    logger.info(
-                        f"Apply resize suggestions for {ippr_status.cloud_instance_id} to cpu={ippr_status.suggested_max_cpu} memory={ippr_status.suggested_max_memory}"
-                    )
+                    if ippr_status.queue_resize_request(
+                        desired_memory=ippr_status.suggested_max_memory,
+                    ):
+                        logger.info(
+                            f"Apply resize suggestions for {ippr_status.cloud_instance_id} to memory={ippr_status.suggested_max_memory}"
+                        )
             break
         elif (
             condition["type"] == "PodResizeInProgress" and condition["status"] == "True"

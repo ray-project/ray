@@ -429,7 +429,9 @@ class IPPRStatus:
         1) ``suggested_max_cpu`` (discovered limit)
         2) ``spec.max_cpu`` (static limit)
         """
-        return self.suggested_max_cpu or self.spec.max_cpu
+        if self.suggested_max_cpu is not None:
+            return self.suggested_max_cpu
+        return self.spec.max_cpu
 
     def max_memory(self) -> int:
         """Effective maximum memory bytes allowed for this pod.
@@ -438,7 +440,9 @@ class IPPRStatus:
         1) ``suggested_max_memory`` (discovered limit)
         2) ``spec.max_memory`` (static limit)
         """
-        return self.suggested_max_memory or self.spec.max_memory
+        if self.suggested_max_memory is not None:
+            return self.suggested_max_memory
+        return self.spec.max_memory
 
     def can_resize_up(self) -> bool:
         """Whether the pod can still be scaled up within allowed limits.
