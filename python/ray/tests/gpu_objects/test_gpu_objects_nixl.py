@@ -302,9 +302,21 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
                 assert new_tensor.data_ptr() == tensor_buffer.data_ptr()
             return True
 
+        def get_from_ref_with_wrong_buffers(self, refs):
+            wrong_tensor_buffer = [
+                torch.tensor([1, 2]).to("cuda"),
+                torch.tensor([4, 5]).to("cuda"),
+            ]
+            with pytest.raises(ValueError) as excinfo:
+                ray.get(refs[0], GetTensorOptions(tensor_buffers=wrong_tensor_buffer))
+            assert "Shape of tensor_buffer at index 0" in str(excinfo.value)
+            return True
+
     actors = [GPUTestActor.remote() for _ in range(2)]
     ref = actors[0].get_ref.remote()
     result = actors[1].get_from_ref.remote([ref])
+    assert ray.get(result)
+    result = actors[1].get_from_ref_with_wrong_buffers.remote([ref])
     assert ray.get(result)
 
 
