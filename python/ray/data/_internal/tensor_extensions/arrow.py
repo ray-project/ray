@@ -815,17 +815,15 @@ def create_arrow_fixed_shape_tensor_format(
     if tensor_format is None:
         tensor_format = resolve_fixed_shape_tensor_format()
 
-        from ray.data.context import DataContext
-
-        ctx = DataContext.get_current()
-        fallback = (
-            FixedShapeTensorFormat.V2
-            if ctx.use_arrow_tensor_v2
-            else FixedShapeTensorFormat.V1
-        )
-
         # Native tensor format requires PyArrow 12+
         if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
+            from ray.data.context import DataContext
+
+            fallback = (
+                FixedShapeTensorFormat.V2
+                if DataContext.get_current().use_arrow_tensor_v2
+                else FixedShapeTensorFormat.V1
+            )
             if FixedShapeTensorType is None:
                 if log_once("native_fixed_shape_tensors_not_supported"):
                     warnings.warn(
@@ -836,7 +834,8 @@ def create_arrow_fixed_shape_tensor_format(
                     )
                 tensor_format = fallback
             elif len(shape) > 0 and (np.prod(shape) == 0 or outer_len == 0):
-                # FixedShapeTensor types don't support 0 size shapes
+                # FixedShapeTensor types don't support 0-sized shapes, but they
+                # do accept 0-dim shapes
                 tensor_format = fallback
             elif not _native_tensor_value_type_can_convert_to_numpy(dtype):
                 tensor_format = fallback
