@@ -631,37 +631,24 @@ def train_loop_per_worker(config_dict: dict) -> None:
 
 ```
 
-## Step 5: Launch distributed training with `JaxTrainer`
-
-To run `train_loop_per_worker` on a Ray cluster, you construct a `JaxTrainer` with:
-
-- `train_loop_per_worker`: the training function you defined earlier. Each Ray Train worker runs this function.
-- `train_loop_config`: a hyperparameter dictionary passed into the function.
-- `scaling_config`: the number of workers and compute resources (GPUs or TPUs) for the training run.
-- `datasets`: The Ray Datasets to ingest for training. Datasets are keyed by name (`{name: dataset}`). Each dataset can be accessed from within the `train_loop_per_worker` by calling `ray.train.get_dataset_shard(name)`. Sharding and additional configuration can be done by passing in a `dataset_config`.
-- `run_config`: runtime configuration including where to write outputs such as checkpoints.
 
 
-
-`trainer.fit` spawns a controller process to orchestrate the training run and worker processes to actually execute the Jax training code.
-
-
-```python
-from ray.train import RunConfig, ScalingConfig
-from ray.train.v2.jax import JaxTrainer
-```
+## Step 5: Define the scaling config
 
 Let's define the `scaling_config` that we want to scale the training process.
 `JaxTrainer` now supports both GPU training and TPU training. 
 
 For a walkthrough on configuring `ScalingConfig`, see [Get Started with Distributed Training using JAX](https://docs.ray.io/en/latest/train/getting-started-jax.html).   
 
-For API details, see the [`ScalingConfig` API reference](https://docs.ray.io/en/master/train/api/doc/ray.train.ScalingConfig.html#ray.train.ScalingConfig).
+
+```python
+from ray.train import ScalingConfig
+```
 
 
 ```python
 # In this example, we use 2 GPUs.
-gpu_scaling_config = ScalingConfig(
+scaling_config = ScalingConfig(
     use_gpu=True,
     num_workers=2,  # Change this to match on your GPU cluster setting, by default, each worker uses one GPU.
 )
@@ -669,7 +656,7 @@ gpu_scaling_config = ScalingConfig(
 # This ScalingConfig requires a KubeRay cluster configured for a TPU v6e 4x4 slice with 4 TPU VMs.
 # For more information about TPU clusters with Ray on Kubernetes, see the
 # KubeRay TPU guide: https://docs.ray.io/en/master/cluster/kubernetes/user-guides/tpu.html#kuberay-tpu
-# tpu_scaling_config = ScalingConfig(
+# scaling_config = ScalingConfig(
 #     use_tpu=True,
 #     num_workers=4,
 #     topology="4x4",
@@ -678,7 +665,25 @@ gpu_scaling_config = ScalingConfig(
 # )
 ```
 
-Finally, pass the `scaling_config` to the `JaxTrainer` and launch it.
+## Step 6: Launch with `JaxTrainer`
+
+To run `train_loop_per_worker` on a Ray cluster, you'll construct a `JaxTrainer` with:
+
+- `train_loop_per_worker`: the training function you've defined earlier. Each Ray Train worker runs this function.
+- `train_loop_config`: a hyperparameter dictionary passed into the function.
+- `scaling_config`: the `ScalingConfig` you've defined earlier.
+- `datasets`: the Ray Datasets to ingest for training. Datasets are keyed by name (`{name: dataset}`). Each dataset can be accessed from within the `train_loop_per_worker` by calling `ray.train.get_dataset_shard(name)`. Sharding and additional configuration can be done by passing in a `dataset_config`.
+- `run_config`: runtime configuration including where to write outputs such as checkpoints.
+
+If your workers hit CUDA or XLA library load errors, clear `LD_LIBRARY_PATH` in the runtime env to avoid picking up incompatible system libraries.
+
+`trainer.fit` spawns a controller process to orchestrate the training run and worker processes to execute the JAX training code.
+
+
+```python
+from ray.train import RunConfig
+from ray.train.v2.jax import JaxTrainer
+```
 
 
 ```python
@@ -689,10 +694,12 @@ trainer = JaxTrainer(
     train_loop_config={
         "global_batch_size": 32,
     },
-    scaling_config=gpu_scaling_config,
+    scaling_config=scaling_config,
     run_config=RunConfig(
         name="jax_gpt2",
         storage_path=storage_path,
+        # Make sure to unset ``LD_LIBRARY_PATH`` if you're using CUDA devices, 
+        # since ``LD_LIBRARY_PATH`` can override the CUDA libraries.
         worker_runtime_env={"env_vars": {"LD_LIBRARY_PATH": ""}},
     ),
     datasets={"train": train_ds, "val": val_ds},
