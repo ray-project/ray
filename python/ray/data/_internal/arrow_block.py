@@ -17,7 +17,6 @@ from typing import (
 import numpy as np
 from packaging.version import parse as parse_version
 
-from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.ray_constants import env_integer
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
@@ -27,6 +26,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
     pyarrow_table_from_pydict,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import (
     Block,
     BlockAccessor,
