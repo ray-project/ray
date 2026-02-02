@@ -17,7 +17,7 @@ from fastapi import FastAPI, Request, Response
 
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_HAPROXY,
+    RAY_SERVE_ENABLE_HA_PROXY,
 )
 from ray.serve._private.haproxy import (
     BackendConfig,
@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 
 # Skip all tests in this module if the HAProxy feature flag is not enabled
 pytestmark = pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_HAPROXY,
-    reason="RAY_SERVE_ENABLE_HAPROXY not set.",
+    not RAY_SERVE_ENABLE_HA_PROXY,
+    reason="RAY_SERVE_ENABLE_HA_PROXY not set.",
 )
 
 EXCLUDED_ACL_NAMES = ("healthcheck", "routes")

@@ -20,7 +20,7 @@ from ray.actor import ActorHandle
 from ray.cluster_utils import Cluster
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
-    RAY_SERVE_ENABLE_HAPROXY,
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.haproxy import HAProxyManager
@@ -40,8 +40,8 @@ logger = logging.getLogger(__name__)
 
 # Skip all tests in this module if the HAProxy feature flag is not enabled
 pytestmark = pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_HAPROXY,
-    reason="RAY_SERVE_ENABLE_HAPROXY not set.",
+    not RAY_SERVE_ENABLE_HA_PROXY,
+    reason="RAY_SERVE_ENABLE_HA_PROXY not set.",
 )
 
 
@@ -884,7 +884,7 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
 def test_haproxy_empty_backends_for_scaled_down_apps(ray_shutdown):
     """Test that HAProxy has no backend servers for deleted apps.
 
-    Verifies that when RAY_SERVE_ENABLE_HAPROXY is True and apps are
+    Verifies that when RAY_SERVE_ENABLE_HA_PROXY is True and apps are
     deleted, the HAProxy stats show the backend is removed or has no servers.
     """
     ray.init(num_cpus=4)

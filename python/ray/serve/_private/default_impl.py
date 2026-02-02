@@ -258,10 +258,10 @@ def get_controller_impl():
 
 
 def get_proxy_actor_class():
-    from ray.serve._private.constants import RAY_SERVE_ENABLE_HAPROXY
+    from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY
     from ray.serve._private.proxy import ProxyActor
 
-    if RAY_SERVE_ENABLE_HAPROXY:
+    if RAY_SERVE_ENABLE_HA_PROXY:
         from ray.serve._private.haproxy import HAProxyManager
 
         return HAProxyManager

@@ -38,7 +38,7 @@ from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
-    RAY_SERVE_ENABLE_HAPROXY,
+    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
@@ -191,7 +191,7 @@ class ServeController:
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
 
-        self._ha_proxy_enabled = RAY_SERVE_ENABLE_HAPROXY
+        self._ha_proxy_enabled = RAY_SERVE_ENABLE_HA_PROXY
         self._direct_ingress_enabled = RAY_SERVE_ENABLE_DIRECT_INGRESS
         if self._ha_proxy_enabled:
             logger.info(
