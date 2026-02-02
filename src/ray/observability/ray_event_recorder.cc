@@ -81,7 +81,7 @@ void RayEventRecorder::ExportEvents() {
     if (inserted) {
       // New event - check if adding it would exceed batch size
       size_t estimated_size = event->GetSerializedSizeEstimate();
-      if (!grouped_events.empty() && 
+      if (!grouped_events.empty() &&
           estimated_batch_size + estimated_size >= max_batch_size_bytes) {
         // leave remaining events in the buffer
         break;

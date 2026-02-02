@@ -54,7 +54,8 @@ class RayEvent : public RayEventInterface {
 
   size_t GetSerializedSizeEstimate() const override {
     // Estimate: nested data size + overhead for wrapper fields
-    // (event_id=16 bytes, message, session_name, (source_type, event_type, timestamp, severity)=50 bytes)
+    // (event_id=16 bytes, message, session_name, (source_type, event_type, timestamp,
+    // severity)=50 bytes)
     return data_.ByteSizeLong() + 16 + message_.size() + session_name_.size() + 50;
   }
 
