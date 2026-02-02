@@ -15,8 +15,16 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.proxy_request_response import ResponseStatus
 from ray.serve.config import gRPCOptions
-from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
+from ray.serve.exceptions import (
+    BackPressureError,
+    DeploymentUnavailableError,
+    gRPCStatusError,
+)
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
+
+# Maximum length for gRPC status details to avoid hitting HTTP/2 trailer limits.
+# gRPC default max metadata size is 8KB, so we use a conservative limit.
+GRPC_MAX_STATUS_DETAILS_LENGTH = 4096
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -110,6 +118,20 @@ async def start_grpc_server(
     return event_loop.create_task(server.wait_for_termination())
 
 
+def _truncate_message(
+    message: str, max_length: int = GRPC_MAX_STATUS_DETAILS_LENGTH
+) -> str:
+    """Truncate a message to avoid exceeding HTTP/2 trailer limits.
+
+    gRPC status details are sent as part of HTTP/2 trailers, which have a fixed size limit.
+    If the message (e.g., a stack trace) is too long, it can cause issues on the client side.
+    """
+    if len(message) <= max_length:
+        return message
+    truncation_notice = "... [truncated]"
+    return message[: max_length - len(truncation_notice)] + truncation_notice
+
+
 def get_grpc_response_status(
     exc: BaseException, request_timeout_s: float, request_id: str
 ) -> ResponseStatus:
@@ -141,6 +163,25 @@ def get_grpc_response_status(
             is_error=True,
             message=exc.message,
         )
+    elif isinstance(exc, gRPCStatusError):
+        # User set a gRPC status code before raising the exception.
+        # Respect the user's status code instead of returning INTERNAL.
+        original_exc = exc.original_exception
+        if isinstance(original_exc, (RayActorError, RayTaskError)):
+            logger.warning(
+                f"Request failed: {original_exc}", extra={"log_to_stderr": False}
+            )
+        else:
+            logger.exception(
+                f"Request failed with user-set gRPC status code {exc.grpc_code}."
+            )
+        # Use user-set details if provided, otherwise use the original exception message.
+        message = exc.grpc_details if exc.grpc_details else str(original_exc)
+        return ResponseStatus(
+            code=exc.grpc_code,
+            is_error=True,
+            message=_truncate_message(message),
+        )
     else:
         if isinstance(exc, (RayActorError, RayTaskError)):
             logger.warning(f"Request failed: {exc}", extra={"log_to_stderr": False})
@@ -149,7 +190,7 @@ def get_grpc_response_status(
         return ResponseStatus(
             code=grpc.StatusCode.INTERNAL,
             is_error=True,
-            message=str(exc),
+            message=_truncate_message(str(exc)),
         )
 
 
