@@ -66,7 +66,6 @@ from ray._private.authentication.authentication_token_setup import (
     ensure_token_if_auth_enabled,
 )
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.custom_types import TensorTransportEnum
 from ray._private.function_manager import FunctionActorManager
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
@@ -87,10 +86,17 @@ from ray._private.utils import get_ray_doc_version
 from ray._raylet import (
     ObjectRefGenerator,
     TaskID,
+    WorkerID,
     raise_sys_exit_with_custom_error_message,
 )
 from ray.actor import ActorClass
-from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
+from ray.exceptions import (
+    ActorHandleNotFoundError,
+    ObjectStoreFullError,
+    RayError,
+    RaySystemError,
+    RayTaskError,
+)
 from ray.experimental import tqdm_ray
 from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.experimental.internal_kv import (
@@ -101,7 +107,7 @@ from ray.experimental.internal_kv import (
 )
 from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 from ray.runtime_env.runtime_env import _merge_runtime_env
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
@@ -635,6 +641,10 @@ class Worker:
         """Set the cached job id to speed `current_job_id()`."""
         self._cached_job_id = job_id
 
+    @property
+    def is_canceled(self):
+        return self.core_worker.is_canceled()
+
     @contextmanager
     def task_paused_by_debugger(self):
         """Use while the task is paused by debugger"""
@@ -801,7 +811,7 @@ class Worker:
         value: Any,
         owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
-        _tensor_transport: str = TensorTransportEnum.OBJECT_STORE.name,
+        _tensor_transport: Optional[str] = None,
     ):
         """Put value in the local object store.
 
@@ -818,7 +828,7 @@ class Worker:
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
                 ray.experimental.channel API before readers can read.
-            _tensor_transport: [Alpha] The tensor transport backend to use. Currently, this supports "object_store" and "nixl".
+            _tensor_transport: [Alpha] The tensor transport backend to use. Currently, this only supports one-sided transports like "nixl".
         Returns:
             ObjectRef: The object ref the object was put under.
 
@@ -840,10 +850,14 @@ class Worker:
             validate_one_sided,
         )
 
-        tensor_transport = normalize_and_validate_tensor_transport(_tensor_transport)
-        validate_one_sided(tensor_transport, "ray.put")
+        tensor_transport = None
+        if _tensor_transport is not None:
+            tensor_transport = normalize_and_validate_tensor_transport(
+                _tensor_transport
+            )
+            validate_one_sided(tensor_transport, "ray.put")
         try:
-            if tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
+            if tensor_transport is not None:
                 (
                     serialized_value,
                     tensors,
@@ -864,24 +878,19 @@ class Worker:
         # object. Instead, clients will keep the object pinned.
         pin_object = not _is_experimental_channel
 
-        tensor_transport_enum = TensorTransportEnum.OBJECT_STORE
-        if tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
-            tensor_transport_enum = TensorTransportEnum.DIRECT_TRANSPORT
-
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
         # the object is Put() in the core worker, expecting that this python
         # reference will be created. If another reference is created and
         # removed before this one, it will corrupt the state in the
         # reference counter.
-
         ret = self.core_worker.put_object(
             serialized_value,
             pin_object=pin_object,
             owner_address=owner_address,
             inline_small_object=True,
             _is_experimental_channel=_is_experimental_channel,
-            tensor_transport_val=tensor_transport_enum.value,
+            tensor_transport=tensor_transport,
         )
         if tensors:
             self.gpu_object_manager.put_object(ret, tensor_transport, tensors)
@@ -898,14 +907,11 @@ class Worker:
         self,
         serialized_objects,
         object_refs,
-        tensor_transport_hint: Optional[str] = None,
+        use_object_store: bool = False,
     ):
         gpu_objects: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
-            if (
-                tensor_transport is None
-                or tensor_transport == TensorTransportEnum.OBJECT_STORE
-            ):
+            if tensor_transport is None:
                 # The object is not a gpu object, so we cannot use other external transport to
                 # fetch it.
                 continue
@@ -914,10 +920,10 @@ class Worker:
             if object_id not in gpu_objects:
                 # If using a non-object store transport, then tensors will be sent
                 # out-of-band. Get them before deserializing the object store data.
-                # The user can choose OBJECT_STORE as the hint to fetch the RDT object
+                # The user can set use_object_store to fetch the RDT object
                 # through the object store.
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
-                    object_id, tensor_transport=tensor_transport_hint
+                    object_id, use_object_store
                 )
 
         # Function actor manager or the import thread may call pickle.loads
@@ -936,7 +942,7 @@ class Worker:
         timeout: Optional[float] = None,
         return_exceptions: bool = False,
         skip_deserialization: bool = False,
-        _tensor_transport: Optional[str] = None,
+        use_object_store: bool = False,
     ) -> Tuple[List[serialization.SerializedRayObject], bytes]:
         """Get the values in the object store associated with the IDs.
 
@@ -955,7 +961,7 @@ class Worker:
                 raised.
             skip_deserialization: If true, only the buffer will be released and
                 the object associated with the buffer will not be deserialized.
-            _tensor_transport: [Alpha] The tensor transport to use to fetch `torch.Tensors` found in the Ray Direct Transport object. Currently, this supports "object_store" and "nixl".
+            use_object_store: [Alpha] To fetch an RDT object through the object store.
         Returns:
             list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
@@ -991,21 +997,12 @@ class Worker:
         if skip_deserialization:
             return None, debugger_breakpoint
 
-        if _tensor_transport is not None:
-            from ray.experimental.gpu_object_manager.util import (
-                normalize_and_validate_tensor_transport,
-            )
-
-            _tensor_transport = normalize_and_validate_tensor_transport(
-                _tensor_transport
-            )
-
         values = self.deserialize_objects(
-            serialized_objects, object_refs, tensor_transport_hint=_tensor_transport
+            serialized_objects, object_refs, use_object_store
         )
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
-            for i, value in enumerate(values):
+            for value in values:
                 if isinstance(value, RayError):
                     if isinstance(
                         value, ray.exceptions.ObjectLostError
@@ -2060,6 +2057,21 @@ def init(
             FutureWarning,
         )
 
+    # Check for Pydantic v1 and emit deprecation warning
+    from ray._common.pydantic_compat import PYDANTIC_MAJOR_VERSION
+
+    if (
+        PYDANTIC_MAJOR_VERSION
+        and PYDANTIC_MAJOR_VERSION == 1
+        and log_once("pydantic_v1_deprecation")
+    ):
+        warnings.warn(
+            "Pydantic v1 is deprecated and will no longer be supported in Ray 2.56. "
+            "Please upgrade to Pydantic v2 by running `pip install pydantic>=2`. "
+            "See https://github.com/ray-project/ray/issues/58876 for more details.",
+            FutureWarning,
+        )
+
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
@@ -2085,6 +2097,23 @@ def shutdown(_exiting_interpreter: bool = False):
     defined remote functions or actors after calling ray.shutdown(), then you
     need to redefine them. If they were defined in an imported module, then you
     will need to reload the module.
+
+    .. note::
+
+        The behavior of ``ray.shutdown()`` differs depending on how the cluster
+        was initialized:
+
+        * If a new local Ray cluster was started by ``ray.init()`` (i.e., no
+          ``address`` argument was provided and no existing cluster was found,
+          or ``address="local"`` was explicitly used), ``ray.shutdown()`` will
+          terminate all the local Ray processes (raylet, object store, etc.)
+          that were spawned by ``ray.init()``.
+
+        * If you connected to an existing cluster (e.g., via
+          ``ray.init(address="auto")`` or ``ray.init(address="ray://<ip>:<port>")``),
+          ``ray.shutdown()`` will only disconnect the client from the cluster.
+          It will **not** shut down the remote cluster. The cluster will
+          continue running and can be connected to again.
 
     Args:
         _exiting_interpreter: True if this is called by the atexit hook
@@ -2462,7 +2491,7 @@ def connect(
     namespace: Optional[str] = None,
     job_config=None,
     runtime_env_hash: int = 0,
-    startup_token: int = 0,
+    worker_id: WorkerID = WorkerID.nil(),
     ray_debugger_external: bool = False,
     entrypoint: str = "",
     worker_launch_time_ms: int = -1,
@@ -2483,8 +2512,8 @@ def connect(
         namespace: Namespace to use.
         job_config (ray.job_config.JobConfig): The job configuration.
         runtime_env_hash: The hash of the runtime env for this worker.
-        startup_token: The startup token of the process assigned to
-            it during startup as a command line argument.
+        worker_id: The worker ID assigned by raylet when starting the worker
+            process (hex string). Nil for drivers.
         ray_debugger_external: If True, make the debugger external to the
             node this worker is running on.
         entrypoint: The name of the entrypoint script. Ignored if the
@@ -2678,7 +2707,7 @@ def connect(
         serialized_job_config,
         node.metrics_agent_port,
         runtime_env_hash,
-        startup_token,
+        worker_id,
         session_name,
         node.cluster_id.hex(),
         "" if mode != SCRIPT_MODE else entrypoint,
@@ -2800,34 +2829,6 @@ def _changeproctitle(title, next_title):
             ray._raylet.setproctitle(next_title)
 
 
-@DeveloperAPI
-def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
-    """Display message in dashboard.
-
-    Display message for the current task or actor in the dashboard.
-    For example, this can be used to display the status of a long-running
-    computation.
-
-    Args:
-        message: Message to be displayed.
-        key: The key name for the message. Multiple message under
-            different keys will be displayed at the same time. Messages
-            under the same key will be overridden.
-        dtype: The type of message for rendering. One of the
-            following: text, html.
-    """
-    worker = global_worker
-    worker.check_connected()
-
-    acceptable_dtypes = {"text", "html"}
-    assert dtype in acceptable_dtypes, f"dtype accepts only: {acceptable_dtypes}"
-
-    message_wrapped = {"message": message, "dtype": dtype}
-    message_encoded = json.dumps(message_wrapped).encode()
-
-    worker.core_worker.set_webui_display(key.encode(), message_encoded)
-
-
 # Global variable to make sure we only send out the warning once.
 blocking_get_inside_async_warned = False
 
@@ -2874,7 +2875,7 @@ def get(
     ],
     *,
     timeout: Optional[float] = None,
-    _tensor_transport: Optional[str] = None,
+    _use_object_store: bool = False,
 ) -> Union[Any, List[Any]]:
     """Get a remote object or a list of remote objects from the object store.
 
@@ -2910,8 +2911,12 @@ def get(
             corresponding object becomes available. Setting ``timeout=0`` will
             return the object immediately if it's available, else raise
             GetTimeoutError in accordance with the above docstring.
-        _tensor_transport: [Alpha] The tensor transport to use to fetch `torch.Tensors` found in the Ray Direct Transport object. Currently, this supports "object_store" and "nixl".
-
+        _use_object_store: [Alpha] To fetch an RDT object through the object store
+            instead of using its designated tensor transport. You can set this to True
+            for cases where the caller does not support the object's tensor transport,
+            e.g., the tensor transport is "nccl" and the caller is not part of the collective.
+            When this is False (default), Ray will use the object store for normal objects,
+            and attempt to use the object's tensor transport for RDT objects.
     Returns:
         A Python object or a list of Python objects.
 
@@ -2975,7 +2980,7 @@ def get(
             )
 
         values, debugger_breakpoint = worker.get_objects(
-            object_refs, timeout=timeout, _tensor_transport=_tensor_transport
+            object_refs, timeout, use_object_store=_use_object_store
         )
         for i, value in enumerate(values):
             if isinstance(value, RayError):
@@ -3016,7 +3021,7 @@ def put(
     value: Any,
     *,
     _owner: Optional["ray.actor.ActorHandle"] = None,
-    _tensor_transport: str = "object_store",
+    _tensor_transport: Optional[str] = None,
 ) -> "ray.ObjectRef":
     """Store an object in the object store.
 
@@ -3036,7 +3041,9 @@ def put(
             object prior to the object creator exiting, otherwise the reference
             will still be lost. *Note that this argument is an experimental API
             and should be avoided if possible.*
-        _tensor_transport: [Alpha] The tensor transport to use for the GPU object. Currently, this supports "object_store" and "nixl" for tensor transport in ray.put().
+        _tensor_transport: [Alpha] The tensor transport to use for the GPU object.
+            Currently, this only supports one-sided tensor transports such as "nixl".
+            When this is None (default), Ray will use the object store.
 
     Returns:
         The object ref assigned to this value.
@@ -3287,7 +3294,20 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
             "ray.kill() only supported for actors. For tasks, try ray.cancel(). "
             "Got: {}.".format(type(actor))
         )
-    worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
+
+    try:
+        worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
+    except ActorHandleNotFoundError as e:
+        actor_job_id = actor._ray_actor_id.job_id
+        current_job_id = worker.current_job_id
+        raise ActorHandleNotFoundError(
+            f"ActorHandle objects are not valid across Ray sessions. "
+            f"The actor handle was created in job {actor_job_id.hex()}, "
+            f"but the current job is {current_job_id.hex()}. "
+            f"This typically happens when you try to use an actor handle "
+            f"from a previous session after calling ray.shutdown() and ray.init(). "
+            f"Please create a new actor handle in the current session."
+        ) from e
 
 
 @PublicAPI
@@ -3324,12 +3344,14 @@ def cancel(
         If the specified Task is pending execution, it is cancelled and not
         executed. If the Task is currently executing, the behavior depends
         on the execution model of an Actor. If it is a regular Actor
-        or a threaded Actor, the execution isn't cancelled.
-        Actor Tasks cannot be interrupted because Actors have
-        states. If it is an async Actor, Ray cancels a `asyncio.Task`.
+        or a threaded Actor, Ray sets a cancellation flag that can be checked
+        via `ray.get_runtime_context().is_canceled()` within the task body.
+        This allows for graceful cancellation by periodically checking the
+        cancellation status. If it is an async Actor, Ray cancels a `asyncio.Task`.
         The semantic of cancellation is equivalent to asyncio's cancellation.
         https://docs.python.org/3/library/asyncio-task.html#task-cancellation
-        If the Task has finished, nothing happens.
+        Note: `is_canceled()` is not supported for async actors and will raise
+        a RuntimeError. If the Task has finished, nothing happens.
 
         Only `force=False` is allowed for an Actor Task. Otherwise, it raises
         `ValueError`. Use `ray.kill(actor)` instead to kill an Actor.
@@ -3337,8 +3359,7 @@ def cancel(
         Cancelled Tasks aren't retried. `max_task_retries` aren't respected.
 
         Calling ray.get on a cancelled Task raises a TaskCancelledError
-        if the Task has been scheduled or interrupted. Also note that
-        only async actor tasks can be interrupted.
+        if the Task has been scheduled or interrupted.
 
         If `recursive=True`, all the child Tasks and actor Tasks
         are cancelled.

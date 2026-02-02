@@ -3,9 +3,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Union
 
-import ray
-from ray._raylet import ObjectRef
-from ray.experimental.gpu_object_manager.types import (
+from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     CommunicatorMetadata,
     TensorTransportMetadata,
 )
@@ -20,24 +18,6 @@ except ImportError:
     raise ImportError(
         "`tensor_transport` requires PyTorch. "
         "Please install torch with 'pip install torch' to use this feature."
-    )
-
-
-def __ray_get_tensor_transport_metadata__(
-    self, obj_id: str, backend: str
-) -> TensorTransportMetadata:
-    """Helper function that runs on the src actor to get transport metadata."""
-    from ray._private.worker import global_worker
-
-    gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-    # NOTE: We do not specify a timeout here because the user task that returns
-    # it could take arbitrarily long and we don't want to trigger a spurious
-    # timeout.
-    gpu_object = gpu_object_store.wait_and_get_object(obj_id)
-
-    tensor_transport_manager = get_tensor_transport_manager(backend)
-    return tensor_transport_manager.extract_tensor_transport_metadata(
-        obj_id, gpu_object
     )
 
 
@@ -73,7 +53,7 @@ def __ray_send__(
 def __ray_recv__(
     self,
     obj_id: str,
-    tensor_transport_meta: List[Union[ObjectRef, TensorTransportMetadata]],
+    tensor_transport_meta: TensorTransportMetadata,
     communicator_meta: CommunicatorMetadata,
     backend: str,
 ):
@@ -82,11 +62,6 @@ def __ray_recv__(
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
     try:
-        tensor_transport_meta: TensorTransportMetadata = (
-            ray.get(tensor_transport_meta[0])
-            if isinstance(tensor_transport_meta[0], ObjectRef)
-            else tensor_transport_meta[0]
-        )
         device = tensor_transport_meta.tensor_device
         tensor_meta = tensor_transport_meta.tensor_meta
 
@@ -95,24 +70,17 @@ def __ray_recv__(
                 f"Tensor transport backend {backend} does not support tensor transfer on device {device}."
             )
 
-        tensors = []
-        for meta in tensor_meta:
-            shape, dtype = meta
-            tensor = torch.empty(shape, dtype=dtype, device=device)
-            tensors.append(tensor)
-
         tensor_transport_manager = get_tensor_transport_manager(backend)
-        tensor_transport_manager.recv_multiple_tensors(
-            tensors,
+        tensors = tensor_transport_manager.recv_multiple_tensors(
             obj_id,
             tensor_transport_meta,
             communicator_meta,
         )
-        gpu_object_store.add_object(obj_id, tensors, is_primary=False)
+        assert len(tensors) == len(tensor_meta)
+        gpu_object_store.add_object(obj_id, tensors)
     except Exception as e:
-        # Store the error as a gpu object if the recv fails,
-        # so waiters will raise the error.
-        gpu_object_store.add_object(obj_id, e, is_primary=False)
+        # Store the error as a gpu object if the recv fails, so waiters will raise the error.
+        gpu_object_store.add_object(obj_id, e)
 
 
 def __ray_abort_transport__(
@@ -150,10 +118,7 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
     from ray._private.worker import global_worker
 
     gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-    assert gpu_object_store.has_object(
-        obj_id
-    ), f"obj_id={obj_id} not found in GPU object store"
-    gpu_object = gpu_object_store.get_object(obj_id)
+    gpu_object = gpu_object_store.wait_and_get_object(obj_id)
     return gpu_object
 
 
@@ -222,7 +187,7 @@ class GPUObjectStore:
         self,
         obj_id: str,
         gpu_object: Union[List["torch.Tensor"], Exception],
-        is_primary: bool,
+        is_primary: bool = False,
     ):
         """
         Add a GPU object to the GPU object store.
@@ -248,6 +213,16 @@ class GPUObjectStore:
                     )
                 )
             self._object_present_cv.notify_all()
+
+    def add_object_primary(
+        self, obj_id: str, tensors: List["torch.Tensor"], tensor_transport: str
+    ) -> TensorTransportMetadata:
+        self.add_object(obj_id, tensors, is_primary=True)
+        tensor_transport_manager = get_tensor_transport_manager(tensor_transport)
+        tensor_transport_meta = (
+            tensor_transport_manager.extract_tensor_transport_metadata(obj_id, tensors)
+        )
+        return tensor_transport_meta
 
     def is_primary_copy(self, obj_id: str) -> bool:
         with self._lock:
@@ -376,10 +351,8 @@ class GPUObjectStore:
 
     def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
         with self._lock:
-            assert self.has_object(
-                obj_id
-            ), f"obj_id={obj_id} not found in GPU object store"
             queue = self._gpu_object_store.get(obj_id)
+            assert queue is not None, f"obj_id={obj_id} not found in GPU object store"
             gpu_object = queue.popleft()
             if len(queue) == 0:
                 del self._gpu_object_store[obj_id]

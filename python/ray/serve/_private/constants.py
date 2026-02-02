@@ -27,16 +27,16 @@ SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 SERVE_NAMESPACE = "serve"
 
 #: HTTP Host
-DEFAULT_HTTP_HOST = get_env_str("RAY_SERVE_DEFAULT_HTTP_HOST", "127.0.0.1")
+DEFAULT_HTTP_HOST = "127.0.0.1"
 
 #: HTTP Port
-DEFAULT_HTTP_PORT = get_env_int("RAY_SERVE_DEFAULT_HTTP_PORT", 8000)
+DEFAULT_HTTP_PORT = 8000
 
 #: Uvicorn timeout_keep_alive Config
 DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 90
 
 #: gRPC Port
-DEFAULT_GRPC_PORT = get_env_int("RAY_SERVE_DEFAULT_GRPC_PORT", 9000)
+DEFAULT_GRPC_PORT = 9000
 
 #: Default Serve application name
 SERVE_DEFAULT_APP_NAME = "default"
@@ -52,23 +52,9 @@ CONTROL_LOOP_INTERVAL_S = get_env_float_non_negative(
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
 
-#: Max retry count for allowing failures in replica constructor.
-#: If no replicas at target version is running by the time we're at
-#: max constructor retry count, deploy() is considered failed.
-#: By default we set threshold as min(num_replicas * 3, this value)
-#: This constant is deprecated and will be removed in the future.
-#: Please use 'max_constructor_retry_count' instead in configurations.
-MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = get_env_int(
-    "RAY_SERVE_MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT",
-    get_env_int("MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", None),
-)
-
 # Max retry on deployment constructor is
-# min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT)
-MAX_PER_REPLICA_RETRY_COUNT = get_env_int(
-    "RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT",
-    get_env_int("MAX_PER_REPLICA_RETRY_COUNT", 3),
-)
+# min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, max_constructor_retry_count)
+MAX_PER_REPLICA_RETRY_COUNT = get_env_int("RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT", 3)
 
 
 # If you are wondering why we are using histogram buckets, please refer to
@@ -123,6 +109,30 @@ MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
         get_env_str("MODEL_LOAD_LATENCY_BUCKETS_MS", ""),
     ),
     DEFAULT_LATENCY_BUCKET_MS,
+)
+
+#: Histogram buckets for replica startup and reconfigure latency.
+#: These are longer operations (constructor, model loading) so buckets start higher.
+DEFAULT_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS = [
+    5,
+    20,
+    50,
+    100,
+    250,
+    500,
+    1000,
+    2000,
+    5000,
+    10000,
+    20000,
+    30000,
+    60000,
+    120000,
+    240000,
+]
+REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS = parse_latency_buckets(
+    get_env_str("RAY_SERVE_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS", ""),
+    DEFAULT_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
 )
 
 #: Histogram buckets for batch execution time in milliseconds.
@@ -183,19 +193,14 @@ HEALTH_CHECK_METHOD = "check_health"
 #: Name of deployment reconfiguration method implemented by user.
 RECONFIGURE_METHOD = "reconfigure"
 
-SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
-
 #: Limit the number of cached handles because each handle has long poll
 #: overhead. See https://github.com/ray-project/ray/issues/18980
-MAX_CACHED_HANDLES = get_env_int_positive(
-    "RAY_SERVE_MAX_CACHED_HANDLES", get_env_int_positive("MAX_CACHED_HANDLES", 100)
-)
+MAX_CACHED_HANDLES = get_env_int_positive("RAY_SERVE_MAX_CACHED_HANDLES", 100)
 
 #: Because ServeController will accept one long poll request per handle, its
 #: concurrency needs to scale as O(num_handles)
 CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
-    "RAY_SERVE_CONTROLLER_MAX_CONCURRENCY",
-    get_env_int_positive("CONTROLLER_MAX_CONCURRENCY", 15_000),
+    "RAY_SERVE_CONTROLLER_MAX_CONCURRENCY", 15_000
 )
 
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
@@ -261,11 +266,8 @@ MIGRATION_MESSAGE = (
 )
 
 # Environment variable name for to specify the encoding of the log messages
-RAY_SERVE_LOG_ENCODING = get_env_str("RAY_SERVE_LOG_ENCODING", "TEXT")
+RAY_SERVE_LOG_ENCODING = "TEXT"
 
-# Jsonify the log messages. This constant is deprecated and will be removed in the
-# future. Use RAY_SERVE_LOG_ENCODING or 'LoggingConfig' to enable json format.
-RAY_SERVE_ENABLE_JSON_LOGGING = get_env_bool("RAY_SERVE_ENABLE_JSON_LOGGING", "0")
 
 # Setting RAY_SERVE_LOG_TO_STDERR=0 will disable logging to the stdout and stderr.
 # Also, redirect them to serve's log files.
@@ -306,13 +308,7 @@ RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = get_env_int_non_negative(
     "RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0
 )
 
-RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
-    get_env_float_non_negative(
-        "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S",
-        get_env_float_non_negative("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0.0),
-    )
-    or None
-)
+RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = 0.0
 
 SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 
@@ -413,6 +409,12 @@ RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = get_env_float_non_negative(
     "RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0
 )
 
+# Minimum interval between router queue length gauge updates per replica.
+# Throttling reduces metrics overhead on the hot path. Set to 0 to disable throttling.
+RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S = get_env_float_non_negative(
+    "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S", 0.1
+)
+
 # Backoff seconds when choosing router failed, backoff time is calculated as
 # initial_backoff_s * backoff_multiplier ** attempt.
 # The default backoff time is [0, 0.025, 0.05, 0.1, 0.2, 0.4, 0.5, 0.5 ... ].
@@ -441,14 +443,15 @@ RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = get_env_float_non_negative(
     "RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10.0
 )
 
-# Feature flag to always run a proxy on the head node even if it has no replicas.
-RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE = get_env_bool(
-    "RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE", "1"
-)
-
 # Default is 2GiB, the max for a signed int.
 RAY_SERVE_GRPC_MAX_MESSAGE_SIZE = get_env_int(
     "RAY_SERVE_GRPC_MAX_MESSAGE_SIZE", (2 * 1024 * 1024 * 1024) - 1
+)
+
+RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH = get_env_int(
+    # Default max message length in gRPC is 4MB, we keep that default
+    "RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH",
+    4 * 1024 * 1024,
 )
 
 # Default options passed when constructing gRPC servers.
@@ -541,6 +544,17 @@ RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = get_env_bool(
     "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP", "1"
 )
 
+# For now, this is used only for testing. In the suite of tests that
+# use gRPC to send requests, we flip this flag on.
+RAY_SERVE_USE_GRPC_BY_DEFAULT = (
+    os.environ.get("RAY_SERVE_USE_GRPC_BY_DEFAULT", "0") == "1"
+)
+
+RAY_SERVE_PROXY_USE_GRPC = os.environ.get("RAY_SERVE_PROXY_USE_GRPC") == "1" or (
+    not os.environ.get("RAY_SERVE_PROXY_USE_GRPC") == "0"
+    and RAY_SERVE_USE_GRPC_BY_DEFAULT
+)
+
 # The default buffer size for request path logs. Setting to 1 will ensure
 # logs are flushed to file handler immediately, otherwise it will be buffered
 # and flushed to file handler when the buffer is full or when there is a log
@@ -555,6 +569,37 @@ RAY_SERVE_FAIL_ON_RANK_ERROR = get_env_bool("RAY_SERVE_FAIL_ON_RANK_ERROR", "0")
 
 # The message to return when the replica is healthy.
 HEALTHY_MESSAGE = "success"
+
+# Feature flag to enable a limited form of direct ingress where ingress applications
+# listen on port 8000 (HTTP) and 9000 (gRPC). No proxies will be started.
+RAY_SERVE_ENABLE_DIRECT_INGRESS = (
+    os.environ.get("RAY_SERVE_ENABLE_DIRECT_INGRESS", "0") == "1"
+)
+RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT", "30000")
+)
+RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT = int(
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT", "40000")
+)
+RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT = int(
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT", "31000")
+)
+RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT = int(
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT", "41000")
+)
+RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT", "100")
+)
+# The minimum drain period for a HTTP proxy.
+RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S = float(
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S", "30")
+)
+
+# HTTP request timeout
+SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER = "x-request-timeout-seconds"
+
+# HTTP request disconnect disabled
+SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER = "x-request-disconnect-disabled"
 
 # If throughput optimized Ray Serve is enabled, set the following constants.
 # This should be at the end.
@@ -582,3 +627,32 @@ RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
 )
 # Key for the decision counters in default autoscaling policy state
 SERVE_AUTOSCALING_DECISION_COUNTERS_KEY = "__decision_counters"
+
+# Event loop monitoring interval in seconds.
+# This is how often the event loop lag is measured.
+RAY_SERVE_EVENT_LOOP_MONITORING_INTERVAL_S = get_env_float_positive(
+    "RAY_SERVE_EVENT_LOOP_MONITORING_INTERVAL_S", 5.0
+)
+
+# Histogram buckets for event loop scheduling latency in milliseconds.
+# These are tuned for detecting event loop blocking:
+# - < 10ms: healthy
+# - 10-50ms: acceptable under load
+# - 50-100ms: concerning, investigate
+# - 100-500ms: problematic, likely blocking code
+# - > 500ms: severe, definitely blocking
+# - > 5s: catastrophic
+SERVE_EVENT_LOOP_LATENCY_HISTOGRAM_BOUNDARIES_MS = [
+    1,  # 1ms
+    5,  # 5ms
+    10,  # 10ms
+    25,  # 25ms
+    50,  # 50ms
+    100,  # 100ms
+    250,  # 250ms
+    500,  # 500ms
+    1000,  # 1s
+    2500,  # 2.5s
+    5000,  # 5s
+    10000,  # 10s
+]

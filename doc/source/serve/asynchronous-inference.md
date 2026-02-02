@@ -184,7 +184,7 @@ class AsyncPDFAPI:
         self.adapter = instantiate_adapter_from_config(task_processor_config)
 
     @fastapi_app.post("/process")
-    async def process_pdf(self, request: ProcessPDFRequest):
+    def process_pdf(self, request: ProcessPDFRequest):
         """Submit a PDF processing task and return task_id immediately."""
         task_result = self.adapter.enqueue_task_sync(
             task_name="process_pdf",
@@ -200,7 +200,7 @@ class AsyncPDFAPI:
         }
 
     @fastapi_app.get("/status/{task_id}")
-    async def get_status(self, task_id: str):
+    def get_status(self, task_id: str):
         """Get task status and results."""
         status = self.adapter.get_task_status_sync(task_id)
         return {

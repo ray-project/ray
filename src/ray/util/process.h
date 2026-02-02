@@ -64,8 +64,6 @@ class EnvironmentVariableLess {
 
 typedef std::map<std::string, std::string, EnvironmentVariableLess> ProcessEnvironment;
 
-using StartupToken = int64_t;
-
 class ProcessFD;
 
 class Process {

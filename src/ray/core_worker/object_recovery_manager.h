@@ -84,12 +84,12 @@ class ObjectRecoveryManager {
   /// plasma arguments to the task. The recovery operation will succeed once
   /// the task completes and stores a new value for its return object.
   ///
-  /// \return True if recovery for the object has successfully started, false
-  /// if the object is not recoverable because we do not have any metadata
-  /// about the object. If this returns true, then eventually recovery will
+  /// \return std::nullopt if recovery for the object has successfully started,
+  /// or a specific ErrorType if the object is not recoverable (e.g., out of scope,
+  /// borrowed). If this returns std::nullopt, then eventually recovery will
   /// either succeed (a value will be put into the memory store) or fail (the
   /// reconstruction failure callback will be called for this object).
-  bool RecoverObject(const ObjectID &object_id);
+  std::optional<rpc::ErrorType> RecoverObject(const ObjectID &object_id);
 
  private:
   /// Pin a new copy for a lost object from the given locations or, if that

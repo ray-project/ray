@@ -30,8 +30,10 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolScalingRequest,
 )
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.execution.bundle_queue import create_bundle_queue
-from ray.data._internal.execution.bundle_queue.bundle_queue import BundleQueue
+from ray.data._internal.execution.bundle_queue import (
+    QueueWithRemoval,
+    create_bundle_queue,
+)
 from ray.data._internal.execution.interfaces import (
     BlockSlice,
     ExecutionOptions,
@@ -453,6 +455,7 @@ class ActorPoolMapOperator(MapOperator):
         self,
     ) -> Tuple[ExecutionResources, ExecutionResources]:
         min_actors = self._actor_pool.min_size()
+        max_actors = self._actor_pool.max_size()
         assert min_actors is not None, min_actors
 
         num_cpus_per_actor = self._ray_remote_args.get("num_cpus", 0)
@@ -463,15 +466,20 @@ class ActorPoolMapOperator(MapOperator):
             cpu=num_cpus_per_actor * min_actors,
             gpu=num_gpus_per_actor * min_actors,
             memory=memory_per_actor * min_actors,
-            # To ensure that all actors are utilized, reserve enough resource budget
-            # to launch one task for each worker.
-            object_store_memory=(
-                self._metrics.obj_store_mem_max_pending_output_per_task or 0
-            )
-            * min_actors,
         )
 
-        return min_resource_usage, ExecutionResources.for_limits()
+        # Cap resources to 0 if this operator doesn't use them.
+        # This prevents operators from hoarding resource budget they don't need.
+        max_resource_usage = ExecutionResources(
+            cpu=0 if num_cpus_per_actor == 0 else num_cpus_per_actor * max_actors,
+            gpu=0 if num_gpus_per_actor == 0 else num_gpus_per_actor * max_actors,
+            memory=0 if memory_per_actor == 0 else memory_per_actor * max_actors,
+            # Set the max `object_store_memory` requirement to 'inf', because we
+            # don't know how much data each task can output.
+            object_store_memory=float("inf"),
+        )
+
+        return min_resource_usage, max_resource_usage
 
     def current_processor_usage(self) -> ExecutionResources:
         # Both pending and running actors count towards our current resource usage.
@@ -498,8 +506,7 @@ class ActorPoolMapOperator(MapOperator):
         return ExecutionResources(
             cpu=0,
             gpu=0,
-            object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
-            or 0,
+            object_store_memory=0,
         )
 
     def _extra_metrics(self) -> Dict[str, Any]:
@@ -692,7 +699,7 @@ class _ActorTaskSelector(abc.ABC):
 
     @abstractmethod
     def select_actors(
-        self, input_queue: BundleQueue, actor_locality_enabled: bool
+        self, input_queue: QueueWithRemoval, actor_locality_enabled: bool
     ) -> Iterator[Tuple[RefBundle, ActorHandle]]:
         """Select actors for bundles in the input queue.
 
@@ -712,7 +719,7 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
         super().__init__(actor_pool)
 
     def select_actors(
-        self, input_queue: BundleQueue, actor_locality_enabled: bool
+        self, input_queue: QueueWithRemoval, actor_locality_enabled: bool
     ) -> Iterator[Tuple[RefBundle, ActorHandle]]:
         """Picks actors for task submission based on busyness and locality."""
         if not self._actor_pool.running_actors():

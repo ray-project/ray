@@ -27,18 +27,19 @@
 namespace ray {
 namespace rpc {
 
+RayTokenAuthClientInterceptor::RayTokenAuthClientInterceptor()
+    : token_(AuthenticationTokenLoader::instance().GetToken()) {}
+
 void RayTokenAuthClientInterceptor::Intercept(
     grpc::experimental::InterceptorBatchMethods *methods) {
   if (methods->QueryInterceptionHookPoint(
           grpc::experimental::InterceptionHookPoints::PRE_SEND_INITIAL_METADATA)) {
-    auto token = AuthenticationTokenLoader::instance().GetToken();
-
-    // If token is present and non-empty, add it to the metadata
-    if (token.has_value() && !token->empty()) {
+    // Use cached token instead of calling GetToken() on each RPC
+    if (token_ && !token_->empty()) {
       // Get the metadata map and add the authorization header
       auto *metadata = methods->GetSendInitialMetadata();
       metadata->insert(
-          std::make_pair(kAuthTokenKey, token->ToAuthorizationHeaderValue()));
+          std::make_pair(kAuthTokenKey, token_->ToAuthorizationHeaderValue()));
     }
   }
   methods->Proceed();

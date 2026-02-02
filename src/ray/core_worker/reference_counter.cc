@@ -226,22 +226,23 @@ void ReferenceCounter::AddObjectRefStats(
   stats->set_objects_total(total);
 }
 
-void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
-                                      const std::vector<ObjectID> &inner_ids,
-                                      const rpc::Address &owner_address,
-                                      const std::string &call_site,
-                                      const int64_t object_size,
-                                      bool is_reconstructable,
-                                      bool add_local_ref,
-                                      const std::optional<NodeID> &pinned_at_node_id,
-                                      rpc::TensorTransport tensor_transport) {
+void ReferenceCounter::AddOwnedObject(
+    const ObjectID &object_id,
+    const std::vector<ObjectID> &inner_ids,
+    const rpc::Address &owner_address,
+    const std::string &call_site,
+    const int64_t object_size,
+    LineageReconstructionEligibility lineage_eligibility,
+    bool add_local_ref,
+    const std::optional<NodeID> &pinned_at_node_id,
+    const std::optional<std::string> &tensor_transport) {
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(AddOwnedObjectInternal(object_id,
                                    inner_ids,
                                    owner_address,
                                    call_site,
                                    object_size,
-                                   is_reconstructable,
+                                   lineage_eligibility,
                                    add_local_ref,
                                    pinned_at_node_id,
                                    tensor_transport))
@@ -271,9 +272,10 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
                                     owner_address,
                                     outer_it->second.call_site_,
                                     /*object_size=*/-1,
-                                    outer_it->second.is_reconstructable_,
+                                    outer_it->second.lineage_eligibility_,
                                     /*add_local_ref=*/false,
-                                    std::optional<NodeID>()));
+                                    std::optional<NodeID>(),
+                                    /*tensor_transport=*/std::nullopt));
   AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
@@ -306,9 +308,10 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
                                     owner_address,
                                     outer_it->second.call_site_,
                                     /*object_size=*/-1,
-                                    outer_it->second.is_reconstructable_,
+                                    outer_it->second.lineage_eligibility_,
                                     /*add_local_ref=*/true,
-                                    std::optional<NodeID>()));
+                                    std::optional<NodeID>(),
+                                    /*tensor_transport=*/std::nullopt));
 }
 
 void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,
@@ -355,10 +358,10 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     const rpc::Address &owner_address,
     const std::string &call_site,
     const int64_t object_size,
-    bool is_reconstructable,
+    LineageReconstructionEligibility lineage_eligibility,
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_node_id,
-    rpc::TensorTransport tensor_transport) {
+    const std::optional<std::string> &tensor_transport) {
   if (object_id_refs_.contains(object_id)) {
     return false;
   }
@@ -378,7 +381,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
                          Reference(owner_address,
                                    call_site,
                                    object_size,
-                                   is_reconstructable,
+                                   lineage_eligibility,
                                    pinned_at_node_id,
                                    tensor_transport))
                 .first;
@@ -582,9 +585,9 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
     // reconstructable with lineage. Mark that its lineage has been evicted so
     // we can return the right error during reconstruction.
     if (!ref->second.OutOfScope(lineage_pinning_enabled_) &&
-        ref->second.is_reconstructable_) {
-      ref->second.lineage_evicted = true;
-      ref->second.is_reconstructable_ = false;
+        ref->second.lineage_eligibility_ == LineageReconstructionEligibility::ELIGIBLE) {
+      ref->second.lineage_eligibility_ =
+          LineageReconstructionEligibility::INELIGIBLE_LINEAGE_EVICTED;
     }
   }
 
@@ -1636,18 +1639,17 @@ void ReferenceCounter::AddBorrowerAddress(const ObjectID &object_id,
   }
 }
 
-bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id,
-                                               bool *lineage_evicted) const {
+LineageReconstructionEligibility ReferenceCounter::GetLineageReconstructionEligibility(
+    const ObjectID &object_id) const {
   if (!lineage_pinning_enabled_) {
-    return false;
+    return LineageReconstructionEligibility::INELIGIBLE_LINEAGE_DISABLED;
   }
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    return false;
+    return LineageReconstructionEligibility::INELIGIBLE_REF_NOT_FOUND;
   }
-  *lineage_evicted = it->second.lineage_evicted;
-  return it->second.is_reconstructable_;
+  return it->second.lineage_eligibility_;
 }
 
 void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,
@@ -1671,8 +1673,7 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   auto object_size = it->second.object_size_;
   const auto &spilled_url = it->second.spilled_url;
   const auto &spilled_node_id = it->second.spilled_node_id;
-  const auto &optional_primary_node_id = it->second.pinned_at_node_id_;
-  const auto &primary_node_id = optional_primary_node_id.value_or(NodeID::Nil());
+  const auto &primary_node_id = it->second.pinned_at_node_id_.value_or(NodeID::Nil());
   RAY_LOG(DEBUG).WithField(object_id)
       << "Published message for object, " << locations.size()
       << " locations, spilled url: [" << spilled_url
@@ -1715,8 +1716,6 @@ void ReferenceCounter::FillObjectInformationInternal(
   }
   object_info->set_spilled_url(it->second.spilled_url);
   object_info->set_spilled_node_id(it->second.spilled_node_id.Binary());
-  auto primary_node_id = it->second.pinned_at_node_id_.value_or(NodeID::Nil());
-  object_info->set_primary_node_id(primary_node_id.Binary());
   object_info->set_pending_creation(it->second.pending_creation_);
   object_info->set_did_spill(it->second.did_spill);
 }
@@ -1817,12 +1816,12 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
   }
 }
 
-std::optional<rpc::TensorTransport> ReferenceCounter::GetTensorTransport(
+std::optional<std::string> ReferenceCounter::GetTensorTransport(
     const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return it->second.tensor_transport_;
 }

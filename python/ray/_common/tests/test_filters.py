@@ -1,6 +1,7 @@
 import logging
 import logging.config
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -98,8 +99,61 @@ class TestCoreContextFilter:
                     assert getattr(record, attr) == expected_values[attr]
                 assert hasattr(record, "_ray_timestamp_ns")
 
+                # Record should not have the attribute with a value of an empty string.
+                assert runtime_context.get_actor_name() == ""
+                assert not hasattr(record, "actor_name")
+
         actor = A.remote()
         ray.get(actor.f.remote())
+
+    def test_actor_process_with_thread(self, shutdown_only):
+        @ray.remote
+        class MockedRayDataWorker:
+            def _check_log_record_in_thread(self):
+                filter = CoreContextFilter()
+                record = logging.makeLogRecord({})
+
+                assert filter.filter(record)
+                should_exist = [
+                    "job_id",
+                    "worker_id",
+                    "node_id",
+                    "actor_id",
+                    "task_id",
+                    "process",
+                ]
+                runtime_context = ray.get_runtime_context()
+                expected_values = {
+                    "job_id": runtime_context.get_job_id(),
+                    "worker_id": runtime_context.get_worker_id(),
+                    "node_id": runtime_context.get_node_id(),
+                    "actor_id": runtime_context.get_actor_id(),
+                    "task_id": runtime_context.get_task_id(),
+                    "process": record.process,
+                }
+                for attr in should_exist:
+                    assert hasattr(record, attr)
+                    assert getattr(record, attr) == expected_values[attr]
+                assert hasattr(record, "_ray_timestamp_ns")
+
+                # Record should not have the attribute with a value of an empty string.
+                assert runtime_context.get_actor_name() == ""
+                assert not hasattr(record, "actor_name")
+
+                assert runtime_context.get_task_name() == ""
+                assert not hasattr(record, "task_name")
+
+                assert runtime_context.get_task_function_name() == ""
+                assert not hasattr(record, "task_function_name")
+
+                return record
+
+            def map(self):
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    executor.submit(self._check_log_record_in_thread).result()
+
+        actor = MockedRayDataWorker.remote()
+        ray.get(actor.map.remote())
 
 
 if __name__ == "__main__":

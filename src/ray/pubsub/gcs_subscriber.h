@@ -18,8 +18,8 @@
 #include <string>
 #include <utility>
 
-#include "ray/common/gcs_callback_types.h"
 #include "ray/pubsub/subscriber_interface.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -44,25 +44,25 @@ class GcsSubscriber {
   /// Uses GCS pubsub when created with `subscriber`.
   void SubscribeActor(
       const ActorID &id,
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const gcs::StatusCallback &done);
+      const rpc::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const rpc::StatusCallback &done);
   void UnsubscribeActor(const ActorID &id);
 
   bool IsActorUnsubscribed(const ActorID &id);
 
-  void SubscribeAllJobs(const gcs::SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
-                        const gcs::StatusCallback &done);
+  void SubscribeAllJobs(const rpc::SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
+                        const rpc::StatusCallback &done);
 
-  void SubscribeAllNodeInfo(const gcs::ItemCallback<rpc::GcsNodeInfo> &subscribe,
-                            const gcs::StatusCallback &done);
+  void SubscribeAllNodeInfo(const rpc::ItemCallback<rpc::GcsNodeInfo> &subscribe,
+                            const rpc::StatusCallback &done);
 
   void SubscribeAllNodeAddressAndLiveness(
-      const gcs::ItemCallback<rpc::GcsNodeAddressAndLiveness> &subscribe,
-      const gcs::StatusCallback &done);
+      const rpc::ItemCallback<rpc::GcsNodeAddressAndLiveness> &subscribe,
+      const rpc::StatusCallback &done);
 
   void SubscribeAllWorkerFailures(
-      const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe,
-      const gcs::StatusCallback &done);
+      const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,
+      const rpc::StatusCallback &done);
 
   /// Prints debugging info for the subscriber.
   std::string DebugString() const;

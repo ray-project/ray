@@ -1,9 +1,51 @@
 """Prepare Multimodal Stage"""
 
 import asyncio
+import copyreg
 from typing import Any, AsyncIterator, Dict, List
 
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
+
+
+def _reconstruct_media_with_bytes(cls, media, original_bytes):
+    """Reconstruct MediaWithBytes by setting __dict__ directly.
+
+    This avoids triggering __getattr__ during unpickling, which would cause
+    infinite recursion since vLLM's MediaWithBytes.__getattr__ accesses
+    self.media unconditionally.
+    """
+    obj = object.__new__(cls)
+    obj.__dict__["media"] = media
+    obj.__dict__["original_bytes"] = original_bytes
+    return obj
+
+
+def _register_vllm_pickle_reducers():
+    """Register pickle reducer for vLLM's MediaWithBytes to fix unpickling.
+
+    vLLM's MediaWithBytes has a __getattr__ that delegates to self.media,
+    but this causes infinite recursion during pickle.load() because pickle
+    creates objects via __new__ (not __init__), so self.media isn't set
+    when __getattr__ is first called.
+
+    TODO(seiji): remove when https://github.com/vllm-project/vllm/issues/30818
+    is fixed
+    """
+    try:
+        from vllm.multimodal.base import MediaWithBytes
+    except ImportError:
+        return
+
+    def _reduce(obj):
+        return (
+            _reconstruct_media_with_bytes,
+            (type(obj), obj.media, obj.original_bytes),
+        )
+
+    copyreg.pickle(MediaWithBytes, _reduce)
+
+
+_register_vllm_pickle_reducers()
 
 
 class PrepareMultimodalUDF(StatefulStageUDF):
@@ -11,7 +53,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
         self,
         data_column: str,
         expected_input_keys: List[str],
-        model: str,
+        model_config_kwargs: Dict[str, Any],
         chat_template_content_format: str,
         apply_sys_msg_formatting: bool = False,
     ):
@@ -21,7 +63,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
         Args:
             data_column: The data column name.
             expected_input_keys: The expected input keys of the stage.
-            model: The model to use for the multimodal processor.
+            model_config_kwargs: The kwargs to pass to the model config.
             chat_template_content_format: The format to render message content.
             apply_sys_msg_formatting: Whether to skip formatting system messages.
         """
@@ -35,7 +77,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
                 "`pip install ray[llm]` to install required dependencies."
             ) from e
 
-        self.model_config = ModelConfig(model=model)
+        self.model_config = ModelConfig(**model_config_kwargs)
         self.chat_template_content_format = chat_template_content_format
         self.apply_sys_msg_formatting = apply_sys_msg_formatting
 
@@ -116,7 +158,6 @@ class PrepareMultimodalUDF(StatefulStageUDF):
             conversation, mm_data_future, mm_uuids = parse_chat_messages_futures(
                 messages_to_parse,
                 self.model_config,
-                None,  # Tokenizer is not used in vLLM's parse_chat_messages_futures
                 content_format=self.chat_template_content_format,
             )
 

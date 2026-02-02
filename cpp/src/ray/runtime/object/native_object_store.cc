@@ -76,14 +76,37 @@ void NativeObjectStore::CheckException(const std::string &meta_str,
     throw RayWorkerException(std::move(data_str));
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::ACTOR_DIED)) {
     throw RayActorException(std::move(data_str));
-  } else if (meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE) ||
-             meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_LOST) ||
-             meta_str == std::to_string(ray::rpc::ErrorType::OWNER_DIED) ||
-             meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_DELETED)) {
-    // TODO: Differentiate object errors.
-    throw UnreconstructableException(std::move(data_str));
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION)) {
     throw RayTaskException(std::move(data_str));
+  } else if (meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_LOST) ||
+             meta_str == std::to_string(ray::rpc::ErrorType::OWNER_DIED) ||
+             meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_DELETED) ||
+             meta_str ==
+                 std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_PUT) ||
+             meta_str ==
+                 std::to_string(
+                     ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED) ||
+             meta_str ==
+                 std::to_string(
+                     ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED) ||
+             meta_str ==
+                 std::to_string(ray::rpc::ErrorType::
+                                    OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED) ||
+             meta_str ==
+                 std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_BORROWED) ||
+             meta_str == std::to_string(
+                             ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE) ||
+             meta_str ==
+                 std::to_string(
+                     ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND) ||
+             meta_str ==
+                 std::to_string(
+                     ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED) ||
+             meta_str ==
+                 std::to_string(
+                     ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED)) {
+    // TODO: Differentiate object error
+    throw UnreconstructableException(std::move(data_str));
   }
 }
 

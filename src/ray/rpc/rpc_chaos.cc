@@ -14,12 +14,16 @@
 
 #include "ray/rpc/rpc_chaos.h"
 
+#include <algorithm>
+#include <array>
 #include <random>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "nlohmann/json.hpp"
 #include "ray/common/ray_config.h"
 
 namespace ray {
@@ -30,18 +34,17 @@ namespace testing {
 // should set up os environment to use this feature for testing purposes.
 
 // You can use this to set probabilities for specific rpc's.
-//     export RAY_testing_rpc_failure="method1=3:12:12:50,method2=5:10:25:25"
-// Key is the RPC call name and value is a four part colon separated structure. It
-// contains the max number of failures to inject + probability of req failure +
-// probability of reply failure + probability of in-flight failure.
-
+//     export
+//     RAY_testing_rpc_failure='{"method1":{"num_failures":3,"req_failure_prob":12,"resp_failure_prob":12,"in_flight_failure_prob":50}}'
+//
 // You can also use a wildcard to set probabilities for all rpc's and -1 as num_failures
 // to have unlimited failures.
-//     export RAY_testing_rpc_failure="*=-1:10:25:50"
+//     export
+//     RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":10,"resp_failure_prob":25,"in_flight_failure_prob":50}}'
 // This will set the probabilities for all rpc's to 10% for request failures, 25% for
 // reply failures, and 50% for in-flight failures.
 
-// You can also provide 5th, 6th, and / or 7th  optional parameters to specify that there
+// You can also provide optional parameters to specify that there
 // should be at least a certain amount of request, response, and in-flight failures.
 // By default these are set to 0, but by setting them to positive values guarantees that
 // the first N RPCs will have X request failures, followed by Y response failures,
@@ -54,7 +57,19 @@ namespace testing {
 // Ex. unlimited failures for all rpc's with 25% request failures, 50% response failures,
 // and 10% in-flight failures with at least 2 request failures, 3 response failures, and 1
 // in-flight failure.
-//     export RAY_testing_rpc_failure="*=-1:25:50:10:2:3:1"
+//     export
+//     RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":25,"resp_failure_prob":50,"in_flight_failure_prob":10,"num_lower_bound_req_failures":2,"num_lower_bound_resp_failures":3,"num_lower_bound_in_flight_failures":1}}'
+
+namespace {
+constexpr std::array<std::string_view, 7> kValidKeys = {
+    "num_failures",
+    "req_failure_prob",
+    "resp_failure_prob",
+    "in_flight_failure_prob",
+    "num_lower_bound_req_failures",
+    "num_lower_bound_resp_failures",
+    "num_lower_bound_in_flight_failures"};
+}  // namespace
 
 class RpcFailureManager {
  public:
@@ -72,29 +87,46 @@ class RpcFailureManager {
     has_failures_ = false;
 
     if (!RayConfig::instance().testing_rpc_failure().empty()) {
-      for (const auto &item :
-           absl::StrSplit(RayConfig::instance().testing_rpc_failure(), ',')) {
-        std::vector<std::string> equal_split = absl::StrSplit(item, '=');
-        RAY_CHECK_EQ(equal_split.size(), 2UL);
-        std::vector<std::string> colon_split = absl::StrSplit(equal_split[1], ':');
-        RAY_CHECK_GE(colon_split.size(), 4UL);
-        RAY_CHECK_LE(colon_split.size(), 7UL);
+      auto json = nlohmann::json::parse(
+          RayConfig::instance().testing_rpc_failure(), nullptr, false);
+      if (json.is_discarded()) {
+        RAY_LOG(FATAL) << "testing_rpc_failure is not a valid json object: "
+                       << RayConfig::instance().testing_rpc_failure();
+        return;
+      }
+
+      for (const auto &[method, config] : json.items()) {
+        if (!config.is_object()) {
+          RAY_LOG(FATAL) << "Value for method '" << method
+                         << "' in testing_rpc_failure config is not a JSON object: "
+                         << config.dump();
+          continue;
+        }
+        for (const auto &[config_key, _] : config.items()) {
+          if (std::find(kValidKeys.begin(), kValidKeys.end(), config_key) ==
+              kValidKeys.end()) {
+            RAY_LOG(FATAL) << "Unknown key specified in testing_rpc_failure config: "
+                           << config_key;
+          }
+        }
         auto [iter, _] = failable_methods_.emplace(
-            equal_split[0],
+            method,
             Failable{
-                std::stol(colon_split[0]),
-                std::stoul(colon_split[1]),
-                std::stoul(colon_split[2]),
-                std::stoul(colon_split[3]),
-                colon_split.size() >= 5UL ? std::stoul(colon_split[4]) : 0UL,
-                colon_split.size() >= 6UL ? std::stoul(colon_split[5]) : 0UL,
-                colon_split.size() >= 7UL ? std::stoul(colon_split[6]) : 0UL,
+                // The value method either retrieves the value associated with the key or
+                // uses the specified default value instead.
+                config.value("num_failures", 0L),
+                config.value("req_failure_prob", 0UL),
+                config.value("resp_failure_prob", 0UL),
+                config.value("in_flight_failure_prob", 0UL),
+                config.value("num_lower_bound_req_failures", 0UL),
+                config.value("num_lower_bound_resp_failures", 0UL),
+                config.value("num_lower_bound_in_flight_failures", 0UL),
             });
         const auto &failable = iter->second;
         RAY_CHECK_LE(failable.req_failure_prob + failable.resp_failure_prob +
                          failable.in_flight_failure_prob,
                      100UL);
-        if (equal_split[0] == "*") {
+        if (method == "*") {
           wildcard_set_ = true;
           // The wildcard overrides all other method configurations.
           break;
