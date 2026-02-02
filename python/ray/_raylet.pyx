@@ -1855,17 +1855,19 @@ cdef void execute_task(
                                      " {}.".format(
                                         core_worker.get_current_task_id()),
                                      exc_info=True)
+                        # Keep original exception for retry logic
+                        task_exception_instance = e
                     else:
                         logger.debug("Task failed with unretryable exception:"
                                      " {}.".format(
                                         core_worker.get_current_task_id()),
                                      exc_info=True)
-                    # Convert StopIteration to RuntimeError per PEP 479
-                    # preserving original cause and name of the original exception
-                    task_exception_instance = RuntimeError(
-                        "generator raised " + type(e).__name__
-                    )
-                    task_exception_instance.__cause__ = e
+                        # Convert StopIteration to RuntimeError per PEP 479
+                        # preserving original cause and name of the original exception
+                        task_exception_instance = RuntimeError(
+                            "generator raised " + type(e).__name__
+                        )
+                        task_exception_instance.__cause__ = e
                 except BaseException as e:
                     is_retryable_error[0] = determine_if_retryable(
                                     should_retry_exceptions,
