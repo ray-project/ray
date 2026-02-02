@@ -327,7 +327,7 @@ class OfflinePreLearner:
         """Maps a batch of data to episodes."""
 
         is_multi_agent, schema, input_compress_columns = _validate_deprecated_map_args(
-            kwargs, self
+            kwargs, self.config
         )
 
         episodes = []
@@ -422,7 +422,7 @@ class OfflinePreLearner:
         """Maps an old stack `SampleBatch` to new stack episodes."""
 
         is_multi_agent, schema, input_compress_columns = _validate_deprecated_map_args(
-            kwargs, self
+            kwargs, self.config
         )
 
         # Set `input_compress_columns` to an empty `list` if `None`.
