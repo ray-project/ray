@@ -87,7 +87,8 @@ install_miniforge() {
     # For Python 3.14+, we need to create a separate environment because
     # conda itself doesn't have builds for Python 3.14 yet, and upgrading
     # the base environment would remove conda without replacement.
-    if [ "$(printf '%s\n' "3.14" "${PYTHON}" | sort -V | head -n1)" = "3.14" ]; then
+    IFS='.' read -r major minor <<< "${PYTHON}"
+    if [ "${major}" -gt 3 ] || { [ "${major}" -eq 3 ] && [ "${minor}" -ge 14 ]; }; then
       (
         set +x
         echo "Creating new conda environment for Python ${PYTHON}..."
