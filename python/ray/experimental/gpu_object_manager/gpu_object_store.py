@@ -247,7 +247,6 @@ class GPUObjectStore:
         self,
         src_obj_id: str,
         src_gpu_object: List["torch.Tensor"],
-        tensor_transport: Optional[str] = None,
     ) -> Optional[str]:
         """
         Get another object ID of the GPU object that duplicates the given GPU object.

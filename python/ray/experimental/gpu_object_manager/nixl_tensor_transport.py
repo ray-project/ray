@@ -283,7 +283,7 @@ class NixlTensorTransport(TensorTransportManager):
         with self._cache_lock:
             assert isinstance(tensor_transport_meta, NixlTransportMetadata)
             gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-            if not gpu_object_store.has_object(obj_id):
+            if obj_id not in self._managed_meta_nixl:
                 return
             self._managed_meta_nixl.pop(obj_id, None)
             tensors = gpu_object_store.get_object(obj_id)
@@ -316,12 +316,17 @@ class NixlTensorTransport(TensorTransportManager):
 
         gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
         duplicate_obj_id = gpu_object_store.get_duplicate_objects(
-            src_obj_id, src_gpu_object, tensor_transport="NIXL"
+            src_obj_id, src_gpu_object
         )
         if duplicate_obj_id is not None:
-            self._put_meta(src_obj_id, self._get_meta(duplicate_obj_id))
+            meta = self._get_meta(duplicate_obj_id)
+            if meta is None:
+                raise ValueError(
+                    f"NIXL transport metadata for object id {duplicate_obj_id} not found"
+                )
+            self._put_meta(src_obj_id, meta)
             self._add_tensor_descs(src_gpu_object)
-            return self._get_meta(src_obj_id)
+            return meta
         return None
 
     def _get_num_managed_meta_nixl(self) -> int:
