@@ -6,8 +6,6 @@ from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
 
 def main(args):
     def benchmark_fn():
-        from datetime import datetime
-
         # Load all required tables
         part = load_table("part", args.sf)
         supplier = load_table("supplier", args.sf)
@@ -17,14 +15,10 @@ def main(args):
         nation = load_table("nation", args.sf)
 
         # Q9 parameters
-        date1 = datetime(1994, 1, 1)
-        date2 = datetime(1995, 1, 1)
         part_name_pattern = "GREEN"
 
         # Filter part by name pattern
-        part_filtered = part.filter(
-            expr=col("p_name").str.contains(part_name_pattern)
-        )
+        part_filtered = part.filter(expr=col("p_name").str.contains(part_name_pattern))
 
         # Join partsupp with supplier
         partsupp_supplier = partsupp.join(
@@ -53,34 +47,24 @@ def main(args):
             right_on=("n_nationkey",),
         )
 
-        # Join orders with lineitem and filter by date
-        orders_filtered = orders.filter(
-            expr=(
-                (col("o_orderdate") >= date1)
-                & (col("o_orderdate") < date2)
-            )
-        )
+        # Join orders with lineitem
+        # Note: TPC-H Q9 processes all orders and groups by year, no date filter
         lineitem_orders = lineitem.join(
-            orders_filtered,
+            orders,
             join_type="inner",
             num_partitions=100,
             on=("l_orderkey",),
             right_on=("o_orderkey",),
         )
 
-        # Join lineitem with partsupp
-        # Filter to ensure l_partkey matches ps_partkey and l_suppkey matches ps_suppkey
+        # Join lineitem with partsupp on part key and supplier key
+        # Using multi-key join is more efficient than join + filter
         ds = lineitem_orders.join(
             partsupp_nation,
             join_type="inner",
             num_partitions=100,
-            on=("l_partkey",),
-            right_on=("ps_partkey",),
-        )
-
-        # Filter by supplier key match
-        ds = ds.filter(
-            expr=(col("l_suppkey") == col("ps_suppkey"))
+            on=("l_partkey", "l_suppkey"),
+            right_on=("ps_partkey", "ps_suppkey"),
         )
 
         # Calculate profit
