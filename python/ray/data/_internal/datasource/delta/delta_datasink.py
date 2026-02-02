@@ -109,9 +109,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         # Internal state
         self._skip_write = False
         self._table_existed_at_start: bool = False
-        self._new_columns_to_add: List[
-            tuple
-        ] = []  # List of (name, type, nullable) tuples for schema evolution
         self._write_uuid: Optional[str] = None  # Store write_uuid for app_transactions
 
         # Store unresolved path (original URI) for deltalake APIs which need the scheme
@@ -303,13 +300,13 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                     "To allow new columns, set schema_mode='merge'."
                 )
             elif self.schema_mode == "merge":
-                # Schema evolution will be handled in commit phase using alter.add_columns
-                # Store field definitions (name, type, nullable) for new columns
-                self._new_columns_to_add = [
+                # Evolve schema before writing files to keep write path simple.
+                new_fields = [
                     (f.name, f.type, f.nullable)
                     for f in incoming_schema
                     if f.name in new_columns
                 ]
+                self._evolve_schema(existing_table, new_fields)
                 logger.info(
                     f"Schema evolution enabled: {len(new_columns)} new columns will be added: {new_columns}"
                 )
@@ -831,9 +828,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 self.filesystem,
             )
         elif existing_table is not None:
-            # Handle schema evolution before committing files
-            if self._new_columns_to_add and self.schema_mode == "merge":
-                self._evolve_schema(existing_table, self._new_columns_to_add)
             # Commit to existing table (APPEND, OVERWRITE, or UPSERT)
             self._commit_by_mode(existing_table, all_file_actions, upsert_keys)
         else:
