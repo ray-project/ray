@@ -3,6 +3,7 @@ import logging
 from typing import (
     TYPE_CHECKING,
     Any,
+    Awaitable,
     Callable,
     Dict,
     Generic,
@@ -299,8 +300,22 @@ class _RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, 
 
 @overload
 def method(
+    __method: Callable[[Any, _T0], Awaitable[_Ret]],
+) -> _RemoteMethod0[_Ret, _T0]:
+    ...
+
+
+@overload
+def method(
     __method: Callable[[Any, _T0], _Ret],
 ) -> _RemoteMethod0[_Ret, _T0]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1], Awaitable[_Ret]],
+) -> _RemoteMethod1[_Ret, _T0, _T1]:
     ...
 
 
@@ -313,8 +328,22 @@ def method(
 
 @overload
 def method(
+    __method: Callable[[Any, _T0, _T1, _T2], Awaitable[_Ret]],
+) -> _RemoteMethod2[_Ret, _T0, _T1, _T2]:
+    ...
+
+
+@overload
+def method(
     __method: Callable[[Any, _T0, _T1, _T2], _Ret],
 ) -> _RemoteMethod2[_Ret, _T0, _T1, _T2]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3], Awaitable[_Ret]],
+) -> _RemoteMethod3[_Ret, _T0, _T1, _T2, _T3]:
     ...
 
 
@@ -327,8 +356,22 @@ def method(
 
 @overload
 def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4], Awaitable[_Ret]],
+) -> _RemoteMethod4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+    ...
+
+
+@overload
+def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4], _Ret],
 ) -> _RemoteMethod4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5], Awaitable[_Ret]],
+) -> _RemoteMethod5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]:
     ...
 
 
@@ -341,8 +384,22 @@ def method(
 
 @overload
 def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6], Awaitable[_Ret]],
+) -> _RemoteMethod6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+    ...
+
+
+@overload
+def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6], _Ret],
 ) -> _RemoteMethod6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7], Awaitable[_Ret]],
+) -> _RemoteMethod7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
     ...
 
 
@@ -355,8 +412,26 @@ def method(
 
 @overload
 def method(
+    __method: Callable[
+        [Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8], Awaitable[_Ret]
+    ],
+) -> _RemoteMethod8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+    ...
+
+
+@overload
+def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8], _Ret],
 ) -> _RemoteMethod8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[
+        [Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9], Awaitable[_Ret]
+    ],
+) -> _RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
     ...
 
 
@@ -369,8 +444,29 @@ def method(
 
 @overload
 def method(
+    __method: Callable[[Any], Awaitable[_Ret]],
+) -> _RemoteMethodNoArgs[_Ret]:
+    ...
+
+
+@overload
+def method(
     __method: Callable[[Any], _Ret],
 ) -> _RemoteMethodNoArgs[_Ret]:
+    ...
+
+
+@overload
+def method(
+    *,
+    num_returns: Optional[Union[int, Literal["streaming"]]] = None,
+    concurrency_group: Optional[str] = None,
+    max_task_retries: Optional[int] = None,
+    retry_exceptions: Optional[Union[bool, list, tuple]] = None,
+    _generator_backpressure_num_objects: Optional[int] = None,
+    enable_task_events: Optional[bool] = None,
+    tensor_transport: Optional[str] = None,
+) -> Callable[[Callable[Concatenate[Any, _P], Awaitable[_Ret]]], Any]:
     ...
 
 

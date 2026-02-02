@@ -9,6 +9,7 @@ import pytest
 # Paths are relative to the directory where Bazel is run in the CI
 TYPING_GOOD_PATH = "python/ray/tests/typing_files/check_typing_good.py"
 TYPING_BAD_PATH = "python/ray/tests/typing_files/check_typing_bad.py"
+TYPING_ACTOR_ASYNC_PATH = "python/ray/tests/typing_files/check_typing_actor_async.py"
 
 
 def test_typing_good():
@@ -22,6 +23,13 @@ def test_typing_bad():
     typing_bad_tmp_path = create_tmp_copy(TYPING_BAD_PATH)
     _, msg, status_code = mypy_api.run([typing_bad_tmp_path])
     assert status_code == 1, msg
+
+
+def test_typing_actor_async():
+    typing_actor_async_tmp_path = create_tmp_copy(TYPING_ACTOR_ASYNC_PATH)
+    out, msg, status_code = mypy_api.run([typing_actor_async_tmp_path])
+    print(out)
+    assert status_code == 0, msg
 
 
 def create_tmp_copy(file_path: str) -> str:
