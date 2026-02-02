@@ -483,9 +483,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                     # by overriding ExtensionScalar.as_py (see ArrowTensorScalar).
                     # For pyarrow native FixedShapeTensorArrays we cannot, so we
                     # use _iter_rows_from_batch_with_tensors to handle conversion.
-                    yield from _iter_rows_from_batch_with_tensors(
-                        batch, table.column_names
-                    )
+                    yield from _iter_rows_from_batch_with_tensors(batch)
                 else:
                     yield from batch.to_pylist()
         else:
@@ -511,7 +509,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
 def _iter_rows_from_batch_with_tensors(
     batch: "pyarrow.RecordBatch",
-    column_names: List[str],
 ) -> Iterator[Dict[str, Any]]:
     """Iterate over rows in a batch that may contain native tensor columns.
 
@@ -523,7 +520,6 @@ def _iter_rows_from_batch_with_tensors(
 
     Args:
         batch: A PyArrow RecordBatch that may contain tensor columns.
-        column_names: The column names to use in the output dictionaries.
 
     Yields:
         Dict[str, Any]: Dictionaries mapping column names to values for each row.
@@ -538,7 +534,7 @@ def _iter_rows_from_batch_with_tensors(
             col_values.append(column.to_pylist())
 
     for idx in range(batch.num_rows):
-        yield {name: col[idx] for name, col in zip(column_names, col_values)}
+        yield {name: col[idx] for name, col in zip(batch.column_names, col_values)}
 
 
 class ArrowBlockColumnAccessor(BlockColumnAccessor):

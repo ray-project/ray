@@ -114,6 +114,7 @@ def resolve_fixed_shape_tensor_format() -> "FixedShapeTensorFormat":
 
     If arrow_fixed_shape_tensor_format is set, use it.
     Otherwise, fallback to use_arrow_tensor_v2 (True -> V2, False -> V1).
+    Once `use_arrow_tensor_v2` is deprecated, this function can be removed.
 
     Returns:
         The resolved FixedShapeTensorFormat.
@@ -829,7 +830,7 @@ def create_arrow_fixed_shape_tensor_format(
                 if log_once("native_fixed_shape_tensors_not_supported"):
                     warnings.warn(
                         f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} "
-                        "to enable native tensor arrays. Falling back to V2.",
+                        f"to enable native tensor arrays. Falling back to {fallback}.",
                         UserWarning,
                         stacklevel=3,
                     )
