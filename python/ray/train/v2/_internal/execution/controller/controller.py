@@ -192,13 +192,32 @@ class TrainController:
 
         self._start()
 
-    def _invoke_controller_callback_or_handle_failure(
+    def _run_controller_hook(
         self,
         hook_name: str,
         *args,
         invoke_failure_decision_callbacks: bool = True,
         **context,
     ) -> Optional["TrainControllerLoopIterationResult"]:
+        """Invoke a named controller hook and catch any exceptions.
+
+        This method invokes all callbacks registered for the given controller hook.
+        If a callback raises an error, the error is routed through the failure policy
+        and may produce a ``TrainControllerLoopIterationResult``, indicating that the
+        current controller step should exit early with this failure result.
+
+        Args:
+            hook_name: The controller hook name to invoke.
+            *args: Positional arguments to pass to the hook.
+            invoke_failure_decision_callbacks: Whether to invoke failure-decision hooks
+                when handling a callback failure.
+            **context: Keyword arguments to pass to the hook.
+
+        Returns:
+            failure_result: A``TrainControllerLoopIterationResult`` if the hook execution results
+            in an early exit from the controller loop to raise the callback error,
+            or ``None`` if hook execution completes successfully.
+        """
         try:
             self._controller_callback_manager.invoke(hook_name, *args, **context)
         except ControllerError as error:
@@ -218,11 +237,11 @@ class TrainController:
     ) -> TrainControllerLoopIterationResult:
         """Executes resize decisions."""
 
-        optional_result = self._invoke_controller_callback_or_handle_failure(
+        failure_result = self._run_controller_hook(
             "before_controller_execute_resize_decision", decision
         )
-        if optional_result:
-            return optional_result
+        if failure_result:
+            return failure_result
 
         if self._worker_group:
             self._shutdown_worker_group()
@@ -272,13 +291,13 @@ class TrainController:
         controller_state = self.get_state()
 
         if invoke_failure_decision_callbacks:
-            optional_result = self._invoke_controller_callback_or_handle_failure(
+            failure_result = self._run_controller_hook(
                 "before_controller_execute_failure_decision",
                 failure_decision,
                 invoke_failure_decision_callbacks=False,
             )
-            if optional_result:
-                return optional_result
+            if failure_result:
+                return failure_result
 
         # TODO: What should we do here?
         # This currently never happens because there must be errors.
@@ -428,10 +447,10 @@ class TrainController:
         previous_state = self._state
         self._state = state
 
-        optional_result = self._invoke_controller_callback_or_handle_failure(
+        failure_result = self._run_controller_hook(
             "after_controller_state_update", previous_state, state
         )
-        if optional_result:
+        if failure_result:
             # If we're transitioning into a terminal state, or if we're already in the shutdown path to an errored terminal state
             # (ShuttingDownState -> ErroredState), preserve the original failure as the
             # surfaced error. A failure in a state-update callback should not overwrite
@@ -444,14 +463,14 @@ class TrainController:
                     "A callback failed during a terminal state transition. "
                     "This failure is being ignored to preserve the original "
                     "training result. Error: %s",
-                    optional_result.training_failed_error,
+                    failure_result.training_failed_error,
                 )
                 return
 
             # NOTE: We intentionally do *not* re-invoke `after_controller_state_update`
             # for this transition to avoid re-entering callback hooks while handling
             # a callback failure.
-            self._state = optional_result.next_state
+            self._state = failure_result.next_state
 
     def _make_and_handle_scaling_decision_for_non_running_worker_group(
         self,
