@@ -800,6 +800,7 @@ def test_map_batches_async_generator_fast_yield(
 
 def test_map_batches_struct_field_type_divergence(shutdown_only):
     """Test map_batches with struct fields that have diverging primitive types."""
+
     def generator_fn(batch):
         for i, row_id in enumerate(batch["id"]):
             if i % 2 == 0:
