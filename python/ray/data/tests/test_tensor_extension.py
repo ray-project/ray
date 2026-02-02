@@ -9,6 +9,7 @@ import pytest
 from packaging.version import parse as parse_version
 
 from ray.data import DataContext
+from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
     ArrowConversionError,
@@ -838,7 +839,7 @@ def test_tensor_array_string_tensors_simple(tensor_format_context):
 
     # Verify the roundtrip preserves the data
     original_strings = df_pandas["strings"].to_numpy()
-    roundtrip_strings = arrow_table["strings"].combine_chunks().to_numpy_ndarray()
+    roundtrip_strings = combine_chunked_array(arrow_table["strings"]).to_numpy_ndarray()
 
     np.testing.assert_array_equal(original_strings, roundtrip_strings)
     np.testing.assert_array_equal(roundtrip_strings, string_tensors)
