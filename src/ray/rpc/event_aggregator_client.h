@@ -73,12 +73,11 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
         client_call_manager_->GetMainService(),
         /*max_pending_requests_bytes=*/std::numeric_limits<uint64_t>::max(),
         /*check_channel_status_interval_milliseconds=*/
-        ::RayConfig::instance()
-            .grpc_client_check_connection_status_interval_milliseconds(),
+        ::RayConfig::instance().ray_event_aggregator_check_connection_interval_ms(),
         /*server_reconnect_timeout_base_seconds=*/
-        ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s(),
+        ::RayConfig::instance().ray_event_aggregator_reconnect_timeout_s(),
         /*server_reconnect_timeout_max_seconds=*/
-        ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s() * 2,
+        ::RayConfig::instance().ray_event_aggregator_reconnect_timeout_s() * 2,
         /*server_unavailable_timeout_callback=*/
         []() { RAY_LOG(WARNING) << "Event aggregator unavailable for extended period"; },
         /*server_name=*/"Event aggregator");

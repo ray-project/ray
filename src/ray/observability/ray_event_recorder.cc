@@ -62,11 +62,10 @@ void RayEventRecorder::ExportEvents() {
     return;
   }
 
-  const size_t max_batch_size =
-      RayConfig::instance().ray_event_recorder_send_batch_size();
+  const size_t max_batch_size_bytes =
+      RayConfig::instance().ray_event_recorder_send_batch_size_bytes();
 
   // Group events by entity_id + type (events with same key are merged).
-  // Stop when we have enough merged events for a batch.
   std::list<std::unique_ptr<RayEventInterface>> grouped_events;
   absl::flat_hash_map<RayEventKey,
                       std::list<std::unique_ptr<RayEventInterface>>::iterator>
@@ -80,12 +79,6 @@ void RayEventRecorder::ExportEvents() {
     if (inserted) {
       grouped_events.push_back(std::move(event));
       event_key_to_iterator[key] = std::prev(grouped_events.end());
-
-      // Check if batch size limit is reached
-      if (grouped_events.size() >= max_batch_size) {
-        ++processed;  // Count this event as processed
-        break;
-      }
     } else {
       (*map_it->second)->Merge(std::move(*event));
     }
@@ -94,13 +87,29 @@ void RayEventRecorder::ExportEvents() {
   // Remove processed events from buffer
   buffer_.erase(buffer_.begin(), buffer_.begin() + processed);
 
-  // Build request
+  // Serialize events and add to request, checking byte size
   rpc::events::AddEventsRequest request;
-  size_t num_events = grouped_events.size();
-  for (auto &event : grouped_events) {
-    rpc::events::RayEvent ray_event = std::move(*event).Serialize();
+  size_t num_events = 0;
+  auto it = grouped_events.begin();
+  while (it != grouped_events.end()) {
+    rpc::events::RayEvent ray_event = std::move(**it).Serialize();
     ray_event.set_node_id(node_id_.Binary());
+
+    // Check if adding this event would exceed the byte limit
+    // Always send at least one event even if it exceeds the limit
+    if (num_events > 0 &&
+        request.ByteSizeLong() + ray_event.ByteSizeLong() >= max_batch_size_bytes) {
+      // Put remaining unsent events back at the front of the buffer
+      while (it != grouped_events.end()) {
+        buffer_.push_front(std::move(*it));
+        ++it;
+      }
+      break;
+    }
+
     *request.mutable_events_data()->mutable_events()->Add() = std::move(ray_event);
+    ++num_events;
+    ++it;
   }
 
   // Send with callback to record metrics

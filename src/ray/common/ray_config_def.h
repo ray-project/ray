@@ -535,11 +535,17 @@ RAY_CONFIG(bool, enable_ray_event, false)
 
 RAY_CONFIG(uint64_t, ray_event_recorder_max_queued_events, 10000)
 
-/// Maximum number of events to send in a single batch to the event aggregator.
-RAY_CONFIG(uint64_t, ray_event_recorder_send_batch_size, 10000)
+/// Maximum size in bytes of events to send in a single batch to the event aggregator.
+RAY_CONFIG(uint64_t, ray_event_recorder_send_batch_size_bytes, 10 * 1024 * 1024)
 
 /// Timeout in milliseconds for ray event recorder GRPC calls.
 RAY_CONFIG(int64_t, ray_event_recorder_grpc_timeout_ms, 10000)  // 10 seconds
+
+/// Timeout in seconds for event aggregator reconnection attempts.
+RAY_CONFIG(uint32_t, ray_event_aggregator_reconnect_timeout_s, 60)
+
+/// Interval in milliseconds to check event aggregator connection status.
+RAY_CONFIG(int32_t, ray_event_aggregator_check_connection_interval_ms, 1000)
 
 /// Comma separated list of components we enable grpc metrics collection for.
 /// Only effective if `enable_metrics_collection` is also true. Will have some performance

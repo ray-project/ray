@@ -39,7 +39,8 @@ inline ray::stats::Count GetRayEventRecorderEventsSentCounterMetric() {
 inline ray::stats::Count GetRayEventRecorderEventsFailedToSendCounterMetric() {
   return ray::stats::Count{
       /*name=*/"ray_event_recorder_events_failed_to_send",
-      /*description=*/"Number of events that the event recorder failed to send.",
+      /*description=*/
+      "Number of events that the event recorder failed to send after all retries.",
       /*unit=*/"",
       /*tag_keys=*/{"Source"},
   };

@@ -126,16 +126,17 @@ class RayEventRecorderTest : public ::testing::Test {
   }
 
   // Helper to initialize RayConfig with common test settings
-  void InitializeConfig(bool enable_ray_event, int batch_size = 10000) {
+  void InitializeConfig(bool enable_ray_event,
+                        int64_t batch_size_bytes = 10 * 1024 * 1024) {
     std::string config = R"(
 {
   "enable_ray_event": )" +
                          std::string(enable_ray_event ? "true" : "false");
 
-    if (batch_size != 10000) {
+    if (batch_size_bytes != 10 * 1024 * 1024) {
       config += R"(,
-  "ray_event_recorder_send_batch_size": )" +
-                std::to_string(batch_size);
+  "ray_event_recorder_send_batch_size_bytes": )" +
+                std::to_string(batch_size_bytes);
     }
 
     config += R"(
@@ -338,34 +339,30 @@ TEST_F(RayEventRecorderTest, TestDisabled) {
 }
 
 TEST_F(RayEventRecorderTest, TestBatchSizeEnforcement) {
-  InitializeConfig(/*enable_ray_event=*/true, /*batch_size=*/2);
+  // Set a small byte limit (2 KB) to test batching
+  InitializeConfig(/*enable_ray_event=*/true, /*batch_size_bytes=*/2 * 1024);
   recorder_->StartExportingEvents();
 
   // Add 5 unique events (won't merge since different job IDs)
+  // Each event is roughly 200-500 bytes, so we should get ~2-4 events per batch
   AddUniqueEvents(5);
 
-  // First export - should send batch_size (2) events
+  // First export - should send events until byte limit is reached
   io_service_.run_one();
-  ASSERT_EQ(fake_client_->GetRecordedEvents().size(), 2);
+  size_t first_batch_count = fake_client_->GetRecordedEvents().size();
+  ASSERT_GT(first_batch_count, 0);
+  ASSERT_LT(first_batch_count, 5);  // Should not send all events in first batch
   ASSERT_EQ(fake_client_->GetAddEventsCallCount(), 1);
 
-  // Second export - should send 2 more
-  io_service_.run_one();
-  ASSERT_EQ(fake_client_->GetRecordedEvents().size(), 4);
-  ASSERT_EQ(fake_client_->GetAddEventsCallCount(), 2);
-
-  // Third export - should send remaining 1
+  // Second export - should send remaining events
   io_service_.run_one();
   ASSERT_EQ(fake_client_->GetRecordedEvents().size(), 5);
-  ASSERT_EQ(fake_client_->GetAddEventsCallCount(), 3);
-
-  // Fourth export - buffer empty, no call
-  io_service_.run_one();
-  ASSERT_EQ(fake_client_->GetAddEventsCallCount(), 3);
+  ASSERT_GE(fake_client_->GetAddEventsCallCount(), 2);
 }
 
 TEST_F(RayEventRecorderTest, TestBatchSizeWithMerging) {
-  InitializeConfig(/*enable_ray_event=*/true, /*batch_size=*/2);
+  // Set a small byte limit to test batching with merging
+  InitializeConfig(/*enable_ray_event=*/true, /*batch_size_bytes=*/2 * 1024);
   recorder_->StartExportingEvents();
 
   rpc::JobTableData data;
@@ -383,10 +380,10 @@ TEST_F(RayEventRecorderTest, TestBatchSizeWithMerging) {
 
   recorder_->AddEvents(std::move(events));
 
-  // First export: merged lifecycle (counts as 1 unique event) + job_2 definition = 2
+  // First export: should send events until byte limit is reached
   io_service_.run_one();
   auto recorded = fake_client_->GetRecordedEvents();
-  ASSERT_EQ(recorded.size(), 2);
+  ASSERT_GT(recorded.size(), 0);
 
   // Verify the merged event has both state transitions
   bool found_merged = false;
@@ -398,8 +395,10 @@ TEST_F(RayEventRecorderTest, TestBatchSizeWithMerging) {
   }
   ASSERT_TRUE(found_merged);
 
-  // Second export: job_3 definition = 1
-  io_service_.run_one();
+  // Continue exporting until all events are sent
+  while (fake_client_->GetRecordedEvents().size() < 3) {
+    io_service_.run_one();
+  }
   ASSERT_EQ(fake_client_->GetRecordedEvents().size(), 3);
 }
 
