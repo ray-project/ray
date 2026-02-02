@@ -126,6 +126,53 @@ def test_placement_group_wait(ray_start_cluster):
         assert node_id == table["bundles_to_node_id"][i]
 
 
+@pytest.mark.asyncio
+async def test_placement_group_ready_async(ray_start_cluster):
+    """Test that pg.ready() works with async/await."""
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    placement_group = ray.util.placement_group(
+        name="async_test",
+        strategy="SPREAD",
+        bundles=[{"CPU": 1}],
+    )
+
+    pg = await placement_group.ready()
+    assert pg.bundle_specs == placement_group.bundle_specs
+    assert pg.id.binary() == placement_group.id.binary()
+
+    placement_group_assert_no_leak([placement_group])
+
+
+def test_placement_group_ready_removed(ray_start_cluster):
+    """Test that pg.ready() raises TaskPlacementGroupRemoved when PG is removed."""
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    placement_group = ray.util.placement_group(
+        name="removed_test",
+        strategy="SPREAD",
+        bundles=[{"CPU": 1}],
+    )
+
+    # Wait for PG to be ready first.
+    ray.get(placement_group.ready())
+
+    # remove_placement_group waits for GCS to mark PG as REMOVED, though Raylet
+    # resource cleanup is async. This test only needs the GCS state update.
+    ray.util.remove_placement_group(placement_group)
+
+    ref = placement_group.ready()
+
+    with pytest.raises(ray.exceptions.TaskPlacementGroupRemoved):
+        ray.get(ref, timeout=5)
+
+
 def test_schedule_placement_group_when_node_add(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=4)

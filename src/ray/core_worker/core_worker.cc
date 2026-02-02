@@ -2350,6 +2350,63 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
   return status;
 }
 
+ObjectID CoreWorker::AsyncWaitPlacementGroupReady(
+    const PlacementGroupID &placement_group_id,
+    const std::string &serialized_object_data,
+    const std::string &serialized_object_metadata) {
+  // Generate ObjectID and register it (like ray.put())
+  ObjectID object_id = ObjectID::FromIndex(worker_context_->GetCurrentInternalTaskId(),
+                                           worker_context_->GetNextPutIndex());
+  reference_counter_->AddOwnedObject(object_id,
+                                     /*contained_object_ids=*/{},
+                                     rpc_address_,
+                                     CurrentCallSite(),
+                                     /*object_size=*/-1,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true,
+                                     NodeID::FromBinary(rpc_address_.node_id()));
+
+  // Async RPC to GCS that returns when the placement group is ready (or removed).
+  // The callback puts the result into memory store, completing ray.get()/wait()/await.
+  rpc::WaitPlacementGroupUntilReadyRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
+
+  gcs_client_->GetGcsRpcClient().WaitPlacementGroupUntilReady(
+      std::move(request),
+      [this, object_id, serialized_object_data, serialized_object_metadata](
+          const Status &status, const rpc::WaitPlacementGroupUntilReadyReply &reply) {
+        std::shared_ptr<RayObject> result;
+        if (status.ok()) {
+          auto data = std::make_shared<LocalMemoryBuffer>(serialized_object_data.size());
+          memcpy(
+              data->Data(), serialized_object_data.data(), serialized_object_data.size());
+          auto metadata =
+              std::make_shared<LocalMemoryBuffer>(serialized_object_metadata.size());
+          memcpy(metadata->Data(),
+                 serialized_object_metadata.data(),
+                 serialized_object_metadata.size());
+          result = std::make_shared<RayObject>(
+              data, metadata, std::vector<rpc::ObjectReference>());
+        } else if (status.IsNotFound()) {
+          result =
+              std::make_shared<RayObject>(rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED);
+        } else {
+          // Defensive: With timeout_ms=-1, we should only get OK or NotFound.
+          // Handle unexpected errors gracefully.
+          RAY_LOG(ERROR) << "Unexpected error from WaitPlacementGroupUntilReady: "
+                         << status;
+          result =
+              std::make_shared<RayObject>(rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED);
+        }
+        memory_store_->Put(*result, object_id, /*has_reference=*/true);
+      },
+      // timeout_ms=-1 means infinite wait with automatic retry.
+      // Users can still set their own timeout via ray.get(ref, timeout=...).
+      /*timeout_ms=*/-1);
+
+  return object_id;
+}
+
 Status CoreWorker::SubmitActorTask(
     const ActorID &actor_id,
     const RayFunction &function,
