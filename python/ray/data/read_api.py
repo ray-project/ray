@@ -4239,10 +4239,12 @@ def read_unity_catalog(
 @PublicAPI(stability="alpha")
 def read_delta(
     path: Union[str, List[str]],
-    version: Optional[int] = None,
+    version: Optional[Union[int, str]] = None,
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
+    partition_filters: Optional[List[tuple]] = None,
+    storage_options: Optional[Dict[str, str]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -4266,7 +4268,8 @@ def read_delta(
     Args:
         path: A single file path for a Delta Lake table. Multiple tables are not yet
             supported.
-        version: The version of the Delta Lake table to read. If not specified, the latest version is read.
+        version: The version of the Delta Lake table to read (int) or ISO 8601 timestamp string.
+            If not specified, the latest version is read.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -4277,6 +4280,11 @@ def read_delta(
             used. If ``None``, this function uses a system-chosen implementation.
         columns: A list of column names to read. Only the specified columns are
             read during the file scan.
+        partition_filters: Delta Lake partition filters as list of tuples in the format
+            ``[(column, op, value), ...]`` where ``op`` can be ``"="``, ``"!="``, ``"in"``,
+            or ``"not in"``. Example: ``[("year", "=", "2024"), ("month", "in", ["01", "02"])]``.
+            Filters are applied at the Delta table level to reduce I/O.
+        storage_options: Cloud storage authentication options passed to delta-rs.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -4332,8 +4340,24 @@ def read_delta(
     if not isinstance(path, str):
         raise ValueError("Only a single Delta Lake table path is supported.")
 
-    # Get the parquet file paths from the DeltaTable
-    paths = DeltaTable(path, version=version).file_uris()
+    # Construct DeltaTable with appropriate parameters
+    dt_kwargs = {}
+    if storage_options:
+        dt_kwargs["storage_options"] = storage_options
+    if version is not None and isinstance(version, int):
+        dt_kwargs["version"] = version
+
+    dt = DeltaTable(path, **dt_kwargs)
+
+    # Handle timestamp string versions using load_as_version()
+    if version is not None and isinstance(version, str):
+        dt.load_as_version(version)
+
+    # Get the parquet file paths from the DeltaTable with partition filters applied
+    if partition_filters is not None:
+        paths = dt.file_uris(partition_filters=partition_filters)
+    else:
+        paths = dt.file_uris()
 
     return read_parquet(
         paths,

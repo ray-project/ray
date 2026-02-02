@@ -149,8 +149,13 @@ class DeltaFileWriter:
                 pa.field(col, table.schema.field(col).type, nullable=True)
                 for col in partition_cols
             ]
+            # Convert ChunkedArrays to Arrays (from_arrays requires Array objects)
+            partition_arrays = [
+                table[col].combine_chunks() if isinstance(table[col], pa.ChunkedArray) else table[col]
+                for col in partition_cols
+            ]
             struct_array = pa.StructArray.from_arrays(
-                [table[col] for col in partition_cols], fields=struct_fields
+                partition_arrays, fields=struct_fields
             )
 
             # Use dictionary encode to get unique groups and indices
