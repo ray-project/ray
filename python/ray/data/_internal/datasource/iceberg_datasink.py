@@ -153,8 +153,8 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         self.__dict__.update(state)
         self._table = None
 
-    def _with_catalog_retry(self, func: Callable, description: str) -> Any:
-        """Execute a function with catalog retry logic.
+    def _with_retry(self, func: Callable, description: str) -> Any:
+        """Execute a function with retry logic.
 
         This helper encapsulates the common retry pattern for Iceberg catalog
         operations, using the configured retry parameters from DataContext.
@@ -178,7 +178,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
     def _get_catalog(self) -> "Catalog":
         from pyiceberg import catalog
 
-        return self._with_catalog_retry(
+        return self._with_retry(
             lambda: catalog.load_catalog(self._catalog_name, **self._catalog_kwargs),
             description=f"load Iceberg catalog '{self._catalog_name}'",
         )
@@ -186,7 +186,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
     def _reload_table(self) -> None:
         """Reload the Iceberg table from the catalog."""
         cat = self._get_catalog()
-        self._table = self._with_catalog_retry(
+        self._table = self._with_retry(
             lambda: cat.load_table(self.table_identifier),
             description=f"load Iceberg table '{self.table_identifier}'",
         )
@@ -218,7 +218,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             for data_file in data_files:
                 append_files.append_data_file(data_file)
 
-        self._with_catalog_retry(
+        self._with_retry(
             txn.commit_transaction,
             description=f"commit transaction to Iceberg table '{self.table_identifier}'",
         )
@@ -352,7 +352,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 with self._table.update_schema() as update:
                     self._update_schema_with_union(update, schema, table_schema)
 
-            self._with_catalog_retry(
+            self._with_retry(
                 _update_schema,
                 description=f"update schema for Iceberg table '{self.table_identifier}'",
             )
