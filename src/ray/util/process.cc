@@ -433,7 +433,7 @@ bool Process::IsNull() const { return pid_ == -1; }
 bool Process::IsValid() const { return GetId() != -1; }
 
 int Process::Wait() const {
-  int status;
+  int status = -1;
   if (IsValid()) {
     if (pid_ >= 0) {
       std::error_code error;
@@ -480,9 +480,6 @@ int Process::Wait() const {
             error.message());
       }
     }
-  } else {
-    // (Null process case)
-    status = -1;
   }
   return status;
 }
