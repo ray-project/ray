@@ -96,9 +96,9 @@ class CoreWorkerServiceHandler : public DelayedServiceHandler {
                                 CancelTaskReply *reply,
                                 SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleCancelRemoteTask(CancelRemoteTaskRequest request,
-                                      CancelRemoteTaskReply *reply,
-                                      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleRequestOwnerToCancelTask(RequestOwnerToCancelTaskRequest request,
+                                              RequestOwnerToCancelTaskReply *reply,
+                                              SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRegisterMutableObjectReader(
       RegisterMutableObjectReaderRequest request,
@@ -162,7 +162,7 @@ class CoreWorkerGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
 
  private:
   CoreWorkerService::AsyncService service_;

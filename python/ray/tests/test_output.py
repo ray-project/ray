@@ -14,7 +14,6 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     run_string_as_driver_stdout_stderr,
 )
-from ray.autoscaler.v2.utils import is_autoscaler_v2
 
 
 def test_dedup_logs():
@@ -219,61 +218,6 @@ ray.get(A.remote().__ray_ready__.remote())
     wait_for_condition(_check_for_infeasible_msg, timeout=30)
     os.kill(proc.pid, signal.SIGTERM)
     proc.wait()
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_env_vars",
-    [
-        {
-            "num_cpus": 1,
-            "env_vars": {
-                "RAY_enable_autoscaler_v2": "0",
-                "RAY_debug_dump_period_milliseconds": "1000",
-            },
-        },
-        {
-            "num_cpus": 1,
-            "env_vars": {
-                "RAY_enable_autoscaler_v2": "1",
-                "RAY_debug_dump_period_milliseconds": "1000",
-            },
-        },
-    ],
-    indirect=True,
-)
-def test_autoscaler_warn_deadlock(ray_start_cluster_head_with_env_vars):
-    script = """
-import ray
-import time
-
-@ray.remote(num_cpus=1)
-class A:
-    pass
-
-ray.init(address="{address}")
-
-# Only one of a or b can be scheduled, so the other will hang.
-a = A.remote()
-b = A.remote()
-ray.get([a.__ray_ready__.remote(), b.__ray_ready__.remote()])
-    """.format(
-        address=ray_start_cluster_head_with_env_vars.address
-    )
-
-    proc = run_string_as_driver_nonblocking(script, env={"PYTHONUNBUFFERED": "1"})
-
-    if is_autoscaler_v2():
-        infeasible_msg = "No available node types can fulfill resource requests"
-    else:
-        infeasible_msg = "Warning: The following resource request cannot"
-
-    def _check_for_deadlock_msg():
-        l = proc.stdout.readline().decode("ascii")
-        if len(l) > 0:
-            print(l)
-        return "(autoscaler" in l and infeasible_msg in l
-
-    wait_for_condition(_check_for_deadlock_msg, timeout=30)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

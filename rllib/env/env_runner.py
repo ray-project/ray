@@ -59,6 +59,8 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         """
         self.config: AlgorithmConfig = config.copy(copy_frozen=False)
 
+        self.num_env_steps_sampled_lifetime = 0
+
         # Get the worker index on which this instance is running.
 
         # TODO (sven): We should make these c'tor named args.
@@ -67,7 +69,10 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
 
         self.env = None
         # Create a MetricsLogger object for logging custom stats.
-        self.metrics: MetricsLogger = MetricsLogger()
+        self.metrics: MetricsLogger = MetricsLogger(
+            stats_cls_lookup=config.stats_cls_lookup,
+            root=False,
+        )
 
         super().__init__()
 
@@ -114,6 +119,8 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         self._metrics_num_env_steps_sampled.set_default_tags(
             {"rllib": self.__class__.__name__}
         )
+
+        self._shared_data = None
 
     @abc.abstractmethod
     def assert_healthy(self):
@@ -256,14 +263,14 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
 
             return results
         except Exception as e:
-            self.metrics.log_value(NUM_ENV_STEP_FAILURES_LIFETIME, 1, reduce="sum")
+            self.metrics.log_value(
+                NUM_ENV_STEP_FAILURES_LIFETIME, 1, reduce="lifetime_sum"
+            )
 
-            # @OldAPIStack (config.restart_failed_sub_environments)
             if self.config.restart_failed_sub_environments:
                 if not isinstance(e, StepFailedRecreateEnvError):
                     logger.exception(
-                        "Stepping the env resulted in an error! The original error "
-                        f"is: {e}"
+                        f"RLlib {self.__class__.__name__}: Environment step failed. Will force reset env(s) in this EnvRunner. The original error is: {e}"
                     )
                 # Recreate the env.
                 self.make_env()
@@ -272,11 +279,16 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 # data and repeating the step attempt).
                 return ENV_STEP_FAILURE
             else:
-                if isinstance(e, StepFailedRecreateEnvError):
-                    raise ValueError(
-                        "Environment raised StepFailedRecreateEnvError but config.restart_failed_sub_environments is False."
-                    ) from e
-                raise e
+                logger.exception(
+                    f"RLlib {self.__class__.__name__}: Environment step failed and "
+                    "'config.restart_failed_sub_environments' is False. "
+                    "This env will not be recreated. "
+                    "Consider setting 'fault_tolerance(restart_failed_sub_environments=True)' in your AlgorithmConfig "
+                    "in order to automatically re-create and force-reset an env."
+                    f"The original error type: {type(e)}. "
+                    f"{e}"
+                )
+                raise RuntimeError from e
 
     def _convert_to_tensor(self, struct) -> TensorType:
         """Converts structs to a framework-specific tensor."""
@@ -294,3 +306,19 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 f"RLlib {self.__class__.__name__}: Skipping Prometheus logging for metric '{metric.info['name']}'. "
                 f"Received num_steps={num_steps}, but the number of steps must be greater than 0."
             )
+
+    def _reset_envs_and_episodes(self, explore: bool):
+        """Helper method to reset the envs, ongoing episodes and shared data.
+
+        This resets the global env_ts and agent_ts variables and deletes ongoing episodes.
+        The done episodes are preserved.
+
+        Args:
+            explore: Whether we sample in exploration or inference mode.
+        """
+        self._ongoing_episodes = [None for _ in range(self.num_envs)]
+        self._shared_data = {}
+        self._reset_envs(self._ongoing_episodes, self._shared_data, explore)
+        # We just reset the env. Don't have to force this again in the next
+        # call to `self._sample_timesteps()`.
+        self._needs_initial_reset = False

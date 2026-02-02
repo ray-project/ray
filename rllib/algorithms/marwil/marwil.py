@@ -28,6 +28,7 @@ from ray.rllib.utils.metrics import (
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     OFFLINE_SAMPLING_TIMER,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
@@ -55,7 +56,7 @@ class MARWILConfig(AlgorithmConfig):
         # Get the base path (to ray/rllib)
         base_path = Path(__file__).parents[2]
         # Get the path to the data in rllib folder.
-        data_path = base_path / "tests/data/cartpole/cartpole-v1_large"
+        data_path = base_path / "offline/tests/data/cartpole/cartpole-v1_large"
 
         config = MARWILConfig()
         # Enable the new API stack.
@@ -107,7 +108,7 @@ class MARWILConfig(AlgorithmConfig):
         # Get the base path (to ray/rllib)
         base_path = Path(__file__).parents[2]
         # Get the path to the data in rllib folder.
-        data_path = base_path / "tests/data/cartpole/cartpole-v1_large"
+        data_path = base_path / "offline/tests/data/cartpole/cartpole-v1_large"
 
         config = MARWILConfig()
         # Enable the new API stack.
@@ -194,6 +195,7 @@ class MARWILConfig(AlgorithmConfig):
         self.lr = 1e-4
         self.lambda_ = 1.0
         self.train_batch_size = 2000
+        self.burnin_len = 0
 
         # Materialize only the data in raw format, but not the mapped data b/c
         # MARWIL uses a connector to calculate values and therefore the module
@@ -220,6 +222,7 @@ class MARWILConfig(AlgorithmConfig):
         moving_average_sqd_adv_norm_start: Optional[float] = NotProvided,
         vf_coeff: Optional[float] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
+        burnin_len: Optional[int] = NotProvided,
         **kwargs,
     ) -> Self:
         """Sets the training related configuration.
@@ -237,6 +240,8 @@ class MARWILConfig(AlgorithmConfig):
                 squared moving average advantage norm (c^2).
             vf_coeff: Balancing value estimation loss and policy optimization loss.
             grad_clip: If specified, clip the global norm of gradients by this amount.
+            burnin_len: Number of initial time steps to "burn in" when using
+                RNNs. These time steps will not be included in the training loss.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -257,6 +262,8 @@ class MARWILConfig(AlgorithmConfig):
             self.vf_coeff = vf_coeff
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
+        if burnin_len is not NotProvided:
+            self.burnin_len = burnin_len
         return self
 
     @override(AlgorithmConfig)
@@ -408,6 +415,16 @@ class MARWILConfig(AlgorithmConfig):
                 "dataset_num_iters_per_learner=...)`."
             )
 
+        # Assert that burnin_len is smaller than max_seq_len.
+        if self.burnin_len > 0 and (
+            self.burnin_len >= self.model.get("max_seq_len", 0)
+        ):
+            self._value_error(
+                "`burnin_len` must be < `model.max_seq_len`! "
+                f"Got burnin_len={self.burnin_len}, "
+                f"model.max_seq_len={self.model.get('max_seq_len', 0)}."
+            )
+
     @property
     def _model_auto_keys(self):
         return super()._model_auto_keys | {"beta": self.beta, "vf_share_layers": False}
@@ -474,6 +491,12 @@ class MARWIL(Algorithm):
                 # multiple times per RLlib iteration.
                 return_iterator=return_iterator,
             )
+            self.metrics.log_value(
+                key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                value=self.config.train_batch_size_per_learner
+                * max(1, self.config.num_learners),
+                reduce="lifetime_sum",
+            )
             if return_iterator:
                 training_data = TrainingData(data_iterators=batch_or_iterator)
             else:
@@ -485,6 +508,11 @@ class MARWIL(Algorithm):
                 training_data=training_data,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
+                timesteps={
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME
+                    )
+                },
                 **self.offline_data.iter_batches_kwargs,
             )
 

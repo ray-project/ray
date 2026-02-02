@@ -8,7 +8,10 @@ from starlette.types import Scope
 
 from ray.serve._private.common import ApplicationName, DeploymentID, EndpointInfo
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
+from ray.serve._private.thirdparty.get_asgi_route_name import (
+    RoutePattern,
+    get_asgi_route_name,
+)
 from ray.serve.handle import DeploymentHandle
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -46,7 +49,8 @@ class ProxyRouter:
 
         # Map of route prefix to list of route patterns for that endpoint
         # Used to match incoming requests to ASGI route patterns for metrics
-        self.route_patterns: Dict[str, List[str]] = dict()
+        # Route patterns are tuples of (methods, path) where methods can be None
+        self.route_patterns: Dict[str, List[RoutePattern]] = dict()
         # Cache of mock Starlette apps for route pattern matching
         # Key: route prefix, Value: pre-built Starlette app with routes
         self._route_pattern_apps: Dict[str, Any] = dict()
@@ -216,7 +220,10 @@ class ProxyRouter:
                 async def dummy_endpoint(request: Request):
                     pass
 
-                routes = [Route(pattern, dummy_endpoint) for pattern in patterns]
+                routes = [
+                    Route(pattern.path, dummy_endpoint, methods=pattern.methods)
+                    for pattern in patterns
+                ]
                 mock_app = Starlette(routes=routes)
 
                 # Cache the mock app for future requests

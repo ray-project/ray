@@ -29,7 +29,7 @@ class IssueDetectorManager:
     def __init__(self, executor: "StreamingExecutor"):
         ctx = executor._data_context
         self._issue_detectors: List[IssueDetector] = [
-            cls(executor, ctx) for cls in ctx.issue_detectors_config.detectors
+            cls.from_executor(executor) for cls in ctx.issue_detectors_config.detectors
         ]
         self._last_detection_times: Dict[IssueDetector, float] = {
             detector: time.perf_counter() for detector in self._issue_detectors

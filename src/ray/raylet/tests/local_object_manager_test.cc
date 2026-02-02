@@ -33,6 +33,7 @@
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/subscriber.h"
+#include "ray/raylet/metrics.h"
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
@@ -350,7 +351,8 @@ class LocalObjectManagerTestWithMinSpillingSize {
             },
             /*core_worker_subscriber=*/subscriber_.get(),
             object_directory_.get(),
-            fake_object_store_memory_gauge_),
+            /*object_store_memory_gauge=*/fake_object_store_memory_gauge_,
+            /*spill_manager_metrics=*/spill_manager_metrics_),
         unpins(std::make_shared<absl::flat_hash_map<ObjectID, int>>()) {
     RayConfig::instance().initialize(R"({"object_spilling_config": "dummy"})");
     manager.min_spilling_size_ = min_spilling_size;
@@ -405,8 +407,17 @@ class LocalObjectManagerTestWithMinSpillingSize {
   size_t max_fused_object_count_;
   std::unique_ptr<gcs::GcsClient> gcs_client_;
   std::unique_ptr<IObjectDirectory> object_directory_;
-  LocalObjectManager manager;
   ray::observability::FakeGauge fake_object_store_memory_gauge_;
+  ray::observability::FakeGauge fake_spill_manager_objects_gauge_;
+  ray::observability::FakeGauge fake_spill_manager_objects_bytes_gauge_;
+  ray::observability::FakeGauge fake_spill_manager_request_total_gauge_;
+  ray::observability::FakeGauge fake_spill_manager_throughput_mb_gauge_;
+  ray::raylet::SpillManagerMetrics spill_manager_metrics_{
+      fake_spill_manager_objects_gauge_,
+      fake_spill_manager_objects_bytes_gauge_,
+      fake_spill_manager_request_total_gauge_,
+      fake_spill_manager_throughput_mb_gauge_};
+  LocalObjectManager manager;
 
   std::unordered_set<ObjectID> freed;
   // This hashmap is incremented when objects are unpinned by destroying their

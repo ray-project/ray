@@ -181,8 +181,14 @@ def test_metrics_folder_with_dashboard_override(
             contents = json.loads(f.read())
             assert contents["uid"] == serve_uid
             for panel in contents["panels"]:
-                for target in panel["targets"]:
-                    assert serve_global_filters in target["expr"]
+                if panel["type"] == "row":
+                    # Row panels contain nested panels, not targets directly
+                    for nested_panel in panel.get("panels", []):
+                        for target in nested_panel["targets"]:
+                            assert serve_global_filters in target["expr"]
+                else:
+                    for target in panel["targets"]:
+                        assert serve_global_filters in target["expr"]
             for variable in contents["templating"]["list"]:
                 if variable["name"] == "datasource":
                     continue

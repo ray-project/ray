@@ -174,7 +174,7 @@ def train_fn(config):
         if train.get_context().get_world_rank() == 0:
             ...  # Save checkpoint to temp_checkpoint_dir
 
-            checkpoint = Checkpoint.from_directory(tmpdir)
+            checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
 
         train.report(metrics, checkpoint=checkpoint)
 
@@ -503,7 +503,7 @@ def train_fn(config):
 # __checkpoint_upload_mode_no_upload_end__
 
 
-# __checkpoint_upload_function_start__
+# __checkpoint_upload_fn_start__
 
 from torch.distributed.checkpoint.state_dict_saver import async_save
 from s3torchconnector.dcp import S3StorageWriter
@@ -542,8 +542,42 @@ def train_fn(config):
             metrics=metrics,
             checkpoint=checkpoint,
             checkpoint_upload_mode=train.CheckpointUploadMode.ASYNC,
-            checkpoint_upload_function=wait_async_save,
+            checkpoint_upload_fn=wait_async_save,
         )
 
+trainer = TorchTrainer(
+   train_fn,
+   train_loop_config={"num_epochs": 3},
+   scaling_config=train.ScalingConfig(num_workers=2, use_gpu=True),
+   # we need a cpu backend for async_save and a gpu backend for training
+   torch_config=train.torch.TorchConfig(backend="cpu:gloo,cuda:nccl"),
+   run_config=train.RunConfig(storage_path="s3://bucket/")
+)
 
-# __checkpoint_upload_function_end__
+# __checkpoint_upload_fn_end__
+
+# __get_all_reported_checkpoints_example_start__
+
+import ray.train
+from ray.train import CheckpointConsistencyMode
+
+def train_fn():
+    for epoch in range(2):
+        metrics = {"train/loss": 0.1}
+        checkpoint = ...
+        ray.train.report(
+            metrics,
+            checkpoint=checkpoint,
+            validation=...,
+        )
+
+    # Get committed checkpoints which may still have ongoing validations.
+    committed_checkpoints = ray.train.get_all_reported_checkpoints(
+        consistency_mode=CheckpointConsistencyMode.COMMITTED)
+
+    # Wait for all pending validations to finish to access reported checkpoints
+    # with validation metrics attached.
+    validated_checkpoints = ray.train.get_all_reported_checkpoints()
+    ...
+
+# __get_all_reported_checkpoints_example_end__

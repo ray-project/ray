@@ -6,6 +6,7 @@ from typing import (
     Dict,
     Iterator,
     List,
+    Mapping,
     Optional,
     Sequence,
     Tuple,
@@ -16,9 +17,7 @@ from typing import (
 import numpy as np
 
 from ray._private.ray_constants import env_integer
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.row import TableRow
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import (
     NULL_SENTINEL,
@@ -36,6 +35,7 @@ from ray.data.block import (
     KeyType,
     U,
 )
+from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
 
 if TYPE_CHECKING:
@@ -73,8 +73,8 @@ class TableBlockBuilder(BlockBuilder):
         self._num_compactions = 0
         self._block_type = block_type
 
-    def add(self, item: Union[dict, TableRow, np.ndarray]) -> None:
-        if isinstance(item, TableRow):
+    def add(self, item: Union[dict, Mapping, np.ndarray]) -> None:
+        if hasattr(item, "as_pydict"):
             item = item.as_pydict()
         elif isinstance(item, np.ndarray):
             item = {TENSOR_COLUMN_NAME: item}
@@ -148,6 +148,9 @@ class TableBlockBuilder(BlockBuilder):
     def num_rows(self) -> int:
         return self._num_rows
 
+    def num_blocks(self) -> int:
+        return len(self._tables)
+
     def get_estimated_memory_usage(self) -> int:
         if self._num_rows == 0:
             return 0
@@ -169,22 +172,15 @@ class TableBlockBuilder(BlockBuilder):
 
 
 class TableBlockAccessor(BlockAccessor):
-    ROW_TYPE: TableRow = TableRow
-
     def __init__(self, table: Any):
         self._table = table
-
-    def _get_row(self, index: int, copy: bool = False) -> Union[TableRow, np.ndarray]:
-        base_row = self.slice(index, index + 1, copy=copy)
-        row = self.ROW_TYPE(base_row)
-        return row
 
     @staticmethod
     def _munge_conflict(name, count):
         return f"{name}_{count + 1}"
 
     @staticmethod
-    def _build_tensor_row(row: TableRow) -> np.ndarray:
+    def _build_tensor_row(row: Mapping, row_idx: int) -> np.ndarray:
         raise NotImplementedError
 
     def to_default(self) -> Block:

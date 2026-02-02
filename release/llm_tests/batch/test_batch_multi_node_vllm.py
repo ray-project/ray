@@ -1,7 +1,7 @@
 import pytest
 
 import ray
-from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
+from ray.data.llm import build_processor, vLLMEngineProcessorConfig
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +36,7 @@ def test_vllm_multi_node(tp_size, pp_size):
         apply_chat_template=False,
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         config,
         preprocess=lambda row: dict(
             prompt=f"You are a calculator. {row['id']} ** 3 = ?",

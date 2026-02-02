@@ -47,6 +47,9 @@ config = LLMConfig(
     engine_kwargs={
         "data_parallel_size": 2,  # Number of DP replicas
         "tensor_parallel_size": 1,  # TP size per replica
+        # Reduced for CI compatibility
+        "max_model_len": 1024,
+        "max_num_seqs": 32,
     },
     experimental_configs={
         # This is a temporary required config. We will remove this in future versions.

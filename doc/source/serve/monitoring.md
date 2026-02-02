@@ -276,11 +276,6 @@ In the replica `Model` log file, you should see the following:
 {"levelname": "INFO", "asctime": "2024-02-27 10:36:10,127", "deployment": "default_Model", "replica": "rdofcrh4", "request_id": "f4f4b3c0-1cca-4424-9002-c887d7858525", "route": "/", "application": "default", "message": "replica.py:373 - __CALL__ OK 0.6ms"}
 ```
 
-:::{note}
-The `RAY_SERVE_ENABLE_JSON_LOGGING=1` environment variable is getting deprecated in the
-next release. To enable JSON logging globally, use `RAY_SERVE_LOG_ENCODING=JSON`.
-:::
-
 #### Disable access log
 
 :::{note}
@@ -351,6 +346,60 @@ You can also update logging configuration similar above to the Serve controller 
 :end-before:  __configure_serve_component_end__
 :language: python
 ```
+
+#### Run custom initialization code in the controller
+
+For advanced use cases, you can run custom initialization code when the Serve Controller starts by setting the `RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH` environment variable. This variable should point to a callback function that runs during controller initialization. The function doesn't need to return anything.
+
+For example, to add a custom log handler:
+
+```python
+# mymodule/callbacks.py
+import logging
+
+def setup_custom_logging():
+    logger = logging.getLogger("ray.serve")
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("[CUSTOM] %(message)s"))
+    logger.addHandler(handler)
+```
+
+Then set the environment variable before starting Ray:
+
+```bash
+export RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH="mymodule.callbacks:setup_custom_logging"
+```
+
+#### Run custom initialization code in the HTTP proxy
+
+Similarly, you can run custom initialization code when the HTTP proxy starts by setting the `RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH` environment variable. This variable should point to a callback function that runs during HTTP proxy initialization. The function doesn't need to return anything.
+
+For example:
+
+```python
+# mymodule/callbacks.py
+import logging
+
+def setup_proxy_logging():
+    logger = logging.getLogger("ray.serve")
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("[PROXY] %(message)s"))
+    logger.addHandler(handler)
+```
+
+Then set the environment variable before starting Ray:
+
+```bash
+export RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH="mymodule.callbacks:setup_proxy_logging"
+```
+
+#### Configure slow startup warnings
+
+Ray Serve logs warnings when replicas take too long to start, helping you identify issues such as slow `__init__` methods, long-running `reconfigure` methods, or resource scheduling delays. You can configure this warning behavior with the following environment variables:
+
+- `RAY_SERVE_SLOW_STARTUP_WARNING_S`: The time (in seconds) after which Ray Serve considers a replica to have a slow startup (defaults to `30`). If a replica takes longer than this to be scheduled or initialized, Ray Serve logs a warning.
+- `RAY_SERVE_SLOW_STARTUP_WARNING_PERIOD_S`: The minimum interval (in seconds) between slow startup warning messages (defaults to `30`). This prevents log spam when multiple replicas start slowly.
+
 
 ### Set Request ID
 You can set a custom request ID for each HTTP request by including `X-Request-ID` in the request header and retrieve request ID from response. For example
@@ -467,191 +516,271 @@ You can use Loki to filter your Ray Serve logs and gather insights quicker.
 
 ## Built-in Ray Serve metrics
 
-You can leverage built-in Ray Serve metrics to get a closer look at your application's performance.
-
-Ray Serve exposes important system metrics like the number of successful and
-failed requests through the [Ray metrics monitoring infrastructure](dash-metrics-view). By default, the metrics are exposed in Prometheus format on each node.
+Ray Serve exposes important system metrics like the number of successful and failed requests through the [Ray metrics monitoring infrastructure](dash-metrics-view). By default, metrics are exposed in Prometheus format on each node.
 
 :::{note}
-Different metrics are collected when Deployments are called
-via Python `DeploymentHandle` and when they are called via HTTP.
-
-See the list of metrics below marked for each.
+Different metrics are collected when deployments are called via Python `DeploymentHandle` versus HTTP/gRPC.
+See the markers below each table:
+- **[H]** - Available when using HTTP/gRPC proxy calls
+- **[D]** - Available when using Python `DeploymentHandle` calls
+- **[†]** - Internal metrics for advanced debugging; may change in future releases
 :::
 
-The following metrics are exposed by Ray Serve:
+:::{warning}
+**Histogram bucket configuration**
 
-```{eval-rst}
-.. list-table::
-   :header-rows: 1
+Histogram metrics use predefined bucket boundaries to aggregate latency measurements. The default buckets are: `[1, 2, 5, 10, 20, 50, 100, 200, 300, 400, 500, 1000, 2000, 5000, 10000, 60000, 120000, 300000, 600000]` (in milliseconds).
 
-   * - Name
-     - Fields
-     - Description
-   * - ``ray_serve_deployment_request_counter_total`` [**]
-     - * deployment
-       * replica
-       * route
-       * application
-     - The number of queries that have been processed in this replica.
-   * - ``ray_serve_deployment_error_counter_total`` [**]
-     - * deployment
-       * replica
-       * route
-       * application
-     - The number of exceptions that have occurred in the deployment.
-   * - ``ray_serve_deployment_replica_starts_total`` [**]
-     - * deployment
-       * replica
-       * application
-     - The number of times this replica has been restarted due to failure.
-   * - ``ray_serve_deployment_replica_healthy``
-     - * deployment
-       * replica
-       * application
-     - Whether this deployment replica is healthy. 1 means healthy, 0 unhealthy.
-   * - ``ray_serve_deployment_processing_latency_ms`` [**]
-     - * deployment
-       * replica
-       * route
-       * application
-     - The latency for queries to be processed.
-   * - ``ray_serve_replica_processing_queries`` [**]
-     - * deployment
-       * replica
-       * application
-     - The current number of queries being processed.
-   * - ``ray_serve_num_http_requests_total`` [*]
-     - * route
-       * method
-       * application
-       * status_code
-     - The number of HTTP requests processed.
-   * - ``ray_serve_num_grpc_requests_total`` [*]
-     - * route
-       * method
-       * application
-       * status_code
-     - The number of gRPC requests processed.
-   * - ``ray_serve_num_http_error_requests_total`` [*]
-     - * route
-       * error_code
-       * method
-       * application
-     - The number of non-200 HTTP responses.
-   * - ``ray_serve_num_grpc_error_requests_total`` [*]
-     - * route
-       * error_code
-       * method
-     - The number of non-OK gRPC responses.
-   * - ``ray_serve_num_ongoing_http_requests`` [*]
-     - * node_id
-       * node_ip_address
-     - The number of ongoing requests in the HTTP Proxy.
-   * - ``ray_serve_num_ongoing_grpc_requests`` [*]
-     - * node_id
-       * node_ip_address
-     - The number of ongoing requests in the gRPC Proxy.
-   * - ``ray_serve_num_router_requests_total`` [*]
-     - * deployment
-       * route
-       * application
-       * handle
-       * actor_id
-     - The number of requests processed by the router.
-   * - ``ray_serve_num_scheduling_tasks`` [*][†]
-     - * deployment
-       * actor_id
-     - The number of request scheduling tasks in the router.
-   * - ``ray_serve_num_scheduling_tasks_in_backoff`` [*][†]
-     - * deployment
-       * actor_id
-     - The number of request scheduling tasks in the router that are undergoing backoff.
-   * - ``ray_serve_handle_request_counter_total`` [**]
-     - * handle
-       * deployment
-       * route
-       * application
-     - The number of requests processed by this DeploymentHandle.
-   * - ``ray_serve_deployment_queued_queries`` [*]
-     - * deployment
-       * application
-       * handle
-       * actor_id
-     - The current number of queries to this deployment waiting to be assigned to a replica.
-   * - ``ray_serve_num_ongoing_requests_at_replicas`` [*]
-     - * deployment
-       * application
-       * handle
-       * actor_id
-     - The current number of requests to this deployment that's been assigned and sent to execute on a replica.
-   * - ``ray_serve_num_deployment_http_error_requests_total`` [*]
-     - * deployment
-       * error_code
-       * method
-       * route
-       * application
-     - The number of non-200 HTTP responses returned by each deployment.
-   * - ``ray_serve_num_deployment_grpc_error_requests_total`` [*]
-     - * deployment
-       * error_code
-       * method
-       * route
-       * application
-     - The number of non-OK gRPC responses returned by each deployment.
-   * - ``ray_serve_http_request_latency_ms`` [*]
-     - * method
-       * route
-       * application
-       * status_code
-     - The end-to-end latency of HTTP requests (measured from the Serve HTTP proxy).
-   * - ``ray_serve_grpc_request_latency_ms`` [*]
-     - * method
-       * route
-       * application
-       * status_code
-     - The end-to-end latency of gRPC requests (measured from the Serve gRPC proxy).
-   * - ``ray_serve_multiplexed_model_load_latency_ms``
-     - * deployment
-       * replica
-       * application
-     - The time it takes to load a model.
-   * - ``ray_serve_multiplexed_model_unload_latency_ms``
-     - * deployment
-       * replica
-       * application
-     - The time it takes to unload a model.
-   * - ``ray_serve_num_multiplexed_models``
-     - * deployment
-       * replica
-       * application
-     - The number of models loaded on the current replica.
-   * - ``ray_serve_multiplexed_models_unload_counter_total``
-     - * deployment
-       * replica
-       * application
-     - The number of times models unloaded on the current replica.
-   * - ``ray_serve_multiplexed_models_load_counter_total``
-     - * deployment
-       * replica
-       * application
-     - The number of times models loaded on the current replica.
-   * - ``ray_serve_registered_multiplexed_model_id``
-     - * deployment
-       * replica
-       * application
-       * model_id
-     - The multiplexed model ID registered on the current replica.
-   * - ``ray_serve_multiplexed_get_model_requests_counter_total``
-     - * deployment
-       * replica
-       * application
-     - The number of calls to get a multiplexed model.
+You can customize these buckets using environment variables:
+
+- **`RAY_SERVE_REQUEST_LATENCY_BUCKETS_MS`**: Controls bucket boundaries for request latency histograms:
+  - `ray_serve_http_request_latency_ms`
+  - `ray_serve_grpc_request_latency_ms`
+  - `ray_serve_deployment_processing_latency_ms`
+  - `ray_serve_health_check_latency_ms`
+  - `ray_serve_replica_reconfigure_latency_ms`
+
+- **`RAY_SERVE_MODEL_LOAD_LATENCY_BUCKETS_MS`**: Controls bucket boundaries for model multiplexing latency histograms:
+  - `ray_serve_multiplexed_model_load_latency_ms`
+  - `ray_serve_multiplexed_model_unload_latency_ms`
+
+- **`RAY_SERVE_BATCH_UTILIZATION_BUCKETS_PERCENT`**: Controls bucket boundaries for batch utilization histogram. Default: `[5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 99, 100]` (percentage).
+  - `ray_serve_batch_utilization_percent`
+
+- **`RAY_SERVE_BATCH_SIZE_BUCKETS`**: Controls bucket boundaries for batch size histogram. Default: `[1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]`.
+  - `ray_serve_actual_batch_size`
+
+- **`RAY_SERVE_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS`**: Controls bucket boundaries for replica lifecycle latency histograms:
+  - `ray_serve_replica_startup_latency_ms`
+  - `ray_serve_replica_initialization_latency_ms`
+  - `ray_serve_replica_shutdown_duration_ms`
+  - `ray_serve_proxy_shutdown_duration_ms`
+
+Note: `ray_serve_batch_wait_time_ms` and `ray_serve_batch_execution_time_ms` use the same buckets as `RAY_SERVE_REQUEST_LATENCY_BUCKETS_MS`.
+
+Set these as comma-separated values, for example: `RAY_SERVE_REQUEST_LATENCY_BUCKETS_MS="10,50,100,500,1000,5000"` or `RAY_SERVE_BATCH_SIZE_BUCKETS="1,4,8,16,32,64"`.
+
+**Histogram accuracy considerations**
+
+Prometheus histograms aggregate data into predefined buckets, which can affect the accuracy of percentile calculations (e.g., p50, p95, p99) displayed on dashboards:
+
+- **Values outside bucket range**: If your latencies exceed the largest bucket boundary (default: 600,000ms / 10 minutes), they all fall into the `+Inf` bucket and percentile estimates become inaccurate.
+- **Sparse bucket coverage**: If your actual latencies cluster between two widely-spaced buckets, the calculated percentiles are interpolated and may not reflect true values.
+- **Bucket boundaries are fixed at startup**: Changes to bucket environment variables (such as `RAY_SERVE_REQUEST_LATENCY_BUCKETS_MS`, `RAY_SERVE_BATCH_SIZE_BUCKETS`, etc.) require restarting Serve actors to take effect.
+
+For accurate percentile calculations, configure bucket boundaries that closely match your expected latency distribution. For example, if most requests complete in 10-100ms, use finer-grained buckets in that range.
+:::
+
+### Request lifecycle and metrics
+
+The following diagram shows where metrics are captured along the request path:
+
+```
+                                    REQUEST FLOW
+  ┌─────────────────────────────────────────────────────────────────────────────┐
+  │                                                                             │
+  │   ┌─────────────────────────────────────────────────────────────────────┐   │
+  │   │                        HTTP/gRPC PROXY                              │   │
+  │   │                                                                     │   │
+  │   │  ○ ray_serve_num_ongoing_http_requests      (while processing)      │   │
+  │   │  ○ ray_serve_num_http_requests_total        (on completion)         │   │
+  │   │  ○ ray_serve_http_request_latency_ms        (on completion)         │   │
+  │   │  ○ ray_serve_num_http_error_requests_total  (on error response)     │   │
+  │   └──────────────────────────────┬──────────────────────────────────────┘   │
+  │                                  │                                          │
+  │                                  ▼                                          │
+  │   ┌─────────────────────────────────────────────────────────────────────┐   │
+  │   │                      DEPLOYMENT HANDLE                              │   │
+  │   │                                                                     │   │
+  │   │  ○ ray_serve_handle_request_counter_total   (on completion)         │   │
+  │   └──────────────────────────────┬──────────────────────────────────────┘   │
+  │                                  │                                          │
+  │                                  ▼                                          │
+  │   ┌─────────────────────────────────────────────────────────────────────┐   │
+  │   │                           ROUTER                                    │   │
+  │   │                                                                     │   │
+  │   │  ○ ray_serve_num_router_requests_total      (on request routed)     │   │
+  │   │  ○ ray_serve_deployment_queued_queries      (while in queue)        │   │
+  │   │  ○ ray_serve_num_ongoing_requests_at_replicas (assigned to replica) │   │
+  │   └──────────────────────────────┬──────────────────────────────────────┘   │
+  │                                  │                                          │
+  │                                  ▼                                          │
+  │   ┌─────────────────────────────────────────────────────────────────────┐   │
+  │   │                          REPLICA                                    │   │
+  │   │                                                                     │   │
+  │   │  ○ ray_serve_replica_processing_queries     (while processing)      │   │
+  │   │  ○ ray_serve_deployment_processing_latency_ms (on completion)       │   │
+  │   │  ○ ray_serve_deployment_request_counter_total (on completion)       │   │
+  │   │  ○ ray_serve_deployment_error_counter_total   (on exception)        │   │
+  │   └─────────────────────────────────────────────────────────────────────┘   │
+  │                                                                             │
+  └─────────────────────────────────────────────────────────────────────────────┘
+
+  Legend:
+  ─────────────────────────────────────────────────────────────────────────────
+  • Counters (_total): Incremented once per event
+  • Gauges (ongoing/queued): Show current count, increase on start, decrease on end  
+  • Histograms (latency_ms): Record duration when request completes
 ```
 
-[*] - only available when using proxy calls</br>
-[**] - only available when using Python `DeploymentHandle` calls</br>
-[†] - developer metrics for advanced usage; may change in future releases
+### HTTP/gRPC proxy metrics
+
+These metrics track request throughput and latency at the proxy level (request entry point).
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `ray_serve_num_ongoing_http_requests` **[H]** | Gauge | `node_id`, `node_ip_address` | Current number of HTTP requests being processed by the proxy. |
+| `ray_serve_num_ongoing_grpc_requests` **[H]** | Gauge | `node_id`, `node_ip_address` | Current number of gRPC requests being processed by the proxy. |
+| `ray_serve_num_http_requests_total` **[H]** | Counter | `route`, `method`, `application`, `status_code` | Total number of HTTP requests processed by the proxy. |
+| `ray_serve_num_grpc_requests_total` **[H]** | Counter | `route`, `method`, `application`, `status_code` | Total number of gRPC requests processed by the proxy. |
+| `ray_serve_http_request_latency_ms` **[H]** | Histogram | `method`, `route`, `application`, `status_code` | Histogram of end-to-end HTTP request latency in milliseconds (measured from proxy receipt to response sent). |
+| `ray_serve_grpc_request_latency_ms` **[H]** | Histogram | `method`, `route`, `application`, `status_code` | Histogram of end-to-end gRPC request latency in milliseconds (measured from proxy receipt to response sent). |
+| `ray_serve_num_http_error_requests_total` **[H]** | Counter | `route`, `error_code`, `method`, `application` | Total number of HTTP requests that returned non-2xx/3xx status codes. |
+| `ray_serve_num_grpc_error_requests_total` **[H]** | Counter | `route`, `error_code`, `method`, `application` | Total number of gRPC requests that returned non-OK status codes. |
+| `ray_serve_num_deployment_http_error_requests_total` **[H]** | Counter | `deployment`, `error_code`, `method`, `route`, `application` | Total number of HTTP errors per deployment. Useful for identifying which deployment caused errors. |
+| `ray_serve_num_deployment_grpc_error_requests_total` **[H]** | Counter | `deployment`, `error_code`, `method`, `route`, `application` | Total number of gRPC errors per deployment. Useful for identifying which deployment caused errors. |
+
+### Request routing metrics
+
+These metrics track request routing and queueing behavior.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `ray_serve_handle_request_counter_total` **[D]** | Counter | `handle`, `deployment`, `route`, `application` | Total number of requests processed by this `DeploymentHandle`. |
+| `ray_serve_num_router_requests_total` **[H]** | Counter | `deployment`, `route`, `application`, `handle`, `actor_id` | Total number of requests routed to a deployment. |
+| `ray_serve_deployment_queued_queries` **[H]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | Current number of requests waiting to be assigned to a replica. High values indicate backpressure. |
+| `ray_serve_num_ongoing_requests_at_replicas` **[H]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | Current number of requests assigned and sent to replicas but not yet completed. |
+| `ray_serve_request_router_fulfillment_time_ms` **[H][D]** | Histogram | `deployment`, `actor_id`, `application`, `handle_source` | Histogram of time in milliseconds that a request spent waiting in the router queue before being assigned to a replica. This includes the time to resolve the pending request's arguments. |
+| `ray_serve_request_router_queue_len` **[H][D]** | Gauge | `deployment`, `replica_id`, `actor_id`, `application`, `handle_source` | Current number of requests running on a replica as tracked by the router's queue length cache. |
+| `ray_serve_num_scheduling_tasks` **[H][†]** | Gauge | `deployment`, `actor_id` | Current number of request scheduling tasks in the router. |
+| `ray_serve_num_scheduling_tasks_in_backoff` **[H][†]** | Gauge | `deployment`, `actor_id` | Current number of scheduling tasks in exponential backoff (waiting before retry). |
+
+### Request processing metrics
+
+These metrics track request throughput, errors, and latency at the replica level.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `ray_serve_replica_processing_queries` **[D]** | Gauge | `deployment`, `replica`, `application` | Current number of requests being processed by the replica. |
+| `ray_serve_deployment_request_counter_total` **[D]** | Counter | `deployment`, `replica`, `route`, `application` | Total number of requests processed by the replica. |
+| `ray_serve_deployment_processing_latency_ms` **[D]** | Histogram | `deployment`, `replica`, `route`, `application` | Histogram of request processing time in milliseconds (excludes queue wait time). |
+| `ray_serve_deployment_error_counter_total` **[D]** | Counter | `deployment`, `replica`, `route`, `application` | Total number of exceptions raised while processing requests. |
+
+### Batching metrics
+
+These metrics track request batching behavior for deployments using `@serve.batch`. Use them to tune batching parameters and debug latency issues.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `ray_serve_batch_wait_time_ms` | Histogram | `deployment`, `replica`, `application`, `function_name` | Time requests waited for the batch to fill in milliseconds. High values indicate batch timeout may be too long. |
+| `ray_serve_batch_execution_time_ms` | Histogram | `deployment`, `replica`, `application`, `function_name` | Time to execute the batch function in milliseconds. |
+| `ray_serve_batch_queue_length` | Gauge | `deployment`, `replica`, `application`, `function_name` | Current number of requests waiting in the batch queue. High values indicate a batching bottleneck. |
+| `ray_serve_batch_utilization_percent` | Histogram | `deployment`, `replica`, `application`, `function_name` | Batch utilization as percentage (`computed_batch_size / max_batch_size * 100`). Low utilization suggests `batch_wait_timeout_s` is too aggressive or traffic is too low. |
+| `ray_serve_actual_batch_size` | Histogram | `deployment`, `replica`, `application`, `function_name` | The computed size of each batch. When `batch_size_fn` is configured, this reports the custom computed size (such as total tokens). Otherwise, it reports the number of requests. |
+| `ray_serve_batches_processed_total` | Counter | `deployment`, `replica`, `application`, `function_name` | Total number of batches executed. Compare with request counter to measure batching efficiency. |
+
+### Proxy health metrics
+
+These metrics track proxy health and lifecycle.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `ray_serve_proxy_status` | Gauge | `node_id`, `node_ip_address` | Current status of the proxy as a numeric value: `1` = STARTING, `2` = HEALTHY, `3` = UNHEALTHY, `4` = DRAINING, `5` = DRAINED. |
+| `ray_serve_proxy_shutdown_duration_ms` | Histogram | `node_id`, `node_ip_address` | Time taken for a proxy to shut down in milliseconds. |
+
+### Replica lifecycle metrics
+
+These metrics track replica health, restarts, and lifecycle timing.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `ray_serve_deployment_replica_healthy` | Gauge | `deployment`, `replica`, `application` | Health status of the replica: `1` = healthy, `0` = unhealthy. |
+| `ray_serve_deployment_replica_starts_total` | Counter | `deployment`, `replica`, `application` | Total number of times the replica has started (including restarts due to failure). |
+| `ray_serve_replica_startup_latency_ms` | Histogram | `deployment`, `replica`, `application` | Total time from replica creation to ready state in milliseconds. Includes node provisioning (if needed on VM or Kubernetes), runtime environment bootstrap (pip install, Docker image pull, etc.), Ray actor scheduling, and actor constructor execution. Useful for debugging slow cold starts. |
+| `ray_serve_replica_initialization_latency_ms` | Histogram | `deployment`, `replica`, `application` | Time for the actor constructor to run in milliseconds. This is a subset of `ray_serve_replica_startup_latency_ms`. |
+| `ray_serve_replica_reconfigure_latency_ms` | Histogram | `deployment`, `replica`, `application` | Time in milliseconds for a replica to complete reconfiguration. Includes both reconfigure time and one control-loop iteration, so very low values may be unreliable. |
+| `ray_serve_health_check_latency_ms` | Histogram | `deployment`, `replica`, `application` | Duration of health check calls in milliseconds. Useful for identifying slow health checks blocking scaling. |
+| `ray_serve_health_check_failures_total` | Counter | `deployment`, `replica`, `application` | Total number of failed health checks. Provides early warning before replica is marked unhealthy. |
+| `ray_serve_replica_shutdown_duration_ms` | Histogram | `deployment`, `replica`, `application` | Time from shutdown signal to replica fully stopped in milliseconds. Useful for debugging slow draining during scale-down or rolling updates. |
+
+### Autoscaling metrics
+
+These metrics provide visibility into autoscaling behavior and help debug scaling issues.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `ray_serve_autoscaling_target_replicas` | Gauge | `deployment`, `application` | Target number of replicas the autoscaler is trying to reach. Compare with actual replicas to identify scaling lag. |
+| `ray_serve_autoscaling_desired_replicas` | Gauge | `deployment`, `application` | Raw autoscaling decision (number of replicas) from the policy *before* applying `min_replicas`/`max_replicas` bounds. |
+| `ray_serve_autoscaling_total_requests` | Gauge | `deployment`, `application` | Total number of requests (queued + in-flight) as seen by the autoscaler. This is the input to the scaling decision. |
+| `ray_serve_autoscaling_policy_execution_time_ms` | Gauge | `deployment`, `application`, `policy_scope` | Time taken to execute the autoscaling policy in milliseconds. `policy_scope` is `deployment` or `application`. |
+| `ray_serve_autoscaling_replica_metrics_delay_ms` | Gauge | `deployment`, `application`, `replica` | Time taken for replica metrics to reach the controller in milliseconds. High values may indicate controller overload. |
+| `ray_serve_autoscaling_handle_metrics_delay_ms` | Gauge | `deployment`, `application`, `handle` | Time taken for handle metrics to reach the controller in milliseconds. High values may indicate controller overload. |
+| `ray_serve_record_autoscaling_stats_failed_total` | Counter | `application`, `deployment`, `replica`, `exception_name` | Total number of failed attempts to collect autoscaling metrics on replica from user defined function. Non-zero values indicate error in user code. |
+| `ray_serve_user_autoscaling_stats_latency_ms` | Histogram | `application`, `deployment`, `replica` | Histogram of time taken to execute the user-defined autoscaling stats function in milliseconds. |
+
+### Model multiplexing metrics
+
+These metrics track model loading and caching behavior for deployments using `@serve.multiplexed`.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `ray_serve_multiplexed_model_load_latency_ms` | Histogram | `deployment`, `replica`, `application` | Histogram of time taken to load a model in milliseconds. |
+| `ray_serve_multiplexed_model_unload_latency_ms` | Histogram | `deployment`, `replica`, `application` | Histogram of time taken to unload a model in milliseconds. |
+| `ray_serve_num_multiplexed_models` | Gauge | `deployment`, `replica`, `application` | Current number of models loaded on the replica. |
+| `ray_serve_multiplexed_models_load_counter_total` | Counter | `deployment`, `replica`, `application` | Total number of model load operations. |
+| `ray_serve_multiplexed_models_unload_counter_total` | Counter | `deployment`, `replica`, `application` | Total number of model unload operations (evictions). |
+| `ray_serve_registered_multiplexed_model_id` | Gauge | `deployment`, `replica`, `application`, `model_id` | Indicates which model IDs are currently loaded. Value is `1` when the model is loaded. |
+| `ray_serve_multiplexed_get_model_requests_counter_total` | Counter | `deployment`, `replica`, `application` | Total number of `get_model()` calls. Compare with load counter to calculate cache hit rate. |
+
+### Controller metrics
+
+These metrics track the Serve controller's performance. Useful for debugging control plane issues.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `ray_serve_controller_control_loop_duration_s` | Gauge | — | Duration of the last control loop iteration in seconds. |
+| `ray_serve_controller_num_control_loops` | Gauge | `actor_id` | Total number of control loop iterations. Increases monotonically. |
+| `ray_serve_routing_stats_delay_ms` | Histogram | `deployment`, `replica`, `application` | Time taken for routing stats to propagate from replica to controller in milliseconds. |
+| `ray_serve_routing_stats_error_total` | Counter | `deployment`, `replica`, `application`, `error_type` | Total number of errors when getting routing stats from replicas. `error_type` is `exception` (replica raised an error) or `timeout` (replica didn't respond in time). |
+| `ray_serve_long_poll_host_transmission_counter_total` **[†]** | Counter | `namespace_or_state` | Total number of long poll updates transmitted to clients. |
+| `ray_serve_deployment_status` | Gauge | `deployment`, `application` | Numeric status of deployment: `0` = UNKNOWN, `1` = DEPLOY_FAILED, `2` = UNHEALTHY, `3` = UPDATING, `4` = UPSCALING, `5` = DOWNSCALING, `6` = HEALTHY. Use for state timeline visualization and lifecycle debugging. |
+| `ray_serve_application_status` | Gauge | `application` | Numeric status of application: `0` = UNKNOWN, `1` = DEPLOY_FAILED, `2` = UNHEALTHY, `3` = NOT_STARTED, `4` = DELETING, `5` = DEPLOYING, `6` = RUNNING. Use for state timeline visualization and lifecycle debugging. |
+| `ray_serve_long_poll_latency_ms` **[†]** | Histogram | `namespace` | Time for updates to propagate from controller to clients in milliseconds. `namespace` is the long poll namespace such as `ROUTE_TABLE`, `DEPLOYMENT_CONFIG`, or `DEPLOYMENT_TARGETS`. Debug slow config propagation; impacts autoscaling response time. |
+| `ray_serve_long_poll_pending_clients` **[†]** | Gauge | `namespace` | Number of clients waiting for updates. `namespace` is the long poll namespace such as `ROUTE_TABLE`, `DEPLOYMENT_CONFIG`, or `DEPLOYMENT_TARGETS`. Identify backpressure in notification system. |
+
+### Event loop monitoring metrics
+
+These metrics track the health of asyncio event loops in Serve components. High scheduling latency indicates the event loop is blocked, which can cause request latency issues. Use these metrics to detect blocking code in handlers or system bottlenecks.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `ray_serve_event_loop_scheduling_latency_ms` **[†]** | Histogram | `component`, `loop_type`, `actor_id`, `deployment`*, `application`* | Event loop scheduling delay in milliseconds. Measures how long the loop was blocked beyond the expected sleep interval. Values close to zero indicate a healthy loop; high values indicate either blocking code or a large number of tasks queued on the event loop. |
+| `ray_serve_event_loop_monitoring_iterations_total` **[†]** | Counter | `component`, `loop_type`, `actor_id`, `deployment`*, `application`* | Number of event loop monitoring iterations. Acts as a heartbeat; a stalled counter indicates the loop is completely blocked. |
+| `ray_serve_event_loop_tasks` **[†]** | Gauge | `component`, `loop_type`, `actor_id`, `deployment`*, `application`* | Number of pending asyncio tasks on the event loop. High values may indicate task accumulation. |
+
+*\* `deployment` and `application` tags are only present for replica `main` and `user_code` loops, not for proxy or router loops.*
+
+**Tag values:**
+
+- `component`: The Serve component type.
+  - `proxy`: HTTP/gRPC proxy actor
+  - `replica`: Deployment replica actor
+  - `unknown`: When using `DeploymentHandle.remote()`
+- `loop_type`: The type of event loop being monitored.
+  - `main`: Main event loop for the actor (always present)
+  - `user_code`: Separate event loop for user handler code (replicas only, when `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1`, which is the default)
+  - `router`: Separate event loop for request routing (replicas only, when `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=1`, which is the default)
+- `actor_id`: The Ray actor ID of the proxy or replica
+- `deployment`: The deployment name (replicas only, for `main` and `user_code` loops)
+- `application`: The application name (replicas only, for `main` and `user_code` loops)
+
+**Interpreting scheduling latency:**
+
+- **< 10ms**: Healthy event loop
+- **10-50ms**: Acceptable under load
+- **50-100ms**: Concerning; investigate for blocking code
+- **100-500ms**: Problematic; likely blocking I/O or CPU-bound code in async handlers
+- **> 500ms**: Severe blocking; definitely impacting request latency
 
 To see this in action, first run the following command to start Ray and set up the metrics export port:
 

@@ -548,6 +548,7 @@ def test_cold_start_time(serve_instance):
         autoscaling_config={
             "min_replicas": 0,
             "max_replicas": 1,
+            "metrics_interval_s": 0.1,
             "look_back_period_s": 0.2,
         },
     )
@@ -965,7 +966,7 @@ def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
             downscale_delay_s=600,
             upscale_delay_s=0,
             metrics_interval_s=1,
-            look_back_period_s=1,
+            look_back_period_s=2,
         ),
     )
     def scaler():
@@ -1029,7 +1030,7 @@ def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
             downscale_delay_s=600,
             upscale_delay_s=600,
             metrics_interval_s=1,
-            look_back_period_s=1,
+            look_back_period_s=2,
         )
     )
     handle = serve.run(scaler.bind())
@@ -1080,7 +1081,7 @@ app = g.bind()
                     "downscale_delay_s": 600,
                     "upscale_delay_s": 0,
                     "metrics_interval_s": 1,
-                    "look_back_period_s": 1,
+                    "look_back_period_s": 2,
                 },
             }
         ],
@@ -1530,6 +1531,7 @@ def test_autoscaling_status_changes(serve_instance):
     print("Statuses are as expected.")
 
 
+# Serve applies autoscaling config to custom policies at registration time.
 def custom_autoscaling_policy(ctx: AutoscalingContext):
     if ctx.total_num_requests > 50:
         return 3, {}
@@ -1541,7 +1543,7 @@ def custom_autoscaling_policy(ctx: AutoscalingContext):
     "policy",
     [
         {
-            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
+            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy",
         },
         AutoscalingPolicy(
             policy_function="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"

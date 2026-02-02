@@ -734,6 +734,7 @@ bool IsProcessAlive(pid_t pid) {
           OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, static_cast<DWORD>(pid))) {
     DWORD exit_code;
     if (GetExitCodeProcess(handle, &exit_code) && exit_code == STILL_ACTIVE) {
+      CloseHandle(handle);
       return true;
     }
     CloseHandle(handle);

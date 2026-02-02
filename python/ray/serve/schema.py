@@ -254,6 +254,19 @@ class RayActorOptionsSchema(BaseModel):
             "See :ref:`accelerator types <accelerator_types>`."
         ),
     )
+    label_selector: Dict[str, str] = Field(
+        default=None,
+        description=(
+            "If specified, requires that the actor run on a node with the specified labels."
+        ),
+    )
+    fallback_strategy: List[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "If specified, expresses soft constraints through a list of decorator "
+            "options to fall back on when scheduling on a node."
+        ),
+    )
 
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):
@@ -395,6 +408,17 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         ),
     )
 
+    placement_group_bundle_label_selector: List[Dict[str, str]] = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "A list of label selectors to apply to the placement group "
+            "on a per-bundle level."
+        ),
+    )
+
+    # TODO(ryanaoleary@): Support placement_group_fallback_strategy here when
+    # support is added for that field to placement group options.
+
     max_replicas_per_node: int = Field(
         default=DEFAULT.VALUE,
         description=(
@@ -451,6 +475,32 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         return values
 
     @root_validator
+    def validate_bundle_label_selector(cls, values):
+        placement_group_bundles = values.get("placement_group_bundles", None)
+        bundle_label_selector = values.get(
+            "placement_group_bundle_label_selector", None
+        )
+
+        if bundle_label_selector not in [DEFAULT.VALUE, None]:
+            if placement_group_bundles in [DEFAULT.VALUE, None]:
+                raise ValueError(
+                    "Setting bundle_label_selector is not allowed when "
+                    "placement_group_bundles is not provided."
+                )
+
+            if len(bundle_label_selector) != 1 and len(bundle_label_selector) != len(
+                placement_group_bundles
+            ):
+                raise ValueError(
+                    f"The `placement_group_bundle_label_selector` list must contain either "
+                    f"a single selector (to apply to all bundles) or match the number of "
+                    f"`placement_group_bundles`. Got {len(bundle_label_selector)} "
+                    f"selectors for {len(placement_group_bundles)} bundles."
+                )
+
+        return values
+
+    @root_validator
     def validate_max_queued_requests(cls, values):
         max_queued_requests = values.get("max_queued_requests", None)
         if max_queued_requests is None or max_queued_requests == DEFAULT.VALUE:
@@ -472,6 +522,12 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         return {
             field for field, value in self.dict().items() if value is not DEFAULT.VALUE
         }
+
+    def is_autoscaling_configured(self) -> bool:
+        return self.num_replicas == "auto" or self.autoscaling_config not in [
+            None,
+            DEFAULT.VALUE,
+        ]
 
 
 def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSchema:
@@ -579,6 +635,13 @@ class ServeApplicationSchema(BaseModel):
         default=None,
         description="Logging config for configuring serve application logs.",
     )
+    external_scaler_enabled: bool = Field(
+        default=False,
+        description=(
+            "If True, indicates that an external autoscaler will manage replica scaling for this application. "
+            "When enabled, Serve's built-in autoscaling cannot be used for any deployments in this application."
+        ),
+    )
 
     @property
     def deployment_names(self) -> List[str]:
@@ -639,6 +702,30 @@ class ServeApplicationSchema(BaseModel):
                 )
 
         return v
+
+    @root_validator
+    def validate_external_scaler_and_autoscaling(cls, values):
+        external_scaler_enabled = values.get("external_scaler_enabled", False)
+        deployments = values.get("deployments", [])
+
+        if external_scaler_enabled:
+            deployments_with_autoscaling = []
+            for deployment in deployments:
+                if deployment.is_autoscaling_configured():
+                    deployments_with_autoscaling.append(deployment.name)
+
+            if deployments_with_autoscaling:
+                deployment_names = ", ".join(
+                    f'"{name}"' for name in deployments_with_autoscaling
+                )
+                raise ValueError(
+                    f"external_scaler_enabled is set to True, but the following "
+                    f"deployment(s) have autoscaling configured: {deployment_names}. "
+                    "When using an external autoscaler, Serve's built-in autoscaling must "
+                    "be disabled for all deployments in the application."
+                )
+
+        return values
 
     @staticmethod
     def get_empty_schema_dict() -> Dict:
@@ -868,6 +955,21 @@ class ProxyStatus(str, Enum):
     # so this status won't show up on the dashboard.
     DRAINED = "DRAINED"
 
+    def to_numeric(self) -> int:
+        """Convert status to a numeric value for metrics.
+
+        Returns:
+            1 for STARTING, 2 for HEALTHY, 3 for UNHEALTHY,
+            4 for DRAINING, 5 for DRAINED. (0 is reserved for UNKNOWN)
+        """
+        return {
+            ProxyStatus.STARTING: 1,
+            ProxyStatus.HEALTHY: 2,
+            ProxyStatus.UNHEALTHY: 3,
+            ProxyStatus.DRAINING: 4,
+            ProxyStatus.DRAINED: 5,
+        }[self]
+
 
 @PublicAPI(stability="alpha")
 @dataclass
@@ -898,6 +1000,24 @@ class ApplicationStatus(str, Enum):
     RUNNING = "RUNNING"
     UNHEALTHY = "UNHEALTHY"
     DELETING = "DELETING"
+
+    def to_numeric(self) -> int:
+        """Convert status to numeric value for metrics, it serves state
+        progression order on the dashboard.
+
+        0 is reserved for UNKNOWN. Values are ordered by severity/state progression:
+        0=UNKNOWN, 1=DEPLOY_FAILED, 2=UNHEALTHY, 3=NOT_STARTED,
+        4=DELETING, 5=DEPLOYING, 6=RUNNING
+        """
+        mapping = {
+            ApplicationStatus.DEPLOY_FAILED: 1,
+            ApplicationStatus.UNHEALTHY: 2,
+            ApplicationStatus.NOT_STARTED: 3,
+            ApplicationStatus.DELETING: 4,
+            ApplicationStatus.DEPLOYING: 5,
+            ApplicationStatus.RUNNING: 6,
+        }
+        return mapping.get(self, 0)
 
 
 @PublicAPI(stability="alpha")
@@ -1109,6 +1229,46 @@ class APIType(str, Enum):
         return [cls.IMPERATIVE.value, cls.DECLARATIVE.value]
 
 
+@PublicAPI(stability="alpha")
+class DeploymentNode(BaseModel):
+    """Represents a node in the deployment topology.
+
+    Each node represents a deployment and tracks which other deployments it calls.
+    """
+
+    name: str = Field(description="The name of the deployment.")
+    app_name: str = Field(
+        description="The name of the application this deployment belongs to."
+    )
+    # using name and app_name instead of just deployment name because outbound dependencies can be in different apps
+    outbound_deployments: List[dict] = Field(
+        default_factory=list,
+        description="The deployment IDs that this deployment calls (outbound dependencies).",
+    )
+    is_ingress: bool = Field(
+        default=False, description="Whether this is the ingress deployment."
+    )
+
+
+@PublicAPI(stability="alpha")
+class DeploymentTopology(BaseModel):
+    """Represents the dependency graph of deployments in an application.
+
+    The topology shows which deployments call which other deployments,
+    with the ingress deployment as the entry point.
+    """
+
+    app_name: str = Field(
+        description="The name of the application this topology belongs to."
+    )
+    nodes: Dict[str, DeploymentNode] = Field(
+        description="The adjacency list of deployment nodes."
+    )
+    ingress_deployment: Optional[str] = Field(
+        default=None, description="The name of the ingress deployment (entry point)."
+    )
+
+
 @PublicAPI(stability="stable")
 class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     """Detailed info about a Serve application."""
@@ -1167,10 +1327,18 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     deployments: Dict[str, DeploymentDetails] = Field(
         description="Details about the deployments in this application."
     )
+    external_scaler_enabled: bool = Field(
+        description="Whether external scaling is enabled for this application.",
+    )
 
     application_details_route_prefix_format = validator(
         "route_prefix", allow_reuse=True
     )(_route_prefix_format)
+
+    deployment_topology: Optional[DeploymentTopology] = Field(
+        default=None,
+        description="The deployment topology showing how deployments in this application call each other.",
+    )
 
 
 @PublicAPI(stability="stable")
@@ -1197,6 +1365,7 @@ class TargetGroup(BaseModel, frozen=True):
     targets: List[Target] = Field(description="List of targets for the given route.")
     route_prefix: str = Field(description="Prefix route of the targets.")
     protocol: RequestProtocol = Field(description="Protocol of the targets.")
+    app_name: str = Field("", description="Name of the application.")
 
 
 @PublicAPI(stability="stable")
@@ -1461,13 +1630,6 @@ class TaskProcessorAdapter(ABC):
 
         Args:
             timeout: Maximum time in seconds to wait for the consumer to stop.
-        """
-        pass
-
-    @abstractmethod
-    def shutdown(self):
-        """
-        Shutdown the task processor and clean up resources.
         """
         pass
 

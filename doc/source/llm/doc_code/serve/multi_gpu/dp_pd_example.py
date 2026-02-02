@@ -65,7 +65,10 @@ prefill_config = LLMConfig(
         "kv_transfer_config": {
             "kv_connector": "NixlConnector",
             "kv_role": "kv_both",
-        }
+        },
+        # Reduced for CI compatibility
+        "max_model_len": 1024,
+        "max_num_seqs": 32,
     },
     experimental_configs={
         "dp_size_per_node": 2,
@@ -83,7 +86,10 @@ decode_config = LLMConfig(
         "kv_transfer_config": {
             "kv_connector": "NixlConnector",
             "kv_role": "kv_both",
-        }
+        },
+        # Reduced for CI compatibility
+        "max_model_len": 1024,
+        "max_num_seqs": 32,
     },
     experimental_configs={
         "dp_size_per_node": 2,

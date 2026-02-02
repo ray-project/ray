@@ -35,6 +35,18 @@ applications:
   - name: test_app
     route_prefix: /
     import_path: ray.dashboard.modules.serve.tests.test_serve_dashboard.deployment_app
+    external_scaler_enabled: True
+    deployments:
+      - name: hello_world
+        num_replicas: 1
+"""
+
+CONFIG_FILE_TEXT_EXTERNAL_SCALER_DISABLED = """
+applications:
+  - name: test_app
+    route_prefix: /
+    import_path: ray.dashboard.modules.serve.tests.test_serve_dashboard.deployment_app
+    external_scaler_enabled: False
     deployments:
       - name: hello_world
         num_replicas: 1
@@ -693,7 +705,7 @@ class TestScaleDeploymentEndpoint:
         return True
 
     def test_scale_deployment_endpoint_comprehensive(self, ray_start_stop):
-        serve.run(DeploymentClass.bind(), name="test_app")
+        serve.run(DeploymentClass.bind(), name="test_app", external_scaler_enabled=True)
 
         wait_for_condition(
             lambda: self._get_deployment_details().status == DeploymentStatus.HEALTHY
@@ -716,6 +728,7 @@ class TestScaleDeploymentEndpoint:
             DeploymentClassWithBlockingInit.bind(semaphore),
             name="test_app",
             _blocking=False,
+            external_scaler_enabled=True,
         )
 
         wait_for_condition(
@@ -749,7 +762,12 @@ class TestScaleDeploymentEndpoint:
     def test_scale_deployment_during_application_upgrade(self, ray_start_stop):
         semaphore = Semaphore.remote(value=1)
 
-        serve._run(DeploymentClass.bind(), name="test_app", _blocking=False)
+        serve._run(
+            DeploymentClass.bind(),
+            name="test_app",
+            _blocking=False,
+            external_scaler_enabled=True,
+        )
 
         wait_for_condition(
             self._verify_deployment_details,
@@ -763,6 +781,7 @@ class TestScaleDeploymentEndpoint:
             DeploymentClassWithBlockingInit.bind(semaphore),
             name="test_app",
             _blocking=False,
+            external_scaler_enabled=True,
         )
 
         wait_for_condition(
@@ -818,6 +837,7 @@ class TestScaleDeploymentEndpoint:
             DeploymentClassWithBlockingDel.bind(signal_actor),
             name="test_app",
             _blocking=False,
+            external_scaler_enabled=True,
         )
 
         wait_for_condition(
@@ -941,16 +961,6 @@ class TestScaleDeploymentEndpoint:
 
         error_response = requests.post(
             SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
-                app_name="test_app", deployment_name="nonexistent"
-            ),
-            json={"target_num_replicas": 2},
-            timeout=30,
-        )
-        assert error_response.status_code == 400
-        assert "not found" in error_response.json()["error"].lower()
-
-        error_response = requests.post(
-            SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
                 app_name="test_app", deployment_name="hello_world"
             ),
             json={"invalid_field": 2},
@@ -958,6 +968,94 @@ class TestScaleDeploymentEndpoint:
         )
         assert error_response.status_code == 400
         assert "invalid request body" in error_response.json()["error"].lower()
+
+    def test_external_scaler_enabled_switchback(self, ray_start_stop):
+        """Test switching external_scaler_enabled on and off without restarting Serve.
+
+        This test verifies that:
+        1. Scaling fails when external_scaler_enabled is False
+        2. Scaling succeeds when external_scaler_enabled is True
+        3. The switchback (False -> True -> False) works correctly
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+
+            config_disabled_file = tmp_path / "config_disabled.yaml"
+            config_enabled_file = tmp_path / "config_enabled.yaml"
+            config_disabled_file.write_text(CONFIG_FILE_TEXT_EXTERNAL_SCALER_DISABLED)
+            config_enabled_file.write_text(CONFIG_FILE_TEXT)
+
+            # Step 1: Deploy with external_scaler_enabled=False
+            self._run_serve_deploy(config_disabled_file)
+
+            wait_for_condition(
+                self._verify_deployment_details,
+                deployment_status=DeploymentStatus.HEALTHY,
+                target_num_replicas=1,
+                verify_actual_replicas=True,
+                timeout=30,
+            )
+
+            # Step 2: Try to scale - should fail
+            response = requests.post(
+                SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
+                    app_name="test_app", deployment_name="hello_world"
+                ),
+                json={"target_num_replicas": 3},
+                timeout=30,
+            )
+            assert response.status_code == 412
+            assert (
+                "Current value: external_scaler_enabled=false. To use this API, redeploy your application with 'external_scaler_enabled: true' in the config."
+                in response.json()["error"]
+            )
+
+            # Verify replicas didn't change
+            assert self._get_deployment_details().target_num_replicas == 1
+
+            # Step 3: Enable external_scaler_enabled
+            self._run_serve_deploy(config_enabled_file)
+
+            wait_for_condition(
+                self._verify_deployment_details,
+                deployment_status=DeploymentStatus.HEALTHY,
+                target_num_replicas=1,
+                verify_actual_replicas=True,
+                timeout=30,
+            )
+
+            # Step 4: Scale - should succeed
+            self._scale_and_verify_deployment(3, verify_actual_replicas=True)
+
+            # Step 5: Disable external_scaler_enabled again
+            self._run_serve_deploy(config_disabled_file)
+
+            # The deployment should maintain 3 replicas from the previous scale operation
+            # but external scaler should be disabled
+            wait_for_condition(
+                self._verify_deployment_details,
+                deployment_status=DeploymentStatus.HEALTHY,
+                target_num_replicas=3,
+                verify_actual_replicas=True,
+                timeout=30,
+            )
+
+            # Step 6: Try to scale again - should fail
+            response = requests.post(
+                SERVE_HEAD_DEPLOYMENT_SCALE_URL.format(
+                    app_name="test_app", deployment_name="hello_world"
+                ),
+                json={"target_num_replicas": 5},
+                timeout=30,
+            )
+            assert response.status_code == 412
+            assert (
+                "Current value: external_scaler_enabled=false. To use this API, redeploy your application with 'external_scaler_enabled: true' in the config."
+                in response.json()["error"]
+            )
+
+            # Verify replicas stayed at 3
+            assert self._get_deployment_details().target_num_replicas == 3
 
 
 @pytest.mark.skipif(
@@ -1124,6 +1222,98 @@ def test_get_serve_instance_details_api_type_case_insensitive(ray_start_stop):
         serve_details = ServeInstanceDetails(**response.json())
         assert len(serve_details.applications) == 1
         assert "test_app" in serve_details.applications
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_get_serve_instance_details_external_scaler_enabled(ray_start_stop):
+    """
+    Test that external_scaler_enabled is correctly returned in the API response.
+
+    This test verifies that when applications are deployed with different
+    external_scaler_enabled values, the /api/serve/applications/ endpoint
+    correctly returns the external_scaler_enabled field for each application.
+    """
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+
+    config = {
+        "applications": [
+            {
+                "name": "app_with_scaler",
+                "route_prefix": "/with_scaler",
+                "import_path": world_import_path,
+                "external_scaler_enabled": True,
+            },
+            {
+                "name": "app_without_scaler",
+                "route_prefix": "/without_scaler",
+                "import_path": world_import_path,
+                "external_scaler_enabled": False,
+            },
+        ],
+    }
+
+    deploy_config_multi_app(config, SERVE_HEAD_URL)
+
+    def both_apps_running():
+        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        assert response.status_code == 200
+        serve_details = ServeInstanceDetails(**response.json())
+        return (
+            len(serve_details.applications) == 2
+            and serve_details.applications["app_with_scaler"].status
+            == ApplicationStatus.RUNNING
+            and serve_details.applications["app_without_scaler"].status
+            == ApplicationStatus.RUNNING
+        )
+
+    wait_for_condition(both_apps_running, timeout=15)
+
+    # Verify both apps have correct external_scaler_enabled values
+    response = requests.get(SERVE_HEAD_URL, timeout=15)
+    assert response.status_code == 200
+    serve_details = ServeInstanceDetails(**response.json())
+    assert len(serve_details.applications) == 2
+    assert "app_with_scaler" in serve_details.applications
+    assert "app_without_scaler" in serve_details.applications
+    assert serve_details.applications["app_with_scaler"].external_scaler_enabled is True
+    assert (
+        serve_details.applications["app_without_scaler"].external_scaler_enabled
+        is False
+    )
+
+    # Test default value (when external_scaler_enabled is not specified)
+    config_default = {
+        "applications": [
+            {
+                "name": "app_default",
+                "route_prefix": "/default",
+                "import_path": world_import_path,
+            }
+        ],
+    }
+
+    deploy_config_multi_app(config_default, SERVE_HEAD_URL)
+
+    def app_default_running():
+        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        assert response.status_code == 200
+        serve_details = ServeInstanceDetails(**response.json())
+        return (
+            len(serve_details.applications) == 1
+            and serve_details.applications["app_default"].status
+            == ApplicationStatus.RUNNING
+        )
+
+    wait_for_condition(app_default_running, timeout=15)
+
+    # Verify default value is False
+    response = requests.get(SERVE_HEAD_URL, timeout=15)
+    assert response.status_code == 200
+    serve_details = ServeInstanceDetails(**response.json())
+    assert "app_default" in serve_details.applications
+    assert serve_details.applications["app_default"].external_scaler_enabled is False
 
 
 if __name__ == "__main__":

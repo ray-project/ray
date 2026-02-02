@@ -6,9 +6,9 @@ import pytest
 from packaging.version import parse as parse_version
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
-from ray.data._internal.logical.operators.join_operator import JoinType
+from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import MiB, rows_same
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.exceptions import RayTaskError
@@ -764,7 +764,7 @@ def test_join_with_predicate_pushdown(
     plan_str = optimized_plan.dag.dag_str
 
     join_idx = plan_str.find("Join[Join]")
-    filter_idx = plan_str.find("Filter[Filter(<expression>)]")
+    filter_idx = plan_str.find("Filter[Filter(")
 
     if should_push:
         # Filter should be pushed before join
@@ -796,8 +796,7 @@ def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_
     - Join: left.id = right.user_id
     - Filter: col("id") > col("user_id") (with suffixes to avoid collision)
     """
-    from ray.data._internal.logical.operators.join_operator import Join
-    from ray.data._internal.logical.operators.map_operator import Filter
+    from ray.data._internal.logical.operators import Filter, Join
     from ray.data._internal.logical.optimizers import LogicalOptimizer
     from ray.data._internal.util import MiB
     from ray.data.expressions import col

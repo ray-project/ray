@@ -31,5 +31,12 @@
       "user_tag": "user",
       "assistant_tag": "assistant"
     }
+  },
+
+  "my_cpt_c4": {
+    "file_name": "/mnt/cluster_storage/c4.jsonl",
+    "columns": {
+      "prompt": "text"
+    }
   }
 }

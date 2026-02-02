@@ -7,6 +7,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -20,7 +21,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
     RandomShuffle,
     Repartition,
     Sort,
@@ -28,7 +29,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
 from ray.data._internal.logical.operators.map_operator import MapBatches
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.write_operator import Write
-from ray.data._internal.logical.rules.configure_map_task_memory import (
+from ray.data._internal.logical.rules import (
     ConfigureMapTaskMemoryUsingOutputSize,
 )
 from ray.data._internal.planner import create_planner
@@ -156,7 +157,7 @@ def test_write_operator(ray_start_regular_shared_2_cpus, tmp_path):
     op = Write(
         read_op,
         datasink,
-        concurrency=concurrency,
+        compute=TaskPoolStrategy(concurrency),
     )
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
@@ -240,7 +241,7 @@ def test_sort_validate_keys(ray_start_regular_shared_2_cpus):
 
 
 def test_inherit_batch_format_rule():
-    from ray.data._internal.logical.rules.inherit_batch_format import (
+    from ray.data._internal.logical.rules import (
         InheritBatchFormatRule,
     )
 

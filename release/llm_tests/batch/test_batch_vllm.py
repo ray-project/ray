@@ -5,9 +5,20 @@ import time
 import pytest
 
 import ray
-from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
+from ray.data.llm import (
+    build_processor,
+    vLLMEngineProcessorConfig,
+    ChatTemplateStageConfig,
+    DetokenizeStageConfig,
+    PrepareMultimodalStageConfig,
+    TokenizerStageConfig,
+)
 
 logger = logging.getLogger(__name__)
+
+S3_ARTIFACT_ASSETS_URL = (
+    "https://air-example-data.s3.amazonaws.com/rayllm-ossci/assets/"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -27,8 +38,6 @@ def add_buffer_time_between_tests():
     """Add buffer time after each test to avoid resource conflicts, which cause
     flakiness.
     """
-    # yield  # test runs
-    # time.sleep(10)
     import gc
 
     gc.collect()
@@ -40,6 +49,65 @@ def cleanup_ray_resources():
     """Automatically cleanup Ray resources between tests to prevent conflicts."""
     yield
     ray.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_vllm_multimodal_utils():
+    """Test vLLM's multimodal utilities.
+
+    This test is adapted from https://github.com/vllm-project/vllm/blob/main/tests/entrypoints/test_chat_utils.py.
+    `parse_chat_messages_futures` is thoroughly tested in vLLM. This test serves as an
+    integration test to verify that the function isn't moved to an unexpected location and its signature isn't changed.
+    """
+    from vllm.config import ModelConfig
+    from vllm.entrypoints.chat_utils import parse_chat_messages_futures
+
+    image_url = "https://air-example-data.s3.us-west-2.amazonaws.com/rayllm-ossci/assets/cherry_blossom.jpg"
+    image_uuid = str(hash(image_url))
+
+    conversation, mm_future, mm_uuids = parse_chat_messages_futures(
+        [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": image_url},
+                        "uuid": image_uuid,
+                    },
+                    {"type": "text", "text": "What's in the image?"},
+                ],
+            }
+        ],
+        ModelConfig(
+            "microsoft/Phi-3.5-vision-instruct",
+            runner="generate",
+            trust_remote_code=True,
+            limit_mm_per_prompt={"image": 2},
+        ),
+        content_format="string",
+    )
+
+    assert conversation == [
+        {"role": "user", "content": "<|image_1|>\nWhat's in the image?"}
+    ]
+
+    mm_data = await mm_future
+    assert mm_data is not None
+    assert set(mm_data.keys()) == {"image"}
+
+    image_data = mm_data.get("image")
+    assert image_data is not None
+
+    assert isinstance(image_data, list) and len(image_data) == 1
+
+    assert mm_uuids is not None
+    assert "image" in mm_uuids
+
+    image_uuids = mm_uuids.get("image")
+    assert image_uuids is not None
+    assert isinstance(image_uuids, list) and len(image_uuids) == 1
+    assert image_uuids[0] == image_uuid
 
 
 def test_chat_template_with_vllm():
@@ -59,7 +127,7 @@ def test_chat_template_with_vllm():
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[
@@ -119,7 +187,7 @@ def test_vllm_llama_parallel(tp_size, pp_size, concurrency):
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[
@@ -172,7 +240,7 @@ def test_vllm_llama_lora():
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             # For even ids, use the base model, for odd ids, use the LoRA adapter
@@ -202,12 +270,12 @@ def test_vllm_llama_lora():
 
 
 @pytest.mark.parametrize(
-    "model_source,tp_size,pp_size,concurrency,sample_size",
+    "model_source,tp_size,pp_size,concurrency,sample_size,chat_template_content_format,apply_sys_msg_formatting",
     [
         # LLaVA model with TP=1, PP=1, concurrency=1
-        ("llava-hf/llava-1.5-7b-hf", 1, 1, 1, 60),
+        ("llava-hf/llava-1.5-7b-hf", 1, 1, 1, 60, "openai", False),
         # Pixtral model with TP=2, PP=1, concurrency=2
-        ("mistral-community/pixtral-12b", 2, 1, 2, 60),
+        ("mistral-community/pixtral-12b", 2, 1, 2, 60, "openai", True),
     ],
 )
 def test_vllm_vision_language_models(
@@ -216,6 +284,8 @@ def test_vllm_vision_language_models(
     pp_size,
     concurrency,
     sample_size,
+    chat_template_content_format,
+    apply_sys_msg_formatting,
 ):
     """Test vLLM with vision language models using different configurations."""
 
@@ -225,7 +295,7 @@ def test_vllm_vision_language_models(
     tokenize = False
     detokenize = False
 
-    processor_config = vLLMEngineProcessorConfig(
+    llm_processor_config = vLLMEngineProcessorConfig(
         model_source=model_source,
         task_type="generate",
         engine_kwargs=dict(
@@ -234,19 +304,21 @@ def test_vllm_vision_language_models(
             max_model_len=4096,
             enable_chunked_prefill=True,
         ),
+        prepare_multimodal_stage=PrepareMultimodalStageConfig(
+            enabled=True,
+            chat_template_content_format=chat_template_content_format,
+            apply_sys_msg_formatting=apply_sys_msg_formatting,
+        ),
         apply_chat_template=True,
         tokenize=tokenize,
         detokenize=detokenize,
         batch_size=16,
         concurrency=concurrency,
-        has_image=True,
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
-
-    processor = build_llm_processor(
-        processor_config,
+    llm_processor = build_processor(
+        llm_processor_config,
         preprocess=lambda row: dict(
-            model=model_source,
             messages=[
                 {"role": "system", "content": "You are an assistant"},
                 {
@@ -254,11 +326,13 @@ def test_vllm_vision_language_models(
                     "content": [
                         {
                             "type": "text",
-                            "text": f"Say {row['id']} words about this image.",
+                            "text": f"Say {row['val']} words about this image.",
                         },
                         {
-                            "type": "image",
-                            "image": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg",
+                            "type": "image_url",
+                            "image_url": {
+                                "url": S3_ARTIFACT_ASSETS_URL + "cherry_blossom.jpg"
+                            },
                         },
                     ],
                 },
@@ -275,10 +349,88 @@ def test_vllm_vision_language_models(
 
     ds = ray.data.range(sample_size)
     ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
-    ds = processor(ds)
+    ds = llm_processor(ds)
     ds = ds.materialize()
     outs = ds.take_all()
     assert len(outs) == sample_size
+    assert all("resp" in out for out in outs)
+
+
+@pytest.mark.parametrize(
+    "multimodal_content",
+    [
+        {
+            "type": "image_url",
+            "image_url": {"url": S3_ARTIFACT_ASSETS_URL + "cherry_blossom.jpg"},
+        },
+        {
+            "type": "video_url",
+            "video_url": {"url": S3_ARTIFACT_ASSETS_URL + "free-videos.mp4"},
+        },
+    ],
+)
+def test_vllm_qwen_vl_multimodal(multimodal_content):
+    model_source = "Qwen/Qwen2.5-VL-3B-Instruct"
+
+    llm_processor_config = vLLMEngineProcessorConfig(
+        model_source=model_source,
+        task_type="generate",
+        engine_kwargs=dict(
+            enable_chunked_prefill=True,
+            distributed_executor_backend="ray",
+            # A single GPU won't be able to accomodate Qwen/Qwen2.5-VL-3B-Instruct's memory requirements
+            # due to vllm0.12.0 resource/profiling issues.
+            # Issue: https://github.com/vllm-project/vllm/issues/30521.
+            tensor_parallel_size=2,
+            pipeline_parallel_size=1,
+        ),
+        prepare_multimodal_stage=PrepareMultimodalStageConfig(
+            enabled=True,
+        ),
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=False),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
+        batch_size=16,
+        concurrency=1,
+    )
+
+    llm_processor = build_processor(
+        llm_processor_config,
+        preprocess=lambda row: dict(
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+            ),
+            mm_processor_kwargs=dict(
+                min_pixels=28 * 28,
+                max_pixels=1280 * 28 * 28,
+                fps=1,
+            ),
+            messages=[
+                {"role": "system", "content": "You are an assistant"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Describe this asset in {row['id']} sentences.",
+                        },
+                        multimodal_content,
+                    ],
+                },
+            ],
+        ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = llm_processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
     assert all("resp" in out for out in outs)
 
 
@@ -304,7 +456,7 @@ def test_async_udf_queue_capped(concurrency):
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             # 1M emoji (4 bytes), should not leak to memory heap.
@@ -390,7 +542,7 @@ def test_vllm_placement_group(backend, placement_group_config):
         placement_group_config=placement_group_config,
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         config,
         preprocess=lambda row: dict(
             prompt=f"You are a calculator. {row['id']} ** 3 = ?",

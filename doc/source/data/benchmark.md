@@ -60,7 +60,7 @@ All benchmark results are taken from an average/std across 4 runs. A warmup was 
     - Code
 -   - **Image Classification**
     - 800k images from ImageNet
-    - s3://ray-example-data/imagenet/metadata_file
+    - s3://ray-example-data/imagenet/metadata_file.parquet
     - 1 head / 8 workers of varying instance types
     - [Link](https://github.com/ray-project/ray/tree/master/release/nightly_tests/multimodal_inference_benchmarks/image_classification)
 -   - **Document Embedding**

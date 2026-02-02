@@ -141,7 +141,7 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
   TaskSpecification task;
   bool ok = false;
@@ -157,7 +157,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
   TaskSpecification task;
   ObjectID obj = ObjectID::FromRandom();
@@ -202,7 +202,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
   TaskSpecification task;
   ObjectID obj = ObjectID::FromRandom();
@@ -246,7 +246,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
   ObjectID obj1 = ObjectID::FromRandom();
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
@@ -276,7 +276,7 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
@@ -310,7 +310,7 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
@@ -348,7 +348,7 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
@@ -388,7 +388,7 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
@@ -423,7 +423,7 @@ TEST(LocalDependencyResolverTest, TestDependenciesAlreadyLocal) {
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
-        return rpc::TensorTransport::OBJECT_STORE;
+        return std::nullopt;
       });
 
   ObjectID obj = ObjectID::FromRandom();
@@ -464,10 +464,11 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
 
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [&](const ObjectID &object_id) {
+        std::optional<std::string> transport;
         if (object_id == obj1) {
-          return rpc::TensorTransport::NCCL;
+          transport.emplace("some direct transport");
         }
-        return rpc::TensorTransport::OBJECT_STORE;
+        return transport;
       });
 
   auto data = GenerateRandomObject();

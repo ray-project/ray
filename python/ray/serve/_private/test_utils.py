@@ -17,6 +17,11 @@ import ray
 from ray import serve
 from ray._common.network_utils import build_address
 from ray._common.test_utils import wait_for_condition
+from ray._common.utils import TimerBase
+from ray._private.test_utils import (
+    PrometheusTimeseries,
+    fetch_prometheus_metric_timeseries,
+)
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
@@ -32,7 +37,6 @@ from ray.serve._private.constants import (
 from ray.serve._private.deployment_state import ALL_REPLICA_STATES, ReplicaState
 from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import TimerBase
 from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.schema import ApplicationStatus, TargetGroup
@@ -152,6 +156,9 @@ class MockClusterNodeInfoCache:
 
     def set_available_resources_per_node(self, node_id: str, resources: Dict):
         self.available_resources_per_node[node_id] = deepcopy(resources)
+
+    def get_node_labels(self, node_id: str):
+        return self.node_labels.get(node_id, {})
 
 
 class FakeRemoteFunction:
@@ -302,7 +309,7 @@ def check_num_replicas_eq(
     target: int,
     app_name: str = SERVE_DEFAULT_APP_NAME,
     use_controller: bool = False,
-) -> int:
+) -> bool:
     """Check if num replicas is == target."""
 
     if use_controller:
@@ -862,3 +869,62 @@ def request_with_retries(timeout=30, app_name=SERVE_DEFAULT_APP_NAME):
     except RuntimeError as e:
         # Preserve previous API by raising TimeoutError on expiry
         raise TimeoutError from e
+
+
+# Metrics test utilities
+TEST_METRICS_EXPORT_PORT = 9999
+
+
+def get_metric_float(
+    metric: str,
+    expected_tags: Optional[Dict[str, str]],
+    timeseries: Optional[PrometheusTimeseries] = None,
+) -> float:
+    """Gets the float value of metric.
+
+    If tags is specified, searched for metric with matching tags.
+
+    Returns -1 if the metric isn't available.
+    """
+    if timeseries is None:
+        timeseries = PrometheusTimeseries()
+    samples = fetch_prometheus_metric_timeseries(
+        [f"localhost:{TEST_METRICS_EXPORT_PORT}"], timeseries
+    ).get(metric, [])
+    for sample in samples:
+        if expected_tags.items() <= sample.labels.items():
+            return sample.value
+    return -1
+
+
+def check_metric_float_eq(
+    metric: str,
+    expected: float,
+    expected_tags: Optional[Dict[str, str]],
+    timeseries: Optional[PrometheusTimeseries] = None,
+) -> bool:
+    """Check if a metric's float value equals the expected value."""
+    metric_value = get_metric_float(metric, expected_tags, timeseries)
+    assert float(metric_value) == expected
+    return True
+
+
+def get_metric_dictionaries(
+    name: str, timeout: float = 20, timeseries: Optional[PrometheusTimeseries] = None
+) -> List[Dict]:
+    if timeseries is None:
+        timeseries = PrometheusTimeseries()
+
+    def metric_available() -> bool:
+        assert name in fetch_prometheus_metric_timeseries(
+            [f"localhost:{TEST_METRICS_EXPORT_PORT}"], timeseries
+        )
+        return True
+
+    wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout)
+    metric_dicts = []
+    for sample in timeseries.metric_samples.values():
+        if sample.name == name:
+            metric_dicts.append(sample.labels)
+
+    return metric_dicts

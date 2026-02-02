@@ -5,9 +5,8 @@ import os
 import random
 import threading
 import time
-from asyncio import AbstractEventLoop
 from typing import Iterator, Literal
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import numpy as np
 import pandas as pd
@@ -17,7 +16,6 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.test_utils import run_string_as_driver
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
@@ -26,6 +24,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_async_map,
     _MapActorContext,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
@@ -191,34 +190,6 @@ def test_callable_classes(shutdown_only, target_max_block_size_infinite_or_defau
         fn_constructor_kwargs={"kwarg": 2},
     ).take()
     assert sorted(extract_values("id", result)) == list(range(10)), result
-
-
-def test_concurrent_callable_classes(
-    shutdown_only, target_max_block_size_infinite_or_default
-):
-    """Test that concurrenct actor pool runs user UDF in a separate thread."""
-    ray.init(num_cpus=2)
-    ds = ray.data.range(10, override_num_blocks=10)
-
-    class StatefulFn:
-        def __call__(self, x):
-            thread_id = threading.get_ident()
-            assert threading.current_thread() is not threading.main_thread()
-            return {"tid": np.array([thread_id])}
-
-    thread_ids = extract_values(
-        "tid",
-        ds.map_batches(StatefulFn, concurrency=1, max_concurrency=2).take_all(),
-    )
-    # Make sure user's UDF is not running concurrently.
-    assert len(set(thread_ids)) == 1
-
-    class ErrorFn:
-        def __call__(self, x):
-            raise ValueError
-
-    with pytest.raises((UserCodeException, ValueError)):
-        ds.map_batches(ErrorFn, concurrency=1, max_concurrency=2).take_all()
 
 
 def test_transform_failure(shutdown_only, target_max_block_size_infinite_or_default):
@@ -500,6 +471,25 @@ def test_add_column(ray_start_regular_shared):
     # Test that an invalid batch_format raises an error
     with pytest.raises(ValueError):
         ray.data.range(5).add_column("foo", lambda x: x["id"] + 1, batch_format="foo")
+
+
+def test_add_column_to_pandas(ray_start_regular_shared):
+    # Refer to issue https://github.com/ray-project/ray/issues/51758
+    ds = ray.data.from_pandas(
+        pd.DataFrame({"a": list(range(20))}), override_num_blocks=2
+    )
+
+    ds = ds.add_column(
+        "foo1", lambda df: pd.Series([1] * len(df)), batch_format="pandas"
+    )
+    ds = ds.add_column(
+        "foo2", lambda df: pd.DatetimeIndex([1] * len(df)), batch_format="pandas"
+    )
+    ds = ds.add_column(
+        "foo3", lambda df: pd.DataFrame({"foo": [1] * len(df)}), batch_format="pandas"
+    )
+    for row in ds.iter_rows():
+        assert row["foo1"] == 1 and row["foo2"] == pd.Timestamp(1) and row["foo3"] == 1
 
 
 @pytest.mark.parametrize(
@@ -970,7 +960,6 @@ def test_actor_pool_strategy_bundles_to_max_actors(
 def test_nonserializable_map_batches(
     shutdown_only, target_max_block_size_infinite_or_default
 ):
-    import threading
 
     lock = threading.Lock()
 
@@ -1063,17 +1052,21 @@ def test_async_flat_map(
 class TestGenerateTransformFnForAsyncMap:
     @pytest.fixture
     def mock_actor_async_ctx(self):
-        _map_actor_ctx = _MapActorContext(Mock(), Mock(), is_async=True)
+        # Use new signature: only is_async and udf_instances
+        _map_actor_ctx = _MapActorContext(is_async=True, udf_instances={})
 
-        loop: AbstractEventLoop = _map_actor_ctx.udf_map_asyncio_loop
-        assert loop is not None
+        import ray
 
-        with patch("ray.data._map_actor_context", _map_actor_ctx):
-
-            yield _map_actor_ctx
-
-            loop.call_soon_threadsafe(loop.stop)
-            _map_actor_ctx.udf_map_asyncio_thread.join()
+        ray.data._map_actor_context = _map_actor_ctx
+        yield _map_actor_ctx
+        # Shutdown async loop thread before cleanup to prevent hanging
+        if _map_actor_ctx.udf_map_asyncio_loop is not None:
+            _map_actor_ctx.udf_map_asyncio_loop.call_soon_threadsafe(
+                _map_actor_ctx.udf_map_asyncio_loop.stop
+            )
+        if _map_actor_ctx.udf_map_asyncio_thread is not None:
+            _map_actor_ctx.udf_map_asyncio_thread.join(timeout=5.0)
+        ray.data._map_actor_context = None
 
     def test_non_coroutine_function_assertion(
         self, target_max_block_size_infinite_or_default
@@ -1349,7 +1342,7 @@ def test_map_op_backpressure_configured_properly(
     get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
     reason="Requires pyarrow>=14 for unify_schemas in OneHotEncoder",
 )
-def test_map_names(target_max_block_size_infinite_or_default):
+def test_map_names(target_max_block_size_infinite_or_default, capsys):
     """To test different UDF format such that the operator
     has the correct representation.
 
@@ -1359,35 +1352,40 @@ def test_map_names(target_max_block_size_infinite_or_default):
 
     ds = ray.data.range(5)
 
-    r = ds.map(lambda x: {"id": str(x["id"])}).__repr__()
-    assert r.startswith("Map(<lambda>)"), r
+    def _assert_explain_contains(dataset, expected):
+        dataset.explain()
+        captured = capsys.readouterr()
+        assert expected in captured.out, captured.out
+
+    mapped = ds.map(lambda x: {"id": str(x["id"])})
+    _assert_explain_contains(mapped, "Map(<lambda>)")
 
     class C:
         def __call__(self, x):
             return x
 
-    r = ds.map(C, concurrency=4).__repr__()
-    assert r.startswith("Map(C)"), r
+    mapped = ds.map(C, concurrency=4)
+    _assert_explain_contains(mapped, "Map(C)")
 
     # Simple and partial functions
     def func(x, y):
         return x
 
-    r = ds.map(func, fn_args=[0]).__repr__()
-    assert r.startswith("Map(func)")
+    mapped = ds.map(func, fn_args=[0])
+    _assert_explain_contains(mapped, "Map(func)")
 
     from functools import partial
 
-    r = ds.map(partial(func, y=1)).__repr__()
-    assert r.startswith("Map(func)"), r
+    mapped = ds.map(partial(func, y=1))
+    _assert_explain_contains(mapped, "Map(func)")
 
     # Preprocessor
     from ray.data.preprocessors import OneHotEncoder
 
     ds = ray.data.from_items(["a", "b", "c", "a", "b", "c"])
     enc = OneHotEncoder(columns=["item"])
-    r = enc.fit_transform(ds).__repr__()
-    assert "OneHotEncoder" in r, r
+    transformed = enc.fit_transform(ds)
+    _assert_explain_contains(transformed, "OneHotEncoder")
 
 
 def test_map_with_max_calls():

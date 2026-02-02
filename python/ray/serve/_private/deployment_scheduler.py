@@ -1,6 +1,7 @@
 import copy
 import logging
 import sys
+import warnings
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from functools import total_ordering
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
+from ray._raylet import node_labels_match_selector
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
     CreatePlacementGroupRequest,
@@ -19,6 +21,7 @@ from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
     RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
 )
 from ray.util.scheduling_strategies import (
@@ -153,6 +156,8 @@ class ReplicaSchedulingRequest:
     # These are optional: by default replicas do not have a placement group.
     placement_group_bundles: Optional[List[Dict[str, float]]] = None
     placement_group_strategy: Optional[str] = None
+    placement_group_bundle_label_selector: Optional[List[Dict[str, str]]] = None
+    placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None
     max_replicas_per_node: Optional[int] = None
 
     @property
@@ -570,6 +575,7 @@ class DeploymentScheduler(ABC):
                         strategy=placement_group_strategy,
                         target_node_id=target_node_id,
                         name=scheduling_request.actor_options["name"],
+                        bundle_label_selector=scheduling_request.placement_group_bundle_label_selector,
                     )
                 )
             except Exception:
@@ -659,49 +665,42 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         Returns:
             The IDs of replicas to stop for each deployment.
         """
+        # Update pending replicas from upscales.
         for upscale in upscales.values():
             for scheduling_request in upscale:
                 replica_id = scheduling_request.replica_id
                 deployment_id = replica_id.deployment_id
                 self._pending_replicas[deployment_id][replica_id] = scheduling_request
 
+        # Check for deprecated environment variable usage
+        if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY:
+            warnings.warn(
+                "The environment variable 'RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY' "
+                "is deprecated and will be removed in a v2.55.0 release. "
+                "Please use 'RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        # Determine scheduling strategy
         non_strict_pack_pgs_exist = any(
             d.is_non_strict_pack_pg() for d in self._deployments.values()
         )
-        # Schedule replicas using compact strategy.
-        if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY and not non_strict_pack_pgs_exist:
-            # Flatten dict of deployment replicas into all replicas,
-            # then sort by decreasing resource size
-            all_scheduling_requests = sorted(
-                _flatten(self._pending_replicas).values(),
-                key=lambda r: r.required_resources,
-                reverse=True,
-            )
+        use_pack_strategy = (
+            RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY and not non_strict_pack_pgs_exist
+        )
 
-            # Schedule each replica
-            for scheduling_request in all_scheduling_requests:
-                target_node = self._find_best_available_node(
-                    scheduling_request.required_resources,
-                    self._get_available_resources_per_node(),
-                )
-
-                self._schedule_replica(
-                    scheduling_request,
-                    default_scheduling_strategy="DEFAULT",
-                    target_node_id=target_node,
-                )
-
+        if use_pack_strategy:
+            # This branch is only reached if each deployment either:
+            # 1. Use STRICT_PACK placement group strategy, or
+            # 2. Do not use placement groups at all.
+            # This ensures Serve's best-fit node selection is respected by Ray Core
+            # (since _soft_target_node_id only works with STRICT_PACK).
+            self._schedule_with_pack_strategy()
         else:
-            for pending_replicas in self._pending_replicas.values():
-                if not pending_replicas:
-                    continue
+            self._schedule_with_spread_strategy()
 
-                for scheduling_request in list(pending_replicas.values()):
-                    self._schedule_replica(
-                        scheduling_request=scheduling_request,
-                        default_scheduling_strategy="SPREAD",
-                    )
-
+        # Handle downscales
         deployment_to_replicas_to_stop = {}
         for downscale in downscales.values():
             deployment_to_replicas_to_stop[
@@ -711,6 +710,118 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             )
 
         return deployment_to_replicas_to_stop
+
+    def _schedule_with_pack_strategy(self):
+        """Tries to schedule pending replicas using PACK strategy."""
+        # Flatten dict of deployment replicas into all replicas,
+        # then sort by decreasing resource size
+        all_scheduling_requests = sorted(
+            _flatten(self._pending_replicas).values(),
+            key=lambda r: r.required_resources,
+            reverse=True,
+        )
+
+        # Fetch node labels for active nodes.
+        active_nodes = self._cluster_node_info_cache.get_active_node_ids()
+        all_node_labels = {
+            node_id: self._cluster_node_info_cache.get_node_labels(node_id)
+            for node_id in active_nodes
+        }
+
+        for scheduling_request in all_scheduling_requests:
+            self._pack_schedule_replica(scheduling_request, all_node_labels)
+
+    def _schedule_with_spread_strategy(self):
+        """Tries to schedule pending replicas using the SPREAD strategy."""
+        for pending_replicas in self._pending_replicas.values():
+            if not pending_replicas:
+                continue
+
+            for scheduling_request in list(pending_replicas.values()):
+                self._schedule_replica(
+                    scheduling_request=scheduling_request,
+                    default_scheduling_strategy="SPREAD",
+                )
+
+    def _pack_schedule_replica(
+        self,
+        scheduling_request: ReplicaSchedulingRequest,
+        all_node_labels: Dict[str, Dict[str, str]],
+    ):
+        """Attempts to schedule a single request on the best available node."""
+
+        placement_candidates = self._build_pack_placement_candidates(scheduling_request)
+
+        target_node = None
+        for required_resources, required_labels in placement_candidates:
+            target_node = self._find_best_fit_node_for_pack(
+                required_resources,
+                self._get_available_resources_per_node(),
+                required_labels_list=required_labels,
+                node_labels=all_node_labels,
+            )
+            if target_node:
+                break
+
+        self._schedule_replica(
+            scheduling_request,
+            default_scheduling_strategy="DEFAULT",
+            target_node_id=target_node,
+        )
+
+    def _build_pack_placement_candidates(
+        self, scheduling_request: ReplicaSchedulingRequest
+    ) -> List[Tuple[Resources, List[Dict[str, str]]]]:
+        """Returns a list of (resources, labels) tuples to attempt for scheduling."""
+
+        # Collect a list of required resources and labels to try to schedule to
+        # support replica compaction when fallback strategies are provided.
+        placement_candidates = []
+        primary_labels = []
+        primary_bundles = scheduling_request.placement_group_bundles
+
+        if primary_bundles:
+            # PG: Use PG bundle_label_selector
+            if scheduling_request.placement_group_bundle_label_selector:
+                pg_strategy = scheduling_request.placement_group_strategy or None
+                if pg_strategy == "STRICT_PACK":
+                    # All bundle_label_selectors must be satisfied on same node.
+                    primary_labels = (
+                        scheduling_request.placement_group_bundle_label_selector
+                    )
+                else:
+                    # TODO(ryanaoleary@): Support PACK strategy with bundle label selectors.
+                    raise NotImplementedError(
+                        "Placement Group strategy 'PACK' with bundle_label_selector "
+                        "is not yet supported in the Serve scheduler."
+                    )
+        else:
+            # Actor: Use Actor label selector
+            if "label_selector" in scheduling_request.actor_options:
+                primary_labels = [
+                    scheduling_request.actor_options["label_selector"] or {}
+                ]
+
+        # If PG is defined on scheduling request, then `required_resources` represents the sum across all bundles.
+        placement_candidates.append(
+            (scheduling_request.required_resources, primary_labels)
+        )
+
+        if scheduling_request.placement_group_fallback_strategy:
+            # TODO(ryanaoleary@): Add support for placement group fallback_strategy when it's added to options.
+            raise NotImplementedError(
+                "Placement Group fallback strategies are not yet supported in the Serve scheduler."
+            )
+
+        elif scheduling_request.actor_options.get("fallback_strategy"):
+            # Fallback strategy provided for Ray Actor.
+            for fallback in scheduling_request.actor_options["fallback_strategy"]:
+                fallback_labels = [fallback.get("label_selector", {}) or {}]
+                placement_candidates.append(
+                    (scheduling_request.required_resources, fallback_labels)
+                )
+
+        return placement_candidates
 
     def _get_replicas_to_stop(
         self, deployment_id: DeploymentID, max_num_to_stop: int
@@ -735,17 +846,25 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         for (
             pending_launching_recovering_replica
         ) in pending_launching_recovering_replicas:
+            replicas_to_stop.add(pending_launching_recovering_replica)
             if len(replicas_to_stop) == max_num_to_stop:
                 return replicas_to_stop
-            else:
-                replicas_to_stop.add(pending_launching_recovering_replica)
 
-        node_to_running_replicas_of_target_deployment = (
-            self._get_node_to_running_replicas(deployment_id)
-        )
         node_to_running_replicas_of_all_deployments = (
             self._get_node_to_running_replicas()
         )
+
+        # _running_replicas preserves insertion order (oldest → newest).
+        # Reverse once so we have newest → oldest, then bucket by node.
+        ordered_running_replicas = list(self._running_replicas[deployment_id].items())
+        ordered_running_replicas.reverse()
+        ordered_running_replicas_of_target_deployment: Dict[
+            str, List[ReplicaID]
+        ] = defaultdict(list)
+        for replica_id, replica_node_id in ordered_running_replicas:
+            ordered_running_replicas_of_target_deployment[replica_node_id].append(
+                replica_id
+            )
 
         # Replicas on the head node has the lowest priority for downscaling
         # since we cannot relinquish the head node.
@@ -760,22 +879,36 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         for node_id, _ in sorted(
             node_to_running_replicas_of_all_deployments.items(), key=key
         ):
-            if node_id not in node_to_running_replicas_of_target_deployment:
+            if node_id not in ordered_running_replicas_of_target_deployment:
                 continue
-            for running_replica in node_to_running_replicas_of_target_deployment[
-                node_id
-            ]:
+
+            # Newest-first list for this node.
+            for replica_id in ordered_running_replicas_of_target_deployment[node_id]:
+                replicas_to_stop.add(replica_id)
                 if len(replicas_to_stop) == max_num_to_stop:
                     return replicas_to_stop
-                else:
-                    replicas_to_stop.add(running_replica)
 
         return replicas_to_stop
 
-    def _find_best_available_node(
+    def _filter_nodes_by_label_selector(
+        self,
+        available_nodes: Dict[str, Resources],
+        required_labels: Dict[str, str],
+        node_labels: Dict[str, Dict[str, str]],
+    ) -> Dict[str, Resources]:
+        """Filters available nodes based on label selector constraints."""
+        return {
+            node_id: resources
+            for node_id, resources in available_nodes.items()
+            if node_labels_match_selector(node_labels.get(node_id, {}), required_labels)
+        }
+
+    def _find_best_fit_node_for_pack(
         self,
         required_resources: Resources,
         available_resources_per_node: Dict[str, Resources],
+        required_labels_list: Optional[List[Dict[str, str]]] = None,
+        node_labels: Optional[Dict[str, Dict[str, str]]] = None,
     ) -> Optional[str]:
         """Chooses best available node to schedule the required resources.
 
@@ -783,6 +916,15 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         available node, minimizing fragmentation. Prefers non-idle nodes
         over idle nodes.
         """
+
+        # Filter feasible nodes by provided label selectors if provided.
+        if required_labels_list and node_labels:
+            for required_labels in required_labels_list:
+                available_resources_per_node = self._filter_nodes_by_label_selector(
+                    available_resources_per_node, required_labels, node_labels
+                )
+                if not available_resources_per_node:
+                    return None
 
         node_to_running_replicas = self._get_node_to_running_replicas()
 

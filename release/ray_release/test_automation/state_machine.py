@@ -13,12 +13,14 @@ from ray_release.test import (
     TestState,
 )
 
-RAY_REPO = "ray-project/ray"
+# We track test issues on anyscale's ray fork repo.
+RAY_REPO = "anyscale/ray"
+AWS_SECRET_GITHUB = "ray_ci_github_bot_token"
+WEEKLY_RELEASE_BLOCKER_TAG = "weekly-release-blocker"
+
 BUILDKITE_ORGANIZATION = "ray-project"
 BUILDKITE_BISECT_PIPELINE = "release-tests-bisect"
-AWS_SECRET_GITHUB = "ray_ci_github_token"
 AWS_SECRET_BUILDKITE = "ray_ci_buildkite_token"
-WEEKLY_RELEASE_BLOCKER_TAG = "weekly-release-blocker"
 NO_TEAM = "none"
 TEAM = [
     "core",
@@ -26,6 +28,7 @@ TEAM = [
     "kuberay",
     "ml",
     "rllib",
+    "llm",
     "serve",
 ]
 MAX_BISECT_PER_DAY = 10  # Max number of bisects to run per day for all tests

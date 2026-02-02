@@ -9,6 +9,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.task_consumer import TaskConsumerWrapper
+from ray.serve._private.utils import copy_class_metadata
 from ray.serve.schema import (
     TaskProcessorAdapter,
     TaskProcessorConfig,
@@ -153,13 +154,11 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
 
             def __del__(self):
                 self._adapter.stop_consumer()
-                self._adapter.shutdown()
 
                 if hasattr(target_cls, "__del__"):
                     target_cls.__del__(self)
 
-        # Preserve the original class name
-        _TaskConsumerWrapper.__name__ = target_cls.__name__
+        copy_class_metadata(_TaskConsumerWrapper, target_cls)
 
         return _TaskConsumerWrapper
 

@@ -1,0 +1,47 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "authentication_token_test",
+    size = "small",
+    srcs = [
+        "authentication_token_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/rpc/authentication:authentication_token",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "authentication_token_loader_test",
+    size = "small",
+    srcs = [
+        "authentication_token_loader_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/rpc/authentication:authentication_token_loader",
+        "//src/ray/util:env",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "grpc_auth_token_tests",
+    size = "small",
+    srcs = [
+        "grpc_auth_token_tests.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/protobuf:test_service_cc_grpc",
+        "//src/ray/rpc:grpc_client",
+        "//src/ray/rpc:grpc_server",
+        "//src/ray/rpc/authentication:authentication_token_loader",
+        "//src/ray/rpc/tests:grpc_test_common",
+        "//src/ray/util:env",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

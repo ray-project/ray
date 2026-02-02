@@ -231,6 +231,7 @@ message GetAllNodeInfoRequest {
       bytes node_id = 1;
       string node_name = 2;
       string node_ip_address = 3;
+      bool is_head_node = 4;
     }
   }
 
@@ -723,10 +724,6 @@ message GetAllResourceUsageRequest {}
 message GetAllResourceUsageReply {
   GcsStatus status = 1;
   ResourceUsageBatchData resource_usage_data = 2;
-  /// True if gcs finds infeasible or pending actor creation tasks
-  /// locally (when gcs actor scheduler is enabled). This field is
-  /// expected to help triggering auto-scaling.
-  bool cluster_full_of_actors_detected_by_gcs = 3;
 }
 
 message GetDrainingNodesRequest {}

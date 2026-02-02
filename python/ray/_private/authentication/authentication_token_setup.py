@@ -90,7 +90,7 @@ def ensure_token_if_auth_enabled(
 
     token_loader = AuthenticationTokenLoader.instance()
 
-    if not token_loader.has_token():
+    if not token_loader.has_token(ignore_auth_mode=True):
         if create_token_if_missing:
             # Generate a new token.
             generate_and_save_token()

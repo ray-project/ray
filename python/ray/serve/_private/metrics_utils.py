@@ -411,6 +411,9 @@ def merge_instantaneous_total(
     if not active_series:
         return []
 
+    if len(active_series) == 1:
+        return active_series[0]
+
     # True k-way merge: heap maintains exactly k elements (one per series)
     # Each element is (timestamp, replica_id, iterator)
     merge_heap = []

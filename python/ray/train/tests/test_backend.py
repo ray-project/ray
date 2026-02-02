@@ -634,6 +634,10 @@ def test_placement_group_parent(ray_4_node_4_cpu, placement_group_capture_child_
 
 
 @pytest.mark.parametrize("timeout_s", [5, 0])
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version is not supported in python 3.12+",
+)
 def test_jax_distributed_shutdown_timeout(ray_start_2_cpus, monkeypatch, timeout_s):
     """Test that JAX distributed shutdown respects the timeout env var."""
     monkeypatch.setenv(JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S, str(timeout_s))

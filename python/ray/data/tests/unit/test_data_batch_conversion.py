@@ -5,9 +5,10 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 
-from ray.air._internal.torch_utils import convert_ndarray_to_torch_tensor
-from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.util.data_batch_conversion import (
+from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
+from ray.data._internal.tensor_extensions.pandas import TensorArray
+from ray.data.constants import TENSOR_COLUMN_NAME
+from ray.data.util.data_batch_conversion import (
     BatchFormat,
     _cast_ndarray_columns_to_tensor_extension,
     _cast_tensor_columns_to_ndarrays,
@@ -15,8 +16,7 @@ from ray.air.util.data_batch_conversion import (
     _convert_batch_type_to_pandas,
     _convert_pandas_to_batch_type,
 )
-from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
-from ray.air.util.tensor_extensions.pandas import TensorArray
+from ray.data.util.torch_utils import convert_ndarray_to_torch_tensor
 
 
 def test_pandas_pandas():

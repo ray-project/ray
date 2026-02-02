@@ -109,10 +109,10 @@ py_test(
 
 py_test(
     name = "test_integration_mlflow",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_integration_mlflow.py"],
     # NOTE: This tests the Tune mlflow callback.
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",

@@ -16,19 +16,9 @@ import ray
 import ray.cluster_utils
 import ray.exceptions
 from ray import cloudpickle
+from ray._common.test_utils import is_named_tuple
 
 logger = logging.getLogger(__name__)
-
-
-def is_named_tuple(cls):
-    """Return True if cls is a namedtuple and False otherwise."""
-    b = cls.__bases__
-    if len(b) != 1 or b[0] is not tuple:
-        return False
-    f = getattr(cls, "_fields", None)
-    if not isinstance(f, tuple):
-        return False
-    return all(type(n) is str for n in f)
 
 
 @pytest.mark.parametrize(

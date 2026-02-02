@@ -35,12 +35,12 @@ def generate_worker_group_poll_status(num_workers, num_ckpt, num_dummy, num_none
     ckpt_tr = _TrainingReport(
         metrics={},
         checkpoint=Checkpoint("mock://bucket/path"),
-        validation_spec=None,
+        validation=False,
     )
     dummy_tr = _TrainingReport(
         metrics={},
         checkpoint=None,
-        validation_spec=None,
+        validation=False,
     )
     ckpt_ws = WorkerStatus(running=True, error=None, training_report=ckpt_tr)
     dummy_ws = WorkerStatus(running=True, error=None, training_report=dummy_tr)
@@ -62,7 +62,9 @@ def generate_worker_group_poll_status(num_workers, num_ckpt, num_dummy, num_none
         (10, 1, 8, 1, 0),  # one worker with checkpoint, one worker with None
     ],
 )
-def test_report_handler(tmp_path, num_workers, num_ckpt, num_dummy, num_none, expected):
+async def test_report_handler(
+    tmp_path, num_workers, num_ckpt, num_dummy, num_none, expected
+):
     """`expected` is the number of times that the
     CheckpointManager.register_checkpoint is called.
     """

@@ -318,6 +318,12 @@ message GcsNodeInfo {
   // The port at which the runtime env agent listens as HTTP.
   int32 runtime_env_agent_port = 27;
 
+  // The port at which the metrics agent (dashboard agent grpc) listens.
+  int32 metrics_agent_port = 30;
+
+  // The port at which the dashboard agent listens for HTTP requests.
+  int32 dashboard_agent_listen_port = 31;
+
   // The total resources of this node.
   map<string, double> resources_total = 11;
 
@@ -506,7 +512,7 @@ message ResourceLoad {
 }
 
 message ResourcesData {
-  reserved 3, 8, 17;
+  reserved 3, 8, 14, 17;
   // Node id.
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
@@ -530,8 +536,6 @@ message ResourcesData {
   bool resources_normal_task_changed = 12;
   // The timestamp that normal task resources are measured.
   int64 resources_normal_task_timestamp = 13;
-  // Whether this node has detected a resource deadlock (full of actors).
-  bool cluster_full_of_actors_detected = 14;
   // The duration in ms during which all the node's resources are idle. If the
   // node currently has any resource being used, this will be 0.
   int64 idle_duration_ms = 15;

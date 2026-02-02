@@ -89,22 +89,18 @@ class OfflineData:
                 }
             )
 
-        try:
-            # Load the dataset.
-            start_time = time.perf_counter()
-            self.data = getattr(ray.data, self.data_read_method)(
-                self.path, **self.data_read_method_kwargs
-            )
-            if self.materialize_data:
-                self.data = self.data.materialize()
-            stop_time = time.perf_counter()
-            logger.debug(
-                "===> [OfflineData] - Time for loading dataset: "
-                f"{stop_time - start_time}s."
-            )
-            logger.info("Reading data from {}".format(self.path))
-        except Exception as e:
-            logger.error(e)
+        # Load the dataset.
+        start_time = time.perf_counter()
+        self.data = getattr(ray.data, self.data_read_method)(
+            self.path, **self.data_read_method_kwargs
+        )
+        if self.materialize_data:
+            self.data = self.data.materialize()
+        stop_time = time.perf_counter()
+        logger.debug(
+            f"Time to load offline data from {self.path}: {stop_time - start_time:.2f}s."
+        )
+
         # Avoids reinstantiating the batch iterator each time we sample.
         self.batch_iterators = None
         self.map_batches_kwargs = (
@@ -206,14 +202,12 @@ class OfflineData:
         # returned now and we have already generated from the iterator, i.e.
         # `isinstance(self.batch_iterators, types.GeneratorType) == True`, we need
         # to create here a new iterator.
-        # TODO (simon): Check, if this iterator could potentially exhaust.
         if not self.batch_iterators or (
             return_iterator and isinstance(self.batch_iterators, types.GeneratorType)
         ):
             # If we have more than one learner create an iterator for each of them
             # by splitting the data stream.
             if num_shards > 1:
-                logger.debug("===> [OfflineData]: Return streaming_split ... ")
                 # In case of multiple shards, we return multiple
                 # `StreamingSplitIterator` instances.
                 self.batch_iterators = self.data.streaming_split(
@@ -265,9 +259,7 @@ class OfflineData:
                 return next(self.batch_iterators)
             except StopIteration:
                 # If the batch iterator is exhausted, reinitiate a new one.
-                logger.debug(
-                    "===> [OfflineData]: Batch iterator exhausted. Reinitiating ..."
-                )
+                logger.debug("Batch iterator exhausted. Reinitiating ...")
                 self.batch_iterators = None
                 return self.sample(
                     num_samples=num_samples,

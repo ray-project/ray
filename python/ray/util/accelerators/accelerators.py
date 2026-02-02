@@ -47,8 +47,11 @@ GOOGLE_TPU_V4 = "TPU-V4"
 GOOGLE_TPU_V5P = "TPU-V5P"
 GOOGLE_TPU_V5LITEPOD = "TPU-V5LITEPOD"
 GOOGLE_TPU_V6E = "TPU-V6E"
+GOOGLE_TPU_V7X = "TPU-V7X"
 HUAWEI_NPU_910B = "Ascend910B"
 HUAWEI_NPU_910B4 = "Ascend910B4"
+METAX_C500 = "MXC500"
+METAX_C550 = "MXC550"
 
 # Use these instead of NVIDIA_A100 if you need a specific accelerator size. Note that
 # these labels are not auto-added to nodes, you'll have to add them manually in

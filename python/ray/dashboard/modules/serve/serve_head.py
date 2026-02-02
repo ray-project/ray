@@ -203,7 +203,10 @@ class ServeHead(SubprocessModule):
     @validate_endpoint()
     async def scale_deployment(self, req: Request) -> Response:
         from ray.serve._private.common import DeploymentID
-        from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
+        from ray.serve._private.exceptions import (
+            DeploymentIsBeingDeletedError,
+            ExternalScalerDisabledError,
+        )
         from ray.serve.schema import ScaleDeploymentRequest
 
         # Extract path parameters
@@ -250,13 +253,14 @@ class ServeHead(SubprocessModule):
                 200,
             )
         except Exception as e:
-            if isinstance(e.cause, DeploymentIsBeingDeletedError):
+            if isinstance(e, DeploymentIsBeingDeletedError):
+                # From customer's viewpoint, the deployment is deleted instead of being deleted
+                # as they must have already executed the delete command
                 return self._create_json_response(
-                    # From customer's viewpoint, the deployment is deleted instead of being deleted
-                    # as they must have already executed the delete command
-                    {"error": "Deployment is deleted"},
-                    412,
+                    {"error": "Deployment is deleted"}, 412
                 )
+            elif isinstance(e, ExternalScalerDisabledError):
+                return self._create_json_response({"error": str(e.cause)}, 412)
             if isinstance(e, ValueError) and "not found" in str(e):
                 return self._create_json_response(
                     {"error": "Application or Deployment not found"}, 400

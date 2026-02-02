@@ -7,12 +7,13 @@ import pytest
 
 import ray
 from ray.data import Dataset
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
+    Filter,
+    Limit,
+    Project,
     Repartition,
     Sort,
 )
-from ray.data._internal.logical.operators.map_operator import Filter, Project
-from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
 from ray.data.expressions import col
@@ -161,7 +162,7 @@ def test_chained_filter_with_expressions(parquet_ds):
         ),
         (
             lambda ds: ds.filter(expr=col("sepal.length") > 5.0),
-            "Filter[Filter(<expression>)]",  # CSV doesn't support predicate pushdown
+            "Filter[Filter(col('sepal.length') > 5.0)]",  # CSV doesn't support predicate pushdown
         ),
     ],
 )
@@ -194,8 +195,8 @@ def test_filter_mixed(csv_ds):
     # CSV doesn't support predicate pushdown, so filters stay after Read
     _check_plan_with_flexible_read(
         csv_ds,
-        "Filter[Filter(<lambda>)] -> Filter[Filter(<expression>)] -> "
-        "MapRows[Map(<lambda>)] -> Filter[Filter(<expression>)]",
+        "Filter[Filter(<lambda>)] -> Filter[Filter((col('sepal.length') > 4.0) & (col('sepal.length') > 3.0))] -> "
+        "MapRows[Map(<lambda>)] -> Filter[Filter((col('sepal.length') > 1.0) & (col('sepal.length') > 2.0))]",
         filtered_expr_data,
     )
 
@@ -230,7 +231,7 @@ def test_filter_mixed_expression_first_csv(ray_start_regular_shared):
     # CSV doesn't support predicate pushdown, so expression filters get fused but not pushed down
     _check_plan_with_flexible_read(
         ds,
-        "Filter[Filter(<expression>)] -> Filter[Filter(<lambda>)]",
+        "Filter[Filter((col('sepal.length') > 4.0) & (col('sepal.length') > 3.0))] -> Filter[Filter(<lambda>)]",
         filtered_expr_data,
     )
 
@@ -246,7 +247,7 @@ def test_filter_mixed_expression_not_readfiles(ray_start_regular_shared):
     assert all(record["id"] > 2.0 for record in filtered_expr_data)
     _check_valid_plan_and_result(
         ds,
-        "Read[ReadRange] -> Filter[Filter(<expression>)] -> "
+        "Read[ReadRange] -> Filter[Filter((col('id') > 2.0) & (col('id') > 1.0))] -> "
         "Filter[Filter(<lambda>)]",
         filtered_expr_data,
     )

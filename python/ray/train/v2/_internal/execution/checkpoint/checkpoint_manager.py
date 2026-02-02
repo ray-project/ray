@@ -342,13 +342,14 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     ):
         if not training_report.checkpoint:
             self._current_report_index += 1
+            self._notify()
             return
 
         self.register_checkpoint(
             _TrainingResult(
                 checkpoint=training_report.checkpoint, metrics=training_report.metrics
             ),
-            bool(training_report.validation_spec),
+            bool(training_report.validation),
         )
 
     # --------------------------

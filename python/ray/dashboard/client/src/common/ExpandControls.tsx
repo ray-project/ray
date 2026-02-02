@@ -11,9 +11,15 @@ type ExpanderProps = {
 };
 
 export const Minimizer: React.FC<MinimizerProps> = ({ onClick }) => (
-  <ExpandLessIcon onClick={onClick} />
+  <ExpandLessIcon
+    onClick={onClick}
+    sx={(theme) => ({ color: theme.palette.text.secondary })}
+  />
 );
 
 export const Expander: React.FC<ExpanderProps> = ({ onClick }) => (
-  <ExpandMoreIcon onClick={onClick} />
+  <ExpandMoreIcon
+    onClick={onClick}
+    sx={(theme) => ({ color: theme.palette.text.secondary })}
+  />
 );

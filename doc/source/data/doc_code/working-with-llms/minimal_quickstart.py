@@ -10,7 +10,7 @@ Quickstart: vLLM + Ray Data batch inference.
 
 # __minimal_vllm_quickstart_start__
 import ray
-from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+from ray.data.llm import vLLMEngineProcessorConfig, build_processor
 
 # Initialize Ray
 ray.init()
@@ -34,7 +34,7 @@ config = vLLMEngineProcessorConfig(
 # Build processor
 # preprocess: converts input row to format expected by vLLM (OpenAI chat format)
 # postprocess: extracts generated text from vLLM output
-processor = build_llm_processor(
+processor = build_processor(
     config,
     preprocess=lambda row: {
         "messages": [{"role": "user", "content": row["prompt"]}],

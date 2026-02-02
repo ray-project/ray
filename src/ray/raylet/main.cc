@@ -18,6 +18,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -43,6 +44,7 @@
 #include "ray/object_manager_rpc_client/object_manager_client.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
+#include "ray/raylet/metrics.h"
 #include "ray/raylet/node_manager.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
@@ -69,7 +71,10 @@ DEFINE_int32(object_manager_port, -1, "The port of object manager.");
 DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_int32(metrics_export_port, 1, "The port at which metrics are exposed.");
-DEFINE_int32(runtime_env_agent_port, 1, "The port of runtime env agent.");
+DEFINE_int32(dashboard_agent_listen_port,
+             0,
+             "The port for dashboard agent to listen on.");
+DEFINE_int32(runtime_env_agent_port, 0, "The port of runtime env agent.");
 DEFINE_string(node_id, "", "The id of this node.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
@@ -231,6 +236,8 @@ int main(int argc, char *argv[]) {
   const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   const int runtime_env_agent_port = static_cast<int>(FLAGS_runtime_env_agent_port);
+  const int dashboard_agent_listen_port =
+      static_cast<int>(FLAGS_dashboard_agent_listen_port);
   RAY_CHECK_NE(FLAGS_node_id, "") << "Expected node ID.";
   const std::string node_id = FLAGS_node_id;
   const std::string node_ip_address = FLAGS_node_ip_address;
@@ -331,7 +338,57 @@ int main(int argc, char *argv[]) {
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
   ray::stats::Gauge task_by_state_counter = ray::core::GetTaskByStateGaugeMetric();
+  ray::stats::Gauge resource_usage_gauge = ray::raylet::GetResourceUsageGaugeMetric();
   ray::stats::Gauge object_store_memory_gauge = ray::GetObjectStoreMemoryGaugeMetric();
+  ray::stats::Gauge spill_manager_objects_gauge =
+      ray::raylet::GetSpillManagerObjectsGaugeMetric();
+  ray::stats::Gauge spill_manager_objects_bytes_gauge =
+      ray::raylet::GetSpillManagerObjectsBytesGaugeMetric();
+  ray::stats::Gauge spill_manager_request_total_gauge =
+      ray::raylet::GetSpillManagerRequestTotalGaugeMetric();
+  ray::stats::Gauge spill_manager_throughput_mb_gauge =
+      ray::raylet::GetSpillManagerThroughputMBGaugeMetric();
+  ray::raylet::SpillManagerMetrics spill_manager_metrics{
+      spill_manager_objects_gauge,
+      spill_manager_objects_bytes_gauge,
+      spill_manager_request_total_gauge,
+      spill_manager_throughput_mb_gauge};
+  ray::stats::Count memory_manager_worker_eviction_total_count =
+      ray::raylet::GetMemoryManagerWorkerEvictionTotalCountMetric();
+  ray::stats::Gauge scheduler_tasks_gauge = ray::raylet::GetSchedulerTasksGaugeMetric();
+  ray::stats::Gauge scheduler_unscheduleable_tasks_gauge =
+      ray::raylet::GetSchedulerUnscheduleableTasksGaugeMetric();
+  ray::stats::Gauge scheduler_failed_worker_startup_total_gauge =
+      ray::raylet::GetSchedulerFailedWorkerStartupTotalGaugeMetric();
+  ray::stats::Gauge internal_num_spilled_tasks_gauge =
+      ray::raylet::GetInternalNumSpilledTasksGaugeMetric();
+  ray::stats::Gauge internal_num_infeasible_scheduling_classes_gauge =
+      ray::raylet::GetInternalNumInfeasibleSchedulingClassesGaugeMetric();
+  ray::stats::Sum num_workers_started_sum = ray::raylet::GetNumWorkersStartedMetric();
+  ray::stats::Sum num_cached_workers_skipped_job_mismatch_sum =
+      ray::raylet::GetNumCachedWorkersSkippedJobMismatchMetric();
+  ray::stats::Sum num_cached_workers_skipped_runtime_environment_mismatch_sum =
+      ray::raylet::GetNumCachedWorkersSkippedRuntimeEnvironmentMismatchMetric();
+  ray::stats::Sum num_cached_workers_skipped_dynamic_options_mismatch_sum =
+      ray::raylet::GetNumCachedWorkersSkippedDynamicOptionsMismatchMetric();
+  ray::stats::Sum num_workers_started_from_cache_sum =
+      ray::raylet::GetNumWorkersStartedFromCacheMetric();
+  ray::stats::Histogram worker_register_time_ms_histogram =
+      ray::raylet::GetWorkerRegisterTimeMsHistogramMetric();
+
+  ray::raylet::SchedulerMetrics scheduler_metrics = {
+      scheduler_tasks_gauge,
+      scheduler_unscheduleable_tasks_gauge,
+      scheduler_failed_worker_startup_total_gauge,
+      internal_num_spilled_tasks_gauge,
+      internal_num_infeasible_scheduling_classes_gauge};
+  ray::raylet::WorkerPoolMetrics worker_pool_metrics = {
+      num_workers_started_sum,
+      num_cached_workers_skipped_job_mismatch_sum,
+      num_cached_workers_skipped_runtime_environment_mismatch_sum,
+      num_cached_workers_skipped_dynamic_options_mismatch_sum,
+      num_workers_started_from_cache_sum,
+      worker_register_time_ms_histogram};
   std::shared_ptr<plasma::PlasmaClient> plasma_client;
   std::unique_ptr<ray::raylet::PlacementGroupResourceManager>
       placement_group_resource_manager;
@@ -513,6 +570,9 @@ int main(int argc, char *argv[]) {
     node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
     node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
     node_manager_config.runtime_env_agent_port = runtime_env_agent_port;
+    node_manager_config.metrics_agent_port = metrics_agent_port;
+    node_manager_config.metrics_export_port = metrics_export_port;
+    node_manager_config.dashboard_agent_listen_port = dashboard_agent_listen_port;
     node_manager_config.min_worker_port = min_worker_port;
     node_manager_config.max_worker_port = max_worker_port;
     node_manager_config.worker_ports = worker_ports;
@@ -635,6 +695,7 @@ int main(int argc, char *argv[]) {
         [&] { cluster_lease_manager->ScheduleAndGrantLeases(); },
         node_manager_config.ray_debugger_external,
         /*get_time=*/[]() { return absl::Now(); },
+        worker_pool_metrics,
         std::move(add_process_to_workers_cgroup_hook));
 
     client_call_manager = std::make_unique<ray::rpc::ClientCallManager>(
@@ -801,7 +862,8 @@ int main(int argc, char *argv[]) {
         },
         /*core_worker_subscriber_=*/core_worker_subscriber.get(),
         object_directory.get(),
-        object_store_memory_gauge);
+        object_store_memory_gauge,
+        spill_manager_metrics);
 
     lease_dependency_manager = std::make_unique<ray::raylet::LeaseDependencyManager>(
         *object_manager, task_by_state_counter);
@@ -812,9 +874,9 @@ int main(int argc, char *argv[]) {
         node_manager_config.resource_config.GetResourceMap(),
         /*is_node_available_fn*/
         [&](ray::scheduling::NodeID id) {
-          return gcs_client->Nodes().GetNodeAddressAndLiveness(
-                     ray::NodeID::FromBinary(id.Binary())) != nullptr;
+          return gcs_client->Nodes().IsNodeAlive(ray::NodeID::FromBinary(id.Binary()));
         },
+        resource_usage_gauge,
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
@@ -838,8 +900,7 @@ int main(int argc, char *argv[]) {
 
     auto get_node_info_func =
         [&](const ray::NodeID &id) -> std::optional<ray::rpc::GcsNodeAddressAndLiveness> {
-      auto ptr = gcs_client->Nodes().GetNodeAddressAndLiveness(id);
-      return ptr ? std::optional(*ptr) : std::nullopt;
+      return gcs_client->Nodes().GetNodeAddressAndLiveness(id);
     };
     auto announce_infeasible_lease = [](const ray::RayLease &lease) {
       /// Publish the infeasible lease error to GCS so that drivers can subscribe to it
@@ -899,7 +960,8 @@ int main(int argc, char *argv[]) {
             std::vector<std::unique_ptr<ray::RayObject>> *results) {
           return node_manager->GetObjectsFromPlasma(object_ids, results);
         },
-        max_task_args_memory);
+        max_task_args_memory,
+        scheduler_metrics);
 
     cluster_lease_manager =
         std::make_unique<ray::raylet::ClusterLeaseManager>(raylet_node_id,
@@ -909,8 +971,7 @@ int main(int argc, char *argv[]) {
                                                            *local_lease_manager);
 
     auto raylet_client_factory = [&](const ray::NodeID &id) {
-      const ray::rpc::GcsNodeAddressAndLiveness *node_info =
-          gcs_client->Nodes().GetNodeAddressAndLiveness(id);
+      auto node_info = gcs_client->Nodes().GetNodeAddressAndLiveness(id);
       RAY_CHECK(node_info) << "No GCS info for node " << id;
       auto addr = ray::rpc::RayletClientPool::GenerateRayletAddress(
           id, node_info->node_manager_address(), node_info->node_manager_port());
@@ -957,7 +1018,8 @@ int main(int argc, char *argv[]) {
         shutting_down,
         *placement_group_resource_manager,
         std::move(acceptor),
-        std::move(socket));
+        std::move(socket),
+        memory_manager_worker_eviction_total_count);
 
     // Initializing stats should be done after the node manager is initialized because
     // <explain why>. Metrics exported before this call will be buffered until `Init` is
@@ -968,19 +1030,30 @@ int main(int argc, char *argv[]) {
         {ray::stats::VersionKey, kRayVersion},
         {ray::stats::NodeAddressKey, node_ip_address},
         {ray::stats::SessionNameKey, session_name}};
-    ray::stats::Init(global_tags, metrics_agent_port, ray::WorkerID::Nil());
-    metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-        "127.0.0.1", metrics_agent_port, main_service, *client_call_manager);
-    metrics_agent_client->WaitForServerReady([metrics_agent_port](
-                                                 const ray::Status &server_status) {
-      if (server_status.ok()) {
-        ray::stats::InitOpenTelemetryExporter(metrics_agent_port);
-      } else {
-        RAY_LOG(ERROR) << "Failed to establish connection to the metrics exporter agent. "
-                          "Metrics will not be exported. "
-                       << "Exporter agent status: " << server_status.ToString();
-      }
-    });
+    ray::stats::Init(global_tags, ray::WorkerID::Nil());
+    // Use the actual bound port returned by the node manager.
+    // config.metrics_agent_port can be 0 (dynamic port assignment).
+    // -1 means metrics agent is not available (minimal install).
+    int actual_metrics_agent_port = node_manager->GetMetricsAgentPort();
+    if (actual_metrics_agent_port > 0) {
+      metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
+          "127.0.0.1", actual_metrics_agent_port, main_service, *client_call_manager);
+      metrics_agent_client->WaitForServerReady(
+          [actual_metrics_agent_port](const ray::Status &server_status) {
+            if (server_status.ok()) {
+              ray::stats::ConnectOpenCensusExporter(actual_metrics_agent_port);
+              ray::stats::InitOpenTelemetryExporter(actual_metrics_agent_port);
+            } else {
+              RAY_LOG(ERROR)
+                  << "Failed to establish connection to the metrics exporter agent. "
+                     "Metrics will not be exported. "
+                  << "Exporter agent status: " << server_status.ToString();
+            }
+          });
+    } else {
+      RAY_LOG(INFO) << "Metrics agent not available. To enable metrics, install Ray "
+                       "with dashboard support: `pip install 'ray[default]'`.";
+    }
 
     // Initialize event framework. This should be done after the node manager is
     // initialized.
@@ -1004,8 +1077,11 @@ int main(int argc, char *argv[]) {
     self_node_info.set_object_manager_port(object_manager->GetServerPort());
     self_node_info.set_node_manager_port(node_manager->GetServerPort());
     self_node_info.set_node_manager_hostname(boost::asio::ip::host_name());
-    self_node_info.set_metrics_export_port(metrics_export_port);
-    self_node_info.set_runtime_env_agent_port(node_manager_config.runtime_env_agent_port);
+    self_node_info.set_metrics_export_port(node_manager->GetMetricsExportPort());
+    self_node_info.set_metrics_agent_port(node_manager->GetMetricsAgentPort());
+    self_node_info.set_dashboard_agent_listen_port(
+        node_manager->GetDashboardAgentListenPort());
+    self_node_info.set_runtime_env_agent_port(node_manager->GetRuntimeEnvAgentPort());
     self_node_info.mutable_state_snapshot()->set_state(ray::rpc::NodeSnapshot::ACTIVE);
     auto resource_map = node_manager_config.resource_config.GetResourceMap();
     self_node_info.mutable_resources_total()->insert(resource_map.begin(),

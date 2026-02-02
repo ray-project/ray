@@ -71,19 +71,35 @@ class AsyncAuthenticationServerInterceptor(aiogrpc.ServerInterceptor):
         if handler is None:
             return None
 
+        async def _abort_if_unauthenticated(context):
+            """Abort the RPC if authentication fails."""
+            if not _authenticate_request(context.invocation_metadata()):
+                await context.abort(
+                    grpc.StatusCode.UNAUTHENTICATED,
+                    "Invalid or missing authentication token",
+                )
+
         # Wrap the RPC behavior with authentication check
-        def wrap_rpc_behavior(behavior):
-            """Wrap an RPC method to validate authentication first."""
+        def wrap_unary_response(behavior):
+            """Wrap a unary response RPC method to validate authentication first."""
             if behavior is None:
                 return None
 
             async def wrapped(request_or_iterator, context):
-                if not _authenticate_request(context.invocation_metadata()):
-                    await context.abort(
-                        grpc.StatusCode.UNAUTHENTICATED,
-                        "Invalid or missing authentication token",
-                    )
+                await _abort_if_unauthenticated(context)
                 return await behavior(request_or_iterator, context)
+
+            return wrapped
+
+        def wrap_stream_response(behavior):
+            """Wrap a streaming response RPC method to validate authentication first."""
+            if behavior is None:
+                return None
+
+            async def wrapped(request_or_iterator, context):
+                await _abort_if_unauthenticated(context)
+                async for response in behavior(request_or_iterator, context):
+                    yield response
 
             return wrapped
 
@@ -91,9 +107,12 @@ class AsyncAuthenticationServerInterceptor(aiogrpc.ServerInterceptor):
         class AuthenticatedHandler:
             """Wrapper handler that validates authentication."""
 
-            def __init__(self, original_handler, wrapper_func):
+            def __init__(
+                self, original_handler, unary_wrapper_func, stream_wrapper_func
+            ):
                 self._original = original_handler
-                self._wrap = wrapper_func
+                self._wrap_unary = unary_wrapper_func
+                self._wrap_stream = stream_wrapper_func
 
             @property
             def request_streaming(self):
@@ -113,21 +132,21 @@ class AsyncAuthenticationServerInterceptor(aiogrpc.ServerInterceptor):
 
             @property
             def unary_unary(self):
-                return self._wrap(self._original.unary_unary)
+                return self._wrap_unary(self._original.unary_unary)
 
             @property
             def unary_stream(self):
-                return self._wrap(self._original.unary_stream)
+                return self._wrap_stream(self._original.unary_stream)
 
             @property
             def stream_unary(self):
-                return self._wrap(self._original.stream_unary)
+                return self._wrap_unary(self._original.stream_unary)
 
             @property
             def stream_stream(self):
-                return self._wrap(self._original.stream_stream)
+                return self._wrap_stream(self._original.stream_stream)
 
-        return AuthenticatedHandler(handler, wrap_rpc_behavior)
+        return AuthenticatedHandler(handler, wrap_unary_response, wrap_stream_response)
 
 
 class SyncAuthenticationServerInterceptor(grpc.ServerInterceptor):

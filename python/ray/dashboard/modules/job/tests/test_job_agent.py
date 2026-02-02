@@ -172,8 +172,7 @@ ray.get(f.remote())
                 yield {
                     "runtime_env": {"py_modules": [str(Path(tmp_dir) / "test_module")]},
                     "entrypoint": (
-                        "python -c 'import test_module;"
-                        "print(test_module.run_test())'"
+                        "python -c 'import test_module;print(test_module.run_test())'"
                     ),
                     "expected_logs": "Hello from test_module!\n",
                 }
@@ -248,8 +247,12 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     agent_client, head_client = job_sdk_client
 
     runtime_env = runtime_env_option["runtime_env"]
-    runtime_env = upload_working_dir_if_needed(runtime_env, logger=logger)
-    runtime_env = upload_py_modules_if_needed(runtime_env, logger=logger)
+    runtime_env = upload_working_dir_if_needed(
+        runtime_env, include_gitignore=True, logger=logger
+    )
+    runtime_env = upload_py_modules_if_needed(
+        runtime_env, include_gitignore=True, logger=logger
+    )
     runtime_env = RuntimeEnv(**runtime_env_option["runtime_env"]).to_dict()
     request = validate_request_type(
         {"runtime_env": runtime_env, "entrypoint": runtime_env_option["entrypoint"]},
@@ -299,8 +302,12 @@ async def test_submit_job_rejects_browsers(
     agent_client = JobAgentSubmissionBrowserClient(agent_address)
 
     runtime_env = runtime_env_option["runtime_env"]
-    runtime_env = upload_working_dir_if_needed(runtime_env, logger=logger)
-    runtime_env = upload_py_modules_if_needed(runtime_env, logger=logger)
+    runtime_env = upload_working_dir_if_needed(
+        runtime_env, include_gitignore=True, logger=logger
+    )
+    runtime_env = upload_py_modules_if_needed(
+        runtime_env, include_gitignore=True, logger=logger
+    )
     runtime_env = RuntimeEnv(**runtime_env_option["runtime_env"]).to_dict()
     request = validate_request_type(
         {"runtime_env": runtime_env, "entrypoint": runtime_env_option["entrypoint"]},
@@ -310,7 +317,35 @@ async def test_submit_job_rejects_browsers(
     with pytest.raises(RuntimeError) as exc:
         _ = await agent_client.submit_job_internal(request)
 
-    assert "status code 405" in str(exc.value)
+    assert "status code 403" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_delete_job_rejects_browsers(job_sdk_client, monkeypatch):
+    """Test that DELETE job requests from browsers are rejected."""
+    monkeypatch.setenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", "1")
+
+    agent_client, head_client = job_sdk_client
+
+    # First, submit a job using the normal client
+    runtime_env = RuntimeEnv().to_dict()
+    request = validate_request_type(
+        {"runtime_env": runtime_env, "entrypoint": "echo hello"},
+        JobSubmitRequest,
+    )
+    submit_result = await agent_client.submit_job_internal(request)
+    job_id = submit_result.submission_id
+
+    # Now try to delete the job using browser-like headers
+    agent_address = agent_client._agent_address
+    browser_client = JobAgentSubmissionBrowserClient(agent_address)
+
+    with pytest.raises(RuntimeError) as exc:
+        _ = await browser_client.delete_job_internal(job_id)
+
+    assert "status code 403" in str(exc.value)
+
+    await browser_client.close()
 
 
 @pytest.mark.asyncio
@@ -386,7 +421,9 @@ raise RuntimeError('Intentionally failed.')
             file.write(driver_script)
 
         runtime_env = {"working_dir": tmp_dir}
-        runtime_env = upload_working_dir_if_needed(runtime_env, tmp_dir, logger=logger)
+        runtime_env = upload_working_dir_if_needed(
+            runtime_env, include_gitignore=True, scratch_dir=tmp_dir, logger=logger
+        )
         runtime_env = RuntimeEnv(**runtime_env).to_dict()
 
         request = validate_request_type(
@@ -599,7 +636,7 @@ async def test_non_default_dashboard_agent_http_port(tmp_path):
     import subprocess
 
     dashboard_agent_port = get_current_unused_port()
-    cmd = "ray start --head " f"--dashboard-agent-listen-port {dashboard_agent_port}"
+    cmd = f"ray start --head --dashboard-agent-listen-port {dashboard_agent_port}"
     subprocess.check_output(cmd, shell=True)
 
     try:

@@ -28,7 +28,10 @@ from ray.serve._private.common import (
     TimeStampedValue,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve._private.constants import RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+from ray.serve._private.constants import (
+    CONTROL_LOOP_INTERVAL_S,
+    RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+)
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.test_utils import MockKVStore
@@ -36,6 +39,7 @@ from ray.serve._private.utils import get_random_string
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
+    ApplicationArgs as ApplicationArgsProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
     StatusOverview as StatusOverviewProto,
 )
@@ -183,6 +187,13 @@ class MockDeploymentStateManager:
     def get_deployment_route_patterns(self, id: DeploymentID) -> Optional[List[str]]:
         return None
 
+    def get_deployment_outbound_deployments(
+        self, id: DeploymentID
+    ) -> Optional[List[DeploymentID]]:
+        """Mock method to return outbound deployments for a deployment."""
+        # Return None by default, tests can override this
+        return getattr(self, f"_outbound_deps_{id.name}_{id.app_name}", None)
+
 
 @pytest.fixture
 def mocked_application_state_manager() -> (
@@ -220,7 +231,7 @@ def deployment_params(
         ).to_proto_bytes(),
         "deployer_job_id": "random",
         "route_prefix": route_prefix,
-        "ingress": False,
+        "ingress": route_prefix is not None,
         "serialized_autoscaling_policy_def": None,
         "serialized_request_router_cls": None,
     }
@@ -247,6 +258,7 @@ def mocked_application_state() -> Tuple[ApplicationState, MockDeploymentStateMan
         autoscaling_state_manager=AutoscalingStateManager(),
         endpoint_state=MockEndpointState(),
         logging_config=LoggingConfig(),
+        external_scaler_enabled=False,
     )
     yield application_state, deployment_state_manager
 
@@ -563,7 +575,8 @@ def test_deploy_and_delete_app(mocked_application_state):
         {
             "d1": deployment_info("d1", "/hi"),
             "d2": deployment_info("d2"),
-        }
+        },
+        ApplicationArgsProto(external_scaler_enabled=False),
     )
     assert app_state.route_prefix == "/hi"
 
@@ -616,7 +629,10 @@ def test_app_deploy_failed_and_redeploy(mocked_application_state):
     app_state, deployment_state_manager = mocked_application_state
     d1_id = DeploymentID(name="d1", app_name="test_app")
     d2_id = DeploymentID(name="d2", app_name="test_app")
-    app_state.deploy_app({"d1": deployment_info("d1")})
+    app_state.deploy_app(
+        {"d1": deployment_info("d1")},
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Before status of deployment changes, app should still be DEPLOYING
@@ -635,7 +651,10 @@ def test_app_deploy_failed_and_redeploy(mocked_application_state):
     assert app_state.status == ApplicationStatus.DEPLOY_FAILED
     assert app_state._status_msg == deploy_failed_msg
 
-    app_state.deploy_app({"d1": deployment_info("d1"), "d2": deployment_info("d2")})
+    app_state.deploy_app(
+        {"d1": deployment_info("d1"), "d2": deployment_info("d2")},
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     assert app_state.status == ApplicationStatus.DEPLOYING
     assert app_state._status_msg != deploy_failed_msg
 
@@ -667,7 +686,10 @@ def test_app_deploy_failed_and_recover(mocked_application_state):
     """
     app_state, deployment_state_manager = mocked_application_state
     deployment_id = DeploymentID(name="d1", app_name="test_app")
-    app_state.deploy_app({"d1": deployment_info("d1")})
+    app_state.deploy_app(
+        {"d1": deployment_info("d1")},
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Before status of deployment changes, app should still be DEPLOYING
@@ -699,7 +721,10 @@ def test_app_unhealthy(mocked_application_state):
     id_a, id_b = DeploymentID(name="a", app_name="test_app"), DeploymentID(
         name="b", app_name="test_app"
     )
-    app_state.deploy_app({"a": deployment_info("a"), "b": deployment_info("b")})
+    app_state.deploy_app(
+        {"a": deployment_info("a"), "b": deployment_info("b")},
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     assert app_state.status == ApplicationStatus.DEPLOYING
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
@@ -840,7 +865,11 @@ def test_apply_app_configs_deletes_existing(check_obj_ref_ready_nowait):
 
     # Deploy an app via `deploy_app` - should not be affected.
     a_id = DeploymentID(name="a", app_name="imperative_app")
-    app_state_manager.deploy_app("imperative_app", [deployment_params("a", "/hi")])
+    app_state_manager.deploy_app(
+        "imperative_app",
+        [deployment_params("a", "/hi")],
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     imperative_app_state = app_state_manager._application_states["imperative_app"]
     assert imperative_app_state.api_type == APIType.IMPERATIVE
     assert imperative_app_state.status == ApplicationStatus.DEPLOYING
@@ -882,13 +911,83 @@ def test_apply_app_configs_deletes_existing(check_obj_ref_ready_nowait):
     assert app3_state.status == ApplicationStatus.DEPLOYING
 
 
+@patch(
+    "ray.serve._private.application_state.get_app_code_version",
+    Mock(return_value="123"),
+)
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(return_value=(None, [deployment_params("d1", "/route1")], None)))
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+def test_apply_app_configs_with_external_scaler_enabled(check_obj_ref_ready_nowait):
+    """Test that apply_app_configs correctly sets external_scaler_enabled.
+
+    This test verifies that when apply_app_configs is called with app configs
+    that have external_scaler_enabled=True or False, the ApplicationState is
+    correctly initialized with the appropriate external_scaler_enabled value.
+    """
+    kv_store = MockKVStore()
+    deployment_state_manager = MockDeploymentStateManager(kv_store)
+    app_state_manager = ApplicationStateManager(
+        deployment_state_manager,
+        AutoscalingStateManager(),
+        MockEndpointState(),
+        kv_store,
+        LoggingConfig(),
+    )
+
+    # Deploy app with external_scaler_enabled=True
+    app_config_with_scaler = ServeApplicationSchema(
+        name="app_with_scaler",
+        import_path="fa.ke",
+        route_prefix="/with_scaler",
+        external_scaler_enabled=True,
+    )
+
+    # Deploy app with external_scaler_enabled=False (default)
+    app_config_without_scaler = ServeApplicationSchema(
+        name="app_without_scaler",
+        import_path="fa.ke",
+        route_prefix="/without_scaler",
+        external_scaler_enabled=False,
+    )
+
+    # Apply both configs
+    app_state_manager.apply_app_configs(
+        [app_config_with_scaler, app_config_without_scaler]
+    )
+
+    # Verify that external_scaler_enabled is correctly set for both apps
+    assert app_state_manager.get_external_scaler_enabled("app_with_scaler") is True
+    assert app_state_manager.get_external_scaler_enabled("app_without_scaler") is False
+
+    # Verify the internal state is also correct
+    app_state_with_scaler = app_state_manager._application_states["app_with_scaler"]
+    app_state_without_scaler = app_state_manager._application_states[
+        "app_without_scaler"
+    ]
+    assert app_state_with_scaler.external_scaler_enabled is True
+    assert app_state_without_scaler.external_scaler_enabled is False
+
+    # Simulate the build task completing
+    check_obj_ref_ready_nowait.return_value = True
+    app_state_with_scaler.update()
+    app_state_without_scaler.update()
+
+    # After update, external_scaler_enabled should still be preserved
+    assert app_state_manager.get_external_scaler_enabled("app_with_scaler") is True
+    assert app_state_manager.get_external_scaler_enabled("app_without_scaler") is False
+
+
 def test_redeploy_same_app(mocked_application_state):
     """Test redeploying same application with updated deployments."""
     app_state, deployment_state_manager = mocked_application_state
     a_id = DeploymentID(name="a", app_name="test_app")
     b_id = DeploymentID(name="b", app_name="test_app")
     c_id = DeploymentID(name="c", app_name="test_app")
-    app_state.deploy_app({"a": deployment_info("a"), "b": deployment_info("b")})
+    app_state.deploy_app(
+        {"a": deployment_info("a"), "b": deployment_info("b")},
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Update
@@ -905,7 +1004,10 @@ def test_redeploy_same_app(mocked_application_state):
     assert app_state.status == ApplicationStatus.RUNNING
 
     # Deploy the same app with different deployments
-    app_state.deploy_app({"b": deployment_info("b"), "c": deployment_info("c")})
+    app_state.deploy_app(
+        {"b": deployment_info("b"), "c": deployment_info("c")},
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     assert app_state.status == ApplicationStatus.DEPLOYING
     # Target state should be updated immediately
     assert "a" not in app_state.target_deployments
@@ -929,9 +1031,17 @@ def test_deploy_with_route_prefix_conflict(mocked_application_state_manager):
     """Test that an application with a route prefix conflict fails to deploy"""
     app_state_manager, _, _ = mocked_application_state_manager
 
-    app_state_manager.deploy_app("app1", [deployment_params("a", "/hi")])
+    app_state_manager.deploy_app(
+        "app1",
+        [deployment_params("a", "/hi")],
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     with pytest.raises(RayServeException):
-        app_state_manager.deploy_app("app2", [deployment_params("b", "/hi")])
+        app_state_manager.deploy_app(
+            "app2",
+            [deployment_params("b", "/hi")],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
 
 
 def test_deploy_with_renamed_app(mocked_application_state_manager):
@@ -945,7 +1055,11 @@ def test_deploy_with_renamed_app(mocked_application_state_manager):
     )
 
     # deploy app1
-    app_state_manager.deploy_app("app1", [deployment_params("a", "/url1")])
+    app_state_manager.deploy_app(
+        "app1",
+        [deployment_params("a", "/url1")],
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     app_state = app_state_manager._application_states["app1"]
     assert app_state_manager.get_app_status("app1") == ApplicationStatus.DEPLOYING
 
@@ -965,7 +1079,11 @@ def test_deploy_with_renamed_app(mocked_application_state_manager):
     app_state_manager.update()
 
     # deploy app2
-    app_state_manager.deploy_app("app2", [deployment_params("b", "/url1")])
+    app_state_manager.deploy_app(
+        "app2",
+        [deployment_params("b", "/url1")],
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     assert app_state_manager.get_app_status("app2") == ApplicationStatus.DEPLOYING
     app_state_manager.update()
 
@@ -994,7 +1112,9 @@ def test_application_state_recovery(mocked_application_state_manager):
 
     # DEPLOY application with deployments {d1, d2}
     params = deployment_params("d1")
-    app_state_manager.deploy_app(app_name, [params])
+    app_state_manager.deploy_app(
+        app_name, [params], ApplicationArgsProto(external_scaler_enabled=False)
+    )
     app_state = app_state_manager._application_states[app_name]
     assert app_state.status == ApplicationStatus.DEPLOYING
 
@@ -1050,7 +1170,9 @@ def test_recover_during_update(mocked_application_state_manager):
 
     # DEPLOY application with deployment "d1"
     params = deployment_params("d1")
-    app_state_manager.deploy_app(app_name, [params])
+    app_state_manager.deploy_app(
+        app_name, [params], ApplicationArgsProto(external_scaler_enabled=False)
+    )
     app_state = app_state_manager._application_states[app_name]
     assert app_state.status == ApplicationStatus.DEPLOYING
 
@@ -1063,7 +1185,9 @@ def test_recover_during_update(mocked_application_state_manager):
 
     # Deploy new version of "d1" (this auto generates new random version)
     params2 = deployment_params("d1")
-    app_state_manager.deploy_app(app_name, [params2])
+    app_state_manager.deploy_app(
+        app_name, [params2], ApplicationArgsProto(external_scaler_enabled=False)
+    )
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # In real code this checkpoint would be done by the caller of the deploys
@@ -1121,7 +1245,9 @@ def test_is_ready_for_shutdown(mocked_application_state_manager):
 
     # DEPLOY application with deployment "d1"
     params = deployment_params(deployment_name)
-    app_state_manager.deploy_app(app_name, [params])
+    app_state_manager.deploy_app(
+        app_name, [params], ApplicationArgsProto(external_scaler_enabled=False)
+    )
     app_state = app_state_manager._application_states[app_name]
     assert app_state.status == ApplicationStatus.DEPLOYING
 
@@ -1373,6 +1499,68 @@ class TestOverrideDeploymentInfo:
             == "s3://B"
         )
 
+    def test_override_bundle_label_selector(self, info):
+        """Test placement_group_bundle_label_selector is propagated from config."""
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    placement_group_bundles=[{"CPU": 1}],
+                    placement_group_bundle_label_selector=[
+                        {"accelerator-type": "A100"}
+                    ],
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info({"A": info}, config)
+        updated_info = updated_infos["A"]
+
+        assert updated_info.replica_config.placement_group_bundle_label_selector == [
+            {"accelerator-type": "A100"}
+        ]
+
+    def test_override_fallback_strategy(self, info):
+        """Test placement_group_fallback_strategy is preserved when config is updated.
+
+        placement_group_fallback_strategy is not yet part of the public DeploymentSchema,
+        so we cannot set it via the override config. Instead, we verify that an existing
+        value in the ReplicaConfig is preserved when other fields are updated via the config.
+        """
+        initial_info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(num_replicas=1),
+            replica_config=ReplicaConfig.create(
+                lambda x: x,
+                placement_group_bundles=[{"CPU": 1}],
+                placement_group_fallback_strategy=[{"bundles": [{"CPU": 1}]}],
+            ),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    num_replicas=5,  # Update a different field
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info({"A": initial_info}, config)
+        updated_info = updated_infos["A"]
+
+        assert updated_info.deployment_config.num_replicas == 5
+        assert updated_info.replica_config.placement_group_fallback_strategy == [
+            {"bundles": [{"CPU": 1}]}
+        ]
+
 
 class TestAutoscale:
     def test_autoscale(self, mocked_application_state_manager):
@@ -1461,7 +1649,9 @@ class TestAutoscale:
         d1_id = DeploymentID(name="d1", app_name="test_app")
         d1_params = deployment_params("d1", "/hi")  # No autoscaling config
 
-        app_state_manager.deploy_app("test_app", [d1_params])
+        app_state_manager.deploy_app(
+            "test_app", [d1_params], ApplicationArgsProto(external_scaler_enabled=False)
+        )
         app_state_manager.update()
         deployment_state_manager.set_deployment_healthy(d1_id)
         app_state_manager.update()
@@ -1483,6 +1673,7 @@ class TestAutoscale:
             autoscaling_state_manager=AutoscalingStateManager(),
             endpoint_state=MockEndpointState(),
             logging_config=LoggingConfig(),
+            external_scaler_enabled=False,
         )
 
         # Verify autoscale returns False
@@ -1684,7 +1875,11 @@ class TestAutoscale:
         )
         d2_params = deployment_params("d2")  # No autoscaling config
 
-        app_state_manager.deploy_app("test_app", [d1_params, d2_params])
+        app_state_manager.deploy_app(
+            "test_app",
+            [d1_params, d2_params],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
         app_state_manager.update()
 
         deployment_state_manager.set_deployment_healthy(d1_id)
@@ -1784,7 +1979,11 @@ class TestAutoscale:
         )
         app1_d2_params = deployment_params("d2", autoscaling_config=autoscaling_config)
 
-        app_state_manager.deploy_app("app1", [app1_d1_params, app1_d2_params])
+        app_state_manager.deploy_app(
+            "app1",
+            [app1_d1_params, app1_d2_params],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
         app_state_manager.update()
         deployment_state_manager.set_deployment_healthy(app1_d1_id)
         deployment_state_manager.set_deployment_healthy(app1_d2_id)
@@ -1798,7 +1997,11 @@ class TestAutoscale:
         )
         app2_d2_params = deployment_params("d2", autoscaling_config=autoscaling_config)
 
-        app_state_manager.deploy_app("app2", [app2_d1_params, app2_d2_params])
+        app_state_manager.deploy_app(
+            "app2",
+            [app2_d1_params, app2_d2_params],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
         app_state_manager.update()
         deployment_state_manager.set_deployment_healthy(app2_d1_id)
         deployment_state_manager.set_deployment_healthy(app2_d2_id)
@@ -1987,7 +2190,9 @@ class TestAutoscale:
             "d1", "/hi", autoscaling_config=autoscaling_config
         )
 
-        app_state_manager.deploy_app("test_app", [d1_params])
+        app_state_manager.deploy_app(
+            "test_app", [d1_params], ApplicationArgsProto(external_scaler_enabled=False)
+        )
         app_state_manager.update()
         deployment_state_manager.set_deployment_healthy(d1_id)
         app_state_manager.update()
@@ -2106,7 +2311,11 @@ class TestAutoscale:
                 deployment_params(f"d{i}", autoscaling_config=autoscaling_config)
             )
 
-        app_state_manager.deploy_app("test_app", deployment_params_list)
+        app_state_manager.deploy_app(
+            "test_app",
+            deployment_params_list,
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
         app_state_manager.update()
 
         # Mark all as healthy
@@ -2185,7 +2394,9 @@ class TestAutoscale:
             "d1", "/hi", autoscaling_config=autoscaling_config
         )
 
-        app_state_manager.deploy_app("test_app", [d1_params])
+        app_state_manager.deploy_app(
+            "test_app", [d1_params], ApplicationArgsProto(external_scaler_enabled=False)
+        )
         app_state_manager.update()
         deployment_state_manager.set_deployment_healthy(d1_id)
         app_state_manager.update()
@@ -2282,7 +2493,11 @@ class TestAutoscale:
         )
         d2_params = deployment_params("d2", autoscaling_config=autoscaling_config)
 
-        app_state_manager.deploy_app("test_app", [d1_params, d2_params])
+        app_state_manager.deploy_app(
+            "test_app",
+            [d1_params, d2_params],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
         app_state_manager.update()
 
         deployment_state_manager.set_deployment_healthy(d1_id)
@@ -2424,6 +2639,51 @@ def simple_app_level_policy(contexts):
     return decisions, {}
 
 
+def stateful_app_level_policy(contexts):
+    """Stateful application level policy that increments a counter in policy_state.
+    Used in tests to verify that application level autoscaling policy state
+    is persisted and passed back into subsequent policy invocations.
+    """
+
+    # Increment the internal state everytime the policy is called
+    new_state = {}
+    for deployment_id, ctx in contexts.items():
+
+        prev_counter = 0
+        if ctx.policy_state:
+            prev_counter = ctx.policy_state.get("counter", 0)
+
+        new_state[deployment_id] = {"counter": prev_counter + 1}
+    # Scale all deployments to 3 replicas
+    decisions = {deployment_id: 3 for deployment_id in contexts.keys()}
+
+    # Persist updated counter for next iteration.
+    return decisions, new_state
+
+
+def app_level_policy_with_decorator(contexts):
+    """App-level policy used to verify that the decorator applies delay logic."""
+    decisions = {}
+    for dep_id, ctx in contexts.items():
+        curr = ctx.target_num_replicas
+        if curr < 5:
+            decisions[dep_id] = 5
+        elif curr > 1:
+            decisions[dep_id] = 1
+        else:
+            decisions[dep_id] = curr
+    return decisions, {}
+
+
+def partial_app_level_policy(contexts):
+    """Policy that returns decisions for only a subset of deployments."""
+    decisions = {}
+    for deployment_id in contexts.keys():
+        if deployment_id.name == "d1":
+            decisions[deployment_id] = 4
+    return decisions, {}
+
+
 class TestApplicationLevelAutoscaling:
     """Test application-level autoscaling policy registration, execution, and lifecycle."""
 
@@ -2443,6 +2703,13 @@ class TestApplicationLevelAutoscaling:
                     },
                 )
             ]
+
+        # Overriding the default delay values for deterministic behavior for unit tests
+        for d in deployments:
+            if d.autoscaling_config is None:
+                continue
+            d.autoscaling_config.setdefault("upscale_delay_s", 0.0)
+            d.autoscaling_config.setdefault("downscale_delay_s", 0.0)
 
         return ServeApplicationSchema(
             name=app_name,
@@ -2478,12 +2745,7 @@ class TestApplicationLevelAutoscaling:
                 deployment_infos[deployment.name] = deployment_info(
                     deployment.name,
                     "/hi" if deployment.name == "d1" else None,
-                    autoscaling_config={
-                        "target_ongoing_requests": 1,
-                        "min_replicas": 1,
-                        "max_replicas": 5,
-                        "initial_replicas": 1,
-                    },
+                    autoscaling_config=deployment.autoscaling_config,
                 )
 
             mock_reconcile.return_value = (
@@ -2498,18 +2760,14 @@ class TestApplicationLevelAutoscaling:
 
     def _register_deployments(self, app_state_manager, app_config):
         """Helper to register deployments with autoscaling manager."""
+        # Pick autoscaling config from the app config
         asm = app_state_manager._autoscaling_state_manager
         for deployment in app_config.deployments:
             deployment_id = DeploymentID(name=deployment.name, app_name=app_config.name)
             deployment_info_obj = deployment_info(
                 deployment.name,
                 "/hi" if deployment.name == "d1" else None,
-                autoscaling_config={
-                    "target_ongoing_requests": 1,
-                    "min_replicas": 1,
-                    "max_replicas": 5,
-                    "initial_replicas": 1,
-                },
+                autoscaling_config=deployment.autoscaling_config,
             )
             asm.register_deployment(deployment_id, deployment_info_obj, 1)
         return asm
@@ -2595,6 +2853,77 @@ class TestApplicationLevelAutoscaling:
 
         # Verify policy was executed (scales to 3 replicas)
         assert deployment_state_manager._scaling_decisions[d1_id] == 3
+
+    @pytest.mark.parametrize(
+        "policy_import_path",
+        [
+            "ray.serve.tests.unit.test_application_state:partial_app_level_policy",
+        ],
+    )
+    def test_app_level_autoscaling_policy_can_return_partial_decisions(
+        self, mocked_application_state_manager, policy_import_path
+    ):
+        """Omitted deployments from decisions should not be autoscaled."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Create app config with two deployments and override to use the partial policy.
+        deployments = [
+            DeploymentSchema(
+                name="d1",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 5,
+                    "initial_replicas": 1,
+                    "upscale_delay_s": 0.0,
+                    "downscale_delay_s": 0.0,
+                    "metrics_interval_s": 0.1,
+                },
+            ),
+            DeploymentSchema(
+                name="d2",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 5,
+                    "initial_replicas": 1,
+                    "upscale_delay_s": 0.0,
+                    "downscale_delay_s": 0.0,
+                    "metrics_interval_s": 0.1,
+                },
+            ),
+        ]
+        app_config = self._create_app_config(deployments=deployments)
+        app_config.autoscaling_policy = {"policy_function": policy_import_path}
+
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+
+        # Create replicas so autoscaling runs.
+        d1_replicas = [
+            ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id) for i in [1, 2]
+        ]
+        d2_replicas = [
+            ReplicaID(unique_id=f"d2_replica_{i}", deployment_id=d2_id) for i in [1, 2]
+        ]
+        asm.update_running_replica_ids(d1_id, d1_replicas)
+        asm.update_running_replica_ids(d2_id, d2_replicas)
+
+        # Add a previous decision for both depoloyments
+        deployment_state_manager._scaling_decisions[d1_id] = 2
+        deployment_state_manager._scaling_decisions[d2_id] = 99
+
+        app_state_manager.update()
+
+        assert deployment_state_manager._scaling_decisions[d1_id] == 4
+        assert deployment_state_manager._scaling_decisions[d2_id] == 99
 
     def test_app_level_autoscaling_policy_recovery(
         self, mocked_application_state_manager
@@ -3031,6 +3360,774 @@ class TestApplicationLevelAutoscaling:
         assert (
             deployment_state_manager._scaling_decisions[d2_id] == 3
         )  # Our policy scales to 3
+
+    def test_app_level_autoscaling_policy_state_persistence_with_stateful_policy(
+        self, mocked_application_state_manager
+    ):
+        """Test that app-level autoscaling policy state is maintained across multiple calls."""
+
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Create app config but override to use the stateful policy.
+        app_config = self._create_app_config()
+        app_config.autoscaling_policy = {
+            "policy_function": "ray.serve.tests.unit.test_application_state:stateful_app_level_policy"
+        }
+
+        # Deploy app and register deployments with autoscaling manager.
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        # Create replicas so autoscaling runs.
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d1_replicas = [
+            ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id) for i in [1, 2]
+        ]
+        asm.update_running_replica_ids(d1_id, d1_replicas)
+
+        for _ in range(3):
+            deployment_state_manager._scaling_decisions.clear()
+            app_state_manager.update()
+            assert asm.should_autoscale_application("test_app") is True
+            assert deployment_state_manager._scaling_decisions[d1_id] == 3
+
+        # The stateful policy should have incremented its counter across calls.
+        # Since update() was called 3 times, the counter should be 3.
+        app_autoscaling_state = asm._app_autoscaling_states["test_app"]
+        assert app_autoscaling_state._policy_state is not None
+        assert len(app_autoscaling_state._policy_state) != 0
+        for _, state in app_autoscaling_state._policy_state.items():
+            assert state.get("counter") == 3
+
+    def test_validate_policy_state(self, mocked_application_state_manager):
+        """Test that _validate_policy_state correctly validates application-level policy state."""
+
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Deploy app and register deployments with autoscaling manager.
+        app_config = self._create_app_config()
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        app_autoscaling_state = asm._app_autoscaling_states["test_app"]
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+
+        # Valid cases
+        # None should pass (no validation)
+        app_autoscaling_state._validate_policy_state(None)
+
+        # Valid dict with valid deployment ID and dict value should pass
+        valid_state = {d1_id: {"key": "value"}}
+        app_autoscaling_state._validate_policy_state(valid_state)
+
+        # Invalid cases
+        # Not a dict should fail
+        with pytest.raises(AssertionError, match="must return policy_state as Dict"):
+            app_autoscaling_state._validate_policy_state("deployment")
+        with pytest.raises(AssertionError, match="must return policy_state as Dict"):
+            app_autoscaling_state._validate_policy_state(1)
+
+        # Invalid deployment ID should fail
+        invalid_deployment_id = DeploymentID(name="invalid", app_name="test_app")
+        invalid_state = {invalid_deployment_id: {"key": "value"}}
+        with pytest.raises(AssertionError, match="contains invalid deployment ID"):
+            app_autoscaling_state._validate_policy_state(invalid_state)
+
+        # Non dict value should fail
+        invalid_value_state = {d1_id: "not a dict"}
+        with pytest.raises(AssertionError, match="must be a dictionary"):
+            app_autoscaling_state._validate_policy_state(invalid_value_state)
+
+    def test_app_level_autoscaling_with_decorator_applies_delays(
+        self, mocked_application_state_manager
+    ):
+        """Test that apply_app_level_autoscaling_config applies delay logic for an app-level policy."""
+
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+        # Create deployments for the policy
+        deployments = [
+            DeploymentSchema(
+                name="d1",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 5,
+                    "initial_replicas": 1,
+                    "upscale_delay_s": 0.4,
+                    "downscale_delay_s": 0.6,
+                    "metrics_interval_s": 0.1,
+                },
+            )
+        ]
+
+        # Create app config but override to use the decorated app-level policy.
+        app_config = self._create_app_config(deployments=deployments)
+        app_config.autoscaling_policy = {
+            "policy_function": "ray.serve.tests.unit.test_application_state:app_level_policy_with_decorator"
+        }
+
+        # Deploy app and register deployments with autoscaling manager.
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+
+        # Get the delay values from the deployment config
+        upscale_delay_s = deployments[0].autoscaling_config["upscale_delay_s"]
+        wait_periods_upscale = int(upscale_delay_s / CONTROL_LOOP_INTERVAL_S)
+        downscale_delay_s = deployments[0].autoscaling_config["downscale_delay_s"]
+        wait_periods_downscale = int(downscale_delay_s / CONTROL_LOOP_INTERVAL_S)
+
+        # Create replicas so autoscaling runs.
+        d1_replicas = [
+            ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id) for i in [1, 2]
+        ]
+        asm.update_running_replica_ids(d1_id, d1_replicas)
+
+        app_state = app_state_manager._application_states["test_app"]
+
+        for _ in range(wait_periods_upscale):
+            app_state.autoscale()
+            current_replicas = deployment_state_manager._scaling_decisions[d1_id]
+            assert current_replicas == 1
+
+        app_state.autoscale()
+        # Count the number of replicas are 5 now
+        assert d1_id in deployment_state_manager._scaling_decisions
+        assert deployment_state_manager._scaling_decisions[d1_id] == 5
+
+        # Set the number of replicas to 5 so the policy can scale down to 1
+        deployment_state_manager.deployment_infos[
+            d1_id
+        ].deployment_config.num_replicas = 5
+
+        # Scale down to 1
+        for _ in range(wait_periods_downscale):
+            app_state.autoscale()
+            current_replicas = deployment_state_manager._scaling_decisions[d1_id]
+            assert current_replicas == 5
+        app_state.autoscale()
+        assert d1_id in deployment_state_manager._scaling_decisions
+        assert deployment_state_manager._scaling_decisions[d1_id] == 1
+
+
+def test_get_external_scaler_enabled(mocked_application_state_manager):
+    """Test get_external_scaler_enabled returns correct value based on app config.
+
+    Test that get_external_scaler_enabled returns True when an app is deployed with
+    external_scaler_enabled=True, False when deployed with external_scaler_enabled=False,
+    and False for non-existent apps.
+    """
+    app_state_manager, _, _ = mocked_application_state_manager
+
+    # Deploy app with external_scaler_enabled=True
+    app_state_manager.deploy_app(
+        "app_with_external_scaler",
+        [deployment_params("deployment1", "/route1")],
+        ApplicationArgsProto(external_scaler_enabled=True),
+    )
+
+    # Deploy app with external_scaler_enabled=False
+    app_state_manager.deploy_app(
+        "app_without_external_scaler",
+        [deployment_params("deployment2", "/route2")],
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
+
+    # Test that get_external_scaler_enabled returns True for app with external scaler enabled
+    assert (
+        app_state_manager.get_external_scaler_enabled("app_with_external_scaler")
+        is True
+    )
+
+    # Test that get_external_scaler_enabled returns False for app without external scaler
+    assert (
+        app_state_manager.get_external_scaler_enabled("app_without_external_scaler")
+        is False
+    )
+
+    # Test that get_external_scaler_enabled returns False for non-existent app
+    assert app_state_manager.get_external_scaler_enabled("non_existent_app") is False
+
+
+def test_deploy_apps_with_external_scaler_enabled(mocked_application_state_manager):
+    """Test that deploy_apps correctly uses external_scaler_enabled from name_to_application_args.
+
+    This test verifies that when deploy_apps is called with name_to_application_args
+    containing external_scaler_enabled values, the ApplicationState is correctly
+    initialized with the appropriate external_scaler_enabled value for each app.
+    """
+    (
+        app_state_manager,
+        deployment_state_manager,
+        kv_store,
+    ) = mocked_application_state_manager
+
+    # Deploy multiple apps with different external_scaler_enabled settings
+    name_to_deployment_args = {
+        "app_with_scaler": [deployment_params("d1", "/with_scaler")],
+        "app_without_scaler": [deployment_params("d2", "/without_scaler")],
+        "app_default": [deployment_params("d3", "/default")],
+    }
+
+    name_to_application_args = {
+        "app_with_scaler": ApplicationArgsProto(external_scaler_enabled=True),
+        "app_without_scaler": ApplicationArgsProto(external_scaler_enabled=False),
+        "app_default": ApplicationArgsProto(external_scaler_enabled=False),
+    }
+
+    # Call deploy_apps
+    app_state_manager.deploy_apps(name_to_deployment_args, name_to_application_args)
+
+    # Verify that external_scaler_enabled is correctly set for each app
+    assert app_state_manager.get_external_scaler_enabled("app_with_scaler") is True
+    assert app_state_manager.get_external_scaler_enabled("app_without_scaler") is False
+    assert app_state_manager.get_external_scaler_enabled("app_default") is False
+
+    # Verify the internal state is also correct
+    app_state_with_scaler = app_state_manager._application_states["app_with_scaler"]
+    app_state_without_scaler = app_state_manager._application_states[
+        "app_without_scaler"
+    ]
+    app_state_default = app_state_manager._application_states["app_default"]
+
+    assert app_state_with_scaler.external_scaler_enabled is True
+    assert app_state_without_scaler.external_scaler_enabled is False
+    assert app_state_default.external_scaler_enabled is False
+
+    # Verify that all apps are in the correct state
+    assert app_state_with_scaler.status == ApplicationStatus.DEPLOYING
+    assert app_state_without_scaler.status == ApplicationStatus.DEPLOYING
+    assert app_state_default.status == ApplicationStatus.DEPLOYING
+
+
+def test_external_scaler_enabled_recovery_from_checkpoint(
+    mocked_application_state_manager,
+):
+    """Test that external_scaler_enabled is correctly recovered from checkpoint.
+
+    This test verifies that after a controller crash and recovery, the
+    external_scaler_enabled flag is correctly restored from the checkpoint
+    for both apps with external_scaler_enabled=True and external_scaler_enabled=False.
+    """
+    (
+        app_state_manager,
+        deployment_state_manager,
+        kv_store,
+    ) = mocked_application_state_manager
+
+    app_name_with_scaler = "app_with_external_scaler"
+    app_name_without_scaler = "app_without_external_scaler"
+    deployment_id_with_scaler = DeploymentID(name="d1", app_name=app_name_with_scaler)
+    deployment_id_without_scaler = DeploymentID(
+        name="d2", app_name=app_name_without_scaler
+    )
+
+    # Deploy app with external_scaler_enabled=True
+    app_state_manager.deploy_app(
+        app_name_with_scaler,
+        [deployment_params("d1")],
+        ApplicationArgsProto(external_scaler_enabled=True),
+    )
+
+    # Deploy app with external_scaler_enabled=False
+    app_state_manager.deploy_app(
+        app_name_without_scaler,
+        [deployment_params("d2")],
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
+
+    # Verify initial state
+    assert app_state_manager.get_external_scaler_enabled(app_name_with_scaler) is True
+    assert (
+        app_state_manager.get_external_scaler_enabled(app_name_without_scaler) is False
+    )
+
+    # Make deployments healthy and update
+    app_state_manager.update()
+    deployment_state_manager.set_deployment_healthy(deployment_id_with_scaler)
+    deployment_state_manager.set_deployment_healthy(deployment_id_without_scaler)
+    app_state_manager.update()
+
+    # Save checkpoint
+    app_state_manager.save_checkpoint()
+
+    # Simulate controller crash - create new managers with the same kv_store
+    new_deployment_state_manager = MockDeploymentStateManager(kv_store)
+    new_app_state_manager = ApplicationStateManager(
+        new_deployment_state_manager,
+        AutoscalingStateManager(),
+        MockEndpointState(),
+        kv_store,
+        LoggingConfig(),
+    )
+
+    # Verify that external_scaler_enabled is correctly recovered from checkpoint
+    assert (
+        new_app_state_manager.get_external_scaler_enabled(app_name_with_scaler) is True
+    )
+    assert (
+        new_app_state_manager.get_external_scaler_enabled(app_name_without_scaler)
+        is False
+    )
+
+    # Verify the internal state is also correct
+    app_state_with_scaler = new_app_state_manager._application_states[
+        app_name_with_scaler
+    ]
+    app_state_without_scaler = new_app_state_manager._application_states[
+        app_name_without_scaler
+    ]
+    assert app_state_with_scaler.external_scaler_enabled is True
+    assert app_state_without_scaler.external_scaler_enabled is False
+
+
+class TestDeploymentDAG:
+    """Test deployment DAG building and retrieval functionality."""
+
+    def test_build_dag_single_deployment(self, mocked_application_state):
+        """Test building DAG with a single deployment."""
+        app_state, deployment_state_manager = mocked_application_state
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+
+        # Deploy single deployment
+        app_state.deploy_app(
+            {"d1": deployment_info("d1", "/hi")},
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        app_state.update()
+
+        deployment_state_manager.set_deployment_healthy(d1_id)
+        app_state.update()
+
+        # Get topology
+        topology = app_state.get_deployment_topology()
+        assert topology is not None
+        assert topology.app_name == "test_app"
+        assert topology.ingress_deployment == "d1"
+        assert "d1" in topology.nodes
+        assert topology.nodes["d1"].name == "d1"
+        assert topology.nodes["d1"].is_ingress is True
+        assert topology.nodes["d1"].outbound_deployments == []
+
+    def test_build_dag_multiple_deployments_no_deps(self, mocked_application_state):
+        """Test building DAG with multiple deployments without dependencies."""
+        app_state, deployment_state_manager = mocked_application_state
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+        d3_id = DeploymentID(name="d3", app_name="test_app")
+
+        # Deploy multiple deployments
+        app_state.deploy_app(
+            {
+                "d1": deployment_info("d1", "/hi"),
+                "d2": deployment_info("d2"),
+                "d3": deployment_info("d3"),
+            },
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        app_state.update()
+
+        deployment_state_manager.set_deployment_healthy(d1_id)
+        deployment_state_manager.set_deployment_healthy(d2_id)
+        deployment_state_manager.set_deployment_healthy(d3_id)
+        app_state.update()
+
+        # Get topology
+        topology = app_state.get_deployment_topology()
+        assert topology is not None
+        assert topology.app_name == "test_app"
+        assert topology.ingress_deployment == "d1"
+        assert len(topology.nodes) == 3
+        assert "d1" in topology.nodes
+        assert "d2" in topology.nodes
+        assert "d3" in topology.nodes
+        assert topology.nodes["d1"].is_ingress is True
+        assert topology.nodes["d2"].is_ingress is False
+        assert topology.nodes["d3"].is_ingress is False
+
+    def test_build_dag_with_outbound_dependencies(self, mocked_application_state):
+        """Test building DAG with outbound dependencies."""
+        app_state, deployment_state_manager = mocked_application_state
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+        d3_id = DeploymentID(name="d3", app_name="test_app")
+
+        # Set up outbound dependencies: d1 -> d2, d3; d2 -> d3
+        deployment_state_manager._outbound_deps_d1_test_app = [d2_id, d3_id]
+        deployment_state_manager._outbound_deps_d2_test_app = [d3_id]
+        deployment_state_manager._outbound_deps_d3_test_app = []
+
+        # Deploy deployments
+        app_state.deploy_app(
+            {
+                "d1": deployment_info("d1", "/hi"),
+                "d2": deployment_info("d2"),
+                "d3": deployment_info("d3"),
+            },
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        app_state.update()
+
+        deployment_state_manager.set_deployment_healthy(d1_id)
+        deployment_state_manager.set_deployment_healthy(d2_id)
+        deployment_state_manager.set_deployment_healthy(d3_id)
+        app_state.update()
+
+        # Get topology
+        topology = app_state.get_deployment_topology()
+        assert topology is not None
+        assert topology.app_name == "test_app"
+        assert len(topology.nodes) == 3
+
+        # Verify d1 has outbound to d2 and d3
+        assert len(topology.nodes["d1"].outbound_deployments) == 2
+        d1_outbound = topology.nodes["d1"].outbound_deployments
+        assert {"name": "d2", "app_name": "test_app"} in d1_outbound
+        assert {"name": "d3", "app_name": "test_app"} in d1_outbound
+
+        # Verify d2 has outbound to d3
+        assert len(topology.nodes["d2"].outbound_deployments) == 1
+        d2_outbound = topology.nodes["d2"].outbound_deployments
+        assert (
+            d3_id in d2_outbound
+            or {"name": "d3", "app_name": "test_app"} in d2_outbound
+        )
+
+        # Verify d3 has no outbound dependencies
+        assert len(topology.nodes["d3"].outbound_deployments) == 0
+
+    def test_build_dag_with_cross_app_dependencies(self, mocked_application_state):
+        """Test building DAG with dependencies to deployments in other apps."""
+        app_state, deployment_state_manager = mocked_application_state
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+
+        # Create dependencies to deployments in another app
+        external_d1_id = DeploymentID(name="ext_d1", app_name="other_app")
+        external_d2_id = DeploymentID(name="ext_d2", app_name="other_app")
+
+        # Set up outbound dependencies: d1 -> d2, ext_d1; d2 -> ext_d2
+        deployment_state_manager._outbound_deps_d1_test_app = [d2_id, external_d1_id]
+        deployment_state_manager._outbound_deps_d2_test_app = [external_d2_id]
+
+        # Deploy deployments
+        app_state.deploy_app(
+            {
+                "d1": deployment_info("d1", "/hi"),
+                "d2": deployment_info("d2"),
+            },
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        app_state.update()
+
+        deployment_state_manager.set_deployment_healthy(d1_id)
+        deployment_state_manager.set_deployment_healthy(d2_id)
+        app_state.update()
+
+        # Get topology
+        topology = app_state.get_deployment_topology()
+        assert topology is not None
+        assert topology.app_name == "test_app"
+        assert len(topology.nodes) == 2
+
+        # Verify d1 has outbound to both internal d2 and external ext_d1
+        assert len(topology.nodes["d1"].outbound_deployments) == 2
+        d1_outbound = topology.nodes["d1"].outbound_deployments
+        assert {"name": "d2", "app_name": "test_app"} in d1_outbound
+        assert {"name": "ext_d1", "app_name": "other_app"} in d1_outbound
+
+        # Verify d2 has outbound to external ext_d2
+        assert len(topology.nodes["d2"].outbound_deployments) == 1
+        d2_outbound = topology.nodes["d2"].outbound_deployments
+        assert {"name": "ext_d2", "app_name": "other_app"} in d2_outbound
+
+    def test_get_dag_before_deployment(self, mocked_application_state):
+        """Test getting topology before any deployments are created."""
+        app_state, _ = mocked_application_state
+
+        # Topology should be None before any deployments
+        topology = app_state.get_deployment_topology()
+        assert topology is None
+
+    def test_dag_updates_on_redeploy(self, mocked_application_state):
+        """Test that topology updates when deployments are redeployed."""
+        app_state, deployment_state_manager = mocked_application_state
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+        d3_id = DeploymentID(name="d3", app_name="test_app")
+
+        # Initial deployment: d1, d2
+        app_state.deploy_app(
+            {
+                "d1": deployment_info("d1", "/hi"),
+                "d2": deployment_info("d2"),
+            },
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        app_state.update()
+
+        deployment_state_manager.set_deployment_healthy(d1_id)
+        deployment_state_manager.set_deployment_healthy(d2_id)
+        app_state.update()
+
+        # Verify initial topology
+        topology = app_state.get_deployment_topology()
+        assert topology is not None
+        assert len(topology.nodes) == 2
+        assert "d1" in topology.nodes
+        assert "d2" in topology.nodes
+
+        # Redeploy with d2, d3 (removing d1, adding d3)
+        app_state.deploy_app(
+            {
+                "d2": deployment_info("d2", "/hi"),
+                "d3": deployment_info("d3"),
+            },
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        app_state.update()
+
+        deployment_state_manager.set_deployment_deleted(d1_id)
+        deployment_state_manager.set_deployment_healthy(d3_id)
+        app_state.update()
+
+        # Verify updated topology
+        topology = app_state.get_deployment_topology()
+        assert topology is not None
+        assert len(topology.nodes) == 2
+        assert "d2" in topology.nodes
+        assert "d3" in topology.nodes
+        assert "d1" not in topology.nodes
+        assert topology.ingress_deployment == "d2"
+
+    def test_dag_with_changing_dependencies(self, mocked_application_state):
+        """Test that topology updates when outbound dependencies change."""
+        app_state, deployment_state_manager = mocked_application_state
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+
+        # Initial: d1 -> d2
+        deployment_state_manager._outbound_deps_d1_test_app = [d2_id]
+
+        app_state.deploy_app(
+            {
+                "d1": deployment_info("d1", "/hi"),
+                "d2": deployment_info("d2"),
+            },
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        app_state.update()
+
+        deployment_state_manager.set_deployment_healthy(d1_id)
+        deployment_state_manager.set_deployment_healthy(d2_id)
+        app_state.update()
+
+        # Verify initial dependencies
+        topology = app_state.get_deployment_topology()
+        assert len(topology.nodes["d1"].outbound_deployments) == 1
+        d1_outbound = topology.nodes["d1"].outbound_deployments
+        assert {"name": "d2", "app_name": "test_app"} in d1_outbound
+
+        # Change dependencies: d1 -> [] (no dependencies)
+        deployment_state_manager._outbound_deps_d1_test_app = []
+
+        # Trigger update to rebuild topology
+        app_state.update()
+
+        # Verify updated dependencies
+        topology = app_state.get_deployment_topology()
+        assert len(topology.nodes["d1"].outbound_deployments) == 0
+
+    def test_application_state_manager_get_deployment_topology(
+        self, mocked_application_state_manager
+    ):
+        """Test getting topology via ApplicationStateManager."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+
+        # Deploy app
+        app_state_manager.deploy_app(
+            "test_app",
+            [deployment_params("d1", "/hi")],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        app_state_manager.update()
+
+        deployment_state_manager.set_deployment_healthy(d1_id)
+        app_state_manager.update()
+
+        # Get topology via ApplicationStateManager
+        topology = app_state_manager.get_deployment_topology("test_app")
+        assert topology is not None
+        assert topology.app_name == "test_app"
+        assert "d1" in topology.nodes
+
+    def test_application_state_manager_get_topology_nonexistent_app(
+        self, mocked_application_state_manager
+    ):
+        """Test getting topology for non-existent app returns None."""
+        app_state_manager, _, _ = mocked_application_state_manager
+
+        # Get topology for non-existent app
+        topology = app_state_manager.get_deployment_topology("nonexistent_app")
+        assert topology is None
+
+    def test_dag_with_multiple_apps(self, mocked_application_state_manager):
+        """Test that each app has its own independent topology."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Deploy app1
+        app1_d1_id = DeploymentID(name="d1", app_name="app1")
+        app1_d2_id = DeploymentID(name="d2", app_name="app1")
+        app_state_manager.deploy_app(
+            "app1",
+            [
+                deployment_params("d1", "/app1"),
+                deployment_params("d2"),
+            ],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        app_state_manager.update()
+        deployment_state_manager.set_deployment_healthy(app1_d1_id)
+        deployment_state_manager.set_deployment_healthy(app1_d2_id)
+        app_state_manager.update()
+
+        # Deploy app2
+        app2_d1_id = DeploymentID(name="d1", app_name="app2")
+        app2_d2_id = DeploymentID(name="d2", app_name="app2")
+        app_state_manager.deploy_app(
+            "app2",
+            [
+                deployment_params("d1", "/app2"),
+                deployment_params("d2"),
+            ],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        app_state_manager.update()
+        deployment_state_manager.set_deployment_healthy(app2_d1_id)
+        deployment_state_manager.set_deployment_healthy(app2_d2_id)
+        app_state_manager.update()
+
+        # Get topologies for both apps
+        topology1 = app_state_manager.get_deployment_topology("app1")
+        topology2 = app_state_manager.get_deployment_topology("app2")
+
+        assert topology1 is not None
+        assert topology2 is not None
+        assert topology1.app_name == "app1"
+        assert topology2.app_name == "app2"
+        assert len(topology1.nodes) == 2
+        assert len(topology2.nodes) == 2
+        assert topology1.ingress_deployment == "d1"
+        assert topology2.ingress_deployment == "d1"
+
+    def test_dag_with_complex_dependency_graph(self, mocked_application_state):
+        """Test building topology with a complex dependency graph."""
+        app_state, deployment_state_manager = mocked_application_state
+
+        # Create a complex topology:
+        # ingress -> orchestrator -> [worker1, worker2]
+        # worker1 -> database
+        # worker2 -> [database, cache]
+        ingress_id = DeploymentID(name="ingress", app_name="test_app")
+        orchestrator_id = DeploymentID(name="orchestrator", app_name="test_app")
+        worker1_id = DeploymentID(name="worker1", app_name="test_app")
+        worker2_id = DeploymentID(name="worker2", app_name="test_app")
+        database_id = DeploymentID(name="database", app_name="test_app")
+        cache_id = DeploymentID(name="cache", app_name="test_app")
+
+        # Set up dependencies
+        deployment_state_manager._outbound_deps_ingress_test_app = [orchestrator_id]
+        deployment_state_manager._outbound_deps_orchestrator_test_app = [
+            worker1_id,
+            worker2_id,
+        ]
+        deployment_state_manager._outbound_deps_worker1_test_app = [database_id]
+        deployment_state_manager._outbound_deps_worker2_test_app = [
+            database_id,
+            cache_id,
+        ]
+        deployment_state_manager._outbound_deps_database_test_app = []
+        deployment_state_manager._outbound_deps_cache_test_app = []
+
+        # Deploy all deployments
+        app_state.deploy_app(
+            {
+                "ingress": deployment_info("ingress", "/api"),
+                "orchestrator": deployment_info("orchestrator"),
+                "worker1": deployment_info("worker1"),
+                "worker2": deployment_info("worker2"),
+                "database": deployment_info("database"),
+                "cache": deployment_info("cache"),
+            },
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        app_state.update()
+
+        # Mark all as healthy
+        for dep_id in [
+            ingress_id,
+            orchestrator_id,
+            worker1_id,
+            worker2_id,
+            database_id,
+            cache_id,
+        ]:
+            deployment_state_manager.set_deployment_healthy(dep_id)
+        app_state.update()
+
+        # Get and verify topology
+        topology = app_state.get_deployment_topology()
+        assert topology is not None
+        assert len(topology.nodes) == 6
+        assert topology.ingress_deployment == "ingress"
+
+        # Verify ingress node
+        assert topology.nodes["ingress"].is_ingress is True
+        assert len(topology.nodes["ingress"].outbound_deployments) == 1
+        ingress_outbound = topology.nodes["ingress"].outbound_deployments
+        assert {"name": "orchestrator", "app_name": "test_app"} in ingress_outbound
+
+        # Verify orchestrator node
+        assert len(topology.nodes["orchestrator"].outbound_deployments) == 2
+        orchestrator_outbound = topology.nodes["orchestrator"].outbound_deployments
+        assert {"name": "worker1", "app_name": "test_app"} in orchestrator_outbound
+        assert {"name": "worker2", "app_name": "test_app"} in orchestrator_outbound
+
+        # Verify worker nodes
+        assert len(topology.nodes["worker1"].outbound_deployments) == 1
+        worker1_outbound = topology.nodes["worker1"].outbound_deployments
+        assert {"name": "database", "app_name": "test_app"} in worker1_outbound
+
+        assert len(topology.nodes["worker2"].outbound_deployments) == 2
+        worker2_outbound = topology.nodes["worker2"].outbound_deployments
+        assert {"name": "database", "app_name": "test_app"} in worker2_outbound
+        assert {"name": "cache", "app_name": "test_app"} in worker2_outbound
+
+        # Verify leaf nodes have no dependencies
+        assert len(topology.nodes["database"].outbound_deployments) == 0
+        assert len(topology.nodes["cache"].outbound_deployments) == 0
 
 
 if __name__ == "__main__":

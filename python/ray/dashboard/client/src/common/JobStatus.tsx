@@ -38,7 +38,7 @@ export const JobRunningIcon = ({
         {
           width: small ? 16 : 20,
           height: small ? 16 : 20,
-          color: "#1E88E5",
+          color: (theme) => theme.palette.primary.main,
           animation: `${spinner} 1s linear infinite`,
         },
         ...(Array.isArray(sx) ? sx : [sx]),
@@ -101,7 +101,7 @@ export const JobStatusIcon = ({
             {
               width: small ? 16 : 20,
               height: small ? 16 : 20,
-              color: "#757575",
+              color: (theme) => theme.palette.text.secondary,
             },
             ...(Array.isArray(sx) ? sx : [sx]),
           ]}

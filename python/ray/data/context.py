@@ -7,12 +7,10 @@ import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-import ray
 from ray._private.ray_constants import env_bool, env_float, env_integer
-from ray._private.worker import WORKER_MODE
 from ray.data._internal.logging import update_dataset_logger_for_worker
+from ray.data.checkpoint.interfaces import CheckpointBackend, CheckpointConfig
 from ray.util.annotations import DeveloperAPI
-from ray.util.debug import log_once
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
 if TYPE_CHECKING:
@@ -55,12 +53,6 @@ DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
 # target_max_block_size. We will warn the user if slicing fails and we produce
 # blocks larger than this threshold.
 MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
-
-# We will attempt to slice blocks whose size exceeds this factor *
-# target_num_rows_per_block. We will warn the user if slicing fails and we produce
-# blocks with more rows than this threshold.
-MAX_SAFE_ROWS_PER_BLOCK_FACTOR = 1.5
-
 
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 
@@ -176,6 +168,10 @@ DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
 
 DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
 
+DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS = False
+
+DEFAULT_ACTOR_INIT_MAX_RETRIES = 3
+
 DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
     "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
 )
@@ -232,7 +228,7 @@ DEFAULT_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S = env_integer(
 
 DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD: float = env_float(
     "RAY_DATA_DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD",
-    2.0,
+    1.75,
 )
 
 DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
@@ -240,9 +236,20 @@ DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
     0.5,
 )
 
+DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: int = env_integer(
+    "RAY_DATA_DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA",
+    1,
+)
 
+
+# Disable dynamic output queue size backpressure by default.
 DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
     "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", False
+)
+
+
+DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
+    "RAY_DATA_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO", 10.0
 )
 
 
@@ -265,6 +272,9 @@ class AutoscalingConfig:
             between autoscaling speed and resource efficiency (i.e.,
             making tasks wait instead of immediately triggering execution).
         actor_pool_util_downscaling_threshold: Actor Pool utilization threshold for downscaling.
+        actor_pool_max_upscaling_delta: Maximum number of actors to scale up in a single scaling decision.
+            This limits how many actors can be added at once to prevent resource contention
+            and scheduling pressure. Defaults to 1 for conservative scaling.
     """
 
     actor_pool_util_upscaling_threshold: float = (
@@ -275,6 +285,9 @@ class AutoscalingConfig:
     actor_pool_util_downscaling_threshold: float = (
         DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD
     )
+
+    # Maximum number of actors to scale up in a single scaling decision
+    actor_pool_max_upscaling_delta: int = DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA
 
 
 def _execution_options_factory() -> "ExecutionOptions":
@@ -385,7 +398,9 @@ class DataContext:
         enable_rich_progress_bars: Whether to use the new rich progress bars instead
             of the tqdm TUI.
         enable_get_object_locations_for_metrics: Whether to enable
-            ``get_object_locations`` for metrics.
+            ``get_object_locations`` for metrics. This is useful for tracking whether
+            the object input of a task is local (cache hit) or not local (cache miss)
+            to the node that task is running on.
         write_file_retry_on_errors: A list of substrings of error messages that should
             trigger a retry when writing files. This is useful for handling transient
             errors when writing to remote storage systems.
@@ -396,6 +411,12 @@ class DataContext:
             retry. This follows same format as :ref:`retry_exceptions <task-retries>` in
             Ray Core. Default to `False` to not retry on any errors. Set to `True` to
             retry all errors, or set to a list of errors to retry.
+        actor_init_retry_on_errors: Whether to retry when actor initialization fails.
+            Default to `False` to not retry on any errors. Set to `True` to retry
+            all errors.
+        actor_init_max_retries: Maximum number of consecutive retries for actor
+            initialization failures. The counter resets when an actor successfully
+            initializes. Default is 3. Set to -1 for infinite retries.
         op_resource_reservation_enabled: Whether to enable resource reservation for
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
@@ -457,11 +478,9 @@ class DataContext:
             dataset operations.
         downstream_capacity_backpressure_ratio: Ratio for downstream capacity
             backpressure control. A higher ratio causes backpressure to kick-in
-            later. If `None`, this type of backpressure is disabled.
-        downstream_capacity_backpressure_max_queued_bundles: Maximum number of queued
-            bundles before applying backpressure. If `None`, no limit is applied.
+            later. If `None`, this backpressure policy is disabled.
         enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
-        of an operator based on it's and downstream's queue size.
+            of an operator based on its and downstream operators' queue size.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
@@ -547,8 +566,6 @@ class DataContext:
     use_ray_tqdm: bool = DEFAULT_USE_RAY_TQDM
     enable_progress_bars: bool = DEFAULT_ENABLE_PROGRESS_BARS
     # By default, enable the progress bar for operator-level progress.
-    # In __post_init__(), we disable operator-level progress
-    # bars when running in a Ray job.
     enable_operator_progress_bars: bool = True
     enable_progress_bar_name_truncation: bool = (
         DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
@@ -562,6 +579,8 @@ class DataContext:
     actor_task_retry_on_errors: Union[
         bool, List[BaseException]
     ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
+    actor_init_retry_on_errors: bool = DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS
+    actor_init_max_retries: int = DEFAULT_ACTOR_INIT_MAX_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
@@ -598,8 +617,9 @@ class DataContext:
         default_factory=_issue_detectors_config_factory
     )
 
-    downstream_capacity_backpressure_ratio: float = None
-    downstream_capacity_backpressure_max_queued_bundles: int = None
+    downstream_capacity_backpressure_ratio: Optional[
+        float
+    ] = DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO
 
     enable_dynamic_output_queue_size_backpressure: bool = (
         DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
@@ -608,6 +628,8 @@ class DataContext:
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
+
+    _checkpoint_config: Optional[CheckpointConfig] = None
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -620,31 +642,22 @@ class DataContext:
         # the DataContext from the plugin implementations, as well as to avoid
         # circular dependencies.
         self._kv_configs: Dict[str, Any] = {}
+
+        # Sync hash shuffle aggregator fields to its detector config
+        self.issue_detectors_config.hash_shuffle_detector_config.detection_time_interval_s = (
+            self.hash_shuffle_aggregator_health_warning_interval_s
+        )
+        self.issue_detectors_config.hash_shuffle_detector_config.min_wait_time_s = (
+            self.min_hash_shuffle_aggregator_wait_time_in_s
+        )
+
         self._max_num_blocks_in_streaming_gen_buffer = (
             DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
         )
 
-        is_ray_job = os.environ.get("RAY_JOB_ID") is not None
-        if is_ray_job:
-            is_driver = ray.get_runtime_context().worker.mode != WORKER_MODE
-            if is_driver and log_once(
-                "ray_data_disable_operator_progress_bars_in_ray_jobs"
-            ):
-                logger.info(
-                    "Disabling operator-level progress bars by default in Ray Jobs. "
-                    "To enable progress bars for all operators, set "
-                    "`ray.data.DataContext.get_current()"
-                    ".enable_operator_progress_bars = True`."
-                )
-            # Disable operator-level progress bars by default in Ray jobs.
-            # The global progress bar for the overall Dataset execution will
-            # still be enabled, unless the user also sets
-            # `ray.data.DataContext.get_current().enable_progress_bars = False`.
-            self.enable_operator_progress_bars = False
-        else:
-            # When not running in Ray job, operator-level progress
-            # bars are enabled by default.
-            self.enable_operator_progress_bars = True
+        # Unique id of the current execution of the data pipeline.
+        # This value increments only upon re-execution of the exact same pipeline.
+        self._execution_idx = 0
 
     def __setattr__(self, name: str, value: Any) -> None:
         if (
@@ -787,6 +800,34 @@ class DataContext:
         workers.
         """
         self.dataset_logger_id = dataset_id
+
+    @property
+    def checkpoint_config(self) -> Optional[CheckpointConfig]:
+        """Get the checkpoint configuration."""
+        return self._checkpoint_config
+
+    @checkpoint_config.setter
+    def checkpoint_config(
+        self, value: Optional[Union[CheckpointConfig, Dict[str, Any]]]
+    ) -> None:
+        """Set the checkpoint configuration."""
+        if value is None:
+            self._checkpoint_config = None
+        elif isinstance(value, dict):
+            if "override_backend" in value:
+                if not isinstance(value["override_backend"], str):
+                    raise TypeError(
+                        "Expected 'override_backend' to be a string,"
+                        f" but got {type(value['override_backend'])}."
+                    )
+                value["override_backend"] = CheckpointBackend[value["override_backend"]]
+            self._checkpoint_config = CheckpointConfig(**value)
+        elif isinstance(value, CheckpointConfig):
+            self._checkpoint_config = value
+        else:
+            raise TypeError(
+                "checkpoint_config must be a CheckpointConfig instance, a dict, or None."
+            )
 
 
 # Backwards compatibility alias.

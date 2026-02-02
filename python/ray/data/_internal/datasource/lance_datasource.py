@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 import numpy as np
 
@@ -29,6 +29,7 @@ class LanceDatasource(Datasource):
     def __init__(
         self,
         uri: str,
+        version: Optional[Union[int, str]] = None,
         columns: Optional[List[str]] = None,
         filter: Optional[str] = None,
         storage_options: Optional[Dict[str, str]] = None,
@@ -45,7 +46,9 @@ class LanceDatasource(Datasource):
         if filter is not None:
             self.scanner_options["filter"] = filter
         self.storage_options = storage_options
-        self.lance_ds = lance.dataset(uri=uri, storage_options=storage_options)
+        self.lance_ds = lance.dataset(
+            uri=uri, version=version, storage_options=storage_options
+        )
 
         match = []
         match.extend(self.READ_FRAGMENTS_ERRORS_TO_RETRY)
@@ -58,7 +61,10 @@ class LanceDatasource(Datasource):
         }
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         read_tasks = []
         ds_fragments = self.scanner_options.get("fragments")

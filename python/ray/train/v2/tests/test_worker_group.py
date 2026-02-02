@@ -30,8 +30,10 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupContext,
     WorkerGroupState,
 )
-from ray.train.v2.api.config import RunConfig
+from ray.train.v2._internal.util import ObjectRefWrapper
+from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.tests.util import DummyObjectRefWrapper, create_dummy_run_context
+from ray.util.state import list_actors
 
 pytestmark = pytest.mark.usefixtures("mock_runtime_context")
 
@@ -145,20 +147,91 @@ def test_callback_start_failure():
 
 
 def test_start_timeout(monkeypatch):
-    from ray.util.placement_group import PlacementGroup
-
-    @ray.remote(num_cpus=0)
-    def hanging_task(*args, **kwargs):
-        time.sleep(60)
+    from ray.train.v2._internal.execution.worker_group.placement_group_handle import (
+        DefaultPlacementGroupHandle,
+    )
 
     monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0.1")
-    monkeypatch.setattr(PlacementGroup, "ready", hanging_task.remote)
+    monkeypatch.setattr(
+        DefaultPlacementGroupHandle,
+        "wait",
+        lambda self, timeout_seconds=None: False,
+    )
 
     wg = _default_inactive_worker_group()
 
     with pytest.raises(WorkerGroupStartupTimeoutError):
         # Not enough CPU resources are available, so the workers will not start.
         wg._start()
+
+
+def test_zombie_actor_termination(ray_start_4_cpus):
+    """This test checks that RayTrainWorker actors are terminated correctly even if python garbage collection hangs on actor shutdown."""
+    NUM_WORKERS = 4
+
+    def is_process_alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        else:
+            return True
+
+    class Node:
+        def __init__(self, name):
+            self.name = name
+            self.other = None
+
+        def __del__(self):
+            # Simulate hang during garbage collection
+            while True:
+                time.sleep(1)
+
+    def train_fn():
+        # Create a circular reference to delay garbage collection
+        a, b = Node("a"), Node("b")
+        a.other = b
+        b.other = a
+
+    train_fn_ref = ObjectRefWrapper(train_fn)
+
+    train_run_context = create_dummy_run_context(
+        scaling_config=ScalingConfig(num_workers=NUM_WORKERS)
+    )
+    worker_group_context = _default_worker_group_context(
+        train_fn_ref=train_fn_ref,
+        num_workers=NUM_WORKERS,
+    )
+
+    # Starts the worker group and runs the train function
+    worker_group = WorkerGroup.create(
+        train_run_context=train_run_context,
+        worker_group_context=worker_group_context,
+        callbacks=[],
+    )
+
+    train_worker_pids = [
+        actor.pid
+        for actor in list_actors()
+        if actor.class_name == RayTrainWorker.__name__ and actor.state == "ALIVE"
+    ]
+
+    assert len(train_worker_pids) == NUM_WORKERS
+
+    worker_group.shutdown()
+
+    # ray.kill is async, allow some time for the processes to terminate
+    TIMEOUT_S = 5
+    deadline = time.monotonic() + TIMEOUT_S
+    remaining = set(train_worker_pids)
+    while remaining and time.monotonic() < deadline:
+        remaining = {pid for pid in remaining if is_process_alive(pid)}
+        if remaining:
+            time.sleep(0.1)
+
+    assert not remaining
 
 
 def test_insufficient_cluster_resources_startup_failure(monkeypatch):
@@ -318,8 +391,23 @@ def test_flush_worker_result_queue(queue_backlog_length):
         )
         assert not status.finished
 
-    status = wg.poll_status()
-    assert status.finished
+    # Wait for the workers to finish the training fn and for any pending
+    # training_report(s) to be flushed/consumed.
+    timeout_s = 5
+    deadline = time.monotonic() + timeout_s
+    while True:
+        status = wg.poll_status()
+        if status.finished:
+            break
+        assert (
+            time.monotonic() < deadline
+        ), f"Timed out waiting for worker group to finish. Last status: {status}"
+        time.sleep(0.01)
+
+    assert all(
+        worker_status.training_report is None
+        for worker_status in status.worker_statuses.values()
+    )
 
     wg.shutdown()
 
@@ -342,7 +430,7 @@ def test_group_workers_by_ip():
         ]
 
     workers = create_workers(["2", "3", "1", "4", "2", "1", "3", "3", "4", "2"])
-    workers = WorkerGroup._sort_workers_by_node_id_and_gpu_id(workers)
+    workers = WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(workers)
     expected = ["2", "2", "2", "3", "3", "3", "1", "1", "4", "4"]
     ips = [w.metadata.node_id for w in workers]
     assert ips == expected, (
@@ -351,7 +439,9 @@ def test_group_workers_by_ip():
     )
 
     workers = create_workers(["2", "3", "1", "4", "2", "1", "3", "3", "4", "2"])
-    workers = WorkerGroup._sort_workers_by_node_id_and_gpu_id(workers, _first_id="1")
+    workers = WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(
+        workers, _first_id="1"
+    )
     expected = ["1", "1", "2", "2", "2", "3", "3", "3", "4", "4"]
     ips = [w.metadata.node_id for w in workers]
     assert (
@@ -388,7 +478,7 @@ def test_local_rank_assignment():
                 expected local rank.
         """
         workers = create_workers(pids=pids, node_ids=node_ids, gpu_ids=gpu_ids)
-        workers = WorkerGroup._sort_workers_by_node_id_and_gpu_id(workers)
+        workers = WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(workers)
 
         # Build local ranks according to the logics in
         # TODO: Replace this with the actual implementation later
@@ -481,6 +571,9 @@ def test_worker_group_callback():
         def before_worker_group_shutdown(self, worker_group):
             self.shutdown_hook_called = True
 
+        def after_worker_group_shutdown(self, worker_group_context):
+            self.after_worker_group_shutdown_hook_called = True
+
         def after_worker_group_poll_status(self, worker_group_status):
             assert len(worker_group_status.worker_statuses) == 4
             self.poll_status_hook_called = True
@@ -495,6 +588,7 @@ def test_worker_group_callback():
     assert hooks.poll_status_hook_called
     wg.shutdown()
     assert hooks.shutdown_hook_called
+    assert hooks.after_worker_group_shutdown_hook_called
 
 
 def test_worker_log_file_paths():
@@ -519,6 +613,9 @@ def test_worker_group_abort(monkeypatch):
         def before_worker_group_abort(self, worker_group_context):
             self.abort_hook_called = True
 
+        def after_worker_group_abort(self, worker_group_context):
+            self.after_worker_group_abort_hook_called = True
+
     hooks = AssertCallback()
     wg = _default_inactive_worker_group(callbacks=[hooks])
 
@@ -540,6 +637,7 @@ def test_worker_group_abort(monkeypatch):
         shutdown_call_count == 1
     ), f"Expected shutdown to be called once, but was called {shutdown_call_count} times"
     assert hooks.abort_hook_called
+    assert hooks.after_worker_group_abort_hook_called
 
     # Bypass _assert_active method, allowing for shutdown
     monkeypatch.setattr(wg, "_assert_active", lambda: None)

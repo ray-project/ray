@@ -9,11 +9,15 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
     Rule,
 )
-from ray.data._internal.logical.operators.map_operator import Filter, Project
+from ray.data._internal.logical.operators import Filter, Project
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
 )
 from ray.data.expressions import Expr, col
+
+__all__ = [
+    "PredicatePushdown",
+]
 
 
 class PredicatePushdown(Rule):
@@ -193,8 +197,16 @@ class PredicatePushdown(Rule):
                     predicate_expr, rename_map
                 )
 
-            # Push the predicate down and return the result without the filter
-            return input_op.apply_predicate(predicate_expr)
+            # Push the predicate down
+            result_op = input_op.apply_predicate(predicate_expr)
+
+            # If the operator is unchanged (e.g., predicate references partition columns
+            # that can't be pushed down), keep the Filter operator
+            if result_op is input_op:
+                return filter_op
+
+            # Otherwise, return the result without the filter (predicate was pushed down)
+            return result_op
 
         # Case 2: Check if operator allows predicates to pass through
         if isinstance(input_op, LogicalOperatorSupportsPredicatePassThrough):
@@ -306,9 +318,7 @@ class PredicatePushdown(Rule):
             A shallow copy of the operator with updated input dependencies
         """
         new_op = copy.copy(op)
-        new_op._input_dependencies = new_inputs
-        # Clear and re-wire dependencies for the new operator.
-        # The output dependencies will be wired by the parent transform's traversal.
+        new_op.input_dependencies = new_inputs
         new_op._output_dependencies = []
         new_op._wire_output_deps(new_inputs)
         return new_op

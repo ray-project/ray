@@ -1,7 +1,10 @@
 import argparse
-import os
-from typing import TYPE_CHECKING, AsyncGenerator, Optional, Tuple, Union
+import dataclasses
+import inspect
+import typing
+from typing import TYPE_CHECKING, Any, AsyncGenerator, List, Optional, Tuple, Union
 
+from pydantic import BaseModel, field_validator
 from starlette.datastructures import State
 from starlette.requests import Request
 from vllm.engine.arg_utils import AsyncEngineArgs
@@ -20,16 +23,21 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionResponse,
     CompletionRequest,
     CompletionResponse,
+    DetokenizeRequest,
+    DetokenizeResponse,
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorInfo,
     ErrorResponse,
     ScoreRequest,
     ScoreResponse,
+    TokenizeRequest,
+    TokenizeResponse,
     TranscriptionRequest,
     TranscriptionResponse,
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
+from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
@@ -48,10 +56,60 @@ if TYPE_CHECKING:
     from vllm.entrypoints.openai.serving_embedding import OpenAIServingEmbedding
     from vllm.entrypoints.openai.serving_models import OpenAIServingModels
     from vllm.entrypoints.openai.serving_score import ServingScores
+    from vllm.entrypoints.openai.serving_tokenization import OpenAIServingTokenization
     from vllm.entrypoints.openai.serving_transcription import OpenAIServingTranscription
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
+
+
+def _convert_config_dicts(merged: dict) -> dict:
+    """Convert dict values to their proper vLLM config classes based on type hints.
+
+    vLLM's AsyncEngineArgs has fields like structured_outputs_config,
+    compilation_config, etc. that expect dataclass instances. When users pass
+    dicts for these fields, we need to convert them to the proper config classes
+    so that default values are populated correctly.
+
+    Without this conversion, dicts get converted to argparse.Namespace objects
+    which lack the default field values, causing AttributeError when vLLM code
+    tries to access those fields.
+    """
+    type_hints = typing.get_type_hints(AsyncEngineArgs)
+
+    for key, value in list(merged.items()):
+        if not isinstance(value, dict) or key not in type_hints:
+            continue
+
+        hint = type_hints[key]
+
+        # Handle Optional[X] (Union[X, None]) -> X
+        origin = typing.get_origin(hint)
+        if origin is Union:
+            args = typing.get_args(hint)
+            hint = next((a for a in args if a is not type(None)), hint)
+
+        # Convert dict to dataclass if the field expects a dataclass type
+        if isinstance(hint, type) and dataclasses.is_dataclass(hint):
+            try:
+                merged[key] = hint(**value)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to convert {key} dict to {hint.__name__}: {e}. "
+                    "Using dict as-is."
+                )
+
+    return merged
+
+
+def _dict_to_namespace(obj: Any) -> Any:
+    """Recursively converts dictionaries to argparse.Namespace."""
+    if isinstance(obj, dict):
+        return argparse.Namespace(**{k: _dict_to_namespace(v) for k, v in obj.items()})
+    elif isinstance(obj, list):
+        return [_dict_to_namespace(item) for item in obj]
+    else:
+        return obj
 
 
 def _get_vllm_engine_config(
@@ -100,18 +158,65 @@ def _clear_current_platform_cache():
     """
     from vllm.platforms import current_platform
 
-    # TODO(seiji): remove this once https://github.com/vllm-project/vllm/pull/18979 is merged
-    if (
-        "CUDA_VISIBLE_DEVICES" in os.environ
-        and os.environ["CUDA_VISIBLE_DEVICES"] == ""
-    ):
-        del os.environ["CUDA_VISIBLE_DEVICES"]
-
     # This check is just to future proof this implementation
     # in case vllm removes their lru_cache decorator
     if hasattr(current_platform.get_device_capability, "cache_clear"):
         logger.info("Clearing the current platform cache ...")
         current_platform.get_device_capability.cache_clear()
+
+
+class VLLMSleepConfig(BaseModel):
+    """vLLM-specific configuration for sleep operation."""
+
+    level: int = 1
+    """Sleep level:
+    - Level 1: Offload weights to CPU RAM, discard KV cache
+    - Level 2: Discard both model weights and KV cache (deeper sleep)
+    """
+
+    @field_validator("level")
+    @classmethod
+    def validate_level(cls, v: Any) -> int:
+        if v not in (1, 2):
+            raise ValueError("level must be 1 or 2")
+        return v
+
+
+class VLLMWakeupConfig(BaseModel):
+    """vLLM-specific configuration for wakeup operation."""
+
+    tags: Optional[List[str]] = None
+    """Optional tags to selectively wake up components:
+    - "weights": Restore model weights only
+    - "kv_cache": Restore KV cache only
+    - None: Restore everything
+    """
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, v: Any) -> Optional[List[str]]:
+        if v is not None:
+            valid_tags = {"weights", "kv_cache"}
+            for tag in v:
+                if tag not in valid_tags:
+                    raise ValueError(
+                        f"Invalid tag '{tag}'. Must be one of: {valid_tags}"
+                    )
+        return v
+
+
+class VLLMPauseConfig(BaseModel):
+    """vLLM-specific configuration for pause operation."""
+
+    wait_for_inflight_requests: bool = False
+    """When True, waits for in-flight requests to finish before pausing.
+    When False (default), aborts in-flight requests immediately.
+    """
+
+    clear_cache: bool = True
+    """Whether to clear KV and prefix caches after draining.
+    Set to False to preserve cache for faster resume.
+    """
 
 
 class VLLMEngine(LLMEngine):
@@ -134,8 +239,7 @@ class VLLMEngine(LLMEngine):
             )
         from vllm import envs as vllm_envs
 
-        # TODO (Kourosh): Remove this after a few releases.
-        if not vllm_envs.VLLM_USE_V1:
+        if hasattr(vllm_envs, "VLLM_USE_V1") and not vllm_envs.VLLM_USE_V1:
             logger.error(
                 "vLLM v0 is fully deprecated. As a result in Ray Serve LLM only v1 is supported."
             )
@@ -152,6 +256,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_embedding: Optional["OpenAIServingEmbedding"] = None
         self._oai_serving_transcription: Optional["OpenAIServingTranscription"] = None
         self._oai_serving_scores: Optional["ServingScores"] = None
+        self._oai_serving_tokenization: Optional["OpenAIServingTokenization"] = None
 
     async def start(self) -> None:
         """Start the vLLM engine.
@@ -195,18 +300,27 @@ class VLLMEngine(LLMEngine):
 
         state = State()
         # TODO (Kourosh): There might be some variables that needs protection?
-        args = argparse.Namespace(
-            **vllm_frontend_args.__dict__,
-            **vllm_engine_args.__dict__,
-        )
+        merged = vllm_frontend_args.__dict__ | vllm_engine_args.__dict__
 
-        await init_app_state(
-            engine_client=self._engine_client,
-            # TODO (ahao): remove vllm_config for vllm v1.12
-            vllm_config=vllm_engine_config,
-            state=state,
-            args=args,
-        )
+        # Convert dict values to proper vLLM config classes (e.g., StructuredOutputsConfig)
+        # so that default field values are populated correctly.
+        merged = _convert_config_dicts(merged)
+
+        args = _dict_to_namespace(merged)
+
+        if "vllm_config" in inspect.signature(init_app_state).parameters:
+            await init_app_state(
+                self._engine_client,
+                vllm_config=vllm_engine_config,
+                state=state,
+                args=args,
+            )
+        else:
+            await init_app_state(
+                self._engine_client,
+                state=state,
+                args=args,
+            )
 
         self._oai_models = state.openai_serving_models
         self._oai_serving_chat = state.openai_serving_chat
@@ -214,6 +328,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_embedding = state.openai_serving_embedding
         self._oai_serving_transcription = state.openai_serving_transcription
         self._oai_serving_scores = state.openai_serving_scores
+        self._oai_serving_tokenization = state.openai_serving_tokenization
 
         self._validate_openai_serving_models()
         self._validate_engine_client()
@@ -255,6 +370,14 @@ class VLLMEngine(LLMEngine):
         assert hasattr(
             self._oai_serving_scores, "create_score"
         ), "oai_serving_scores must have a create_score attribute"
+
+    def _validate_openai_serving_tokenization(self):
+        assert hasattr(
+            self._oai_serving_tokenization, "create_tokenize"
+        ), "oai_serving_tokenization must have a create_tokenize attribute"
+        assert hasattr(
+            self._oai_serving_tokenization, "create_detokenize"
+        ), "oai_serving_tokenization must have a create_detokenize attribute"
 
     def _validate_engine_client(self):
         assert hasattr(
@@ -358,39 +481,19 @@ class VLLMEngine(LLMEngine):
         if isinstance(lora_request, VLLMErrorResponse):
             raise ValueError(f"Failed to load lora model: {lora_request.error.message}")
 
-    def _create_raw_request(
-        self,
-        request: Union[
-            CompletionRequest,
-            ChatCompletionRequest,
-            EmbeddingRequest,
-            TranscriptionRequest,
-            ScoreRequest,
-        ],
-        path: str,
-    ) -> Request:
-        scope = {
-            "type": "http",
-            "method": "POST",
-            "path": path,
-            "headers": [(b"x-request-id", getattr(request, "request_id", "").encode())],
-            "query_string": b"",
-        }
-        return Request(scope)
-
     async def chat(
-        self, request: ChatCompletionRequest
+        self,
+        request: ChatCompletionRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
         self._validate_openai_serving_chat()
 
-        # TODO (Kourosh): Remove when we upstream request_id attribute to vLLM.
-        # PR: https://github.com/vllm-project/vllm/pull/21009
-        # Create a fake starlette.Request object with the x-request-id header
-        # so that the create_chat_completion API can assign the request_id properly.
-        raw_request = self._create_raw_request(request, "/chat/completions")
-
+        raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
+            raw_request_info
+        )
         chat_response = await self._oai_serving_chat.create_chat_completion(  # type: ignore[attr-defined]
-            request, raw_request=raw_request
+            request,
+            raw_request=raw_request,
         )
 
         if isinstance(chat_response, AsyncGenerator):
@@ -407,16 +510,15 @@ class VLLMEngine(LLMEngine):
                 yield ChatCompletionResponse(**chat_response.model_dump())
 
     async def completions(
-        self, request: CompletionRequest
+        self,
+        request: CompletionRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         self._validate_openai_serving_completion()
 
-        # TODO (Kourosh): Remove when we upstream request_id attribute to vLLM.
-        # PR: https://github.com/vllm-project/vllm/pull/21009
-        # Create a fake starlette.Request object with the x-request-id header
-        # so that the create_completion API can assign the request_id properly.
-        raw_request = self._create_raw_request(request, "/completions")
-
+        raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
+            raw_request_info
+        )
         completion_response = await self._oai_serving_completion.create_completion(  # type: ignore[attr-defined]
             request,
             raw_request=raw_request,
@@ -438,17 +540,18 @@ class VLLMEngine(LLMEngine):
                 yield CompletionResponse(**completion_response.model_dump())
 
     async def embeddings(
-        self, request: EmbeddingRequest
+        self,
+        request: EmbeddingRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None]:
         self._validate_openai_serving_embedding()
 
-        # TODO (Kourosh): Remove when upstream is fixed to accept req_id.
-        # Create a fake starlette.Request object with the x-request-id header
-        # so that the create_embedding API can assign the request_id properly.
-        raw_request = self._create_raw_request(request, "/embeddings")
-
+        raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
+            raw_request_info
+        )
         embedding_response = await self._oai_serving_embedding.create_embedding(  # type: ignore[attr-defined]
-            request, raw_request=raw_request
+            request,
+            raw_request=raw_request,
         )
 
         if isinstance(embedding_response, VLLMErrorResponse):
@@ -459,19 +562,18 @@ class VLLMEngine(LLMEngine):
             yield EmbeddingResponse(**embedding_response.model_dump())
 
     async def transcriptions(
-        self, request: TranscriptionRequest
+        self,
+        request: TranscriptionRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, TranscriptionResponse, ErrorResponse], None]:
         self._validate_openai_serving_transcription()
-
-        # TODO (Kourosh): Remove when we upstream request_id attribute to vLLM.
-        # PR: https://github.com/vllm-project/vllm/pull/21009
-        # Create a fake starlette.Request object with the x-request-id header
-        # so that the create_transcription API can assign the request_id properly.
-        raw_request = self._create_raw_request(request, "/audio/transcriptions")
 
         # Extract audio data from the request file
         audio_data = await request.file.read()
 
+        raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
+            raw_request_info
+        )
         transcription_response = await self._oai_serving_transcription.create_transcription(  # type: ignore[attr-defined]
             audio_data,
             request,
@@ -494,20 +596,66 @@ class VLLMEngine(LLMEngine):
                 yield TranscriptionResponse(**transcription_response.model_dump())
 
     async def score(
-        self, request: ScoreRequest
+        self,
+        request: ScoreRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[ScoreResponse, ErrorResponse], None]:
         self._validate_openai_serving_scores()
 
-        raw_request = self._create_raw_request(request, "/score")
-
+        raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
+            raw_request_info
+        )
         score_response = await self._oai_serving_scores.create_score(
-            request, raw_request=raw_request
+            request,
+            raw_request=raw_request,
         )
 
         if isinstance(score_response, VLLMErrorResponse):
             yield ErrorResponse(**score_response.model_dump())
         else:
             yield ScoreResponse(**score_response.model_dump())
+
+    async def tokenize(
+        self,
+        request: TokenizeRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[TokenizeResponse, ErrorResponse], None]:
+        self._validate_openai_serving_tokenization()
+
+        raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
+            raw_request_info
+        )
+        tokenize_response = await self._oai_serving_tokenization.create_tokenize(
+            request,
+            raw_request=raw_request,
+        )
+
+        if isinstance(tokenize_response, VLLMErrorResponse):
+            yield ErrorResponse(error=ErrorInfo(**tokenize_response.error.model_dump()))
+        else:
+            yield TokenizeResponse(**tokenize_response.model_dump())
+
+    async def detokenize(
+        self,
+        request: DetokenizeRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[DetokenizeResponse, ErrorResponse], None]:
+        self._validate_openai_serving_tokenization()
+
+        raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
+            raw_request_info
+        )
+        detokenize_response = await self._oai_serving_tokenization.create_detokenize(
+            request,
+            raw_request=raw_request,
+        )
+
+        if isinstance(detokenize_response, VLLMErrorResponse):
+            yield ErrorResponse(
+                error=ErrorInfo(**detokenize_response.error.model_dump())
+            )
+        else:
+            yield DetokenizeResponse(**detokenize_response.model_dump())
 
     async def check_health(self) -> None:
         assert self._engine_client is not None, "engine_client is not initialized"
@@ -522,6 +670,74 @@ class VLLMEngine(LLMEngine):
         assert self._engine_client is not None, "engine_client is not initialized"
         await self._engine_client.reset_prefix_cache()
 
+    async def sleep(self, **kwargs: Any) -> None:
+        """Put the vLLM engine to sleep.
+
+        Args:
+            **kwargs: Options parsed into VLLMSleepConfig.
+                - level (int): Sleep level (1 or 2). Default 1.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        config = VLLMSleepConfig(**kwargs)
+        await self._engine_client.sleep(level=config.level)
+
+    async def wakeup(self, **kwargs: Any) -> None:
+        """Wake up the vLLM engine from sleep mode.
+
+        Args:
+            **kwargs: Options parsed into VLLMWakeupConfig.
+                - tags (List[str], optional): Components to wake up.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        config = VLLMWakeupConfig(**kwargs)
+        await self._engine_client.wake_up(tags=config.tags)
+
+    async def is_sleeping(self) -> bool:
+        """Check whether the vLLM engine is currently sleeping.
+
+        Returns:
+            True if the engine is sleeping, False otherwise.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        return await self._engine_client.is_sleeping()
+
+    async def pause(self, **kwargs: Any) -> None:
+        """Pause generation on the vLLM engine.
+
+        This halts generation/encoding requests while keeping model weights
+        in GPU memory. New requests are blocked until resume is called.
+
+        Args:
+            **kwargs: Options parsed into VLLMPauseConfig.
+                - wait_for_inflight_requests (bool): Wait for in-flight requests
+                  to finish. Default False.
+                - clear_cache (bool): Clear KV cache after draining. Default True.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        config = VLLMPauseConfig(**kwargs)
+        await self._engine_client.pause_generation(
+            wait_for_inflight_requests=config.wait_for_inflight_requests,
+            clear_cache=config.clear_cache,
+        )
+
+    async def resume(self, **kwargs: Any) -> None:
+        """Resume generation on the vLLM engine after pause.
+
+        Args:
+            **kwargs: Reserved for future options.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        await self._engine_client.resume_generation()
+
+    async def is_paused(self) -> bool:
+        """Check whether the vLLM engine is currently paused.
+
+        Returns:
+            True if the engine is paused, False otherwise.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        return await self._engine_client.is_paused()
+
     async def start_profile(self) -> None:
         assert self._engine_client is not None, "engine_client is not initialized"
         await self._engine_client.start_profile()
@@ -529,3 +745,32 @@ class VLLMEngine(LLMEngine):
     async def stop_profile(self) -> None:
         assert self._engine_client is not None, "engine_client is not initialized"
         await self._engine_client.stop_profile()
+
+    async def collective_rpc(
+        self,
+        method: str,
+        timeout: Optional[float] = None,
+        args: tuple = (),
+        kwargs: Optional[dict] = None,
+    ) -> list:
+        """Execute a collective RPC call on all vLLM workers.
+
+        This is used for RLHF workflows where a trainer needs to execute
+        methods on all TP/PP workers (e.g., for weight synchronization).
+
+        Args:
+            method: Name of the worker method to execute.
+            timeout: Maximum time in seconds to wait for execution.
+            args: Positional arguments to pass to the worker method.
+            kwargs: Keyword arguments to pass to the worker method.
+
+        Returns:
+            A list containing the results from each worker.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        return await self._engine_client.collective_rpc(
+            method=method,
+            timeout=timeout,
+            args=args,
+            kwargs=kwargs or {},
+        )

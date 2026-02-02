@@ -100,23 +100,21 @@ class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
 
   bool IsSubscribedToNodeChange() const override { return is_subscribed_to_node_change_; }
 
-  MOCK_METHOD(const rpc::GcsNodeInfo *, Get, (const NodeID &, bool), (const, override));
-
-  MOCK_METHOD(const rpc::GcsNodeAddressAndLiveness *,
+  MOCK_METHOD(std::optional<rpc::GcsNodeAddressAndLiveness>,
               GetNodeAddressAndLiveness,
               (const NodeID &, bool),
               (const, override));
 
   MOCK_METHOD(void,
               AsyncGetAll,
-              (const gcs::MultiItemCallback<rpc::GcsNodeInfo> &,
+              (const rpc::MultiItemCallback<rpc::GcsNodeInfo> &,
                int64_t,
                const std::vector<NodeID> &),
               (override));
 
   MOCK_METHOD(void,
               AsyncGetAllNodeAddressAndLiveness,
-              (const gcs::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &,
+              (const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &,
                int64_t,
                const std::vector<NodeID> &),
               (override));
@@ -184,7 +182,7 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
       [](std::vector<rpc::GcsNodeAddressAndLiveness> node_info_vector) {
         return Invoke(
             [node_info_vector](
-                const gcs::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+                const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
                 int64_t,
                 const std::vector<NodeID> &) {
               callback(Status::OK(), node_info_vector);
@@ -212,16 +210,16 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
   if (is_subscribed_to_node_change_) {
     EXPECT_CALL(mock_node_accessor,
                 GetNodeAddressAndLiveness(worker_1_node_id, /*filter_dead_nodes=*/false))
-        .WillOnce(Return(nullptr))
-        .WillOnce(Return(&node_info_alive))
-        .WillOnce(Return(&node_info_dead));
+        .WillOnce(Return(std::nullopt))
+        .WillOnce(Return(node_info_alive))
+        .WillOnce(Return(node_info_dead));
     EXPECT_CALL(
         mock_node_accessor,
         AsyncGetAllNodeAddressAndLiveness(_, _, std::vector<NodeID>{worker_1_node_id}))
         .WillOnce(invoke_with_node_info_vector({node_info_alive}));
     EXPECT_CALL(mock_node_accessor,
                 GetNodeAddressAndLiveness(worker_2_node_id, /*filter_dead_nodes=*/false))
-        .WillOnce(Return(nullptr));
+        .WillOnce(Return(std::nullopt));
     EXPECT_CALL(
         mock_node_accessor,
         AsyncGetAllNodeAddressAndLiveness(_, _, std::vector<NodeID>{worker_2_node_id}))
@@ -279,13 +277,13 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
     EXPECT_CALL(gcs_client_.MockNodeAccessor(),
                 GetNodeAddressAndLiveness(_, /*filter_dead_nodes=*/false))
         .Times(2)
-        .WillRepeatedly(Return(&node_info_alive));
+        .WillRepeatedly(Return(node_info_alive));
   } else {
     EXPECT_CALL(gcs_client_.MockNodeAccessor(),
                 AsyncGetAllNodeAddressAndLiveness(_, _, _))
         .Times(2)
         .WillRepeatedly(Invoke(
-            [&](const gcs::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+            [&](const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
                 int64_t,
                 const std::vector<NodeID> &) {
               callback(Status::OK(), {node_info_alive});

@@ -77,10 +77,10 @@ ABSL_FLAG(std::string,
           "command. It takes effect only if Ray head is started by a driver. Run `ray "
           "start --help` for details.");
 
-ABSL_FLAG(int64_t,
-          startup_token,
-          -1,
-          "The startup token assigned to this worker process by the raylet.");
+ABSL_FLAG(std::string,
+          ray_worker_id,
+          "",
+          "The worker ID assigned to this worker process by the raylet (hex string).");
 
 ABSL_FLAG(std::string,
           ray_default_actor_lifetime,
@@ -193,7 +193,7 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
           absl::StrSplit(FLAGS_ray_head_args.CurrentValue(), ' ', absl::SkipEmpty());
       head_args.insert(head_args.end(), args.begin(), args.end());
     }
-    startup_token = absl::GetFlag<int64_t>(FLAGS_startup_token);
+    worker_id = absl::GetFlag<std::string>(FLAGS_ray_worker_id);
     if (!FLAGS_ray_default_actor_lifetime.CurrentValue().empty()) {
       default_actor_lifetime =
           ParseDefaultActorLifetimeType(FLAGS_ray_default_actor_lifetime.CurrentValue());
