@@ -1,3 +1,4 @@
+import importlib
 import logging
 from typing import Optional
 
@@ -47,32 +48,20 @@ def _get_framework_version(framework: Optional[TrainingFramework]):
     except ImportError:
         logger.warning("Failed to collect ray version on worker.")
 
+    if framework is None:
+        return versions
+
+    module_name = framework.value
     try:
-        if framework is None:
-            return versions
-
-        if framework == TrainingFramework.TORCH:
-            import torch
-
-            versions[TrainingFramework.TORCH.value] = torch.__version__
-        elif framework == TrainingFramework.JAX:
-            import jax
-
-            versions[TrainingFramework.JAX.value] = jax.__version__
-        elif framework == TrainingFramework.TENSORFLOW:
-            import tensorflow
-
-            versions[TrainingFramework.TENSORFLOW.value] = tensorflow.__version__
-        elif framework == TrainingFramework.XGBOOST:
-            import xgboost
-
-            versions[TrainingFramework.XGBOOST.value] = xgboost.__version__
-        elif framework == TrainingFramework.LIGHTGBM:
-            import lightgbm
-
-            versions[TrainingFramework.LIGHTGBM.value] = lightgbm.__version__
+        module = importlib.import_module(module_name)
+        versions[module_name] = module.__version__
     except ImportError:
-        logger.warning("Failed to collect framework version on worker.")
+        logger.warning(
+            f"Failed to collect {module_name} version on worker "
+            f"(could not import '{module_name}')."
+        )
+    except Exception:
+        logger.warning(f"Failed to collect {module_name} version on worker.")
 
     return versions
 
