@@ -181,6 +181,9 @@ def download_bytes_threaded(
         data_context: Ray Data context for configuration.
         filesystem: PyArrow filesystem to use for reading remote files.
             If None, the filesystem is auto-detected from the path scheme.
+
+    Yields:
+        pa.Table: PyArrow table with the downloaded bytes added as new columns.
     """
     if not isinstance(block, pa.Table):
         block = BlockAccessor.for_block(block).to_arrow()
