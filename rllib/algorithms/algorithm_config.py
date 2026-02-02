@@ -538,7 +538,6 @@ class AlgorithmConfig(_Config):
         self.offline_evaluation_interval = None
         self.num_offline_eval_runners = 0
         self.offline_evaluation_type: str = "eval_loss"
-        self.offline_evaluation_type: str = "eval_loss"
         self.offline_eval_runner_class = None
         # TODO (simon): Only `_offline_evaluate_with_fixed_duration` works. Also,
         # decide, if we use `offline_evaluation_duration` or

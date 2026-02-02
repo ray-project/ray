@@ -1386,18 +1386,18 @@ class Algorithm(Checkpointable, Trainable):
             self._evaluate_offline_on_local_runner()
 
         # Check, whether we have any results.
-        if log_once("no_eval_results") and not self.metrics.peek(
+        if log_once("no_offline_eval_results") and not self.metrics.peek(
             (EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS)
         ):
             logger.warning(
                 "No offline evaluation results found for this iteration. "
                 "This can happen if the offline evaluation runner(s) is/are not healthy."
             )
-        # Reduce the evaluation results if `compile_metrics` is True.
-        eval_results = (
-            self.metrics.compile()
-            .get(EVALUATION_RESULTS, {})
-            .get(OFFLINE_EVAL_RUNNER_RESULTS, {})
+        # Peek the offline evaluation results from the metrics store.
+        eval_results = self.metrics.peek(
+            (EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS),
+            default={},
+            latest_merged_only=True,
         )
 
         # Trigger `on_evaluate_offline_end` callback.
@@ -1574,11 +1574,11 @@ class Algorithm(Checkpointable, Trainable):
                     logger.warning(
                         "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
                     )
-                # Compile the results here from the metrics store if requested.
-                eval_results = (
-                    self.metrics.compile()
-                    .get(EVALUATION_RESULTS, {})
-                    .get(ENV_RUNNER_RESULTS, {})
+                # Peek the results here from the metrics store if requested.
+                eval_results = self.metrics.peek(
+                    key=EVALUATION_RESULTS,
+                    default={},
+                    latest_merged_only=True,
                 )
             else:
                 eval_results = {ENV_RUNNER_RESULTS: eval_results}
