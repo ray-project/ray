@@ -69,8 +69,8 @@ def main(args):
             lineitem,
             join_type="inner",
             num_partitions=100,
-            on=["o_orderkey", "s_suppkey"],
-            right_on=["l_orderkey", "l_suppkey"],
+            on=("o_orderkey", "s_suppkey"),
+            right_on=("l_orderkey", "l_suppkey"),
         )
 
         # Calculate revenue
