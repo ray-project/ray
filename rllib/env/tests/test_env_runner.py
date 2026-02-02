@@ -25,6 +25,19 @@ from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils import check, override
+from ray.rllib.utils.metrics import (
+    EPISODE_DURATION_SEC_MEAN,
+    EPISODE_LEN_MAX,
+    EPISODE_LEN_MEAN,
+    EPISODE_LEN_MIN,
+    EPISODE_RETURN_MAX,
+    EPISODE_RETURN_MEAN,
+    EPISODE_RETURN_MIN,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_EPISODES,
+    NUM_EPISODES_LIFETIME,
+)
 
 
 @pytest.fixture(scope="module")
@@ -234,6 +247,8 @@ class CallbackTracker(RLlibCallback):
 
 @pytest.fixture
 def env_runner_with_callback(runner_type, ray_init):
+    CallbackTracker.reset()
+
     if runner_type == "single_agent":
         config = (
             AlgorithmConfig()
@@ -258,7 +273,7 @@ def env_runner_with_callback(runner_type, ray_init):
         raise ValueError(f"Unknown runner type: {runner_type}")
 
     yield runner
-    runner.stop()
+    CallbackTracker.reset()
 
 
 class EnvToModuleConnectorTracker(ConnectorV2):
@@ -677,23 +692,20 @@ class TestEnvRunnerMetrics:
 
     # Shared metrics keys that should exist in both runner types
     SHARED_STEP_METRICS = [
-        "num_env_steps_sampled",
-        "num_env_steps_sampled_lifetime",
+        NUM_ENV_STEPS_SAMPLED,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME,
     ]
 
-    SHARED_EPISODE_COUNT_METRICS = [
-        "num_episodes",
-        "num_episodes_lifetime",
-    ]
+    SHARED_EPISODE_COUNT_METRICS = [NUM_EPISODES, NUM_EPISODES_LIFETIME]
 
     SHARED_EPISODE_STATS_METRICS = [
-        "episode_len_mean",
-        "episode_return_mean",
-        "episode_duration_sec_mean",
-        "episode_len_min",
-        "episode_len_max",
-        "episode_return_min",
-        "episode_return_max",
+        EPISODE_LEN_MAX,
+        EPISODE_LEN_MIN,
+        EPISODE_LEN_MEAN,
+        EPISODE_DURATION_SEC_MEAN,
+        EPISODE_RETURN_MEAN,
+        EPISODE_RETURN_MAX,
+        EPISODE_RETURN_MIN,
     ]
 
     def test_get_metrics_returns_dict(self, env_runner):
@@ -721,23 +733,20 @@ class TestEnvRunnerMetrics:
             math.ceil(num_timesteps / env_runner.num_envs) * env_runner.num_envs
         )
         assert (
-            num_timesteps
-            <= metrics["num_env_steps_sampled"].peek()
-            <= max_num_timesteps
+            num_timesteps <= metrics[NUM_ENV_STEPS_SAMPLED].peek() <= max_num_timesteps
         )
         assert (
             num_timesteps
-            <= metrics["num_env_steps_sampled_lifetime"].peek()
+            <= metrics[NUM_ENV_STEPS_SAMPLED_LIFETIME].peek()
             <= max_num_timesteps
         )
         num_completed_episodes = sum(eps.is_done for eps in episodes)
         if num_completed_episodes > 0:
-            assert metrics["num_episodes"] == num_completed_episodes
-            assert metrics["episode_len_mean"] > 0
-            assert (
-                metrics["episode_return_mean"] > 0
-            )  # CartPole return is always positive
-            assert metrics["episode_duration_sec_mean"] > 0
+            assert metrics[NUM_EPISODES] == num_completed_episodes
+            assert metrics[EPISODE_LEN_MEAN] > 0
+            # CartPole return is always positive
+            assert metrics[EPISODE_RETURN_MEAN] > 0
+            assert metrics[EPISODE_DURATION_SEC_MEAN] > 0
 
     def test_metrics_after_sampling_rollout_fragment(self, env_runner):
         """Test that step metrics exist after sampling timesteps."""
@@ -752,18 +761,15 @@ class TestEnvRunnerMetrics:
         expected_num_timesteps = (
             env_runner.config.rollout_fragment_length * env_runner.num_envs
         )
-        assert metrics["num_env_steps_sampled"].peek() == expected_num_timesteps
-        assert (
-            metrics["num_env_steps_sampled_lifetime"].peek() == expected_num_timesteps
-        )
+        assert metrics[NUM_ENV_STEPS_SAMPLED].peek() == expected_num_timesteps
+        assert metrics[NUM_ENV_STEPS_SAMPLED_LIFETIME].peek() == expected_num_timesteps
         num_completed_episodes = sum(eps.is_done for eps in episodes)
         if num_completed_episodes > 0:
-            assert metrics["num_episodes"] == num_completed_episodes
-            assert metrics["episode_len_mean"] > 0
-            assert (
-                metrics["episode_return_mean"] > 0
-            )  # CartPole return is always positive
-            assert metrics["episode_duration_sec_mean"] > 0
+            assert metrics[NUM_EPISODES] == num_completed_episodes
+            assert metrics[EPISODE_LEN_MEAN] > 0
+            # CartPole return is always positive
+            assert metrics[EPISODE_RETURN_MEAN] > 0
+            assert metrics[EPISODE_DURATION_SEC_MEAN] > 0
 
     def test_metrics_after_sampling_episodes(self, env_runner, num_episodes=2):
         """Test that episode metrics exist after sampling complete episodes."""
@@ -776,21 +782,22 @@ class TestEnvRunnerMetrics:
 
         # With multiple environments, if on the same timestep that the final episode is collected,
         #   then other environment can also terminate causing greater than the number of episodes requested
-        assert metrics["num_episodes"] >= num_episodes
-        assert metrics["num_episodes_lifetime"] >= num_episodes
+        assert metrics[NUM_EPISODES] >= num_episodes
+        assert metrics[NUM_EPISODES_LIFETIME] >= num_episodes
         episode_num_timesteps = sum(len(eps) for eps in episodes)
         # As some sub-environment stepped but didn't complete the episode, more steps might have been sampled than returned.
-        assert metrics["num_env_steps_sampled"] >= episode_num_timesteps
-        assert metrics["num_env_steps_sampled_lifetime"] >= episode_num_timesteps
+        assert metrics[NUM_ENV_STEPS_SAMPLED] >= episode_num_timesteps
+        assert metrics[NUM_ENV_STEPS_SAMPLED_LIFETIME] >= episode_num_timesteps
 
         # Check episode stats metrics exist after complete episodes
         for key in self.SHARED_EPISODE_STATS_METRICS:
             assert key in metrics, f"Missing metric: {key}"
 
         # Episode return and length should be positive
-        assert metrics["episode_len_mean"] > 0
-        assert metrics["episode_return_mean"] > 0  # CartPole return is always positive
-        assert metrics["episode_duration_sec_mean"] > 0
+        assert metrics[EPISODE_LEN_MEAN] > 0
+        # CartPole return is always positive
+        assert metrics[EPISODE_RETURN_MEAN] > 0
+        assert metrics[EPISODE_DURATION_SEC_MEAN] > 0
 
     def test_metrics_accumulate_over_samples(self, env_runner):
         """Test that metrics accumulate correctly over multiple sample calls.
@@ -805,9 +812,9 @@ class TestEnvRunnerMetrics:
         # First sample
         episodes_1 = env_runner.sample(num_episodes=1, random_actions=True)
         metrics_1 = env_runner.get_metrics()
-        steps_sampled_1 = metrics_1["num_env_steps_sampled"]
-        lifetime_1 = metrics_1["num_env_steps_sampled_lifetime"].peek()
-        episodes_lifetime_1 = metrics_1["num_episodes_lifetime"].peek()
+        steps_sampled_1 = metrics_1[NUM_ENV_STEPS_SAMPLED]
+        lifetime_1 = metrics_1[NUM_ENV_STEPS_SAMPLED_LIFETIME].peek()
+        episodes_lifetime_1 = metrics_1[NUM_EPISODES_LIFETIME].peek()
         assert steps_sampled_1 >= sum(len(eps) for eps in episodes_1)
         assert steps_sampled_1 >= lifetime_1
         # on the final timestep sampled, if other environment also terminate then
@@ -817,9 +824,9 @@ class TestEnvRunnerMetrics:
         # Second sample
         episodes_2 = env_runner.sample(num_episodes=1, random_actions=True)
         metrics_2 = env_runner.get_metrics()
-        steps_sampled_2 = metrics_2["num_env_steps_sampled"]
-        lifetime_2 = metrics_2["num_env_steps_sampled_lifetime"].peek()
-        episodes_lifetime_2 = metrics_2["num_episodes_lifetime"].peek()
+        steps_sampled_2 = metrics_2[NUM_ENV_STEPS_SAMPLED]
+        lifetime_2 = metrics_2[NUM_ENV_STEPS_SAMPLED_LIFETIME].peek()
+        episodes_lifetime_2 = metrics_2[NUM_EPISODES_LIFETIME].peek()
         assert steps_sampled_2 >= sum(len(eps) for eps in episodes_2)
         assert steps_sampled_2 >= lifetime_2
         assert episodes_lifetime_2 >= sum(eps.is_done for eps in episodes_2)
@@ -832,10 +839,10 @@ class TestEnvRunnerMetrics:
 
         # Get metrics again without sampling
         metrics = env_runner.get_metrics()
-        assert np.isnan(metrics["num_env_steps_sampled"].peek())
-        assert metrics["num_env_steps_sampled_lifetime"].peek() == 0.0
-        assert np.isnan(metrics["num_episodes"].peek())
-        assert metrics["num_episodes_lifetime"].peek() == 0.0
+        assert np.isnan(metrics[NUM_ENV_STEPS_SAMPLED].peek())
+        assert metrics[NUM_ENV_STEPS_SAMPLED_LIFETIME].peek() == 0.0
+        assert np.isnan(metrics[NUM_EPISODES].peek())
+        assert metrics[NUM_EPISODES_LIFETIME].peek() == 0.0
 
     def test_metrics_min_max_tracking(self, env_runner):
         """Test that min/max episode metrics are tracked correctly."""
@@ -844,12 +851,12 @@ class TestEnvRunnerMetrics:
         metrics = env_runner.get_metrics()
 
         # Min should be <= mean <= max for episode length
-        assert metrics["episode_len_min"] <= metrics["episode_len_mean"]
-        assert metrics["episode_len_mean"] <= metrics["episode_len_max"]
+        assert metrics[EPISODE_LEN_MIN] <= metrics[EPISODE_LEN_MEAN]
+        assert metrics[EPISODE_LEN_MEAN] <= metrics[EPISODE_LEN_MAX]
 
         # Min should be <= mean <= max for episode return
-        assert metrics["episode_return_min"] <= metrics["episode_return_mean"]
-        assert metrics["episode_return_mean"] <= metrics["episode_return_max"]
+        assert metrics[EPISODE_RETURN_MIN] <= metrics[EPISODE_RETURN_MEAN]
+        assert metrics[EPISODE_RETURN_MEAN] <= metrics[EPISODE_RETURN_MAX]
 
     def test_metrics_consistency_across_sample_modes(self, env_runner):
         """Test that metrics structure is consistent regardless of sample mode."""
@@ -878,33 +885,26 @@ class TestEnvRunnerCallbacks:
         self, env_runner_with_callback, ray_init, num_timesteps
     ):
         """Test the callbacks for sample timesteps."""
-        CallbackTracker.reset()
+        episodes = env_runner_with_callback.sample(
+            num_timesteps=num_timesteps, random_actions=True
+        )
 
-        try:
-            # Sample complete episodes
-            episodes = env_runner_with_callback.sample(
-                num_timesteps=num_timesteps, random_actions=True
-            )
+        on_episode_created_calls = CallbackTracker.get_calls("on_episode_created")
+        on_episode_start_calls = CallbackTracker.get_calls("on_episode_start")
+        on_episode_end_calls = CallbackTracker.get_calls("on_episode_end")
+        on_sample_end_calls = CallbackTracker.get_calls("on_sample_end")
 
-            on_episode_created_calls = CallbackTracker.get_calls("on_episode_created")
-            on_episode_start_calls = CallbackTracker.get_calls("on_episode_start")
-            on_episode_end_calls = CallbackTracker.get_calls("on_episode_end")
-            on_sample_end_calls = CallbackTracker.get_calls("on_sample_end")
-
-            assert (
-                len(on_episode_created_calls)
-                == sum(e.is_done for e in episodes) + env_runner_with_callback.num_envs
-            )
-            assert (
-                len(on_episode_start_calls)
-                == sum(e.is_done for e in episodes) + env_runner_with_callback.num_envs
-            )
-            assert len(on_episode_end_calls) == sum(e.is_done for e in episodes)
-            assert len(on_sample_end_calls) == 1
-            assert on_sample_end_calls[0]["num_episodes"] == len(episodes)
-        finally:
-            env_runner_with_callback.stop()
-            CallbackTracker.reset()
+        assert (
+            len(on_episode_created_calls)
+            == sum(e.is_done for e in episodes) + env_runner_with_callback.num_envs
+        )
+        assert (
+            len(on_episode_start_calls)
+            == sum(e.is_done for e in episodes) + env_runner_with_callback.num_envs
+        )
+        assert len(on_episode_end_calls) == sum(e.is_done for e in episodes)
+        assert len(on_sample_end_calls) == 1
+        assert on_sample_end_calls[0][NUM_EPISODES] == len(episodes)
 
     @pytest.mark.parametrize("num_episodes", [1, 8])
     def test_callbacks_on_sample_episodes(
@@ -916,56 +916,43 @@ class TestEnvRunnerCallbacks:
         episode after the final episode completes (since it would never be used).
         So we expect exactly num_episodes created/started calls.
         """
-        CallbackTracker.reset()
+        episodes = env_runner_with_callback.sample(
+            num_episodes=num_episodes, random_actions=True
+        )
 
-        try:
-            # Sample complete episodes
-            episodes = env_runner_with_callback.sample(
-                num_episodes=num_episodes, random_actions=True
-            )
+        on_episode_created_calls = CallbackTracker.get_calls("on_episode_created")
+        on_episode_start_calls = CallbackTracker.get_calls("on_episode_start")
+        on_episode_end_calls = CallbackTracker.get_calls("on_episode_end")
+        on_sample_end_calls = CallbackTracker.get_calls("on_sample_end")
 
-            on_episode_created_calls = CallbackTracker.get_calls("on_episode_created")
-            on_episode_start_calls = CallbackTracker.get_calls("on_episode_start")
-            on_episode_end_calls = CallbackTracker.get_calls("on_episode_end")
-            on_sample_end_calls = CallbackTracker.get_calls("on_sample_end")
-
-            # When sampling by num_episodes, the runner skips creating a new episode
-            # after the final episode completes, so we expect exactly num_episodes calls
-            assert len(on_episode_created_calls) == num_episodes + 1
-            assert len(on_episode_start_calls) == num_episodes
-            assert len(on_episode_end_calls) == num_episodes == len(episodes)
-            assert len(on_sample_end_calls) == 1
-            assert on_sample_end_calls[0]["num_episodes"] == num_episodes
-        finally:
-            env_runner_with_callback.stop()
-            CallbackTracker.reset()
+        # When sampling by num_episodes, the runner skips creating a new episode
+        # after the final episode completes, so we expect exactly num_episodes calls
+        assert len(on_episode_created_calls) == num_episodes + 1
+        assert len(on_episode_start_calls) == num_episodes
+        assert len(on_episode_end_calls) == num_episodes == len(episodes)
+        assert len(on_sample_end_calls) == 1
+        assert on_sample_end_calls[0][NUM_EPISODES] == num_episodes
 
     def test_callbacks_on_sample_rollout(self, env_runner_with_callback, ray_init):
-        CallbackTracker.reset()
+        """Test the callbacks for sampling with default rollout fragment."""
+        episodes = env_runner_with_callback.sample(random_actions=True)
 
-        try:
-            # Sample complete episodes
-            episodes = env_runner_with_callback.sample(random_actions=True)
+        on_episode_created_calls = CallbackTracker.get_calls("on_episode_created")
+        on_episode_start_calls = CallbackTracker.get_calls("on_episode_start")
+        on_episode_end_calls = CallbackTracker.get_calls("on_episode_end")
+        on_sample_end_calls = CallbackTracker.get_calls("on_sample_end")
 
-            on_episode_created_calls = CallbackTracker.get_calls("on_episode_created")
-            on_episode_start_calls = CallbackTracker.get_calls("on_episode_start")
-            on_episode_end_calls = CallbackTracker.get_calls("on_episode_end")
-            on_sample_end_calls = CallbackTracker.get_calls("on_sample_end")
-
-            assert (
-                len(on_episode_created_calls)
-                == sum(e.is_done for e in episodes) + env_runner_with_callback.num_envs
-            )
-            assert (
-                len(on_episode_start_calls)
-                == sum(e.is_done for e in episodes) + env_runner_with_callback.num_envs
-            )
-            assert len(on_episode_end_calls) == sum(e.is_done for e in episodes)
-            assert len(on_sample_end_calls) == 1
-            assert on_sample_end_calls[0]["num_episodes"] == len(episodes)
-        finally:
-            env_runner_with_callback.stop()
-            CallbackTracker.reset()
+        assert (
+            len(on_episode_created_calls)
+            == sum(e.is_done for e in episodes) + env_runner_with_callback.num_envs
+        )
+        assert (
+            len(on_episode_start_calls)
+            == sum(e.is_done for e in episodes) + env_runner_with_callback.num_envs
+        )
+        assert len(on_episode_end_calls) == sum(e.is_done for e in episodes)
+        assert len(on_sample_end_calls) == 1
+        assert on_sample_end_calls[0][NUM_EPISODES] == len(episodes)
 
     @pytest.mark.parametrize("num_episodes", [1, 8])
     def test_callbacks_multi_samples(
@@ -977,36 +964,27 @@ class TestEnvRunnerCallbacks:
         after the final episode completes. Each sample() call independently
         creates exactly num_episodes episodes.
         """
-        CallbackTracker.reset()
+        for repeat in range(repeats):
+            episodes = env_runner_with_callback.sample(
+                num_episodes=num_episodes, random_actions=True
+            )
+            assert len(episodes) == num_episodes
 
-        try:
-            for repeat in range(repeats):
-                # Sample complete episodes
-                episodes = env_runner_with_callback.sample(
-                    num_episodes=num_episodes, random_actions=True
-                )
-                assert len(episodes) == num_episodes
+            on_episode_created_calls = CallbackTracker.get_calls("on_episode_created")
+            on_episode_start_calls = CallbackTracker.get_calls("on_episode_start")
+            on_episode_end_calls = CallbackTracker.get_calls("on_episode_end")
+            on_sample_end_calls = CallbackTracker.get_calls("on_sample_end")
 
-                on_episode_created_calls = CallbackTracker.get_calls(
-                    "on_episode_created"
-                )
-                on_episode_start_calls = CallbackTracker.get_calls("on_episode_start")
-                on_episode_end_calls = CallbackTracker.get_calls("on_episode_end")
-                on_sample_end_calls = CallbackTracker.get_calls("on_sample_end")
+            # Cumulative counts: each sample() creates num_episodes episodes
+            expected_created = (num_episodes + 1) * (repeat + 1)
+            expected_started = num_episodes * (repeat + 1)
+            expected_ended = num_episodes * (repeat + 1)
 
-                # Cumulative counts: each sample() creates num_episodes episodes
-                expected_created = (num_episodes + 1) * (repeat + 1)
-                expected_started = num_episodes * (repeat + 1)
-                expected_ended = num_episodes * (repeat + 1)
-
-                assert len(on_episode_created_calls) == expected_created
-                assert len(on_episode_start_calls) == expected_started
-                assert len(on_episode_end_calls) == expected_ended
-                assert len(on_sample_end_calls) == repeat + 1
-                assert on_sample_end_calls[-1]["num_episodes"] == num_episodes
-        finally:
-            env_runner_with_callback.stop()
-            CallbackTracker.reset()
+            assert len(on_episode_created_calls) == expected_created
+            assert len(on_episode_start_calls) == expected_started
+            assert len(on_episode_end_calls) == expected_ended
+            assert len(on_sample_end_calls) == repeat + 1
+            assert on_sample_end_calls[-1][NUM_EPISODES] == num_episodes
 
 
 class TestEnvRunnerConnectors:
