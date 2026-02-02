@@ -137,7 +137,7 @@ def test_export_train_run_run_settings_fields(enable_export_api_write):
     }
     assert run_settings["datasets"] == ["dataset_1"]
     assert run_settings["data_config"] == {"all": {}, "enable_shard_locality": True}
-    assert run_settings["runtime_config"] == {
+    assert run_settings["run_config"] == {
         "failure_config": {"controller_failure_limit": -1, "max_failures": 0},
         "worker_runtime_env": {"type": "conda"},
         "checkpoint_config": {"checkpoint_score_order": "MAX"},
@@ -308,7 +308,7 @@ def test_export_optional_fields(enable_export_api_write):
     """Test that optional fields are correctly exported when present and absent.
 
     This covers both top-level optional fields on TrainRun/TrainRunAttempt and
-    optional nested fields inside TrainRun.run_settings (e.g., scaling/data/runtime
+    optional nested fields inside TrainRun.run_settings (e.g., scaling/data/run
     configs).
     """
     state_actor = get_or_create_state_actor()
@@ -324,8 +324,8 @@ def test_export_optional_fields(enable_export_api_write):
     run_with_optional.run_settings.scaling_config.bundle_label_selector = {"k": "v"}
     run_with_optional.run_settings.data_config.datasets_to_split = ["dataset_1"]
     run_with_optional.run_settings.data_config.execution_options = {"foo": "bar"}
-    run_with_optional.run_settings.runtime_config.checkpoint_config.num_to_keep = 2
-    run_with_optional.run_settings.runtime_config.checkpoint_config.checkpoint_score_attribute = (
+    run_with_optional.run_settings.run_config.checkpoint_config.num_to_keep = 2
+    run_with_optional.run_settings.run_config.checkpoint_config.checkpoint_score_attribute = (
         "score"
     )
 
@@ -362,11 +362,11 @@ def test_export_optional_fields(enable_export_api_write):
     run_settings = run_data["event_data"]["run_settings"]
     # Optional protobuf scalar fields use their defaults
     assert "train_loop_config" not in run_settings
-    assert "checkpoint_config" in run_settings["runtime_config"]
-    assert "num_to_keep" not in run_settings["runtime_config"]["checkpoint_config"]
+    assert "checkpoint_config" in run_settings["run_config"]
+    assert "num_to_keep" not in run_settings["run_config"]["checkpoint_config"]
     assert (
         "checkpoint_score_attribute"
-        not in run_settings["runtime_config"]["checkpoint_config"]
+        not in run_settings["run_config"]["checkpoint_config"]
     )
     assert "scaling_config" in run_settings
     assert "resources_per_worker" not in run_settings["scaling_config"]
@@ -415,14 +415,12 @@ def test_export_optional_fields(enable_export_api_write):
         run_settings["data_config"]["execution_options"]
         == run_with_optional.run_settings.data_config.execution_options
     )
-    assert run_settings["runtime_config"]["checkpoint_config"]["num_to_keep"] == str(
-        run_with_optional.run_settings.runtime_config.checkpoint_config.num_to_keep
+    assert run_settings["run_config"]["checkpoint_config"]["num_to_keep"] == str(
+        run_with_optional.run_settings.run_config.checkpoint_config.num_to_keep
     )
     assert (
-        run_settings["runtime_config"]["checkpoint_config"][
-            "checkpoint_score_attribute"
-        ]
-        == run_with_optional.run_settings.runtime_config.checkpoint_config.checkpoint_score_attribute
+        run_settings["run_config"]["checkpoint_config"]["checkpoint_score_attribute"]
+        == run_with_optional.run_settings.run_config.checkpoint_config.checkpoint_score_attribute
     )
 
     # Verify train run attempt with optional fields

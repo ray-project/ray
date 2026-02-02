@@ -37,9 +37,9 @@ from ray.train.v2._internal.state.schema import (
     DataConfig as DataConfigSchema,
     FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
+    RunConfig as RunConfigSchema,
     RunSettings,
     RunStatus,
-    RuntimeConfig,
     ScalingConfig as ScalingConfigSchema,
     TrainResources,
     TrainRun,
@@ -211,7 +211,7 @@ def create_mock_train_run(
                 execution_options=None,
                 enable_shard_locality=True,
             ),
-            runtime_config=RuntimeConfig(
+            run_config=RunConfigSchema(
                 failure_config=FailureConfigSchema(
                     max_failures=0, controller_failure_limit=-1
                 ),

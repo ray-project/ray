@@ -17,9 +17,9 @@ from ray.train.v2._internal.state.schema import (
     CheckpointConfig as CheckpointConfigSchema,
     FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
+    RunConfig as RunConfigSchema,
     RunSettings,
     RunStatus,
-    RuntimeConfig as RuntimeConfigSchema,
     ScalingConfig as ScalingConfigSchema,
     TrainResources,
     TrainRun,
@@ -66,7 +66,7 @@ class TrainStateManager:
         dataset_config: DataConfig,
     ) -> None:
 
-        runtime_config = RuntimeConfigSchema(
+        run_config_schema = RunConfigSchema(
             failure_config=FailureConfigSchema(
                 max_failures=run_config.failure_config.max_failures,
                 controller_failure_limit=run_config.failure_config.controller_failure_limit,
@@ -102,7 +102,7 @@ class TrainStateManager:
             scaling_config=scaling_config,
             datasets=list(datasets.keys()),
             data_config=construct_data_config(dataset_config),
-            runtime_config=runtime_config,
+            run_config=run_config_schema,
         )
 
         run = TrainRun(

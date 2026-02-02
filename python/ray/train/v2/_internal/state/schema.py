@@ -278,8 +278,8 @@ class CheckpointConfig(BaseModel):
 
 
 @DeveloperAPI
-class RuntimeConfig(BaseModel):
-    """Runtime configuration parameters for a Train run, encompassing failure,
+class RunConfig(BaseModel):
+    """Run configuration parameters for a Train run, encompassing failure,
     runtime environment, checkpoint settings, and storage path."""
 
     failure_config: FailureConfig = Field(
@@ -329,8 +329,8 @@ class RunSettings(BaseModel):
     data_config: DataConfig = Field(
         description="The data config for a Train run.",
     )
-    runtime_config: RuntimeConfig = Field(
-        description="Runtime configuration for this Train run, including failure, runtime environment, checkpoint settings, and storage path."
+    run_config: RunConfig = Field(
+        description="Run configuration for this Train run, including failure, runtime environment, checkpoint settings, and storage path."
     )
 
 

@@ -40,9 +40,9 @@ from ray.train.v2._internal.state.schema import (
     DataConfig as DataConfigSchema,
     FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
+    RunConfig as RunConfigSchema,
     RunSettings,
     RunStatus,
-    RuntimeConfig,
     ScalingConfig as ScalingConfigSchema,
     TrainResources,
     TrainRun,
@@ -202,7 +202,7 @@ def test_train_state_actor_create_and_get_run(ray_start_regular):
                 execution_options={},
                 enable_shard_locality=True,
             ),
-            runtime_config=RuntimeConfig(
+            run_config=RunConfigSchema(
                 failure_config=FailureConfigSchema(
                     max_failures=0, controller_failure_limit=-1
                 ),

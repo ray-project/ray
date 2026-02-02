@@ -1,6 +1,7 @@
 import json
 import logging
 from collections.abc import Mapping
+from typing import Any
 
 from google.protobuf.struct_pb2 import Struct
 
@@ -18,9 +19,9 @@ from ray.train.v2._internal.state.schema import (
     BackendConfig,
     DataConfig,
     RunAttemptStatus,
+    RunConfig,
     RunSettings,
     RunStatus,
-    RuntimeConfig,
     ScalingConfig,
     TrainRun,
     TrainRunAttempt,
@@ -68,15 +69,42 @@ _TRAINING_FRAMEWORK_MAP = {
 logger = logging.getLogger(__name__)
 
 # Helper conversion functions
-def _to_human_readable_json(obj, *, max_depth=10) -> str:
+def _to_human_readable_json(obj: Any, *, max_depth: int = 10) -> str:
     """
     Convert arbitrary Python objects into a human-readable, JSON-serializable string.
 
-    Use-case(s):
-    - Convert user-defined dicts containing variable field types, custom objects, complex nesting to standard JSON string.
+    Use to convert user-defined dicts containing variable field types, custom objects,
+    complex nesting to standard JSON string for protobuf serialization.
+
+    Args:
+        obj: The object to convert into a JSON-serializable form.
+        max_depth: Maximum recursion depth; deeper structures are replaced with "<truncated>".
+
+    Returns:
+        A JSON string representation of the converted object.
+
+    Example:
+
+    ```python
+    class MyConfig:
+        def __init__(self, lr: float):
+            self.lr = lr
+            self.tags = ["a", "b"]
+
+    # Input: mixed types (nested dict + custom object)
+    cfg = {"epochs": 3, "custom": MyConfig(lr=0.001)}
+
+    json_str = _to_human_readable_json(cfg)
+
+    # Output: JSON string safe to export/store (example)
+    # {
+    #   "custom": {"__type__": "MyConfig", "attributes": {"lr": 0.001, "tags": ["a", "b"]}},
+    #   "epochs": 3
+    # }
+    ```
     """
 
-    def sanitize(value, depth):
+    def to_human_readable(value, depth):
         if depth <= 0:
             return "<truncated>"
 
@@ -86,30 +114,30 @@ def _to_human_readable_json(obj, *, max_depth=10) -> str:
 
         # Dict-like
         if isinstance(value, Mapping):
-            return {str(k): sanitize(v, depth - 1) for k, v in value.items()}
+            return {str(k): to_human_readable(v, depth - 1) for k, v in value.items()}
 
         # List / tuple / set
         if isinstance(value, (list, tuple, set)):
-            return [sanitize(v, depth - 1) for v in value]
+            return [to_human_readable(v, depth - 1) for v in value]
 
         # Objects with __dict__
         if hasattr(value, "__dict__"):
             return {
                 "__type__": value.__class__.__name__,
-                "attributes": sanitize(vars(value), depth - 1),
+                "attributes": to_human_readable(vars(value), depth - 1),
             }
 
         # Fallback: string representation
         return str(value)
 
     try:
-        sanitized = sanitize(obj, max_depth)
+        human_readable_json = to_human_readable(obj, max_depth)
     except Exception as e:
         logger.debug(f"Failed to convert value to JSON for export: {e}")
-        sanitized = "N/A"
+        human_readable_json = "N/A"
 
     return json.dumps(
-        sanitized,
+        human_readable_json,
         sort_keys=True,
         ensure_ascii=False,
     )
@@ -236,41 +264,41 @@ def to_proto_data_config(data_config: DataConfig) -> ProtoTrainRun.DataConfig:
     return proto
 
 
-def to_proto_runtime_config(
-    runtime_config: RuntimeConfig,
-) -> ProtoTrainRun.RuntimeConfig:
-    """Convert RuntimeConfig to protobuf format."""
+def to_proto_run_config(
+    run_config: RunConfig,
+) -> ProtoTrainRun.RunConfig:
+    """Convert RunConfig to protobuf format."""
 
     failure_config = ProtoTrainRun.FailureConfig(
-        max_failures=runtime_config.failure_config.max_failures,
-        controller_failure_limit=runtime_config.failure_config.controller_failure_limit,
+        max_failures=run_config.failure_config.max_failures,
+        controller_failure_limit=run_config.failure_config.controller_failure_limit,
     )
 
     worker_runtime_env = Struct()
     human_readable_worker_runtime_env = json.loads(
-        _to_human_readable_json(runtime_config.worker_runtime_env)
+        _to_human_readable_json(run_config.worker_runtime_env)
     )
     worker_runtime_env.update(human_readable_worker_runtime_env)
 
     checkpoint_score_order = ProtoTrainRun.CheckpointConfig.CheckpointScoreOrder.Value(
-        runtime_config.checkpoint_config.checkpoint_score_order.upper()
+        run_config.checkpoint_config.checkpoint_score_order.upper()
     )
 
     checkpoint_config = ProtoTrainRun.CheckpointConfig(
         checkpoint_score_order=checkpoint_score_order
     )
-    if runtime_config.checkpoint_config.num_to_keep is not None:
-        checkpoint_config.num_to_keep = runtime_config.checkpoint_config.num_to_keep
-    if runtime_config.checkpoint_config.checkpoint_score_attribute is not None:
+    if run_config.checkpoint_config.num_to_keep is not None:
+        checkpoint_config.num_to_keep = run_config.checkpoint_config.num_to_keep
+    if run_config.checkpoint_config.checkpoint_score_attribute is not None:
         checkpoint_config.checkpoint_score_attribute = (
-            runtime_config.checkpoint_config.checkpoint_score_attribute
+            run_config.checkpoint_config.checkpoint_score_attribute
         )
 
-    return ProtoTrainRun.RuntimeConfig(
+    return ProtoTrainRun.RunConfig(
         failure_config=failure_config,
         worker_runtime_env=worker_runtime_env,
         checkpoint_config=checkpoint_config,
-        storage_path=runtime_config.storage_path,
+        storage_path=run_config.storage_path,
     )
 
 
@@ -282,7 +310,7 @@ def _to_proto_run_settings(run_settings: RunSettings) -> ProtoTrainRun.RunSettin
         scaling_config=to_proto_scaling_config(run_settings.scaling_config),
         datasets=run_settings.datasets,
         data_config=to_proto_data_config(run_settings.data_config),
-        runtime_config=to_proto_runtime_config(run_settings.runtime_config),
+        run_config=to_proto_run_config(run_settings.run_config),
     )
 
     if run_settings.train_loop_config is not None:

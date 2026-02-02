@@ -97,8 +97,8 @@ message ExportTrainRunEventData {
     repeated string datasets = 4;
     // The data config for a Train run.
     DataConfig data_config = 5;
-    // Runtime configuration for this Train run.
-    RuntimeConfig runtime_config = 6;
+    // Run configuration for this Train run.
+    RunConfig run_config = 6;
   }
 
   // Backend config for a Train run, varies with the framework (e.g. TorchConfig).
@@ -167,8 +167,8 @@ message ExportTrainRunEventData {
     bool enable_shard_locality = 4;
   }
 
-  // Runtime configuration parameters for a Train run
-  message RuntimeConfig {
+  // Run configuration parameters for a Train run
+  message RunConfig {
     // The failure config for a Train run.
     FailureConfig failure_config = 1;
     // The worker runtime env for a Train run.
