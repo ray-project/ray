@@ -39,8 +39,8 @@ class NixlTransportMetadata(TensorTransportMetadata):
 @dataclass
 class TensorDesc:
     reg_desc: Any  # nixlRegDList
-    ref_count: int
-    nbytes: int
+    metadata_count: int  # tracks the number of NIXL metadata containing the tensor
+    nbytes: int  # the number of bytes in the tensor
 
 
 class NixlTensorTransport(TensorTransportManager):
@@ -291,8 +291,8 @@ class NixlTensorTransport(TensorTransportManager):
                 key = tensor.data_ptr()
                 if key in self._tensor_desc_cache:
                     tensor_desc = self._tensor_desc_cache[key]
-                    tensor_desc.ref_count -= 1
-                    if tensor_desc.ref_count == 0:
+                    tensor_desc.metadata_count -= 1
+                    if tensor_desc.metadata_count == 0:
                         self._tensor_desc_cache.pop(key)
                         self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
 
@@ -359,7 +359,7 @@ class NixlTensorTransport(TensorTransportManager):
                     raise ValueError(
                         "Tensors in an RDT object cannot partially overlap with each other."
                     )
-                self._tensor_desc_cache[key].ref_count += 1
+                self._tensor_desc_cache[key].metadata_count += 1
             else:
                 reg_desc = self.get_nixl_agent().register_memory([tensor])
                 self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1, tensor.nbytes)

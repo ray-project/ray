@@ -58,10 +58,10 @@ class GPUTestActor:
         assert gpu_manager.gpu_object_store.has_tensor(tensor)
         assert gpu_manager.is_managed_object(obj_id)
         assert obj_id in nixl_transport._managed_meta_nixl
-        # Tensor-level ref counting: the tensor should have ref_count=1
+        # Tensor-level metadata counting: the tensor should have metadata_count=1
         key = tensor.data_ptr()
         assert key in nixl_transport._tensor_desc_cache
-        assert nixl_transport._tensor_desc_cache[key].ref_count == 1
+        assert nixl_transport._tensor_desc_cache[key].metadata_count == 1
 
         del ref
 
@@ -93,25 +93,6 @@ class GPUTestActor:
         )
 
         return get_tensor_transport_manager("NIXL")._get_num_managed_meta_nixl()
-
-    def is_tensor_in_desc_cache(self, tensor):
-        from ray.experimental.gpu_object_manager.util import (
-            get_tensor_transport_manager,
-        )
-
-        key = tensor.data_ptr()
-        return key in get_tensor_transport_manager("NIXL")._tensor_desc_cache
-
-    def get_tensor_ref_count(self, tensor):
-        from ray.experimental.gpu_object_manager.util import (
-            get_tensor_transport_manager,
-        )
-
-        key = tensor.data_ptr()
-        cache = get_tensor_transport_manager("NIXL")._tensor_desc_cache
-        if key in cache:
-            return cache[key].ref_count
-        return 0
 
     def put_shared_tensor_lists(self):
         """Create two tensor lists that share a common tensor and put them with NIXL transport."""
