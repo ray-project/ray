@@ -682,7 +682,7 @@ def test_map_fusion_with_concurrency_arg(
         ds = ds.map(Map, num_cpus=0, concurrency=down_concurrency)
         down_name = "Map(Map)"
 
-    actual_data = pd.DataFrame(ds.take_all())
+    actual_data = ds.to_pandas()
     expected_data = pd.DataFrame({"id": list(range(10))})
     assert rows_same(actual_data, expected_data)
 
