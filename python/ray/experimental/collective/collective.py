@@ -127,7 +127,6 @@ def create_collective_group(
     if len(set(actor_ids)) != len(actor_ids):
         raise ValueError(f"All actors must be unique, got: {actors}")
 
-    # For GLOO backend, we need to clean up rendezvous metadata if initialization fails.
     metadata_key = None
     if backend == Backend.GLOO:
         metadata_key = get_master_address_metadata_key(name)
