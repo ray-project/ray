@@ -286,7 +286,7 @@ class TestDownloadExpressionFunctionality:
             names=["file_uri", "file_id"],
         )
 
-        ds = ray.data.from_arrow(table)
+        ds = ray.data.from_items(table)
 
         # Download with custom filesystem - this should work because
         # the SubTreeFileSystem resolves relative paths from subdir
