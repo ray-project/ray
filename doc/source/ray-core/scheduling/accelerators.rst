@@ -521,8 +521,8 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             (gpu_task pid=51830) GPU IDs: [1]
             (gpu_task pid=51830) CUDA_VISIBLE_DEVICES: 1
 
-   .. tab-item:: Rebellions RBLN
-        :sync: Rebellions RBLN
+   .. tab-item:: Mobilint MBLT
+        :sync: Mobilint MBLT
 
         .. testcode::
             :hide:
@@ -534,31 +534,31 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             import os
             import ray
 
-            ray.init(resources={"RBLN": 2})
+            ray.init(resources={"MBLT": 2})
 
-            @ray.remote(resources={"RBLN": 1})
-            class RBLNActor:
+            @ray.remote(resources={"MBLT": 1})
+            class MBLTActor:
                 def ping(self):
-                    print("RBLN IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["RBLN"]))
-                    print("RBLN_DEVICES: {}".format(os.environ["RBLN_DEVICES"]))
+                    print("MBLT IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["MBLT"]))
+                    print("MBLT_DEVICES: {}".format(os.environ["MBLT_DEVICES"]))
 
-            @ray.remote(resources={"RBLN": 1})
-            def rbln_task():
-                print("RBLN IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["RBLN"]))
-                print("RBLN_DEVICES: {}".format(os.environ["RBLN_DEVICES"]))
+            @ray.remote(resources={"MBLT": 1})
+            def mblt_task():
+                print("MBLT IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["MBLT"]))
+                print("MBLT_DEVICES: {}".format(os.environ["MBLT_DEVICES"]))
 
-            rbln_actor = RBLNActor.remote()
-            ray.get(rbln_actor.ping.remote())
-            # The actor uses the first RBLN so the task uses the second one.
-            ray.get(rbln_task.remote())
+            mblt_actor = MBLTActor.remote()
+            ray.get(mblt_actor.ping.remote())
+            # The actor uses the first MBLT so the task uses the second one.
+            ray.get(mblt_task.remote())
 
         .. testoutput::
             :options: +MOCK
 
-            (RBLNActor pid=52420) RBLN IDs: [0]
-            (RBLNActor pid=52420) RBLN_DEVICES: 0
-            (rbln_task pid=51830) RBLN IDs: [1]
-            (rbln_task pid=51830) RBLN_DEVICES: 1
+            (MBLTActor pid=52420) MBLT IDs: [0]
+            (MBLTActor pid=52420) MBLT_DEVICES: 0
+            (mblt_task pid=51830) MBLT IDs: [1]
+            (mblt_task pid=51830) MBLT_DEVICES: 1
 
 Inside a task or actor, :func:`ray.get_runtime_context().get_accelerator_ids() <ray.runtime_context.RuntimeContext.get_accelerator_ids>` returns a
 list of accelerator IDs that are available to the task or actor.
