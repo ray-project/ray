@@ -855,7 +855,7 @@ class BlockRefBundler(BaseRefBundler):
 
             # Add bundle to the output buffer so long as either
             #   - Output buffer size is still 0
-            #   - Output buffer doesn't exceeds the `_min_rows_per_bundle` threshold
+            #   - Output buffer doesn't exceed the `_min_rows_per_bundle` threshold
             if (
                 output_buffer_size < self._min_rows_per_bundle
                 or output_buffer_size == 0
@@ -864,6 +864,7 @@ class BlockRefBundler(BaseRefBundler):
                 output_buffer_size += bundle_size
             else:
                 remainder = self._bundle_buffer[idx:]
+                break
 
         self._bundle_buffer = remainder
         self._bundle_buffer_size = sum(
