@@ -18,12 +18,17 @@ from ray.air.integrations.mlflow import MLflowLoggerCallback, _NoopModule, setup
 from ray.train.torch import TorchTrainer
 from ray.tune import Tuner
 
+
 class MockStorage:
     def __init__(self, storage_filesystem):
         self.storage_filesystem = storage_filesystem
 
+
 class MockTrial(
-    namedtuple("MockTrial", ["config", "trial_name", "trial_id", "local_path", "path", "storage"])
+    namedtuple(
+        "MockTrial",
+        ["config", "trial_name", "trial_id", "local_path", "path", "storage"],
+    )
 ):
     def __hash__(self):
         return hash(self.trial_id)
@@ -187,7 +192,9 @@ class MLflowTest(unittest.TestCase):
         clear_env_vars()
         trial_config = {"par1": "a", "par2": "b"}
         mock_storage = MockStorage(LocalFileSystem())
-        trial = MockTrial(trial_config, "trial1", 0, "artifact", "artifact", mock_storage)
+        trial = MockTrial(
+            trial_config, "trial1", 0, "artifact", "artifact", mock_storage
+        )
 
         logger = MLflowLoggerCallback(
             tracking_uri=self.tracking_uri,
@@ -249,7 +256,9 @@ class MLflowTest(unittest.TestCase):
         clear_env_vars()
         trial_config = {"par1": "a", "par2": "b"}
         mock_storage = MockStorage(LocalFileSystem())
-        trial = MockTrial(trial_config, "trial1", 0, "artifact", "artifact", mock_storage)
+        trial = MockTrial(
+            trial_config, "trial1", 0, "artifact", "artifact", mock_storage
+        )
 
         logger = MLflowLoggerCallback(
             tracking_uri=self.tracking_uri,
@@ -325,12 +334,19 @@ class MLflowTest(unittest.TestCase):
         """Test that artifacts work with remote storage filesystems."""
         clear_env_vars()
         trial_config = {"par1": "a", "par2": "b"}
-        
+
         mock_fs = Mock()
         mock_fs.type_name = "s3"
         mock_storage = MockStorage(mock_fs)
-        
-        trial = MockTrial(trial_config, "trial1", 0, "local_artifact", "s3://bucket/path", mock_storage)
+
+        trial = MockTrial(
+            trial_config,
+            "trial1",
+            0,
+            "local_artifact",
+            "s3://bucket/path",
+            mock_storage,
+        )
 
         logger = MLflowLoggerCallback(
             tracking_uri=self.tracking_uri,
@@ -342,10 +358,11 @@ class MLflowTest(unittest.TestCase):
 
         logger.on_trial_start(iteration=0, trials=[], trial=trial)
         logger.on_trial_complete(0, [], trial)
-        
+
         self.assertTrue(logger.mlflow_util.artifact_saved)
 
         mock_copy_files.assert_called_once()
+
 
 class MLflowUtilTest(unittest.TestCase):
     def setUp(self):

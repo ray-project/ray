@@ -266,7 +266,6 @@ class MLflowLoggerCallback(LoggerCallback):
         save_artifact: bool = False,
         log_params_on_trial_end: bool = False,
     ):
-
         self.tracking_uri = tracking_uri
         self.registry_uri = registry_uri
         self.experiment_name = experiment_name
@@ -305,7 +304,6 @@ class MLflowLoggerCallback(LoggerCallback):
     def log_trial_start(self, trial: "Trial"):
         # Create run if not already exists.
         if trial not in self._trial_runs:
-
             # Set trial name in tags
             tags = self.tags.copy()
             tags["trial_name"] = str(trial)
@@ -342,7 +340,7 @@ class MLflowLoggerCallback(LoggerCallback):
                         tmpdir,
                         source_filesystem=fs,
                     )
-                    self.mlflow_util.save_artifacts(run_id=run_id, dir=tmpdir)  
+                    self.mlflow_util.save_artifacts(run_id=run_id, dir=tmpdir)
 
         # Stop the run once trial finishes.
         status = "FINISHED" if not failed else "FAILED"
