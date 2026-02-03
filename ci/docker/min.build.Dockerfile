@@ -31,7 +31,7 @@ else
 fi
 
 # install test requirements
-python -m pip install -U pytest==7.4.4 pip-tools==7.4.1
+python -m pip install -U pytest==8.3.3 pip-tools==7.4.1
 
 # install extra dependencies
 if [[ "${EXTRA_DEPENDENCY}" == "core" ]]; then
