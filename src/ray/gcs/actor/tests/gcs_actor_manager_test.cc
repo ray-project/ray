@@ -1916,9 +1916,9 @@ TEST_F(GcsActorManagerTest, TestRestartPreemptedActor) {
 // 4. First get should return the existing actor
 TEST_F(GcsActorManagerTest, TestGetIfExistsOnOutOfScopeActorReturnsSameActor) {
   auto send_reply_callback = [](Status, std::function<void()>, std::function<void()>) {};
-  const auto job_id = JobID::FromInt(1);
-  const auto actor_name = "test_get_if_exists_actor";
-  const auto ray_namespace = "test_namespace";
+  const JobID job_id = JobID::FromInt(1);
+  const std::string actor_name = "test_get_if_exists_actor";
+  const std::string ray_namespace = "test_namespace";
 
   std::shared_ptr<gcs::GcsActor> actor =
       RegisterAndCreateNamedActor(job_id, actor_name, ray_namespace, send_reply_callback);
@@ -1955,9 +1955,9 @@ TEST_F(GcsActorManagerTest, TestGetIfExistsOnOutOfScopeActorReturnsSameActor) {
 // 4. First get should fail (NotFound), create should succeed
 TEST_F(GcsActorManagerTest, TestGetIfExistsOnDeletedActorRefCreatesNewActor) {
   auto send_reply_callback = [](Status, std::function<void()>, std::function<void()>) {};
-  const auto job_id = JobID::FromInt(1);
-  const auto actor_name = "test_get_if_exists_deleted_actor";
-  const auto ray_namespace = "test_namespace";
+  const JobID job_id = JobID::FromInt(1);
+  const std::string actor_name = "test_get_if_exists_deleted_actor";
+  const std::string ray_namespace = "test_namespace";
 
   std::shared_ptr<gcs::GcsActor> actor =
       RegisterAndCreateNamedActor(job_id, actor_name, ray_namespace, send_reply_callback);
@@ -1992,11 +1992,12 @@ TEST_F(GcsActorManagerTest, TestGetIfExistsOnDeletedActorRefCreatesNewActor) {
   ASSERT_EQ(get_reply2.status().code(), static_cast<int>(StatusCode::NotFound));
 
   // Simulate get_if_exists=True flow - create call
-  auto register_request2 = GenRegisterActorRequest(job_id,
-                                                   /*max_restarts=*/-1,
-                                                   /*detached=*/false,
-                                                   /*name=*/actor_name,
-                                                   /*ray_namespace=*/ray_namespace);
+  rpc::RegisterActorRequest register_request2 =
+      GenRegisterActorRequest(job_id,
+                              /*max_restarts=*/-1,
+                              /*detached=*/false,
+                              /*name=*/actor_name,
+                              /*ray_namespace=*/ray_namespace);
   rpc::RegisterActorReply register_reply2;
   gcs_actor_manager_->HandleRegisterActor(
       register_request2, &register_reply2, send_reply_callback);
@@ -2010,11 +2011,11 @@ TEST_F(GcsActorManagerTest, TestGetIfExistsOnDeletedActorRefCreatesNewActor) {
       create_request2, &create_reply2, send_reply_callback);
 
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto new_actor = mock_actor_scheduler_->actors.back();
+  std::shared_ptr<gcs::GcsActor> new_actor = mock_actor_scheduler_->actors.back();
   mock_actor_scheduler_->actors.pop_back();
 
   // Mock new actor connecting to the gcs manager
-  auto new_address = RandomAddress();
+  rpc::Address new_address = RandomAddress();
   new_actor->UpdateAddress(new_address);
   gcs_actor_manager_->OnActorCreationSuccess(new_actor, rpc::PushTaskReply());
   while (io_service_.poll_one()) {
@@ -2031,9 +2032,9 @@ TEST_F(GcsActorManagerTest, TestGetIfExistsOnDeletedActorRefCreatesNewActor) {
 // 3. First get should return the existing actor
 TEST_F(GcsActorManagerTest, TestGetIfExistsOnInScopeActorReturnsSameActor) {
   auto send_reply_callback = [](Status, std::function<void()>, std::function<void()>) {};
-  const auto job_id = JobID::FromInt(1);
-  const auto actor_name = "test_get_if_exists_in_scope_actor";
-  const auto ray_namespace = "test_namespace";
+  const JobID job_id = JobID::FromInt(1);
+  const std::string actor_name = "test_get_if_exists_in_scope_actor";
+  const std::string ray_namespace = "test_namespace";
 
   std::shared_ptr<gcs::GcsActor> actor =
       RegisterAndCreateNamedActor(job_id, actor_name, ray_namespace, send_reply_callback);
