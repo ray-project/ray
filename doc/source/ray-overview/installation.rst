@@ -421,7 +421,7 @@ Installed Python dependencies
 Our docker images are shipped with pre-installed Python dependencies
 required for Ray and its libraries.
 
-We publish the dependencies that are installed in our ``ray`` Docker images for Python 3.9.
+We publish the dependencies that are installed in our ``ray`` Docker images for Python 3.10.
 
 .. tab-set::
 

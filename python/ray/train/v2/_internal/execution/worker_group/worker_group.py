@@ -10,7 +10,7 @@ import ray
 from ray._private.ray_constants import env_float
 from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
-from ray.exceptions import GetTimeoutError, RayActorError
+from ray.exceptions import RayActorError
 from ray.runtime_env import RuntimeEnv
 from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train.v2._internal.constants import (
@@ -294,13 +294,11 @@ class WorkerGroup(BaseWorkerGroup):
             # time out if this hangs for a while to try again with a different size.
             # For example, the controller may try to set a worker group size
             # based on stale information about cluster resources.
-            try:
-                ray.get(pg_handle.ready(), timeout=self._worker_group_start_timeout_s)
-            except GetTimeoutError as timeout_exc:
+            if not pg_handle.wait(self._worker_group_start_timeout_s):
                 pg_handle.shutdown()
                 raise WorkerGroupStartupTimeoutError(
                     num_workers=worker_group_context.num_workers
-                ) from timeout_exc
+                )
 
             # TODO: Figure out ordering between these different calls/callbacks.
             worker_group_state_builder.with_placement_group_handle(pg_handle)
