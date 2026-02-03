@@ -41,7 +41,7 @@ class TensorDesc:
     reg_desc: Any  # nixlRegDList
     metadata_count: int  # tracks the number of NIXL metadata containing the tensor
     nbytes: int  # the number of bytes in the tensor
-    cache_metadata: bool = False  # if True, never deregister - keep for reuse
+    cache_metadata: bool = False  # whether the registered memory is cached for reuse
 
 
 class NixlTensorTransport(TensorTransportManager):
@@ -324,11 +324,10 @@ class NixlTensorTransport(TensorTransportManager):
         self,
         src_obj_id: str,
         src_gpu_object: List["torch.Tensor"],
-        cache_metadata: bool = False,
+        cache_metadata: bool,
     ) -> Optional[NixlTransportMetadata]:
         """
         Record the NIXL managed meta for the given object ID if it is a duplicate of another object, and return the meta if it is.
-        Assumes that the caller is already holding the cache lock.
         """
         from ray._private.worker import global_worker
 
@@ -380,7 +379,7 @@ class NixlTensorTransport(TensorTransportManager):
                     )
                 if cache_metadata != tensor_desc.cache_metadata:
                     raise ValueError(
-                        f"Inconsistent cache_metadata for tensor at data_ptr {key}: "
+                        f"Inconsistent cache_metadata for tensor created through ray.put calls."
                         f"existing={tensor_desc.cache_metadata}, new={cache_metadata}. "
                         "cache_metadata must be consistent across all ray.put calls for the same tensor."
                     )
