@@ -530,7 +530,7 @@ def _align_struct_fields(
 
         # Get the number of rows in the block
         block_length = len(block)
-        block_names = set(block.schema.names)
+        block_schema_field_names = set(block.schema.names)
 
         # Process struct columns that need alignment
         for column_name, unified_struct_type in unified_struct_types.items():
