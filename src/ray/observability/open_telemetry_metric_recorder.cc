@@ -39,8 +39,8 @@
 namespace {
 using ray::observability::OpenTelemetryMetricRecorder;
 
-static void _DoubleGaugeCallback(opentelemetry::metrics::ObserverResult observer,
-                                 void *state) {
+static void DoubleGaugeCallback(opentelemetry::metrics::ObserverResult observer,
+                                void *state) {
   const std::string *name_ptr = static_cast<const std::string *>(state);
   const std::string &name = *name_ptr;
   OpenTelemetryMetricRecorder &recorder = OpenTelemetryMetricRecorder::GetInstance();
@@ -192,7 +192,7 @@ void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,
   // a potential deadlock.
   //
   // To avoid this, ensure the callback is registered *after* releasing mutex_ (A).
-  instrument->AddCallback(&_DoubleGaugeCallback, static_cast<void *>(name_ptr));
+  instrument->AddCallback(&DoubleGaugeCallback, static_cast<void *>(name_ptr));
 }
 
 bool OpenTelemetryMetricRecorder::IsMetricRegistered(const std::string &name) {
