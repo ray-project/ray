@@ -157,6 +157,9 @@ class MockClusterNodeInfoCache:
     def set_available_resources_per_node(self, node_id: str, resources: Dict):
         self.available_resources_per_node[node_id] = deepcopy(resources)
 
+    def get_node_labels(self, node_id: str):
+        return self.node_labels.get(node_id, {})
+
 
 class FakeRemoteFunction:
     def remote(self):

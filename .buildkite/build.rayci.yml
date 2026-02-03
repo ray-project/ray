@@ -56,8 +56,7 @@ steps:
       - ray-java-build
       - ray-dashboard-build
 
-  # Upload wheels to S3
-  - label: ":s3: upload: wheel py{{matrix}} (x86_64)"
+  - label: ":arrow_up: upload: wheel py{{matrix}} (x86_64)"
     key: linux_wheels_upload
     instance_type: small
     commands:
@@ -74,7 +73,7 @@ steps:
       - forge
     tags:
       - release_wheels
-      - skip-on-premerge
+      - linux_wheels
       - oss
 
   - name: ray-cpp-core-build
@@ -82,7 +81,6 @@ steps:
     wanda: ci/docker/ray-cpp-core.wanda.yaml
     env_file: rayci.env
     env:
-      PYTHON_VERSION: "3.10"  # Used for upstream images; output is Python-agnostic
       ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
     tags:
@@ -107,8 +105,7 @@ steps:
       - ray-java-build
       - ray-dashboard-build
 
-  # Upload cpp wheel to S3
-  - label: ":s3: upload: cpp wheel (x86_64)"
+  - label: ":arrow_up: upload: cpp wheel (x86_64)"
     key: linux_cpp_wheels_upload
     instance_type: small
     commands:
@@ -120,7 +117,7 @@ steps:
       - forge
     tags:
       - release_wheels
-      - skip-on-premerge
+      - linux_wheels
       - oss
 
   - label: ":tapioca: build: jar"

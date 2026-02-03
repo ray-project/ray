@@ -37,6 +37,7 @@ import contextvars
 import concurrent.futures
 import collections
 
+from dataclasses import dataclass
 from libc.stdint cimport (
     int32_t,
     int64_t,
@@ -103,6 +104,8 @@ from ray.includes.common cimport (
     CLabelMatchExpression,
     CLabelIn,
     CLabelNotIn,
+    CLabelSelector,
+    CNodeResources,
     CRayFunction,
     CWorkerType,
     CJobConfig,
@@ -141,6 +144,7 @@ from ray.includes.common cimport (
     PersistPort,
     WaitForPersistedPort,
     CWaitForPersistedPortResult,
+    SetNodeResourcesLabels,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -596,6 +600,23 @@ cdef int prepare_label_selector(
         c_label_selector[0].AddConstraint(key.encode("utf-8"), value.encode("utf-8"))
 
     return 0
+
+def node_labels_match_selector(node_labels: Dict[str, str], selector: Dict[str, str]) -> bool:
+    """
+    Checks if the given node labels satisfy the label selector. This helper function exposes
+    the C++ logic for determining if a node satisfies a label selector to the Python layer.
+    """
+    cdef:
+        CNodeResources c_node_resources
+        CLabelSelector c_label_selector
+        unordered_map[c_string, c_string] c_labels_map
+
+    prepare_labels(node_labels, &c_labels_map)
+    SetNodeResourcesLabels(c_node_resources, c_labels_map)
+    prepare_label_selector(selector, &c_label_selector)
+
+    # Return whether the node resources satisfy the label constraint.
+    return c_node_resources.HasRequiredLabels(c_label_selector)
 
 cdef int prepare_fallback_strategy(
         list fallback_strategy,
@@ -1101,6 +1122,12 @@ cdef class StreamingGeneratorExecutionContext:
 
         return self
 
+
+@dataclass(frozen=True)
+class StreamingGeneratorStats:
+    object_creation_dur_s: float
+
+
 cdef report_streaming_generator_output(
     StreamingGeneratorExecutionContext context,
     output: object,
@@ -1121,6 +1148,8 @@ cdef report_streaming_generator_output(
     cdef:
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
+
+    start = time.perf_counter()
 
     # Report the intermediate result if there was no error.
     create_generator_return_obj(
@@ -1148,6 +1177,8 @@ cdef report_streaming_generator_output(
             return_obj.first,
             is_plasma_object(return_obj.second)))
 
+    serialization_dur_s = time.perf_counter() - start
+
     with nogil:
         check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
             return_obj,
@@ -1156,6 +1187,11 @@ cdef report_streaming_generator_output(
             generator_index,
             context.attempt_number,
             context.waiter))
+
+
+    return StreamingGeneratorStats(
+        object_creation_dur_s=serialization_dur_s,
+    )
 
 
 cdef report_streaming_generator_exception(
@@ -1250,9 +1286,20 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     gen = context.generator
 
     try:
-        for output in gen:
-            report_streaming_generator_output(context, output, gen_index, None)
-            gen_index += 1
+        stats = None
+
+        while True:
+            try:
+                # Send object serialization duration to the generator and retrieve
+                # next output
+                output = gen.send(stats)
+                # Track serialization duration of the next output
+                stats = report_streaming_generator_output(context, output, gen_index, None)
+
+                gen_index += 1
+
+            except StopIteration:
+                break
     except Exception as e:
         report_streaming_generator_exception(context, e, gen_index, None)
 
@@ -1306,8 +1353,11 @@ async def execute_streaming_generator_async(
     interrupt_signal_event = threading.Event()
 
     try:
-        try:
-            async for output in gen:
+        stats = None
+
+        while True:
+            try:
+                output = await gen.asend(stats)
                 # NOTE: Report of streaming generator output is done in a
                 # standalone thread-pool to avoid blocking the event loop,
                 # since serializing and actual RPC I/O is done with "nogil". We
@@ -1320,7 +1370,7 @@ async def execute_streaming_generator_async(
                 # are currently under backpressure. Then we need to wait for an
                 # ack from the caller (the reply for a possibly previous report
                 # RPC) that they have consumed more ObjectRefs.
-                await loop.run_in_executor(
+                stats = await loop.run_in_executor(
                     executor,
                     report_streaming_generator_output,
                     context,
@@ -1329,9 +1379,13 @@ async def execute_streaming_generator_async(
                     interrupt_signal_event,
                 )
                 cur_generator_index += 1
-        except Exception as e:
-            # Report the exception to the owner of the task.
-            report_streaming_generator_exception(context, e, cur_generator_index, None)
+
+            except StopAsyncIteration:
+                break
+
+    except Exception as e:
+        # Report the exception to the owner of the task.
+        report_streaming_generator_exception(context, e, cur_generator_index, None)
 
     except BaseException as be:
         # NOTE: PLEASE READ CAREFULLY BEFORE CHANGING

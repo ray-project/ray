@@ -56,9 +56,6 @@ def ray_shutdown():
 
 @pytest.fixture
 def ray_cluster():
-    serve.shutdown()
-    if ray.is_initialized():
-        ray.shutdown()
     cluster = Cluster()
     yield cluster
     serve.shutdown()
@@ -68,9 +65,6 @@ def ray_cluster():
 
 @pytest.fixture
 def ray_autoscaling_cluster(request):
-    serve.shutdown()
-    if ray.is_initialized():
-        ray.shutdown()
     # NOTE(zcin): We have to make a deepcopy here because AutoscalingCluster
     # modifies the dictionary that's passed in.
     params = deepcopy(request.param)
@@ -145,11 +139,6 @@ def _shared_serve_instance():
     # To run locally, please use this instead.
     # SERVE_DEBUG_LOG=1 pytest -v -s test_api.py
     # os.environ["SERVE_DEBUG_LOG"] = "1" <- Do not uncomment this.
-
-    # Ensure Ray is not already running before starting this session-scoped instance
-    serve.shutdown()
-    if ray.is_initialized():
-        ray.shutdown()
 
     # Overriding task_retry_delay_ms to relaunch actors more quickly
     ray.init(
@@ -371,3 +360,50 @@ def metrics_start_shutdown(request):
         serve.shutdown()
         ray.shutdown()
         reset_ray_address()
+
+
+# Helper function to return the node ID of a remote worker.
+@ray.remote(num_cpus=0)
+def _get_node_id():
+    return ray.get_runtime_context().get_node_id()
+
+
+# Test fixture to start a Serve instance in a RayCluster with two labeled nodes
+@pytest.fixture(scope="module")
+def serve_instance_with_labeled_nodes():
+    cluster = Cluster()
+
+    # Unlabeled default node.
+    cluster.add_node(num_cpus=3, resources={"worker0": 1})
+
+    # Node 1 - labeled A100 node in us-west.
+    cluster.add_node(
+        num_cpus=3,
+        resources={"worker1": 1},
+        labels={"region": "us-west", "gpu-type": "A100"},
+    )
+
+    # Node 2 - labeled H100 node in us-east.
+    cluster.add_node(
+        num_cpus=3,
+        resources={"worker2": 1},
+        labels={"region": "us-east", "gpu-type": "H100"},
+    )
+
+    cluster.wait_for_nodes()
+
+    if ray.is_initialized():
+        ray.shutdown()
+
+    ray.init(address=cluster.address)
+
+    node_1_id = ray.get(_get_node_id.options(resources={"worker1": 1}).remote())
+    node_2_id = ray.get(_get_node_id.options(resources={"worker2": 1}).remote())
+
+    serve.start()
+
+    yield _get_global_client(), node_1_id, node_2_id, cluster
+
+    serve.shutdown()
+    ray.shutdown()
+    cluster.shutdown()

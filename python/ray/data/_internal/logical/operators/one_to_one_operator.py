@@ -46,16 +46,11 @@ class AbstractOneToOne(LogicalOperator):
             input_dependencies=[input_op] if input_op else [],
             num_outputs=num_outputs,
         )
-        self._can_modify_num_rows = can_modify_num_rows
+        self.can_modify_num_rows = can_modify_num_rows
 
     @property
     def input_dependency(self) -> LogicalOperator:
-        return self._input_dependencies[0]
-
-    def can_modify_num_rows(self) -> bool:
-        """Whether this operator can modify the number of rows,
-        i.e. number of input rows != number of output rows."""
-        return self._can_modify_num_rows
+        return self.input_dependencies[0]
 
 
 class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
@@ -71,7 +66,7 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
             input_op=input_op,
             can_modify_num_rows=True,
         )
-        self._limit = limit
+        self.limit = limit
 
     def infer_metadata(self) -> BlockMetadata:
         return BlockMetadata(
@@ -84,23 +79,23 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
     def infer_schema(
         self,
     ) -> Optional["Schema"]:
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        assert isinstance(self._input_dependencies[0], LogicalOperator)
-        return self._input_dependencies[0].infer_schema()
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        return self.input_dependencies[0].infer_schema()
 
     def _num_rows(self):
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        assert isinstance(self._input_dependencies[0], LogicalOperator)
-        input_rows = self._input_dependencies[0].infer_metadata().num_rows
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        input_rows = self.input_dependencies[0].infer_metadata().num_rows
         if input_rows is not None:
-            return min(input_rows, self._limit)
+            return min(input_rows, self.limit)
         else:
             return None
 
     def _input_files(self):
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        assert isinstance(self._input_dependencies[0], LogicalOperator)
-        return self._input_dependencies[0].infer_metadata().input_files
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        return self.input_dependencies[0].infer_metadata().input_files
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Pushing filter through limit is safe: Filter(Limit(data, n), pred)
@@ -127,18 +122,6 @@ class Download(AbstractOneToOne):
                 f"Number of URI columns ({len(uri_column_names)}) must match "
                 f"number of output columns ({len(output_bytes_column_names)})"
             )
-        self._uri_column_names = uri_column_names
-        self._output_bytes_column_names = output_bytes_column_names
-        self._ray_remote_args = ray_remote_args or {}
-
-    @property
-    def uri_column_names(self) -> List[str]:
-        return self._uri_column_names
-
-    @property
-    def output_bytes_column_names(self) -> List[str]:
-        return self._output_bytes_column_names
-
-    @property
-    def ray_remote_args(self) -> Dict[str, Any]:
-        return self._ray_remote_args
+        self.uri_column_names = uri_column_names
+        self.output_bytes_column_names = output_bytes_column_names
+        self.ray_remote_args = ray_remote_args or {}
