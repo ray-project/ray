@@ -2344,7 +2344,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestIOWorkerFailureAndSpawn) {
     ASSERT_EQ(status, PopWorkerStatus::OK);
     processes.push_back({process.GetId(), worker_id});
   }
-  for (const auto [pid, worker_id] : processes) {
+  for (const auto &[pid, worker_id] : processes) {
     auto worker = CreateSpillWorker(worker_id);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
