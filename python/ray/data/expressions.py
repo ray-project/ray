@@ -1370,12 +1370,12 @@ def _normalize_cast_target_type(
         # to infer the Arrow type. If so, raise a clear error message.
         if target_type.is_python_type():
             raise TypeError(
-                f"Python-type-backed DataType (e.g., DataType(int), DataType(str)) "
-                f"requires values to infer the Arrow type, which is not available in "
-                f"the cast() context. Please use a string type name (e.g., 'int64', "
-                f"'string'), a PyArrow DataType (e.g., pa.int64(), pa.string()), or "
-                f"a DataType created from Arrow/NumPy types (e.g., DataType.int64(), "
-                f"DataType.string()) instead."
+                "Python-type-backed DataType (e.g., DataType(int), DataType(str)) "
+                "requires values to infer the Arrow type, which is not available in "
+                "the cast() context. Please use a string type name (e.g., 'int64', "
+                "'string'), a PyArrow DataType (e.g., pa.int64(), pa.string()), or "
+                "a DataType created from Arrow/NumPy types (e.g., DataType.int64(), "
+                "DataType.string()) instead."
             )
         return target_type.to_arrow_dtype()
     elif isinstance(target_type, pa.DataType):
