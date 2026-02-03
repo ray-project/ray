@@ -26,7 +26,7 @@ class GetTensorOptions(NamedTuple):
     """
     Options to pass into ray.get when used with Ray Direct Transport.
 
-    Attributes:
+    Args:
         use_object_store: To fetch an RDT object through the object store
             instead of using its designated tensor transport. You can set this to True
             for cases where the caller does not support the object's tensor transport,
