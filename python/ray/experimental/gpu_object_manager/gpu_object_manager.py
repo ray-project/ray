@@ -484,9 +484,7 @@ class GPUObjectManager:
                 tensor_transport_meta,
                 communicator_meta,
                 tensor_transport,
-                tensor_buffer=get_tensor_options.tensor_buffer
-                if get_tensor_options
-                else None,
+                get_tensor_options.tensor_buffers if get_tensor_options else None,
             )
 
     def queue_or_trigger_out_of_band_tensor_transfer(
