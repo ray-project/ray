@@ -651,7 +651,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
     def all_inputs_done(self):
         self._block_ref_bundler.done_adding_bundles()
-        if self._block_ref_bundler.has_bundle():
+        while self._block_ref_bundler.has_bundle():
             # Handle any leftover bundles in the bundler.
             (
                 _,
@@ -659,6 +659,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             ) = self._block_ref_bundler.get_next_bundle()
 
             self._add_bundled_input(bundled_input)
+
+        assert self._block_ref_bundler.num_blocks() == 0, "Bundler must be empty"
 
         super().all_inputs_done()
 
