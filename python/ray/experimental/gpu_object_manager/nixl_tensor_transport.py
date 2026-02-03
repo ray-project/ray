@@ -379,7 +379,7 @@ class NixlTensorTransport(TensorTransportManager):
                     )
                 if cache_metadata != tensor_desc.cache_metadata:
                     raise ValueError(
-                        f"Inconsistent cache_metadata for tensor created through ray.put calls."
+                        f"Inconsistent cache_metadata for tensor created through ray.put calls. "
                         f"existing={tensor_desc.cache_metadata}, new={cache_metadata}. "
                         "cache_metadata must be consistent across all ray.put calls for the same tensor."
                     )
