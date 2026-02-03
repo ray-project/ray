@@ -201,6 +201,7 @@ def test_source_actor_fails_before_transfer(ray_start_regular):
         ray.get(res_ref, _use_object_store=True)
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_ray_get(ray_start_regular):
     world_size = 2
     actors = [
