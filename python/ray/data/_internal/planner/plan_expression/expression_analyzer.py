@@ -46,13 +46,13 @@ class ResolveAttributes(Rule):
                     )
                     new_exprs.append(new_expr)
                 new_op = cp.copy(op)
-                new_op._exprs = new_exprs
+                new_op.exprs = new_exprs
                 return new_op
 
-            case Filter(_predicate_expr=expr) if expr is not None:
+            case Filter(predicate_expr=expr) if expr is not None:
                 new_expr = self.resolve_attributes(expr=expr, schema=input_op_schema)
                 new_op = cp.copy(op)
-                new_op._predicate_expr = new_expr
+                new_op.predicate_expr = new_expr
                 return new_op
 
         return op
@@ -141,7 +141,7 @@ class ResolveStar(Rule):
                         )
 
                 op = cp.copy(op)
-                op._exprs = existing_exprs + non_existing_exprs + additional_exprs
+                op.exprs = existing_exprs + non_existing_exprs + additional_exprs
                 return op
 
             # TODO(Justin): Can filter contain stars?

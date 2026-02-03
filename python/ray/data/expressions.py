@@ -40,7 +40,7 @@ UDFCallable = Callable[..., "UDFExpr"]
 Decorated = Union[UDFCallable, Type[T]]
 
 
-class DataTypeInferFn(Protocol):
+class _DataTypeInferFn(Protocol):
     """Protocol for functions that infer output DataType from input DataTypes."""
 
     def __call__(self, *args: DataType, **kwargs: DataType) -> DataType:
@@ -1173,7 +1173,7 @@ class UDFExpr(Expr):
     args: List[Expr]
     kwargs: Dict[str, Expr]
     # TODO(Justin): Is this strictly required?
-    _data_type: DataTypeInferFn | DataType
+    _data_type: _DataTypeInferFn | DataType
 
     @override
     def _is_resolved(self) -> bool:
@@ -1234,7 +1234,7 @@ class UDFExpr(Expr):
 
 def _create_udf_callable(
     fn: Callable[..., BatchColumn],
-    return_dtype: DataTypeInferFn | DataType,
+    return_dtype: _DataTypeInferFn | DataType,
 ) -> Callable[..., UDFExpr]:
     """Create a callable that generates UDFExpr when called with expressions.
 
