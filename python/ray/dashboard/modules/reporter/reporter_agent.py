@@ -110,6 +110,7 @@ USE_MEMORY_FULL_INFO_FOR_USS_METRIC = (
     os.environ.get("USE_MEMORY_FULL_INFO_FOR_USS_METRIC", "1") == "1"
 )
 
+
 def recursive_asdict(o):
     if isinstance(o, tuple) and hasattr(o, "_asdict"):
         return recursive_asdict(o._asdict())
