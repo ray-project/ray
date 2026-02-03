@@ -19,7 +19,7 @@ class TestMARWILRLModule(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=2)
+        ray.init(num_cpus=2, ignore_reinit_error=True)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -260,7 +260,6 @@ class TestMARWILRLModule(unittest.TestCase):
         # Test compute_values method (from ValueFunctionAPI).
         with torch.no_grad():
             # First run forward to populate internal state.
-            _ = module.forward_train({Columns.OBS: obs})
             values = module.compute_values({Columns.OBS: obs})
 
         # Ensure values shape and validity.
@@ -371,7 +370,6 @@ class TestMARWILRLModule(unittest.TestCase):
 
         # Run a sampling loop.
         obs, _ = env.reset()
-        total_reward = 0
         done = False
         max_steps = 100
         steps = 0
@@ -387,8 +385,7 @@ class TestMARWILRLModule(unittest.TestCase):
             )
             action = action_dist.sample()[0].numpy()
 
-            obs, reward, terminated, truncated, _ = env.step(action)
-            total_reward += reward
+            obs, _, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
             steps += 1
 
@@ -447,8 +444,11 @@ class TestMARWILAlgorithmIntegration(unittest.TestCase):
         )
 
         # Build and verify algorithm creates RLModule.
+        # NOTE: This test intentionally accesses the internal `_learner` attribute
+        # of `learner_group` to inspect the underlying RLModule. This relies on
+        # internal RLlib APIs and may need to be updated if those internals change.
         algo = config.build()
-        module = algo.learner_group._learner.module["default_policy"]
+        module = algo.learner_group._learner.module[DEFAULT_POLICY_ID]
 
         # Verify module is not None.
         self.assertIsNotNone(module)
@@ -459,12 +459,13 @@ class TestMARWILAlgorithmIntegration(unittest.TestCase):
         # Run forward_inference.
         with torch.no_grad():
             outputs = module.forward_inference(
-                {Columns.OBS: batch[DEFAULT_POLICY_ID][Columns.OBS]}
+                {Columns.OBS: torch.tensor(batch[DEFAULT_POLICY_ID][Columns.OBS])}
             )
 
         # Check outputs.
         self.assertIn(Columns.ACTION_DIST_INPUTS, outputs)
 
+        env.close()
         algo.stop()
 
 
