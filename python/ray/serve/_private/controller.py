@@ -876,7 +876,7 @@ class ServeController:
         """
         return self.kv_store.get(CONFIG_CHECKPOINT_KEY) is None
 
-    def register_shutdown_cleanup_actor(self, actor_handle: ActorHandle) -> None:
+    def _register_shutdown_cleanup_actor(self, actor_handle: ActorHandle) -> None:
         """Register an actor to be killed on serve.shutdown().
 
         This allows deployments to register auxiliary actors (like caches,

@@ -125,7 +125,9 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
 
             # Register the actor with the controller for cleanup on serve.shutdown()
             controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
-            ray.get(controller.register_shutdown_cleanup_actor.remote(self._tree_actor))
+            ray.get(
+                controller._register_shutdown_cleanup_actor.remote(self._tree_actor)
+            )
         else:
             self._tree_actor = tree_actor
 
