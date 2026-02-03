@@ -1,9 +1,9 @@
 import logging
-import pyarrow.fs
-
 import tempfile
 from types import ModuleType
 from typing import Dict, Optional, Union
+
+import pyarrow.fs
 
 import ray
 from ray.air._internal import usage as air_usage

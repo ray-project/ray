@@ -4,11 +4,10 @@ import sys
 import tempfile
 import unittest
 from collections import namedtuple
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from mlflow.tracking import MlflowClient
-
 from pyarrow.fs import LocalFileSystem
 
 import ray
