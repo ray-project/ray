@@ -70,7 +70,7 @@ class TestTimeoutKeepAliveConfig:
         )
 
 
-def test_grpc_proxy_on_draining_nodes(shutdown_ray, ray_cluster):
+def test_grpc_proxy_on_draining_nodes(ray_cluster):
     """Test gRPC request on the draining node.
 
     When there are no replicas on head node and some replicas on the worker node, the
