@@ -319,8 +319,8 @@ class Expr(ABC):
     @abstractmethod
     def data_type(self) -> DataType:
         """Return data type.
-        - If resolved=False: MAY throw an exception
-        - If resolved=True: MUST return a valid DataType
+        - If resolved=False: THROWS an exception
+        - If resolved=True: RETURNS a valid DataType
         """
         ...
 
@@ -1184,13 +1184,11 @@ class UDFExpr(Expr):
     @override
     @property
     def data_type(self) -> DataType:
-        # TODO(Justin): This behavior is a one off because we don't need to know
-        # the arguments before knowing the data type.
-        if isinstance(self._data_type, DataType):
-            return self._data_type
         # Infer data type from argument types
         if not self._is_resolved():
             raise ValueError("Cannnot infer data type for unresolved udf expression")
+        if isinstance(self._data_type, DataType):
+            return self._data_type
         args_dtypes: List[DataType] = [arg.data_type for arg in self.args]
         kwargs_dtypes: Dict[str, DataType] = {
             name: kwarg.data_type for name, kwarg in self.kwargs.items()
