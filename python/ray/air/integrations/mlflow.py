@@ -1,4 +1,7 @@
 import logging
+import pyarrow.fs
+
+import tempfile
 from types import ModuleType
 from typing import Dict, Optional, Union
 
@@ -326,8 +329,22 @@ class MLflowLoggerCallback(LoggerCallback):
         run_id = self._trial_runs[trial]
 
         # Log the artifact if set_artifact is set to True.
-        if self.should_save_artifact:
-            self.mlflow_util.save_artifacts(run_id=run_id, dir=trial.path)
+       if self.should_save_artifact:
+            fs = trial.storage.storage_filesystem
+            # `trial.path` can be a remote URI. `mlflow.log_artifacts` expects a local
+            # path. If the filesystem is not local, we need to download it first.
+            if fs.type_name in ("local", "file"):
+                self.mlflow_util.save_artifacts(run_id=run_id, dir=trial.path)
+            else:
+                import tempfile
+                import pyarrow.fs
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    pyarrow.fs.copy_files(
+                        trial.path,
+                        tmpdir,
+                        source_filesystem=fs,
+                    )
+                    self.mlflow_util.save_artifacts(run_id=run_id, dir=tmpdir)  
 
         # Stop the run once trial finishes.
         status = "FINISHED" if not failed else "FAILED"
