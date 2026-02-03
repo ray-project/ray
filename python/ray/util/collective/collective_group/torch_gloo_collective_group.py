@@ -1,11 +1,15 @@
 import os
-from typing import TYPE_CHECKING, List, Optional
+import socket
+import time
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import numpy as np
 import torch
 import torch.distributed as dist
 
+import ray
 import ray.experimental.internal_kv as internal_kv
+from ray._common.network_utils import find_free_port, is_ipv6
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
 from ray.util.collective.types import (
     AllGatherOptions,
@@ -36,6 +40,13 @@ def get_master_address_metadata_key(group_name: str):
     return f"collective_group_master_address_{group_name}"
 
 
+def get_address_and_port() -> Tuple[str, int]:
+    """Returns the IP address and a free port on this node."""
+    addr = ray.util.get_node_ip_address()
+    port = find_free_port(socket.AF_INET6 if is_ipv6(addr) else socket.AF_INET)
+    return addr, port
+
+
 class TorchGLOOGroup(BaseGroup):
     def __init__(
         self,
@@ -46,6 +57,9 @@ class TorchGLOOGroup(BaseGroup):
     ):
         # Initialize the default process group only once per process.
         if not dist.is_initialized():
+            # Rendezvous: ensure a MASTER_ADDR:MASTER_PORT is published in internal_kv.
+            self._rendezvous(group_name, rank, gloo_timeout)
+
             metadata_key = get_master_address_metadata_key(group_name)
             try:
                 metadata = internal_kv._internal_kv_get(metadata_key)
@@ -67,6 +81,15 @@ class TorchGLOOGroup(BaseGroup):
             dist.init_process_group(
                 backend="gloo", init_method="env://", world_size=world_size, rank=rank
             )
+
+            # Clean up rendezvous metadata after all ranks have initialized.
+            # dist.init_process_group is synchronous, so all ranks have read the metadata by now.
+            if rank == 0:
+                try:
+                    internal_kv._internal_kv_del(metadata_key)
+                except Exception:
+                    # Ignore errors during cleanup (e.g., key already deleted)
+                    pass
 
         super().__init__(world_size, rank, group_name)
 
@@ -92,8 +115,41 @@ class TorchGLOOGroup(BaseGroup):
             gloo_timeout if gloo_timeout is not None else 30000
         )
 
+    def _rendezvous(
+        self, group_name: str, rank: int, gloo_timeout: Optional[int]
+    ) -> None:
+        """Rendezvous: ensure a MASTER_ADDR:MASTER_PORT is published in internal_kv.
+
+        Rank 0 publishes the address and port, other ranks wait for it.
+        """
+        metadata_key = get_master_address_metadata_key(group_name)
+        if rank == 0:
+            addr, port = get_address_and_port()
+            internal_kv._internal_kv_put(metadata_key, f"{addr}:{port}")
+        else:
+            # Wait until rank 0 publishes the metadata or timeout.
+            deadline_s = time.time() + (gloo_timeout / 1000.0 if gloo_timeout else 30.0)
+            while True:
+                meta = internal_kv._internal_kv_get(metadata_key)
+                if meta is not None:
+                    break
+                if time.time() > deadline_s:
+                    raise TimeoutError(
+                        f"Timed out waiting for GLOO rendezvous metadata for group '{group_name}'."
+                    )
+                time.sleep(0.05)
+
     def destroy_group(self):
         """GC the communicators."""
+        # Clean up rendezvous metadata if it still exists.
+        # This is a safety measure in case cleanup during initialization failed.
+        metadata_key = get_master_address_metadata_key(self._group_name)
+        try:
+            internal_kv._internal_kv_del(metadata_key)
+        except Exception:
+            # Ignore errors during cleanup (e.g., key already deleted or not accessible)
+            pass
+
         # Destroy only the subgroup for non-default groups. Allow default to be torn down explicitly.
         if self._is_default_group:
             # Destroy default process group to allow re-init in tests that recreate the same group.

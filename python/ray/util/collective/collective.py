@@ -2,20 +2,13 @@
 
 import logging
 import os
-import socket
 import threading
-import time
-from typing import List, Tuple
+from typing import List
 
 import numpy as np
 
 import ray
-import ray.experimental.internal_kv as _internal_kv
 from . import types
-from ray._common.network_utils import find_free_port, is_ipv6
-from ray.util.collective.collective_group.torch_gloo_collective_group import (
-    get_master_address_metadata_key as _get_master_addr_key,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +54,6 @@ def torch_distributed_available():
     return _TORCH_DISTRIBUTED_AVAILABLE
 
 
-def get_address_and_port() -> Tuple[str, int]:
-    """Returns the IP address and a free port on this node."""
-    addr = ray.util.get_node_ip_address()
-    port = find_free_port(socket.AF_INET6 if is_ipv6(addr) else socket.AF_INET)
-    return addr, port
-
-
 class GroupManager(object):
     """Use this class to manage the collective groups we created so far.
 
@@ -89,26 +75,6 @@ class GroupManager(object):
         """
         backend = types.Backend(backend)
         if backend == types.Backend.GLOO:
-            # Rendezvous: ensure a MASTER_ADDR:MASTER_PORT is published in internal_kv.
-            metadata_key = _get_master_addr_key(group_name)
-            if rank == 0:
-                addr, port = get_address_and_port()
-                _internal_kv._internal_kv_put(metadata_key, f"{addr}:{port}")
-            else:
-                # Wait until rank 0 publishes the metadata or timeout.
-                deadline_s = time.time() + (
-                    gloo_timeout / 1000.0 if gloo_timeout else 30.0
-                )
-                while True:
-                    meta = _internal_kv._internal_kv_get(metadata_key)
-                    if meta is not None:
-                        break
-                    if time.time() > deadline_s:
-                        raise TimeoutError(
-                            f"Timed out waiting for GLOO rendezvous metadata for group '{group_name}'."
-                        )
-                    time.sleep(0.05)
-
             logger.debug(
                 "Creating torch.distributed GLOO group: '{}'...".format(group_name)
             )

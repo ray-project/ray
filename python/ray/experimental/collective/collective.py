@@ -3,13 +3,8 @@ import uuid
 from typing import Dict, List, Optional, Union
 
 import ray
-import ray.experimental.internal_kv as internal_kv
 from ray.experimental.collective.communicator import CommunicatorHandle
 from ray.util.annotations import PublicAPI
-from ray.util.collective.collective import get_address_and_port
-from ray.util.collective.collective_group.torch_gloo_collective_group import (
-    get_master_address_metadata_key,
-)
 from ray.util.collective.types import Backend
 
 _remote_communicator_manager: "Optional[RemoteCommunicatorManager]" = None
@@ -128,39 +123,19 @@ def create_collective_group(
     if len(set(actor_ids)) != len(actor_ids):
         raise ValueError(f"All actors must be unique, got: {actors}")
 
-    metadata_key = None
-    if backend == Backend.GLOO:
-        # Perform extra setup for torch.distributed.
-        # torch.distributed requires a master address and port. Find a suitable
-        # port on one of the actors.
-        master_addr, master_port = ray.get(
-            actors[0].__ray_call__.remote(lambda self: get_address_and_port())
-        )
-
-        # Store the metadata on a named actor that all of the other
-        # actors can access.
-        metadata_key = get_master_address_metadata_key(name)
-        internal_kv._internal_kv_put(metadata_key, f"{master_addr}:{master_port}")
-
     def _do_init_collective_group(self, rank: int):
         ray.util.collective.init_collective_group(
             world_size, rank, backend, group_name=name
         )
 
-    try:
-        init_tasks = [
-            actor.__ray_call__.remote(
-                _do_init_collective_group,
-                rank,
-            )
-            for rank, actor in enumerate(actors)
-        ]
-        ray.get(init_tasks)
-    finally:
-        # Clean up the metadata once collective group is initialized
-        # (or failed to initialize).
-        if metadata_key is not None:
-            internal_kv._internal_kv_del(metadata_key)
+    init_tasks = [
+        actor.__ray_call__.remote(
+            _do_init_collective_group,
+            rank,
+        )
+        for rank, actor in enumerate(actors)
+    ]
+    ray.get(init_tasks)
 
     # Group was successfully created.
     comm = CommunicatorHandle(actors, name, backend)
