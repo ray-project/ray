@@ -144,6 +144,7 @@ class TorchGLOOGroup(BaseGroup):
                 time.sleep(0.05)
 
     def destroy_group(self):
+        """GC the communicators."""
         # Destroy only the subgroup for non-default groups. Allow default to be torn down explicitly.
         if self._is_default_group:
             # Destroy default process group to allow re-init in tests that recreate the same group.
