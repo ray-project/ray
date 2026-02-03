@@ -84,7 +84,6 @@ class SharedMemoryTransport(TensorTransportManager):
 
     def recv_multiple_tensors(
         self,
-        tensors: List[torch.Tensor],
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
@@ -93,9 +92,8 @@ class SharedMemoryTransport(TensorTransportManager):
         size = tensor_transport_metadata.shm_size
         shm_block = shm.SharedMemory(name=shm_name)
         recv_tensors = pickle.loads(shm_block.buf[:size])
-        for src_tensor, dst_tensor in zip(recv_tensors, tensors):
-            dst_tensor.copy_(src_tensor)
         shm_block.close()
+        return recv_tensors
 
     def send_multiple_tensors(
         self,

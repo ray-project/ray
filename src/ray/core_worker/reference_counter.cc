@@ -1673,8 +1673,7 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   auto object_size = it->second.object_size_;
   const auto &spilled_url = it->second.spilled_url;
   const auto &spilled_node_id = it->second.spilled_node_id;
-  const auto &optional_primary_node_id = it->second.pinned_at_node_id_;
-  const auto &primary_node_id = optional_primary_node_id.value_or(NodeID::Nil());
+  const auto &primary_node_id = it->second.pinned_at_node_id_.value_or(NodeID::Nil());
   RAY_LOG(DEBUG).WithField(object_id)
       << "Published message for object, " << locations.size()
       << " locations, spilled url: [" << spilled_url
@@ -1717,8 +1716,6 @@ void ReferenceCounter::FillObjectInformationInternal(
   }
   object_info->set_spilled_url(it->second.spilled_url);
   object_info->set_spilled_node_id(it->second.spilled_node_id.Binary());
-  auto primary_node_id = it->second.pinned_at_node_id_.value_or(NodeID::Nil());
-  object_info->set_primary_node_id(primary_node_id.Binary());
   object_info->set_pending_creation(it->second.pending_creation_);
   object_info->set_did_spill(it->second.did_spill);
 }
