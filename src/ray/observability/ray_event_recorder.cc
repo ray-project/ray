@@ -15,6 +15,7 @@
 #include "ray/observability/ray_event_recorder.h"
 
 #include "ray/common/ray_config.h"
+#include "ray/util/graceful_shutdown.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/public/events_base_event.pb.h"
 
@@ -56,9 +57,61 @@ void RayEventRecorder::StartExportingEvents() {
       "RayEventRecorder.ExportEvents");
 }
 
+void RayEventRecorder::StopExportingEvents() {
+  {
+    absl::MutexLock lock(&mutex_);
+    if (!enabled_) {
+      return;
+    }
+    // Set enabled_ to false early to prevent new events from being added during shutdown.
+    // This prevents event loss from events added after ExportEvents() clears the buffer.
+    enabled_ = false;
+  }
+  RAY_LOG(INFO) << "Stopping RayEventRecorder and flushing remaining events.";
+
+  auto flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
+
+  // Local handler implementing GracefulShutdownHandler interface.
+  class ShutdownHandler : public GracefulShutdownHandler {
+   public:
+    explicit ShutdownHandler(RayEventRecorder *recorder) : recorder_(recorder) {}
+
+    bool WaitUntilIdle(absl::Duration timeout) override {
+      absl::MutexLock lock(&recorder_->grpc_completion_mutex_);
+      auto deadline = absl::Now() + timeout;
+      while (recorder_->grpc_in_progress_) {
+        if (recorder_->grpc_completion_cv_.WaitWithDeadline(
+                &recorder_->grpc_completion_mutex_, deadline)) {
+          return false;  // Timeout
+        }
+      }
+      return true;
+    }
+
+    void Flush() override { recorder_->ExportEvents(); }
+
+   private:
+    RayEventRecorder *recorder_;
+  };
+
+  ShutdownHandler handler(this);
+  GracefulShutdownWithFlush(
+      handler, absl::Milliseconds(flush_timeout_ms), "RayEventRecorder");
+}
+
 void RayEventRecorder::ExportEvents() {
   absl::MutexLock lock(&mutex_);
   if (buffer_.empty()) {
+    return;
+  }
+
+  // Skip if there's already an in-flight gRPC call to avoid overlapping requests.
+  // This prevents the race where StopExportingEvents() could return while a
+  // periodic export is still in flight.
+  if (grpc_in_progress_) {
+    RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
+        << "Previous RayEventRecorder export in progress: new events will be exported "
+           "once previous export completes.";
     return;
   }
 
@@ -111,6 +164,7 @@ void RayEventRecorder::ExportEvents() {
   // Send with callback to record metrics
   // Capture metric_source_ by value since it's a string_view
   std::string metric_source_str(metric_source_);
+  grpc_in_progress_ = true;
   event_aggregator_client_.AddEvents(
       std::move(request),
       [this, num_events, metric_source_str](Status status,
@@ -123,12 +177,21 @@ void RayEventRecorder::ExportEvents() {
           RAY_LOG(ERROR) << "Failed to send " << num_events
                          << " ray events: " << status.ToString();
         }
+        // Signal under mutex to avoid lost wakeup race condition
+        {
+          absl::MutexLock grpc_lock(&grpc_completion_mutex_);
+          grpc_in_progress_ = false;
+          grpc_completion_cv_.Signal();
+        }
       });
 }
 
 void RayEventRecorder::AddEvents(
     std::vector<std::unique_ptr<RayEventInterface>> &&data_list) {
   absl::MutexLock lock(&mutex_);
+  if (!enabled_) {
+    return;
+  }
   if (!RayConfig::instance().enable_ray_event()) {
     return;
   }

@@ -55,6 +55,7 @@ py_test_module_list(
         "test_failure_3.py",
         "test_gcs_utils.py",
         "test_get_locations.py",
+        "test_get_or_create_actor.py",
         "test_healthcheck.py",
         "test_metric_cardinality.py",
         "test_metrics_agent.py",
@@ -530,7 +531,6 @@ py_test_module_list(
         "test_error_ray_not_initialized.py",
         "test_exceptions.py",
         "test_gcs_pubsub.py",
-        "test_get_or_create_actor.py",
         "test_grpc_client_credentials.py",
         "test_ids.py",
         "test_kill_raylet_signal_log.py",
@@ -639,6 +639,7 @@ py_test_module_list(
     size = "medium",
     env = {"RAY_PYTEST_USE_GPU": "1"},
     files = [
+        "gpu_objects/test_gpu_objects_ipc.py",
         "gpu_objects/test_gpu_objects_nccl.py",
         "gpu_objects/test_gpu_objects_nixl.py",
         "test_gpu_tensor_zero_copy_serialization.py",
