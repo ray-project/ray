@@ -42,6 +42,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.event_loop_monitoring import EventLoopMonitor
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import (
     QUEUED_REQUESTS_KEY,
@@ -939,18 +940,26 @@ class SingletonThreadRouter(Router):
 
     _asyncio_loop: Optional[asyncio.AbstractEventLoop] = None
     _asyncio_loop_creation_lock = threading.Lock()
+    _event_loop_monitor: Optional[EventLoopMonitor] = None
 
     def __init__(self, **passthrough_kwargs):
         assert (
             "event_loop" not in passthrough_kwargs
         ), "SingletonThreadRouter manages the router event loop."
 
+        if passthrough_kwargs.get("handle_source") == DeploymentHandleSource.REPLICA:
+            component = EventLoopMonitor.COMPONENT_REPLICA
+        elif passthrough_kwargs.get("handle_source") == DeploymentHandleSource.PROXY:
+            component = EventLoopMonitor.COMPONENT_PROXY
+        else:
+            component = EventLoopMonitor.COMPONENT_UNKNOWN
+
         self._asyncio_router = AsyncioRouter(
-            event_loop=self._get_singleton_asyncio_loop(), **passthrough_kwargs
+            event_loop=self._get_singleton_asyncio_loop(component), **passthrough_kwargs
         )
 
     @classmethod
-    def _get_singleton_asyncio_loop(cls) -> asyncio.AbstractEventLoop:
+    def _get_singleton_asyncio_loop(cls, component: str) -> asyncio.AbstractEventLoop:
         """Get singleton asyncio loop running in a daemon thread.
 
         This method is thread safe.
@@ -958,9 +967,27 @@ class SingletonThreadRouter(Router):
         with cls._asyncio_loop_creation_lock:
             if cls._asyncio_loop is None:
                 cls._asyncio_loop = asyncio.new_event_loop()
+
+                # Create event loop monitor for the router loop.
+                # This is shared across all replicas in this process.
+                actor_id = ray.get_runtime_context().get_actor_id()
+                cls._event_loop_monitor = EventLoopMonitor(
+                    component=component,
+                    loop_type=EventLoopMonitor.LOOP_TYPE_ROUTER,
+                    # actor_id is None when using DeploymentHandle.remote()
+                    # from the driver.
+                    actor_id=actor_id or "",
+                )
+
+                def _run_router_event_loop():
+                    asyncio.set_event_loop(cls._asyncio_loop)
+                    # Start monitoring before run_forever so the task is scheduled.
+                    cls._event_loop_monitor.start(cls._asyncio_loop)
+                    cls._asyncio_loop.run_forever()
+
                 thread = threading.Thread(
                     daemon=True,
-                    target=cls._asyncio_loop.run_forever,
+                    target=_run_router_event_loop,
                 )
                 thread.start()
 

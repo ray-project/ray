@@ -1,3 +1,4 @@
+import io
 import os
 import random
 import shutil
@@ -5,6 +6,7 @@ import socket
 import string
 import sys
 import tempfile
+import types
 import uuid
 import zipfile
 from filecmp import dircmp
@@ -40,6 +42,7 @@ from ray._private.runtime_env.packaging import (
     upload_package_if_needed,
     upload_package_to_gcs,
 )
+from ray._private.runtime_env.protocol import ProtocolsProvider
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_del,
@@ -779,6 +782,51 @@ class TestS3Protocol:
             mock_config_class.assert_called_with(signature_version="UNSIGNED")
             # Verify that the unsigned client is returned
             assert transport_params["client"] == mock_unsigned_client
+
+
+def test_https_handler_requires_smart_open(monkeypatch):
+    monkeypatch.setitem(sys.modules, "smart_open", None)
+    with pytest.raises(ImportError):
+        ProtocolsProvider._handle_https_protocol()
+
+
+def test_https_downloader_uses_smart_open_headers(tmp_path, monkeypatch):
+    payload = b"dummy-zip-content"
+    captured = {}
+
+    class DummyResponse(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            self.close()
+
+    def fake_open(uri, mode, transport_params=None):
+        captured["uri"] = uri
+        captured["mode"] = mode
+        captured["transport_params"] = transport_params
+        return DummyResponse(payload)
+
+    monkeypatch.setitem(
+        sys.modules, "smart_open", types.SimpleNamespace(open=fake_open)
+    )
+
+    dest_file = tmp_path / "downloaded_via_smart_open.zip"
+    ProtocolsProvider.download_remote_uri(
+        protocol="https",
+        source_uri="https://example.com/test.zip",
+        dest_file=str(dest_file),
+    )
+
+    assert dest_file.read_bytes() == payload
+    assert captured["uri"] == "https://example.com/test.zip"
+    assert captured["mode"] == "rb"
+    tp = captured["transport_params"]
+    assert tp is not None
+    assert "headers" in tp
+    assert tp["headers"]["User-Agent"].startswith("ray-runtime-env-curl")
+    assert tp["headers"]["Accept"] == "*/*"
+    assert tp["timeout"] == 60
 
 
 @pytest.mark.asyncio

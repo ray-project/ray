@@ -4,9 +4,9 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Generic, List, Protocol, Tuple, TypeVar
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
-from ray.data._internal.execution.resource_manager import ResourceManager
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import Topology
 
 # Protocol for comparable ranking values
@@ -41,7 +41,7 @@ class Ranker(ABC, Generic[RankingValue]):
         self,
         op: PhysicalOperator,
         topology: "Topology",
-        resource_manager: ResourceManager,
+        resource_manager: "ResourceManager",
     ) -> RankingValue:
         """Rank operator for execution priority.
 
@@ -62,7 +62,7 @@ class Ranker(ABC, Generic[RankingValue]):
         self,
         ops: List[PhysicalOperator],
         topology: "Topology",
-        resource_manager: ResourceManager,
+        resource_manager: "ResourceManager",
     ) -> List[RankingValue]:
 
         assert len(ops) > 0
@@ -76,7 +76,7 @@ class DefaultRanker(Ranker[Tuple[int, int]]):
         self,
         op: PhysicalOperator,
         topology: "Topology",
-        resource_manager: ResourceManager,
+        resource_manager: "ResourceManager",
     ) -> Tuple[int, int]:
         """Computes rank for op. *Lower means better rank*
 

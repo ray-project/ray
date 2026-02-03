@@ -20,7 +20,6 @@ import numpy as np
 from packaging.version import parse as parse_version
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
@@ -28,7 +27,7 @@ from ray.data._internal.arrow_block import (
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
-from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
     RetryingPyFileSystem,
@@ -36,11 +35,15 @@ from ray.data._internal.util import (
     _is_local_scheme,
     iterate_with_retry,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_based_datasource import FileShuffleConfig
+from ray.data.datasource.file_based_datasource import (
+    _shuffle_file_metadata,
+    _validate_shuffle_arg,
+)
 from ray.data.datasource.file_meta_provider import (
     FileMetadataProvider,
     _handle_read_os_error,
@@ -155,11 +158,13 @@ def check_for_legacy_tensor_type(schema):
             type, pa.PyExtensionType
         ):
             raise RuntimeError(
-                f"Ray Data couldn't infer the type of column '{name}'. This might mean "
-                "you're trying to read data written with an older version of Ray. "
-                "Reading data written with older versions of Ray might expose you to "
-                "arbitrary code execution. To try reading the data anyway, set "
-                "`RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1` on *all* nodes."
+                f"Ray Data couldn't infer the type of column '{name}' (got "
+                f"`UnknownExtensionType` with pickled class ref "
+                f"'{type.__arrow_ext_serialize__()}'). This might mean you're trying "
+                f"to read data written with an older version of Ray. Reading data "
+                f"written with older versions of Ray might expose you to arbitrary code "
+                f"execution. To try reading the data anyway, "
+                f"preset `RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1` on *all* nodes."
                 "To learn more, see https://github.com/ray-project/ray/issues/41314."
             )
 
@@ -432,10 +437,8 @@ class ParquetDatasource(Datasource):
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
-        if shuffle == "files":
-            self._file_metadata_shuffler = np.random.default_rng()
-        elif isinstance(shuffle, FileShuffleConfig):
-            self._file_metadata_shuffler = np.random.default_rng(shuffle.seed)
+        _validate_shuffle_arg(shuffle)
+        self._shuffle = shuffle
 
         # Sample small number of parquet files to estimate
         #   - Encoding ratio: ratio of file size on disk to approximate expected
@@ -470,24 +473,19 @@ class ParquetDatasource(Datasource):
         return self._estimate_in_mem_size(self._pq_fragments)
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
         # FileBasedDatasource's write side, however.
-        if self._file_metadata_shuffler is not None:
-            files_metadata = list(zip(self._pq_fragments, self._pq_paths))
-            shuffled_files_metadata = [
-                files_metadata[i]
-                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
-            ]
-            pq_fragments, pq_paths = list(map(list, zip(*shuffled_files_metadata)))
-        else:
-            pq_fragments, pq_paths = (
-                self._pq_fragments,
-                self._pq_paths,
-            )
+        execution_idx = data_context._execution_idx if data_context is not None else 0
+        pq_fragments, pq_paths = _shuffle_file_metadata(
+            self._pq_fragments, self._pq_paths, self._shuffle, execution_idx
+        )
 
         # Derive expected target schema of the blocks being read
         target_schema = self._derive_schema(
@@ -496,6 +494,7 @@ class ParquetDatasource(Datasource):
             partition_schema=self._partition_schema,
             projected_columns=self.get_current_projection(),
             _block_udf=self._block_udf,
+            include_paths=self._include_paths,
         )
 
         read_tasks = []
@@ -588,9 +587,16 @@ class ParquetDatasource(Datasource):
         data_columns = self._get_data_columns()
         partition_columns = self._get_partition_columns()
         if data_columns is None and partition_columns is None:
-            return None
+            result = None
+        else:
+            result = (data_columns or []) + (partition_columns or [])
+            # If include_paths is True, make sure to include the path column in the projection
+            # NOTE: When result is None (no projection), the path column is already added
+            #       via _derive_schema, so we only need to add it when there is a projection.
+            if self._include_paths and "path" not in result:
+                result = result + ["path"]
 
-        return (data_columns or []) + (partition_columns or [])
+        return result
 
     def _get_partition_columns(self) -> Optional[List[str]]:
         """Extract partition columns from projection map.
@@ -610,7 +616,11 @@ class ParquetDatasource(Datasource):
             return None
 
         if not self._partition_columns:
-            return None
+            # If a projection is active but the dataset has no partition columns,
+            # then no partition columns should be included in the output.
+            # Returning [] ensures that no partition columns are added,
+            # `None` is interpreted as including all partition columns.
+            return []
 
         # Extract partition columns that are in the projection map
         partition_cols = [
@@ -632,6 +642,9 @@ class ParquetDatasource(Datasource):
         Partition columns aren't in the physical file schema, so they must be
         filtered out before passing to PyArrow's to_batches().
 
+        Similarly, the synthetic "path" column (when include_paths=True) isn't in
+        the physical file schema, so it must also be filtered out.
+
         Returns:
             List of data column names to read from files, or None if no projection.
             Can return empty list if only partition columns are projected.
@@ -641,8 +654,13 @@ class ParquetDatasource(Datasource):
 
         # Get partition columns and filter them out from the projection
         partition_cols = self._partition_columns
+        # Also filter out "path" column if include_paths is True, as it's a
+        # synthetic column added after reading from the file
+        cols_to_filter = set(partition_cols)
+        if self._include_paths:
+            cols_to_filter.add("path")
         data_cols = [
-            col for col in self._projection_map.keys() if col not in partition_cols
+            col for col in self._projection_map.keys() if col not in cols_to_filter
         ]
 
         return data_cols
@@ -717,6 +735,7 @@ class ParquetDatasource(Datasource):
         partition_schema: Optional["pyarrow.Schema"],
         projected_columns: Optional[List[str]],
         _block_udf,
+        include_paths: bool = False,
     ) -> "pyarrow.Schema":
         """Derives target schema for read operation"""
 
@@ -745,6 +764,10 @@ class ParquetDatasource(Datasource):
                 ),
                 metadata=file_schema.metadata,
             )
+
+        # Add path column if include_paths is True and path column is not already present
+        if include_paths and target_schema.get_field_index("path") == -1:
+            target_schema = target_schema.append(pa.field("path", pa.string()))
 
         # Project schema if necessary
         if projected_columns is not None:
@@ -874,13 +897,13 @@ def _read_batches_from(
             ):
                 table = pa.Table.from_batches([batch])
 
+                if partition_col_values:
+                    table = _add_partitions_to_table(partition_col_values, table)
+
                 if include_path:
                     table = ArrowBlockAccessor.for_block(table).fill_column(
                         "path", fragment.path
                     )
-
-                if partition_col_values:
-                    table = _add_partitions_to_table(partition_col_values, table)
 
                 # ``ParquetFileFragment.to_batches`` returns ``RecordBatch``,
                 # which could have empty projection (ie ``num_columns`` == 0)

@@ -1,6 +1,6 @@
 - name: DEFAULTS
   python: "3.10"
-  group: multimodal-inference-benchmarks
+  group: data-multimodal-inference-benchmarks
   working_dir: nightly_tests/multimodal_inference_benchmarks
 
   frequency: manual

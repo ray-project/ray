@@ -512,7 +512,7 @@ class NormalTaskSubmitterTest : public testing::Test {
         actor_creator,
         JobID::Nil(),
         rate_limiter,
-        [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+        [](const ObjectID &object_id) { return std::nullopt; },
         io_context,
         fake_scheduler_placement_time_ms_histogram_);
   }
@@ -1498,7 +1498,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
       actor_creator,
       JobID::Nil(),
       std::make_shared<StaticLeaseRequestRateLimiter>(1),
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      [](const ObjectID &object_id) { return std::nullopt; },
       io_context,
       fake_scheduler_placement_time_ms_histogram_);
 

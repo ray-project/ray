@@ -318,6 +318,12 @@ message GcsNodeInfo {
   // The port at which the runtime env agent listens as HTTP.
   int32 runtime_env_agent_port = 27;
 
+  // The port at which the metrics agent (dashboard agent grpc) listens.
+  int32 metrics_agent_port = 30;
+
+  // The port at which the dashboard agent listens for HTTP requests.
+  int32 dashboard_agent_listen_port = 31;
+
   // The total resources of this node.
   map<string, double> resources_total = 11;
 

@@ -5,12 +5,12 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 
-from ray.air.util.object_extensions.arrow import (
+from ray.data._internal.object_extensions.arrow import (
     ArrowPythonObjectArray,
     ArrowPythonObjectType,
     _object_extension_type_allowed,
 )
-from ray.air.util.object_extensions.pandas import PythonObjectArray
+from ray.data._internal.object_extensions.pandas import PythonObjectArray
 
 
 @pytest.mark.skipif(

@@ -27,6 +27,7 @@ from custom_directives import (  # noqa
     setup_context,
     pregenerate_example_rsts,
     generate_versions_json,
+    collect_example_orphans,
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -231,13 +232,23 @@ exclude_patterns = [
     "templates/*",
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
-    "ray-overview/examples/**/README.md",  # Exclude .md files in examples subfolders
-    "train/examples/**/README.md",
-    "serve/tutorials/deployment-serve-llm/README.*",
-    "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
-    "data/examples/**/content/README.md",
+    # Hide README.md used for display on the console (anyscale templates)
+    "serve/tutorials/**/content/**README.md",
+    "data/examples/**/content/**README.md",
+    "ray-overview/examples/**/content/**README.md",
+    "ray-core/examples/**/content/**README.md",
+    "train/examples/**/content/**README.md",
+    "tune/examples/**/content/**README.md",
+    # Other misc files (overviews, console-only examples, etc)
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
+    "train/tutorials/content/**/README.md",
+    "serve/tutorials/video-analysis/*.ipynb",
+    # Legacy/backward compatibility
+    "ray-overview/examples/**/README.md",
+    "train/examples/**/README.md",
+    "serve/tutorials/deployment-serve-llm/README.*",
+    "serve/tutorials/deployment-serve-llm/**.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -606,6 +617,15 @@ def setup(app):
             return True  # Log all other warnings
 
     logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
+    
+    # Register hook to mark orphan documents
+    example_orphan_documents = collect_example_orphans(app.confdir, app.srcdir)
+    def mark_orphans(app, docname, _source):
+        if docname in example_orphan_documents:
+            app.env.metadata.setdefault(docname, {})
+            app.env.metadata[docname]["orphan"] = True
+
+    app.connect('source-read', mark_orphans)
 
 
 redoc = [
@@ -647,6 +667,7 @@ autodoc_mock_imports = [
     "joblib",
     "lightgbm",
     "lightgbm_ray",
+    "mlflow",
     "nevergrad",
     "numpy",
     "pandas",

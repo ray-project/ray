@@ -146,6 +146,7 @@ STATUS_TYPE(NotFound);
 STATUS_TYPE(PermissionDenied);
 STATUS_TYPE(InvalidArgument);
 STATUS_TYPE(AlreadyExists);
+STATUS_TYPE(TimedOut);
 
 };  // namespace StatusT
 
@@ -180,6 +181,8 @@ class StatusSetOr {
   static_assert((!std::is_same_v<StatusTypes, StatusT::OK> && ...),
                 "Ok cannot be an error type");
 
+  StatusSetOr() noexcept = default;
+
   template <typename ArgType,
             typename Enable = std::enable_if_t<std::is_constructible_v<
                 std::variant<ResultType, std::variant<StatusTypes...>>,
@@ -204,9 +207,21 @@ class StatusSetOr {
     return std::get<std::variant<StatusTypes...>>(value_);
   }
 
+  std::string message() const {
+    return std::visit([](const auto &e) { return e.message(); }, error());
+  }
+
  private:
   std::variant<ResultType, std::variant<StatusTypes...>> value_;
 };
+
+#define __RAY_ASSIGN_OR_CHECK_SET_IMPL(var, expr, statussetor_name)      \
+  auto statussetor_name = (expr);                                        \
+  RAY_CHECK(statussetor_name.has_value()) << statussetor_name.message(); \
+  var = std::move(statussetor_name).value()
+
+#define RAY_ASSIGN_OR_CHECK_SET(var, expr) \
+  __RAY_ASSIGN_OR_CHECK_SET_IMPL(var, expr, RAY_UNIQUE_VARIABLE(statussetor))
 
 /////////////////
 /// LEGACY STATUS

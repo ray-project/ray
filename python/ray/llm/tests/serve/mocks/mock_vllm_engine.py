@@ -14,11 +14,15 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionResponse,
     CompletionRequest,
     CompletionResponse,
+    DetokenizeRequest,
+    DetokenizeResponse,
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
     ScoreRequest,
     ScoreResponse,
+    TokenizeRequest,
+    TokenizeResponse,
     TranscriptionRequest,
     TranscriptionResponse,
 )
@@ -43,6 +47,7 @@ class MockVLLMEngine(LLMEngine):
         self.started = False
         self._current_lora_model: Dict[str, DiskMultiplexConfig] = {}
         self._is_sleeping = False
+        self._is_paused = False
 
     async def start(self):
         """Start the mock engine."""
@@ -103,6 +108,39 @@ class MockVLLMEngine(LLMEngine):
             True if the engine is sleeping, False otherwise.
         """
         return self._is_sleeping
+
+    async def pause(self, **kwargs: Any) -> None:
+        """Pause generation on the mock engine.
+
+        This mimics vLLM's behavior: halts generation while keeping weights in GPU.
+
+        Args:
+            **kwargs: Engine-specific options (wait_for_inflight_requests, clear_cache).
+        """
+        if not self.started:
+            raise RuntimeError("Engine not started")
+        # vLLM optionally clears cache on pause
+        if kwargs.get("clear_cache", True):
+            await self.reset_prefix_cache()
+        self._is_paused = True
+
+    async def resume(self, **kwargs: Any) -> None:
+        """Resume generation on the mock engine after pause.
+
+        Args:
+            **kwargs: Engine-specific options.
+        """
+        if not self.started:
+            raise RuntimeError("Engine not started")
+        self._is_paused = False
+
+    async def is_paused(self) -> bool:
+        """Check if the mock engine is paused.
+
+        Returns:
+            True if the engine is paused, False otherwise.
+        """
+        return self._is_paused
 
     async def chat(
         self,
@@ -233,6 +271,56 @@ class MockVLLMEngine(LLMEngine):
                 "total_tokens": len(str(text_1).split()) + len(str(text_2).split()),
             },
         )
+        yield response
+
+    async def tokenize(
+        self,
+        request: TokenizeRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[TokenizeResponse, ErrorResponse], None]:
+        """Mock tokenize generation."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+        # Get prompt text from the request
+        prompt = getattr(request, "prompt", None)
+        if prompt is None:
+            # For TokenizeChatRequest, messages would be used
+            messages = getattr(request, "messages", [])
+            prompt = " ".join(str(getattr(m, "content", "")) for m in messages if m)
+
+        # Generate mock token IDs (simple: use character codes)
+        prompt_str = str(prompt) if prompt else ""
+        tokens = [ord(c) for c in prompt_str]
+
+        # Optionally generate token strings
+        return_token_strs = getattr(request, "return_token_strs", False)
+        token_strs = list(prompt_str) if return_token_strs else None
+
+        response = TokenizeResponse(
+            count=len(tokens),
+            max_model_len=4096,  # Mock max model length
+            tokens=tokens,
+            token_strs=token_strs,
+        )
+        yield response
+
+    async def detokenize(
+        self,
+        request: DetokenizeRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[DetokenizeResponse, ErrorResponse], None]:
+        """Mock detokenize generation."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+        # Get tokens from the request
+        tokens = getattr(request, "tokens", [])
+
+        # Convert token IDs back to characters (inverse of our mock tokenize)
+        prompt = "".join(chr(t) if 0 <= t < 0x110000 else "?" for t in tokens)
+
+        response = DetokenizeResponse(prompt=prompt)
         yield response
 
     async def _generate_chat_response(

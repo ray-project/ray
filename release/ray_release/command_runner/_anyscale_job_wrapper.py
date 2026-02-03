@@ -23,7 +23,6 @@ OUTPUT_JSON_FILENAME = "output.json"
 AWS_CP_TIMEOUT = 300
 TIMEOUT_RETURN_CODE = 124  # same as bash timeout
 
-installed_pips = []
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler(stream=sys.stderr)
@@ -52,13 +51,6 @@ def exponential_backoff_retry(
             )
             time.sleep(retry_delay_s)
             retry_delay_s *= 2
-
-
-def install_pip(pip: str):
-    if pip in installed_pips:
-        return
-    subprocess.run(["pip", "install", "-q", pip], check=True)
-    installed_pips.append(pip)
 
 
 def run_storage_cp(source: str, target: str):

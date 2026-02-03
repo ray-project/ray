@@ -182,7 +182,7 @@ To save text, call a method like :meth:`~ray.data.Dataset.write_parquet`. Ray Da
 save text in many formats.
 
 To view the full list of supported file formats, see the
-:ref:`Input/Output reference <input-output>`.
+:ref:`Saving Data API <saving-data-api>`.
 
 .. testcode::
 

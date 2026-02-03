@@ -14,8 +14,13 @@ from vllm.entrypoints.openai.protocol import (
     CompletionRequest as vLLMCompletionRequest,
     CompletionResponse as vLLMCompletionResponse,
     CompletionStreamResponse as vLLMCompletionStreamResponse,
+    DetokenizeRequest as vLLMDetokenizeRequest,
+    DetokenizeResponse as vLLMDetokenizeResponse,
     ErrorInfo as vLLMErrorInfo,
     ErrorResponse as vLLMErrorResponse,
+    TokenizeChatRequest as vLLMTokenizeChatRequest,
+    TokenizeCompletionRequest as vLLMTokenizeCompletionRequest,
+    TokenizeResponse as vLLMTokenizeResponse,
     TranscriptionRequest as vLLMTranscriptionRequest,
     TranscriptionResponse as vLLMTranscriptionResponse,
     TranscriptionStreamResponse as vLLMTranscriptionStreamResponse,
@@ -110,7 +115,29 @@ class ScoreResponse(vLLMScoreResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
+class TokenizeCompletionRequest(vLLMTokenizeCompletionRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class TokenizeChatRequest(vLLMTokenizeChatRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class TokenizeResponse(vLLMTokenizeResponse):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class DetokenizeRequest(vLLMDetokenizeRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class DetokenizeResponse(vLLMDetokenizeResponse):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
 EmbeddingRequest = Union[EmbeddingCompletionRequest, EmbeddingChatRequest]
+
+TokenizeRequest = Union[TokenizeCompletionRequest, TokenizeChatRequest]
 
 LLMEmbeddingsResponse = Union[
     AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None],
@@ -118,6 +145,14 @@ LLMEmbeddingsResponse = Union[
 
 LLMScoreResponse = Union[
     AsyncGenerator[Union[ScoreResponse, ErrorResponse], None],
+]
+
+LLMTokenizeResponse = Union[
+    AsyncGenerator[Union[TokenizeResponse, ErrorResponse], None],
+]
+
+LLMDetokenizeResponse = Union[
+    AsyncGenerator[Union[DetokenizeResponse, ErrorResponse], None],
 ]
 
 LLMChatResponse = Union[

@@ -69,6 +69,9 @@ additional system processes running on it like GCS.
   recommend setting the quantity of logical CPU resources to 0 on the head node
   to avoid scheduling additional tasks on it.
 
+For long-running clusters, head node memory usage can steadily increase over time.
+See :ref:`head-node-memory-management` for detailed information on causes and mitigation strategies.
+
 Configuring the autoscaler
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 

@@ -271,10 +271,16 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   returned_refs.reserve(num_returns);
   std::vector<ObjectID> return_ids;
   return_ids.reserve(num_returns);
+  auto tensor_transport = spec.TensorTransport();
   for (size_t i = 0; i < num_returns; i++) {
     auto return_id = spec.ReturnId(i);
     if (!spec.IsActorCreationTask()) {
-      bool is_reconstructable = max_retries != 0;
+      LineageReconstructionEligibility lineage_eligibility;
+      if (max_retries == 0) {
+        lineage_eligibility = LineageReconstructionEligibility::INELIGIBLE_NO_RETRIES;
+      } else {
+        lineage_eligibility = LineageReconstructionEligibility::ELIGIBLE;
+      }
       // We pass an empty vector for inner IDs because we do not know the return
       // value of the task yet. If the task returns an ID(s), the worker will
       // publish the WaitForRefRemoved message that we are now a borrower for
@@ -289,10 +295,10 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                                         caller_address,
                                         call_site,
                                         -1,
-                                        is_reconstructable,
+                                        lineage_eligibility,
                                         /*add_local_ref=*/true,
                                         /*pinned_at_node_id=*/std::optional<NodeID>(),
-                                        /*tensor_transport=*/spec.TensorTransport());
+                                        tensor_transport);
     }
 
     return_ids.push_back(return_id);
@@ -301,12 +307,9 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     ref.set_object_id(return_object_id.Binary());
     ref.mutable_owner_address()->CopyFrom(caller_address);
     ref.set_call_site(call_site);
-    ref.set_tensor_transport(spec.TensorTransport());
-
-    // Register the callback to free the GPU object when it is out of scope.
-    auto tensor_transport = reference_counter_.GetTensorTransport(return_object_id);
-    if (tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE) !=
-        rpc::TensorTransport::OBJECT_STORE) {
+    if (tensor_transport.has_value()) {
+      ref.set_tensor_transport(*tensor_transport);
+      // Register the callback to free the GPU object when it is out of scope.
       reference_counter_.AddObjectOutOfScopeOrFreedCallback(return_object_id,
                                                             free_actor_object_callback_);
     }
@@ -363,7 +366,7 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
     }
     auto &task_entry = it->second;
     if (task_entry.is_canceled_) {
-      return rpc::ErrorType::TASK_CANCELLED;
+      return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED;
     }
 
     if (task_entry.spec_.IsStreamingGenerator() &&
@@ -392,7 +395,8 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
     // Needs to be called outside of the lock to avoid deadlock.
     return queue_generator_resubmit_(spec)
                ? std::nullopt
-               : std::make_optional(rpc::ErrorType::TASK_CANCELLED);
+               : std::make_optional(
+                     rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED);
   }
 
   UpdateReferencesForResubmit(spec, task_deps);
@@ -585,12 +589,11 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
           return_object.metadata().size());
     }
 
-    auto tensor_transport = reference_counter_.GetTensorTransport(object_id);
     RayObject object(data_buffer,
                      metadata_buffer,
                      nested_refs,
                      /*copy_data=*/false,
-                     tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE));
+                     reference_counter_.GetTensorTransport(object_id));
     if (store_in_plasma) {
       Status s = put_in_local_plasma_callback_(object, object_id);
       if (!s.ok()) {
@@ -600,6 +603,9 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
       in_memory_store_.Put(object, object_id, reference_counter_.HasReference(object_id));
       direct_return = true;
     }
+  }
+  if (return_object.has_direct_transport_metadata()) {
+    set_direct_transport_metadata_(object_id, return_object.direct_transport_metadata());
   }
 
   rpc::Address owner_address;
@@ -1133,8 +1139,6 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                                       const rpc::RayErrorInfo &error_info) {
   TaskSpecification spec;
   bool will_retry = false;
-  int32_t num_retries_left = 0;
-  int32_t num_oom_retries_left = 0;
   bool task_failed_due_to_oom = error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
   {
     absl::MutexLock lock(&mu_);
@@ -1145,19 +1149,19 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     RAY_CHECK(task_entry.IsPending())
         << "Tried to retry task that was not pending " << task_id;
     spec = task_entry.spec_;
-    num_retries_left = task_entry.num_retries_left_;
-    num_oom_retries_left = task_entry.num_oom_retries_left_;
+    auto &num_retries_left = task_entry.num_retries_left_;
+    auto &num_oom_retries_left = task_entry.num_oom_retries_left_;
+    auto is_preempted = false;
     if (task_failed_due_to_oom) {
       if (num_oom_retries_left > 0) {
         will_retry = true;
-        task_entry.num_oom_retries_left_--;
+        num_oom_retries_left--;
       } else if (num_oom_retries_left == -1) {
         will_retry = true;
       } else {
         RAY_CHECK(num_oom_retries_left == 0);
       }
     } else {
-      auto is_preempted = false;
       if (error_info.error_type() == rpc::ErrorType::NODE_DIED) {
         const auto node_info =
             gcs_client_->Nodes().GetNodeAddressAndLiveness(task_entry.GetNodeId(),
@@ -1172,7 +1176,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
           RAY_LOG(INFO) << "Task " << task_id << " failed due to node preemption on node "
                         << task_entry.GetNodeId() << ", not counting against retries";
         } else {
-          task_entry.num_retries_left_--;
+          num_retries_left--;
         }
       } else if (num_retries_left == -1) {
         will_retry = true;
@@ -1180,9 +1184,6 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
         RAY_CHECK(num_retries_left == 0);
       }
     }
-    // Keep `num_retries_left` and `num_oom_retries_left` up to date
-    num_retries_left = task_entry.num_retries_left_;
-    num_oom_retries_left = task_entry.num_oom_retries_left_;
 
     if (will_retry) {
       // Record the old attempt status as FAILED.
@@ -1191,22 +1192,30 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                     worker::TaskStatusEvent::TaskStateUpdate(error_info));
       task_entry.MarkRetry();
       // Push the error to the driver if the task will still retry.
-      bool enable_output_error_log_if_still_retry =
-          RayConfig::instance().enable_output_error_log_if_still_retry();
-      if (enable_output_error_log_if_still_retry) {
-        std::string num_retries_left_str;
-        if (task_failed_due_to_oom) {
-          num_retries_left_str = num_oom_retries_left == -1
-                                     ? "infinite"
-                                     : std::to_string(num_oom_retries_left);
+      if (RayConfig::instance().enable_output_error_log_if_still_retry()) {
+        std::string error_message =
+            absl::StrCat("Task ", spec.FunctionDescriptor()->CallString());
+        if (is_preempted) {
+          absl::StrAppend(&error_message,
+                          " failed due to node preemption. The task will be retried, but "
+                          "the retry will not count against the normal retry count.");
         } else {
-          num_retries_left_str =
-              num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
+          const int32_t retries_left =
+              task_failed_due_to_oom ? num_oom_retries_left : num_retries_left;
+          const std::string retries_remaining_str =
+              retries_left == -1 ? "infinite" : std::to_string(retries_left + 1);
+          task_failed_due_to_oom ? absl::StrAppend(&error_message,
+                                                   " failed due to oom. There are ",
+                                                   retries_remaining_str,
+                                                   " oom retries remaining, ")
+                                 : absl::StrAppend(&error_message,
+                                                   " failed. There are ",
+                                                   retries_remaining_str,
+                                                   " retries remaining, ");
+          absl::StrAppend(&error_message,
+                          "so the task will be retried. Error: ",
+                          error_info.error_message());
         }
-        auto error_message = "Task " + spec.FunctionDescriptor()->CallString() +
-                             " failed. There are " + num_retries_left_str +
-                             " retries remaining, so the task will be retried. Error: " +
-                             error_info.error_message();
         Status push_error_status =
             push_error_callback_(task_entry.spec_.JobId(),
                                  rpc::ErrorType_Name(error_info.error_type()),
@@ -1223,15 +1232,15 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                     /* include_task_info */ true,
                     task_entry.spec_.AttemptNumber() + 1);
     }
+    std::string num_retries_left_str =
+        num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
+    RAY_LOG(INFO) << "task " << spec.TaskId() << " retries left: " << num_retries_left_str
+                  << ", oom retries left: " << num_oom_retries_left
+                  << ", task failed due to oom: " << task_failed_due_to_oom;
   }
 
   // We should not hold the lock during these calls because they may trigger
   // callbacks in this or other classes.
-  std::string num_retries_left_str =
-      num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-  RAY_LOG(INFO) << "task " << spec.TaskId() << " retries left: " << num_retries_left_str
-                << ", oom retries left: " << num_oom_retries_left
-                << ", task failed due to oom: " << task_failed_due_to_oom;
   if (will_retry) {
     RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId()
                   << " for attempt number: " << spec.AttemptNumber();
@@ -1514,6 +1523,15 @@ void TaskManager::MarkTaskCanceled(const TaskID &task_id) {
 
 void TaskManager::MarkTaskNoRetry(const TaskID &task_id) {
   MarkTaskNoRetryInternal(task_id, /*canceled=*/false);
+}
+
+bool TaskManager::IsTaskCanceled(const TaskID &task_id) const {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return false;
+  }
+  return it->second.is_canceled_;
 }
 
 absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
@@ -1813,8 +1831,8 @@ std::vector<ObjectID> ExtractPlasmaDependencies(const TaskSpecification &spec) {
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
       plasma_dependencies.push_back(spec.ArgObjectId(i));
-    } else if (spec.ArgTensorTransport(i) != rpc::TensorTransport::OBJECT_STORE) {
-      // GPU objects are inlined but the actual data lives on the remote actor.
+    } else if (spec.ArgTensorTransport(i).has_value()) {
+      // RDT objects are inlined but the actual data lives on the remote actor.
       // Therefore, we apply the reference counting protocol used for plasma objects
       // instead of decrementing the ref count upon inlining.
       plasma_dependencies.push_back(spec.ArgObjectId(i));

@@ -6,7 +6,7 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.air.util.tensor_extensions.arrow import (
+from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data.extensions.tensor_extension import (

@@ -144,7 +144,8 @@ void ActorHandle::SetActorTaskSpec(
     const ObjectID new_cursor,
     int max_retries,
     bool retry_exceptions,
-    const std::string &serialized_retry_exception_allowlist) {
+    const std::string &serialized_retry_exception_allowlist,
+    const std::optional<std::string> &tensor_transport) {
   absl::MutexLock guard(&mutex_);
   // Build actor task spec.
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(GetActorID());
@@ -155,7 +156,8 @@ void ActorHandle::SetActorTaskSpec(
                            max_retries,
                            retry_exceptions,
                            serialized_retry_exception_allowlist,
-                           task_counter_++);
+                           task_counter_++,
+                           tensor_transport);
 }
 
 void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec) {

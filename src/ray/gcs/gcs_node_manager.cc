@@ -119,6 +119,7 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     PublishNodeInfoToPubsub(node_id, node_info_copy);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
+
   if (node_info.is_head_node()) {
     // mark all old head nodes as dead if exists:
     // 1. should never happen when HA is not used
@@ -602,6 +603,10 @@ void GcsNodeManager::SetNodeDraining(
         << iter->second->DebugString() << " with the new request "
         << drain_request->DebugString();
     iter->second = drain_request;
+  }
+
+  for (auto &listener : node_draining_listeners_) {
+    listener(node_id, true, drain_request->deadline_timestamp_ms());
   }
 }
 

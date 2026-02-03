@@ -22,8 +22,6 @@ class LogReporter(Reporter):
             f"\n"
             f"  buildkite_url: {format_link(result.buildkite_url)}\n"
         )
-        if result.cluster_url:
-            msg += f"  cluster_url:   {format_link(result.cluster_url)}\n"
         if result.job_url:
             msg += f"  job_url:   {format_link(result.job_url)}\n"
 

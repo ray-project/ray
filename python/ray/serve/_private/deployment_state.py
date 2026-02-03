@@ -35,7 +35,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
-    MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+    DEFAULT_LATENCY_BUCKET_MS,
     MAX_PER_REPLICA_RETRY_COUNT,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FAIL_ON_RANK_ERROR,
@@ -138,6 +138,12 @@ class DeploymentTargetState:
             placement_group_strategy=info.replica_config.placement_group_strategy,
             max_replicas_per_node=info.replica_config.max_replicas_per_node,
             route_prefix=info.route_prefix,
+            placement_group_bundle_label_selector=(
+                info.replica_config.placement_group_bundle_label_selector
+            ),
+            placement_group_fallback_strategy=(
+                info.replica_config.placement_group_fallback_strategy
+            ),
         )
 
         return cls(info, target_num_replicas, version, deleting)
@@ -155,24 +161,68 @@ class DeploymentTargetState:
         if other_target_state.info is None:
             return False
 
+        if self.info is None:
+            return False
+
+        actor_options_match = (
+            self.info.replica_config.ray_actor_options
+            == other_target_state.info.replica_config.ray_actor_options
+        )
+        bundles_match = (
+            self.info.replica_config.placement_group_bundles
+            == other_target_state.info.replica_config.placement_group_bundles
+        )
+        strategy_match = (
+            self.info.replica_config.placement_group_strategy
+            == other_target_state.info.replica_config.placement_group_strategy
+        )
+        max_replicas_match = (
+            self.info.replica_config.max_replicas_per_node
+            == other_target_state.info.replica_config.max_replicas_per_node
+        )
+        deployment_config_match = self.info.deployment_config.dict(
+            exclude={"num_replicas"}
+        ) == other_target_state.info.deployment_config.dict(exclude={"num_replicas"})
+
+        # Backward compatibility check for older versions of Ray without these fields.
+        current_bundle_label_selector = getattr(
+            self.info.replica_config, "placement_group_bundle_label_selector", None
+        )
+        other_bundle_label_selector = getattr(
+            other_target_state.info.replica_config,
+            "placement_group_bundle_label_selector",
+            None,
+        )
+        bundle_label_selector_match = (
+            current_bundle_label_selector == other_bundle_label_selector
+        )
+
+        current_fallback = getattr(
+            self.info.replica_config, "placement_group_fallback_strategy", None
+        )
+        other_fallback = getattr(
+            other_target_state.info.replica_config,
+            "placement_group_fallback_strategy",
+            None,
+        )
+        fallback_match = current_fallback == other_fallback
+
+        # TODO(zcin): version can be None, this is from an outdated codepath.
+        # We should remove outdated code, so version can never be None.
+        version_match = (
+            self.version is not None and self.version == other_target_state.version
+        )
+
         return all(
             [
-                self.info.replica_config.ray_actor_options
-                == other_target_state.info.replica_config.ray_actor_options,
-                self.info.replica_config.placement_group_bundles
-                == other_target_state.info.replica_config.placement_group_bundles,
-                self.info.replica_config.placement_group_strategy
-                == other_target_state.info.replica_config.placement_group_strategy,
-                self.info.replica_config.max_replicas_per_node
-                == other_target_state.info.replica_config.max_replicas_per_node,
-                self.info.deployment_config.dict(exclude={"num_replicas"})
-                == other_target_state.info.deployment_config.dict(
-                    exclude={"num_replicas"}
-                ),
-                # TODO(zcin): version can be None, this is from an outdated codepath.
-                # We should remove outdated code, so version can never be None.
-                self.version,
-                self.version == other_target_state.version,
+                actor_options_match,
+                bundles_match,
+                strategy_match,
+                bundle_label_selector_match,
+                fallback_match,
+                max_replicas_match,
+                deployment_config_match,
+                version_match,
             ]
         )
 
@@ -186,9 +236,17 @@ class DeploymentStateUpdateResult:
 
 
 CHECKPOINT_KEY = "serve-deployment-state-checkpoint"
-SLOW_STARTUP_WARNING_S = int(os.environ.get("SERVE_SLOW_STARTUP_WARNING_S", 30))
+SLOW_STARTUP_WARNING_S = int(
+    os.environ.get(
+        "RAY_SERVE_SLOW_STARTUP_WARNING_S",
+        os.environ.get("SERVE_SLOW_STARTUP_WARNING_S", 30),
+    )
+)
 SLOW_STARTUP_WARNING_PERIOD_S = int(
-    os.environ.get("SERVE_SLOW_STARTUP_WARNING_PERIOD_S", 30)
+    os.environ.get(
+        "RAY_SERVE_SLOW_STARTUP_WARNING_PERIOD_S",
+        os.environ.get("SERVE_SLOW_STARTUP_WARNING_PERIOD_S", 30),
+    )
 )
 
 ALL_REPLICA_STATES = list(ReplicaState)
@@ -290,6 +348,41 @@ class ActorReplicaWrapper:
 
         # Outbound deployments polling state
         self._outbound_deployments: Optional[List[DeploymentID]] = None
+
+        # Histogram to track routing stats delay from replica to controller
+        self._routing_stats_delay_histogram = metrics.Histogram(
+            "serve_routing_stats_delay_ms",
+            description=(
+                "The delay in milliseconds for routing stats to propagate "
+                "from replica to controller."
+            ),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("deployment", "replica", "application"),
+        )
+        self._routing_stats_delay_histogram.set_default_tags(
+            {
+                "deployment": self._deployment_id.name,
+                "replica": self._replica_id.unique_id,
+                "application": self._deployment_id.app_name,
+            }
+        )
+
+        # Counter to track exceptions/timeouts when getting routing stats
+        self._routing_stats_error_counter = metrics.Counter(
+            "serve_routing_stats_error",
+            description=(
+                "The number of errors (exceptions or timeouts) when getting "
+                "routing stats from replica."
+            ),
+            tag_keys=("deployment", "replica", "application", "error_type"),
+        )
+        self._routing_stats_error_counter.set_default_tags(
+            {
+                "deployment": self._deployment_id.name,
+                "replica": self._replica_id.unique_id,
+                "application": self._deployment_id.app_name,
+            }
+        )
 
     @property
     def replica_id(self) -> str:
@@ -594,6 +687,12 @@ class ActorReplicaWrapper:
             ),
             placement_group_strategy=(
                 deployment_info.replica_config.placement_group_strategy
+            ),
+            placement_group_bundle_label_selector=(
+                deployment_info.replica_config.placement_group_bundle_label_selector
+            ),
+            placement_group_fallback_strategy=(
+                deployment_info.replica_config.placement_group_fallback_strategy
             ),
             max_replicas_per_node=(
                 deployment_info.replica_config.max_replicas_per_node
@@ -1059,11 +1158,15 @@ class ActorReplicaWrapper:
             # Object ref is ready, ray.get it to check for exceptions.
             try:
                 self._routing_stats = ray.get(self._record_routing_stats_ref)
+                # Record the round-trip delay for routing stats
+                delay_ms = (time.time() - self._last_record_routing_stats_time) * 1000
+                self._routing_stats_delay_histogram.observe(delay_ms)
             except Exception:
                 logger.exception(
                     "Exception when trying to get routing stats:\n"
                     + traceback.format_exc()
                 )
+                self._routing_stats_error_counter.inc(tags={"error_type": "exception"})
             self._record_routing_stats_ref = None
         elif (
             time.time() - self._last_record_routing_stats_time
@@ -1075,6 +1178,7 @@ class ActorReplicaWrapper:
                 f"{self._replica_id} after "
                 f"{self.request_routing_stats_timeout_s}s, retrying."
             )
+            self._routing_stats_error_counter.inc(tags={"error_type": "timeout"})
             self._record_routing_stats_ref = None
 
         if self._should_record_routing_stats():
@@ -2043,7 +2147,6 @@ class DeploymentState:
     """Manages the target state and replicas for a single deployment."""
 
     FORCE_STOP_UNHEALTHY_REPLICAS = RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS
-    MAX_CONSTRUCTOR_RETRY_COUNT_WARNING_LOGGED = False
 
     def __init__(
         self,
@@ -2286,22 +2389,8 @@ class DeploymentState:
 
     @property
     def _failed_to_start_threshold(self) -> int:
-        # Use global override if set, otherwise use deployment config
-        value = MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT
-        if value is not None and not self.MAX_CONSTRUCTOR_RETRY_COUNT_WARNING_LOGGED:
-            logger.warning(
-                "MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT is deprecated and will be removed in the future. "
-                "Please use 'max_constructor_retry_count' instead in configurations."
-            )
-            self.MAX_CONSTRUCTOR_RETRY_COUNT_WARNING_LOGGED = True
-        base_retry_count = (
-            value
-            if value is not None
-            else self._target_state.info.deployment_config.max_constructor_retry_count
-        )
-
         return min(
-            base_retry_count,
+            self._target_state.info.deployment_config.max_constructor_retry_count,
             self._target_state.target_num_replicas * MAX_PER_REPLICA_RETRY_COUNT,
         )
 
@@ -2525,6 +2614,8 @@ class DeploymentState:
         # Exit early if the deployment info hasn't changed. Ensures this method
         # is idempotent.
         if not deployment_settings_changed and not target_capacity_changed:
+            # Emit target replicas metric when the deployment info hasn't changed.
+            self.target_replicas_gauge.set(self._target_state.target_num_replicas)
             return False
 
         logger.debug(f"Deploying '{self._id}': {deployment_info.to_dict()}")
