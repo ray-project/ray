@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Callable, Optional, Type
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data.checkpoint.checkpoint_filter import BatchBasedCheckpointFilter
@@ -29,7 +29,6 @@ class LoadCheckpointCallback(ExecutionCallback):
     def __init__(self, config: Optional["CheckpointConfig"]):
         self._config = config
         self._ckpt_filter = None
-        self._checkpoint_ref: Optional["ObjectRef[Block]"] = None
 
         if self._config:
             self._ckpt_filter = self._create_checkpoint_filter(self._config)
@@ -50,9 +49,16 @@ class LoadCheckpointCallback(ExecutionCallback):
             return None
 
         ckpt_filter = cls._create_checkpoint_filter(config)
+        checkpoint_ref: Dict[str, Any] = {}
 
         def load_fn() -> "ObjectRef[Block]":
-            return ckpt_filter.load_checkpoint()
+            if "ref" in checkpoint_ref:
+                return checkpoint_ref["ref"]
+
+            ref = ckpt_filter.load_checkpoint()
+
+            checkpoint_ref["ref"] = ref
+            return ref
 
         return load_fn
 
@@ -67,9 +73,7 @@ class LoadCheckpointCallback(ExecutionCallback):
         return BatchBasedCheckpointFilter(config)
 
     def before_execution_starts(self, executor: "StreamingExecutor"):
-        if self._config is None:
-            return
-        self._checkpoint_ref = self._ckpt_filter.load_checkpoint()
+        pass
 
     def after_execution_succeeds(self, executor: "StreamingExecutor"):
         if self._config is None:
@@ -82,7 +86,3 @@ class LoadCheckpointCallback(ExecutionCallback):
 
     def after_execution_fails(self, executor: "StreamingExecutor", error: Exception):
         pass
-
-    def load_checkpoint(self) -> "ObjectRef[Block]":
-        assert self._checkpoint_ref is not None
-        return self._checkpoint_ref
