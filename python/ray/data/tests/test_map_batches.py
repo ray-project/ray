@@ -818,12 +818,15 @@ def test_map_batches_struct_field_type_divergence(shutdown_only):
     rows = result.take_all()
     assert len(rows) == 4
 
-    # Rows 0 and 2 should have int cast to float, with c=None
-    assert rows[0]["data"] == {"a": 1.0, "b": "hello", "c": None}
-    assert rows[2]["data"] == {"a": 1.0, "b": "hello", "c": None}
+    # Sort to make the order deterministic.
+    rows.sort(key=lambda r: (r["data"]["a"], str(r["data"]["b"])))
 
-    # Rows 1 and 3 should have float a, with b=None
-    assert rows[1]["data"] == {"a": 1.5, "b": None, "c": 100}
+    # Rows with a=1.0 (originally int) should have int cast to float, with c=None
+    assert rows[0]["data"] == {"a": 1.0, "b": "hello", "c": None}
+    assert rows[1]["data"] == {"a": 1.0, "b": "hello", "c": None}
+
+    # Rows with a=1.5 should have float a, with b=None
+    assert rows[2]["data"] == {"a": 1.5, "b": None, "c": 100}
     assert rows[3]["data"] == {"a": 1.5, "b": None, "c": 100}
 
 
