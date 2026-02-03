@@ -7,7 +7,7 @@ import pytest
 
 import ray
 from ray.data._internal.tensor_extensions.arrow import (
-    create_arrow_fixed_shape_tensor_format,
+    create_arrow_fixed_shape_tensor_type,
 )
 from ray.data._internal.tensor_extensions.pandas import TensorDtype
 from ray.data.context import DataContext
@@ -233,7 +233,7 @@ def test_strict_schema(ray_start_regular_shared_2_cpus):
     assert schema.names == ["data"]
 
     # Uses context defaults to determine tensor type
-    expected_arrow_ext_type = create_arrow_fixed_shape_tensor_format(
+    expected_arrow_ext_type = create_arrow_fixed_shape_tensor_type(
         shape=(10,), dtype=pa.float64()
     )
 

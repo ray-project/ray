@@ -30,7 +30,7 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.tensor_extensions.arrow import (
-    create_arrow_fixed_shape_tensor_format,
+    create_arrow_fixed_shape_tensor_type,
 )
 from ray.data._internal.util import (
     RetryingPyFileSystem,
@@ -796,7 +796,7 @@ class ParquetDatasource(Datasource):
             for name, (np_dtype, shape) in tensor_column_schema.items():
                 index_of_name: int = target_schema.get_field_index(name)
                 pa_dtype: pa.DataType = DataType.from_numpy(np_dtype).to_arrow_dtype()
-                tensor_type = create_arrow_fixed_shape_tensor_format(
+                tensor_type = create_arrow_fixed_shape_tensor_type(
                     shape=shape, dtype=pa_dtype
                 )
                 field = pa.field(name, tensor_type)

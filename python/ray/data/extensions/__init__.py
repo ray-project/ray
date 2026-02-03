@@ -2,7 +2,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     FixedShapeTensorFormat,
     FixedShapeTensorType,
-    create_arrow_fixed_shape_tensor_format,
+    create_arrow_fixed_shape_tensor_type,
     get_arrow_extension_tensor_types,
 )
 from ray.data.extensions.object_extension import (
@@ -39,7 +39,7 @@ __all__ = [
     "ArrowConversionError",
     "FixedShapeTensorType",
     "FixedShapeTensorFormat",
-    "create_arrow_fixed_shape_tensor_format",
+    "create_arrow_fixed_shape_tensor_type",
     # Object array extension
     "ArrowPythonObjectArray",
     "ArrowPythonObjectType",

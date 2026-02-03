@@ -11,7 +11,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
     ArrowTensorArray,
     FixedShapeTensorFormat,
-    create_arrow_fixed_shape_tensor_format,
+    create_arrow_fixed_shape_tensor_type,
 )
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
@@ -47,9 +47,7 @@ def test_large_tensor_creation(ray_start_regular_shared, tensor_format_context):
 def test_tensors_basic(ray_start_regular_shared, tensor_format_context):
 
     # Determine expected tensor type based on format
-    expected_type = create_arrow_fixed_shape_tensor_format(
-        shape=(3, 5), dtype=pa.int64()
-    )
+    expected_type = create_arrow_fixed_shape_tensor_type(shape=(3, 5), dtype=pa.int64())
 
     # Create directly.
     tensor_shape = (3, 5)
@@ -678,7 +676,7 @@ def test_tensors_in_tables_parquet_with_schema(
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
 
-    tensor_type = create_arrow_fixed_shape_tensor_format(
+    tensor_type = create_arrow_fixed_shape_tensor_type(
         shape=inner_shape,
         dtype=pa.from_numpy_dtype(arr.dtype),
     )
@@ -874,7 +872,7 @@ def test_tensors_in_tables_parquet_bytes_with_schema(
     )
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
-    tensor_type = create_arrow_fixed_shape_tensor_format(
+    tensor_type = create_arrow_fixed_shape_tensor_type(
         shape=inner_shape,
         dtype=pa.from_numpy_dtype(arr.dtype),
     )

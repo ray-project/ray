@@ -6915,7 +6915,7 @@ class Schema:
         from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
         from ray.data._internal.tensor_extensions.arrow import (
-            create_arrow_fixed_shape_tensor_format,
+            create_arrow_fixed_shape_tensor_type,
         )
         from ray.data.extensions import TensorDtype
 
@@ -6944,7 +6944,7 @@ class Schema:
                         pa_dtype, len(dtype._shape)
                     )
                 else:
-                    tensor_type = create_arrow_fixed_shape_tensor_format(
+                    tensor_type = create_arrow_fixed_shape_tensor_type(
                         shape=dtype._shape, dtype=pa_dtype
                     )
                 arrow_types.append(tensor_type)

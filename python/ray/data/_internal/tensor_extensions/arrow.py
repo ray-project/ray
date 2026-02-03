@@ -757,7 +757,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
 
 
 @DeveloperAPI
-def create_arrow_fixed_shape_tensor_format(
+def create_arrow_fixed_shape_tensor_type(
     shape: Tuple[int, ...],
     dtype: pa.DataType,
     outer_len: Optional[int] = None,
@@ -965,7 +965,7 @@ class ArrowTensorArray(pa.ExtensionArray):
         total_num_items = arr.size
         num_items_per_element = np.prod(element_shape) if element_shape else 1
 
-        pa_tensor_type_ = create_arrow_fixed_shape_tensor_format(
+        pa_tensor_type_ = create_arrow_fixed_shape_tensor_type(
             element_shape, scalar_dtype, outer_len=outer_len
         )
 
