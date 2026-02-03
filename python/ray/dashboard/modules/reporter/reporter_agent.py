@@ -105,7 +105,9 @@ TPU_DEVICE_PLUGIN_ADDR = os.environ.get("TPU_DEVICE_PLUGIN_ADDR", None)
 # Whether to use psutil.memory_full_info to collect uss metric.
 # memory_full_info is most accurate but sometime very expensive and end up degrading main application
 # due to the page lock it introduced. See https://github.com/ray-project/ray/issues/55117 for more detail.
-USE_MEMORY_FULL_INFO_FOR_USS_METRIC = os.environ.get("USE_MEMORY_FULL_INFO_FOR_USS_METRIC", "1") == "1"
+USE_MEMORY_FULL_INFO_FOR_USS_METRIC = (
+    os.environ.get("USE_MEMORY_FULL_INFO_FOR_USS_METRIC", "1") == "1"
+)
 
 def recursive_asdict(o):
     if isinstance(o, tuple) and hasattr(o, "_asdict"):
@@ -391,16 +393,8 @@ PSUTIL_PROCESS_ATTRS = (
         "cmdline",
         "memory_info",
     ]
-    + (
-        ["num_fds"]
-        if sys.platform != "win32"
-        else []
-    )
-    + (
-        ["memory_full_info"]
-        if USE_MEMORY_FULL_INFO_FOR_USS_METRIC
-        else []
-    )
+    + (["num_fds"] if sys.platform != "win32" else [])
+    + (["memory_full_info"] if USE_MEMORY_FULL_INFO_FOR_USS_METRIC else [])
 )
 
 
