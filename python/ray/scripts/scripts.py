@@ -1223,7 +1223,10 @@ def matches_temp_dir_path(cmdline: list, target_temp_dir: str) -> bool:
     Returns:
         True if a matching --temp-dir or --temp_dir argument is found
     """
-    target = os.path.normcase(os.path.normpath(target_temp_dir))
+    # Use realpath to:
+    # 1. Convert relative paths to absolute paths
+    # 2. Resolve symlinks (e.g., /var -> /private/var on macOS)
+    target = os.path.normcase(os.path.realpath(target_temp_dir))
     for arg in cmdline:
         for prefix in ("--temp-dir=", "--temp_dir="):
             path = None
@@ -1232,15 +1235,16 @@ def matches_temp_dir_path(cmdline: list, target_temp_dir: str) -> bool:
                 path = arg.split("=", 1)[1]
             elif prefix in arg:
                 # setproctitle case: "ray::DashboardAgent --temp-dir=/tmp/ray"
+                # In our setproctitle format, --temp-dir is the last argument,
+                # so we take everything after the prefix (handles paths with spaces)
                 idx = arg.find(prefix)
-                path_part = arg[idx + len(prefix) :]
-                # Path ends at space or end of string
-                path = path_part.split()[0] if " " in path_part else path_part
+                path = arg[idx + len(prefix) :]
 
             if path is not None:
                 # Remove any trailing quotes from setproctitle format
                 path = path.rstrip("\"'")
-                normalized = os.path.normcase(os.path.normpath(path))
+                # Use realpath to resolve symlinks for consistent comparison
+                normalized = os.path.normcase(os.path.realpath(path))
                 if normalized == target:
                     return True
     return False

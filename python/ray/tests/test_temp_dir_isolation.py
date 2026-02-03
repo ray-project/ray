@@ -533,3 +533,156 @@ class TestTempDirIsolation:
         finally:
             runner.invoke(scripts.stop, ["--force"])
             shutil.rmtree(temp_dir_parent, ignore_errors=True)
+
+
+class TestMatchesTempDirPath:
+    """Unit tests for the matches_temp_dir_path function."""
+
+    def test_relative_path_matches_absolute_path(self):
+        """
+        Test that relative paths are converted to absolute paths for matching.
+
+        This tests the fix for the bug where:
+        - ray stop --temp-dir=./ray_temp
+        - os.path.exists("./ray_temp") passes
+        - But matching fails because "./ray_temp" != "/home/user/ray_temp"
+        """
+        import tempfile
+
+        # Create a temporary directory
+        with tempfile.TemporaryDirectory() as temp_base:
+            # Create a subdirectory
+            subdir_name = "ray_temp_test"
+            subdir_path = os.path.join(temp_base, subdir_name)
+            os.makedirs(subdir_path)
+
+            # Get the absolute path
+            abs_path = os.path.abspath(subdir_path)
+
+            # Simulate cmdline with absolute path (as Ray processes have)
+            cmdline_with_abs = [
+                "python",
+                "-u",
+                "some_script.py",
+                f"--temp-dir={abs_path}",
+            ]
+
+            # Test 1: Absolute path should match absolute path
+            assert scripts.matches_temp_dir_path(
+                cmdline_with_abs, abs_path
+            ), "Absolute path should match itself"
+
+            # Test 2: Change to temp_base and use relative path
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(temp_base)
+                relative_path = f"./{subdir_name}"
+
+                # Relative path should match the cmdline with absolute path
+                assert scripts.matches_temp_dir_path(
+                    cmdline_with_abs, relative_path
+                ), f"Relative path '{relative_path}' should match absolute path '{abs_path}'"
+
+                # Test with just the directory name (no ./)
+                assert scripts.matches_temp_dir_path(
+                    cmdline_with_abs, subdir_name
+                ), f"Relative path '{subdir_name}' should match absolute path '{abs_path}'"
+
+            finally:
+                os.chdir(original_cwd)
+
+    def test_path_with_spaces_in_setproctitle_format(self):
+        """
+        Test that paths containing spaces are correctly parsed in setproctitle format.
+
+        This tests the fix for the bug where:
+        - setproctitle: "ray::DashboardAgent --temp-dir=/tmp/ray dir/session"
+        - Old code: path_part.split()[0] → "/tmp/ray" (wrong!)
+        - Fixed code: takes everything after prefix → "/tmp/ray dir/session" (correct)
+        """
+        import tempfile
+
+        # Create a directory with spaces in the name
+        with tempfile.TemporaryDirectory() as temp_base:
+            dir_with_spaces = os.path.join(temp_base, "ray temp dir")
+            os.makedirs(dir_with_spaces)
+
+            abs_path = os.path.abspath(dir_with_spaces)
+
+            # Test 1: Normal cmdline format (--temp-dir=path as separate argument)
+            cmdline_normal = [
+                "python",
+                "-u",
+                "agent.py",
+                f"--temp-dir={abs_path}",
+            ]
+            assert scripts.matches_temp_dir_path(
+                cmdline_normal, abs_path
+            ), "Normal cmdline with spaces in path should match"
+
+            # Test 2: setproctitle format (entire command as single string)
+            # This is how psutil.Process.cmdline() returns it for setproctitle processes
+            cmdline_setproctitle = [
+                f"ray::DashboardAgent --temp-dir={abs_path}",
+            ]
+            assert scripts.matches_temp_dir_path(
+                cmdline_setproctitle, abs_path
+            ), f"setproctitle format with spaces in path should match: {cmdline_setproctitle}"
+
+            # Test 3: Verify the old bug would have failed
+            # The old code did: path_part.split()[0] if " " in path_part
+            # For path "/tmp/ray temp dir", this would return "/tmp/ray" (wrong!)
+            wrong_path = abs_path.split()[0]  # Simulates the old bug
+            assert (
+                wrong_path != abs_path
+            ), "Sanity check: space-split path should differ"
+
+    def test_trailing_slash_normalization(self):
+        """Test that trailing slashes are normalized correctly."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # cmdline has path without trailing slash
+            cmdline = ["python", f"--temp-dir={temp_dir}"]
+
+            # Should match with trailing slash
+            assert scripts.matches_temp_dir_path(
+                cmdline, temp_dir + "/"
+            ), "Path with trailing slash should match path without"
+
+            # Should match without trailing slash
+            assert scripts.matches_temp_dir_path(
+                cmdline, temp_dir
+            ), "Path without trailing slash should match"
+
+    def test_both_prefix_formats(self):
+        """Test that both --temp-dir= and --temp_dir= formats are recognized."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Test --temp-dir= format
+            cmdline_hyphen = ["python", f"--temp-dir={temp_dir}"]
+            assert scripts.matches_temp_dir_path(
+                cmdline_hyphen, temp_dir
+            ), "--temp-dir= format should match"
+
+            # Test --temp_dir= format
+            cmdline_underscore = ["python", f"--temp_dir={temp_dir}"]
+            assert scripts.matches_temp_dir_path(
+                cmdline_underscore, temp_dir
+            ), "--temp_dir= format should match"
+
+    def test_no_match_returns_false(self):
+        """Test that non-matching paths return False."""
+        cmdline = ["python", "--temp-dir=/tmp/ray_cluster_1"]
+
+        # Different path should not match
+        assert not scripts.matches_temp_dir_path(
+            cmdline, "/tmp/ray_cluster_2"
+        ), "Different paths should not match"
+
+        # No --temp-dir argument should not match
+        cmdline_no_temp = ["python", "script.py"]
+        assert not scripts.matches_temp_dir_path(
+            cmdline_no_temp, "/tmp/ray"
+        ), "Cmdline without --temp-dir should not match"
