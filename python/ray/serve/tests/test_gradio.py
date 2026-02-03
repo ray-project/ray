@@ -13,9 +13,6 @@ from ray.serve.gradio_integrations import GradioIngress, GradioServer
 
 @pytest.fixture
 def serve_start_shutdown():
-    serve.shutdown()
-    if ray.is_initialized():
-        ray.shutdown()
     ray.init()
     serve.start()
     yield
