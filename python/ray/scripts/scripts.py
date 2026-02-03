@@ -780,9 +780,9 @@ def start(
         )
         temp_dir = None
 
-    available_memory = ray._private.utils.estimate_available_memory()
+    available_memory_bytes = ray._private.utils.estimate_available_memory_bytes()
     object_store_memory = ray._private.utils.resolve_object_store_memory(
-        available_memory, object_store_memory
+        available_memory_bytes, object_store_memory
     )
 
     resource_isolation_config = ResourceIsolationConfig(
@@ -824,7 +824,7 @@ def start(
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         memory=memory,
-        available_memory=available_memory,
+        available_memory_bytes=available_memory_bytes,
         object_store_memory=object_store_memory,
         redis_username=redis_username,
         redis_password=redis_password,

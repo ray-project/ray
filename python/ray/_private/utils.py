@@ -521,7 +521,7 @@ def get_cgroup_used_memory(
 
 
 def resolve_object_store_memory(
-    available_memory: int,
+    available_memory_bytes: int,
     object_store_memory: Optional[int] = None,
 ) -> int:
     """Resolve the object store memory size.
@@ -530,7 +530,7 @@ def resolve_object_store_memory(
     the provided value or calculates a default based on available system memory.
 
     Args:
-        available_memory: The memory available for this raylet.
+        available_memory_bytes: The memory available for this node.
         object_store_memory: The user-specified object store memory size in bytes.
             If None, a default size will be calculated.
 
@@ -552,7 +552,8 @@ def resolve_object_store_memory(
             object_store_memory_cap = min(object_store_memory_cap, shm_cap)
 
         object_store_memory = int(
-            available_memory * ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+            available_memory_bytes
+            * ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
         )
 
         # Set the object_store_memory size to 2GB on Mac

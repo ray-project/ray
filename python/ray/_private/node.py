@@ -554,7 +554,7 @@ class Node:
                 self._ray_params.num_cpus,
                 self._ray_params.num_gpus,
                 self._ray_params.memory,
-                self._ray_params.available_memory,
+                self._ray_params.available_memory_bytes,
                 self._ray_params.object_store_memory,
                 self._ray_params.resources,
                 self._ray_params.labels,

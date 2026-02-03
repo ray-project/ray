@@ -41,8 +41,7 @@ class ResourceIsolationConfig:
         system_reserved_memory: Optional[int] = None,
         object_store_memory: Optional[int] = None,
     ):
-        """Initialize ResourceIsolationConfig.
-
+        """
         Raises:
             ValueError: On invalid inputs.
 

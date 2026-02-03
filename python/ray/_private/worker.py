@@ -1858,9 +1858,9 @@ def init(
         else:
             usage_lib.set_usage_stats_enabled_via_env_var(False)
 
-        available_memory = ray._private.utils.estimate_available_memory()
+        available_memory_bytes = ray._private.utils.estimate_available_memory_bytes()
         object_store_memory = ray._private.utils.resolve_object_store_memory(
-            available_memory, object_store_memory
+            available_memory_bytes, object_store_memory
         )
 
         resource_isolation_config = ResourceIsolationConfig(
@@ -1891,7 +1891,7 @@ def init(
             dashboard_host=dashboard_host,
             dashboard_port=dashboard_port,
             memory=_memory,
-            available_memory=available_memory,
+            available_memory_bytes=available_memory_bytes,
             object_store_memory=object_store_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,

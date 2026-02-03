@@ -26,7 +26,7 @@ class ResourceAndLabelSpec:
         num_cpus: Optional[int] = None,
         num_gpus: Optional[int] = None,
         memory: Optional[float] = None,
-        available_memory: Optional[int] = None,
+        available_memory_bytes: Optional[int] = None,
         object_store_memory: Optional[float] = None,
         resources: Optional[Dict[str, float]] = None,
         labels: Optional[Dict[str, str]] = None,
@@ -38,7 +38,7 @@ class ResourceAndLabelSpec:
             num_cpus: The CPUs allocated for this raylet.
             num_gpus: The GPUs allocated for this raylet.
             memory: The memory allocated for this raylet.
-            available_memory: Memory available for use on this node in bytes.
+            available_memory_bytes: Memory available for use on this node.
             object_store_memory: The object store memory allocated for this raylet.
             resources: The custom resources allocated for this raylet.
             labels: The labels associated with this node. Labels can be used along
@@ -47,7 +47,7 @@ class ResourceAndLabelSpec:
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
-        self.available_memory = available_memory
+        self.available_memory_bytes = available_memory_bytes
         self.object_store_memory = object_store_memory
         self.resources = resources
         self.labels = labels
@@ -374,16 +374,16 @@ class ResourceAndLabelSpec:
     def _resolve_memory_resources(self):
         # Choose a default object store size.
         system_memory = ray._common.utils.get_system_memory()
-        if self.available_memory is None:
-            self.available_memory = ray._private.utils.estimate_available_memory()
+        if self.available_memory_bytes is None:
+            self.available_memory_bytes = ray._private.utils.estimate_available_memory()
         if self.object_store_memory is None:
             self.object_store_memory = ray._private.utils.resolve_object_store_memory(
-                self.available_memory
+                self.available_memory_bytes
             )
 
         memory = self.memory
         if memory is None:
-            memory = self.available_memory - self.object_store_memory
+            memory = self.available_memory_bytes - self.object_store_memory
             if memory < 100e6 and memory < 0.05 * system_memory:
                 raise ValueError(
                     "After taking into account object store and redis memory "
