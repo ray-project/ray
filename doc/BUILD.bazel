@@ -689,7 +689,6 @@ doctest(
         "source/train/user-guides/data-loading-preprocessing.rst",
         "source/train/user-guides/using-gpus.rst",
     ],
-    # TODO: [V2] Migrate
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = ["team:ml"],
     gpu = True,

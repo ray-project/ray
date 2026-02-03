@@ -49,6 +49,9 @@ class RayParams:
             be started.
         redirect_output: True if stdout and stderr for non-worker
             processes should be redirected to files and false otherwise.
+        log_to_stderr: If set, controls whether non-worker stdout/stderr should be
+            written to stderr (True) or redirected to log files (False). This is the
+            preferred replacement for the deprecated `redirect_output` field.
         external_addresses: The address of external Redis server to
             connect to, in format of "ip1:port1,ip2:port2,...".  If this
             address is provided, then ray won't start Redis instances in the
@@ -143,6 +146,7 @@ class RayParams:
         ray_client_server_port: Optional[int] = None,
         driver_mode=None,
         redirect_output: Optional[bool] = None,
+        log_to_stderr: Optional[bool] = None,
         external_addresses: Optional[List[str]] = None,
         num_redis_shards: Optional[int] = None,
         redis_max_clients: Optional[int] = None,
@@ -200,6 +204,7 @@ class RayParams:
         self.ray_client_server_port = ray_client_server_port
         self.driver_mode = driver_mode
         self.redirect_output = redirect_output
+        self.log_to_stderr = log_to_stderr
         self.external_addresses = external_addresses
         self.num_redis_shards = num_redis_shards
         self.redis_max_clients = redis_max_clients

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup, remove_placement_group
@@ -31,6 +31,16 @@ class PlacementGroupHandle(ABC):
         ...
 
     @abstractmethod
+    def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
+        """Wait for the placement group to be ready within the specified time.
+        Args:
+            timeout_seconds: Timeout in seconds.
+        Returns:
+            True if the placement group is created. False otherwise.
+        """
+        ...
+
+    @abstractmethod
     def shutdown(self) -> None:
         """Release all resources associated with this placement group.
 
@@ -52,6 +62,9 @@ class DefaultPlacementGroupHandle(PlacementGroupHandle):
     def ready(self) -> ObjectRef:
         return self._pg.ready()
 
+    def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
+        return self._pg.wait(timeout_seconds)
+
     def shutdown(self) -> None:
         remove_placement_group(self._pg)
 
@@ -68,6 +81,9 @@ class SlicePlacementGroupHandle(PlacementGroupHandle):
 
     def ready(self) -> ObjectRef:
         return self._spg.placement_group.ready()
+
+    def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
+        return self._spg.placement_group.wait(timeout_seconds)
 
     def shutdown(self) -> None:
         self._spg.shutdown()
