@@ -1242,7 +1242,8 @@ class ReporterAgent(
             mem_full_info = stat.get("memory_full_info")
             if mem_full_info is not None:
                 total_uss += float(mem_full_info.uss) / 1.0e6
-            else:
+            elif memory_info is not None:
+                mem = stat["memory_info"]
                 # If memory_full_info is not collected, approximated USS from memory_info
                 if hasattr(mem, "shared"):
                     # Linux: USS ≈ RSS - shared
