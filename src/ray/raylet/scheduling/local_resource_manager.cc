@@ -131,14 +131,13 @@ void LocalResourceManager::MarkFootprintAsBusy(WorkFootprint item) {
     return;
   }
   idle_time_states_[item].current = absl::nullopt;
-  // If actual work starts (NODE_WORKERS busy), invalidate any speculative
-  // PULLING_TASK_ARGUMENTS state. This ensures that if a task was speculatively
-  // marked as pulling arguments but then actually runs, the idle time will be
-  // correctly reset to Now() rather than restored to the old saved time.
-  if (item == WorkFootprint::NODE_WORKERS) {
-    auto pulling_it = idle_time_states_.find(WorkFootprint::PULLING_TASK_ARGUMENTS);
-    if (pulling_it != idle_time_states_.end()) {
-      pulling_it->second.saved = absl::nullopt;
+  // Clear all saved idle times for work footprints. When actual work starts,
+  // any speculative busy states from MaybeMarkFootprintAsBusy() should be
+  // invalidated so that MarkFootprintAsIdle() will use Now() rather than
+  // restoring old idle times.
+  for (auto &[key, state] : idle_time_states_) {
+    if (std::holds_alternative<WorkFootprint>(key)) {
+      state.saved = absl::nullopt;
     }
   }
   OnResourceOrStateChanged();

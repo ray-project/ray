@@ -474,9 +474,10 @@ TEST_F(LocalResourceManagerTest, MarkFootprintAsBusyResetsIdleTime) {
 }
 
 TEST_F(LocalResourceManagerTest, NodeWorkersBusyClearsSavedPullingTime) {
-  // Test that when NODE_WORKERS is marked busy, any saved PULLING_TASK_ARGUMENTS
-  // time is cleared. This ensures that if a task was speculatively marked as
-  // pulling arguments but then actually runs, the idle time is correctly reset.
+  // Test that when any footprint is marked busy with MarkFootprintAsBusy(),
+  // all saved speculative idle times are cleared. This ensures that if a task
+  // was speculatively marked as pulling arguments but then actually runs,
+  // the idle time is correctly reset rather than restored to an old value.
   CreateManagerWithFakeClock();
 
   auto initial_idle_time = AssertIdleAndGetTime();
