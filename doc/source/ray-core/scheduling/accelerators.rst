@@ -730,10 +730,10 @@ so multiple tasks and actors can share the same accelerator.
             # and share the same GPU.
             ray.get([f.remote() for _ in range(4)])
       
-      .. tab-item:: Rebellions RBLN
-        :sync: Rebellions RBLN
+      .. tab-item:: Mobilint MBLT
+        :sync: Mobilint MBLT
 
-        Rebellions RBLN doesn't support fractional resources.
+        Mobilint MBLT doesn't support fractional resources.
 
 **Note:** It is the user's responsibility to make sure that the individual tasks
 don't use more than their share of the accelerator memory.
