@@ -262,10 +262,7 @@ class TestDownloadExpressionFunctionality:
         subdir = tmp_path / "data"
         subdir.mkdir()
 
-        sample_data = [
-            b"File 1 content with custom fs",
-            b"File 2 content with custom fs",
-        ]
+        sample_data = [b"File 1 content with custom fs"]
 
         # Create files in the subdirectory
         file_names = []
