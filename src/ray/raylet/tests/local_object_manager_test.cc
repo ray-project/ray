@@ -364,10 +364,6 @@ class LocalObjectManagerTestWithMinSpillingSize {
 
   int64_t NumBytesPendingSpill() { return manager.num_bytes_pending_spill_; }
 
-  void SetMaxSpillingFileSize(int64_t max_spilling_file_size_bytes) {
-    manager.max_spilling_file_size_bytes_ = max_spilling_file_size_bytes;
-  }
-
   int64_t GetCurrentSpilledBytes() { return manager.spilled_bytes_current_; }
 
   size_t GetCurrentSpilledCount() { return manager.spilled_objects_url_.size(); }
