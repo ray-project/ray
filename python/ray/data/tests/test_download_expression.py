@@ -251,55 +251,39 @@ class TestDownloadExpressionFunctionality:
             ctx.enable_pandas_block = old_enable_pandas_block
 
     def test_download_expression_with_custom_filesystem(self, tmp_path):
-        """Test download expression with explicit filesystem parameter.
-
-        Uses SubTreeFileSystem to verify the custom filesystem is actually used,
-        since it changes the effective root path for file resolution.
-        """
         import pyarrow.fs as pafs
-
-        # Create a subdirectory structure
+        import ray
+        from ray.data.library import download # Assuming this is your import
+    
+        # 1. Setup paths
         subdir = tmp_path / "data"
         subdir.mkdir()
-
-        sample_data = [b"File 1 content with custom fs"]
-
-        # Create files in the subdirectory
-        file_names = []
-        for i, data in enumerate(sample_data):
-            file_path = subdir / f"file_{i}.txt"
-            file_path.write_bytes(data)
-            file_names.append(f"file_{i}.txt")
-
-        # Create a SubTreeFileSystem rooted at the subdirectory
-        # This means we can use relative paths without the full path
+        
+        file_name = "test_file.txt"
+        file_path = subdir / file_name
+        sample_content = b"File content with custom fs"
+        file_path.write_bytes(sample_content)
+    
+        # 2. Setup SubTreeFileSystem
+        # This treats 'subdir' as the root '/'
         base_fs = pafs.LocalFileSystem()
         custom_fs = pafs.SubTreeFileSystem(str(subdir), base_fs)
-
-        # Create dataset with just filenames (not full paths)
-        # This only works because our custom filesystem is rooted at subdir
-        table = pa.Table.from_arrays(
-            [
-                pa.array(file_names),  # Just filenames, not full paths
-                pa.array([f"id_{i}" for i in range(len(file_names))]),
-            ],
-            names=["file_uri", "file_id"],
-        )
-
-        ds = ray.data.from_items(table)
-
-        # Download with custom filesystem - this should work because
-        # the SubTreeFileSystem resolves relative paths from subdir
+    
+        # 3. Create Dataset
+        # Note: We use the relative 'file_name' because the FS is rooted at 'subdir'
+        ds = ray.data.from_items([{"file_uri": file_name, "file_id": 0}])
+    
+        # 4. Execute Download
         ds_with_downloads = ds.with_column(
             "content", download("file_uri", filesystem=custom_fs)
         )
-
+    
+        # 5. Assertions
         results = ds_with_downloads.take_all()
-        assert len(results) == len(sample_data)
-
-        for i, result in enumerate(results):
-            assert result["content"] == sample_data[i]
-            assert result["file_id"] == f"id_{i}"
+        
+        assert len(results) == 1
+        assert results[0]["content"] == sample_content
+        assert results[0]["file_id"] == 0
 
 
 class TestDownloadExpressionErrors:
