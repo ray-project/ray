@@ -15,7 +15,6 @@ def mock_qbruntime_module(monkeypatch):
     from ray.tests.accelerators import mock_qbruntime
 
     monkeypatch.setitem(sys.modules, "qbruntime", mock_qbruntime)
-    monkeypatch.setitem(sys.modules, "qbruntime.accelerator", mock_qbruntime.accelerator)
 
 
 @pytest.fixture
