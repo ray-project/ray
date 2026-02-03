@@ -131,13 +131,20 @@ async def test_save_load_state_equivalence(
 
 
 @pytest.mark.parametrize(
-    "json_state",
+    "json_state,match",
     [
-        '{"dummy": "1", "dummy_dict": {"key": "value"}}',
-        '{"dummy": "1", "dummy_dict": {"key": "value"',
+        (
+            '{"dummy": "1", "dummy_dict": {"key": "value"}}',
+            "You are loading a checkpoint manager snapshot saved with an unknown Ray version but",
+        ),
+        ('{"ray_version": "2.0.0", "dummy": "1", "dummy_dict": {"key": "value"', None),
+        (
+            '{"ray_version": "2.0.0", "dummy": "1", "dummy_dict": {"key": "value"}}',
+            "You are loading a checkpoint manager snapshot saved with Ray version 2.0.0 but",
+        ),
     ],
 )
-def test_load_state_error(tmp_path, json_state):
+def test_load_state_error(tmp_path, json_state, match):
 
     storage_context = StorageContext(
         storage_path=tmp_path,
@@ -149,6 +156,7 @@ def test_load_state_error(tmp_path, json_state):
     )
     with pytest.raises(
         CheckpointManagerInitializationError,
+        match=match,
     ):
         checkpoint_manager._load_state(json_state)
 

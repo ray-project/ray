@@ -3,6 +3,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import ray
 from ray._common.pydantic_compat import BaseModel
 from ray.air.config import CheckpointConfig
 from ray.train._checkpoint import Checkpoint
@@ -37,6 +38,7 @@ class _TrainingResultState(BaseModel):
 class _CheckpointManagerState(BaseModel):
     # Increment version if the schema changes
     version: int = 1
+    ray_version: str = ray.__version__
     checkpoint_results: List[_TrainingResultState]
     checkpoint_report_indices: List[int]
     latest_checkpoint_result: Optional[_TrainingResultState]
@@ -275,11 +277,29 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
 
     def _load_state(self, json_state: str):
         """Load the checkpoint manager state from a JSON str."""
+        json_dict = None
         try:
             json_dict = json.loads(json_state)
             manager_snapshot = _CheckpointManagerState.parse_obj(json_dict)
         except Exception as e:
-            raise CheckpointManagerInitializationError(repr(e)) from e
+            if not json_dict:
+                error = repr(e)
+            elif "ray_version" not in json_dict:
+                error = (
+                    "You are loading a checkpoint manager snapshot saved with an unknown Ray version "
+                    f"but you are running Ray version {ray.__version__}. Please use the same Ray version "
+                    "the checkpoint manager snapshot was saved with."
+                )
+            elif json_dict["ray_version"] != ray.__version__:
+                error = (
+                    f"You are loading a checkpoint manager snapshot saved with Ray version "
+                    f"{json_dict['ray_version']} but you are running Ray version "
+                    f"{ray.__version__}. Please use the same Ray version the checkpoint "
+                    "manager snapshot was saved with."
+                )
+            else:
+                error = repr(e)
+            raise CheckpointManagerInitializationError(error) from e
 
         # Do this so we are using the same checkpoint and trainingresult objects.
         # TODO: consider asserting that every checkpoint has a unique dir name
