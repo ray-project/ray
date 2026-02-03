@@ -133,6 +133,16 @@ you might store this data in a tabular (columnar) format. RLlib's new Offline RL
 through a specified schema that organizes the expert data. The API default schema for reading data is provided in
 :py:data:`~ray.rllib.offline.offline_prelearner.SCHEMA`.
 
+.. tip::
+    RLlib uses :py:class:`~ray.rllib.utils.replay_buffers.episode_replay_buffer.EpisodeReplayBuffer` to store the episodes we read. 
+    This buffer accepts episodes without further transformations, making reading episodes the fastest operation.
+
+
+    .. image:: images/offline/docs_rllib_offline_prelearner.svg
+        :alt: The OfflinePreLearner converts and buffers episodes before sampling the batches used in learning.
+        :width: 500
+        :align: left
+
 Lets consider a simple example in which your expert data is stored with the schema: ``(o_t, a_t, r_t, o_tp1, d_t, i_t, logprobs_t)``. In this case
 you provide this schema as follows:
 
@@ -195,22 +205,9 @@ your own data into RLlib's :py:class:`~ray.rllib.env.single_agent_episode.Single
         :start-after: __sphinx_doc_offline_api_7__begin__
         :end-before: __sphinx_doc_offline_api_7__end__
 
-Using old API stack ``SampleBatch`` recordings
-----------------------------------------------
-If you have expert data previously recorded using RLlib's old API stack, it can be seamlessly utilized in the new stack's Offline RL API by setting ``input_read_sample_batches=True``. Alternatively,
-you can convert your ``SampleBatch`` recordings into :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` format using RLlib's
-:py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` as demonstrated below:
+.. note::
+    For compatibility with RLlib's old "SampleBatch" objects, you can read them by setting ``input_read_sample_batches=True``.
 
-.. dropdown:: **Code: Converting SampleBatch data to episode format**
-    :animate: fade-in-slide-down
-
-    .. literalinclude:: doc_code/offline_api.py
-        :language: python
-        :start-after: __sphinx_doc_offline_api_8__begin__
-        :end-before: __sphinx_doc_offline_api_8__end__
-
-.. note:: RLlib considers your :py:class:`~ray.rllib.policy.sample_batch.SampleBatch` to represent a terminated/truncated episode and builds its :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`
-    according to this assumption.
 
 Pre-processing, filtering and post-processing
 ---------------------------------------------
@@ -228,9 +225,8 @@ behavior of the expert policy.
 Scaling I/O throughput
 ----------------------
 
-Just as online training can be scaled, offline recording I/O throughput can also be increased by configuring the number of RLlib env-runners. Use the ``num_env_runners`` setting to scale recording during training or ``evaluation_num_env_runners``
-for scaling during evaluation-only recording. Each worker operates independently, writing experiences in parallel, enabling linear scaling of I/O throughput for write operations. Within each :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner`, episodes
-are sampled and serialized before being written to disk.
+Similar to how we scale :py:class:`~ray.rllib.env.env_runner.EnvRunner` for online learnning, we can scale data ingestion in offline learning with ``num_env_runners``.
+:py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner` processes read and write experiences in parallel, enabling linear scaling of I/O throughput.
 
 Offline RL training in RLlib is highly parallelized, encompassing data reading, post-processing, and, if applicable, updates. When training on offline data, scalability is achieved by increasing the number of ``DataWorker`` instances used to
 transform offline experiences into a learner-compatible format (:py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch`). Ray Data optimizes reading operations under the hood by leveraging file metadata, predefined concurrency settings for batch post-processing, and available
@@ -476,18 +472,15 @@ As an example, to provide each of your ``4`` :py:class:`~ray.rllib.offline.offli
 .. warning:: Don't override the ``batch_size`` in RLlib's ``map_batches_kwargs``. This usually leads to high performance degradations. Note, this ``batch_size`` differs from the `train_batch_size_per_learner`: the former specifies the batch size in transformations of
     the streaming pipeline, while the latter defines the batch size used for training within each :py:class:`~ray.rllib.core.learner.learner.Learner` (the batch size of the actual model forward- and backward passes performed for training).
 
-Read batch- and buffer sizes
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-When working with data from :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` or the legacy :py:class:`~ray.rllib.policy.sample_batch.SampleBatch` format, fine-tuning the `input_read_batch_size` parameter provides additional optimization opportunities. This parameter controls the size of batches retrieved from data
-files. Its effectiveness is particularly notable when handling episodic or legacy :py:class:`~ray.rllib.policy.sample_batch.SampleBatch` data because the streaming pipeline utilizes for these data an :py:class:`~ray.rllib.utils.replay_buffers.episode_replay_buffer.EpisodeReplayBuffer` to handle the multiple timesteps contained in each
-data row. All incoming data is converted into :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances - if not already in this format - and stored in an episode replay buffer, which precisely manages the sampling of `train_batch_size_per_learner` for training.
+Choosing batch sizes and buffer size
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Tuning the `input_read_batch_size` parameter and the `prelearner_buffer_kwargs["capacity"]` parameter provides additional optimization opportunities. 
+`input_read_batch_size` controls the size of batches retrieved from data files. 
+`prelearner_buffer_kwargs["capacity"]` controls the size of the buffer that stores the episodes.
+Consider the following example 
 
-.. image:: images/offline/docs_rllib_offline_prelearner.svg
-    :alt: The OfflinePreLearner converts and buffers episodes before sampling the batches used in learning.
-    :width: 500
-    :align: left
 
-Achieving an optimal balance between data ingestion efficiency and sampling variation in your streaming pipeline is crucial. Consider the following example: suppose each :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` has a length of ``100`` timesteps, and your `train_batch_size_per_learner` is configured to be ``1000``.
+You can balance ingestion throughput and training sample variation by tuning the `input_read_batch_size` and `prelearner_buffer_kwargs["capacity"]` parameters. Consider the following example: Suppose each :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` has a length of ``100`` timesteps, and your `train_batch_size_per_learner` is configured to be ``1000``.
 Each :py:class:`~ray.rllib.utils.replay_buffers.episode_replay_buffer.EpisodeReplayBuffer` instance is set with a capacity of ``1000``:
 
 .. dropdown:: **Code: Buffer size configuration (capacity=1000)**
@@ -511,19 +504,9 @@ capacity is reduced to ``500``:
 
 With the same `input_read_batch_size`, only ``5`` :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` can be buffered at a time, causing inefficiencies as more data is read than can be retained for sampling.
 
-In another scenario, if each :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` still has a length of ``100`` timesteps and the `train_batch_size_per_learner` is set to ``4000`` timesteps as in the code below, the buffer holds ``10`` :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances. This configuration
-results in lower sampling variation because many timesteps are repeatedly sampled, reducing diversity across training batches. These examples highlight the importance of tuning these parameters to balance data ingestion and sampling diversity in your offline streaming pipeline effectively.
-
-.. dropdown:: **Code: Buffer size with larger batch**
-    :animate: fade-in-slide-down
-
-    .. literalinclude:: doc_code/offline_api.py
-        :language: python
-        :start-after: __sphinx_doc_offline_api_22__begin__
-        :end-before: __sphinx_doc_offline_api_22__end__
-
 .. tip:: To choose an adequate `input_read_batch_size` take a look at the length of your recorded episodes. In some cases each single episode is long enough to fulfill the `train_batch_size_per_learner` and you could choose a `input_read_batch_size` of ``1``. Most times it's not and you need to consider how many episodes should be buffered to balance
     the amount of data digested from read input and the variation of data sampled from the :py:class:`~ray.rllib.utils.replay_buffers.episode_replay_buffer.EpisodeReplayBuffer` instances in the :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner`.
+
 
 How to tune updating (Learner)
 ******************************
@@ -531,91 +514,19 @@ How to tune updating (Learner)
 **Updating (Learner)**  is the final downstream task in RLlib's Offline RL pipeline, and its consumption speed determines the overall throughput of the data pipeline. If the learning process is slow, it can cause backpressure in upstream layers, potentially leading to object spilling or Out-Of-Memory (OOM) errors. Therefore, it's essential to fine-tune this
 layer in coordination with the upstream components. Several parameters can be adjusted to optimize the learning speed in your Offline algorithm:
 
-- Actor Pool Size
 - Allocated Resources
-- Scheduling Strategy
-- Batch Sizing
 - Batch Prefetching
 - Learner Iterations.
 
-.. _actor-pool-size:
-
-Actor pool size
-***************
-
-RLlib supports scaling :py:class:`~ray.rllib.core.learner.learner.Learner` instances through the parameter `num_learners`. When this value is ``0``, RLlib uses a Learner instance in the local process, whereas for values ``>0``, RLlib scales out using a :py:class:`~ray.train._internals.backend_executor_BackendExecutor`. This executor spawns your specified
-number of :py:class:`~ray.rllib.core.learner.learner.Learner` instances, manages distributed training and aggregates intermediate results across :py:class:`~ray.rllib.core.learner.learner.Learner` actors. :py:class:`~ray.rllib.core.learner.learner.Learner` scaling increases training throughput and you should only apply it, if the upstream components in your
-Offline Data pipeline can supply data at a rate sufficient to match the increased training capacity. RLlib's Offline API offers powerful scalability at its final layer by utilizing :py:class:`~ray.data.Dataset.streaming_split`. This functionality divides the data stream into multiple substreams, which are then processed by individual
-:py:class:`~ray.rllib.core.learner.learner.Learner` instances, enabling efficient parallel consumption and enhancing overall throughput.
-
-For example to set the number of learners to ``4``, you use the following syntax:
-
-.. dropdown:: **Code: Setting number of learners**
-    :animate: fade-in-slide-down
-
-    .. literalinclude:: doc_code/offline_api.py
-        :language: python
-        :start-after: __sphinx_doc_offline_api_23__begin__
-        :end-before: __sphinx_doc_offline_api_23__end__
-
-.. tip::For performance optimization you should choose between using a single local :py:class:`~ray.rllib.core.learner.learner.Learner` or multiple remote ones :py:class:`~ray.rllib.core.learner.learner.Learner`. In case your dataset is small, use scaling of :py:class:`~ray.rllib.core.learner.learner.Learner` instances with caution as it produces significant
-    overhead and splits the data pipeline into multiple streams.
 
 Allocated resources
 ~~~~~~~~~~~~~~~~~~~
-Just as with the Post-Processing (Pre-Learner) layer, allocating additional resources can help address slow training issues. The primary resource to leverage is the GPU, as training involves forward and backward passes through the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, which GPUs can accelerate significantly. If your training
-already utilizes GPUs and performance still remains an issue, consider scaling up by either adding more GPUs to each :py:class:`~ray.rllib.core.learner.learner.Learner` to increase GPU memory and computational capacity (set `config.learners(num_gpus_per_learner=...)`), or by adding additional :py:class:`~ray.rllib.core.learner.learner.Learner` workers to further distribute the workload (by setting `config.learners(num_learners=...)`). Additionally, ensure that data
-throughput and upstream components are optimized to keep the learners fully utilized, as insufficient upstream capacity can bottleneck the training process.
+Since :py:class:`~ray.rllib.offline.offline_data.OfflineData` owns the Ray Data pipeline that reads data and inserts it into the replay buffer, it can have multiple sources of bottlenecks.
+You can address such bottlenecks by allocating more resources to the respective operations that happen inside :py:class:`~ray.rllib.offline.offline_data.OfflineData`.
+Take a look at :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.offline_data` for more details.
 
-.. warning::Currently, you can't set both `num_gpus_per_learner` and `num_cpus_per_learner` due to placement group (PG) fragmentation in Ray.
-
-To provide your learners with more compute use ``num_gpus_per_learner`` or ``num_cpus_per_learner`` as follows:
-
-.. dropdown:: **Code: Learner GPU resources**
-    :animate: fade-in-slide-down
-
-    .. literalinclude:: doc_code/offline_api.py
-        :language: python
-        :start-after: __sphinx_doc_offline_api_24__begin__
-        :end-before: __sphinx_doc_offline_api_24__end__
-
-.. tip::If you experience backpressure in the **Post-Processing (Pre-Learner)** stage of your pipeline, consider enabling GPU training before scaling up the number of your :py:class:`~ray.rllib.core.learner.learner.Learner` instances.
-
-Scheduling strategy
-~~~~~~~~~~~~~~~~~~~
-The scheduling strategy in Ray plays a key role in task and actor placement by attempting to distribute them across multiple nodes in a cluster, thereby maximizing resource utilization and fault tolerance. When running on a single-node cluster (that's: one large head node), the scheduling strategy has little to no noticeable impact. However, in a multi-node cluster,
-scheduling can significantly influence the performance of your Offline Data pipeline due to the importance of data locality. Data processing occurs across all nodes, and maintaining data locality during training can enhance performance.
-
-In such scenarios, you can improve data locality by changing RLlib's default scheduling strategy from ``"PACK"`` to ``"SPREAD"``. This strategy distributes the :py:class:`~ray.rllib.core.learner.learner.Learner` actors across the cluster, allowing `Ray Data <data>` to take advantage of locality-aware bundle selection, which can improve efficiency.
-
-Here is an example of how you can change the scheduling strategy:
-
-.. dropdown:: **Code: Scheduling strategy configuration**
-    :animate: fade-in-slide-down
-
-    .. literalinclude:: doc_code/offline_api.py
-        :language: python
-        :start-after: __sphinx_doc_offline_api_25__begin__
-        :end-before: __sphinx_doc_offline_api_25__end__
-
-.. warning::Changing scheduling strategies in RLlib's Offline RL API is experimental; use with caution.
-
-Batch size
-~~~~~~~~~~
-Batch size is one of the simplest parameters to adjust for optimizing performance in RLlib's new Offline RL API. Small batch sizes may under-utilize hardware, leading to inefficiencies, while overly large batch sizes can exceed memory limits. In a streaming pipeline, the selected batch size impacts how data is partitioned and processed across parallel workers. Larger
-batch sizes reduce the overhead of frequent task coordination, but if they exceed hardware constraints, they can slow down the entire pipeline. You can configure the training batch size using the `train_batch_size_per_learner` attribute as shown below.
-
-.. dropdown:: **Code: Batch size configuration**
-    :animate: fade-in-slide-down
-
-    .. literalinclude:: doc_code/offline_api.py
-        :language: python
-        :start-after: __sphinx_doc_offline_api_26__begin__
-        :end-before: __sphinx_doc_offline_api_26__end__
-
-.. tip::A good starting point for batch size tuning is ``2048``.
-
-In `Ray Data <data>`, it's common practice to use batch sizes that are powers of two. However, you are free to select any integer value for the batch size based on your needs.
+If the bottleneck is not in your ingestion pipeline, it is likely in your training pipeline.
+Your main levers are then to use GPUs for training and increasing the number of :py:class:`~ray.rllib.core.learner.learner.Learner` instances.
 
 Batch prefetching
 ~~~~~~~~~~~~~~~~~
