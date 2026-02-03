@@ -60,8 +60,15 @@ std::vector<std::shared_ptr<const BundleSpecification>> &GcsPlacementGroup::GetB
     const {
   // Fill the cache if it wasn't.
   if (cached_bundle_specs_.empty()) {
-    const auto &bundles = placement_group_table_data_.bundles();
-    for (const auto &bundle : bundles) {
+    // If no active bundles selected, return the highest priority scheduling strategy.
+    const auto &source_bundles =
+        (placement_group_table_data_.bundles().empty() &&
+         placement_group_table_data_.scheduling_strategy_size() > 0)
+            ? placement_group_table_data_.scheduling_strategy(0).bundles()
+            : placement_group_table_data_.bundles();
+
+    cached_bundle_specs_.reserve(source_bundles.size());
+    for (const auto &bundle : source_bundles) {
       cached_bundle_specs_.push_back(std::make_shared<const BundleSpecification>(bundle));
     }
   }
@@ -142,6 +149,20 @@ const rpc::PlacementGroupStats &GcsPlacementGroup::GetStats() const {
 
 rpc::PlacementGroupStats *GcsPlacementGroup::GetMutableStats() {
   return placement_group_table_data_.mutable_stats();
+}
+
+const google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
+    &GcsPlacementGroup::GetSchedulingStrategy() const {
+  return placement_group_table_data_.scheduling_strategy();
+}
+
+void GcsPlacementGroup::UpdateActiveBundles(
+    const rpc::PlacementGroupSchedulingOption &selected_option) {
+  // Invalidate the cache because we are changing the bundles.
+  cached_bundle_specs_.clear();
+
+  // Replace the current bundles with the bundles from the selected strategy.
+  placement_group_table_data_.mutable_bundles()->CopyFrom(selected_option.bundles());
 }
 
 }  // namespace gcs
