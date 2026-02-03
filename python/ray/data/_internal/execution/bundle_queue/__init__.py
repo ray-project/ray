@@ -7,7 +7,7 @@ from .base import (
 from .bundler import EstimateSize, ExactMultipleSize, RebundleQueue
 from .fifo import FIFOBundleQueue
 from .hash_link import HashLinkedQueue
-from .ordered import ReorderingBundleQueue
+from .reordering import ReorderingBundleQueue
 
 
 def create_bundle_queue() -> QueueWithRemoval:
