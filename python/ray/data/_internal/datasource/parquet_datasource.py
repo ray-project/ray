@@ -20,7 +20,6 @@ import numpy as np
 from packaging.version import parse as parse_version
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
@@ -36,6 +35,7 @@ from ray.data._internal.util import (
     _is_local_scheme,
     iterate_with_retry,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
@@ -616,7 +616,11 @@ class ParquetDatasource(Datasource):
             return None
 
         if not self._partition_columns:
-            return None
+            # If a projection is active but the dataset has no partition columns,
+            # then no partition columns should be included in the output.
+            # Returning [] ensures that no partition columns are added,
+            # `None` is interpreted as including all partition columns.
+            return []
 
         # Extract partition columns that are in the projection map
         partition_cols = [
