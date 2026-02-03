@@ -999,8 +999,8 @@ def test_arrow_fixed_shape_tensor_format_eq_with_concat(
     assert len(concatenated) == 5
     assert concatenated.type == tensor_type
 
-    expected = np.vstack([first.to_numpy(), second.to_numpy()])
-    np.testing.assert_array_equal(concatenated.to_numpy(), expected)
+    expected = np.vstack([first.to_numpy_ndarray(), second.to_numpy_ndarray()])
+    np.testing.assert_array_equal(concatenated.to_numpy_ndarray(), expected)
 
 
 @pytest.mark.skipif(
