@@ -11,7 +11,7 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
 )
 from ray.data._internal.util import KiB
 from ray.data.block import BlockExecStats, BlockMetadata
-from ray.data.context import DataContext, MAX_SAFE_BLOCK_SIZE_FACTOR
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
 
 
 def test_average_max_uss_per_task():
