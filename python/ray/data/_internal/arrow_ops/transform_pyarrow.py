@@ -534,7 +534,7 @@ def _align_struct_fields(
 
         # Process struct columns that need alignment
         for column_name, unified_struct_type in unified_struct_types.items():
-            if column_name in block_names:
+            if column_name in block_schema_field_names:
                 column = block[column_name]
 
                 # Check if the column type matches a struct type
@@ -554,7 +554,7 @@ def _align_struct_fields(
                     )
 
         # Find all missing columns (struct and non-struct)
-        missing_fields = [f for f in schema if f.name not in block_names]
+        missing_fields = [f for f in schema if f.name not in block_schema_field_names]
 
         # Append missing columns with null values
         for field in missing_fields:
