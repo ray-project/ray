@@ -2,15 +2,14 @@ import abc
 import time
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from ray_release.anyscale_util import LAST_LOGS_LENGTH, get_project_name
+from ray_release.anyscale_util import get_project_name
 from ray_release.aws import (
     RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
     add_tags_to_aws_config,
 )
 from ray_release.config import DEFAULT_AUTOSUSPEND_MINS, DEFAULT_MAXIMUM_UPTIME_MINS
-from ray_release.exception import CloudInfoError
 from ray_release.test import Test
-from ray_release.util import anyscale_cluster_url, dict_hash, get_anyscale_sdk
+from ray_release.util import dict_hash, get_anyscale_sdk
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -23,7 +22,6 @@ class ClusterManager(abc.ABC):
         project_id: str,
         sdk: Optional["AnyscaleSDK"] = None,
         smoke_test: bool = False,
-        log_streaming_limit: int = LAST_LOGS_LENGTH,
     ):
         self.sdk = sdk or get_anyscale_sdk()
 
@@ -31,22 +29,20 @@ class ClusterManager(abc.ABC):
         self.smoke_test = smoke_test
         self.project_id = project_id
         self.project_name = get_project_name(self.project_id, self.sdk)
-        self.log_streaming_limit = log_streaming_limit
 
         self.cluster_name = (
             f"{test.get_name()}{'-smoke-test' if smoke_test else ''}_{int(time.time())}"
         )
-        self.cluster_id = None
 
         self.cluster_env = None
         self.cluster_env_name = None
-        self.cluster_env_id = None
-        self.cluster_env_build_id = None
+        self.cluster_env_id: Optional[str] = None
+        self.cluster_env_build_id: Optional[str] = None
 
         self.cluster_compute = None
         self.cluster_compute_name = None
         self.cluster_compute_id = None
-        self.cloud_provider = None
+        self.cloud_provider = test.get_cloud_env()
 
         self.autosuspend_minutes = DEFAULT_AUTOSUSPEND_MINS
         self.maximum_uptime_minutes = DEFAULT_MAXIMUM_UPTIME_MINS
@@ -76,10 +72,8 @@ class ClusterManager(abc.ABC):
         self.cluster_compute.setdefault(
             "maximum_uptime_minutes", self.maximum_uptime_minutes
         )
-        self.cloud_provider = self._get_cloud_provider(cluster_compute)
         self.cluster_compute = self._annotate_cluster_compute(
             self.cluster_compute,
-            cloud_provider=self.cloud_provider,
             extra_tags=extra_tags,
         )
 
@@ -89,21 +83,12 @@ class ClusterManager(abc.ABC):
             f"{dict_hash(self.cluster_compute)}"
         )
 
-    def _get_cloud_provider(self, cluster_compute: Dict[str, Any]) -> Optional[str]:
-        if not cluster_compute or "cloud_id" not in cluster_compute:
-            return None
-        try:
-            return self.sdk.get_cloud(cluster_compute["cloud_id"]).result.provider
-        except Exception as e:
-            raise CloudInfoError(f"Could not obtain cloud information: {e}") from e
-
     def _annotate_cluster_compute(
         self,
         cluster_compute: Dict[str, Any],
-        cloud_provider: str,
         extra_tags: Dict[str, str],
     ) -> Dict[str, Any]:
-        if not extra_tags or cloud_provider != "AWS":
+        if not extra_tags or self.cloud_provider != "aws":
             return cluster_compute
 
         cluster_compute = cluster_compute.copy()
@@ -120,14 +105,3 @@ class ClusterManager(abc.ABC):
 
     def build_configs(self, timeout: float = 30.0):
         raise NotImplementedError
-
-    def delete_configs(self):
-        raise NotImplementedError
-
-    def get_cluster_address(self) -> str:
-        raise NotImplementedError
-
-    def get_cluster_url(self) -> Optional[str]:
-        if not self.project_id or not self.cluster_id:
-            return None
-        return anyscale_cluster_url(self.project_id, self.cluster_id)

@@ -213,8 +213,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool ShouldCaptureChildTasksInPlacementGroup()
         CActorID GetActorId() const
         const c_string GetActorName()
-        void SetActorReprName(const c_string &repr_name)
-        void SetWebuiDisplay(const c_string &key, const c_string &message)
         const ResourceMappingType &GetResourceIDs() const
         void RemoveActorHandleReference(const CActorID &actor_id)
         optional[int] GetLocalActorState(const CActorID &actor_id) const
@@ -397,6 +395,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             shared_ptr[LocalMemoryBuffer]
             &creation_task_exception_pb_bytes,
             c_bool *is_retryable_error,
+            c_string *actor_repr_name,
             c_string *application_error,
             const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
             const c_string name_of_concurrency_group_to_execute,
@@ -407,6 +406,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             optional[c_string] tensor_transport
         ) nogil) task_execution_callback
         (void(const CObjectID &) nogil) free_actor_object_callback
+        (void(const CObjectID &, const c_string &) nogil) set_direct_transport_metadata
         (function[void()]() nogil) initialize_thread_callback
         (CRayStatus() nogil) check_signals
         (void() nogil) gc_collect
@@ -432,7 +432,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string serialized_job_config
         int metrics_agent_port
         int runtime_env_hash
-        int startup_token
+        CWorkerID worker_id
         CClusterID cluster_id
         c_string session_name
         c_string entrypoint

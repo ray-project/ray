@@ -8,6 +8,7 @@ from ray.data.iterator import DataIterator
 if TYPE_CHECKING:
     import pyarrow
 
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.dataset import Dataset
 
 
@@ -23,9 +24,18 @@ class DataIteratorImpl(DataIterator):
 
     def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
-        ref_bundles_iterator, stats = self._base_dataset._execute_to_iterator()
-        return ref_bundles_iterator, stats, False
+    ) -> Tuple[
+        Iterator[RefBundle],
+        Optional[DatasetStats],
+        bool,
+        Optional["StreamingExecutor"],
+    ]:
+        (
+            ref_bundles_iterator,
+            stats,
+            executor,
+        ) = self._base_dataset._execute_to_iterator()
+        return ref_bundles_iterator, stats, False, executor
 
     def stats(self) -> str:
         return self._base_dataset.stats()

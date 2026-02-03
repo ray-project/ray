@@ -35,14 +35,12 @@ class Result:
     smoke_test: bool = False
 
     buildkite_url: Optional[str] = None
-    cluster_url: Optional[str] = None
 
     # Anyscale Jobs specific
     job_url: Optional[str] = None
     job_id: Optional[str] = None
 
     buildkite_job_id: Optional[str] = None
-    cluster_id: Optional[str] = None
 
     prometheus_metrics: Optional[Dict] = None
     extra_tags: Optional[Dict] = None

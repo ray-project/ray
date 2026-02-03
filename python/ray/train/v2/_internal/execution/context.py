@@ -5,18 +5,16 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from queue import Queue
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray._common.retry import retry
 from ray.actor import ActorHandle
-from ray.data import DataIterator, Dataset
 from ray.train.v2._internal.constants import AWS_RETRYABLE_TOKENS
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
-    _ValidationSpec,
 )
 from ray.train.v2._internal.util import (
     construct_user_exception_with_traceback,
@@ -27,8 +25,10 @@ from ray.train.v2.api.report_config import (
     CheckpointConsistencyMode,
     CheckpointUploadMode,
 )
+from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 if TYPE_CHECKING:
+    from ray.data import DataIterator, Dataset
     from ray.train import BackendConfig, Checkpoint, DataConfig
     from ray.train.v2._internal.data_integration.interfaces import (
         DatasetShardMetadata,
@@ -66,7 +66,7 @@ class TrainRunContext:
     backend_config: "BackendConfig"
 
     # The datasets used in the current training run.
-    datasets: Dict[str, Dataset]
+    datasets: Dict[str, "Dataset"]
 
     # The configuration for dataset ingestion and sharding.
     dataset_config: "DataConfig"
@@ -117,6 +117,7 @@ class TrainContext:
     controller_actor: ActorHandle
 
     dataset_shard_provider: "DatasetShardProvider"
+    has_validation_fn: Optional[bool] = None
 
     # TODO: consolidate into CheckpointContext
     checkpoint: Optional["Checkpoint"] = None
@@ -170,7 +171,7 @@ class TrainContext:
             )
         )
 
-    def get_dataset_shard(self, dataset_info: "DatasetShardMetadata") -> DataIterator:
+    def get_dataset_shard(self, dataset_info: "DatasetShardMetadata") -> "DataIterator":
         """Returns the :class:`ray.data.DataIterator` shard for this worker.
 
         Call :meth:`~ray.data.DataIterator.iter_torch_batches` or
@@ -229,7 +230,7 @@ class TrainContext:
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validation_spec: Optional[_ValidationSpec] = None,
+        validation: Union[bool, ValidationTaskConfig] = False,
     ) -> _TrainingReport:
         """Save the checkpoint to remote storage.
 
@@ -241,16 +242,14 @@ class TrainContext:
             checkpoint_upload_fn: A user defined function that will be called with the
                 checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
                 utility for copying to the destination `storage_path`.
-            validation_spec: The validation specification.
+            validation: The validation configuration.
 
         Returns:
             The training result object containing the persisted checkpoint.
         """
 
         if not checkpoint:
-            return _TrainingReport(
-                checkpoint=None, metrics=metrics, validation_spec=None
-            )
+            return _TrainingReport(checkpoint=None, metrics=metrics, validation=False)
 
         # Persist the checkpoint to the remote storage path.
         try:
@@ -288,7 +287,7 @@ class TrainContext:
         return _TrainingReport(
             checkpoint=persisted_checkpoint,
             metrics=metrics,
-            validation_spec=validation_spec,
+            validation=validation,
         )
 
     def _wait_then_report(
@@ -328,8 +327,7 @@ class TrainContext:
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
-        validate_config: Optional[Dict] = None,
+        validation: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
         """
         Upload checkpoint to remote storage and put a training
@@ -352,19 +350,17 @@ class TrainContext:
                     "or save tensors as part of the checkpoint files instead."
                 )
 
+        if validation and not self.has_validation_fn:
+            raise ValueError(
+                "`validation_config` was not set on the trainer, but a validation was requested."
+            )
+
         with invoke_context_managers(
             [
                 callback.on_report
                 for callback in self.execution_context.train_context_callbacks
             ]
         ):
-            if validate_fn:
-                validation_spec = _ValidationSpec(
-                    validate_fn=validate_fn,
-                    validate_config=validate_config,
-                )
-            else:
-                validation_spec = None
             self.report_call_index += 1
             report_call_index = self.report_call_index
 
@@ -381,7 +377,7 @@ class TrainContext:
                     checkpoint,
                     delete_local_checkpoint_after_upload,
                     checkpoint_upload_fn,
-                    validation_spec,
+                    validation,
                 )
                 self._wait_then_report(training_report, report_call_index)
 
@@ -389,7 +385,7 @@ class TrainContext:
                 training_report = _TrainingReport(
                     checkpoint=checkpoint,
                     metrics=metrics,
-                    validation_spec=validation_spec,
+                    validation=validation,
                 )
                 self._wait_then_report(training_report, report_call_index)
 
@@ -408,7 +404,7 @@ class TrainContext:
                             checkpoint,
                             delete_local_checkpoint_after_upload,
                             checkpoint_upload_fn,
-                            validation_spec,
+                            validation,
                         )
                         self._wait_then_report(training_report, report_call_index)
                     except Exception as e:

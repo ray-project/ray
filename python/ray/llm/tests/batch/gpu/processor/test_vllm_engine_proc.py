@@ -1,10 +1,13 @@
 import sys
 from unittest.mock import MagicMock, patch
 
+import pydantic
 import pytest
+from transformers import AutoTokenizer
 
 import ray
 from ray.data.llm import build_processor, vLLMEngineProcessorConfig
+from ray.llm._internal.batch.constants import vLLMTaskType
 from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig,
@@ -15,11 +18,21 @@ from ray.llm._internal.batch.stages.configs import (
 )
 
 
-def test_vllm_engine_processor(gpu_type, model_opt_125m):
+@pytest.mark.parametrize(
+    "tensor_parallel_size, expected_distributed_executor_backend",
+    [(1, "uni"), (2, "ray")],
+)
+def test_vllm_engine_processor(
+    gpu_type,
+    model_opt_125m,
+    tensor_parallel_size,
+    expected_distributed_executor_backend,
+):
     config = vLLMEngineProcessorConfig(
         model_source=model_opt_125m,
         engine_kwargs=dict(
             max_model_len=8192,
+            tensor_parallel_size=tensor_parallel_size,
         ),
         runtime_env=dict(
             env_vars=dict(
@@ -49,9 +62,11 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         "model": model_opt_125m,
         "engine_kwargs": {
             "max_model_len": 8192,
-            "distributed_executor_backend": "mp",
+            "distributed_executor_backend": expected_distributed_executor_backend,
+            "tensor_parallel_size": tensor_parallel_size,
+            "task_type": vLLMTaskType.GENERATE,
         },
-        "task_type": "generate",
+        "task_type": vLLMTaskType.GENERATE,
         "max_pending_requests": 111,
         "dynamic_lora_loading_path": None,
         "max_concurrent_batches": 8,
@@ -64,12 +79,67 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
     assert runtime_env["env_vars"]["RANDOM_ENV_VAR"] == "12345"
     compute = stage.map_batches_kwargs.pop("compute")
     assert isinstance(compute, ray.data._internal.compute.ActorPoolStrategy)
-    assert stage.map_batches_kwargs == {
-        "zero_copy_batch": True,
-        "max_concurrency": 8,
-        "accelerator_type": gpu_type,
-        "num_gpus": 1,
-    }
+
+    if expected_distributed_executor_backend == "ray":
+        ray_remote_args_fn = stage.map_batches_kwargs.pop("ray_remote_args_fn")
+        assert ray_remote_args_fn is not None
+        assert stage.map_batches_kwargs == {
+            "zero_copy_batch": True,
+            "max_concurrency": 8,
+            "accelerator_type": gpu_type,
+            "num_gpus": 0,
+        }
+    else:
+        assert "ray_remote_args_fn" not in stage.map_batches_kwargs
+        assert stage.map_batches_kwargs == {
+            "zero_copy_batch": True,
+            "max_concurrency": 8,
+            "accelerator_type": gpu_type,
+            "num_gpus": 1,
+        }
+
+
+def test_vllm_engine_processor_task_override(model_opt_125m):
+    config = vLLMEngineProcessorConfig(
+        model_source=model_opt_125m,
+        engine_kwargs=dict(
+            task_type=vLLMTaskType.EMBED,
+        ),
+        task_type=vLLMTaskType.GENERATE,
+        concurrency=4,
+        batch_size=64,
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        detokenize_stage=DetokenizeStageConfig(enabled=True),
+        prepare_image_stage=PrepareImageStageConfig(enabled=True),
+    )
+    processor = ProcessorBuilder.build(config)
+    stage = processor.get_stage_by_name("vLLMEngineStage")
+
+    assert stage.fn_constructor_kwargs["task_type"] == vLLMTaskType.GENERATE
+    assert (
+        stage.fn_constructor_kwargs["engine_kwargs"]["task_type"]
+        == vLLMTaskType.GENERATE
+    )
+
+
+def test_vllm_engine_processor_invalid_task(model_opt_125m):
+    with pytest.raises(
+        pydantic.ValidationError, match="Invalid task type: invalid_task"
+    ):
+        vLLMEngineProcessorConfig(
+            model_source=model_opt_125m,
+            engine_kwargs=dict(
+                task_type=vLLMTaskType.EMBED,
+            ),
+            task_type="invalid_task",
+            concurrency=4,
+            batch_size=64,
+            chat_template_stage=ChatTemplateStageConfig(enabled=True),
+            tokenize_stage=TokenizerStageConfig(enabled=True),
+            detokenize_stage=DetokenizeStageConfig(enabled=True),
+            prepare_image_stage=PrepareImageStageConfig(enabled=True),
+        )
 
 
 def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
@@ -128,7 +198,7 @@ def test_prepare_multimodal_stage_vllm_engine_processor(gpu_type, model_smolvlm_
     assert model_config_kwargs["model"] == model_smolvlm_256m
 
 
-@pytest.mark.parametrize("backend", ["mp", "ray"])
+@pytest.mark.parametrize("backend", ["uni", "mp", "ray"])
 def test_generation_model(gpu_type, model_opt_125m, backend):
     # OPT models don't have chat template, so we use ChatML template
     # here to demonstrate the usage of custom chat template.
@@ -201,6 +271,54 @@ def test_generation_model(gpu_type, model_opt_125m, backend):
     assert all("resp" in out for out in outs)
 
 
+def test_generation_model_tokenized_prompt(gpu_type, model_opt_125m):
+    tokenizer = AutoTokenizer.from_pretrained(model_opt_125m, trust_remote_code=True)
+
+    processor_config = vLLMEngineProcessorConfig(
+        model_source=model_opt_125m,
+        engine_kwargs=dict(
+            enable_prefix_caching=False,
+            enable_chunked_prefill=True,
+            max_num_batched_tokens=2048,
+            max_model_len=2048,
+            enforce_eager=True,
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        chat_template_stage=ChatTemplateStageConfig(enabled=False),
+        tokenize_stage=TokenizerStageConfig(enabled=False),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
+    )
+
+    def preprocess(row):
+        prompt_text = f"Calculate {row['id']} ** 3"
+
+        return dict(
+            tokenized_prompt=tokenizer(prompt_text)["input_ids"],
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+            ),
+        )
+
+    processor = build_processor(
+        processor_config,
+        preprocess=preprocess,
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("resp" in out for out in outs)
+
+
 def test_embedding_model(gpu_type, model_smolvlm_256m):
     processor_config = vLLMEngineProcessorConfig(
         model_source=model_smolvlm_256m,
@@ -242,6 +360,44 @@ def test_embedding_model(gpu_type, model_smolvlm_256m):
     assert len(outs) == 60
     assert all("resp" in out for out in outs)
     assert all("prompt" in out for out in outs)
+
+
+def test_classification_model(gpu_type):
+    processor_config = vLLMEngineProcessorConfig(
+        model_source="HuggingFaceTB/fineweb-edu-classifier",
+        task_type="classify",
+        engine_kwargs=dict(
+            max_model_len=512,  # Model only supports up to 512 tokens
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        chat_template_stage=ChatTemplateStageConfig(enabled=False),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
+    )
+
+    processor = build_processor(
+        processor_config,
+        preprocess=lambda row: dict(
+            prompt="This is a great educational content.",
+            pooling_params=dict(
+                truncate_prompt_tokens=-1,
+            ),
+        ),
+        postprocess=lambda row: {
+            "probs": float(row["embeddings"][0])
+            if row.get("embeddings") is not None and len(row["embeddings"]) > 0
+            else None,
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("probs" in out for out in outs)
 
 
 @pytest.mark.parametrize("use_nested_config", [True, False])

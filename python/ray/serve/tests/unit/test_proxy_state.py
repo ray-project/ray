@@ -203,7 +203,7 @@ def test_proxy_state_manager_restarts_unhealthy_proxies(all_nodes):
 
     cluster_node_info_cache.alive_nodes = all_nodes
     # First iteration, refresh state
-    proxy_state_manager.update()
+    proxy_state_manager.update(proxy_nodes={HEAD_NODE_ID})
 
     prev_proxy_state = proxy_state_manager._proxy_states[HEAD_NODE_ID]
     # Mark existing head-node proxy UNHEALTHY
@@ -212,7 +212,7 @@ def test_proxy_state_manager_restarts_unhealthy_proxies(all_nodes):
 
     # Continuously trigger update and wait for status to be changed to HEALTHY.
     for _ in range(1):
-        proxy_state_manager.update(proxy_nodes=set(HEAD_NODE_ID))
+        proxy_state_manager.update(proxy_nodes={HEAD_NODE_ID})
         # Advance timer by 5 (to perform a health-check)
         timer.advance(5)
 
@@ -415,7 +415,7 @@ def test_proxy_manager_update_proxies_states(all_nodes, number_of_worker_nodes):
     node_ids = [node_id for node_id, _, _ in all_nodes]
 
     # No target proxy nodes
-    proxy_nodes = set()
+    proxy_nodes = {HEAD_NODE_ID}
 
     # Head node proxy should continue to be HEALTHY.
     # Worker node proxy should turn DRAINING.
@@ -533,7 +533,7 @@ def test_proxy_actor_manager_removing_proxies(all_nodes, number_of_worker_nodes)
     N = 10
     for _ in range(N):
         manager.update(
-            proxy_nodes=set(),
+            proxy_nodes={HEAD_NODE_ID},
         )
         timer.advance(5)
         # Assert that
@@ -550,7 +550,7 @@ def test_proxy_actor_manager_removing_proxies(all_nodes, number_of_worker_nodes)
     # Reconcile proxies with empty set of target nodes (worker node proxy
     # will be shutdown by now)
     manager.update(
-        proxy_nodes=set(),
+        proxy_nodes={HEAD_NODE_ID},
     )
 
     assert len(manager._proxy_states) == 1

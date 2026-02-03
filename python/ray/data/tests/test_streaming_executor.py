@@ -45,21 +45,21 @@ from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
     StreamingExecutor,
     _debug_dump_topology,
+    _format_metrics_table,
     _validate_dag,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
     OpState,
     build_streaming_topology,
+    format_op_state_summary,
     get_eligible_operators,
     process_completed_tasks,
     select_operator_to_run,
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.logical.operators.map_operator import MapRows
-from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.logical.operators import MapRows, Read, Write
 from ray.data._internal.util import MiB
 from ray.data.block import BlockAccessor, BlockMetadataWithSchema
 from ray.data.context import DataContext
@@ -509,19 +509,19 @@ def test_summary_str_backpressure_policies(ray_start_regular_shared):
     resource_manager = mock_resource_manager()
 
     # Test with no backpressure
-    summary = topo[o2].summary_str_raw(resource_manager)
+    summary = format_op_state_summary(topo[o2], resource_manager)
     assert "backpressured" not in summary
 
     # Set task submission backpressure with policy (using UX name)
     o2._in_task_submission_backpressure = True
     o2._task_submission_backpressure_policy = "ConcurrencyCap"
-    summary = topo[o2].summary_str_raw(resource_manager)
+    summary = format_op_state_summary(topo[o2], resource_manager)
     assert "tasks(ConcurrencyCap)" in summary
 
     # Set output backpressure with policy (using UX name)
     o2._in_task_output_backpressure = True
     o2._task_output_backpressure_policy = "ResourceBudget"
-    summary = topo[o2].summary_str_raw(resource_manager)
+    summary = format_op_state_summary(topo[o2], resource_manager)
     assert "tasks(ConcurrencyCap)" in summary
     assert "outputs(ResourceBudget)" in summary
 
@@ -530,7 +530,7 @@ def test_summary_str_backpressure_policies(ray_start_regular_shared):
     o2._task_submission_backpressure_policy = None
     o2._in_task_output_backpressure = False
     o2._task_output_backpressure_policy = None
-    summary = topo[o2].summary_str_raw(resource_manager)
+    summary = format_op_state_summary(topo[o2], resource_manager)
     assert "backpressured" not in summary
 
 
@@ -1363,6 +1363,138 @@ class TestDataOpTask:
 
         # We should now be able to read the 128 MiB block.
         assert bytes_read == pytest.approx(128 * MiB)
+
+
+def test_format_metrics_table():
+    """Test that _format_metrics_table formats metrics in a tabular format."""
+    metrics_dict = {
+        "average_num_outputs_per_task": None,
+        "average_num_inputs_per_task": None,
+        "num_output_blocks_per_task_s": None,
+        "average_total_task_completion_time_s": None,
+        "average_task_completion_excl_backpressure_time_s": None,
+        "average_bytes_per_output": None,
+        "obj_store_mem_internal_inqueue": 0,
+        "obj_store_mem_internal_outqueue": 0,
+        "obj_store_mem_pending_task_inputs": 0,
+        "average_bytes_inputs_per_task": None,
+        "average_rows_inputs_per_task": None,
+        "average_bytes_outputs_per_task": None,
+        "average_rows_outputs_per_task": None,
+        "average_max_uss_per_task": None,
+        "num_inputs_received": 1,
+        "num_row_inputs_received": 20124,
+        "bytes_inputs_received": 322116,
+        "num_task_inputs_processed": 0,
+        "bytes_task_inputs_processed": 0,
+        "bytes_inputs_of_submitted_tasks": 0,
+        "rows_inputs_of_submitted_tasks": 0,
+        "num_task_outputs_generated": 0,
+        "bytes_task_outputs_generated": 0,
+        "rows_task_outputs_generated": 0,
+        "row_outputs_taken": 20124,
+        "block_outputs_taken": 1,
+        "num_outputs_taken": 1,
+        "bytes_outputs_taken": 322116,
+        "num_outputs_of_finished_tasks": 0,
+        "bytes_outputs_of_finished_tasks": 0,
+        "rows_outputs_of_finished_tasks": 0,
+        "num_external_inqueue_blocks": 0,
+        "num_external_inqueue_bytes": 0,
+        "num_external_outqueue_blocks": 0,
+        "num_external_outqueue_bytes": 0,
+        "num_tasks_submitted": 0,
+        "num_tasks_running": 0,
+        "num_tasks_have_outputs": 0,
+        "num_tasks_finished": 0,
+        "num_tasks_failed": 0,
+        "block_generation_time": 0,
+        "task_submission_backpressure_time": 0,
+        "task_output_backpressure_time": 0,
+        "task_completion_time_total_s": 0,
+        "task_completion_time": "(samples: 0, avg: 0.00)",
+        "block_completion_time": "(samples: 0, avg: 0.00)",
+        "task_completion_time_excl_backpressure_s": 0,
+        "block_size_bytes": "(samples: 0, avg: 0.00)",
+        "block_size_rows": "(samples: 0, avg: 0.00)",
+        "num_alive_actors": 0,
+        "num_restarting_actors": 0,
+        "num_pending_actors": 0,
+        "obj_store_mem_internal_inqueue_blocks": 0,
+        "obj_store_mem_internal_outqueue_blocks": 0,
+        "obj_store_mem_freed": 0,
+        "obj_store_mem_spilled": 0,
+        "obj_store_mem_used": 0,
+        "cpu_usage": 0,
+        "gpu_usage": 0,
+    }
+
+    expected = """\
+category      metric                                            value
+Actors        num_alive_actors                                  0
+              num_pending_actors                                0
+              num_restarting_actors                             0
+Averages      average_bytes_inputs_per_task                     None
+              average_bytes_outputs_per_task                    None
+              average_bytes_per_output                          None
+              average_max_uss_per_task                          None
+              average_num_inputs_per_task                       None
+              average_num_outputs_per_task                      None
+              average_rows_inputs_per_task                      None
+              average_rows_outputs_per_task                     None
+              average_task_completion_excl_backpressure_time_s  None
+              average_total_task_completion_time_s              None
+Block Stats   block_size_bytes                                  (samples: 0, avg: 0.00)
+              block_size_rows                                   (samples: 0, avg: 0.00)
+              num_output_blocks_per_task_s                      None
+Inputs        bytes_inputs_of_submitted_tasks                   0
+              bytes_inputs_received                             322116
+              bytes_task_inputs_processed                       0
+              num_inputs_received                               1
+              num_row_inputs_received                           20124
+              num_task_inputs_processed                         0
+              rows_inputs_of_submitted_tasks                    0
+Object Store  num_external_inqueue_blocks                       0
+              num_external_inqueue_bytes                        0
+              num_external_outqueue_blocks                      0
+              num_external_outqueue_bytes                       0
+              obj_store_mem_freed                               0
+              obj_store_mem_internal_inqueue                    0
+              obj_store_mem_internal_inqueue_blocks             0
+              obj_store_mem_internal_outqueue                   0
+              obj_store_mem_internal_outqueue_blocks            0
+              obj_store_mem_pending_task_inputs                 0
+              obj_store_mem_spilled                             0
+              obj_store_mem_used                                0
+Outputs       block_outputs_taken                               1
+              bytes_outputs_of_finished_tasks                   0
+              bytes_outputs_taken                               322116
+              bytes_task_outputs_generated                      0
+              num_outputs_of_finished_tasks                     0
+              num_outputs_taken                                 1
+              num_task_outputs_generated                        0
+              row_outputs_taken                                 20124
+              rows_outputs_of_finished_tasks                    0
+              rows_task_outputs_generated                       0
+Resources     cpu_usage                                         0
+              gpu_usage                                         0
+Tasks         num_tasks_failed                                  0
+              num_tasks_finished                                0
+              num_tasks_have_outputs                            0
+              num_tasks_running                                 0
+              num_tasks_submitted                               0
+Timing        block_completion_time                             (samples: 0, avg: 0.00)
+              block_generation_time                             0
+              task_completion_time                              (samples: 0, avg: 0.00)
+              task_completion_time_excl_backpressure_s          0
+              task_completion_time_total_s                      0
+              task_output_backpressure_time                     0
+              task_submission_backpressure_time                 0"""
+
+    assert _format_metrics_table(metrics_dict) == expected
+
+    # Empty dict should return "(no metrics)"
+    assert _format_metrics_table({}) == "(no metrics)"
 
 
 if __name__ == "__main__":

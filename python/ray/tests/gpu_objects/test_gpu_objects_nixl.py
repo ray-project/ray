@@ -45,23 +45,31 @@ class GPUTestActor:
         return sum
 
     def gc(self):
+        from ray.experimental.gpu_object_manager.util import (
+            get_tensor_transport_manager,
+        )
+
         tensor = torch.tensor([1, 2, 3]).to("cuda")
         ref = ray.put(tensor, _tensor_transport="nixl")
         obj_id = ref.hex()
         gpu_manager = ray._private.worker.global_worker.gpu_object_manager
+        nixl_transport = get_tensor_transport_manager("NIXL")
+
         assert gpu_manager.gpu_object_store.has_tensor(tensor)
-        assert obj_id in gpu_manager.managed_gpu_object_metadata
-        nixl_meta = gpu_manager.gpu_object_store._managed_meta_nixl[obj_id]
-        assert nixl_meta is not None
-        assert gpu_manager.gpu_object_store._managed_meta_counts_nixl[nixl_meta] == 1
+        assert gpu_manager.is_managed_object(obj_id)
+        assert obj_id in nixl_transport._managed_meta_nixl
+        # Tensor-level metadata counting: the tensor should have metadata_count=1
+        key = tensor.data_ptr()
+        assert key in nixl_transport._tensor_desc_cache
+        assert nixl_transport._tensor_desc_cache[key].metadata_count == 1
 
         del ref
 
         gpu_manager.gpu_object_store.wait_tensor_freed(tensor, timeout=10)
         assert not gpu_manager.gpu_object_store.has_tensor(tensor)
-        assert obj_id not in gpu_manager.managed_gpu_object_metadata
-        assert obj_id not in gpu_manager.gpu_object_store._managed_meta_nixl
-        assert nixl_meta not in gpu_manager.gpu_object_store._managed_meta_counts_nixl
+        assert not gpu_manager.is_managed_object(obj_id)
+        assert obj_id not in nixl_transport._managed_meta_nixl
+        assert key not in nixl_transport._tensor_desc_cache
         return "Success"
 
     @ray.method(tensor_transport="nixl")
@@ -80,11 +88,36 @@ class GPUTestActor:
         return gpu_object_manager.gpu_object_store.get_num_objects()
 
     def get_num_managed_meta_nixl(self):
-        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        return gpu_object_manager.gpu_object_store.get_num_managed_meta_nixl()
+        from ray.experimental.gpu_object_manager.util import (
+            get_tensor_transport_manager,
+        )
+
+        return get_tensor_transport_manager("NIXL")._get_num_managed_meta_nixl()
+
+    def put_shared_tensor_lists(self):
+        """Create two tensor lists that share a common tensor and put them with NIXL transport."""
+        t1 = torch.tensor([1, 2, 3]).to("cuda")
+        t2 = torch.tensor([4, 5, 6]).to("cuda")
+        t3 = torch.tensor([7, 8, 9]).to("cuda")
+
+        list1 = [t1, t2]
+        list2 = [t2, t3]
+
+        ref1 = ray.put(list1, _tensor_transport="nixl")
+        # Nixl itself doesn't handle duplicate memory registrations,
+        # hence this call would fail without proper deduplication.
+        ref2 = ray.put(list2, _tensor_transport="nixl")
+
+        return ref1, ref2
 
     @ray.method(concurrency_group="_ray_system")
     def block_background_thread(self, signal_actor):
+        ray.get(signal_actor.wait.remote())
+
+    def borrow_and_sum(self, ref_list):
+        return ray.get(ref_list[0]).sum().item()
+
+    def block_main_thread(self, signal_actor):
         ray.get(signal_actor.wait.remote())
 
 
@@ -205,27 +238,81 @@ def test_send_duplicate_tensor(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
-def test_nixl_abort(ray_start_regular):
+def test_nixl_abort_sender_dies_before_sending(ray_start_regular):
     actors = [GPUTestActor.remote() for _ in range(2)]
 
-    # Trigger transfer and kill sender before the receiver starts receiving
+    """
+    1. Block background thread on receiver so receive doesn't start
+    2. Wait until the object is created so the transfer gets triggered
+    3. Kill the sender
+    4. Unblock the receiver
+    """
     signal_actor = SignalActor.remote()
     actors[1].block_background_thread.remote(signal_actor)
     ref = actors[0].echo.remote(torch.randn((100, 100)), "cuda")
     result = actors[1].sum.remote(ref, "cuda")
+    ray.wait([ref])
     ray.kill(actors[0])
     signal_actor.send.remote()
 
     with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
         ray.get(result)
 
-    assert "ActorDiedError" in str(excinfo.value)
+    exc_str = str(excinfo.value)
+    assert "nixlBackendError" in exc_str and "The source actor may have died" in exc_str
 
     # Try a transfer with actor[1] receiving again
     new_actor = GPUTestActor.remote()
     ref = new_actor.echo.remote(torch.tensor([4, 5, 6]), "cuda")
     result = actors[1].sum.remote(ref, "cuda")
     assert ray.get(result) == 15
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_del_before_creating(ray_start_regular):
+    """
+    Blocking the main thread until we free the object from the reference counter.
+    Then unblocking the actor's main thread so the object can be created and then
+    asserting that the object was actually freed.
+    """
+    signal_actor = SignalActor.remote()
+    actor = GPUTestActor.remote()
+    actor.block_main_thread.remote(signal_actor)
+    ref = actor.echo.remote(torch.tensor([4, 5, 6]), "cuda")
+    obj_id = ref.hex()
+    del ref
+    ray.get(signal_actor.send.remote())
+
+    wait_for_condition(
+        lambda: ray._private.worker.global_worker.gpu_object_manager.get_gpu_object_metadata(
+            obj_id
+        )
+        is None,
+    )
+    wait_for_condition(
+        lambda: ray.get(actor.get_num_gpu_objects.remote()) == 0,
+    )
+
+
+@pytest.mark.skip(
+    "If the tensor metadata doesn't exist at the time of borrowing, this will fail."
+)
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_borrow_after_abort(ray_start_regular):
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    nixl_ref = actors[0].echo.remote(torch.tensor([4, 5, 6]), "cuda")
+    assert ray.get(actors[1].borrow_and_sum.remote([nixl_ref])) == 15
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_shared_tensor_deduplication(ray_start_regular):
+    """
+    Test that tensors shared across multiple lists are properly deduplicated.
+
+    Creates list1 = [T1, T2] and list2 = [T2, T3] where T2 is shared.
+    """
+    actor = GPUTestActor.remote()
+    ray.get(actor.put_shared_tensor_lists.remote())
 
 
 if __name__ == "__main__":

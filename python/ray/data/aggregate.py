@@ -174,6 +174,28 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
     4. **Finalization**: Optionally, the `finalize` method transforms the
        final combined accumulator into the desired output format.
 
+    Generic Type Parameters:
+        This class is parameterized by two type variables:
+
+        - ``AccumulatorType``: The type of the intermediate state (accumulator) used
+          during aggregation. This is what `aggregate_block` returns, what `combine`
+          takes as inputs and returns, and what `finalize` receives. For simple
+          aggregations like `Sum`, this might just be a numeric type. For more complex
+          aggregations like `Mean`, this could be a composite type like
+          ``List[Union[int, float]]`` representing ``[sum, count]``.
+
+        - ``AggOutputType``: The type of the final result after `finalize` is called.
+          This is what gets written to the output dataset. For `Sum`, this is the
+          same as the accumulator type (a number). For `Mean`, the accumulator is
+          ``[sum, count]`` but the output is a single ``float`` (the computed mean).
+
+        Examples of type parameterization in built-in aggregations::
+
+            Count(AggregateFnV2[int, int])               # accumulator: int, output: int
+            Sum(AggregateFnV2[Union[int, float], ...])   # accumulator: number, output: number
+            Mean(AggregateFnV2[List[...], float])        # accumulator: [sum, count], output: float
+            Std(AggregateFnV2[List[...], float])         # accumulator: [M2, mean, count], output: float
+
     Args:
         name: The name of the aggregation. This will be used as the column name
             in the output, e.g., "sum(my_col)".
@@ -372,6 +394,69 @@ class Count(AggregateFnV2[int, int]):
         )
 
     def combine(self, current_accumulator: int, new: int) -> int:
+        return current_accumulator + new
+
+
+@PublicAPI
+class AsList(AggregateFnV2[List, List]):
+    """Listing aggregation combining all values within the group into a single
+    list element.
+
+    Example:
+
+        .. testcode::
+            :skipif: True
+
+            # Skip testing b/c this example require proper ordering of the output
+            # to be robust and not flaky
+
+            import ray
+            from ray.data.aggregate import AsList
+
+            ds = ray.data.range(10)
+            # Schema: {'id': int64}
+            ds = ds.add_column("group_key", lambda x: x % 3)
+            # Schema: {'id': int64, 'group_key': int64}
+
+            # Listing all elements per group:
+            result = ds.groupby("group_key").aggregate(AsList(on="id")).take_all()
+            # result: [{'group_key': 0, 'list(id)': [0, 3, 6, 9]},
+            #          {'group_key': 1, 'list(id)': [1, 4, 7]},
+            #          {'group_key': 2, 'list(id)': [2, 5, 8]}
+
+    Args:
+        on: The name of the column to collect values from. Must be provided.
+        alias_name: Optional name for the resulting column.
+        ignore_nulls: Whether to ignore null values when collecting. If `True`,
+            nulls are skipped. If `False` (default), nulls are included in the list.
+    """
+
+    def __init__(
+        self,
+        on: str,
+        alias_name: Optional[str] = None,
+        ignore_nulls: bool = False,
+    ):
+        super().__init__(
+            alias_name if alias_name else f"list({on or ''})",
+            on=on,
+            ignore_nulls=ignore_nulls,
+            zero_factory=lambda: [],
+        )
+
+    def aggregate_block(self, block: Block) -> AccumulatorType:
+        column_accessor = BlockColumnAccessor.for_column(
+            block[self.get_target_column()]
+        )
+
+        if self._ignore_nulls:
+            column_accessor = BlockColumnAccessor.for_column(column_accessor.dropna())
+
+        return column_accessor.to_pylist()
+
+    def combine(
+        self, current_accumulator: AccumulatorType, new: AccumulatorType
+    ) -> AccumulatorType:
         return current_accumulator + new
 
 
@@ -1030,6 +1115,64 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         #       other. Here we canonicalize any nan instances replacing them
         #       w/ `np.nan`
         return {v if not (isinstance(v, float) and np.isnan(v)) else np.nan for v in x}
+
+
+@PublicAPI
+class CountDistinct(Unique):
+    """Defines distinct count aggregation.
+
+    This aggregation computes the count of distinct values in a column.
+    It is similar to SQL's COUNT(DISTINCT column_name) operation.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import CountDistinct
+
+            # Create a dataset with repeated values
+            ds = ray.data.from_items([
+                {"category": "A"}, {"category": "B"}, {"category": "A"},
+                {"category": "C"}, {"category": "A"}, {"category": "B"}
+            ])
+
+            # Count distinct categories
+            result = ds.aggregate(CountDistinct(on="category"))
+            # result: {'count_distinct(category)': 3}
+
+            # Using with groupby
+            ds = ray.data.from_items([
+                {"group": "X", "category": "A"}, {"group": "X", "category": "B"},
+                {"group": "Y", "category": "A"}, {"group": "Y", "category": "A"}
+            ])
+            result = ds.groupby("group").aggregate(CountDistinct(on="category")).take_all()
+            # result: [{'group': 'X', 'count_distinct(category)': 2},
+            #          {'group': 'Y', 'count_distinct(category)': 1}]
+
+    Args:
+        on: The name of the column to count distinct values on.
+        ignore_nulls: Whether to ignore null values when counting distinct items.
+                      Default is True (nulls are excluded from the count).
+        alias_name: Optional name for the resulting column. If not provided,
+            defaults to "count_distinct({on})".
+    """
+
+    def __init__(
+        self,
+        on: str,
+        ignore_nulls: bool = True,
+        alias_name: Optional[str] = None,
+    ):
+        super().__init__(
+            on=on,
+            ignore_nulls=ignore_nulls,
+            alias_name=alias_name if alias_name else f"count_distinct({str(on)})",
+        )
+
+    def finalize(self, accumulator: Set[Any]) -> int:
+        """Return the count of distinct values."""
+        return len(accumulator)
 
 
 @PublicAPI

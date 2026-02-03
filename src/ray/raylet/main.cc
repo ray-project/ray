@@ -1033,20 +1033,27 @@ int main(int argc, char *argv[]) {
     ray::stats::Init(global_tags, ray::WorkerID::Nil());
     // Use the actual bound port returned by the node manager.
     // config.metrics_agent_port can be 0 (dynamic port assignment).
+    // -1 means metrics agent is not available (minimal install).
     int actual_metrics_agent_port = node_manager->GetMetricsAgentPort();
-    metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-        "127.0.0.1", actual_metrics_agent_port, main_service, *client_call_manager);
-    metrics_agent_client->WaitForServerReady([actual_metrics_agent_port](
-                                                 const ray::Status &server_status) {
-      if (server_status.ok()) {
-        ray::stats::ConnectOpenCensusExporter(actual_metrics_agent_port);
-        ray::stats::InitOpenTelemetryExporter(actual_metrics_agent_port);
-      } else {
-        RAY_LOG(ERROR) << "Failed to establish connection to the metrics exporter agent. "
-                          "Metrics will not be exported. "
-                       << "Exporter agent status: " << server_status.ToString();
-      }
-    });
+    if (actual_metrics_agent_port > 0) {
+      metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
+          "127.0.0.1", actual_metrics_agent_port, main_service, *client_call_manager);
+      metrics_agent_client->WaitForServerReady(
+          [actual_metrics_agent_port](const ray::Status &server_status) {
+            if (server_status.ok()) {
+              ray::stats::ConnectOpenCensusExporter(actual_metrics_agent_port);
+              ray::stats::InitOpenTelemetryExporter(actual_metrics_agent_port);
+            } else {
+              RAY_LOG(ERROR)
+                  << "Failed to establish connection to the metrics exporter agent. "
+                     "Metrics will not be exported. "
+                  << "Exporter agent status: " << server_status.ToString();
+            }
+          });
+    } else {
+      RAY_LOG(INFO) << "Metrics agent not available. To enable metrics, install Ray "
+                       "with dashboard support: `pip install 'ray[default]'`.";
+    }
 
     // Initialize event framework. This should be done after the node manager is
     // initialized.

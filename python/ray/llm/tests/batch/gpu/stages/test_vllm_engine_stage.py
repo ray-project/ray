@@ -7,12 +7,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
+from ray.data import ActorPoolStrategy
+from ray.llm._internal.batch.constants import vLLMTaskType
 from ray.llm._internal.batch.stages.vllm_engine_stage import (
     vLLMEngineStage,
     vLLMEngineStageUDF,
     vLLMEngineWrapper,
     vLLMOutputData,
-    vLLMTaskType,
 )
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -81,7 +82,7 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
         ),
         map_batches_kwargs=dict(
             zero_copy_batch=True,
-            concurrency=1,
+            compute=ActorPoolStrategy(size=1),
             max_concurrency=4,
             accelerator_type=gpu_type,
         ),
@@ -98,9 +99,13 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
         },
     }
     ray_remote_args_fn = stage.map_batches_kwargs.pop("ray_remote_args_fn")
+    compute = stage.map_batches_kwargs.pop("compute")
+    assert isinstance(compute, ActorPoolStrategy)
+    assert compute.min_size == 1
+    assert compute.max_size == 1
+
     assert stage.map_batches_kwargs == {
         "zero_copy_batch": True,
-        "concurrency": 1,
         "max_concurrency": 4,
         "accelerator_type": gpu_type,
         "num_gpus": 0,
@@ -129,8 +134,9 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         engine_kwargs={
             # Test that this should be overridden by the stage.
             "model": "random-model",
-            # Test that this should be overridden by the stage.
-            "task": vLLMTaskType.EMBED,
+            # This is overriden in the processor, so it remains unchanged when we bypass
+            # the processor and pass it directly to the stage via vLLMEngineStageUDF.
+            "task_type": vLLMTaskType.EMBED,
             "max_num_seqs": 100,
             "disable_log_stats": False,
         },
@@ -138,7 +144,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
 
     assert udf.model == model_llama_3_2_216M
     assert udf.task_type == vLLMTaskType.GENERATE
-    assert udf.engine_kwargs["task"] == vLLMTaskType.GENERATE
+    assert udf.engine_kwargs["task_type"] == vLLMTaskType.EMBED
     assert udf.engine_kwargs["max_num_seqs"] == 100
     assert udf.max_pending_requests == math.ceil(100 * 1.1)
 
@@ -169,7 +175,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=False,
         max_pending_requests=111,
-        task=vLLMTaskType.GENERATE,
+        task_type=vLLMTaskType.EMBED,
         max_num_seqs=100,
         dynamic_lora_loading_path=None,
         enable_log_requests=False,
@@ -264,7 +270,7 @@ async def test_vllm_wrapper_generate(model_llama_3_2_216M):
         enforce_eager=True,
         gpu_memory_utilization=0.8,
         max_model_len=2048,
-        task=vLLMTaskType.GENERATE,
+        task_type=vLLMTaskType.GENERATE,
         # Older GPUs (e.g. T4) don't support bfloat16.
         dtype="half",
     )
@@ -315,7 +321,7 @@ async def test_vllm_wrapper_embed(model_opt_125m):
         enforce_eager=True,
         gpu_memory_utilization=0.8,
         max_model_len=2048,
-        task=vLLMTaskType.EMBED,
+        task_type=vLLMTaskType.EMBED,
         # Older GPUs (e.g. T4) don't support bfloat16.
         dtype="half",
     )
@@ -359,7 +365,7 @@ async def test_vllm_wrapper_embed_pooling_params(
         enforce_eager=True,
         gpu_memory_utilization=0.8,
         max_model_len=2048,
-        task=vLLMTaskType.EMBED,
+        task_type=vLLMTaskType.EMBED,
     )
 
     batch = [
@@ -415,7 +421,7 @@ async def test_vllm_wrapper_embed_long_prompt(model_opt_125m):
         enforce_eager=True,
         gpu_memory_utilization=0.8,
         max_model_len=2048,
-        task=vLLMTaskType.EMBED,
+        task_type=vLLMTaskType.EMBED,
     )
 
     batch = [
@@ -453,7 +459,7 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
         max_pending_requests=10,
         # Skip CUDA graph capturing to reduce the start time.
         enforce_eager=True,
-        task=vLLMTaskType.GENERATE,
+        task_type=vLLMTaskType.GENERATE,
         max_model_len=2048,
         enable_lora=True,
         max_lora_rank=16,
@@ -495,9 +501,12 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
 
 
 @pytest.mark.asyncio
-async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
-    """Test the JSON output with xgrammar backend. We have to use
-    a real checkpoint as we need to verify the outputs.
+@pytest.mark.parametrize("param_key", ["guided_decoding", "structured_outputs"])
+async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct, param_key):
+    """Test the JSON output with xgrammar backend.
+
+    This test verifies both the new structured_outputs API and backward
+    compatibility with the deprecated guided_decoding parameter.
     """
 
     class AnswerModel(BaseModel):
@@ -514,7 +523,7 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
         max_pending_requests=10,
         # Skip CUDA graph capturing to reduce the start time.
         enforce_eager=True,
-        task=vLLMTaskType.GENERATE,
+        task_type=vLLMTaskType.GENERATE,
         max_model_len=2048,
         structured_outputs_config={"backend": "xgrammar"},
         seed=42,
@@ -527,7 +536,7 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
             "sampling_params": {
                 "max_tokens": 100,
                 "temperature": 0.7,
-                "guided_decoding": {"json": json_schema},
+                param_key: {"json": json_schema},
             },
         },
     ]
@@ -717,6 +726,11 @@ async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
         idx = row["__idx_in_batch"]
         if idx == 1:
             raise ValueError("prompt too long")
+        output_data = vLLMOutputData(
+            prompt=row["prompt"],
+            prompt_token_ids=None,
+            num_input_tokens=0,
+        )
         return (
             MagicMock(
                 request_id=idx,
@@ -724,10 +738,7 @@ async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
                 params=row["sampling_params"],
                 idx_in_batch=idx,
             ),
-            {
-                "prompt": row["prompt"],
-                "generated_text": f"Response to: {row['prompt']}",
-            },
+            output_data.model_dump(),
             0.1,
         )
 
@@ -758,17 +769,22 @@ async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
 
     assert len(results) == 3
 
-    errors = [r for r in results if r.get("__inference_error__") is not None]
-    successes = [r for r in results if r.get("__inference_error__") is None]
+    errors = [r for r in results if r.get("__inference_error__", "") != ""]
+    successes = [r for r in results if r.get("__inference_error__", "") == ""]
 
     assert len(errors) == 1
     assert len(successes) == 2
     assert "ValueError" in errors[0]["__inference_error__"]
 
+    # Verify schema consistency
+    error_keys = set(errors[0].keys())
+    success_keys = set(successes[0].keys())
+    assert error_keys == success_keys
+
 
 @pytest.mark.asyncio
-async def test_vllm_udf_fatal_error_always_raises(mock_vllm_wrapper):
-    """Fatal errors (EngineDeadError) always propagate, even with should_continue_on_error=True."""
+async def test_vllm_udf_fatal_error_exits_actor(mock_vllm_wrapper):
+    """Fatal errors (EngineDeadError) trigger actor exit for recovery, not error rows."""
     from vllm.v1.engine.exceptions import EngineDeadError
 
     mock_vllm_wrapper.return_value.generate_async.side_effect = EngineDeadError()
@@ -781,14 +797,28 @@ async def test_vllm_udf_fatal_error_always_raises(mock_vllm_wrapper):
         batch_size=32,
         max_concurrent_batches=4,
         engine_kwargs={},
-        should_continue_on_error=True,  # Even with this True, fatal errors should raise
+        should_continue_on_error=True,  # Even with this True, fatal errors should not yield error rows
     )
 
     batch = {"__data": [{"prompt": "test", "sampling_params": {"temperature": 0.7}}]}
 
-    with pytest.raises(EngineDeadError):
-        async for _ in udf(batch):
-            pass
+    # Fatal errors trigger actor exit for recovery (not error rows, not simple re-raise).
+    # We use os._exit(1) instead of ray.actor.exit_actor() because:
+    # - os._exit(1) -> SYSTEM_ERROR -> RaySystemError -> task IS retried
+    # - ray.actor.exit_actor() -> INTENDED_USER_EXIT -> ActorDiedError -> NOT retried
+    # We mock os._exit to verify it was called with exit code 1.
+    with patch(
+        "ray.llm._internal.batch.stages.vllm_engine_stage.os._exit"
+    ) as mock_os_exit:
+        # Don't actually exit - let code continue and fail naturally
+        # The important thing is verifying os._exit was called
+        try:
+            async for _ in udf(batch):
+                pass
+        except Exception:
+            pass  # Code may fail after mock returns None - that's OK for this test
+
+        mock_os_exit.assert_called_once_with(1)
 
 
 if __name__ == "__main__":

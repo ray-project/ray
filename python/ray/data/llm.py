@@ -14,6 +14,7 @@ from ray.llm._internal.batch.processor import (
 from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig as _ChatTemplateStageConfig,
     DetokenizeStageConfig as _DetokenizeStageConfig,
+    HttpRequestStageConfig as _HttpRequestStageConfig,
     PrepareImageStageConfig as _PrepareImageStageConfig,
     PrepareMultimodalStageConfig as _PrepareMultimodalStageConfig,
     TokenizerStageConfig as _TokenizerStageConfig,
@@ -58,8 +59,9 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
         url: The URL to send the HTTP request to.
         headers: The headers to send with the HTTP request.
         concurrency: The number of concurrent requests to send. Default to 1.
-            If ``concurrency`` is a ``tuple`` ``(m, n)``,
-            autoscaling strategy is used (``1 <= m <= n``).
+            If ``concurrency`` is an ``int`` ``n``, a fixed pool of ``n`` workers is used.
+            If ``concurrency`` is a ``tuple`` ``(m, n)``, autoscaling strategy
+            is used (``1 <= m <= n``).
 
     Examples:
         .. testcode::
@@ -125,9 +127,9 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             or the batch processing latency is too small, but it should be good
             enough for batch size >= 64.
         should_continue_on_error: If True, continue processing when inference fails for a row
-            instead of raising an exception. Failed rows will have a non-null
+            instead of raising an exception. Failed rows will have a non-empty
             ``__inference_error__`` column containing the error message, and other
-            output columns will be None. Error rows bypass postprocess. If False
+            output columns will be empty strings. Error rows bypass postprocess. If False
             (default), any inference error will raise an exception.
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
@@ -313,6 +315,9 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
             not provided, the serve deployment is expected to accept a dict as the request.
         concurrency: The number of workers for data parallelism. Default to 1. Note that this is
             not the concurrency of the underlying serve deployment.
+            If ``concurrency`` is an ``int`` ``n``, a fixed pool of ``n`` workers is used.
+            If ``concurrency`` is a ``tuple`` ``(m, n)``, autoscaling strategy
+            is used (``1 <= m <= n``).
 
     Examples:
 
@@ -491,6 +496,29 @@ class TokenizerStageConfig(_TokenizerStageConfig):
         enabled: Whether this stage is enabled. Defaults to True.
         model_source: Model source/identifier for this stage. If not specified,
             will use the processor-level model_source.
+        batch_size: Rows per batch. If not specified, will use the processor-level
+            batch_size.
+        concurrency: Actor pool size or range for this stage. If not specified,
+            will use the processor-level concurrency. If ``concurrency`` is a
+            tuple ``(m, n)``, Ray creates an autoscaling actor pool that scales
+            between ``m`` and ``n`` workers (``1 <= m <= n``). If ``concurrency``
+            is an ``int`` ``n``, CPU stages use an autoscaling pool from ``(1, n)``.
+        runtime_env: Optional runtime environment for this stage. If not specified,
+            will use the processor-level runtime_env. See
+            :ref:`this doc <handling_dependencies>` for more details.
+        num_cpus: Number of CPUs to reserve for each map worker in this stage.
+        memory: Heap memory in bytes to reserve for each map worker in this stage.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class HttpRequestStageConfig(_HttpRequestStageConfig):
+    """The configuration for the http request stage.
+
+    Args:
+        enabled: Whether this stage is enabled. Defaults to True.
         batch_size: Rows per batch. If not specified, will use the processor-level
             batch_size.
         concurrency: Actor pool size or range for this stage. If not specified,
@@ -733,6 +761,7 @@ __all__ = [
     "DetokenizeStageConfig",
     "PrepareMultimodalStageConfig",
     "TokenizerStageConfig",
+    "HttpRequestStageConfig",
     "PrepareImageStageConfig",
     "build_llm_processor",
     "build_processor",

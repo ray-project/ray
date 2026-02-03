@@ -115,6 +115,7 @@ class MetricsAgentClientImpl : public MetricsAgentClient {
   FRIEND_TEST(MetricsAgentClientTest, WaitForServerReadyWithRetrySuccess);
   FRIEND_TEST(MetricsAgentClientTest, WaitForServerReadyWithRetryFailure);
   FRIEND_TEST(MetricsAgentClientTest, ConcurrentCallbacksCallInitExporterFnOnlyOnce);
+  FRIEND_TEST(MetricsAgentClientTest, ExhaustedRetriesReturnsFailure);
 };
 
 }  // namespace rpc

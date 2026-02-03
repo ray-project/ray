@@ -2,7 +2,6 @@ import itertools
 import uuid
 from typing import Callable, Iterator, List, Union
 
-from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -10,7 +9,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
-from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.logical.operators import Write
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink
@@ -124,7 +123,7 @@ def _plan_write_op_internal(
         map_task_kwargs={WRITE_UUID_KWARG_NAME: uuid.uuid4().hex},
         ray_remote_args=op._ray_remote_args,
         min_rows_per_bundle=op._min_rows_per_bundled_input,
-        compute_strategy=TaskPoolStrategy(op._concurrency),
+        compute_strategy=op._compute,
         on_start=on_start,
     )
 

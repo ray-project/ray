@@ -164,7 +164,7 @@ class TaskToRetryDescComparator {
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
-class CoreWorker {
+class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
  public:
   /// Construct a CoreWorker instance.
   ///
@@ -240,12 +240,21 @@ class CoreWorker {
                   const std::shared_ptr<LocalMemoryBuffer>
                       &creation_task_exception_pb_bytes = nullptr);
 
+  /// Initialize the shutdown executor after construction is complete.
+  void InitializeShutdownExecutor();
+
   /// Shut down the worker completely.
   ///
   /// This must be called before deallocating a worker / driver's core worker for memory
   /// safety.
   ///
   void Shutdown();
+
+  /// Wait for shutdown to complete before destruction.
+  /// Delegates to shutdown executor's completion tracking with timeout.
+  /// \param timeout_ms Maximum time to wait (default: 30 seconds)
+  void WaitForShutdownComplete(
+      std::chrono::milliseconds timeout_ms = std::chrono::milliseconds(30000));
 
   /// Start receiving and executing tasks.
   void RunTaskExecutionLoop();
@@ -255,6 +264,20 @@ class CoreWorker {
   WorkerType GetWorkerType() const { return options_.worker_type; }
 
   Language GetLanguage() const { return options_.language; }
+
+  std::function<void()> GetActorShutdownCallback() {
+    absl::MutexLock lock(&mutex_);
+    if (options_.worker_type == WorkerType::WORKER &&
+        !worker_context_->GetCurrentActorID().IsNil()) {
+      return actor_shutdown_callback_;
+    }
+    return {};
+  }
+
+  void SetExitingDetail(std::string_view detail) {
+    absl::MutexLock lock(&mutex_);
+    exiting_detail_ = std::string(detail);
+  }
 
   WorkerContext &GetWorkerContext() { return *worker_context_; }
 
@@ -348,18 +371,6 @@ class CoreWorker {
     }
     return worker_context_->GetCurrentTask()->ShouldRetryExceptions();
   }
-
-  void SetWebuiDisplay(const std::string &key, const std::string &message);
-
-  /// Sets the actor's repr name.
-  ///
-  /// This is set explicitly rather than included as part of actor creation task spec
-  /// because it's only available after running the creation task as it might depend on
-  /// fields to be be initialized during actor creation task. The repr name will be
-  /// included as part of actor creation task reply (PushTaskReply) to GCS.
-  ///
-  /// \param repr_name Actor repr name.
-  void SetActorReprName(const std::string &repr_name);
 
   void SetCallerCreationTimestamp();
 
@@ -1189,6 +1200,9 @@ class CoreWorker {
                                rpc::SendReplyCallback send_reply_callback);
 
   // Implements gRPC server handler.
+  // A single endpoint to process different types of pubsub commands.
+  // Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
+  // messages.
   void HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,
                                 rpc::PubsubCommandBatchReply *reply,
                                 rpc::SendReplyCallback send_reply_callback);
@@ -1478,9 +1492,9 @@ class CoreWorker {
   /// arguments and recursively, any object IDs that were contained in those objects.
   /// \param is_retryable_error[out] Whether the task failed with a retryable
   /// error.
-  /// \param application_error[out] The error message if the task failed during
-  /// execution or cancelled.
-  /// \return Status.
+  /// \param actor_repr_name[out] The user-specified repr name for the actor in this
+  /// process if one has been set. \param application_error[out] The error message if the
+  /// task failed during execution or cancelled. \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,
       std::optional<ResourceMappingType> resource_ids,
@@ -1490,6 +1504,7 @@ class CoreWorker {
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       ReferenceCounterInterface::ReferenceTableProto *borrowed_refs,
       bool *is_retryable_error,
+      std::string *actor_repr_name,
       std::string *application_error);
 
   /// Put an object in the local plasma store.
@@ -1579,15 +1594,14 @@ class CoreWorker {
   using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
 
   /// Process the subscribe message received from the subscriber.
-  void ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
-                               rpc::ChannelType channel_type,
-                               const std::string &key_id,
-                               const NodeID &subscriber_id);
-
-  /// A single endpoint to process different types of pubsub commands.
-  /// Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
-  /// messages.
-  void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);
+  ///
+  /// \return StatusT::OK() if successful.
+  /// \return StatusT::InvalidArgument() if the channel or command type is invalid.
+  StatusSet<StatusT::InvalidArgument> ProcessSubscribeMessage(
+      const rpc::SubMessage &sub_message,
+      rpc::ChannelType channel_type,
+      const std::string &key_id,
+      const NodeID &subscriber_id);
 
   void AddSpilledObjectLocationOwner(const ObjectID &object_id,
                                      const std::string &spilled_url,
@@ -1753,9 +1767,6 @@ class CoreWorker {
   /// Address of our RPC server.
   rpc::Address rpc_address_;
 
-  /// Whether or not this worker is connected to the raylet and GCS.
-  bool connected_ = false;
-
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
@@ -1849,9 +1860,6 @@ class CoreWorker {
   /// from the thread-local WorkerThreadContext.
   absl::flat_hash_set<TaskID> canceled_tasks_ ABSL_GUARDED_BY(mutex_);
 
-  /// Key value pairs to be displayed on Web UI.
-  std::unordered_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);
-
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);
 
@@ -1872,9 +1880,8 @@ class CoreWorker {
   /// of that resource allocated for this worker. This is set on task assignment.
   ResourceMappingType resource_ids_ ABSL_GUARDED_BY(mutex_);
 
-  /// Used to notify the task receiver when the arguments of a queued
-  /// actor task are ready.
-  std::unique_ptr<DependencyWaiterImpl> task_argument_waiter_;
+  /// Used to wait for actor task arguments to be ready before executing the task.
+  std::unique_ptr<ActorTaskExecutionArgWaiter> actor_task_execution_arg_waiter_;
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<TaskReceiver> task_receiver_;
@@ -1962,5 +1969,9 @@ class CoreWorker {
 
   /// Callback to free an RDT object when it is out of scope.
   std::function<void(const ObjectID &)> free_actor_object_callback_;
+
+  // Shutdown synchronization primitives
+  std::atomic<bool> connected_{true};
+  std::atomic<bool> event_loops_running_{false};
 };
 }  // namespace ray::core

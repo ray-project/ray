@@ -147,11 +147,7 @@ class TaskPoolMapOperator(MapOperator):
         return ExecutionResources()
 
     def incremental_resource_usage(self) -> ExecutionResources:
-        return self.per_task_resource_allocation().copy(
-            object_store_memory=(
-                self._metrics.obj_store_mem_max_pending_output_per_task or 0
-            ),
-        )
+        return self.per_task_resource_allocation()
 
     def per_task_resource_allocation(self) -> ExecutionResources:
         return ExecutionResources(
@@ -183,17 +179,19 @@ class TaskPoolMapOperator(MapOperator):
 
         min_resource_usage = per_task.copy(object_store_memory=obj_store_per_task)
 
-        if self._max_concurrency is not None:
-            max_resource_usage = ExecutionResources(
-                cpu=per_task.cpu * self._max_concurrency,
-                gpu=per_task.gpu * self._max_concurrency,
-                memory=per_task.memory * self._max_concurrency,
-                # Set the max `object_store_memory` requirement to 'inf', because we
-                # don't know how much data each task can output.
-                object_store_memory=float("inf"),
-            )
-        else:
-            max_resource_usage = ExecutionResources.for_limits()
+        # Cap resources to 0 if this operator doesn't use them.
+        # This prevents operators from hoarding resource budget they don't need.
+        max_concurrency = (
+            self._max_concurrency if self._max_concurrency is not None else float("inf")
+        )
+        max_resource_usage = ExecutionResources(
+            cpu=0 if per_task.cpu == 0 else per_task.cpu * max_concurrency,
+            gpu=0 if per_task.gpu == 0 else per_task.gpu * max_concurrency,
+            memory=0 if per_task.memory == 0 else per_task.memory * max_concurrency,
+            # Set the max `object_store_memory` requirement to 'inf', because we
+            # don't know how much data each task can output.
+            object_store_memory=float("inf"),
+        )
 
         return min_resource_usage, max_resource_usage
 

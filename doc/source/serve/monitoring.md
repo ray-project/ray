@@ -370,6 +370,37 @@ Then set the environment variable before starting Ray:
 export RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH="mymodule.callbacks:setup_custom_logging"
 ```
 
+#### Run custom initialization code in the HTTP proxy
+
+Similarly, you can run custom initialization code when the HTTP proxy starts by setting the `RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH` environment variable. This variable should point to a callback function that runs during HTTP proxy initialization. The function doesn't need to return anything.
+
+For example:
+
+```python
+# mymodule/callbacks.py
+import logging
+
+def setup_proxy_logging():
+    logger = logging.getLogger("ray.serve")
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("[PROXY] %(message)s"))
+    logger.addHandler(handler)
+```
+
+Then set the environment variable before starting Ray:
+
+```bash
+export RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH="mymodule.callbacks:setup_proxy_logging"
+```
+
+#### Configure slow startup warnings
+
+Ray Serve logs warnings when replicas take too long to start, helping you identify issues such as slow `__init__` methods, long-running `reconfigure` methods, or resource scheduling delays. You can configure this warning behavior with the following environment variables:
+
+- `RAY_SERVE_SLOW_STARTUP_WARNING_S`: The time (in seconds) after which Ray Serve considers a replica to have a slow startup (defaults to `30`). If a replica takes longer than this to be scheduled or initialized, Ray Serve logs a warning.
+- `RAY_SERVE_SLOW_STARTUP_WARNING_PERIOD_S`: The minimum interval (in seconds) between slow startup warning messages (defaults to `30`). This prevents log spam when multiple replicas start slowly.
+
+
 ### Set Request ID
 You can set a custom request ID for each HTTP request by including `X-Request-ID` in the request header and retrieve request ID from response. For example
 

@@ -9,9 +9,7 @@ from google.cloud import storage as gcs_storage
 
 from ray_release.alerts.handle import handle_result, require_result
 from ray_release.anyscale_util import (
-    LAST_LOGS_LENGTH,
     create_cluster_env_from_image,
-    get_cluster_name,
     get_custom_cluster_env_name,
 )
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
@@ -19,7 +17,6 @@ from ray_release.cloud_util import archive_directory
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
-from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.config import (
     DEFAULT_AUTOSUSPEND_MINS,
     DEFAULT_BUILD_TIMEOUT,
@@ -82,8 +79,7 @@ def _load_test_configuration(
     anyscale_project: str,
     result: Result,
     smoke_test: bool = False,
-    log_streaming_limit: int = LAST_LOGS_LENGTH,
-) -> Tuple[ClusterManager, CommandRunner, str]:
+) -> Tuple[ClusterManager, AnyscaleJobRunner, str]:
     logger.info(f"Test config: {test}")
 
     # Populate result paramaters
@@ -129,7 +125,6 @@ def _load_test_configuration(
             test,
             anyscale_project,
             smoke_test=smoke_test,
-            log_streaming_limit=log_streaming_limit,
         )
         command_runner = command_runner_cls(
             cluster_manager,
@@ -139,6 +134,9 @@ def _load_test_configuration(
         )
     except Exception as e:
         raise ReleaseTestSetupError(f"Error setting up release test: {e}") from e
+
+    if not isinstance(command_runner, AnyscaleJobRunner):
+        raise ReleaseTestSetupError("Command runner is not an AnyscaleJobRunner")
 
     return cluster_manager, command_runner, artifact_path
 
@@ -225,43 +223,27 @@ def _setup_cluster_environment(
     return prepare_cmd, prepare_timeout, build_timeout, cluster_timeout, command_timeout
 
 
-def _local_environment_information(
-    result: Result,
+def _build_local_environment_information(
     cluster_manager: ClusterManager,
-    command_runner: CommandRunner,
+    runner: AnyscaleJobRunner,
     build_timeout: int,
     cluster_timeout: int,
-    cluster_id: Optional[str],
     cluster_env_id: Optional[str],
 ) -> None:
     # Start cluster
-    if cluster_id:
-        buildkite_group(":rocket: Using existing cluster")
-        # Re-use existing cluster ID for development
-        cluster_manager.cluster_id = cluster_id
-        cluster_manager.cluster_name = get_cluster_name(cluster_id)
-    else:
-        buildkite_group(":gear: Building cluster environment")
-
-        if cluster_env_id:
-            cluster_manager.cluster_env_id = cluster_env_id
-
-        cluster_manager.build_configs(timeout=build_timeout)
-
-        if isinstance(command_runner, AnyscaleJobRunner):
-            command_runner.job_manager.cluster_startup_timeout = cluster_timeout
-
-    result.cluster_url = cluster_manager.get_cluster_url()
-    result.cluster_id = cluster_manager.cluster_id
+    buildkite_group(":gear: Building cluster environment")
+    cluster_manager.cluster_env_id = cluster_env_id
+    cluster_manager.build_configs(timeout=build_timeout)
+    runner.job_manager.cluster_startup_timeout = cluster_timeout
 
 
 def _prepare_remote_environment(
     test: Test,
-    command_runner: CommandRunner,
+    runner: AnyscaleJobRunner,
     prepare_cmd: bool,
     prepare_timeout: int,
 ) -> None:
-    command_runner.prepare_remote_env()
+    runner.prepare_remote_env()
 
     wait_for_nodes = test["run"].get("wait_for_nodes", None)
 
@@ -272,11 +254,11 @@ def _prepare_remote_environment(
             wait_for_nodes.get("timeout", DEFAULT_WAIT_FOR_NODES_TIMEOUT)
         )
         num_nodes = test["run"]["wait_for_nodes"]["num_nodes"]
-        command_runner.wait_for_nodes(num_nodes, wait_timeout)
+        runner.wait_for_nodes(num_nodes, wait_timeout)
 
     if prepare_cmd:
         try:
-            command_runner.run_prepare_command(prepare_cmd, timeout=prepare_timeout)
+            runner.run_prepare_command(prepare_cmd, timeout=prepare_timeout)
         except CommandError as e:
             raise PrepareCommandError(e)
         except CommandTimeout as e:
@@ -308,7 +290,7 @@ def _upload_working_dir_to_gcs(working_dir: str) -> str:
 def _running_test_script(
     test: Test,
     smoke_test: bool,
-    command_runner: CommandRunner,
+    runner: AnyscaleJobRunner,
     command_timeout: int,
 ) -> None:
     command = test["run"]["script"]
@@ -321,12 +303,11 @@ def _running_test_script(
     is_long_running = test["run"].get("long_running", False)
 
     try:
-        command_runner.run_command(
+        runner.run_command(
             command,
             env=command_env,
             timeout=command_timeout,
             raise_on_timeout=not is_long_running,
-            pip=test.get_byod_pips(),
         )
     except (
         TestCommandError,
@@ -345,14 +326,14 @@ def _running_test_script(
 
 def _fetching_results(
     result: Result,
-    command_runner: CommandRunner,
+    runner: AnyscaleJobRunner,
     artifact_path: Optional[str],
     smoke_test: bool,
     start_time_unix: int,
 ) -> Tuple[dict, Exception]:
     fetch_result_exception = None
     try:
-        command_results = command_runner.fetch_results()
+        command_results = runner.fetch_results()
     except Exception as e:
         logger.exception(f"Could not fetch results for test command: {e}")
         command_results = {}
@@ -360,7 +341,7 @@ def _fetching_results(
 
     if artifact_path:
         try:
-            command_runner.fetch_artifact()
+            runner.fetch_artifact()
         except Exception as e:
             logger.error("Could not fetch artifact for test command")
             logger.exception(e)
@@ -372,13 +353,7 @@ def _fetching_results(
         )
 
     try:
-        # Logic duplicated in ray_release/command_runner/_anyscale_job_wrapper.py
-        # Timeout is the time the test took divided by 200
-        # (~7 minutes for a 24h test) but no less than 30s
-        # and no more than 900s
-        metrics_timeout = max(30, min((time.time() - start_time_unix) / 200, 900))
-        command_runner.save_metrics(start_time_unix, timeout=metrics_timeout)
-        metrics = command_runner.fetch_metrics()
+        metrics = runner.fetch_metrics()
     except Exception as e:
         logger.exception(f"Could not fetch metrics for test command: {e}")
         metrics = {}
@@ -398,10 +373,7 @@ def run_release_test(
     anyscale_project: Optional[str] = None,
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
-    cluster_id: Optional[str] = None,
-    cluster_env_id: Optional[str] = None,
     test_definition_root: Optional[str] = None,
-    log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
 ) -> Result:
     if test.is_kuberay():
@@ -417,10 +389,7 @@ def run_release_test(
         result=result,
         reporters=reporters,
         smoke_test=smoke_test,
-        cluster_id=cluster_id,
-        cluster_env_id=cluster_env_id,
         test_definition_root=test_definition_root,
-        log_streaming_limit=log_streaming_limit,
         image=image,
     )
 
@@ -461,12 +430,10 @@ def run_release_test_kuberay(
             cmd_to_run=test["run"]["script"],
             env_vars=test.get_byod_runtime_env(),
             working_dir=working_dir_upload_path,
-            pip=test.get_byod_pips(),
             compute_config=kuberay_compute_config,
             autoscaler_config=kuberay_autoscaler_config,
             timeout=command_timeout,
         )
-        kuberay_job_manager.fetch_results()
         result.return_code = retcode
         result.runtime = duration
     except Exception as e:
@@ -487,15 +454,12 @@ def run_release_test_anyscale(
     result: Result,
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
-    cluster_id: Optional[str] = None,
-    cluster_env_id: Optional[str] = None,
     test_definition_root: Optional[str] = None,
-    log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
 ) -> Result:
     old_wd = os.getcwd()
     start_time = time.monotonic()
-    command_runner = None
+    runner = None
     cluster_manager = None
     pipeline_exception = None
     # non critical for some tests. So separate it from the general one.
@@ -503,23 +467,24 @@ def run_release_test_anyscale(
     try:
 
         buildkite_group(":spiral_note_pad: Loading test configuration")
-        cluster_manager, command_runner, artifact_path = _load_test_configuration(
+        cluster_manager, runner, artifact_path = _load_test_configuration(
             test,
             anyscale_project,
             result,
             smoke_test,
-            log_streaming_limit,
         )
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
 
+        cluster_env_id = None
         # If image is provided, create/reuse a custom cluster environment
-        if image and not cluster_env_id:
+        if image:
             cluster_env_id = create_cluster_env_from_image(
                 image, test.get_name(), test.get_byod_runtime_env()
             )
             cluster_manager.cluster_env_name = get_custom_cluster_env_name(
                 image, test.get_name()
             )
+
         (
             prepare_cmd,
             prepare_timeout,
@@ -534,14 +499,12 @@ def run_release_test_anyscale(
             test_definition_root,
         )
 
-        buildkite_group(":bulb: Local environment information")
-        _local_environment_information(
-            result,
+        buildkite_group(":bulb: Building local environment information")
+        _build_local_environment_information(
             cluster_manager,
-            command_runner,
+            runner,
             build_timeout,
             cluster_timeout,
-            cluster_id,
             cluster_env_id,
         )
 
@@ -549,7 +512,7 @@ def run_release_test_anyscale(
         buildkite_group(":wrench: Preparing remote environment")
         _prepare_remote_environment(
             test,
-            command_runner,
+            runner,
             prepare_cmd,
             prepare_timeout,
         )
@@ -559,36 +522,32 @@ def run_release_test_anyscale(
         _running_test_script(
             test,
             smoke_test,
-            command_runner,
+            runner,
             command_timeout,
         )
 
         buildkite_group(":floppy_disk: Fetching results")
         metrics, fetch_result_exception = _fetching_results(
             result,
-            command_runner,
+            runner,
             artifact_path,
             smoke_test,
             start_time_unix,
         )
+
     except Exception as e:
         logger.exception(e)
         buildkite_open_last()
         pipeline_exception = e
         metrics = {}
 
-    # Obtain the cluster URL again as it is set after the
+    # Obtain the cluster info again as it is set after the
     # command was run in case of anyscale jobs
-    if isinstance(command_runner, AnyscaleJobRunner):
-        result.cluster_url = cluster_manager.get_cluster_url()
-        result.cluster_id = cluster_manager.cluster_id
-        result.job_url = command_runner.job_manager.job_url
-        result.job_id = command_runner.job_manager.job_id
-
-    result.last_logs = command_runner.get_last_logs() if command_runner else None
-
-    if hasattr(command_runner, "cleanup"):
-        command_runner.cleanup()
+    if runner:
+        result.job_url = runner.job_url()
+        result.job_id = runner.job_id()
+        if result.job_id:
+            result.last_logs = runner.get_last_logs()
 
     reset_signal_handling()
 
