@@ -38,7 +38,7 @@ class ResolveAttributes(Rule):
             return op
 
         match op:
-            case Project(exprs=exprs):
+            case Project(exprs=exprs) if any(not expr._is_resolved() for expr in exprs):
                 new_exprs: List[Expr] = []
                 for expr in exprs:
                     new_expr = self.resolve_attributes(
@@ -49,7 +49,9 @@ class ResolveAttributes(Rule):
                 new_op.exprs = new_exprs
                 return new_op
 
-            case Filter(predicate_expr=expr) if expr is not None:
+            case Filter(
+                predicate_expr=expr
+            ) if expr is not None and not expr._is_resolved():
                 new_expr = self.resolve_attributes(expr=expr, schema=input_op_schema)
                 new_op = cp.copy(op)
                 new_op.predicate_expr = new_expr
