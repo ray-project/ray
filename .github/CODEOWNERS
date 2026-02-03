@@ -106,14 +106,31 @@
 #/ci/ @ray-project/ray-core @ray-project/ray-ci
 
 # CI
-/ci/docker @ray-project/ray-ci
-/ci/ray_ci @ray-project/ray-ci
+/ci/docker/ @ray-project/ray-ci
+/ci/ray_ci/ @ray-project/ray-ci
 /ci/ray_ci/serve_di_test_names.txt @ray-project/ray-serve
+/ci/pipeline/ @ray-project/ray-ci
+/ci/build/ @ray-project/ray-ci
+/ci/env/ @ray-project/ray-ci
 
-# Buildkite pipeline management
-.buildkite/hooks @ray-project/ray-ci
+# Buildkite pipeline files
+/.buildkite/*.rayci.yml @ray-project/ray-ci
+/.buildkite/hooks/ @ray-project/ray-ci
+/.buildkite/release/ @ray-project/ray-ci
+/.buildkite/release-automation/ @ray-project/ray-ci
+/.buildkite/macos/ @ray-project/ray-ci
+/.buildkite/cicd-cron/ @ray-project/ray-ci
 
+# RayCI version
+/.rayciversion @ray-project/ray-ci
+
+# Release CI infrastructure
 /release/ray_release @ray-project/ray-ci
+/release/BUILD.bazel @ray-project/ray-ci
+/release/release_tests.yaml @ray-project/ray-ci
+/release/release_data_tests.yaml @ray-project/ray-ci
+/release/requirements_buildkite.txt @ray-project/ray-ci
+/release/requirements_buildkite.in @ray-project/ray-ci
 
 # Allow people to add BYOD post-installation shell scripts
 # on their own.
