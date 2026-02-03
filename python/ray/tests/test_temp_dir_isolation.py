@@ -402,9 +402,13 @@ class TestTempDirIsolation:
             shutil.rmtree(temp_dir_1, ignore_errors=True)
             shutil.rmtree(temp_dir_2, ignore_errors=True)
 
-    def test_stop_nonexistent_temp_dir_does_nothing(self, cleanup_ray):
+    def test_stop_nonexistent_temp_dir_does_not_affect_other_clusters(
+        self, cleanup_ray
+    ):
         """
-        Test that ray stop --temp-dir with nonexistent path does nothing.
+        Test that ray stop --temp-dir with nonexistent path does not affect
+        other running clusters. The command should still execute (attempting
+        to match processes by command line args) but find no matches.
         """
         runner = cleanup_ray
         suffix = uuid.uuid4().hex[:8]
@@ -448,24 +452,24 @@ class TestTempDirIsolation:
 
             assert len(cluster_procs) >= 2, "Cluster should have >= 2 processes"
 
-            # Try to stop with nonexistent temp_dir - should do nothing
+            # Try to stop with nonexistent temp_dir - should not affect real cluster
             result = runner.invoke(
                 scripts.stop,
                 [f"--temp-dir={nonexistent_temp_dir}"],
             )
             _die_on_error(result)
 
-            # Real cluster should still be running
+            # Real cluster should still be running (no matching processes found)
             assert _all_pids_running(
                 cluster_procs
-            ), "Cluster should still be running after stopping nonexistent temp_dir"
+            ), "Cluster should still be running after stopping with unmatched temp_dir"
 
             # Verify all original processes still exist
             remaining_procs = _get_pids_by_temp_dir(real_temp_dir)
             print(
                 _format_process_list(
                     remaining_procs,
-                    "AFTER STOP NONEXISTENT - CLUSTER PROCESSES (should be same count)",
+                    "AFTER STOP UNMATCHED - CLUSTER PROCESSES (should be same count)",
                 )
             )
 

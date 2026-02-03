@@ -1287,14 +1287,7 @@ def stop(force: bool, grace_period: int, stop_temp_dir: str):
     total_procs_stopped = 0
     procs_not_gracefully_killed = []
 
-    # If temp_dir is specified, check if it exists
     if stop_temp_dir is not None:
-        if not os.path.exists(stop_temp_dir):
-            cli_logger.warning(
-                f"Temp directory '{stop_temp_dir}' does not exist. "
-                "No Ray processes will be stopped."
-            )
-            return
         cli_logger.print(f"Stopping only Ray processes with temp-dir={stop_temp_dir}")
 
     def kill_procs(
