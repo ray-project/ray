@@ -172,8 +172,8 @@ class FileBasedDatasource(Datasource):
         self._partitioning = partitioning
         self._ignore_missing_paths = ignore_missing_paths
         self._include_paths = include_paths
-        # Need this property for lineage tracking. We should not directly assign paths 
-        # to self since it is captured every read_task_fn during serialization and 
+        # Need this property for lineage tracking. We should not directly assign paths
+        # to self since it is captured every read_task_fn during serialization and
         # causing this data being duplicated and excessive object store spilling.
         self._source_paths_ref = ray.put(paths)
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
@@ -232,7 +232,7 @@ class FileBasedDatasource(Datasource):
     @property
     def _source_paths(self) -> List[str]:
         return ray.get(self._source_paths_ref)
-        
+
     def _paths(self) -> List[str]:
         return ray.get(self._paths_ref)
 
