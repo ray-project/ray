@@ -251,6 +251,9 @@ class ServeController:
         self._shutdown_event = asyncio.Event()
         self._shutdown_start_time = None
 
+        # Actors registered for cleanup on serve.shutdown(), keyed by actor ID
+        self._registered_cleanup_actors: Dict[str, ActorHandle] = {}
+
         # Initialize health metrics tracker
         self._health_metrics_tracker = ControllerHealthMetricsTracker(
             controller_start_time=time.time()
@@ -873,6 +876,36 @@ class ServeController:
         """
         return self.kv_store.get(CONFIG_CHECKPOINT_KEY) is None
 
+    def _register_shutdown_cleanup_actor(self, actor_handle: ActorHandle) -> None:
+        """Register an actor to be killed on serve.shutdown().
+
+        This allows deployments to register auxiliary actors (like caches,
+        coordinators, etc.) that should be cleaned up when Serve shuts down.
+        The actors must use lifetime="detached" to survive replica restarts,
+        but will be explicitly killed during serve.shutdown().
+
+        Note: Registered actors are NOT persisted across controller restarts.
+        For full persistence, use controller-managed deployment-scoped actors
+        (see https://github.com/ray-project/ray/issues/60359).
+
+        If the same actor is registered multiple times (e.g., from multiple
+        router instances sharing a tree actor via get_if_exists=True), it will
+        only be stored once.
+
+        Args:
+            actor_handle: The actor handle to register for cleanup.
+        """
+        actor_id = actor_handle._actor_id.hex()
+        self._registered_cleanup_actors[actor_id] = actor_handle
+
+    def _kill_registered_cleanup_actors(self) -> None:
+        """Kill all actors registered for shutdown cleanup."""
+        for actor in self._registered_cleanup_actors.values():
+            try:
+                ray.kill(actor, no_restart=True)
+            except Exception:
+                pass  # Actor may already be dead
+
     def shutdown(self):
         """Shuts down the serve instance completely.
 
@@ -911,6 +944,7 @@ class ServeController:
             and endpoint_is_shutdown
             and proxy_state_is_shutdown
         ):
+            self._kill_registered_cleanup_actors()
             logger.warning(
                 "All resources have shut down, controller exiting.",
                 extra={"log_to_stderr": False},

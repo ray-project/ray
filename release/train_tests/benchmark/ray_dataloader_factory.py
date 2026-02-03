@@ -1,13 +1,18 @@
+import logging
 from abc import abstractmethod
 from typing import Any, Dict, Optional
 
+import ray
 import ray.train
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data import Dataset
 from ray.data.collate_fn import CollateFn
 
 from constants import DatasetKey
 from config import BenchmarkConfig, RayDataConfig
 from dataloader_factory import BaseDataLoaderFactory
+
+logger = logging.getLogger(__name__)
 
 
 class RayDataLoaderFactory(BaseDataLoaderFactory):
@@ -157,4 +162,19 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                     "time_spent_training-total": iter_stats.user_time.get(),
                 },
             }
+
+        # Collect object store spill metrics.
+        try:
+            memory_info = get_memory_info_reply(
+                get_state_from_address(ray.get_runtime_context().gcs_address)
+            )
+            spilled_bytes_total = memory_info.store_stats.spilled_bytes_total
+            metrics["object_store_spilled_total_gb"] = round(
+                spilled_bytes_total / (1024**3), 2
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to collect object_store_spilled_total_gb metric: {e}"
+            )
+
         return metrics
