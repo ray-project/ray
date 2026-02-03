@@ -47,8 +47,6 @@ from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListColl
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
-from ray.rllib.offline.offline_data import OfflineData
-from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, force_list, merge_dicts
@@ -489,6 +487,9 @@ class AlgorithmConfig(_Config):
         self.materialize_mapped_data = True
         self.map_batches_kwargs = {}
         self.iter_batches_kwargs = {}
+        # Use always the final observation until the user explicitly ask
+        # to ignore it.
+        self.ignore_final_observation = False
         self.prelearner_class = None
         self.prelearner_buffer_class = None
         self.prelearner_buffer_kwargs = {}
@@ -3119,6 +3120,7 @@ class AlgorithmConfig(_Config):
         materialize_mapped_data: Optional[bool] = NotProvided,
         map_batches_kwargs: Optional[Dict] = NotProvided,
         iter_batches_kwargs: Optional[Dict] = NotProvided,
+        ignore_final_observation: Optional[bool] = NotProvided,
         prelearner_class: Optional[Type] = NotProvided,
         prelearner_buffer_class: Optional[Type] = NotProvided,
         prelearner_buffer_kwargs: Optional[Dict] = NotProvided,
@@ -3141,7 +3143,6 @@ class AlgorithmConfig(_Config):
         output_filesystem_kwargs: Optional[Dict] = NotProvided,
         output_write_episodes: Optional[bool] = NotProvided,
         offline_sampling: Optional[str] = NotProvided,
-        ignore_final_observation: Optional[bool] = DEPRECATED_VALUE,
     ) -> Self:
         """Sets the config's offline data settings.
 
@@ -3266,6 +3267,11 @@ class AlgorithmConfig(_Config):
                 `{'prefetch_batches': 2}` is used. Use these keyword args
                 together with `input_read_method_kwargs` and `map_batches_kwargs` to
                 tune the performance of the data pipeline.
+            ignore_final_observation: If the final observation in an episode chunk should
+                be ignored. This concerns mainly column-based data and instead of using a
+                user-provided `NEXT_OBS` sets final observations to zero. This should be
+                used with BC only, as in true Offline RL algorithms the final observation
+                is important.
             prelearner_class: An optional `OfflinePreLearner` class that is used to
                 transform data batches in `ray.data.map_batches` used in the
                 `OfflineData` class to transform data from columns to batches that can
@@ -3400,12 +3406,8 @@ class AlgorithmConfig(_Config):
             self.map_batches_kwargs = map_batches_kwargs
         if iter_batches_kwargs is not NotProvided:
             self.iter_batches_kwargs = iter_batches_kwargs
-        if ignore_final_observation is not DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.offline_data(ignore_final_observation)",
-                new="Discard final observation in Learner pipeline or don't use it in loss function.",
-                error=True,
-            )
+        if ignore_final_observation is not NotProvided:
+            self.ignore_final_observation = ignore_final_observation
         if prelearner_class is not NotProvided:
             self.prelearner_class = prelearner_class
         if prelearner_buffer_class is not NotProvided:
@@ -5330,6 +5332,17 @@ class AlgorithmConfig(_Config):
                 "If no evaluation should be run, `action_space` and "
                 "`observation_space` must be provided."
             )
+
+        if self.ignore_final_observation and self.algo_class.__name__ != "BC":
+            logger.warning(
+                "`ignore_final_observation=True` (zeros-out truncation observations), "
+                "but the algorithm isn't `BC`. It is recommended to use this "
+                "setting only with `BC`, b/c other RL algorithms rely on truncation-"
+                "observations due to value function estimates."
+            )
+
+        from ray.rllib.offline.offline_data import OfflineData
+        from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 
         if self.offline_data_class and not issubclass(
             self.offline_data_class, OfflineData

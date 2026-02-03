@@ -1,3 +1,4 @@
+import functools
 import shutil
 import unittest
 import functools
@@ -132,6 +133,20 @@ class TestOfflinePreLearner(unittest.TestCase):
 
         self.assertTrue(len(episodes) == 10)
         self.assertTrue(isinstance(episodes[0], SingleAgentEpisode))
+
+    def test_offline_prelearner_ignore_final_observation(self):
+        # Create the dataset.
+        data = ray.data.read_parquet(self.data_path)
+
+        # Now, take a small batch from the data and conert it to episodes.
+        batch = data.take_batch(batch_size=10)
+        episodes = OfflinePreLearner._map_to_episodes(
+            False, batch, ignore_final_observation=True
+        )["episodes"]
+
+        self.assertTrue(
+            all(all(eps.get_observations()[-1] == [0.0] * 4) for eps in episodes)
+        )
 
     def test_offline_prelearner_convert_from_old_sample_batch_to_episodes(self):
         """Tests conversion from `SampleBatch` data to episodes."""
