@@ -305,6 +305,22 @@ def _core_replica_queue_length_policy(
     return desired_num_replicas, {}
 
 
+def _core_async_inference_policy(
+    ctx: AutoscalingContext,
+) -> Tuple[float, Dict[str, Any]]:
+    num_running_replicas = ctx.current_num_replicas
+
+    # Calculate total workload = queue tasks + HTTP requests
+    total_workload = ctx.total_num_requests + ctx.total_pending_async_requests
+    config = ctx.config
+    if num_running_replicas == 0:
+        raise ValueError("Number of replicas cannot be zero")
+    target_num_requests = config.get_target_ongoing_requests() * num_running_replicas
+    error_ratio = total_workload / target_num_requests
+    desired_num_replicas = num_running_replicas * error_ratio
+    return desired_num_replicas, {}
+
+
 @PublicAPI(stability="alpha")
 def replica_queue_length_autoscaling_policy(
     ctx: AutoscalingContext,
@@ -338,18 +354,7 @@ def async_inference_autoscaling_policy(
     if cold_start_replicas is not None:
         return cold_start_replicas, ctx.policy_state
 
-    num_running_replicas = ctx.current_num_replicas
-
-    # Calculate total workload = queue tasks + HTTP requests
-    total_workload = ctx.total_num_requests + ctx.total_pending_async_requests
-
-    config = ctx.config
-    if num_running_replicas == 0:
-        raise ValueError("Number of replicas cannot be zero")
-    target_num_requests = config.get_target_ongoing_requests() * num_running_replicas
-    error_ratio = total_workload / target_num_requests
-    desired_num_replicas = num_running_replicas * error_ratio
-    return desired_num_replicas, {}
+    return _core_async_inference_policy(ctx)
 
 
 default_autoscaling_policy = replica_queue_length_autoscaling_policy

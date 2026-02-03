@@ -28,9 +28,9 @@ def get_queue_monitor_actor_name(deployment_id: DeploymentID) -> str:
         deployment_id: ID of the deployment (contains app_name and name)
 
     Returns:
-        The full actor name in format "QUEUE_MONITOR::<app_name>#<deployment_name>"
+        The full actor name in format "QUEUE_MONITOR::<app_name>#<deployment_name>#"
     """
-    return f"{QUEUE_MONITOR_ACTOR_PREFIX}{deployment_id.app_name}#{deployment_id.name}"
+    return f"{QUEUE_MONITOR_ACTOR_PREFIX}{deployment_id.app_name}#{deployment_id.name}#"
 
 
 @ray.remote(num_cpus=0)
