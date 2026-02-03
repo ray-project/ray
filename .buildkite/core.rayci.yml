@@ -311,8 +311,6 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
-      # TODO(zac): Re-enable once ray-core-build supports 3.14 image build
-      # - "3.14"
 
   - label: ":ray: core: cgroup tests"
     tags: core_cpp

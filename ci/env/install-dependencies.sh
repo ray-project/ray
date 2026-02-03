@@ -158,28 +158,6 @@ install_node() {
     return
   fi
 
-  if [[ -n "${BUILDKITE-}" ]] ; then
-    if [[ "${OSTYPE}" = darwin* ]]; then
-      if [[ "$(uname -m)" == "arm64" ]]; then
-        curl -sSfL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
-      else
-        curl -sSfL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
-      fi
-    else
-      # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-      # Install Node.js 14.x - fetch GPG key from keyserver
-      sudo apt-get update
-      sudo apt-get install -y gnupg
-      sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 1655A0AB68576280
-      local DISTRO_CODENAME
-      DISTRO_CODENAME=$(grep VERSION_CODENAME /etc/os-release | cut -d= -f2)
-      echo "deb https://deb.nodesource.com/node_14.x ${DISTRO_CODENAME} main" | sudo tee /etc/apt/sources.list.d/nodesource.list
-      sudo apt-get update
-      sudo apt-get install -y nodejs
-      return
-    fi
-  fi
-
   if [[ "${OSTYPE}" = darwin* ]]; then
     curl -sSfL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
 

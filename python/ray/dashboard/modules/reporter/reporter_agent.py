@@ -78,10 +78,6 @@ from ray.exceptions import (
 
 import psutil
 
-# Define sdiskusage locally to avoid relying on psutil's private API
-# (psutil._common.sdiskusage may not exist in all versions)
-sdiskusage = namedtuple("sdiskusage", ["total", "used", "free", "percent"])
-
 logger = logging.getLogger(__name__)
 
 enable_tpu_usage_check = True
