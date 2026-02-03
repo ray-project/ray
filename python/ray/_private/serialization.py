@@ -709,7 +709,6 @@ class SerializationContext:
         obj_id: str,
         tensors: List["torch.Tensor"],
         tensor_transport: str,
-        cache_metadata: bool,
     ) -> bytes:
         """
         Store GPU objects in the GPU object store.
@@ -719,7 +718,6 @@ class SerializationContext:
                 will be stored in the GPU object store with the key `obj_id`.
             tensors: The tensors to store in the GPU object store.
             tensor_transport: The transport with which the RDT object will be transferred.
-            cache_metadata: If True, cache the memory registration for reuse.
 
         Returns:
             The serialized tensor transport metadata
@@ -733,7 +731,7 @@ class SerializationContext:
         worker = ray._private.worker.global_worker
         gpu_object_manager = worker.gpu_object_manager
         tensor_transport_meta = gpu_object_manager.gpu_object_store.add_object_primary(
-            obj_id, tensors, tensor_transport, cache_metadata
+            obj_id, tensors, tensor_transport, cache_metadata=False
         )
         return pickle.dumps(tensor_transport_meta)
 
