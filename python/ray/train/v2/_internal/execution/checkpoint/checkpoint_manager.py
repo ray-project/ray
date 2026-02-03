@@ -36,8 +36,6 @@ class _TrainingResultState(BaseModel):
 
 
 class _CheckpointManagerState(BaseModel):
-    # Increment version if the schema changes
-    version: int = 1
     ray_version: str = ray.__version__
     checkpoint_results: List[_TrainingResultState]
     checkpoint_report_indices: List[int]
