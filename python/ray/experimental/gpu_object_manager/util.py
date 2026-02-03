@@ -1,4 +1,5 @@
 import threading
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional
 
 import ray
@@ -19,6 +20,22 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import torch
+
+
+@PublicAPI(stability="alpha")
+@dataclass
+class PutTensorOptions:
+    """Options for ray.put with tensor transport.
+
+    Args:
+        transport: The tensor transport to use (e.g., "nixl").
+        cache_metadata: If True, cache the NIXL memory registration for reuse
+            on subsequent ray.put calls with the same tensor memory region.
+            Only supported with NIXL transport.
+    """
+
+    transport: str
+    cache_metadata: bool = False
 
 
 class TransportManagerInfo(NamedTuple):
@@ -174,6 +191,20 @@ def validate_one_sided(tensor_transport: str, ray_usage_func: str):
             f"Trying to use two-sided tensor transport: {tensor_transport} for {ray_usage_func}. "
             "This is only supported for one-sided transports such as NIXL or the OBJECT_STORE."
         )
+
+
+def validate_put_tensor_options(options: PutTensorOptions) -> str:
+    """Validate PutTensorOptions and return the normalized transport name."""
+    if not isinstance(options, PutTensorOptions):
+        raise TypeError(
+            f"_tensor_transport must be a PutTensorOptions, got: {type(options)}"
+        )
+    transport = normalize_and_validate_tensor_transport(options.transport)
+    if options.cache_metadata and transport != "NIXL":
+        raise ValueError(
+            f"cache_metadata=True is only supported with NIXL transport, got: {transport}"
+        )
+    return transport
 
 
 def create_empty_tensors_from_metadata(

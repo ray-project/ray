@@ -5,6 +5,7 @@ import torch
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.experimental.gpu_object_manager.util import PutTensorOptions
 
 
 @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
@@ -25,7 +26,9 @@ class GPUTestActor:
     def produce(self, tensors):
         refs = []
         for t in tensors:
-            refs.append(ray.put(t, _tensor_transport="nixl"))
+            refs.append(
+                ray.put(t, _tensor_transport=PutTensorOptions(transport="nixl"))
+            )
         return refs
 
     def consume_with_nixl(self, refs):
@@ -50,7 +53,7 @@ class GPUTestActor:
         )
 
         tensor = torch.tensor([1, 2, 3]).to("cuda")
-        ref = ray.put(tensor, _tensor_transport="nixl")
+        ref = ray.put(tensor, _tensor_transport=PutTensorOptions(transport="nixl"))
         obj_id = ref.hex()
         gpu_manager = ray._private.worker.global_worker.gpu_object_manager
         nixl_transport = get_tensor_transport_manager("NIXL")
@@ -103,12 +106,46 @@ class GPUTestActor:
         list1 = [t1, t2]
         list2 = [t2, t3]
 
-        ref1 = ray.put(list1, _tensor_transport="nixl")
+        ref1 = ray.put(list1, _tensor_transport=PutTensorOptions(transport="nixl"))
         # Nixl itself doesn't handle duplicate memory registrations,
         # hence this call would fail without proper deduplication.
-        ref2 = ray.put(list2, _tensor_transport="nixl")
+        ref2 = ray.put(list2, _tensor_transport=PutTensorOptions(transport="nixl"))
 
         return ref1, ref2
+
+    def test_cache_metadata_reuse(self):
+        """Test that cache_metadata=True keeps registrations after GC."""
+        from ray.experimental.gpu_object_manager.util import (
+            get_tensor_transport_manager,
+        )
+
+        nixl_transport = get_tensor_transport_manager("NIXL")
+        gpu_manager = ray._private.worker.global_worker.gpu_object_manager
+
+        # Create a tensor and put with cache_metadata=True
+        tensor = torch.tensor([1, 2, 3]).to("cuda")
+        data_ptr = tensor.data_ptr()
+
+        ref = ray.put(
+            tensor,
+            _tensor_transport=PutTensorOptions(transport="nixl", cache_metadata=True),
+        )
+
+        # Verify registration exists with cache_metadata=True
+        assert data_ptr in nixl_transport._tensor_desc_cache
+        assert nixl_transport._tensor_desc_cache[data_ptr].cache_metadata is True
+        assert nixl_transport._tensor_desc_cache[data_ptr].metadata_count == 1
+
+        # Delete the object ref and wait for tensor to be freed
+        del ref
+        gpu_manager.gpu_object_store.wait_tensor_freed(tensor, timeout=10)
+
+        # Verify the registration was NOT freed (cache_metadata=True keeps it)
+        assert data_ptr in nixl_transport._tensor_desc_cache
+        assert nixl_transport._tensor_desc_cache[data_ptr].metadata_count == 0
+        assert nixl_transport._tensor_desc_cache[data_ptr].cache_metadata is True
+
+        return "Success"
 
     @ray.method(concurrency_group="_ray_system")
     def block_background_thread(self, signal_actor):
@@ -313,6 +350,14 @@ def test_shared_tensor_deduplication(ray_start_regular):
     """
     actor = GPUTestActor.remote()
     ray.get(actor.put_shared_tensor_lists.remote())
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_cache_metadata_reuse(ray_start_regular):
+    """Test that cache_metadata=True caches registrations and reuses them."""
+    actor = GPUTestActor.remote()
+    result = ray.get(actor.test_cache_metadata_reuse.remote())
+    assert result == "Success"
 
 
 if __name__ == "__main__":

@@ -209,12 +209,18 @@ class GPUObjectStore:
             self._object_present_cv.notify_all()
 
     def add_object_primary(
-        self, obj_id: str, tensors: List["torch.Tensor"], tensor_transport: str
+        self,
+        obj_id: str,
+        tensors: List["torch.Tensor"],
+        tensor_transport: str,
+        cache_metadata: bool,
     ) -> TensorTransportMetadata:
         self.add_object(obj_id, tensors, is_primary=True)
         tensor_transport_manager = get_tensor_transport_manager(tensor_transport)
         tensor_transport_meta = (
-            tensor_transport_manager.extract_tensor_transport_metadata(obj_id, tensors)
+            tensor_transport_manager.extract_tensor_transport_metadata(
+                obj_id, tensors, cache_metadata=cache_metadata
+            )
         )
         return tensor_transport_meta
 
