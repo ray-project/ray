@@ -31,6 +31,9 @@ class PutTensorOptions:
         transport: The tensor transport to use (e.g., "nixl").
         cache_metadata: If True, cache the NIXL memory registration for reuse
             on subsequent ray.put calls with the same tensor memory region.
+            When this is True, the memory registration is never freed and will
+            only be cleaned up on process death. This is useful for cases where
+            the same tensor buffer is repeatedly used with `ray.put`.
             Only supported with NIXL transport.
     """
 

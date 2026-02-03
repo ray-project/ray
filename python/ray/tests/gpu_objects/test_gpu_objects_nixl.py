@@ -145,6 +145,21 @@ class GPUTestActor:
         assert nixl_transport._tensor_desc_cache[data_ptr].metadata_count == 0
         assert nixl_transport._tensor_desc_cache[data_ptr].cache_metadata is True
 
+        # Put the same tensor again to check for reuse
+        ref2 = ray.put(
+            tensor,
+            _tensor_transport=PutTensorOptions(transport="nixl", cache_metadata=True),
+        )
+
+        # Verify registration is reused
+        assert data_ptr in nixl_transport._tensor_desc_cache
+        assert nixl_transport._tensor_desc_cache[data_ptr].cache_metadata is True
+        assert nixl_transport._tensor_desc_cache[data_ptr].metadata_count == 1
+
+        # Clean up
+        del ref2
+        gpu_manager.gpu_object_store.wait_tensor_freed(tensor, timeout=10)
+
         return "Success"
 
     @ray.method(concurrency_group="_ray_system")

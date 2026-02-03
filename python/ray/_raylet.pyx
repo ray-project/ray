@@ -4266,7 +4266,7 @@ cdef class CoreWorker:
                 # and store them in the GPUObjectManager.
                 serialized_object, tensors = context.serialize_gpu_objects(output)
                 pickled_rdt_metadata = context.store_gpu_objects(
-                    return_id.Hex().decode("ascii"), tensors, tensor_transport)
+                    return_id.Hex().decode("ascii"), tensors, tensor_transport, False)
                 # One copy from python bytes object to C++ string
                 c_pickled_rdt_metadata = pickled_rdt_metadata
             else:
