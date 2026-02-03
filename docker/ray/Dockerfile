@@ -6,6 +6,8 @@ ARG FULL_BASE_IMAGE=rayproject/ray-deps:nightly"$BASE_IMAGE"
 # --- HAProxy Build Stage ---
 FROM $FULL_BASE_IMAGE AS haproxy-builder
 
+USER root
+
 RUN <<EOF
 #!/bin/bash
 set -euo pipefail
