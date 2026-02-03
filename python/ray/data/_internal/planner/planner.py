@@ -3,7 +3,6 @@ import warnings
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 from ray import ObjectRef
-from ray.data._internal.execution.execution_callback import add_execution_callback
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
     AggregateNumRows,
@@ -53,7 +52,10 @@ from ray.data._internal.planner.plan_udf_map_op import (
     plan_udf_map_op,
 )
 from ray.data._internal.planner.plan_write_op import plan_write_op
-from ray.data.checkpoint.load_checkpoint_callback import LoadCheckpointCallback
+from ray.data.checkpoint.load_checkpoint_callback import (
+    LoadCheckpointCallback,
+    get_checkpoint_loader,
+)
 from ray.data.context import DataContext
 
 LogicalOperatorType = TypeVar("LogicalOperatorType", bound=LogicalOperator)
@@ -178,14 +180,21 @@ class Planner:
     def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:
         """Convert logical to physical operators recursively in post-order."""
         checkpoint_config = logical_plan.context.checkpoint_config
+
         if checkpoint_config is not None and self._check_supports_checkpointing(
             logical_plan
         ):
             self._supports_checkpointing = True
 
-            checkpoint_callback = self._create_checkpoint_callback(checkpoint_config)
-            add_execution_callback(checkpoint_callback, logical_plan.context)
-            load_checkpoint = checkpoint_callback.load_checkpoint
+            # We scan the context to see if the user provided a custom subclass  of LoadCheckpointCallback.
+            # If not, we default to the base class.
+            checkpoint_cls = LoadCheckpointCallback
+            for cls in logical_plan.context.execution_callback_classes:
+                if issubclass(cls, LoadCheckpointCallback):
+                    checkpoint_cls = cls
+                    break
+
+            load_checkpoint = get_checkpoint_loader(checkpoint_cls, checkpoint_config)
 
             # Dynamically set the plan functions for checkpointing because they
             # need to a reference to the checkpoint ref.
@@ -265,13 +274,6 @@ class Planner:
         # Also add the final operator (in case the loop didn't catch it)
         op_map[physical_op] = logical_op
         return physical_op, op_map
-
-    def _create_checkpoint_callback(self, checkpoint_config) -> LoadCheckpointCallback:
-        """Factory method to create the LoadCheckpointCallback.
-
-        Subclasses can override this to use a different callback implementation.
-        """
-        return LoadCheckpointCallback(checkpoint_config)
 
     def _get_plan_fns_for_checkpointing(
         self,

@@ -16,7 +16,6 @@ from ray.data._internal.execution.backpressure_policy import (
     get_backpressure_policies,
 )
 from ray.data._internal.execution.dataset_state import DatasetState
-from ray.data._internal.execution.execution_callback import get_execution_callbacks
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     Executor,
@@ -56,6 +55,7 @@ from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.util.metrics import Gauge
 
 if typing.TYPE_CHECKING:
+    from ray.data._internal.execution.execution_callback import ExecutionCallback
     from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
     from ray.data.block import Schema
 
@@ -84,6 +84,12 @@ class StreamingExecutor(Executor, threading.Thread):
         dataset_id: str = "unknown_dataset",
     ):
         self._data_context = data_context
+
+        self._callbacks: List["ExecutionCallback"] = []
+        for callback_cls in self._data_context.execution_callback_classes:
+            callback_instance = callback_cls.from_executor(self)
+            self._callbacks.append(callback_instance)
+
         self._ranker = create_ranker()
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
@@ -233,7 +239,7 @@ class StreamingExecutor(Executor, threading.Thread):
             TopologyMetadata.create_topology_metadata(dag, op_to_id),
             self._data_context,
         )
-        for callback in get_execution_callbacks(self._data_context):
+        for callback in self._callbacks:
             callback.before_execution_starts(self)
 
         self.start()
@@ -313,10 +319,10 @@ class StreamingExecutor(Executor, threading.Thread):
             )
 
             if exception is None:
-                for callback in get_execution_callbacks(self._data_context):
+                for callback in self._callbacks:
                     callback.after_execution_succeeds(self)
             else:
-                for callback in get_execution_callbacks(self._data_context):
+                for callback in self._callbacks:
                     callback.after_execution_fails(self, exception)
 
             self._cluster_autoscaler.on_executor_shutdown()
@@ -356,7 +362,7 @@ class StreamingExecutor(Executor, threading.Thread):
                         sched_loop_duration
                     )
 
-                for callback in get_execution_callbacks(self._data_context):
+                for callback in self._callbacks:
                     callback.on_execution_step(self)
                 if not continue_sched or self._shutdown:
                     break
