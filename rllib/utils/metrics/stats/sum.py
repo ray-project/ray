@@ -103,4 +103,4 @@ class SumStats(SeriesStats):
         self.track_throughput = state["track_throughput"]
 
     def __repr__(self) -> str:
-        return f"SumStats({self.peek()}; window={self._window}; len={len(self)}"
+        return f"SumStats({self.peek()}; window={self._window}; len={len(self)})"
