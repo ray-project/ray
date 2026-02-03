@@ -50,6 +50,12 @@ class BaseGroup(metaclass=ABCMeta):
         """The backend of this collective group."""
         raise NotImplementedError()
 
+    @classmethod
+    @abstractmethod
+    def check_backend_availability(cls) -> bool:
+        """Check if the backend is available."""
+        raise NotImplementedError()
+
     @abstractmethod
     def allreduce(self, tensor, allreduce_options=AllReduceOptions()):
         raise NotImplementedError()

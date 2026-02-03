@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING, List, Optional
 
 import numpy as np
 import torch
-import torch.distributed as dist
 
 import ray.experimental.internal_kv as internal_kv
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
@@ -23,6 +22,12 @@ from ray.util.collective.types import (
 if TYPE_CHECKING:
     import torch
 
+try:
+    import torch.distributed as dist
+
+    _TORCH_DISTRIBUTED_AVAILABLE = True
+except ImportError:
+    _TORCH_DISTRIBUTED_AVAILABLE = False
 
 TORCH_REDUCE_OP_MAP = {
     ReduceOp.SUM: dist.ReduceOp.SUM,
@@ -107,6 +112,10 @@ class TorchGLOOGroup(BaseGroup):
     def backend(cls):
         """The backend of this collective group."""
         return Backend.GLOO
+
+    @classmethod
+    def check_backend_availability(cls) -> bool:
+        return _TORCH_DISTRIBUTED_AVAILABLE
 
     def _check_tensor_input(self, tensor: List["torch.Tensor"]) -> "torch.Tensor":
         """ray.util.collective wraps tensor arguments in a list.
