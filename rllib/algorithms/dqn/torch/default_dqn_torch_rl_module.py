@@ -125,9 +125,11 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
             # Then we need to make a single forward pass with both,
             # current and next observations.
             batch_base = {
-                Columns.OBS: torch.concat(
-                    [batch[Columns.OBS], batch[Columns.NEXT_OBS]], dim=0
-                ),
+                Columns.OBS: tree.map_structure(
+                    lambda x, y: torch.cat([x, y], dim=0),
+                    batch[Columns.OBS],
+                    batch[Columns.NEXT_OBS],
+                )
             }
             # If this is a stateful module add the input states.
             if Columns.STATE_IN in batch:
