@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
 import pyarrow as pa
@@ -9,6 +9,8 @@ from ray.data._internal.tensor_extensions.arrow import (
     _infer_pyarrow_type,
 )
 from ray.util.annotations import PublicAPI
+
+_T = TypeVar("_T")
 
 
 @PublicAPI(stability="alpha")
@@ -44,7 +46,7 @@ PYARROW_TYPE_DEFINITIONS: Dict[str, Tuple[callable, str]] = {
 }
 
 
-def _factory_methods(cls: type):
+def _factory_methods(cls: Type[_T]) -> Type[_T]:
     """Metaprogramming: Class decorator to generate factory methods for PyArrow types using from_arrow.
 
     This decorator automatically creates class methods for common PyArrow data types.

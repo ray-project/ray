@@ -1,7 +1,7 @@
 import functools
 import inspect
 import logging
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import (
@@ -10,7 +10,8 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
-from ray.data.block import UserDefinedFunction
+from ray.data.block import Schema, UserDefinedFunction
+from ray.data.datatype import DataType
 from ray.data.expressions import Expr, NamedExpr, StarExpr
 from ray.data.preprocessor import Preprocessor
 
@@ -332,7 +333,7 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
         self.batch_format = "pyarrow"
         self.zero_copy_batch = True
 
-        for expr in self._exprs:
+        for expr in self.exprs:
             if not isinstance(expr, NamedExpr):
                 raise TypeError(
                     "All Project expressions must be named (use .alias(name) or col(name)), "
@@ -374,6 +375,13 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
                 return expr
 
         return None
+
+    def infer_schema(self) -> Optional["Schema"]:
+        old_schema = self.input_dependency.infer_schema()
+        new_schema = resolve_schema(old_schema, self.exprs)
+        if new_schema is None:
+            return old_schema
+        return new_schema
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         return PredicatePassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
@@ -441,3 +449,26 @@ class StreamingRepartition(AbstractMap):
             can_modify_num_rows=False,
         )
         self.target_num_rows_per_block = target_num_rows_per_block
+
+
+def resolve_schema(
+    existing_schema: Optional["Schema"], named_exprs: List["NamedExpr"]
+) -> Optional["Schema"]:
+    import pyarrow as pa
+
+    if existing_schema is None:
+        return None
+
+    if any(
+        not expr._is_resolved() or isinstance(expr, StarExpr) for expr in named_exprs
+    ):
+        # Expressions must be resolved before schema resolution
+        return None
+
+    schema: List[Tuple[str, DataType]] = []
+    for expr in named_exprs:
+        name = expr.name
+        t = expr.data_type.to_arrow_dtype()
+        schema.append((name, t))
+
+    return pa.schema(schema)

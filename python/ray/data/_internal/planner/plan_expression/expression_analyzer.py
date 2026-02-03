@@ -30,22 +30,27 @@ class ResolveAttributes(Rule):
         return LogicalPlan(new_dag, plan.context) if old_dag is not new_dag else plan
 
     def resolve(self, op: LogicalOperator) -> LogicalOperator:
-        op_schema = op.infer_schema()
-        if op_schema is None:
+        if len(op.input_dependencies) != 1:
+            return op
+
+        input_op_schema = op.input_dependencies[0].infer_schema()
+        if input_op_schema is None:
             return op
 
         match op:
             case Project(exprs=exprs):
                 new_exprs: List[Expr] = []
                 for expr in exprs:
-                    new_expr = self.resolve_attributes(expr=expr, schema=op_schema)
+                    new_expr = self.resolve_attributes(
+                        expr=expr, schema=input_op_schema
+                    )
                     new_exprs.append(new_expr)
                 new_op = cp.copy(op)
                 new_op._exprs = new_exprs
                 return new_op
 
             case Filter(_predicate_expr=expr) if expr is not None:
-                new_expr = self.resolve_attributes(expr=expr, schema=op_schema)
+                new_expr = self.resolve_attributes(expr=expr, schema=input_op_schema)
                 new_op = cp.copy(op)
                 new_op._predicate_expr = new_expr
                 return new_op
@@ -99,8 +104,11 @@ class ResolveStar(Rule):
         return LogicalPlan(new_dag, plan.context) if old_dag is not new_dag else plan
 
     def resolve(self, op: LogicalOperator) -> LogicalOperator:
-        op_schema = op.infer_schema()
-        if op_schema is None:
+        if len(op.input_dependencies) != 1:
+            return op
+
+        input_op_schema = op.input_dependencies[0].infer_schema()
+        if input_op_schema is None:
             return op
 
         match op:
@@ -123,9 +131,9 @@ class ResolveStar(Rule):
                 assert len(existing_cols) == len(existing_exprs)
 
                 non_existing_exprs: List[Expr] = []
-                for i, col_name in enumerate(op_schema.names):
+                for i, col_name in enumerate(input_op_schema.names):
                     if col_name not in existing_cols:
-                        raw_type = op_schema.types[i]
+                        raw_type = input_op_schema.types[i]
                         # TODO(Justin): Could be pandas schema?
                         data_type = DataType.from_arrow(raw_type)
                         non_existing_exprs.append(
