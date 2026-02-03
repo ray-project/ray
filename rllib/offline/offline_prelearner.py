@@ -134,13 +134,23 @@ class OfflinePreLearner:
         *,
         config: "AlgorithmConfig",
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
-        module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
         **kwargs: Dict[str, Any],
     ):
+        if "module_spec" in kwargs:
+            deprecation_warning(
+                old="OfflinePreLearner(module_spec=..)",
+                new="OfflinePreLearner(config=AlgorithmConfig().rl_module(rl_module_spec=..))",
+                error=True,
+            )
+            rl_module_spec = kwargs["module_spec"]
+        else:
+            rl_module_spec = config.rl_module_spec
+
         self.config: AlgorithmConfig = config
-        self._module: MultiRLModule = module_spec.build()
-        self._module.set_state(module_state)
+        self._module: MultiRLModule = rl_module_spec.build()
+        if module_state:
+            self._module.set_state(module_state)
 
         self.observation_space, self.action_space = spaces or (None, None)
         self._learner_connector = self.config.build_learner_connector(
