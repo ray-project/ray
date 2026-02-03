@@ -65,7 +65,7 @@ async def test_vllm_multimodal_utils():
     image_url = "https://air-example-data.s3.us-west-2.amazonaws.com/rayllm-ossci/assets/cherry_blossom.jpg"
     image_uuid = str(hash(image_url))
 
-    conversation, mm_data, mm_uuids = parse_chat_messages_async(
+    conversation, mm_data, mm_uuids = await parse_chat_messages_async(
         [
             {
                 "role": "user",

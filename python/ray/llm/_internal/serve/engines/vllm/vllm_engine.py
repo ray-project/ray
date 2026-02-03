@@ -463,7 +463,7 @@ class VLLMEngine(LLMEngine):
         return engine_client
 
     async def resolve_lora(self, disk_lora_model: DiskMultiplexConfig):
-        from vllm.entrypoints.openai.engine.protocol import LoadLoRAAdapterRequest
+        from vllm.entrypoints.serve.lora.protocol import LoadLoRAAdapterRequest
 
         self._validate_openai_serving_models()
 
