@@ -557,12 +557,10 @@ def _align_struct_fields(
         missing_fields = [f for f in schema if f.name not in block_names]
 
         # Append missing columns with null values
-        # This avoids rebuilding the whole table and only adds what's needed
-        if missing_fields:
-            for field in missing_fields:
-                # pa.nulls creates a null array of the correct length and type efficiently
-                null_col = pa.nulls(block_length, type=field.type)
-                block = block.append_column(field.name, null_col)
+        for field in missing_fields:
+            # pa.nulls creates a null array of the correct length and type efficiently
+            null_col = pa.nulls(block_length, type=field.type)
+            block = block.append_column(field.name, null_col)
 
         # Reorder columns to match the target schema
         # select() is a zero-copy operation for column reordering
