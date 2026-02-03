@@ -14,6 +14,18 @@ from ray.data.block import UserDefinedFunction
 from ray.data.expressions import Expr, StarExpr
 from ray.data.preprocessor import Preprocessor
 
+__all__ = [
+    "AbstractMap",
+    "AbstractUDFMap",
+    "Filter",
+    "FlatMap",
+    "MapBatches",
+    "MapRows",
+    "Project",
+    "StreamingRepartition",
+]
+
+
 logger = logging.getLogger(__name__)
 
 
