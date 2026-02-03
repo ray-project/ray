@@ -1,10 +1,9 @@
 # syntax=docker/dockerfile:1.3-labs
 
-ARG BASE_IMAGE
-ARG FULL_BASE_IMAGE=rayproject/ray-deps:nightly"$BASE_IMAGE"
+ARG FULL_BASE_IMAGE
 
 # --- HAProxy Build Stage ---
-FROM $BASE_IMAGE AS haproxy-builder
+FROM $FULL_BASE_IMAGE AS haproxy-builder
 
 RUN <<EOF
 #!/bin/bash
