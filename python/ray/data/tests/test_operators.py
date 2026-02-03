@@ -1,12 +1,15 @@
 import gc
 from typing import List
+from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
 
 import ray
+from ray.data._internal.execution import create_resource_allocator
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
+    ExecutionResources,
     RefBundle,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -15,6 +18,10 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.union_operator import UnionOperator
+from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.execution.streaming_executor_state import (
+    build_streaming_topology,
+)
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.progress.base_progress import NoopSubProgressBar
 from ray.data.block import BlockAccessor
@@ -231,26 +238,27 @@ def test_union_operator_throttling_disabled(ray_start_regular_shared):
     assert union_op.throttling_disabled() is True
 
 
-def test_union_operator_throttling_matches_similar_operators(ray_start_regular_shared):
-    """Test that UnionOperator's throttling behavior matches other metadata-only operators."""
-    from ray.data._internal.execution.operators.limit_operator import LimitOperator
-    from ray.data._internal.execution.operators.output_splitter import OutputSplitter
-
+def test_union_operator_not_allocated_resources(ray_start_regular_shared):
     ctx = DataContext.get_current()
+    original_enabled = ctx.op_resource_reservation_enabled
+    try:
+        ctx.op_resource_reservation_enabled = True
+        input_op1 = InputDataBuffer(ctx, make_ref_bundles([[1, 2, 3]]))
+        input_op2 = InputDataBuffer(ctx, make_ref_bundles([[4, 5, 6]]))
+        union_op = UnionOperator(ctx, input_op1, input_op2)
 
-    # Create input buffer
-    input_bundles = make_ref_bundles([[1, 2, 3]])
-    input_op = InputDataBuffer(ctx, input_bundles)
+        topo = build_streaming_topology(union_op, ExecutionOptions())
+        resource_manager = ResourceManager(topo, ExecutionOptions(), MagicMock(), ctx)
+        allocator = create_resource_allocator(resource_manager, ctx)
+        assert allocator is not None
 
-    # Create operators that only manipulate metadata
-    union_op = UnionOperator(ctx, input_op)
-    limit_op = LimitOperator(10, input_op, ctx)
-    output_splitter = OutputSplitter(input_op, 2, False, ctx)
-
-    # All three operators should have throttling disabled
-    assert union_op.throttling_disabled() is True
-    assert limit_op.throttling_disabled() is True
-    assert output_splitter.throttling_disabled() is True
+        allocator.update_budgets(
+            limits=ExecutionResources(cpu=4, gpu=0, object_store_memory=1000)
+        )
+        allocation = allocator.get_allocation(union_op)
+        assert allocation is None
+    finally:
+        ctx.op_resource_reservation_enabled = original_enabled
 
 
 if __name__ == "__main__":
