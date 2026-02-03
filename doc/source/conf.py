@@ -242,6 +242,7 @@ exclude_patterns = [
     # Other misc files (overviews, console-only examples, etc)
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
+    "train/tutorials/content/**/README.md",
     "serve/tutorials/video-analysis/*.ipynb",
     # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",
