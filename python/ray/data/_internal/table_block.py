@@ -14,8 +14,6 @@ from typing import (
     Union,
 )
 
-import numpy as np
-
 from ray._private.ray_constants import env_integer
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
@@ -35,7 +33,6 @@ from ray.data.block import (
     KeyType,
     U,
 )
-from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
 
 if TYPE_CHECKING:
@@ -73,11 +70,9 @@ class TableBlockBuilder(BlockBuilder):
         self._num_compactions = 0
         self._block_type = block_type
 
-    def add(self, item: Union[dict, Mapping, np.ndarray]) -> None:
+    def add(self, item: Union[dict, Mapping]) -> None:
         if hasattr(item, "as_pydict"):
             item = item.as_pydict()
-        elif isinstance(item, np.ndarray):
-            item = {TENSOR_COLUMN_NAME: item}
         if not isinstance(item, collections.abc.Mapping):
             raise ValueError(
                 "Returned elements of an TableBlock must be of type `dict`, "
@@ -178,10 +173,6 @@ class TableBlockAccessor(BlockAccessor):
     @staticmethod
     def _munge_conflict(name, count):
         return f"{name}_{count + 1}"
-
-    @staticmethod
-    def _build_tensor_row(row: Mapping, row_idx: int) -> np.ndarray:
-        raise NotImplementedError
 
     def to_default(self) -> Block:
         # Always promote Arrow blocks to pandas for consistency, since
