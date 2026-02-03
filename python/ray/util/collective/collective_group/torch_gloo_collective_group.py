@@ -144,18 +144,6 @@ class TorchGLOOGroup(BaseGroup):
                 time.sleep(0.05)
 
     def destroy_group(self):
-        """GC the communicators."""
-        # Clean up rendezvous metadata if it still exists.
-        # This is a safety measure in case cleanup during initialization failed.
-        metadata_key = get_master_address_metadata_key(self._group_name)
-        try:
-            internal_kv._internal_kv_del(metadata_key)
-        except Exception as e:
-            # Ignore errors during cleanup (e.g., key already deleted or not accessible)
-            logger.warning(
-                f"Failed to delete rendezvous key '{metadata_key}' during destroy: {e}"
-            )
-
         # Destroy only the subgroup for non-default groups. Allow default to be torn down explicitly.
         if self._is_default_group:
             # Destroy default process group to allow re-init in tests that recreate the same group.
