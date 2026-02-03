@@ -225,16 +225,7 @@ def test_union_operator_throttling_disabled(ray_start_regular_shared):
     so it should not be allocated resources.
     """
     ctx = DataContext.get_current()
-
-    # Create input buffers with some test data
-    input_bundles_1 = make_ref_bundles([[1, 2, 3]])
-    input_bundles_2 = make_ref_bundles([[4, 5, 6]])
-
-    input_op1 = InputDataBuffer(ctx, input_bundles_1)
-    input_op2 = InputDataBuffer(ctx, input_bundles_2)
-
-    # Create union operator
-    union_op = UnionOperator(ctx, input_op1, input_op2)
+    union_op = UnionOperator(ctx)
 
     # Verify that throttling_disabled() returns True
     assert union_op.throttling_disabled() is True
