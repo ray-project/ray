@@ -548,13 +548,13 @@ class TestEnvRunnerSampling:
         with pytest.raises(AssertionError):
             env_runner.sample(num_timesteps=10, num_episodes=10, random_actions=True)
 
-    def test_sample_negative_timesteps_error(self, env_runner, runner_type):
-        """Test that negative num_timesteps raises error (SingleAgent only)."""
+    def test_sample_negative_timesteps_error(self, env_runner):
+        """Test that negative num_timesteps raises error."""
         with pytest.raises(AssertionError):
             env_runner.sample(num_timesteps=-1, random_actions=True)
 
-    def test_sample_negative_episodes_error(self, env_runner, runner_type):
-        """Test that negative num_episodes raises error (SingleAgent only)."""
+    def test_sample_negative_episodes_error(self, env_runner):
+        """Test that negative num_episodes raises error."""
         with pytest.raises(AssertionError):
             env_runner.sample(num_episodes=-1, random_actions=True)
 
