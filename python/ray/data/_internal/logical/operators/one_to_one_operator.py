@@ -47,16 +47,11 @@ class AbstractOneToOne(LogicalOperator):
             input_dependencies=[input_op] if input_op else [],
             num_outputs=num_outputs,
         )
-        self._can_modify_num_rows = can_modify_num_rows
+        self.can_modify_num_rows = can_modify_num_rows
 
     @property
     def input_dependency(self) -> LogicalOperator:
         return self.input_dependencies[0]
-
-    def can_modify_num_rows(self) -> bool:
-        """Whether this operator can modify the number of rows,
-        i.e. number of input rows != number of output rows."""
-        return self._can_modify_num_rows
 
 
 class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
@@ -72,7 +67,7 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
             input_op=input_op,
             can_modify_num_rows=True,
         )
-        self._limit = limit
+        self.limit = limit
 
     def infer_metadata(self) -> BlockMetadata:
         return BlockMetadata(
@@ -94,7 +89,7 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
         assert isinstance(self.input_dependencies[0], LogicalOperator)
         input_rows = self.input_dependencies[0].infer_metadata().num_rows
         if input_rows is not None:
-            return min(input_rows, self._limit)
+            return min(input_rows, self.limit)
         else:
             return None
 
