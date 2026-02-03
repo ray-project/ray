@@ -1459,8 +1459,8 @@ py_test(
     srcs = ["tests/test_push_based_shuffle.py"],
     tags = [
         "data_non_parallel",
+        "data_non_parallel_postmerge_only",
         "exclusive",
-        "skip-on-premerge",
         "team:data",
     ],
     deps = [
