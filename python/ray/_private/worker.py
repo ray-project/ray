@@ -99,6 +99,7 @@ from ray.exceptions import (
 )
 from ray.experimental import GetTensorOptions, tqdm_ray
 from ray.experimental.compiled_dag_ref import CompiledDAGRef
+from ray.experimental.gpu_object_manager.util import PutTensorOptions
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_get,
@@ -811,7 +812,7 @@ class Worker:
         value: Any,
         owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
-        _tensor_transport: Optional[str] = None,
+        _tensor_transport: Optional[PutTensorOptions] = None,
     ):
         """Put value in the local object store.
 
@@ -828,7 +829,9 @@ class Worker:
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
                 ray.experimental.channel API before readers can read.
-            _tensor_transport: [Alpha] The tensor transport backend to use. Currently, this only supports one-sided transports like "nixl".
+            _tensor_transport: [Alpha] Options for tensor transport including
+                transport backend and cache_metadata flag. Currently only
+                supports one-sided transports like "nixl".
         Returns:
             ObjectRef: The object ref the object was put under.
 
@@ -846,16 +849,16 @@ class Worker:
             )
         tensors = None
         from ray.experimental.gpu_object_manager.util import (
-            normalize_and_validate_tensor_transport,
             validate_one_sided,
+            validate_put_tensor_options,
         )
 
         tensor_transport = None
+        cache_metadata = False
         if _tensor_transport is not None:
-            tensor_transport = normalize_and_validate_tensor_transport(
-                _tensor_transport
-            )
+            tensor_transport = validate_put_tensor_options(_tensor_transport)
             validate_one_sided(tensor_transport, "ray.put")
+            cache_metadata = _tensor_transport.cache_metadata
         try:
             if tensor_transport is not None:
                 (
@@ -893,7 +896,9 @@ class Worker:
             tensor_transport=tensor_transport,
         )
         if tensors:
-            self.gpu_object_manager.put_object(ret, tensor_transport, tensors)
+            self.gpu_object_manager.put_object(
+                ret, tensor_transport, tensors, cache_metadata=cache_metadata
+            )
         return ret
 
     def raise_errors(self, serialized_objects, object_refs):
@@ -3008,7 +3013,7 @@ def put(
     value: Any,
     *,
     _owner: Optional["ray.actor.ActorHandle"] = None,
-    _tensor_transport: Optional[str] = None,
+    _tensor_transport: Optional[PutTensorOptions] = None,
 ) -> "ray.ObjectRef":
     """Store an object in the object store.
 
@@ -3028,8 +3033,8 @@ def put(
             object prior to the object creator exiting, otherwise the reference
             will still be lost. *Note that this argument is an experimental API
             and should be avoided if possible.*
-        _tensor_transport: [Alpha] The tensor transport to use for the GPU object.
-            Currently, this only supports one-sided tensor transports such as "nixl".
+        _tensor_transport: [Alpha] Options for tensor transport. Use PutTensorOptions
+            to specify the transport (e.g., "nixl") and optional cache_metadata flag.
             When this is None (default), Ray will use the object store.
 
     Returns:

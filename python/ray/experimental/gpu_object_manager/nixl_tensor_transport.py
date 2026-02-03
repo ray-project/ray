@@ -41,6 +41,7 @@ class TensorDesc:
     reg_desc: Any  # nixlRegDList
     metadata_count: int  # tracks the number of NIXL metadata containing the tensor
     nbytes: int  # the number of bytes in the tensor
+    cache_metadata: bool = False  # if True, never deregister - keep for reuse
 
 
 class NixlTensorTransport(TensorTransportManager):
@@ -116,13 +117,16 @@ class NixlTensorTransport(TensorTransportManager):
         self,
         obj_id: str,
         gpu_object: List["torch.Tensor"],
+        cache_metadata: bool,
     ) -> NixlTransportMetadata:
         import torch
 
         with self._cache_lock:
             device = None
             tensor_meta = []
-            duplicate_meta = self._record_and_get_meta_if_duplicate(obj_id, gpu_object)
+            duplicate_meta = self._record_and_get_meta_if_duplicate(
+                obj_id, gpu_object, cache_metadata
+            )
             if duplicate_meta is not None:
                 return duplicate_meta
 
@@ -156,7 +160,7 @@ class NixlTensorTransport(TensorTransportManager):
                         torch.cuda.synchronize(dev)
 
                 nixl_agent = self.get_nixl_agent()
-                self._add_tensor_descs(gpu_object)
+                self._add_tensor_descs(gpu_object, cache_metadata)
                 xfer_descs = nixl_agent.get_xfer_descs(gpu_object)
                 serialized_descs = nixl_agent.get_serialized_descs(xfer_descs)
                 agent_meta = nixl_agent.get_agent_metadata()
@@ -298,8 +302,14 @@ class NixlTensorTransport(TensorTransportManager):
                     tensor_desc = self._tensor_desc_cache[key]
                     tensor_desc.metadata_count -= 1
                     if tensor_desc.metadata_count == 0:
-                        self._tensor_desc_cache.pop(key)
-                        self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
+                        if tensor_desc.cache_metadata:
+                            # If cache_metadata is True, we never deregister the pinned memory and keep it for reuse.
+                            pass
+                        else:
+                            self._tensor_desc_cache.pop(key)
+                            self.get_nixl_agent().deregister_memory(
+                                tensor_desc.reg_desc
+                            )
 
     def abort_transport(
         self,
@@ -311,7 +321,10 @@ class NixlTensorTransport(TensorTransportManager):
 
     # NOTE: The below methods are intended to be used internally hence they assume the caller is already holding the cache lock.
     def _record_and_get_meta_if_duplicate(
-        self, src_obj_id: str, src_gpu_object: List["torch.Tensor"]
+        self,
+        src_obj_id: str,
+        src_gpu_object: List["torch.Tensor"],
+        cache_metadata: bool = False,
     ) -> Optional[NixlTransportMetadata]:
         """
         Record the NIXL managed meta for the given object ID if it is a duplicate of another object, and return the meta if it is.
@@ -330,7 +343,7 @@ class NixlTensorTransport(TensorTransportManager):
                     f"NIXL transport metadata for object id {duplicate_obj_id} not found"
                 )
             self._put_meta(src_obj_id, meta)
-            self._add_tensor_descs(src_gpu_object)
+            self._add_tensor_descs(src_gpu_object, cache_metadata)
             return meta
         return None
 
@@ -352,7 +365,7 @@ class NixlTensorTransport(TensorTransportManager):
         """
         self._managed_meta_nixl[object_id] = meta
 
-    def _add_tensor_descs(self, tensors: List["torch.Tensor"]):
+    def _add_tensor_descs(self, tensors: List["torch.Tensor"], cache_metadata: bool):
         """
         If this is the first time the tensor is being added, we register the memory with NIXL.
         Otherwise, we increment the reference count.
@@ -367,4 +380,9 @@ class NixlTensorTransport(TensorTransportManager):
                 self._tensor_desc_cache[key].metadata_count += 1
             else:
                 reg_desc = self.get_nixl_agent().register_memory([tensor])
-                self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1, tensor.nbytes)
+                self._tensor_desc_cache[key] = TensorDesc(
+                    reg_desc=reg_desc,
+                    metadata_count=1,
+                    nbytes=tensor.nbytes,
+                    cache_metadata=cache_metadata,
+                )

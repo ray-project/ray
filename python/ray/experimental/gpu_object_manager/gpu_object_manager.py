@@ -86,7 +86,7 @@ def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
         tensor: The tensor to wait to be freed. This should be a tensor that was
             previously returned by a task annotated with
             `@ray.method(tensor_transport=...)` or stored via
-            `ray.put(_tensor_transport="...")`.
+            `ray.put(_tensor_transport=PutTensorOptions(...))`.
         timeout: The timeout in seconds to wait for all references to the tensor
             to go out of scope. Set to None to wait indefinitely. Note that if
             None is used, this function could hang if the `ray.ObjectRefs` that
@@ -737,6 +737,7 @@ class GPUObjectManager:
         obj_ref: ObjectRef,
         tensor_transport: str,
         tensors: List["torch.Tensor"],
+        cache_metadata: bool,
     ):
         """
         Put the GPU object into the GPU object manager.
@@ -745,10 +746,11 @@ class GPUObjectManager:
             obj_ref: The object ref of the GPU object.
             tensor_transport: The tensor transport backend to use.
             tensors: The tensors to put into the GPU object manager.
+            cache_metadata: If True, cache the memory registration for reuse.
         """
         src_actor = ray.get_runtime_context().current_actor
         tensor_transport_meta = self.gpu_object_store.add_object_primary(
-            obj_ref.hex(), tensors, tensor_transport
+            obj_ref.hex(), tensors, tensor_transport, cache_metadata=cache_metadata
         )
         self.add_gpu_object_ref(
             obj_ref,
