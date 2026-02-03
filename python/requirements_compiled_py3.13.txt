@@ -90,7 +90,7 @@ antlr4-python3-runtime==4.11.1
     # via
     #   fugue-sql-antlr
     #   qpd
-anyio==3.7.1
+anyio==4.5.0
     # via
     #   gradio
     #   httpx

@@ -13,9 +13,9 @@ steps:
       - "3.10"
       - "3.12"
     env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_build-py{{matrix}}
-      IMAGE_TO: corebuild-py{{matrix}}
       PYTHON: "{{matrix}}"
+      BASE_TYPE: "build"
+      BUILD_VARIANT: "build"
     depends_on: oss-ci-base_build-multipy
 
   - name: coregpubuild-multipy
@@ -24,10 +24,10 @@ steps:
     tags: cibase
     depends_on: oss-ci-base_gpu-multipy
     env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu-py{{matrix}}
-      IMAGE_TO: coregpubuild-py{{matrix}}
-      RAYCI_IS_GPU_BUILD: "true"
       PYTHON: "{{matrix}}"
+      BASE_TYPE: "gpu"
+      BUILD_VARIANT: "gpubuild"
+      RAYCI_IS_GPU_BUILD: "true"
     matrix:
       - "3.10"
 

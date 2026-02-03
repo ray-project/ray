@@ -557,6 +557,10 @@ class Algorithm(Checkpointable, Trainable):
         self._metrics_callback_on_train_result_time: Optional[Histogram] = None
         self._metrics_callback_on_evaluate_start_time: Optional[Histogram] = None
         self._metrics_callback_on_evaluate_end_time: Optional[Histogram] = None
+        self._metrics_callback_on_evaluate_offline_start_time: Optional[
+            Histogram
+        ] = None
+        self._metrics_callback_on_evaluate_offline_end_time: Optional[Histogram] = None
 
         # Ray metrics - IMPALA
         self._metrics_impala_training_step_time: Optional[Histogram] = None
@@ -717,6 +721,26 @@ class Algorithm(Checkpointable, Trainable):
             tag_keys=("rllib",),
         )
         self._metrics_callback_on_evaluate_end_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_callback_on_evaluate_offline_start_time = Histogram(
+            name="rllib_algorithm_callback_on_evaluate_offline_start_time",
+            description="Time spent in callback 'on_evaluate_offline_start()'",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_callback_on_evaluate_offline_start_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_callback_on_evaluate_offline_end_time = Histogram(
+            name="rllib_algorithm_callback_on_evaluate_offline_end_time",
+            description="Time spent in callback 'on_evaluate_offline_end()'",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_callback_on_evaluate_offline_end_time.set_default_tags(
             {"rllib": self.__class__.__name__}
         )
 
@@ -1322,7 +1346,7 @@ class Algorithm(Checkpointable, Trainable):
         return results
 
     @PublicAPI
-    def evaluate_offline(self):
+    def evaluate_offline(self) -> ResultDict:
         """Evaluates current policy offline under `evaluation_config` settings.
 
         Returns:
@@ -1338,25 +1362,38 @@ class Algorithm(Checkpointable, Trainable):
 
         # TODO (simon): Check, how we can sync without a local runner. Also,
         # connectors are in the data pipeline not directly in the runner applied.
+        # NOTE (simon): Connector synching must actually happen in the OfflinePreLearner/OfflinePreEvaluation
         # if self.config.broadcast_offline_eval_runner_states:
         #     # TODO (simon): Create offline equivalent.
         #     with self.metrics.log_time(TIMERS, SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER):
         #         self.offline_eval_runner_group.sync_runner_states(
         #             from_runner=
         #         )
-        make_callback(
-            "on_evaluate_offline_start",
-            callbacks_objects=self.callbacks,
-            callbacks_functions=self.config.callbacks_on_evaluate_offline_start,
-            kwargs=dict(algorithm=self, metrics_logger=self.metrics),
-        )
+        with TimerAndPrometheusLogger(
+            self._metrics_callback_on_evaluate_offline_start_time
+        ):
+            make_callback(
+                "on_evaluate_offline_start",
+                callbacks_objects=self.callbacks,
+                callbacks_functions=self.config.callbacks_on_evaluate_offline_start,
+                kwargs=dict(algorithm=self, metrics_logger=self.metrics),
+            )
 
         # Evaluate with fixed duration.
         if self.offline_eval_runner_group.num_healthy_remote_runners > 0:
             self._evaluate_offline_with_fixed_duration()
         else:
             self._evaluate_offline_on_local_runner()
-        # Reduce the evaluation results.
+
+        # Check, whether we have any results.
+        if log_once("no_offline_eval_results") and not self.metrics.peek(
+            (EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS)
+        ):
+            logger.warning(
+                "No offline evaluation results found for this iteration. "
+                "This can happen if the offline evaluation runner(s) is/are not healthy."
+            )
+        # Peek the offline evaluation results from the metrics store.
         eval_results = self.metrics.peek(
             (EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS),
             default={},
@@ -1364,16 +1401,19 @@ class Algorithm(Checkpointable, Trainable):
         )
 
         # Trigger `on_evaluate_offline_end` callback.
-        make_callback(
-            "on_evaluate_offline_end",
-            callbacks_objects=self.callbacks,
-            callbacks_functions=self.config.callbacks_on_evaluate_offline_end,
-            kwargs=dict(
-                algorithm=self,
-                metrics_logger=self.metrics,
-                evaluation_metrics=eval_results,
-            ),
-        )
+        with TimerAndPrometheusLogger(
+            self._metrics_callback_on_evaluate_offline_end_time
+        ):
+            make_callback(
+                "on_evaluate_offline_end",
+                callbacks_objects=self.callbacks,
+                callbacks_functions=self.config.callbacks_on_evaluate_offline_end,
+                kwargs=dict(
+                    algorithm=self,
+                    metrics_logger=self.metrics,
+                    evaluation_metrics=eval_results,
+                ),
+            )
 
         # Also return the results here for convenience.
         return {OFFLINE_EVAL_RUNNER_RESULTS: eval_results}
@@ -1528,15 +1568,18 @@ class Algorithm(Checkpointable, Trainable):
                 eval_results = {}
 
             if self.config.enable_env_runner_and_connector_v2:
+                if log_once("no_eval_results") and not self.metrics.peek(
+                    (EVALUATION_RESULTS, ENV_RUNNER_RESULTS)
+                ):
+                    logger.warning(
+                        "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
+                    )
+                # Peek the results here from the metrics store if requested.
                 eval_results = self.metrics.peek(
                     key=EVALUATION_RESULTS,
                     default={},
                     latest_merged_only=True,
                 )
-                if log_once("no_eval_results") and not eval_results:
-                    logger.warning(
-                        "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
-                    )
             else:
                 eval_results = {ENV_RUNNER_RESULTS: eval_results}
                 eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
@@ -3339,6 +3382,12 @@ class Algorithm(Checkpointable, Trainable):
         ):
             self.eval_env_runner_group.stop()
 
+        if (
+            hasattr(self, "offline_eval_runner_group")
+            and self.offline_eval_runner_group is not None
+        ):
+            self.offline_eval_runner_group.stop()
+
     @OverrideToImplementCustomLogic
     @classmethod
     @override(Trainable)
@@ -3796,12 +3845,12 @@ class Algorithm(Checkpointable, Trainable):
             if self.config.enable_env_runner_and_connector_v2:
                 with self.metrics.log_time((TIMERS, EVALUATION_ITERATION_TIMER)):
                     eval_results = self.evaluate(
-                        parallel_train_future=parallel_train_future
+                        parallel_train_future=parallel_train_future,
                     )
             else:
                 with self._timers[EVALUATION_ITERATION_TIMER]:
                     eval_results = self.evaluate(
-                        parallel_train_future=parallel_train_future
+                        parallel_train_future=parallel_train_future,
                     )
                 self._timers[EVALUATION_ITERATION_TIMER].push_units_processed(
                     self._counters[NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER]

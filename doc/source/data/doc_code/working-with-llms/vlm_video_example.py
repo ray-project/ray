@@ -58,9 +58,9 @@ video_processor_config = vLLMEngineProcessorConfig(
             allowed_local_media_path="/tmp",
         ),
     },
-    chat_template_stage={"enabled": True},
-    tokenize_stage={"enabled": True},
-    detokenize_stage={"enabled": True},
+    chat_template_stage=True,
+    tokenize_stage=True,
+    detokenize_stage=True,
 )
 # __vlm_video_config_example_end__
 
@@ -123,6 +123,7 @@ def video_postprocess(row: dict) -> dict:
 
 
 def load_video_dataset():
+# __vlm_video_load_dataset_example_start__
     """
     Load video dataset from ShareGPTVideo Hugging Face dataset.
     """
@@ -166,7 +167,7 @@ def load_video_dataset():
     except Exception as e:
         print(f"Error loading dataset: {e}")
         return None
-
+# __vlm_video_load_dataset_example_end__
 
 def create_vlm_video_config():
     """Create VLM video configuration."""
@@ -188,13 +189,14 @@ def create_vlm_video_config():
                 allowed_local_media_path="/tmp",
             ),
         },
-        chat_template_stage={"enabled": True},
-        tokenize_stage={"enabled": True},
-        detokenize_stage={"enabled": True},
+        chat_template_stage=True,
+        tokenize_stage=True,
+        detokenize_stage=True,
     )
 
 
 def run_vlm_video_example():
+# __vlm_video_run_example_start__
     """Run the complete VLM video example workflow."""
     config = create_vlm_video_config()
     video_dataset = load_video_dataset()
@@ -210,7 +212,7 @@ def run_vlm_video_example():
         print(f"Has multimodal support: {config.prepare_multimodal_stage.get('enabled', False)}")
         result = processor(video_dataset).take_all()
         return config, processor, result
-    # __vlm_video_run_example_end__
+# __vlm_video_run_example_end__
     return None, None, None
 
 

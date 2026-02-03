@@ -17,6 +17,7 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -1247,9 +1248,9 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestStopWaitsForInflightThenFlus
       static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
           ->mock_task_accessor;
   ray::rpc::StatusCallback gcs_callback;
-  bool gcs_callback_set = false;
+  std::atomic_bool gcs_callback_set = false;
   ray::rpc::StatusCallback gcs_callback_2;
-  bool gcs_callback_2_set = false;
+  std::atomic_bool gcs_callback_2_set = false;
 
   if (to_gcs) {
     // Expect 2 calls: first from FlushEvents(), second from Stop() after waiting
@@ -1278,9 +1279,9 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestStopWaitsForInflightThenFlus
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
   rpc::ClientCallback<rpc::events::AddEventsReply> aggregator_callback;
-  bool aggregator_callback_set = false;
+  std::atomic_bool aggregator_callback_set = false;
   rpc::ClientCallback<rpc::events::AddEventsReply> aggregator_callback_2;
-  bool aggregator_callback_2_set = false;
+  std::atomic_bool aggregator_callback_2_set = false;
 
   if (to_aggregator) {
     // Expect 2 calls: first from FlushEvents(), second from Stop() after waiting
@@ -1316,11 +1317,11 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestStopWaitsForInflightThenFlus
 
   // Complete the first in-flight gRPC calls - this unblocks Stop() to do the final flush
   if (to_gcs) {
-    ASSERT_TRUE(gcs_callback_set);
+    ASSERT_TRUE(gcs_callback_set.load());
     gcs_callback(Status::OK());
   }
   if (to_aggregator) {
-    ASSERT_TRUE(aggregator_callback_set);
+    ASSERT_TRUE(aggregator_callback_set.load());
     aggregator_callback(Status::OK(), rpc::events::AddEventsReply{});
   }
 
@@ -1329,11 +1330,11 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestStopWaitsForInflightThenFlus
 
   // Complete the second gRPC calls from the final flush
   if (to_gcs) {
-    ASSERT_TRUE(gcs_callback_2_set);
+    ASSERT_TRUE(gcs_callback_2_set.load());
     gcs_callback_2(Status::OK());
   }
   if (to_aggregator) {
-    ASSERT_TRUE(aggregator_callback_2_set);
+    ASSERT_TRUE(aggregator_callback_2_set.load());
     aggregator_callback_2(Status::OK(), rpc::events::AddEventsReply{});
   }
 

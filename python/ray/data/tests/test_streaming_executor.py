@@ -1037,15 +1037,15 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
 
     assert len(logical_ops) == 3
     assert isinstance(logical_ops[0], Read)
-    datasource = logical_ops[0]._datasource
+    datasource = logical_ops[0].datasource
     assert isinstance(datasource, ParquetDatasource)
     assert datasource._source_paths == input_path
 
     assert isinstance(logical_ops[1], MapRows)
-    assert logical_ops[1]._fn == udf
+    assert logical_ops[1].fn == udf
 
     assert isinstance(logical_ops[2], Write)
-    datasink = logical_ops[2]._datasink_or_legacy_datasource
+    datasink = logical_ops[2].datasink_or_legacy_datasource
     assert isinstance(datasink, ParquetDatasink)
     assert datasink.unresolved_path == output_path
 

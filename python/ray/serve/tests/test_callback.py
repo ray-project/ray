@@ -82,10 +82,6 @@ def ray_instance(request):
     except AttributeError:
         requested_env_vars = {}
 
-    serve.shutdown()
-    if ray.is_initialized():
-        ray.shutdown()
-
     os.environ.update(requested_env_vars)
     importlib.reload(ray.serve._private.constants)
     importlib.reload(ray.serve._private.controller)

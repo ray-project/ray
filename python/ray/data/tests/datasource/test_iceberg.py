@@ -118,6 +118,29 @@ def pyiceberg_table():
     table.delete(delete_filter=pyi_expr.GreaterThanOrEqual("col_a", 101))
 
 
+@pytest.fixture
+def fast_retry_config():
+    """Configure DataContext for fast retry testing."""
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    iceberg_config = ctx.iceberg_config
+    original_max_attempts = iceberg_config.write_file_max_attempts
+    original_max_backoff = iceberg_config.write_file_retry_max_backoff_s
+    original_errors = ctx.retried_io_errors
+
+    iceberg_config.write_file_max_attempts = 3
+    iceberg_config.write_file_retry_max_backoff_s = 1
+    ctx.retried_io_errors = list(original_errors) + ["TestTransientError"]
+
+    yield ctx
+
+    # Restore original settings
+    iceberg_config.write_file_max_attempts = original_max_attempts
+    iceberg_config.write_file_retry_max_backoff_s = original_max_backoff
+    ctx.retried_io_errors = original_errors
+
+
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
@@ -1565,6 +1588,64 @@ class TestSchemaEvolutionWithModes:
             }
         )
         assert rows_same(result, expected)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_write_retry_on_transient_error(pyiceberg_table, fast_retry_config):
+    """Test that transient errors during file writes trigger retries."""
+    from unittest.mock import patch
+
+    from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
+    from ray.data._internal.execution.interfaces import TaskContext
+
+    # Create datasink and initialize it
+    datasink = IcebergDatasink(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    datasink.on_write_start()
+
+    # Track call count to simulate transient failures
+    call_count = {"count": 0}
+
+    # Import original function before patching
+    from pyiceberg.io.pyarrow import _dataframe_to_data_files
+
+    original_func = _dataframe_to_data_files
+
+    def flaky_dataframe_to_data_files(*args, **kwargs):
+        call_count["count"] += 1
+        if call_count["count"] <= 2:
+            # Fail first 2 attempts with a retryable error
+            raise IOError("TestTransientError: simulated transient failure")
+        # Succeed on 3rd attempt
+        return original_func(*args, **kwargs)
+
+    # Create test data
+    data = pa.Table.from_pydict(
+        {"col_a": [200, 201], "col_b": ["x", "y"], "col_c": [5, 5]},
+        schema=_SCHEMA,
+    )
+
+    # Patch at pyiceberg module level and call write directly
+    with patch(
+        "pyiceberg.io.pyarrow._dataframe_to_data_files",
+        side_effect=flaky_dataframe_to_data_files,
+    ):
+        # Call write directly (bypassing Ray workers)
+        task_ctx = TaskContext(task_idx=0, op_name="Write")
+        result = datasink.write([data], task_ctx)
+
+    # Verify retries occurred (called 3 times: 2 failures + 1 success)
+    assert (
+        call_count["count"] == 3
+    ), f"Expected 3 calls (2 retries + 1 success), got {call_count['count']}"
+
+    # Verify write result has data files
+    assert len(result.data_files) > 0, "Expected data files in result"
 
 
 if __name__ == "__main__":
