@@ -320,7 +320,8 @@ class MLflowTest(unittest.TestCase):
         mlflow.sklearn.save_model(None, "model_directory")
 
     @patch("ray.air.integrations.mlflow._MLflowLoggerUtil", Mock_MLflowLoggerUtil)
-    def testMlFlowLoggerWithRemoteStorage(self):
+    @patch("pyarrow.fs.copy_files")
+    def testMlFlowLoggerWithRemoteStorage(self, mock_copy_files):
         """Test that artifacts work with remote storage filesystems."""
         clear_env_vars()
         trial_config = {"par1": "a", "par2": "b"}
@@ -344,6 +345,7 @@ class MLflowTest(unittest.TestCase):
         
         self.assertTrue(logger.mlflow_util.artifact_saved)
 
+        mock_copy_files.assert_called_once()
 
 class MLflowUtilTest(unittest.TestCase):
     def setUp(self):

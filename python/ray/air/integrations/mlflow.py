@@ -336,8 +336,6 @@ class MLflowLoggerCallback(LoggerCallback):
             if fs.type_name in ("local", "file"):
                 self.mlflow_util.save_artifacts(run_id=run_id, dir=trial.path)
             else:
-                import tempfile
-                import pyarrow.fs
                 with tempfile.TemporaryDirectory() as tmpdir:
                     pyarrow.fs.copy_files(
                         trial.path,
