@@ -102,6 +102,10 @@ RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS = env_integer(
 # TPU device plugin metric address should be in the format "{HOST_IP}:2112"
 TPU_DEVICE_PLUGIN_ADDR = os.environ.get("TPU_DEVICE_PLUGIN_ADDR", None)
 
+# Whether to use psutil.memory_full_info to collect uss metric.
+# memory_full_info is most accurate but sometime very expensive and end up degrading main application
+# due to the page lock it introduced. See https://github.com/ray-project/ray/issues/55117 for more detail.
+USE_MEMORY_FULL_INFO_FOR_USS_METRIC = os.environ.get("USE_MEMORY_FULL_INFO_FOR_USS_METRIC", "1") == "1"
 
 def recursive_asdict(o):
     if isinstance(o, tuple) and hasattr(o, "_asdict"):
@@ -378,15 +382,26 @@ METRICS_GAUGES = {
     ),
 }
 
-PSUTIL_PROCESS_ATTRS = [
-    "pid",
-    "create_time",
-    "cpu_percent",
-    "cpu_times",
-    "cmdline",
-    "memory_info",
-    "memory_full_info",
-] + (["num_fds"] if sys.platform != "win32" else [])
+PSUTIL_PROCESS_ATTRS = (
+    [
+        "pid",
+        "create_time",
+        "cpu_percent",
+        "cpu_times",
+        "cmdline",
+        "memory_info",
+    ]
+    + (
+        ["num_fds"]
+        if sys.platform != "win32"
+        else []
+    )
+    + (
+        ["memory_full_info"]
+        if USE_MEMORY_FULL_INFO_FOR_USS_METRIC
+        else []
+    )
+)
 
 
 class ReporterAgent(
@@ -1227,6 +1242,14 @@ class ReporterAgent(
             mem_full_info = stat.get("memory_full_info")
             if mem_full_info is not None:
                 total_uss += float(mem_full_info.uss) / 1.0e6
+            else:
+                # If memory_full_info is not collected, approximated USS from memory_info
+                if hasattr(mem, "shared"):
+                    # Linux: USS ≈ RSS - shared
+                    total_uss += float(mem.rss - mem.shared) / 1.0e6
+                elif hasattr(mem, "private"):
+                    # Windows: private IS USS
+                    total_uss += float(mem.private) / 1.0e6
             total_num_fds += int(stat.get("num_fds", 0))
 
         tags = {"ip": self._ip, "Component": component_name}
