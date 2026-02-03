@@ -47,6 +47,10 @@ class RayEventRecorder : public RayEventRecorderInterface {
   // ignored.
   void StartExportingEvents() override;
 
+  // Stop exporting events and perform a final flush to ensure all buffered events
+  // are sent before shutdown. This should be called during graceful shutdown.
+  void StopExportingEvents() override;
+
   // Add a vector of data to the internal buffer. Data in the buffer will be sent to
   // the event aggregator periodically.
   void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list) override;
@@ -69,8 +73,18 @@ class RayEventRecorder : public RayEventRecorderInterface {
   ray::observability::MetricInterface &dropped_events_counter_;
   // Flag to track if exporting has been started
   bool exporting_started_ ABSL_GUARDED_BY(mutex_) = false;
+  // Flag to track if the recorder is enabled and accepting new events.
+  // Set to false during shutdown to prevent event loss.
+  bool enabled_ ABSL_GUARDED_BY(mutex_) = true;
   // Node ID to be set on all events
   const NodeID node_id_;
+
+  // Flag to track if there's an in-flight gRPC call
+  std::atomic<bool> grpc_in_progress_ = false;
+  // Mutex and condition variable for waiting on gRPC completion during shutdown
+  absl::Mutex grpc_completion_mutex_;
+  absl::CondVar grpc_completion_cv_;
+
   // Export events to the event aggregator. This is called periodically by the
   // PeriodicalRunner.
   void ExportEvents();

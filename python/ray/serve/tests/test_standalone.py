@@ -44,18 +44,15 @@ def _get_random_port() -> int:
 def ray_cluster():
     if cluster_not_supported:
         pytest.skip("Cluster not supported")
-    serve.shutdown()
-    if ray.is_initialized():
-        ray.shutdown()
     cluster = Cluster()
-    yield cluster
+    yield Cluster()
     serve.shutdown()
     ray.shutdown()
     cluster.shutdown()
 
 
 @pytest.fixture()
-def lower_slow_startup_threshold_and_reset(ray_shutdown):
+def lower_slow_startup_threshold_and_reset():
     original_slow_startup_warning_s = os.environ.get("SERVE_SLOW_STARTUP_WARNING_S")
     original_slow_startup_warning_period_s = os.environ.get(
         "SERVE_SLOW_STARTUP_WARNING_PERIOD_S"
@@ -343,9 +340,9 @@ async def test_multi_app_shutdown_actors_async(ray_shutdown):
 
 
 def test_registered_cleanup_actors_killed_on_shutdown(ray_shutdown):
-    """Test that actors registered via register_shutdown_cleanup_actor are killed.
+    """Test that actors registered via _register_shutdown_cleanup_actor are killed.
 
-    This tests the generic actor registration API that allows deployments to register
+    This tests the internal actor registration API that allows deployments to register
     auxiliary actors (like caches, coordinators, etc.) for cleanup on serve.shutdown().
     """
     ray.init(num_cpus=4)
@@ -367,7 +364,7 @@ def test_registered_cleanup_actors_killed_on_shutdown(ray_shutdown):
 
     # Register the actor with the controller for cleanup
     controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
-    ray.get(controller.register_shutdown_cleanup_actor.remote(dummy))
+    ray.get(controller._register_shutdown_cleanup_actor.remote(dummy))
 
     # Shutdown serve
     serve.shutdown()
@@ -383,7 +380,7 @@ def test_registered_cleanup_actors_killed_on_shutdown(ray_shutdown):
     wait_for_condition(check_actor_dead)
 
 
-def test_deployment(ray_shutdown, ray_cluster):
+def test_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
     cluster = ray_cluster
@@ -463,7 +460,7 @@ def _reuse_port_is_available():
         "This test can only be ran when port sharing is supported."
     ),
 )
-def test_multiple_routers(ray_shutdown, ray_cluster):
+def test_multiple_routers(ray_cluster):
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)
     cluster.add_node(num_cpus=4)
@@ -655,7 +652,7 @@ def test_no_http(ray_shutdown):
         serve.shutdown()
 
 
-def test_http_head_only(ray_shutdown, ray_cluster):
+def test_http_head_only(ray_cluster):
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4, dashboard_port=_get_random_port())
     cluster.add_node(num_cpus=4)
@@ -780,7 +777,7 @@ def test_serve_start_different_http_checkpoint_options_warning(
             assert test_msg in msg
 
 
-def test_recovering_controller_no_redeploy(ray_shutdown):
+def test_recovering_controller_no_redeploy():
     """Ensure controller doesn't redeploy running deployments when recovering."""
     ray_context = ray.init(namespace="x")
     address = ray_context.address_info["address"]
