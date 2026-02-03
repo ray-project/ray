@@ -367,13 +367,124 @@ def test_ref_bundle_str():
   schema=test_schema,
   owns_blocks=True,
   blocks=(
-    0: 10 rows, 100 bytes, slice=None (full block)
-    1: 5 rows, 50 bytes, slice=None (full block)
-    2: 3 rows, 30 bytes, slice=BlockSlice(start_offset=0, end_offset=3)
+    0: 10 rows, 100.0B, slice=None (full block)
+    1: 5 rows, 50.0B, slice=None (full block)
+    2: 3 rows, 30.0B, slice=BlockSlice(start_offset=0, end_offset=3)
   )
 )"""
 
     assert str(bundle) == expected
+
+
+def test_ref_bundle_str_with_pyarrow_schema():
+    """Test __str__ with PyArrow schema containing pandas metadata."""
+    import pandas as pd
+    import pyarrow as pa
+
+    block_ref = ObjectRef(b"1" * 28)
+    meta = BlockMetadata(num_rows=12, size_bytes=240, exec_stats=None, input_files=None)
+
+    # Create a PyArrow schema with pandas metadata (like from pd.DataFrame)
+    df = pd.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"]})
+    schema = pa.Schema.from_pandas(df, preserve_index=False)
+
+    bundle = RefBundle(
+        blocks=[(block_ref, meta)],
+        owns_blocks=False,
+        schema=schema,
+    )
+
+    result = str(bundle)
+    # Should show clean schema format without truncated pandas metadata
+    assert "id: int64, name: string" in result
+    assert "pandas:" not in result  # No pandas metadata in output
+    assert "240.0B" in result  # Human-readable bytes
+    assert "12 rows" in result
+
+
+def test_ref_bundle_str_with_none_schema():
+    """Test __str__ with None schema."""
+    block_ref = ObjectRef(b"1" * 28)
+    meta = BlockMetadata(num_rows=5, size_bytes=100, exec_stats=None, input_files=None)
+
+    bundle = RefBundle(
+        blocks=[(block_ref, meta)],
+        owns_blocks=True,
+        schema=None,
+    )
+
+    expected = """RefBundle(1 blocks,
+  5 rows,
+  schema=None,
+  owns_blocks=True,
+  blocks=(
+    0: 5 rows, 100.0B, slice=None (full block)
+  )
+)"""
+
+    assert str(bundle) == expected
+
+
+def test_ref_bundle_str_with_large_bytes():
+    """Test __str__ with various byte sizes (KiB, MiB, GiB)."""
+    block_ref_kib = ObjectRef(b"1" * 28)
+    block_ref_mib = ObjectRef(b"2" * 28)
+    block_ref_gib = ObjectRef(b"3" * 28)
+
+    meta_kib = BlockMetadata(
+        num_rows=100, size_bytes=2048, exec_stats=None, input_files=None  # 2 KiB
+    )
+    meta_mib = BlockMetadata(
+        num_rows=1000,
+        size_bytes=2 * 1024 * 1024,  # 2 MiB
+        exec_stats=None,
+        input_files=None,
+    )
+    meta_gib = BlockMetadata(
+        num_rows=10000,
+        size_bytes=3 * 1024 * 1024 * 1024,  # 3 GiB
+        exec_stats=None,
+        input_files=None,
+    )
+
+    bundle = RefBundle(
+        blocks=[
+            (block_ref_kib, meta_kib),
+            (block_ref_mib, meta_mib),
+            (block_ref_gib, meta_gib),
+        ],
+        owns_blocks=True,
+        schema=None,
+    )
+
+    result = str(bundle)
+    # Check that human-readable formats are used
+    assert "2.0KiB" in result
+    assert "2.0MiB" in result
+    assert "3.0GiB" in result
+    assert "11100 rows" in result  # Total rows
+
+
+def test_ref_bundle_str_with_pandas_schema():
+    """Test __str__ with PandasBlockSchema."""
+    from ray.data._internal.pandas_block import PandasBlockSchema
+
+    block_ref = ObjectRef(b"1" * 28)
+    meta = BlockMetadata(num_rows=10, size_bytes=500, exec_stats=None, input_files=None)
+
+    # Create a PandasBlockSchema
+    schema = PandasBlockSchema(names=["col1", "col2"], types=[int, str])
+
+    bundle = RefBundle(
+        blocks=[(block_ref, meta)],
+        owns_blocks=True,
+        schema=schema,
+    )
+
+    result = str(bundle)
+    # Should format with column names and types
+    assert "col1: int, col2: str" in result
+    assert "500.0B" in result
 
 
 def test_merge_ref_bundles():

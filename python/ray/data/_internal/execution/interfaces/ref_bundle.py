@@ -6,6 +6,7 @@ from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 
 import ray
 from .common import NodeIdStr
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data.block import Block, BlockAccessor, BlockMetadata, Schema
 from ray.data.context import DataContext
@@ -326,10 +327,22 @@ class RefBundle:
         return len(self.blocks)
 
     def __str__(self) -> str:
+        if self.schema is None:
+            schema_str = "None"
+        elif hasattr(self.schema, "names") and hasattr(self.schema, "types"):
+            # PyArrow or Pandas schema with names and types
+            fields = ", ".join(
+                f"{name}: {getattr(typ, '__name__', str(typ))}"
+                for name, typ in zip(self.schema.names, self.schema.types)
+            )
+            schema_str = f"{{{fields}}}"
+        else:
+            schema_str = str(self.schema)
+
         lines = [
             f"RefBundle({len(self.blocks)} blocks,",
             f"  {self.num_rows()} rows,",
-            f"  schema={self.schema},",
+            f"  schema={schema_str},",
             f"  owns_blocks={self.owns_blocks},",
             "  blocks=(",
         ]
@@ -343,7 +356,7 @@ class RefBundle:
                 if metadata.num_rows is not None
                 else "unknown rows"
             )
-            bytes_str = f"{metadata.size_bytes} bytes"
+            bytes_str = memory_string(metadata.size_bytes)
             slice_str = (
                 f"slice={block_slice}"
                 if block_slice is not None
