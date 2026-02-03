@@ -5,6 +5,6 @@ srcs:
   - python/deplocks/ci/data_base_depset_py$PYTHON.lock
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
-  - IMAGE_TYPE=base
+  - IMAGE_TYPE=docs
 tags:
   - cr.ray.io/rayproject/databuild-py$PYTHON

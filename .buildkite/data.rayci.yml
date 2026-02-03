@@ -31,6 +31,13 @@ steps:
       PYTHON: "{{matrix}}"
     tags: cibase
 
+  - name: datadocbuild-multipy
+    label: "wanda: datadocbuild-py3.10"
+    wanda: ci/docker/data.base.build.wanda.yaml
+    env:
+      PYTHON: "3.10"
+    tags: cibase
+
   - name: datanbuild-multipy
     wanda: ci/docker/datan.build.wanda.yaml
     env:
