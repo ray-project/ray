@@ -77,6 +77,8 @@ def validate_tensor_buffers(
             raise ValueError(
                 tensor_buffer_mismatch_msg("Device", idx, single_buffer.device, device)
             )
+        if not single_buffer.is_contiguous():
+            raise ValueError(f"Tensor buffer at index {idx} is not contiguous.")
 
 
 def __ray_recv__(
