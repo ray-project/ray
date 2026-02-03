@@ -124,23 +124,7 @@ class Download(AbstractOneToOne):
                 f"Number of URI columns ({len(uri_column_names)}) must match "
                 f"number of output columns ({len(output_bytes_column_names)})"
             )
-        self._uri_column_names = uri_column_names
-        self._output_bytes_column_names = output_bytes_column_names
-        self._ray_remote_args = ray_remote_args or {}
-        self._filesystem = filesystem
-
-    @property
-    def uri_column_names(self) -> List[str]:
-        return self._uri_column_names
-
-    @property
-    def output_bytes_column_names(self) -> List[str]:
-        return self._output_bytes_column_names
-
-    @property
-    def ray_remote_args(self) -> Dict[str, Any]:
-        return self._ray_remote_args
-
-    @property
-    def filesystem(self) -> Optional["pyarrow.fs.FileSystem"]:
-        return self._filesystem
+        self.uri_column_names = uri_column_names
+        self.output_bytes_column_names = output_bytes_column_names
+        self.ray_remote_args = ray_remote_args or {}
+        self.filesystem = filesystem
