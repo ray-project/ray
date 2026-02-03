@@ -1162,6 +1162,31 @@ def test_cast_expression_multiple_types(
     assert isinstance(result["score_int"], int)
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+def test_cast_expression_python_type_datatype_error(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
+    """Test that using Python-type-backed DataType in cast() raises a clear error."""
+    ds = ray.data.range(5)
+
+    # Using DataType(int) or DataType(str) should raise a clear error message
+    # instead of an AssertionError
+    with pytest.raises(
+        TypeError,
+        match="Python-type-backed DataType.*requires.*values.*Use.*string.*PyArrow.*DataType",
+    ):
+        ds.with_column("result", col("id").cast(DataType(int))).materialize()
+
+    with pytest.raises(
+        TypeError,
+        match="Python-type-backed DataType.*requires.*values.*Use.*string.*PyArrow.*DataType",
+    ):
+        ds.with_column("result", col("id").cast(DataType(str))).materialize()
+
+
 if __name__ == "__main__":
     import sys
 
