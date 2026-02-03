@@ -1,0 +1,2 @@
+pyarrow==21.0.0
+tensorflow-datasets==4.9.9
