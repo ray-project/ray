@@ -335,7 +335,7 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
         def get_ref(self):
             return ray.put(self.tensor_list, _tensor_transport="nixl")
 
-        def get_from_ref(self, refs):
+        def get_with_buffers(self, refs):
             tensors = ray.get(
                 refs[0],
                 _get_tensor_options=GetTensorOptions(tensor_buffers=self.tensor_list),
@@ -345,7 +345,7 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
                 assert new_tensor.data_ptr() == tensor_buffer.data_ptr()
             return True
 
-        def get_from_ref_with_wrong_buffers(self, refs):
+        def get_with_wrong_buffers(self, refs):
             wrong_tensor_buffer = [
                 torch.tensor([1, 2]).to("cuda"),
                 torch.tensor([4, 5]).to("cuda"),
@@ -361,10 +361,10 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
             return True
 
     actors = [GPUTestActor.remote() for _ in range(2)]
-    ref = actors[0].get_ref.remote()
-    result = actors[1].get_from_ref.remote([ref])
+    ref = ray.get(actors[0].get_ref.remote())
+    result = actors[1].get_with_buffers.remote([ref])
     assert ray.get(result)
-    result = actors[1].get_from_ref_with_wrong_buffers.remote([ref])
+    result = actors[1].get_with_wrong_buffers.remote([ref])
     assert ray.get(result)
 
 
