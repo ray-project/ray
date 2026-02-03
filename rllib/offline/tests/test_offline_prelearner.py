@@ -255,6 +255,11 @@ class TestOfflinePreLearner(unittest.TestCase):
                 output=data_path,
                 output_write_episodes=True,
             )
+            .training(
+                # Use small batch sizes for the test.
+                train_batch_size_per_learner=20,
+                minibatch_size=10,
+            )
         )
 
         # Record some episodes.
@@ -266,7 +271,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         self.config.offline_data(
             input_=[data_path],
             input_read_episodes=True,
-            input_read_batch_size=10,
+            input_read_batch_size=1,
         )
 
         # Build the `BC` algorithm.
@@ -274,7 +279,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         # Read in the generated set of episode data.
         episode_ds = ray.data.read_parquet(data_path)
         # Sample a batch of episodes from the episode dataset.
-        episode_batch = episode_ds.take_batch(20)
+        episode_batch = episode_ds.take_batch(10)
         # Get the module state from the `Learner`.
         module_state = algo.offline_data.learner_handles[0].get_state(
             component=COMPONENT_RL_MODULE,

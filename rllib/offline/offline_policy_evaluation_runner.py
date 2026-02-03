@@ -66,13 +66,13 @@ if TYPE_CHECKING:
 
 torch, _ = try_import_torch()
 
-TOTAL_EVAL_LOSS_KEY = "total_eval_loss"
-
 
 # TODO (simon): Implement more ...
 class OfflinePolicyEvaluationTypes(str, Enum):
     """Defines the offline policy evaluation types.
 
+    EVAL_LOSS: Evaluates the policy by computing the loss on a held-out
+        validation dataset.
     IS: Importance Sampling.
     PDIS: Per-Decision Importance Sampling. In contrast to IS this method
         weighs each reward and not the return as a whole. As a result it
@@ -131,6 +131,7 @@ class MiniBatchEpisodeRayDataIterator(MiniBatchRayDataIterator):
                 # Update the iteration counter.
                 iteration += 1
 
+                # Convert batch to tensors.
                 batch = self._collate_fn(batch)
                 yield (batch)
 
@@ -354,7 +355,7 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
                     weights = torch.exp(action_logp) / torch.exp(behavior_action_logp)
                     offline_return = torch.dot(weights, episode[Columns.REWARDS]).item()
 
-                episode_len = episode[Columns.REWARDS].shape[0] + 1
+                episode_len = episode[Columns.REWARDS].shape[0]
                 num_env_steps += episode_len
 
                 self._log_episode_metrics(episode_len, offline_return)
@@ -529,6 +530,7 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
     def _log_batch_metrics(self, batch_size: int, num_env_steps: int):
         """Logs batch metrics for each mini batch."""
 
+        # Note, Offline RL does not support multi-agent RLModules yet.
         # Log weights seq no for this batch.
         self.metrics.log_value(
             (DEFAULT_MODULE_ID, WEIGHTS_SEQ_NO),
@@ -551,6 +553,7 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
             key=(DEFAULT_MODULE_ID, NUM_MODULE_STEPS_SAMPLED_LIFETIME),
             value=num_env_steps,
             reduce="lifetime_sum",
+            with_throughput=True,
         )
         # Log module steps (sum of all modules).
         self.metrics.log_value(
@@ -562,6 +565,7 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
             key=(ALL_MODULES, NUM_MODULE_STEPS_SAMPLED_LIFETIME),
             value=num_env_steps,
             reduce="lifetime_sum",
+            with_throughput=True,
         )
         # Log env steps (all modules).
         self.metrics.log_value(

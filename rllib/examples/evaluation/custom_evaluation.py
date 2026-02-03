@@ -169,7 +169,6 @@ def custom_eval_function(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
