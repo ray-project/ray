@@ -1326,7 +1326,7 @@ packaging==24.2 \
     #   kombu
     #   ray
     #   tensorboardx
-pandas==2.3.2 \
+pandas==2.3.3 \
     --hash=sha256:0064187b80a5be6f2f9c9d6bdde29372468751dfa89f4211a3c5871854cfbf7a \
     --hash=sha256:0bd281310d4f412733f319a5bc552f86d62cddc5f51d2e392c8787335c994175 \
     --hash=sha256:0c6ecbac99a354a051ef21c5307601093cb9e0f4b1855984a084bfec9302699e \
