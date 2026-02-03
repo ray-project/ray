@@ -960,9 +960,25 @@ class TestCreateFixedShapeTensorType:
     not _extension_array_concat_supported(),
     reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
 )
-def test_arrow_fixed_shape_tensor_format_eq_with_concat(restore_data_context):
-    """Test that ArrowTensorType and ArrowTensorTypeV2 __eq__ methods work correctly
-    when concatenating Arrow arrays with the same tensor type."""
+@pytest.mark.parametrize(
+    "tensor_format",
+    [
+        FixedShapeTensorFormat.V1,
+        FixedShapeTensorFormat.V2,
+        pytest.param(
+            FixedShapeTensorFormat.ARROW_NATIVE,
+            marks=pytest.mark.skipif(
+                not _extension_array_concat_supported(),
+                reason="Native tensor format requires PyArrow >= 12.0",
+            ),
+        ),
+    ],
+)
+def test_arrow_fixed_shape_tensor_format_eq_with_concat(
+    restore_data_context, tensor_format
+):
+    """Test that ArrowTensorType, ArrowTensorTypeV2, and native tensor type __eq__
+    methods work correctly when concatenating Arrow arrays with the same tensor type."""
     from ray.data.context import DataContext
     from ray.data.extensions.tensor_extension import (
         ArrowTensorArray,
@@ -970,51 +986,31 @@ def test_arrow_fixed_shape_tensor_format_eq_with_concat(restore_data_context):
         ArrowTensorTypeV2,
     )
 
-    # Test ArrowTensorType V1
-    tensor_type_v1 = ArrowTensorType((2, 3), pa.int64())
+    # Create the appropriate tensor type based on format
+    if tensor_format == FixedShapeTensorFormat.V1:
+        tensor_type = ArrowTensorType((2, 3), pa.int64())
+    elif tensor_format == FixedShapeTensorFormat.V2:
+        tensor_type = ArrowTensorTypeV2((2, 3), pa.int64())
+    else:  # ARROW_NATIVE
+        tensor_type = pa.fixed_shape_tensor(pa.int64(), (2, 3))
 
-    DataContext.get_current().arrow_fixed_shape_tensor_format = (
-        FixedShapeTensorFormat.V1
-    )
+    DataContext.get_current().arrow_fixed_shape_tensor_format = tensor_format
+
     first = ArrowTensorArray.from_numpy(np.ones((2, 2, 3), dtype=np.int64))
     second = ArrowTensorArray.from_numpy(np.zeros((3, 2, 3), dtype=np.int64))
 
     assert first.type == second.type
     # Assert commutation
-    assert tensor_type_v1 == first.type
-    assert first.type == tensor_type_v1
+    assert tensor_type == first.type
+    assert first.type == tensor_type
 
     # Test concatenation works appropriately
     concatenated = pa.concat_arrays([first, second])
     assert len(concatenated) == 5
-    assert concatenated.type == tensor_type_v1
+    assert concatenated.type == tensor_type
 
     expected = np.vstack([first.to_numpy(), second.to_numpy()])
     np.testing.assert_array_equal(concatenated.to_numpy(), expected)
-
-    # Test ArrowTensorTypeV2
-    tensor_type_v2 = ArrowTensorTypeV2((2, 3), pa.int64())
-
-    DataContext.get_current().arrow_fixed_shape_tensor_format = (
-        FixedShapeTensorFormat.V2
-    )
-
-    first = ArrowTensorArray.from_numpy(np.ones((2, 2, 3), dtype=np.int64))
-    second = ArrowTensorArray.from_numpy(np.ones((3, 2, 3), dtype=np.int64))
-
-    assert first.type == second.type
-    # Assert commutation
-    assert tensor_type_v2 == first.type
-    assert first.type == tensor_type_v2
-
-    # Test concatenation works appropriately
-    concatenated_v2 = pa.concat_arrays([first, second])
-    assert len(concatenated_v2) == 5
-    assert concatenated_v2.type == tensor_type_v2
-
-    # Assert on the full concatenated array
-    expected = np.vstack([first.to_numpy(), second.to_numpy()])
-    np.testing.assert_array_equal(concatenated_v2.to_numpy(), expected)
 
 
 @pytest.mark.skipif(

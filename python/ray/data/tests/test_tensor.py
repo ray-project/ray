@@ -404,6 +404,7 @@ def test_tensor_array_block_slice(tensor_format_context):
                     tensor_format == FixedShapeTensorFormat.ARROW_NATIVE
                     and FixedShapeTensorType is not None
                 ):
+                    # The buffer for native fixed shaped tensors sits at index 2, not 1
                     index = 2
                 if is_copy:
                     assert bufs2[index].address != bufs1[index].address
@@ -419,26 +420,14 @@ def test_tensor_array_block_slice(tensor_format_context):
 
     # Test with copy.
     table2 = block_accessor.slice(a, b, True)
-    if (
-        tensor_format == FixedShapeTensorFormat.ARROW_NATIVE
-        and FixedShapeTensorType is not None
-    ):
-        res = table2["one"].chunk(0).to_numpy_ndarray()
-    else:
-        res = table2["one"].chunk(0).to_numpy()
+    res = table2["one"].chunk(0).to_numpy_ndarray()
 
     np.testing.assert_array_equal(res, one_arr[a:b, :, :])
     check_for_copy(table, table2, a, b, is_copy=True)
 
     # Test without copy. arrow_native requires a copy
     table2 = block_accessor.slice(a, b, False)
-    if (
-        tensor_format == FixedShapeTensorFormat.ARROW_NATIVE
-        and FixedShapeTensorType is not None
-    ):
-        res = table2["one"].chunk(0).to_numpy_ndarray()
-    else:
-        res = table2["one"].chunk(0).to_numpy()
+    res = table2["one"].chunk(0).to_numpy_ndarray()
     np.testing.assert_array_equal(res, one_arr[a:b, :, :])
     check_for_copy(table, table2, a, b, is_copy=False)
 
