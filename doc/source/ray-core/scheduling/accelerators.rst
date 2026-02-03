@@ -42,6 +42,9 @@ The accelerators natively supported by Ray Core are:
    * - METAX GPU
      - GPU
      - Experimental, supported by the community
+   * - Mobilint MBLT
+     - MBLT
+     - Experimental, supported by the community
 
 Starting Ray nodes with accelerators
 ------------------------------------
@@ -141,6 +144,16 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
             You can set the ``CUDA_VISIBLE_DEVICES`` environment variable before starting a Ray node
             to limit the METAX GPUs that are visible to Ray.
             For example, ``CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2``
+            lets Ray only see devices 1 and 3.
+
+   .. tab-item:: Mobilint MBLT
+        :sync: Mobilint MBLT
+
+        .. tip::
+
+            You can set the ``MBLT_DEVICES`` environment variable before starting a Ray node
+            to limit the Mobilint MBLTs that are visible to Ray.
+            For example, ``MBLT_DEVICES=1,3 ray start --head --resources='{"MBLT": 2}'``
             lets Ray only see devices 1 and 3.
 .. note::
 
