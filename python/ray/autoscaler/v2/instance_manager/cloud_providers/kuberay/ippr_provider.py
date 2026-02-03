@@ -200,6 +200,10 @@ class KubeRayIPPRProvider:
         Args:
             pods: List of Kubernetes Pod resources for the Ray cluster.
         """
+
+        if not self._ippr_specs.groups:
+            return
+
         self._ippr_statuses = {}
         self._container_resources = {}
         for pod in pods:
