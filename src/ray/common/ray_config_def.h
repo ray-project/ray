@@ -667,7 +667,7 @@ RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 /// due to higher per-file overhead. If spilling cannot keep up with allocation under
 /// memory pressure, this may increase the likelihood of object store OOMs.
 /// Set to -1 to disable this limit.
-RAY_CONFIG(int64_t, max_spilling_file_size, -1)
+RAY_CONFIG(int64_t, max_spilling_file_size_bytes, -1)
 
 /// If set to less than 1.0, Ray will start spilling objects when existing primary objects
 /// take more than this percentage of the available memory.

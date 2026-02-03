@@ -188,16 +188,6 @@ bool LocalObjectManager::TryToSpillObjects() {
     return false;
   }
 
-  const std::string max_spilling_file_size_str =
-      max_spilling_file_size_ <= 0
-          ? "unlimited"
-          : absl::StrFormat("%lld", static_cast<long long>(max_spilling_file_size_));
-  RAY_LOG(DEBUG) << absl::StrFormat(
-      "Choosing objects to spill with minimum total size %lld, max fused file size %s "
-      "or with total # of objects = %lld",
-      static_cast<long long>(min_spilling_size_),
-      max_spilling_file_size_str,
-      static_cast<long long>(max_fused_object_count_));
   int64_t bytes_to_spill = 0;
   std::vector<ObjectID> objects_to_spill;
   int64_t num_to_spill = 0;
@@ -209,8 +199,8 @@ bool LocalObjectManager::TryToSpillObjects() {
       // If the max file size limit is enabled, avoid fusing more objects once we'd exceed
       // it. Always allow spilling at least one object, even if it's larger than the
       // limit.
-      if (max_spilling_file_size_ > 0 && !objects_to_spill.empty() &&
-          bytes_to_spill + object_size > max_spilling_file_size_) {
+      if (max_spilling_file_size_bytes_ > 0 && !objects_to_spill.empty() &&
+          bytes_to_spill + object_size > max_spilling_file_size_bytes_) {
         break;
       }
 

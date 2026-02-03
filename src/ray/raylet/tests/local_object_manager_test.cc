@@ -317,7 +317,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
  public:
   LocalObjectManagerTestWithMinSpillingSize(int64_t min_spilling_size,
                                             int64_t max_fused_object_count,
-                                            int64_t max_spilling_file_size = -1)
+                                            int64_t max_spilling_file_size_bytes = -1)
       : subscriber_(std::make_shared<MockSubscriber>()),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
@@ -359,13 +359,13 @@ class LocalObjectManagerTestWithMinSpillingSize {
         unpins(std::make_shared<absl::flat_hash_map<ObjectID, int>>()) {
     RayConfig::instance().initialize(R"({"object_spilling_config": "dummy"})");
     manager.min_spilling_size_ = min_spilling_size;
-    manager.max_spilling_file_size_ = max_spilling_file_size;
+    manager.max_spilling_file_size_bytes_ = max_spilling_file_size_bytes;
   }
 
   int64_t NumBytesPendingSpill() { return manager.num_bytes_pending_spill_; }
 
-  void SetMaxSpillingFileSize(int64_t max_spilling_file_size) {
-    manager.max_spilling_file_size_ = max_spilling_file_size;
+  void SetMaxSpillingFileSize(int64_t max_spilling_file_size_bytes) {
+    manager.max_spilling_file_size_bytes_ = max_spilling_file_size_bytes;
   }
 
   int64_t GetCurrentSpilledBytes() { return manager.spilled_bytes_current_; }
@@ -455,7 +455,7 @@ class LocalObjectManagerMaxFileSizeFusedTest
       : LocalObjectManagerTestWithMinSpillingSize(
             /*min_spilling_size=*/60,
             /*max_fused_object_count=*/15,
-            /*max_spilling_file_size=*/60) {}
+            /*max_spilling_file_size_bytes=*/60) {}
 };
 
 TEST_F(LocalObjectManagerTest, TestPin) {
@@ -1591,7 +1591,7 @@ TEST_F(LocalObjectManagerMaxFileSizeFusedTest, TestMaxSpillingFileSizeMaxFusionC
   std::vector<std::unique_ptr<RayObject>> objects;
 
   // 40 objects * 10 bytes = 400 bytes.
-  // max_spilling_file_size=60 -> batches: 6,6,6,6,6,6,4 (total 7 batches).
+  // max_spilling_file_size_bytes=60 -> batches: 6,6,6,6,6,6,4 (total 7 batches).
   const int64_t object_size = 10;
   for (int i = 0; i < 40; i++) {
     ObjectID object_id = ObjectID::FromRandom();
