@@ -109,32 +109,6 @@ class FixedShapeTensorFormat(Enum):
         return FixedShapeTensorType
 
 
-def resolve_fixed_shape_tensor_format() -> "FixedShapeTensorFormat":
-    """Resolve the tensor format from DataContext.
-
-    If arrow_fixed_shape_tensor_format is set, use it.
-    Otherwise, fallback to use_arrow_tensor_v2 (True -> V2, False -> V1).
-    Once `use_arrow_tensor_v2` is deprecated, this function can be removed.
-
-    Returns:
-        The resolved FixedShapeTensorFormat.
-    """
-    from ray.data.context import DataContext
-
-    ctx = DataContext.get_current()
-    tensor_format = ctx.arrow_fixed_shape_tensor_format
-
-    # If arrow_fixed_shape_tensor_format is None, fallback to use_arrow_tensor_v2
-    if tensor_format is None:
-        tensor_format = (
-            FixedShapeTensorFormat.V2
-            if ctx.use_arrow_tensor_v2
-            else FixedShapeTensorFormat.V1
-        )
-
-    return tensor_format
-
-
 def _native_tensor_value_type_can_convert_to_numpy(t: "FixedShapeTensorType") -> bool:
     """Pyarrow native fixed shaped tensors support most types. However, when converting
     between numpy representions using their built-in `to_numpy_ndarray()` or `from_numpy_ndarray()`,
@@ -810,20 +784,16 @@ def create_arrow_fixed_shape_tensor_format(
     Raises:
         ValueError: If NATIVE format is requested but PyArrow < 12.0.0.
     """
+    from ray.data.context import DataContext
+
     is_variable_shaped = any(dim is None for dim in shape)
     assert not is_variable_shaped
     if tensor_format is None:
-        tensor_format = resolve_fixed_shape_tensor_format()
+        tensor_format = DataContext.get_current().arrow_fixed_shape_tensor_format
 
         # Native tensor format requires PyArrow 12+
         if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
-            from ray.data.context import DataContext
-
-            fallback = (
-                FixedShapeTensorFormat.V2
-                if DataContext.get_current().use_arrow_tensor_v2
-                else FixedShapeTensorFormat.V1
-            )
+            fallback = FixedShapeTensorFormat.V2
             if FixedShapeTensorType is None:
                 if log_once("native_fixed_shape_tensors_not_supported"):
                     warnings.warn(

@@ -900,39 +900,29 @@ class TestCreateFixedShapeTensorType:
             )
 
     @pytest.mark.parametrize(
-        "use_v2,fixed_shape_tensor_format,expected_type_if_native_available,expected_type_fallback",
+        "fixed_shape_tensor_format,expected_type_if_native_available,expected_type_fallback",
         [
-            # V1 fallback: both settings off
-            (False, None, ArrowTensorType, ArrowTensorType),
-            # V2: v2 on, native off
-            (True, None, ArrowTensorTypeV2, ArrowTensorTypeV2),
-            # NATIVE with V2 fallback: both on, falls back to V2 if NATIVE unavailable
+            # V1
+            (FixedShapeTensorFormat.V1, ArrowTensorType, ArrowTensorType),
+            # V2 (default)
+            (FixedShapeTensorFormat.V2, ArrowTensorTypeV2, ArrowTensorTypeV2),
+            # NATIVE with V2 fallback when NATIVE unavailable
             (
-                True,
                 FixedShapeTensorFormat.ARROW_NATIVE,
                 FixedShapeTensorType,
                 ArrowTensorTypeV2,
-            ),
-            # NATIVE with V1 fallback: native on, v2 off, falls back to V1 if NATIVE unavailable
-            (
-                False,
-                FixedShapeTensorFormat.ARROW_NATIVE,
-                FixedShapeTensorType,
-                ArrowTensorType,
             ),
         ],
     )
     def test_context_defaults(
         self,
         restore_data_context,
-        use_v2,
         fixed_shape_tensor_format,
         expected_type_if_native_available,
         expected_type_fallback,
     ):
         """Test default tensor type based on context settings with fallback behavior."""
         ctx = DataContext.get_current()
-        ctx.use_arrow_tensor_v2 = use_v2
         ctx.arrow_fixed_shape_tensor_format = fixed_shape_tensor_format
 
         tensor_type = create_arrow_fixed_shape_tensor_format(

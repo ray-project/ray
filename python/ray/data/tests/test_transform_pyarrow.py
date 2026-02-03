@@ -22,7 +22,6 @@ from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     FixedShapeTensorFormat,
     _extension_array_concat_supported,
-    resolve_fixed_shape_tensor_format,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
@@ -1700,7 +1699,7 @@ def uniform_tensor_blocks():
 @pytest.fixture
 def uniform_tensor_expected():
     """Fixture for expected results from uniform tensor concatenation."""
-    tensor_type = resolve_fixed_shape_tensor_format().to_type()
+    tensor_type = DataContext.get_current().arrow_fixed_shape_tensor_format.to_type()
 
     expected_schema = pa.schema([("a", tensor_type((2, 2), pa.int64()))])
     expected_length = 6
