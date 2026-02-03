@@ -96,7 +96,7 @@ def env_runner_config(runner_type, num_envs_per_env_runner, gym_env_vectorize_mo
             )
         )
     elif runner_type == "multi_agent":
-        # MultiAgentCartPole for a parallel environment to ensure a fair comparison
+        # We use MultiAgentCartPole for the parallel environment to ensure a fair comparison to the SingleAgent version.
         return (
             PPOConfig()
             .environment(MultiAgentCartPole, env_config={"num_agents": 2})
@@ -274,6 +274,7 @@ def env_runner_with_callback(runner_type, ray_init):
 
     yield runner
     CallbackTracker.reset()
+    runner.stop()
 
 
 class EnvToModuleConnectorTracker(ConnectorV2):
@@ -425,8 +426,8 @@ def env_runner_with_env_to_module_tracker(runner_type, ray_init):
         raise ValueError(f"Unknown runner type: {runner_type}")
 
     yield runner
-    runner.stop()
     EnvToModuleConnectorTracker.reset()
+    runner.stop()
 
 
 @pytest.fixture
@@ -462,8 +463,8 @@ def env_runner_with_module_to_env_tracker(runner_type, ray_init):
         raise ValueError(f"Unknown runner type: {runner_type}")
 
     yield runner
-    runner.stop()
     ModuleToEnvConnectorTracker.reset()
+    runner.stop()
 
 
 class TestEnvRunnerSampling:
@@ -704,12 +705,10 @@ class TestEnvRunnerMetrics:
         max_num_timesteps = (
             math.ceil(num_timesteps / env_runner.num_envs) * env_runner.num_envs
         )
-        assert (
-            num_timesteps <= metrics[NUM_ENV_STEPS_SAMPLED].peek() <= max_num_timesteps
-        )
+        assert num_timesteps <= metrics[NUM_ENV_STEPS_SAMPLED] <= max_num_timesteps
         assert (
             num_timesteps
-            <= metrics[NUM_ENV_STEPS_SAMPLED_LIFETIME].peek()
+            <= metrics[NUM_ENV_STEPS_SAMPLED_LIFETIME]
             <= max_num_timesteps
         )
         num_completed_episodes = sum(eps.is_done for eps in episodes)
@@ -730,11 +729,9 @@ class TestEnvRunnerMetrics:
             assert key in metrics, f"Missing metric: {key}"
 
         # Verify env steps count
-        expected_num_timesteps = (
-            env_runner.config.rollout_fragment_length * env_runner.num_envs
-        )
-        assert metrics[NUM_ENV_STEPS_SAMPLED].peek() == expected_num_timesteps
-        assert metrics[NUM_ENV_STEPS_SAMPLED_LIFETIME].peek() == expected_num_timesteps
+        expected_num_timesteps = sum(len(eps) for eps in episodes)
+        assert metrics[NUM_ENV_STEPS_SAMPLED] == expected_num_timesteps
+        assert metrics[NUM_ENV_STEPS_SAMPLED_LIFETIME] == expected_num_timesteps
         num_completed_episodes = sum(eps.is_done for eps in episodes)
         if num_completed_episodes > 0:
             assert metrics[NUM_EPISODES] == num_completed_episodes
@@ -785,8 +782,8 @@ class TestEnvRunnerMetrics:
         episodes_1 = env_runner.sample(num_episodes=1, random_actions=True)
         metrics_1 = env_runner.get_metrics()
         steps_sampled_1 = metrics_1[NUM_ENV_STEPS_SAMPLED]
-        lifetime_1 = metrics_1[NUM_ENV_STEPS_SAMPLED_LIFETIME].peek()
-        episodes_lifetime_1 = metrics_1[NUM_EPISODES_LIFETIME].peek()
+        lifetime_1 = metrics_1[NUM_ENV_STEPS_SAMPLED_LIFETIME]
+        episodes_lifetime_1 = metrics_1[NUM_EPISODES_LIFETIME]
         assert steps_sampled_1 >= sum(len(eps) for eps in episodes_1)
         assert steps_sampled_1 >= lifetime_1
         # on the final timestep sampled, if other environment also terminate then
@@ -797,8 +794,8 @@ class TestEnvRunnerMetrics:
         episodes_2 = env_runner.sample(num_episodes=1, random_actions=True)
         metrics_2 = env_runner.get_metrics()
         steps_sampled_2 = metrics_2[NUM_ENV_STEPS_SAMPLED]
-        lifetime_2 = metrics_2[NUM_ENV_STEPS_SAMPLED_LIFETIME].peek()
-        episodes_lifetime_2 = metrics_2[NUM_EPISODES_LIFETIME].peek()
+        lifetime_2 = metrics_2[NUM_ENV_STEPS_SAMPLED_LIFETIME]
+        episodes_lifetime_2 = metrics_2[NUM_EPISODES_LIFETIME]
         assert steps_sampled_2 >= sum(len(eps) for eps in episodes_2)
         assert steps_sampled_2 >= lifetime_2
         assert episodes_lifetime_2 >= sum(eps.is_done for eps in episodes_2)
@@ -812,9 +809,9 @@ class TestEnvRunnerMetrics:
         # Get metrics again without sampling
         metrics = env_runner.get_metrics()
         assert np.isnan(metrics[NUM_ENV_STEPS_SAMPLED].peek())
-        assert metrics[NUM_ENV_STEPS_SAMPLED_LIFETIME].peek() == 0.0
+        assert metrics[NUM_ENV_STEPS_SAMPLED_LIFETIME] == 0.0
         assert np.isnan(metrics[NUM_EPISODES].peek())
-        assert metrics[NUM_EPISODES_LIFETIME].peek() == 0.0
+        assert metrics[NUM_EPISODES_LIFETIME] == 0.0
 
     def test_metrics_min_max_tracking(self, env_runner):
         """Test that min/max episode metrics are tracked correctly."""
@@ -997,7 +994,6 @@ class TestEnvRunnerConnectors:
     ):
         """Test env_to_module connector is called after each environment step."""
         env_runner = env_runner_with_env_to_module_tracker
-        num_timesteps = 5
 
         env_runner.sample(num_timesteps=num_timesteps, random_actions=True)
 
@@ -1009,8 +1005,9 @@ class TestEnvRunnerConnectors:
         min_expected_calls = 1 + math.ceil(num_timesteps / env_runner.num_envs)
         assert call_count >= min_expected_calls
 
+    @pytest.mark.parametrize("num_timesteps", [8, 25, 50, 100])
     def test_module_to_env_called_only_with_rl_module(
-        self, env_runner_with_module_to_env_tracker
+        self, env_runner_with_module_to_env_tracker, num_timesteps
     ):
         """Test module_to_env connector is called only when RLModule is used.
 
@@ -1019,7 +1016,6 @@ class TestEnvRunnerConnectors:
         2. module_to_env is NOT called when using random_actions=True (RLModule bypassed)
         """
         env_runner = env_runner_with_module_to_env_tracker
-        num_timesteps = 5
 
         # With random_actions=True, the RLModule is bypassed
         env_runner.sample(num_timesteps=num_timesteps, random_actions=True)
