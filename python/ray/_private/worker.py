@@ -1549,7 +1549,7 @@ def init(
         cgroup_path: The path for the cgroup the raylet should use to enforce resource isolation.
             By default, the cgroup used for resource isolation will be /sys/fs/cgroup.
             The process starting ray must have read/write permissions to this path.
-            Cgroup memory and cpu controllers be enabled for this cgroup.
+            Cgroup memory and cpu controllers must be enabled for this cgroup.
             This option only works if enable_resource_isolation is True.
         system_reserved_cpu: The number of cpu cores to reserve for ray system processes.
             Cores can be fractional i.e. 1.5 means one and a half a cpu core.
@@ -1621,8 +1621,6 @@ def init(
         logging_config._apply()
 
     # Parse the hidden options
-    # _cgroup_path: str = kwargs.pop("_cgroup_path", None)
-
     _enable_object_reconstruction: bool = kwargs.pop(
         "_enable_object_reconstruction", False
     )
