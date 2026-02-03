@@ -141,7 +141,7 @@ class OfflinePreLearner:
             deprecation_warning(
                 old="OfflinePreLearner(module_spec=..)",
                 new="OfflinePreLearner(config=AlgorithmConfig().rl_module(rl_module_spec=..))",
-                error=True,
+                error=False,
             )
             rl_module_spec = kwargs["module_spec"]
         else:

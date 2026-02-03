@@ -1,5 +1,6 @@
 import shutil
 import unittest
+import functools
 from pathlib import Path
 
 import gymnasium as gym
@@ -212,6 +213,30 @@ class TestOfflinePreLearner(unittest.TestCase):
                 len(batch[DEFAULT_POLICY_ID][key]),
                 self.config.train_batch_size_per_learner,
             )
+
+    def test_offline_prelearner_in_map_batches(self):
+        """Tests using the `OfflinePreLearner` in `map_batches` where it is used in `OfflineData`."""
+
+        # Create a simple dataset.
+        data = ray.data.read_parquet(self.data_path)
+
+        # Generate a batch iterator that uses the `OfflinePreLearner` to convert
+        # data to episodes.
+        batch_iterator = data.map_batches(
+            functools.partial(
+                OfflinePreLearner._map_to_episodes,
+                False,
+            )
+        ).iter_batches(
+            batch_size=10,
+            prefetch_batches=1,
+        )
+
+        # Now sample a single batch.
+        batch = next(iter(batch_iterator))
+        # Assert that we have indeed sampled episodes.
+        self.assertTrue("episodes" in batch)
+        self.assertTrue(isinstance(batch["episodes"][0], SingleAgentEpisode))
 
     def test_offline_prelearner_sample_from_episode_data(self):
         """Test sampling and writing of complete epsidoes.
