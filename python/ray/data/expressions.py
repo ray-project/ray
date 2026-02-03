@@ -1451,6 +1451,7 @@ def star() -> StarExpr:
 @PublicAPI(stability="alpha")
 def download(
     uri_column_name: str,
+    *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
 ) -> DownloadExpr:
     """
