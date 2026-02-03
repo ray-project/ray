@@ -2193,7 +2193,7 @@ mmh3==4.1.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   pyiceberg
-modin==0.37.1 \
+modin==0.37.1 ; python_full_version < '3.12' \
     --hash=sha256:40edbeafc2b8e07fda622b38475ec0b4d580cb8f0cdf9907f1c58c1d84b9a796 \
     --hash=sha256:afb96c4b1fc4953c6895f5376b49af765575ad6f4d948a7726055614777e7b90
     # via
