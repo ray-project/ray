@@ -562,16 +562,6 @@ Windows powershell users need additional escaping:
     "works when --head is specified",
 )
 @click.option(
-    "--isolation-id",
-    default=None,
-    type=str,
-    help="Unique identifier for isolating this Ray cluster from others on the same node. "
-    "This is useful in Slurm environments where multiple Ray clusters may run on the same node. "
-    "If not specified, will use SLURM_JOB_ID environment variable if available. "
-    "The isolation-id is used for: (1) creating isolated temp directories, "
-    "(2) stopping only processes belonging to this cluster with 'ray stop --isolation-id'.",
-)
-@click.option(
     "--system-config",
     default=None,
     hidden=True,
@@ -721,7 +711,6 @@ def start(
     autoscaling_config,
     no_redirect_output,
     temp_dir,
-    isolation_id,
     system_config,
     enable_object_reconstruction,
     metrics_export_port,
@@ -798,23 +787,6 @@ def start(
         system_reserved_memory=system_reserved_memory,
     )
 
-    # Auto-detect isolation_id from Slurm environment if not specified
-    if isolation_id is None:
-        slurm_job_id = os.environ.get("SLURM_JOB_ID")
-        if slurm_job_id is not None:
-            isolation_id = slurm_job_id
-            cli_logger.print(
-                f"Auto-detected SLURM_JOB_ID: Using isolation-id={isolation_id}"
-            )
-
-    # If isolation_id is set, modify temp_dir to include it for isolation
-    if isolation_id is not None and temp_dir is None:
-        from ray._common.utils import get_ray_temp_dir
-
-        base_temp_dir = get_ray_temp_dir()
-        temp_dir = os.path.join(base_temp_dir, f"isolation_{isolation_id}")
-        cli_logger.print(f"Using isolated temp directory: {temp_dir}")
-
     redirect_output = None if not no_redirect_output else True
 
     # no  client, no  port -> ok
@@ -848,7 +820,6 @@ def start(
         object_spilling_directory=object_spilling_directory,
         huge_pages=False,
         temp_dir=temp_dir,
-        isolation_id=isolation_id,
         include_dashboard=include_dashboard,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
@@ -1236,31 +1207,6 @@ def start(
         # not-reachable
 
 
-def _get_isolation_temp_dir(isolation_id: str) -> Optional[str]:
-    """Get the isolation temp directory path for a specific isolation_id.
-
-    This function constructs the isolation temp directory path that is used
-    by Ray processes started with the given isolation_id. The path is then
-    used to match processes by checking their command line arguments.
-
-    Args:
-        isolation_id: The isolation ID to search for.
-
-    Returns:
-        The isolation temp directory path if it exists, None otherwise.
-    """
-    from ray._common.utils import get_ray_temp_dir
-
-    base_temp_dir = get_ray_temp_dir()
-    # Use trailing slash to avoid matching isolation_123 when searching for isolation_12
-    isolation_temp_dir = os.path.join(base_temp_dir, f"isolation_{isolation_id}")
-
-    if os.path.exists(isolation_temp_dir):
-        return isolation_temp_dir
-
-    return None
-
-
 @cli.command()
 @click.option(
     "-f",
@@ -1279,49 +1225,34 @@ def _get_isolation_temp_dir(isolation_id: str) -> Optional[str]:
     ),
 )
 @click.option(
-    "--isolation-id",
+    "--temp-dir",
+    "stop_temp_dir",
     default=None,
     type=str,
     help=(
-        "If set, only stop Ray processes belonging to the cluster with this "
-        "isolation-id. This is useful in Slurm environments where multiple "
-        "Ray clusters run on the same node. If not specified, will use "
-        "SLURM_JOB_ID environment variable if available."
+        "If set, only stop Ray processes that were started with this temp directory. "
+        "This is useful when multiple Ray clusters run on the same node with "
+        "different --temp-dir values."
     ),
 )
 @add_click_logging_options
 @PublicAPI
-def stop(force: bool, grace_period: int, isolation_id: str):
+def stop(force: bool, grace_period: int, stop_temp_dir: str):
     """Stop Ray processes manually on the local machine."""
     is_linux = sys.platform.startswith("linux")
     total_procs_found = 0
     total_procs_stopped = 0
     procs_not_gracefully_killed = []
 
-    # Auto-detect isolation_id from Slurm environment if not specified
-    if isolation_id is None:
-        slurm_job_id = os.environ.get("SLURM_JOB_ID")
-        if slurm_job_id is not None:
-            isolation_id = slurm_job_id
-            cli_logger.print(
-                f"Auto-detected SLURM_JOB_ID: Using isolation-id={isolation_id}"
-            )
-
-    # If isolation_id is set, get the isolation temp directory for matching
-    isolation_temp_dir = None
-    if isolation_id is not None:
-        isolation_temp_dir = _get_isolation_temp_dir(isolation_id)
-        if isolation_temp_dir:
-            cli_logger.print(
-                f"Stopping only processes with isolation-id={isolation_id} "
-                f"(matching temp_dir: {isolation_temp_dir})"
-            )
-        else:
+    # If temp_dir is specified, check if it exists
+    if stop_temp_dir is not None:
+        if not os.path.exists(stop_temp_dir):
             cli_logger.warning(
-                f"Isolation temp directory not found for isolation-id={isolation_id}. "
-                "Falling back to stopping all Ray processes on this node."
+                f"Temp directory '{stop_temp_dir}' does not exist. "
+                "No Ray processes will be stopped."
             )
-            isolation_temp_dir = None
+            return
+        cli_logger.print(f"Stopping only Ray processes with temp-dir={stop_temp_dir}")
 
     def kill_procs(
         force: bool, grace_period: int, processes_to_kill: List[str]
@@ -1364,12 +1295,16 @@ def stop(force: bool, grace_period: int, isolation_id: str):
                     proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_args)
                 )
                 if keyword in corpus:
-                    # If isolation_temp_dir is set, only include processes whose
-                    # command line contains the isolation temp directory path
-                    if isolation_temp_dir is not None:
+                    # If stop_temp_dir is set, only include processes whose
+                    # command line contains the exact temp directory path
+                    if stop_temp_dir is not None:
                         try:
                             cmdline_str = subprocess.list2cmdline(proc_args)
-                            if isolation_temp_dir in cmdline_str:
+                            # Use exact matching with --temp-dir= or --temp_dir=
+                            if (
+                                f"--temp-dir={stop_temp_dir}" in cmdline_str
+                                or f"--temp_dir={stop_temp_dir}" in cmdline_str
+                            ):
                                 found.append(candidate)
                         except psutil.Error:
                             pass

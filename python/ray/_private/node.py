@@ -43,7 +43,6 @@ from ray._raylet import (
     get_session_key_from_storage,
     wait_for_persisted_port,
 )
-from ray.core.generated.gcs_pb2 import GcsNodeInfo
 
 import psutil
 
@@ -259,7 +258,7 @@ class Node:
         self._node_ip_address = node_ip_address
 
         # It creates a session_dir.
-        self._init_temp(node_to_connect_info)
+        self._init_temp()
 
         # Resolve socket and port names
         if connect_only:
@@ -485,53 +484,62 @@ class Node:
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
 
-    def _init_temp(self, node_to_connect_info: Optional[GcsNodeInfo]):
+    def _init_temp(self):
         # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
-        self.temp_dir = self._ray_params.temp_dir
-        if self.temp_dir is None:
-            if node_to_connect_info is not None:
-                self.temp_dir = node_to_connect_info.temp_dir
+        if self.head:
+            self._ray_params.update_if_absent(
+                temp_dir=ray._common.utils.get_ray_temp_dir()
+            )
+            self._temp_dir = self._ray_params.temp_dir
+        else:
+            if self._ray_params.temp_dir is None:
+                assert not self._default_worker
+                temp_dir = ray._private.utils.internal_kv_get_with_retry(
+                    self.get_gcs_client(),
+                    "temp_dir",
+                    ray_constants.KV_NAMESPACE_SESSION,
+                    num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
+                )
+                self._temp_dir = ray._common.utils.decode(temp_dir)
             else:
-                if self.head:
-                    self.temp_dir = ray._common.utils.get_ray_temp_dir()
-                else:
-                    assert not self._default_worker
-                    self.temp_dir = self._head_temp_dir
+                self._temp_dir = self._ray_params.temp_dir
 
-        assert self._session_name is not None
-        self._session_dir = os.path.join(self.temp_dir, self._session_name)
-        session_symlink = os.path.join(self.temp_dir, ray_constants.SESSION_LATEST)
+        try_to_create_directory(self._temp_dir)
+
+        if self.head:
+            self._session_dir = os.path.join(self._temp_dir, self._session_name)
+        else:
+            if self._temp_dir is None or self._session_name is None:
+                assert not self._default_worker
+                session_dir = ray._private.utils.internal_kv_get_with_retry(
+                    self.get_gcs_client(),
+                    "session_dir",
+                    ray_constants.KV_NAMESPACE_SESSION,
+                    num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
+                )
+                self._session_dir = ray._common.utils.decode(session_dir)
+            else:
+                self._session_dir = os.path.join(self._temp_dir, self._session_name)
+        session_symlink = os.path.join(self._temp_dir, ray_constants.SESSION_LATEST)
+
+        # Send a warning message if the session exists.
+        try_to_create_directory(self._session_dir)
+        try_to_symlink(session_symlink, self._session_dir)
+        # Create a directory to be used for socket files.
         self._sockets_dir = os.path.join(self._session_dir, "sockets")
+        try_to_create_directory(self._sockets_dir)
+        # Create a directory to be used for process log files.
         self._logs_dir = os.path.join(self._session_dir, "logs")
+        try_to_create_directory(self._logs_dir)
         old_logs_dir = os.path.join(self._logs_dir, "old")
+        try_to_create_directory(old_logs_dir)
         # Create a directory to be used for runtime environment.
         self._runtime_env_dir = os.path.join(
             self._session_dir, self._ray_params.runtime_env_dir_name
         )
-
-        # Store isolation_id for this session
-        self._isolation_id = self._ray_params.isolation_id
-
-        if node_to_connect_info is None:
-            # Only create the temp dir on node creation
-            try_to_create_directory(self.temp_dir)
-            # Send a warning message if the session exists.
-            try_to_create_directory(self._session_dir)
-            try_to_symlink(session_symlink, self._session_dir)
-            # Create a directory to be used for socket files.
-            try_to_create_directory(self._sockets_dir)
-            # Create a directory to be used for process log files.
-            try_to_create_directory(self._logs_dir)
-            try_to_create_directory(old_logs_dir)
-            try_to_create_directory(self._runtime_env_dir)
-            # Write isolation_id file if set (used for debugging/identification)
-            if self._isolation_id is not None:
-                isolation_id_file = os.path.join(self._session_dir, "isolation_id")
-                with open(isolation_id_file, "w") as f:
-                    f.write(self._isolation_id)
-
+        try_to_create_directory(self._runtime_env_dir)
         # Create a symlink to the libtpu tpu_logs directory if it exists.
         user_temp_dir = ray._common.utils.get_user_temp_dir()
         tpu_log_dir = f"{user_temp_dir}/tpu_logs"
@@ -744,7 +752,7 @@ class Node:
 
     def get_temp_dir_path(self):
         """Get the path of the temporary directory."""
-        return self.temp_dir
+        return self._temp_dir
 
     def get_runtime_env_dir_path(self):
         """Get the path of the runtime env."""
@@ -761,10 +769,6 @@ class Node:
     def get_sockets_dir_path(self):
         """Get the path of the sockets directory."""
         return self._sockets_dir
-
-    def get_isolation_id(self):
-        """Get the isolation ID for this Ray cluster."""
-        return self._isolation_id
 
     def _make_inc_temp(
         self, suffix: str = "", prefix: str = "", directory_name: Optional[str] = None
@@ -803,16 +807,21 @@ class Node:
         raise FileExistsError(errno.EEXIST, "No usable temporary filename found")
 
     def should_redirect_logs(self):
+        # Preferred: thread the setting explicitly via RayParams.log_to_stderr.
+        # This avoids relying on process-global environment variables.
+        if getattr(self._ray_params, "log_to_stderr", None) is not None:
+            return not self._ray_params.log_to_stderr
+
+        # Deprecated (kept for backward compatibility): RayParams.redirect_output.
         redirect_output = self._ray_params.redirect_output
-        if redirect_output is None:
-            # Fall back to stderr redirect environment variable.
-            redirect_output = (
-                os.environ.get(
-                    ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE
-                )
-                != "1"
-            )
-        return redirect_output
+        if redirect_output is not None:
+            return redirect_output
+
+        # Fall back to stderr redirect environment variable.
+        return (
+            os.environ.get(ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE)
+            != "1"
+        )
 
     # TODO(hjiang): Re-implement the logic in C++, and expose via cython.
     def get_log_file_names(
@@ -980,7 +989,9 @@ class Node:
         assert (
             not self.kernel_fate_share
         ), "a reaper should not be used with kernel fate-sharing"
-        process_info = ray._private.services.start_reaper(fate_share=False)
+        process_info = ray._private.services.start_reaper(
+            fate_share=False, temp_dir=self._temp_dir
+        )
         assert ray_constants.PROCESS_TYPE_REAPER not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_REAPER] = [
@@ -1002,6 +1013,7 @@ class Node:
             backup_count=self.backup_count,
             stdout_filepath=stdout_log_fname,
             stderr_filepath=stderr_log_fname,
+            temp_dir=self._temp_dir,
         )
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
@@ -1031,7 +1043,7 @@ class Node:
             self.gcs_address,
             self.cluster_id.hex(),
             self._node_ip_address,
-            self.temp_dir,
+            self._temp_dir,
             self._logs_dir,
             self._session_dir,
             port=self._ray_params.dashboard_port,
@@ -1077,6 +1089,7 @@ class Node:
             node_ip_address=self._node_ip_address,
             session_dir=self._session_dir,
             node_id=self._node_id,
+            temp_dir=self._temp_dir,
         )
         assert ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
@@ -1154,7 +1167,7 @@ class Node:
             self.cluster_id.hex(),
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
-            self.temp_dir,
+            self._temp_dir,
             self._session_dir,
             self._runtime_env_dir,
             self._logs_dir,
@@ -1219,6 +1232,7 @@ class Node:
             backup_count=self.backup_count,
             monitor_ip=self._node_ip_address,
             autoscaler_v2=is_autoscaler_v2(fetch_from_server=True),
+            temp_dir=self._temp_dir,
         )
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
@@ -1239,6 +1253,7 @@ class Node:
             fate_share=self.kernel_fate_share,
             runtime_env_agent_address=self.runtime_env_agent_address,
             node_id=self._node_id,
+            temp_dir=self._temp_dir,
         )
         assert ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [
@@ -1282,7 +1297,7 @@ class Node:
         )
         self.get_gcs_client().internal_kv_put(
             b"temp_dir",
-            self.temp_dir.encode(),
+            self._temp_dir.encode(),
             True,
             ray_constants.KV_NAMESPACE_SESSION,
         )
@@ -1371,7 +1386,7 @@ class Node:
             object_store_memory,
         ) = ray._private.services.determine_plasma_store_config(
             resource_and_label_spec.object_store_memory,
-            self.temp_dir,
+            self._temp_dir,
             plasma_directory=self._ray_params.plasma_directory,
             fallback_directory=self._fallback_directory,
             huge_pages=self._ray_params.huge_pages,

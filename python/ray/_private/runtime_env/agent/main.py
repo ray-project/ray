@@ -177,7 +177,11 @@ if __name__ == "__main__":
         runtime_env_agent_port=args.runtime_env_agent_port,
     )
 
-    ray._raylet.setproctitle(ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT)
+    # Include --temp-dir in process title for ray stop --temp-dir to identify
+    ray._raylet.setproctitle(
+        f"{ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT} "
+        f"--temp-dir={args.temp_dir}"
+    )
 
     # POST /get_or_create_runtime_env
     # body is serialzied protobuf GetOrCreateRuntimeEnvRequest

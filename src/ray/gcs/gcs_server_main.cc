@@ -56,6 +56,7 @@ DEFINE_string(node_id, "", "The ID of the node where GCS runs (head node).");
 DEFINE_string(session_name, "", "session_name: The current Ray session name.");
 DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
+DEFINE_string(temp_dir, "", "The root temporary directory (for identification only).");
 
 int main(int argc, char *argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);

@@ -1,3 +1,4 @@
+import argparse
 import atexit
 import os
 import signal
@@ -45,6 +46,17 @@ def reap_process_group(*args):
 
 
 def main():
+    # Parse arguments. The --temp-dir argument is accepted for process
+    # identification purposes but is not used by the reaper itself.
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--temp-dir",
+        type=str,
+        default=None,
+        help="The temporary directory for this Ray session (for identification only).",
+    )
+    parser.parse_args()
+
     # Read from stdin forever. Because stdin is a file descriptor
     # inherited from our parent process, we will get an EOF if the parent
     # dies, which is signaled by an empty return from read().

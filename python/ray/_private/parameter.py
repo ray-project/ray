@@ -93,11 +93,6 @@ class RayParams:
             used by the raylet process.
         temp_dir: If provided, it will specify the root temporary
             directory for the Ray process. Must be an absolute path.
-        isolation_id: If provided, it specifies a unique identifier for
-            isolating this Ray node from others on the same node.
-            This is useful in single host multi-node (like Slurm) environments. When set, Ray will
-            create isolated temp directories and allow stopping only
-            processes belonging to this node.
         runtime_env_dir_name: If provided, specifies the directory that
             will be created in the session dir to hold runtime_env files.
         include_log_monitor: If True, then start a log monitor to
@@ -168,7 +163,6 @@ class RayParams:
         plasma_store_socket_name: Optional[str] = None,
         raylet_socket_name: Optional[str] = None,
         temp_dir: Optional[str] = None,
-        isolation_id: Optional[str] = None,
         runtime_env_dir_name: Optional[str] = None,
         include_log_monitor: Optional[str] = None,
         autoscaling_config: Optional[str] = None,
@@ -224,7 +218,6 @@ class RayParams:
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
-        self.isolation_id = isolation_id
         self.runtime_env_dir_name = (
             runtime_env_dir_name or ray_constants.DEFAULT_RUNTIME_ENV_DIR_NAME
         )

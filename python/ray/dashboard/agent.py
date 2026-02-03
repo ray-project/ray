@@ -499,7 +499,11 @@ if __name__ == "__main__":
             session_name=args.session_name,
         )
 
-        ray._raylet.setproctitle(ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT)
+        # Include --temp-dir in process title for ray stop --temp-dir to identify
+        ray._raylet.setproctitle(
+            f"{ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT} "
+            f"--temp-dir={args.temp_dir}"
+        )
 
         def sigterm_handler():
             logger.warning("Exiting with SIGTERM immediately...")
