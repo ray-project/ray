@@ -148,7 +148,7 @@ from ray.experimental import GetTensorOptions
 
 # Correct example of ray.get(), using the object store to fetch the RDT object because the caller
 # is not part of the collective group.
-print(ray.get(tensor, GetTensorOptions(use_object_store=True)))
+print(ray.get(tensor, _get_tensor_options=GetTensorOptions(use_object_store=True)))
 # torch.Tensor(...)
 # __gloo_get_end__
 

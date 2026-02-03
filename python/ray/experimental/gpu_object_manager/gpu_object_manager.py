@@ -444,9 +444,10 @@ class GPUObjectManager:
         assert gpu_object_meta is not None
 
         if get_tensor_options and get_tensor_options.use_object_store:
-            assert (
-                not get_tensor_options.tensor_buffer
-            ), "tensor_buffer is not supported when use_object_store is True"
+            if get_tensor_options.tensor_buffers:
+                raise ValueError(
+                    "tensor_buffers is not supported when use_object_store is True"
+                )
             src_actor = gpu_object_meta.src_actor
             tensors = ray.get(
                 src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(

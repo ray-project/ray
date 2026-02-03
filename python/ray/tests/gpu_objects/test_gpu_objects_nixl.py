@@ -39,7 +39,8 @@ class GPUTestActor:
 
     def consume_with_object_store(self, refs):
         tensors = [
-            ray.get(ref, GetTensorOptions(use_object_store=True)) for ref in refs
+            ray.get(ref, _get_tensor_options=GetTensorOptions(use_object_store=True))
+            for ref in refs
         ]
         sum = 0
         for t in tensors:
@@ -140,7 +141,10 @@ def test_ray_get_gpu_ref_created_by_actor_task(ray_start_regular):
     assert torch.equal(ray.get(ref2), tensor)
 
     # # Test ray.get with object store tensor transport
-    assert torch.equal(ray.get(ref3, GetTensorOptions(use_object_store=True)), tensor)
+    assert torch.equal(
+        ray.get(ref3, _get_tensor_options=GetTensorOptions(use_object_store=True)),
+        tensor,
+    )
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
@@ -333,7 +337,8 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
 
         def get_from_ref(self, refs):
             tensors = ray.get(
-                refs[0], GetTensorOptions(tensor_buffers=self.tensor_list)
+                refs[0],
+                _get_tensor_options=GetTensorOptions(tensor_buffers=self.tensor_list),
             )
             # Make sure we ray.get-ted into the buffers
             for new_tensor, tensor_buffer in zip(tensors, self.tensor_list):
@@ -346,7 +351,12 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
                 torch.tensor([4, 5]).to("cuda"),
             ]
             with pytest.raises(ValueError) as excinfo:
-                ray.get(refs[0], GetTensorOptions(tensor_buffers=wrong_tensor_buffer))
+                ray.get(
+                    refs[0],
+                    _get_tensor_options=GetTensorOptions(
+                        tensor_buffers=wrong_tensor_buffer
+                    ),
+                )
             assert "Shape of tensor_buffer at index 0" in str(excinfo.value)
             return True
 

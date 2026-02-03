@@ -2903,7 +2903,7 @@ def get(
             return the object immediately if it's available, else raise
             GetTimeoutError in accordance with the above docstring.
         _get_tensor_options: [Alpha] Special options for Ray Direct Transport.
-            See :class:`~GetTensorOptions` for more details.
+            See :class:`~ray.experimental.GetTensorOptions` for more details.
     Returns:
         A Python object or a list of Python objects.
 
