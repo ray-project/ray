@@ -51,7 +51,6 @@ class MBLTAcceleratorManager(AcceleratorManager):
                 try:
                     acc = Accelerator(dev_no)
                     cores = acc.get_available_cores()
-                    # 코어가 하나라도 있으면 '유효한 디바이스'
                     if cores:
                         count += 1
                     dev_no += 1
@@ -105,7 +104,6 @@ class MBLTAcceleratorManager(AcceleratorManager):
         except Exception as e:
             logger.debug("Failed to detect MBLT type via qbruntime: %s", e)
 
-        # 2) Fallback: parse lspci output.
         try:
             out = subprocess.check_output(
                 _MBLT_PCI_FILTER, text=True, stderr=subprocess.DEVNULL
@@ -127,7 +125,6 @@ class MBLTAcceleratorManager(AcceleratorManager):
     def validate_resource_request_quantity(
         quantity: float,
     ) -> Tuple[bool, Optional[str]]:
-        # Same as RBLN: only allow whole numbers.
         if isinstance(quantity, float) and not quantity.is_integer():
             return (
                 False,
