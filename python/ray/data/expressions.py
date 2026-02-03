@@ -579,7 +579,10 @@ class Expr(ABC):
         return _create_pyarrow_compute_udf(pc.abs_checked)(self)
 
     def cast(
-        self, target_type: Union[str, "pyarrow.DataType", DataType], *, safe: bool = True
+        self,
+        target_type: Union[str, "pyarrow.DataType", DataType],
+        *,
+        safe: bool = True,
     ) -> "UDFExpr":
         """Cast the expression to a specified type.
 
@@ -612,7 +615,6 @@ class Expr(ABC):
             >>> # Cast to string using DataType object
             >>> ds = ds.with_column("id_str", col("id").cast(DataType.string()))
         """
-        import pyarrow as pa
 
         # Normalize target type to PyArrow DataType
         pa_target_type = _normalize_cast_target_type(target_type)
@@ -1351,13 +1353,11 @@ def _normalize_cast_target_type(
         ValueError: If the string type name is not recognized.
     """
     import pyarrow as pa
+
     from ray.data.datatype import PYARROW_TYPE_DEFINITIONS
 
     if isinstance(target_type, str):
-        # Try to get from PYARROW_TYPE_DEFINITIONS first
-        if target_type in PYARROW_TYPE_DEFINITIONS:
-            return PYARROW_TYPE_DEFINITIONS[target_type][0]()
-        # Try PyArrow's type_for_alias for other types
+        # Use PyArrow's type_for_alias for type resolution
         try:
             return pa.type_for_alias(target_type)
         except (ValueError, KeyError):

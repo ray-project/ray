@@ -1057,7 +1057,9 @@ def test_cast_expression_basic(
     get_pyarrow_version() < parse_version("20.0.0"),
     reason="with_column requires PyArrow >= 20.0.0",
 )
-def test_cast_expression_usecase(ray_start_regular_shared, target_max_block_size_infinite_or_default):
+def test_cast_expression_usecase(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
     """Test the user use case: converting float result from modulo to int64."""
     ds = ray.data.range(10)
     # The modulo operation returns float, cast it to int64
@@ -1081,7 +1083,9 @@ def test_cast_expression_usecase(ray_start_regular_shared, target_max_block_size
     get_pyarrow_version() < parse_version("20.0.0"),
     reason="with_column requires PyArrow >= 20.0.0",
 )
-def test_cast_expression_chained(ray_start_regular_shared, target_max_block_size_infinite_or_default):
+def test_cast_expression_chained(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
     """Test that cast() can be chained with other expressions."""
     ds = ray.data.range(5)
     # Cast to float64 then multiply
@@ -1103,7 +1107,9 @@ def test_cast_expression_chained(ray_start_regular_shared, target_max_block_size
     get_pyarrow_version() < parse_version("20.0.0"),
     reason="with_column requires PyArrow >= 20.0.0",
 )
-def test_cast_expression_safe_mode(ray_start_regular_shared, target_max_block_size_infinite_or_default):
+def test_cast_expression_safe_mode(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
     """Test that safe=True (default) raises errors on invalid conversions."""
     ds = ray.data.from_items([{"value": "not_a_number"}])
 
@@ -1116,7 +1122,9 @@ def test_cast_expression_safe_mode(ray_start_regular_shared, target_max_block_si
     get_pyarrow_version() < parse_version("20.0.0"),
     reason="with_column requires PyArrow >= 20.0.0",
 )
-def test_cast_expression_invalid_type(ray_start_regular_shared, target_max_block_size_infinite_or_default):
+def test_cast_expression_invalid_type(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
     """Test that invalid type names raise appropriate errors."""
     ds = ray.data.range(5)
 
@@ -1129,7 +1137,9 @@ def test_cast_expression_invalid_type(ray_start_regular_shared, target_max_block
     get_pyarrow_version() < parse_version("20.0.0"),
     reason="with_column requires PyArrow >= 20.0.0",
 )
-def test_cast_expression_multiple_types(ray_start_regular_shared, target_max_block_size_infinite_or_default):
+def test_cast_expression_multiple_types(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
     """Test casting with multiple different target types."""
     ds = ray.data.from_items([{"id": 42, "score": 3.14}])
 
