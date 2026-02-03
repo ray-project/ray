@@ -72,7 +72,15 @@ export const ExpandableTableRow = ({
             size="large"
           >
             {length}
-            {isExpanded ? <KeyboardArrowDown /> : <KeyboardArrowRight />}
+            {isExpanded ? (
+              <KeyboardArrowDown
+                sx={(theme) => ({ color: theme.palette.text.secondary })}
+              />
+            ) : (
+              <KeyboardArrowRight
+                sx={(theme) => ({ color: theme.palette.text.secondary })}
+              />
+            )}
           </IconButton>
         </TableCell>
         {children}
@@ -307,6 +315,18 @@ const RayletWorkerTable = ({
                           }}
                         >
                           jstat
+                        </Button>
+                      </div>
+                    ) : language === "PYTHON" ? (
+                      <div>
+                        <Button
+                          onClick={() => {
+                            window.open(
+                              `#/cmd/torchtrace/${coreWorkerStats[0]?.ipAddress}/${pid}`,
+                            );
+                          }}
+                        >
+                          Torch Trace
                         </Button>
                       </div>
                     ) : (
