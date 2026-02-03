@@ -126,7 +126,7 @@ class CollectiveTensorTransport(TensorTransportManager):
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
-        tensor_buffer: Optional[List["torch.Tensor"]] = None,
+        tensor_buffers: Optional[List["torch.Tensor"]] = None,
     ):
         from ray.experimental.gpu_object_manager.util import (
             create_empty_tensors_from_metadata,
@@ -137,8 +137,8 @@ class CollectiveTensorTransport(TensorTransportManager):
         assert isinstance(communicator_metadata, CollectiveCommunicatorMetadata)
 
         tensors = (
-            tensor_buffer
-            if tensor_buffer
+            tensor_buffers
+            if tensor_buffers
             else create_empty_tensors_from_metadata(tensor_transport_metadata)
         )
         for tensor in tensors:

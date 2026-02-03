@@ -122,7 +122,7 @@ class CudaIpcTransport(TensorTransportManager):
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
-        tensor_buffer: Optional[List["torch.Tensor"]] = None,
+        tensor_buffers: Optional[List["torch.Tensor"]] = None,
     ) -> List["torch.Tensor"]:
 
         assert isinstance(
@@ -132,9 +132,9 @@ class CudaIpcTransport(TensorTransportManager):
             communicator_metadata, CudaIpcCommunicatorMetadata
         ), "metadata must be a CudaIpcCommunicatorMetadata object for CUDA IPC transport"
 
-        if tensor_buffer:
+        if tensor_buffers:
             logger.warning(
-                "tensor_buffer is not supported when using CUDA IPC transport"
+                "tensor_buffers is not supported when using CUDA IPC transport"
             )
 
         tensors = []
