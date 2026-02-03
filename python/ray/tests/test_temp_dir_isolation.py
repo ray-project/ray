@@ -115,11 +115,10 @@ def _get_pids_by_temp_dir(temp_dir: str) -> List[Dict]:
         if not _is_ray_process(name, cmdline_list):
             continue
 
-        cmdline_str = subprocess.list2cmdline(cmdline_list)
-        if (
-            f"--temp-dir={temp_dir}" in cmdline_str
-            or f"--temp_dir={temp_dir}" in cmdline_str
-        ):
+        # Use exact path matching for cross-platform compatibility
+        # Reuse the same function from scripts.py
+        if scripts.matches_temp_dir_path(cmdline_list, temp_dir):
+            cmdline_str = subprocess.list2cmdline(cmdline_list)
             procs.append(
                 {
                     "pid": pid,
@@ -477,3 +476,60 @@ class TestTempDirIsolation:
         finally:
             runner.invoke(scripts.stop, ["--force"])
             shutil.rmtree(real_temp_dir, ignore_errors=True)
+
+    def test_prefix_path_isolation(self, cleanup_ray):
+        """
+        Test that /tmp/ray_X and /tmp/ray_X/subdir are correctly isolated.
+        ray stop --temp-dir=/tmp/ray_X should NOT stop /tmp/ray_X/subdir cluster.
+        """
+        runner = cleanup_ray
+        suffix = uuid.uuid4().hex[:8]
+        temp_dir_parent = f"/tmp/ray_prefix_{suffix}"
+        temp_dir_child = f"/tmp/ray_prefix_{suffix}/subdir"
+
+        try:
+            os.makedirs(temp_dir_child, exist_ok=True)
+
+            # Start cluster 1 (parent path)
+            result = runner.invoke(
+                scripts.start,
+                ["--head", f"--temp-dir={temp_dir_parent}", "--port", "6382"],
+            )
+            _die_on_error(result)
+            wait_for_condition(
+                lambda: len(_get_pids_by_temp_dir(temp_dir_parent)) >= 1,
+                timeout=30,
+            )
+
+            # Start cluster 2 (child path)
+            result = runner.invoke(
+                scripts.start,
+                ["--head", f"--temp-dir={temp_dir_child}", "--port", "6383"],
+            )
+            _die_on_error(result)
+            wait_for_condition(
+                lambda: len(_get_pids_by_temp_dir(temp_dir_child)) >= 1,
+                timeout=30,
+            )
+
+            cluster1_procs = _get_pids_by_temp_dir(temp_dir_parent)
+            cluster2_procs = _get_pids_by_temp_dir(temp_dir_child)
+
+            # Verify no overlap (exact matching works)
+            cluster1_pids = {p["pid"] for p in cluster1_procs}
+            cluster2_pids = {p["pid"] for p in cluster2_procs}
+            assert (
+                len(cluster1_pids & cluster2_pids) == 0
+            ), "Clusters should not overlap"
+
+            # Stop parent - child should NOT be affected
+            runner.invoke(scripts.stop, [f"--temp-dir={temp_dir_parent}"])
+            wait_for_condition(lambda: _all_pids_stopped(cluster1_procs), timeout=30)
+
+            assert _all_pids_running(
+                cluster2_procs
+            ), "Child cluster should still run after stopping parent cluster"
+
+        finally:
+            runner.invoke(scripts.stop, ["--force"])
+            shutil.rmtree(temp_dir_parent, ignore_errors=True)

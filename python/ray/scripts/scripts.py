@@ -1207,6 +1207,45 @@ def start(
         # not-reachable
 
 
+def matches_temp_dir_path(cmdline: list, target_temp_dir: str) -> bool:
+    """Check if any argument in cmdline matches the target temp directory path.
+
+    Uses os.path.normcase and os.path.normpath for cross-platform compatibility:
+    - Handles trailing slashes (/tmp/ray/ vs /tmp/ray)
+    - Handles path separators (/ vs \\ on Windows)
+    - Handles case-insensitivity on Windows
+    - Handles setproctitle format where --temp-dir is embedded in process title
+
+    Args:
+        cmdline: List of command line arguments from psutil.Process.cmdline()
+        target_temp_dir: The temp directory path to match
+
+    Returns:
+        True if a matching --temp-dir or --temp_dir argument is found
+    """
+    target = os.path.normcase(os.path.normpath(target_temp_dir))
+    for arg in cmdline:
+        for prefix in ("--temp-dir=", "--temp_dir="):
+            path = None
+            if arg.startswith(prefix):
+                # Normal case: --temp-dir=/tmp/ray
+                path = arg.split("=", 1)[1]
+            elif prefix in arg:
+                # setproctitle case: "ray::DashboardAgent --temp-dir=/tmp/ray"
+                idx = arg.find(prefix)
+                path_part = arg[idx + len(prefix) :]
+                # Path ends at space or end of string
+                path = path_part.split()[0] if " " in path_part else path_part
+
+            if path is not None:
+                # Remove any trailing quotes from setproctitle format
+                path = path.rstrip("\"'")
+                normalized = os.path.normcase(os.path.normpath(path))
+                if normalized == target:
+                    return True
+    return False
+
+
 @cli.command()
 @click.option(
     "-f",
@@ -1299,12 +1338,8 @@ def stop(force: bool, grace_period: int, stop_temp_dir: str):
                     # command line contains the exact temp directory path
                     if stop_temp_dir is not None:
                         try:
-                            cmdline_str = subprocess.list2cmdline(proc_args)
-                            # Use exact matching with --temp-dir= or --temp_dir=
-                            if (
-                                f"--temp-dir={stop_temp_dir}" in cmdline_str
-                                or f"--temp_dir={stop_temp_dir}" in cmdline_str
-                            ):
+                            # Use exact path matching for cross-platform compatibility
+                            if matches_temp_dir_path(proc_args, stop_temp_dir):
                                 found.append(candidate)
                         except psutil.Error:
                             pass
