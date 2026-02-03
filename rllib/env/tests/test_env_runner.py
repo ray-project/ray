@@ -1069,6 +1069,29 @@ class TestEnvRunnerConnectors:
         records = EnvToModuleConnectorTracker.call_records
         assert all(not r["explore"] for r in records)
 
+    def test_env_to_module_postprocess_done_episodes_multi_agent(
+        self, env_runner_with_env_to_module_tracker, runner_type
+    ):
+        """Test that MultiAgent runner calls env_to_module for done episode postprocessing.
+
+        This is specific to MultiAgentEnvRunner which has an extra connector call
+        for done episodes to postprocess artifacts like one-hot encoded observations.
+        """
+        if runner_type != "multi_agent":
+            pytest.skip("Test only applicable to multi_agent runner")
+
+        env_runner = env_runner_with_env_to_module_tracker
+        num_episodes = 3
+
+        episodes = env_runner.sample(num_episodes=num_episodes, random_actions=True)
+        # With multiple envs, we may get more than num_episodes due to parallel completion
+        assert len(episodes) >= num_episodes
+
+        # Check that done episodes were recorded
+        done_records = EnvToModuleConnectorTracker.get_done_episode_records()
+        # Each done episode should have at least one record where is_done=True
+        assert len(done_records) >= num_episodes
+
 
 if __name__ == "__main__":
     import sys
