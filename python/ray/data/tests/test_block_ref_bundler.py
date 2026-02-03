@@ -195,8 +195,7 @@ def test_block_ref_bundler_uniform(
 
 
 def test_block_ref_bundler_get_next_regression():
-    """Test that all remaining bundles are appropriately preserved after `get_next_bundle`.
-    """
+    """Test that all remaining bundles are appropriately preserved after `get_next_bundle`."""
 
     # Create 4 blocks, each with 1 row
     bundler = BlockRefBundler(min_rows_per_bundle=2)
