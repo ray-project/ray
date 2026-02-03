@@ -114,7 +114,7 @@ class GPUTestActor:
         return ref1, ref2
 
     def test_cache_metadata_reuse(self):
-        """Test that cache_metadata=True keeps registrations after GC."""
+        """Test that cache_metadata=True keeps memory registrations after the object ref is freed."""
         from ray.experimental.gpu_object_manager.util import (
             get_tensor_transport_manager,
         )
@@ -122,7 +122,6 @@ class GPUTestActor:
         nixl_transport = get_tensor_transport_manager("NIXL")
         gpu_manager = ray._private.worker.global_worker.gpu_object_manager
 
-        # Create a tensor and put with cache_metadata=True
         tensor = torch.tensor([1, 2, 3]).to("cuda")
         data_ptr = tensor.data_ptr()
 
@@ -131,32 +130,26 @@ class GPUTestActor:
             _tensor_transport=PutTensorOptions(transport="nixl", cache_metadata=True),
         )
 
-        # Verify registration exists with cache_metadata=True
         assert data_ptr in nixl_transport._tensor_desc_cache
         assert nixl_transport._tensor_desc_cache[data_ptr].cache_metadata is True
         assert nixl_transport._tensor_desc_cache[data_ptr].metadata_count == 1
 
-        # Delete the object ref and wait for tensor to be freed
         del ref
         gpu_manager.gpu_object_store.wait_tensor_freed(tensor, timeout=10)
 
-        # Verify the registration was NOT freed (cache_metadata=True keeps it)
         assert data_ptr in nixl_transport._tensor_desc_cache
         assert nixl_transport._tensor_desc_cache[data_ptr].metadata_count == 0
         assert nixl_transport._tensor_desc_cache[data_ptr].cache_metadata is True
 
-        # Put the same tensor again to check for reuse
         ref2 = ray.put(
             tensor,
             _tensor_transport=PutTensorOptions(transport="nixl", cache_metadata=True),
         )
 
-        # Verify registration is reused
         assert data_ptr in nixl_transport._tensor_desc_cache
         assert nixl_transport._tensor_desc_cache[data_ptr].cache_metadata is True
         assert nixl_transport._tensor_desc_cache[data_ptr].metadata_count == 1
 
-        # Clean up
         del ref2
         gpu_manager.gpu_object_store.wait_tensor_freed(tensor, timeout=10)
 
@@ -369,7 +362,7 @@ def test_shared_tensor_deduplication(ray_start_regular):
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_cache_metadata_reuse(ray_start_regular):
-    """Test that cache_metadata=True caches registrations and reuses them."""
+    """Test that cache_metadata=True caches memory registrations and reuses them after the object ref is freed."""
     actor = GPUTestActor.remote()
     result = ray.get(actor.test_cache_metadata_reuse.remote())
     assert result == "Success"
