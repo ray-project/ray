@@ -86,12 +86,14 @@ class GpuProfilingManager:
         self._profile_dir_path.mkdir(parents=True, exist_ok=True)
 
     @property
+    def dynolog_available(self) -> bool:
+        """Check if dynolog binaries are installed on the node."""
+        return self._dynolog_bin is not None and self._dyno_bin is not None
+
+    @property
     def enabled(self) -> bool:
-        return (
-            self.node_has_gpus()
-            and self._dynolog_bin is not None
-            and self._dyno_bin is not None
-        )
+        """Check if GPU profiling is fully enabled (has GPUs and dynolog)."""
+        return self.node_has_gpus() and self.dynolog_available
 
     @property
     def is_monitoring_daemon_running(self) -> bool:
@@ -117,13 +119,13 @@ class GpuProfilingManager:
             return False
 
     def start_monitoring_daemon(self):
-        """Start the GPU profiling monitoring daemon if it's possible.
-        This must be called before profiling.
+        """Start the Kineto profiling monitoring daemon if dynolog is available.
+        This must be called before profiling. Works on both GPU and CPU nodes.
         """
 
-        if not self.enabled:
+        if not self.dynolog_available:
             logger.warning(
-                "[GpuProfilingManager] GPU profiling is disabled, skipping daemon setup."
+                "[GpuProfilingManager] `dynolog` is not installed, skipping daemon setup."
             )
             return
 
@@ -187,6 +189,12 @@ class GpuProfilingManager:
         if not self.enabled:
             return False, self._DISABLED_ERROR_MESSAGE.format(
                 ip_address=self._ip_address
+            )
+
+        if not (1 <= num_iterations <= 100):
+            return False, (
+                f"Invalid num_iterations={num_iterations}. "
+                "Must be between 1 and 100."
             )
 
         if not self._dynolog_daemon_process:

@@ -1145,6 +1145,10 @@ class ReporterAgent(
             "disk_io_speed": disk_speed_stats,
             "gpus": gpus,
             "tpus": self._get_tpu_usage(),
+            "gpuProfilingEnabled": (
+                self._gpu_profiling_manager.enabled
+                and self._gpu_profiling_manager.is_monitoring_daemon_running
+            ),
             "network": network_stats,
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.
