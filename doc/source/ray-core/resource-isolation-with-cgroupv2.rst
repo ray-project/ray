@@ -141,7 +141,7 @@ Enable Resource Isolation with the SDK
    # - 5GB memory reserved for system processes.
    ray.init(
        enable_resource_isolation=True,
-       _cgroup_path="/sys/fs/cgroup/ray",
+       cgroup_path="/sys/fs/cgroup/ray",
        system_reserved_cpu=1.5,
        system_reserved_memory=5368709120,
    )
