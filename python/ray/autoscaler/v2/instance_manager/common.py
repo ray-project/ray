@@ -200,6 +200,10 @@ class InstanceUtil:
                 # Cloud provider requested to launch a node for the instance.
                 # This happens when the a launch request is made to the node provider.
                 Instance.REQUESTED,
+                # Allocation request canceled before being requested.
+                # This happens when max_workers config is reduced or other termination
+                # triggers occur while the instance is still queued.
+                Instance.TERMINATED,
             },
             # When in this status, a launch request to the node provider is made.
             Instance.REQUESTED: {
@@ -333,10 +337,12 @@ class InstanceUtil:
                 # Retry the termination, become terminating again.
                 Instance.TERMINATING,
             },
-            # Whenever a cloud instance disappears from the list of running cloud
-            # instances from the node provider, the instance is marked as stopped. Since
-            # we guarantee 1:1 mapping of a Instance to a cloud instance, this is a
-            # terminal state.
+            # An instance is marked as terminated when:
+            # 1. A cloud instance disappears from the list of running cloud instances
+            #    from the node provider (follows from TERMINATING or other running states).
+            # 2. An allocation request is canceled before cloud resources are allocated
+            #    (follows from QUEUED).
+            # This is a terminal state.
             Instance.TERMINATED: set(),  # Terminal state.
             # When in this status, the cloud instance failed to be allocated by the
             # node provider.

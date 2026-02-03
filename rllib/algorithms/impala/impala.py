@@ -788,6 +788,7 @@ class IMPALA(Algorithm):
                             num_epochs=self.config.num_epochs,
                             minibatch_size=self.config.minibatch_size,
                             shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
+                            defer_solve_refs_to_learner=True,
                         )
                         # Only request weights from 1st Learner - at most - once per
                         # `training_step` call.

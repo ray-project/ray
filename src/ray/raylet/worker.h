@@ -49,8 +49,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
          rpc::WorkerType worker_type,
          const std::string &ip_address,
          std::shared_ptr<ClientConnection> connection,
-         rpc::ClientCallManager &client_call_manager,
-         StartupToken startup_token);
+         rpc::ClientCallManager &client_call_manager);
 
   rpc::WorkerType GetWorkerType() const override;
   void MarkDead() override;
@@ -67,8 +66,6 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   WorkerID WorkerId() const override;
   /// Return the worker process.
   Process GetProcess() const override;
-  /// Return the worker process's startup token
-  StartupToken GetStartupToken() const override;
   void SetProcess(Process proc) override;
   rpc::Language GetLanguage() const override;
   const std::string IpAddress() const override;
@@ -168,16 +165,11 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   void SetIsGpu(bool is_gpu);
   void SetIsActorWorker(bool is_actor_worker);
 
- protected:
-  void SetStartupToken(StartupToken startup_token) override;
-
  private:
   /// The worker's ID.
   WorkerID worker_id_;
   /// The worker's process.
   Process proc_;
-  /// The worker's process's startup_token
-  StartupToken startup_token_;
   /// The language type of this worker.
   rpc::Language language_;
   /// The type of the worker.

@@ -3,18 +3,16 @@ import functools
 import itertools
 import logging
 from abc import ABC, abstractmethod
-from collections import defaultdict, deque
+from dataclasses import replace
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Deque,
     Dict,
     Iterable,
     Iterator,
     List,
     Optional,
-    Set,
     Tuple,
     Union,
 )
@@ -24,11 +22,16 @@ if TYPE_CHECKING:
 
 import ray
 from ray import ObjectRef
-from ray._raylet import ObjectRefGenerator
+from ray._raylet import ObjectRefGenerator, StreamingGeneratorStats
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
     TaskPoolStrategy,
+)
+from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
+    FIFOBundleQueue,
+    ReorderingBundleQueue,
 )
 from ray.data._internal.execution.interfaces import (
     BlockSlice,
@@ -209,7 +212,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._block_ref_bundler = ref_bundler or BlockRefBundler(min_rows_per_bundle)
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
-        self._output_queue: Optional[_OutputQueue] = None
+        self._output_queue: Optional["BaseBundleQueue"] = None
         # Output metadata, added to on get_next().
         self._output_blocks_stats: List[BlockStats] = []
         # All active `DataOpTask`s.
@@ -300,7 +303,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         return self._output_queue.num_blocks()
 
     def internal_output_queue_num_bytes(self) -> int:
-        return self._output_queue.size_bytes()
+        return self._output_queue.estimate_size_bytes()
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queue (block ref bundler)."""
@@ -441,9 +444,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         super().start(options)
         # Create output queue with desired ordering semantics.
         if options.preserve_order:
-            self._output_queue = _OrderedOutputQueue()
+            self._output_queue = ReorderingBundleQueue()
         else:
-            self._output_queue = _UnorderedOutputQueue()
+            self._output_queue = FIFOBundleQueue()
 
         if options.locality_with_output:
             if isinstance(options.locality_with_output, list):
@@ -586,7 +589,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         #    can also be capsulated in the base class.
         task_index = self._next_data_task_idx
         self._next_data_task_idx += 1
-        self._metrics.on_task_submitted(task_index, inputs)
 
         def _output_ready_callback(
             task_index,
@@ -595,9 +597,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
             self._metrics.on_task_output_generated(task_index, output)
-
-            # Notify output queue that the task has produced an new output.
-            self._output_queue.notify_task_output_ready(task_index, output)
+            self._output_queue.add(output, key=task_index)
             self._metrics.on_output_queued(output)
 
         def _task_done_callback(task_index: int, exception: Optional[Exception]):
@@ -615,16 +615,20 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
-            self._output_queue.notify_task_completed(task_index)
+            self._output_queue.finalize(key=task_index)
             if task_done_callback:
                 task_done_callback()
 
-        self._data_tasks[task_index] = DataOpTask(
+        data_task = DataOpTask(
             task_index,
             gen,
             lambda output: _output_ready_callback(task_index, output),
             functools.partial(_task_done_callback, task_index),
         )
+        self._metrics.on_task_submitted(
+            task_index, inputs, task_id=data_task.get_task_id()
+        )
+        self._data_tasks[task_index] = data_task
 
     def _submit_metadata_task(
         self, result_ref: ObjectRef, task_done_callback: Callable[[], None]
@@ -701,9 +705,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def incremental_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
-    def implements_accurate_memory_accounting(self) -> bool:
-        return True
-
     def supports_fusion(self) -> bool:
         return self._supports_fusion
 
@@ -712,7 +713,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # metadata tasks, which are used by the actor-pool map operator to
         # check if a newly created actor is ready.
         # The reasons are because:
-        # 1. `PhysicalOperator.completed` checks `num_active_tasks`. The operator
+        # 1. `PhysicalOperator.has_completed` checks `num_active_tasks`. The operator
         #   should be considered completed if there are still pending actors.
         # 2. The number of active tasks in the progress bar will be more accurate
         #   to reflect the actual data processing tasks.
@@ -746,7 +747,9 @@ def _map_task(
     )
     DataContext._set_current(data_context)
     ctx.kwargs.update(kwargs)
+
     TaskContext.set_current(ctx)
+
     stats = BlockExecStats.builder()
     map_transformer.override_target_max_block_size(ctx.target_max_block_size_override)
     block_iter: Iterable[Block]
@@ -756,17 +759,26 @@ def _map_task(
         block_iter = iter(blocks)
 
     with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
-        for b_out in map_transformer.apply_transform(block_iter, ctx):
-            # TODO(Clark): Add input file propagation from input blocks.
-            m_out = BlockAccessor.for_block(b_out).get_metadata()
-            s_out = BlockAccessor.for_block(b_out).schema()
-            m_out.exec_stats = stats.build()
-            m_out.exec_stats.udf_time_s = map_transformer.udf_time()
-            m_out.exec_stats.task_idx = ctx.task_idx
-            m_out.exec_stats.max_uss_bytes = profiler.estimate_max_uss()
-            meta_with_schema = BlockMetadataWithSchema(metadata=m_out, schema=s_out)
-            yield b_out
-            yield meta_with_schema
+        for block in map_transformer.apply_transform(block_iter, ctx):
+            block_meta = BlockAccessor.for_block(block).get_metadata()
+            block_schema = BlockAccessor.for_block(block).schema()
+
+            # Derive block execution stats
+            exec_stats = stats.build()
+            # Yield block and retrieve its Ray object serialization timing
+            stats: StreamingGeneratorStats = yield block
+            if stats:
+                exec_stats.block_ser_time_s = stats.object_creation_dur_s
+
+            exec_stats.udf_time_s = map_transformer.udf_time_s(reset=True)
+            exec_stats.task_idx = ctx.task_idx
+            exec_stats.max_uss_bytes = profiler.estimate_max_uss()
+
+            yield BlockMetadataWithSchema(
+                metadata=replace(block_meta, exec_stats=exec_stats), schema=block_schema
+            )
+
+            # Reset trackers
             stats = BlockExecStats.builder()
             profiler.reset()
 
@@ -883,117 +895,6 @@ def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
     owns_blocks = all(bundle.owns_blocks for bundle in bundles)
     schema = _take_first_non_empty_schema(bundle.schema for bundle in bundles)
     return RefBundle(blocks, owns_blocks=owns_blocks, schema=schema)
-
-
-class _OutputQueue(ABC):
-    """Interface for swapping between different output order modes."""
-
-    @abstractmethod
-    def notify_task_output_ready(self, task_index: int, output: RefBundle):
-        """Called when a task's output is ready."""
-        pass
-
-    def notify_task_completed(self, task_index: int):
-        """Called when a previously pending task completes."""
-        pass
-
-    @abstractmethod
-    def has_next(self) -> bool:
-        pass
-
-    @abstractmethod
-    def get_next(self) -> RefBundle:
-        pass
-
-    @abstractmethod
-    def num_blocks(self) -> int:
-        pass
-
-    @abstractmethod
-    def size_bytes(self) -> int:
-        pass
-
-
-class _OrderedOutputQueue(_OutputQueue):
-    """An queue that returns finished tasks in submission order."""
-
-    def __init__(self):
-        self._task_outputs: Dict[int, Deque[RefBundle]] = defaultdict(lambda: deque())
-        self._current_output_index: int = 0
-        self._completed_tasks: Set[int] = set()
-        self._size_bytes: int = 0
-        self._num_blocks: int = 0
-
-    def notify_task_output_ready(self, task_index: int, output: RefBundle):
-        self._task_outputs[task_index].append(output)
-        self._size_bytes += output.size_bytes()
-        self._num_blocks += len(output.blocks)
-
-    def _move_to_next_task(self):
-        """Move the outut index to the next task.
-
-        This method should only be called when the current task is complete and all
-        outputs have been taken.
-        """
-        assert len(self._task_outputs[self._current_output_index]) == 0
-        assert self._current_output_index in self._completed_tasks
-        del self._task_outputs[self._current_output_index]
-        self._completed_tasks.remove(self._current_output_index)
-        self._current_output_index += 1
-
-    def notify_task_completed(self, task_index: int):
-        assert task_index >= self._current_output_index
-        self._completed_tasks.add(task_index)
-        if task_index == self._current_output_index:
-            if len(self._task_outputs[task_index]) == 0:
-                self._move_to_next_task()
-
-    def has_next(self) -> bool:
-        return len(self._task_outputs[self._current_output_index]) > 0
-
-    def get_next(self) -> RefBundle:
-        next_bundle = self._task_outputs[self._current_output_index].popleft()
-        self._size_bytes -= next_bundle.size_bytes()
-        self._num_blocks -= len(next_bundle.blocks)
-        if len(self._task_outputs[self._current_output_index]) == 0:
-            if self._current_output_index in self._completed_tasks:
-                self._move_to_next_task()
-        return next_bundle
-
-    def num_blocks(self) -> int:
-        return self._num_blocks
-
-    def size_bytes(self) -> int:
-        return self._size_bytes
-
-
-class _UnorderedOutputQueue(_OutputQueue):
-    """An queue that does not guarantee output order of finished tasks."""
-
-    def __init__(self):
-        self._queue: Deque[RefBundle] = deque()
-        self._num_blocks: int = 0
-        self._size_bytes: int = 0
-
-    def notify_task_output_ready(self, _: int, output: RefBundle):
-        self._queue.append(output)
-        self._num_blocks += len(output.blocks)
-        self._size_bytes += output.size_bytes()
-
-    def has_next(self) -> bool:
-        return len(self._queue) > 0
-
-    def get_next(self) -> RefBundle:
-        next_bundle = self._queue.popleft()
-        self._num_blocks -= len(next_bundle.blocks)
-        self._size_bytes -= next_bundle.size_bytes()
-        return next_bundle
-
-    def num_blocks(self) -> int:
-        return self._num_blocks
-
-    def size_bytes(self) -> int:
-        return self._size_bytes
 
 
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:

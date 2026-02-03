@@ -47,11 +47,15 @@ if TYPE_CHECKING:
         ChatCompletionResponse,
         CompletionRequest,
         CompletionResponse,
+        DetokenizeRequest,
+        DetokenizeResponse,
         EmbeddingRequest,
         EmbeddingResponse,
         ErrorResponse,
         ScoreRequest,
         ScoreResponse,
+        TokenizeRequest,
+        TokenizeResponse,
         TranscriptionRequest,
         TranscriptionResponse,
     )
@@ -451,6 +455,52 @@ class LLMServer(LLMServerProtocol):
             raw_request_info=raw_request_info,
         )
 
+    async def tokenize(
+        self,
+        request: "TokenizeRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union["TokenizeResponse", "ErrorResponse"], None]:
+        """Tokenize the input text.
+
+        Args:
+            request: A TokenizeRequest object (TokenizeCompletionRequest or TokenizeChatRequest).
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
+
+        Returns:
+            An AsyncGenerator over the TokenizeResponse object.
+        """
+        # NOTE: Tokenize does not need batching.
+        return await self._run_request(
+            request,
+            engine_method="tokenize",
+            batch_output_stream=False,
+            raw_request_info=raw_request_info,
+        )
+
+    async def detokenize(
+        self,
+        request: "DetokenizeRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union["DetokenizeResponse", "ErrorResponse"], None]:
+        """Detokenize the input token IDs.
+
+        Args:
+            request: A DetokenizeRequest object.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
+
+        Returns:
+            An AsyncGenerator over the DetokenizeResponse object.
+        """
+        # NOTE: Detokenize does not need batching.
+        return await self._run_request(
+            request,
+            engine_method="detokenize",
+            batch_output_stream=False,
+            raw_request_info=raw_request_info,
+        )
+
     async def check_health(self) -> None:
         """
         Check the health of the replica. Does not return anything. Raise error when
@@ -587,6 +637,42 @@ class LLMServer(LLMServerProtocol):
             await self.engine.stop_profile()
         except Exception as e:
             logger.error("Engine stop profile failed in LLMServer.stop_profile: %s", e)
+            raise e
+
+    async def collective_rpc(
+        self,
+        method: str,
+        timeout: Optional[float] = None,
+        args: tuple = (),
+        kwargs: Optional[dict] = None,
+    ) -> list:
+        """Execute a collective RPC call on all workers.
+
+        This is used for RLHF workflows where a trainer needs to execute
+        methods on all TP/PP workers (e.g., for weight synchronization).
+
+        Args:
+            method: Name of the worker method to execute.
+            timeout: Maximum time in seconds to wait for execution.
+            args: Positional arguments to pass to the worker method.
+            kwargs: Keyword arguments to pass to the worker method.
+
+        Returns:
+            A list containing the results from each worker.
+        """
+        if self.engine is None:
+            return []
+        try:
+            return await self.engine.collective_rpc(
+                method=method,
+                timeout=timeout,
+                args=args,
+                kwargs=kwargs,
+            )
+        except Exception as e:
+            logger.error(
+                "Engine collective_rpc failed in LLMServer.collective_rpc: %s", e
+            )
             raise e
 
     async def llm_config(self) -> Optional[LLMConfig]:

@@ -3,7 +3,7 @@
 import pandas  # noqa
 from packaging.version import parse as parse_version
 
-from ray._private.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
@@ -91,7 +91,7 @@ try:
     import pyarrow as pa
 
     # Import these arrow extension types to ensure that they are registered.
-    from ray.air.util.tensor_extensions.arrow import (  # noqa
+    from ray.data._internal.tensor_extensions.arrow import (  # noqa
         ArrowTensorType,
         ArrowVariableShapedTensorType,
     )

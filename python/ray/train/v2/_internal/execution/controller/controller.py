@@ -71,10 +71,12 @@ from ray.train.v2.api.exceptions import (
 )
 from ray.train.v2.api.report_config import CheckpointConsistencyMode
 from ray.train.v2.api.result import Result
+from ray.train.v2.api.validation_config import ValidationConfig
 
 if TYPE_CHECKING:
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
+from ray.util.tpu import get_tpu_num_slices_for_workers
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +121,7 @@ class TrainController:
         scaling_policy: ScalingPolicy,
         failure_policy: FailurePolicy,
         callbacks: Optional[List[RayTrainCallback]] = None,
+        validation_config: Optional[ValidationConfig] = None,
     ):
         self._train_run_context = train_run_context
         if ray_constants.env_bool(
@@ -137,25 +140,34 @@ class TrainController:
             checkpoint_config=self._run_config.checkpoint_config,
             storage_context=self._storage_context,
         )
-        self._validation_manager = ValidationManager(
-            checkpoint_manager=self._checkpoint_manager,
-        )
+        if validation_config:
+            validation_manager = ValidationManager(
+                checkpoint_manager=self._checkpoint_manager,
+                validation_config=validation_config,
+            )
+        else:
+            validation_manager = None
         report_handler = ReportCallbackHandler(
             report_callbacks=(
-                [self._checkpoint_manager, self._validation_manager]
+                [self._checkpoint_manager]
+                + ([validation_manager] if validation_manager else [])
                 + [c for c in self._callbacks if isinstance(c, ReportCallback)]
             )
         )
 
         # Group callbacks by the hooks they're subscribed to.
-        self._controller_callbacks = [
-            self._scaling_policy,
-            self._validation_manager,
-        ] + [c for c in self._callbacks if isinstance(c, ControllerCallback)]
+        self._controller_callbacks = (
+            [
+                self._scaling_policy,
+            ]
+            + ([validation_manager] if validation_manager else [])
+            + [c for c in self._callbacks if isinstance(c, ControllerCallback)]
+        )
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
         self._worker_group_callbacks_to_propagate = (
             [report_handler]
+            + ([validation_manager] if validation_manager else [])
             + [
                 c
                 for c in self._callbacks
@@ -327,6 +339,16 @@ class TrainController:
         except Exception as e:
             return ControllerError(e)
 
+        # Calculate num_slices for the worker group if using TPU.
+        num_slices = 1
+        if scaling_config.use_tpu:
+            num_slices = get_tpu_num_slices_for_workers(
+                topology=scaling_config.topology,
+                accelerator_type=scaling_config.accelerator_type,
+                num_workers=num_workers,
+                resources_per_worker=resources_per_worker,
+            )
+
         worker_group_context = WorkerGroupContext(
             run_attempt_id=self._get_run_attempt_id(),
             train_fn_ref=self._train_fn_ref,
@@ -334,6 +356,7 @@ class TrainController:
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
             label_selector=label_selector,
+            num_slices=num_slices,
         )
         try:
             self._worker_group = self.worker_group_cls.create(

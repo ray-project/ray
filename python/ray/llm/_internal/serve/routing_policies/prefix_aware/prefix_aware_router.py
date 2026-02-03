@@ -57,7 +57,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
 
     def initialize_state(
         self,
-        imbalanced_threshold: Optional[int] = 10,
+        imbalanced_threshold: Optional[float] = float("inf"),
         match_rate_threshold: Optional[float] = 0.1,
         do_eviction: Optional[bool] = False,
         eviction_threshold_chars: Optional[int] = 400_000,

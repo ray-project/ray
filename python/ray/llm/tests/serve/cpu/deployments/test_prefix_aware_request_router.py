@@ -56,7 +56,7 @@ def prefix_request_router(tree_actor, request):
         construct_request_router(get_or_create_event_loop())
     )
     request_router.initialize_state(
-        imbalanced_threshold=params.get("imbalanced_threshold", 10),
+        imbalanced_threshold=params.get("imbalanced_threshold", float("inf")),
         match_rate_threshold=params.get("match_rate_threshold", 0.1),
         do_eviction=params.get("do_eviction", False),
         eviction_threshold_chars=params.get("eviction_threshold_chars"),

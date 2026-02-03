@@ -50,3 +50,18 @@ cdef class RayletClient:
                     fut),
                 timeout)
         return asyncio.wrap_future(fut)
+
+    def async_get_agent_pids(self, timeout_ms: int = 1000) -> Future[list[int]]:
+        """Get the PIDs of dashboard and runtime_env agent."""
+        cdef:
+            fut = incremented_fut()
+            int32_t timeout = <int32_t>timeout_ms
+        assert self.inner.get() is not NULL
+        with nogil:
+            self.inner.get().GetAgentPIDs(
+                OptionalItemPyCallback[c_vector[int32_t]](
+                    &convert_optional_vector_int32,
+                    assign_and_decrement_fut,
+                    fut),
+                timeout)
+        return asyncio.wrap_future(fut)

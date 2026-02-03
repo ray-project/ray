@@ -132,6 +132,7 @@ Status TaskExecutor::ExecuteTask(
     std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
     std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
     bool *is_retryable_error,
+    std::string *actor_repr_name,
     std::string *application_error,
     const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
     const std::string name_of_concurrency_group_to_execute,
@@ -139,7 +140,7 @@ Status TaskExecutor::ExecuteTask(
     bool is_streaming_generator,
     bool retry_exception,
     int64_t generator_backpressure_num_objects,
-    const rpc::TensorTransport &tensor_transport) {
+    const std::optional<std::string> &tensor_transport) {
   RAY_LOG(DEBUG) << "Execute task type: " << TaskType_Name(task_type)
                  << " name:" << task_name;
   RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);

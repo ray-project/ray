@@ -8,8 +8,8 @@ import pyarrow as pa
 import pytest
 from packaging.version import parse as parse_version
 
-from ray._private.arrow_utils import get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import (
+from ray.data import DataContext
+from ray.data._internal.tensor_extensions.arrow import (
     ArrowConversionError,
     ArrowTensorArray,
     ArrowTensorType,
@@ -22,11 +22,11 @@ from ray.air.util.tensor_extensions.arrow import (
     concat_tensor_arrays,
     unify_tensor_arrays,
 )
-from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
-from ray.air.util.tensor_extensions.utils import (
+from ray.data._internal.tensor_extensions.pandas import TensorArray, TensorDtype
+from ray.data._internal.tensor_extensions.utils import (
     create_ragged_ndarray,
 )
-from ray.data import DataContext
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])

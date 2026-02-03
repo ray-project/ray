@@ -250,9 +250,9 @@ autoscaling for Ray workloads managed by Kueue using a step‑by‑step
 approach similar to the existing Kueue integration guides.
 
 > **Supported resources** – At the time of writing, the Kueue
-> autoscaler integration supports `RayCluster` and `RayService`.  Support
-> for `RayJob` autoscaling is under development; see the Kueue issue
-> tracker for updates: [issue](https://github.com/kubernetes-sigs/kueue/issues/7605).
+> autoscaler integration supports `RayCluster` and `RayService`.
+> `RayJob` autoscaling is supported starting from Kueue v0.15.2,
+> and is covered below.
 
 
 ### Prerequisites
@@ -468,6 +468,148 @@ inside the head Pod and monitors scaling:
     New worker Pods should appear as the tasks run and vanish once the
     workload finishes and the idle timeout elapses.
 
+### Autoscaling with RayJob
+#### Step 1: Create the RayJob code ConfigMap
+
+This RayJob example fans out CPU-bound tasks, which triggers the Ray
+autoscaler to scale the worker group within the admitted Kueue quota.
+If you used a different LocalQueue name when creating Kueue resources, replace `user-queue`
+in the RayJob metadata with your queue name.
+
+Create a ConfigMap that includes the Ray workload:
+
+```yaml
+# ray-job-code-sample.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ray-job-autoscaling-code-sample
+  namespace: default
+data:
+  sample_code.py: |
+    import ray
+    import time
+
+    ray.init()
+
+    @ray.remote
+    def busy_task(duration):
+        end = time.time() + duration
+        while time.time() < end:
+            x = 0
+            for _ in range(100_000):
+                x += 1
+        return duration
+
+    tasks = [busy_task.remote(60) for _ in range(10)]
+    print(sum(ray.get(tasks)))
+```
+
+#### Step 2: Create an elastic RayJob
+
+This RayJob uses the elastic job annotation, enables in-tree autoscaling,
+and mounts the ConfigMap with the Python entrypoint.
+
+```yaml
+# ray-job-autoscaling-sample.yaml
+apiVersion: ray.io/v1
+kind: RayJob
+metadata:
+  name: rayjob-autoscaling-sample
+  labels:
+    kueue.x-k8s.io/queue-name: user-queue
+  annotations:
+    kueue.x-k8s.io/elastic-job: "true"
+spec:
+  shutdownAfterJobFinishes: true
+  entrypoint: python /home/ray/samples/sample_code.py
+  runtimeEnvYAML: |
+    pip:
+      - requests==2.26.0
+      - pendulum==2.1.2
+    env_vars:
+      counter_name: "test_counter"
+  rayClusterSpec:
+    rayVersion: "2.46.0"
+    autoscalerOptions:
+      idleTimeoutSeconds: 30
+      upscalingMode: Aggressive
+    enableInTreeAutoscaling: true
+    headGroupSpec:
+      rayStartParams:
+        dashboard-host: "0.0.0.0"
+      template:
+        spec:
+          containers:
+            - name: ray-head
+              image: rayproject/ray:2.46.0
+              ports:
+                - containerPort: 6379
+                  name: gcs-server
+                - containerPort: 8265
+                  name: dashboard
+                - containerPort: 10001
+                  name: client
+              resources:
+                limits:
+                  cpu: "1"
+                  memory: "2Gi"
+                requests:
+                  cpu: "1"
+                  memory: "2Gi"
+              volumeMounts:
+                - mountPath: /home/ray/samples
+                  name: code-sample
+          volumes:
+            - name: code-sample
+              configMap:
+                name: ray-job-autoscaling-code-sample
+                items:
+                  - key: sample_code.py
+                    path: sample_code.py
+    workerGroupSpecs:
+      - replicas: 1
+        minReplicas: 1
+        maxReplicas: 5
+        groupName: small-group
+        rayStartParams: {}
+        template:
+          spec:
+            containers:
+              - name: ray-worker
+                image: rayproject/ray:2.46.0
+                lifecycle:
+                  preStop:
+                    exec:
+                      command: ["/bin/sh", "-c", "ray stop"]
+                resources:
+                  limits:
+                    cpu: "1"
+                    memory: "2Gi"
+                  requests:
+                    cpu: "1"
+                    memory: "2Gi"
+```
+
+Apply the manifests:
+
+```bash
+kubectl apply -f ray-job-code-sample.yaml
+kubectl apply -f ray-job-autoscaling-sample.yaml
+```
+
+#### Step 3: Verify autoscaling for a RayJob
+
+Find the RayCluster created by the RayJob and watch the worker Pods:
+
+```bash
+kubectl get rayclusters
+kubectl get pods -w -l ray.io/cluster=<raycluster-name>,ray.io/node-type=worker
+```
+
+During the workload, the worker group scales from 1 to 5 Pods, then
+scales back to 1 after the tasks finish and the cluster becomes idle.
+
 ### Autoscaling with RayService
 #### Step 1: Configure an elastic RayService
 
@@ -678,9 +820,8 @@ stand-alone `RayCluster` name (`raycluster-kueue-autoscaler`).
   `kueue.x-k8s.io/elastic-job: "true"` and configured with
   `enableInTreeAutoscaling: true` when ray image < 2.47.0.
 
-* **RayJob support** – Autoscaling for `RayJob` isn't yet supported.
-  The Kueue maintainers are actively tracking this work and will update
-  their documentation when it becomes available.
+* **RayJob support** – `RayJob` in-tree autoscaling requires Kueue
+  v0.15.2+.
 
 * **Kueue versions prior to v0.13** – If you are using a Kueue version
   earlier than v0.13, restart the Kueue controller once after

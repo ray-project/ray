@@ -65,7 +65,7 @@ class DirectTaskTransportTest : public ::testing::Test {
         *memory_store,
         *task_manager,
         *actor_creator,
-        [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+        [](const ObjectID &object_id) { return std::nullopt; },
         nullptr,
         io_context,
         reference_counter);

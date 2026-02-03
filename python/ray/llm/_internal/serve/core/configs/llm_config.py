@@ -84,7 +84,7 @@ class LoraConfig(BaseModelExtended):
     )
     max_num_adapters_per_replica: PositiveInt = Field(
         default=16,
-        description="The maximum number of adapters load on each replica.",
+        description="The maximum number of adapters to load on each replica.",
     )
     download_timeout_s: Optional[float] = Field(
         DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
@@ -162,8 +162,7 @@ class LLMConfig(BaseModelExtended):
         description=(
             "Additional keyword arguments for the engine. In case of vLLM, "
             "this will include all the configuration knobs they provide out "
-            "of the box, except for tensor-parallelism which is set "
-            "automatically from Ray Serve configs."
+            "of the box"
         ),
     )
 
@@ -207,6 +206,18 @@ class LLMConfig(BaseModelExtended):
             For more details, see the `Ray Serve Documentation <https://docs.ray.io/en/latest/serve/configure-serve-deployment.html>`_.
         """,
     )
+
+    server_cls: Optional[Union[str, Any]] = Field(
+        default=None,
+        description="The serve class to use.(e.g., LLMServer, SGLangServer or other Server backends).",
+    )
+
+    @field_validator("server_cls")
+    @classmethod
+    def validate_server_cls(cls, value):
+        if isinstance(value, str):
+            return load_class(value)
+        return value
 
     experimental_configs: Dict[str, Any] = Field(
         default_factory=dict,

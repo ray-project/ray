@@ -131,7 +131,7 @@ class Session : public std::enable_shared_from_this<Session> {
     req_.prepare_payload();
 
     auto auth_token = rpc::AuthenticationTokenLoader::instance().GetToken();
-    if (auth_token.has_value() && !auth_token->empty()) {
+    if (auth_token && !auth_token->empty()) {
       req_.set(http::field::authorization, auth_token->ToAuthorizationHeaderValue());
     }
   }

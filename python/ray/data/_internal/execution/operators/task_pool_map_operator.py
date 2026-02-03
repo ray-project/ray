@@ -1,5 +1,5 @@
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -147,11 +147,7 @@ class TaskPoolMapOperator(MapOperator):
         return ExecutionResources()
 
     def incremental_resource_usage(self) -> ExecutionResources:
-        return self.per_task_resource_allocation().copy(
-            object_store_memory=(
-                self._metrics.obj_store_mem_max_pending_output_per_task or 0
-            ),
-        )
+        return self.per_task_resource_allocation()
 
     def per_task_resource_allocation(self) -> ExecutionResources:
         return ExecutionResources(
@@ -167,6 +163,37 @@ class TaskPoolMapOperator(MapOperator):
 
     def get_max_concurrency_limit(self) -> Optional[int]:
         return self._max_concurrency
+
+    def min_max_resource_requirements(
+        self,
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        """Returns min/max resource requirements for this operator.
+
+        - Min: resources needed for one task (minimum to make progress)
+        - Max: resources for max_concurrency tasks (if set), else infinite
+        """
+        per_task = self.per_task_resource_allocation()
+        obj_store_per_task = (
+            self._metrics.obj_store_mem_max_pending_output_per_task or 0
+        )
+
+        min_resource_usage = per_task.copy(object_store_memory=obj_store_per_task)
+
+        # Cap resources to 0 if this operator doesn't use them.
+        # This prevents operators from hoarding resource budget they don't need.
+        max_concurrency = (
+            self._max_concurrency if self._max_concurrency is not None else float("inf")
+        )
+        max_resource_usage = ExecutionResources(
+            cpu=0 if per_task.cpu == 0 else per_task.cpu * max_concurrency,
+            gpu=0 if per_task.gpu == 0 else per_task.gpu * max_concurrency,
+            memory=0 if per_task.memory == 0 else per_task.memory * max_concurrency,
+            # Set the max `object_store_memory` requirement to 'inf', because we
+            # don't know how much data each task can output.
+            object_store_memory=float("inf"),
+        )
+
+        return min_resource_usage, max_resource_usage
 
     def all_inputs_done(self):
         super().all_inputs_done()

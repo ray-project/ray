@@ -21,9 +21,6 @@
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
-/// The duration at which the GCS tries to run global GC.
-RAY_CONFIG(uint64_t, gcs_global_gc_interval_milliseconds, 10000)
-
 /// Whether to enable Ray event stats collection.
 RAY_CONFIG(bool, event_stats, true)
 
@@ -40,6 +37,9 @@ RAY_CONFIG(bool, enable_cluster_auth, true)
 /// rpc/authentication/authentication_mode.h
 /// use GetAuthenticationMode() to get the authentication mode enum value.
 RAY_CONFIG(std::string, AUTH_MODE, "disabled")
+
+/// Whether to enable Kubernetes token-based authentication for RPC calls.
+RAY_CONFIG(bool, ENABLE_K8S_TOKEN_AUTH, false)
 
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available
@@ -261,11 +261,6 @@ RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
 /// Number of times raylet client tries connecting to a raylet.
 RAY_CONFIG(int64_t, raylet_client_num_connect_attempts, 10)
 RAY_CONFIG(int64_t, raylet_client_connect_timeout_milliseconds, 1000)
-
-/// The duration that the raylet will wait before reinitiating a
-/// fetch request for a missing task dependency. This time may adapt based on
-/// the number of missing task dependencies.
-RAY_CONFIG(int64_t, raylet_fetch_timeout_milliseconds, 1000)
 
 /// The duration that we wait after sending a worker SIGTERM before sending
 /// the worker SIGKILL.
@@ -510,6 +505,11 @@ RAY_CONFIG(uint64_t, task_events_max_num_profile_events_buffer_on_worker, 10 * 1
 /// report to GCS.
 RAY_CONFIG(int64_t, task_events_dropped_task_attempt_batch_size, 10 * 1000)
 
+/// Timeout in milliseconds to wait for task events to be flushed during shutdown.
+/// During graceful shutdown, the TaskEventBuffer and RayEventRecorder will wait up to
+/// this duration for in-flight gRPC calls to complete before stopping the io_service.
+RAY_CONFIG(int64_t, task_events_shutdown_flush_timeout_ms, 5000)
+
 /// The delay in ms that GCS should mark any running tasks from a job as failed.
 /// Setting this value too smaller might result in some finished tasks marked as failed by
 /// GCS.
@@ -742,9 +742,6 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 300 * 1000)
 // being garbage collected when a job finishes
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
 
-/// Whether to enable GCS-based actor scheduling.
-RAY_CONFIG(bool, gcs_actor_scheduling_enabled, false)
-
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 
 // The number of seconds to wait for the Raylet to start. This is normally
@@ -851,13 +848,17 @@ RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
 /// To use this,
-///  export
-///  RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob:in_flight_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob:in_flight_failure_prob"
-/// If you want to test all rpc failures you can use * as the method name and you can set
-/// -1 max_num_failures to have unlimited failures.
-/// Ex. unlimited failures for all rpc's with 25% request failures, 50% response
+///     export
+///     RAY_testing_rpc_failure='{"method1":{"num_failures":X,"req_failure_prob":Y,"resp_failure_prob":Z,"in_flight_failure_prob":W}}'
+///
+/// If you want to test all RPC failures you can use * as the method name and you can set
+/// -1 num_failures to have unlimited failures.
+/// Ex. unlimited failures for all RPCs with 25% request failures, 50% response
 /// failures, and 10% in-flight failures.
-///     export RAY_testing_rpc_failure="*=-1:25:50:10"
+///     export
+///     RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":25,"resp_failure_prob":50,"in_flight_failure_prob":10}}'
+/// This will set the probabilities for all RPCs to 25% for request failures, 50% for
+/// response failures, and 10% for in-flight failures.
 /// NOTE: Setting the wildcard will override any configuration for other methods.
 ///
 /// You can also provide an optional fifth, sixth, and/or seventh parameter to specify
@@ -871,10 +872,11 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 /// Afterwards, it will revert to the probabilistic failures. You can combine this with
 /// the wildcard so that each RPC method will have the same lower bounds applied.
 ///
-/// Ex. unlimited failures for all rpc's with 25% request failures, 50% response failures,
+/// Ex. unlimited failures for all RPCs with 25% request failures, 50% response failures,
 /// and 10% in-flight failures with at least 2 request failures, 3 response failures, and
-/// 1 in-flight failure.
-///     export RAY_testing_rpc_failure="*=-1:25:50:10:2:3:1"
+/// 1 in-flight failure:
+///     export
+///     RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":25,"resp_failure_prob":50,"in_flight_failure_prob":10,"num_lower_bound_req_failures":2,"num_lower_bound_resp_failures":3,"num_lower_bound_in_flight_failures":1}}'
 RAY_CONFIG(std::string, testing_rpc_failure, "")
 /// If this is set, when injecting RPC failures, we'll check if the server and client have
 /// the same address. If they do, we won't inject the failure.

@@ -1,9 +1,14 @@
 from typing import Any, Dict, Optional, Union
 
+from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.map_operator import AbstractMap
 from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.datasource import Datasource
+
+__all__ = [
+    "Write",
+]
 
 
 class Write(AbstractMap):
@@ -14,7 +19,7 @@ class Write(AbstractMap):
         input_op: LogicalOperator,
         datasink_or_legacy_datasource: Union[Datasink, Datasource],
         ray_remote_args: Optional[Dict[str, Any]] = None,
-        concurrency: Optional[int] = None,
+        compute: Optional[ComputeStrategy] = None,
         **write_args,
     ):
         if isinstance(datasink_or_legacy_datasource, Datasink):
@@ -27,9 +32,10 @@ class Write(AbstractMap):
         super().__init__(
             "Write",
             input_op,
+            can_modify_num_rows=True,
             min_rows_per_bundled_input=min_rows_per_bundled_input,
             ray_remote_args=ray_remote_args,
+            compute=compute,
         )
-        self._datasink_or_legacy_datasource = datasink_or_legacy_datasource
-        self._write_args = write_args
-        self._concurrency = concurrency
+        self.datasink_or_legacy_datasource = datasink_or_legacy_datasource
+        self.write_args = write_args
