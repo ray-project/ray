@@ -600,10 +600,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                          ReferenceTableProto *borrowed_refs)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Recursive implementation of `GetAndClearLocalBorrowersInternal`.
+  /// Recursive implementation of `GetAndClearLocalBorrowersInternal`, used to traverse
+  /// the graph of children IDs contained within the specified object ID.
   ///
   /// `encountered_ids` is used to memoize object IDs that have already been added to
-  /// `borrowed_refs`.
+  /// `borrowed_refs` to avoid processing and mutating the same entry twice.
   bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
                                          bool for_ref_removed,
                                          bool deduct_local_ref,
