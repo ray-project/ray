@@ -373,11 +373,18 @@ class NixlTensorTransport(TensorTransportManager):
         for tensor in tensors:
             key = tensor.data_ptr()
             if key in self._tensor_desc_cache:
-                if tensor.nbytes != self._tensor_desc_cache[key].nbytes:
+                tensor_desc = self._tensor_desc_cache[key]
+                if tensor.nbytes != tensor_desc.nbytes:
                     raise ValueError(
                         "Tensors in an RDT object cannot partially overlap with each other."
                     )
-                self._tensor_desc_cache[key].metadata_count += 1
+                if cache_metadata != tensor_desc.cache_metadata:
+                    raise ValueError(
+                        f"Inconsistent cache_metadata for tensor at data_ptr {key}: "
+                        f"existing={tensor_desc.cache_metadata}, new={cache_metadata}. "
+                        "cache_metadata must be consistent across all ray.put calls for the same tensor."
+                    )
+                tensor_desc.metadata_count += 1
             else:
                 reg_desc = self.get_nixl_agent().register_memory([tensor])
                 self._tensor_desc_cache[key] = TensorDesc(
