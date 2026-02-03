@@ -5,3 +5,5 @@ tensorflow
 jax
 jaxlib
 torchvision
+tensorflow-datasets
+tf-keras
