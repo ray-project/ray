@@ -1,0 +1,82 @@
+"""
+Weather agent that uses an MCP server to answer weather questions.
+
+This agent connects to a Weather MCP server and uses the discovered tools
+to provide weather information.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import time
+
+from agent_runtime.agent_builder import build_mcp_agent
+from agent_runtime.config import MCPEndpoint
+
+
+# ========== MCP CONFIG ==========
+# Weather MCP server endpoint configuration
+WEATHER_MCP_BASE_URL = os.getenv("WEATHER_MCP_BASE_URL", "").strip().rstrip("/")
+WEATHER_MCP_TOKEN = os.getenv("WEATHER_MCP_TOKEN", "").strip()
+
+
+def _weather_mcp_endpoint() -> MCPEndpoint:
+    """Build Weather MCP endpoint configuration."""
+    return MCPEndpoint(
+        name="weather",
+        base_url=WEATHER_MCP_BASE_URL,
+        token=WEATHER_MCP_TOKEN,
+    )
+
+
+# ========== SYSTEM PROMPT ==========
+PROMPT = (
+    "You are a weather assistant that provides accurate weather information "
+    "using available tools.\n"
+    "\n"
+    "Follow this process:\n"
+    "- Break tasks into sub-questions (e.g., finding coordinates first).\n"
+    "- Use the weather tools to get current conditions and forecasts.\n"
+    "- Provide a concise, actionable answer for the user.\n"
+    "\n"
+    "Only output final answers or tool calls (no hidden thoughts)."
+)
+
+
+# ========== BUILD AGENT ==========
+async def build_agent():
+    """
+    Build the weather agent with MCP tools.
+
+    Returns:
+        A LangGraph agent configured with weather MCP tools.
+    """
+    return await build_mcp_agent(
+        system_prompt=PROMPT,
+        mcp_endpoints=[_weather_mcp_endpoint()],
+    )
+
+
+# ========== MAIN ==========
+if __name__ == "__main__":
+    from helpers.agent_runner import run_agent_with_trace
+
+    async def main():
+        start_time = time.time()
+        user_request = "what is the weather like in palo alto?"
+
+        agent = await build_agent()
+
+        await run_agent_with_trace(
+            agent=agent,
+            user_request=user_request,
+            system_prompt=PROMPT,
+            max_iterations=5,
+            show_model_messages=True,
+        )
+
+        end_time = time.time()
+        print(f"Time taken: {end_time - start_time} seconds")
+
+    asyncio.run(main())
