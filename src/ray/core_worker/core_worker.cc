@@ -2354,7 +2354,9 @@ ObjectID CoreWorker::AsyncWaitPlacementGroupReady(
     const PlacementGroupID &placement_group_id,
     const std::string &serialized_object_data,
     const std::string &serialized_object_metadata) {
-  // Generate ObjectID and register it (like ray.put())
+  // Generate ObjectID and register ownership.
+  // The object will be stored directly in memory_store_ and fate-shares with the owner,
+  // so we set pinned_at_node_id to nullopt (same as small task returns).
   ObjectID object_id = ObjectID::FromIndex(worker_context_->GetCurrentInternalTaskId(),
                                            worker_context_->GetNextPutIndex());
   reference_counter_->AddOwnedObject(object_id,
@@ -2364,7 +2366,7 @@ ObjectID CoreWorker::AsyncWaitPlacementGroupReady(
                                      /*object_size=*/-1,
                                      LineageReconstructionEligibility::INELIGIBLE_PUT,
                                      /*add_local_ref=*/true,
-                                     NodeID::FromBinary(rpc_address_.node_id()));
+                                     /*pinned_at_node_id=*/std::nullopt);
 
   // Async RPC to GCS that returns when the placement group is ready (or removed).
   // The callback puts the result into memory store, completing ray.get()/wait()/await.
