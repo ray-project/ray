@@ -820,6 +820,13 @@ class BlockRefBundler(BaseRefBundler):
         return self._bundle_buffer and (
             self._min_rows_per_bundle is None
             or self._bundle_buffer_size >= self._min_rows_per_bundle
+            # For empty blocks (0 rows), use bundle count instead of row count
+            # to avoid accumulating too many empty blocks.
+            # Only apply this fallback when all accumulated bundles are empty.
+            or (
+                self._bundle_buffer_size == 0
+                and len(self._bundle_buffer) >= self._min_rows_per_bundle
+            )
             or (self._finalized and self._bundle_buffer_size >= 0)
         )
 
