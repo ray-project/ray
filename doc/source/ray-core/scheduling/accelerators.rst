@@ -521,6 +521,45 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             (gpu_task pid=51830) GPU IDs: [1]
             (gpu_task pid=51830) CUDA_VISIBLE_DEVICES: 1
 
+   .. tab-item:: Rebellions RBLN
+        :sync: Rebellions RBLN
+
+        .. testcode::
+            :hide:
+
+            ray.shutdown()
+
+        .. testcode::
+
+            import os
+            import ray
+
+            ray.init(resources={"RBLN": 2})
+
+            @ray.remote(resources={"RBLN": 1})
+            class RBLNActor:
+                def ping(self):
+                    print("RBLN IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["RBLN"]))
+                    print("RBLN_DEVICES: {}".format(os.environ["RBLN_DEVICES"]))
+
+            @ray.remote(resources={"RBLN": 1})
+            def rbln_task():
+                print("RBLN IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["RBLN"]))
+                print("RBLN_DEVICES: {}".format(os.environ["RBLN_DEVICES"]))
+
+            rbln_actor = RBLNActor.remote()
+            ray.get(rbln_actor.ping.remote())
+            # The actor uses the first RBLN so the task uses the second one.
+            ray.get(rbln_task.remote())
+
+        .. testoutput::
+            :options: +MOCK
+
+            (RBLNActor pid=52420) RBLN IDs: [0]
+            (RBLNActor pid=52420) RBLN_DEVICES: 0
+            (rbln_task pid=51830) RBLN IDs: [1]
+            (rbln_task pid=51830) RBLN_DEVICES: 1
+
 Inside a task or actor, :func:`ray.get_runtime_context().get_accelerator_ids() <ray.runtime_context.RuntimeContext.get_accelerator_ids>` returns a
 list of accelerator IDs that are available to the task or actor.
 Typically, it is not necessary to call ``get_accelerator_ids()`` because Ray
