@@ -81,7 +81,11 @@ logger = logging.getLogger(__name__)
 
 
 def base32hex(data: bytes) -> str:
-    # lowercase and no padding to satisfy GCP label constraints. (<= 63 chars)
+    """Encode bytes using base32hex, without padding and in lower case.
+
+    This is used to create a shorter hash string that is compatible with
+    GCP label value constraints (<= 63 chars, lowercase, no padding).
+    """
     return base64.b32hexencode(data).decode("ascii").lower().rstrip("=")
 
 
