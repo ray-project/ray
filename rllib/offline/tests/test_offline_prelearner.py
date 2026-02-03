@@ -154,7 +154,13 @@ class TestOfflinePreLearner(unittest.TestCase):
         )["episodes"]
 
         self.assertTrue(
-            all(all(eps.get_observations()[-1] == [0.0] * 4) for eps in episodes)
+            all(
+                all(
+                    eps.get_observations()[-1]
+                    == [0.0] * self.observation_space.shape[0]
+                )
+                for eps in episodes
+            )
         )
 
     def test_offline_prelearner_convert_from_old_sample_batch_to_episodes(self):
