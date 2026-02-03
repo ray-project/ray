@@ -188,8 +188,11 @@ class Planner:
 
             # We scan the context to see if the user provided a custom subclass  of LoadCheckpointCallback.
             # If not, we default to the base class.
+            # We iterate in REVERSE because the default LoadCheckpointCallback is
+            # at the beginning of the list, and user overrides are at the end.
+            # We want the last-registered subclass to take precedence.
             checkpoint_cls = LoadCheckpointCallback
-            for cls in logical_plan.context.execution_callback_classes:
+            for cls in reversed(logical_plan.context.execution_callback_classes):
                 if issubclass(cls, LoadCheckpointCallback):
                     checkpoint_cls = cls
                     break
