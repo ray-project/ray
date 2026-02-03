@@ -33,6 +33,9 @@ fi
 # install test requirements
 python -m pip install -U pytest==8.3.3 pip-tools==7.4.1
 
+# Verify pytest was installed and is accessible
+python -m pytest --version || echo "WARNING: pytest not found in PATH"
+
 # install extra dependencies
 if [[ "${EXTRA_DEPENDENCY}" == "core" ]]; then
   pip-compile -o min_requirements.txt python/setup.py
@@ -54,4 +57,16 @@ if [[ "${EXTRA_DEPENDENCY}" == "core" ]]; then
   ./ci/env/install-core-prerelease-dependencies.sh
 fi
 
+# Verify pytest was installed
+python -m pytest --version
+
 EOF
+
+# For Python 3.14+, the PATH needs to include the conda environment directory
+# Create a symlink from the env-specific python to a standard location
+# Or prepend the env path to PATH permanently
+RUN bash -c 'if [[ -d /opt/miniforge/envs/py${PYTHON_VERSION}/bin ]]; then \
+      for f in /opt/miniforge/envs/py${PYTHON_VERSION}/bin/*; do \
+        ln -sf "$f" "/opt/miniforge/bin/$(basename "$f")" 2>/dev/null || true; \
+      done \
+    fi'
