@@ -329,7 +329,7 @@ class MLflowLoggerCallback(LoggerCallback):
         run_id = self._trial_runs[trial]
 
         # Log the artifact if set_artifact is set to True.
-       if self.should_save_artifact:
+        if self.should_save_artifact:
             fs = trial.storage.storage_filesystem
             # `trial.path` can be a remote URI. `mlflow.log_artifacts` expects a local
             # path. If the filesystem is not local, we need to download it first.
