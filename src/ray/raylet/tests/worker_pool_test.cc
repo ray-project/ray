@@ -507,6 +507,7 @@ class WorkerPoolTest : public ::testing::Test {
         ASSERT_EQ(worker_pool_->NumWorkersStarting(), expected_worker_process_count);
         ASSERT_TRUE(i >= expected_worker_process_count);
       }
+      last_started_worker_process = std::move(prev);
     }
     // Check number of starting workers
     ASSERT_EQ(worker_pool_->NumWorkersStarting(), expected_worker_process_count);
