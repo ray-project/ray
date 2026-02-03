@@ -55,7 +55,7 @@ class DeploymentAutoscalingState:
         # Prometheus + Custom metrics from each replica are also included
         self._replica_metrics: Dict[ReplicaID, ReplicaMetricReport] = dict()
         # Async inference task queue length (from QueueMonitor)
-        self._async_inference_task_queue_length: int = 0
+        self._total_pending_async_requests: int = 0
 
         self._deployment_info = None
         self._config = None
@@ -244,7 +244,7 @@ class DeploymentAutoscalingState:
         self, report: AsyncInferenceTaskQueueMetricReport
     ) -> None:
         """Records task queue length from QueueMonitor for async inference."""
-        self._async_inference_task_queue_length = report.queue_length
+        self._total_pending_async_requests = report.queue_length
 
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         """Drops handle metrics that are no longer valid.
@@ -375,7 +375,7 @@ class DeploymentAutoscalingState:
             raw_metrics=self._get_raw_custom_metrics,
             last_scale_up_time=self._last_scale_up_time,
             last_scale_down_time=self._last_scale_down_time,
-            async_inference_task_queue_length=self._async_inference_task_queue_length,
+            total_pending_async_requests=self._total_pending_async_requests,
         )
 
     def _collect_replica_running_requests(self) -> List[TimeSeries]:

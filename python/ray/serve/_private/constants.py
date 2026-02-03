@@ -438,11 +438,6 @@ DEFAULT_AUTOSCALING_POLICY_NAME = (
     "ray.serve.autoscaling_policy:default_autoscaling_policy"
 )
 
-# The default async inference autoscaling policy to use for TaskConsumers if none is specified.
-DEFAULT_ASYNC_INFERENCE_AUTOSCALING_POLICY = (
-    "ray.serve.autoscaling_policy:default_async_inference_autoscaling_policy"
-)
-
 # Feature flag to enable collecting all queued and ongoing request
 # metrics at handles instead of replicas. ON by default.
 RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = get_env_bool(

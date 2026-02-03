@@ -48,7 +48,7 @@ def queue_monitor(serve_instance, redis_broker_url):  # noqa: F811
         namespace=SERVE_NAMESPACE,
     )
     yield monitor
-    kill_queue_monitor_actor(TEST_DEPLOYMENT_ID.name, namespace=SERVE_NAMESPACE)
+    kill_queue_monitor_actor(TEST_DEPLOYMENT_ID, namespace=SERVE_NAMESPACE)
 
 
 class TestQueueMonitorActor:

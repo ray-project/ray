@@ -10,7 +10,7 @@ from ray.serve.config import AutoscalingConfig, AutoscalingContext
 def create_autoscaling_context(
     current_num_replicas: int = 1,
     target_ongoing_requests: float = 10.0,
-    async_inference_task_queue_length: int = 0,
+    total_pending_async_requests: int = 0,
     total_num_requests: int = 0,
     min_replicas: int = 0,
     max_replicas: int = 20,
@@ -40,7 +40,7 @@ def create_autoscaling_context(
         last_scale_down_time=None,
         current_time=time.time(),
         config=config,
-        async_inference_task_queue_length=async_inference_task_queue_length,
+        total_pending_async_requests=total_pending_async_requests,
     )
 
 
@@ -71,7 +71,7 @@ class TestAsyncInferenceAutoscalingPolicy:
         ctx = create_autoscaling_context(
             current_num_replicas=5,
             target_ongoing_requests=target_per_replica,
-            async_inference_task_queue_length=queue_length,
+            total_pending_async_requests=queue_length,
         )
 
         new_replicas, _ = async_inference_autoscaling_policy(ctx)
@@ -83,7 +83,7 @@ class TestAsyncInferenceAutoscalingPolicy:
         # With target_ongoing_requests=10, expected = 50/10 = 5.0
         ctx = create_autoscaling_context(
             current_num_replicas=2,
-            async_inference_task_queue_length=30,
+            total_pending_async_requests=30,
             total_num_requests=20,
         )
 
@@ -98,22 +98,22 @@ class TestAsyncInferenceAutoscalingPolicy:
         # Raw policy returns 0.0; bounds are applied separately
         assert new_replicas == 0.0
 
-    def test_raises_error_when_zero_replicas(self):
-        """Test that policy raises ValueError when current_num_replicas is 0."""
+    def test_cold_start_with_zero_replicas(self):
+        """Test cold start path when current_num_replicas is 0."""
         ctx = create_autoscaling_context(
             current_num_replicas=0,
-            async_inference_task_queue_length=50,
+            total_pending_async_requests=50,
             max_replicas=10,
         )
 
-        with pytest.raises(ValueError, match="Number of replicas cannot be zero"):
-            async_inference_autoscaling_policy(ctx)
+        new_replicas, _ = async_inference_autoscaling_policy(ctx)
+        assert new_replicas == 1.0
 
     def test_returns_empty_policy_state(self):
         """Test that policy returns empty dict for policy state."""
         ctx = create_autoscaling_context(
             current_num_replicas=5,
-            async_inference_task_queue_length=50,
+            total_pending_async_requests=50,
         )
 
         _, policy_state = async_inference_autoscaling_policy(ctx)

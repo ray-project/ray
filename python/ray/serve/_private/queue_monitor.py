@@ -1,6 +1,5 @@
 import logging
 import time
-from typing import Optional
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
@@ -22,16 +21,16 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 QUEUE_MONITOR_ACTOR_PREFIX = "QUEUE_MONITOR::"
 
 
-def get_queue_monitor_actor_name(deployment_name: str) -> str:
+def get_queue_monitor_actor_name(deployment_id: DeploymentID) -> str:
     """Get the Ray actor name for a deployment's QueueMonitor.
 
     Args:
-        deployment_name: Name of the deployment
+        deployment_id: ID of the deployment (contains app_name and name)
 
     Returns:
-        The full actor name in format "QUEUE_MONITOR::<deployment_name>"
+        The full actor name in format "QUEUE_MONITOR::<app_name>#<deployment_name>"
     """
-    return f"{QUEUE_MONITOR_ACTOR_PREFIX}{deployment_name}"
+    return f"{QUEUE_MONITOR_ACTOR_PREFIX}{deployment_id.app_name}#{deployment_id.name}"
 
 
 @ray.remote(num_cpus=0)
@@ -50,12 +49,12 @@ class QueueMonitorActor:
 
     PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
 
-    def __init__(
+    async def __init__(
         self,
         broker_url: str,
         queue_name: str,
         deployment_id: DeploymentID,
-        controller_handle: Optional[ActorHandle] = None,
+        controller_handle: ActorHandle,
         rabbitmq_http_url: str = "http://guest:guest@localhost:15672/api/",
     ):
         self._broker_url = broker_url
@@ -66,27 +65,17 @@ class QueueMonitorActor:
 
         self._broker = Broker(self._broker_url, http_api=self._rabbitmq_http_url)
 
-        # MetricsPusher is created here but tasks are registered in start_metrics_pusher()
-        # because asyncio.create_task() requires a running event loop (not available in __init__)
-        self._metrics_pusher: Optional[MetricsPusher] = None
-        self._metrics_pusher_started: bool = False
-        if self._controller_handle is not None:
-            self._metrics_pusher = MetricsPusher()
+        self._metrics_pusher = MetricsPusher()
+        self._start_metrics_pusher()
 
-    def start_metrics_pusher(self):
-        """Start the metrics pusher to periodically push metrics to the controller.
-
-        Idempotent - safe to call multiple times. Must be called after the actor
-        is created (when the event loop is running).
-        """
-        if self._metrics_pusher is not None and not self._metrics_pusher_started:
-            self._metrics_pusher.register_or_update_task(
-                self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
-                self._push_metrics_to_controller,
-                RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S,
-            )
-            self._metrics_pusher.start()
-            self._metrics_pusher_started = True
+    def _start_metrics_pusher(self):
+        """Start the metrics pusher to periodically push metrics to the controller."""
+        self._metrics_pusher.register_or_update_task(
+            self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
+            self._push_metrics_to_controller,
+            RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S,
+        )
+        self._metrics_pusher.start()
 
     def __ray_shutdown__(self):
         # Note: This must be synchronous (not async) because Ray's core code
@@ -109,11 +98,6 @@ class QueueMonitorActor:
             ValueError: If queue is not found in broker response or
                 if queue data is missing the 'messages' field.
         """
-        # Lazy initialization: ensure metrics pusher is started on first async call.
-        # This handles actor restarts where __init__ runs but start_metrics_pusher
-        # isn't called externally.
-        self.start_metrics_pusher()
-
         queues = await self._broker.queues([self._queue_name])
         if queues is not None:
             for q in queues:
@@ -129,9 +113,6 @@ class QueueMonitorActor:
 
     async def _push_metrics_to_controller(self) -> None:
         """Push queue length metrics to the controller for autoscaling."""
-        if self._controller_handle is None:
-            return
-
         try:
             queue_length = await self.get_queue_length()
         except Exception as e:
@@ -155,7 +136,7 @@ def create_queue_monitor_actor(
     deployment_id: DeploymentID,
     broker_url: str,
     queue_name: str,
-    controller_handle: Optional[ActorHandle] = None,
+    controller_handle: ActorHandle,
     rabbitmq_http_url: str = "http://guest:guest@localhost:15672/api/",
     namespace: str = "serve",
 ) -> ray.actor.ActorHandle:
@@ -173,14 +154,14 @@ def create_queue_monitor_actor(
     Returns:
         ActorHandle for the QueueMonitor actor
     """
-    actor_name = get_queue_monitor_actor_name(deployment_id.name)
-
-    # Check if actor already exists
     try:
-        existing = get_queue_monitor_actor(deployment_id.name, namespace=namespace)
-        logger.info(f"QueueMonitor actor '{actor_name}' already exists, reusing")
+        existing = get_queue_monitor_actor(deployment_id, namespace=namespace)
+        logger.info(
+            f"QueueMonitor actor for deployment '{deployment_id}' already exists, reusing"
+        )
         return existing
     except ValueError:
+        actor_name = get_queue_monitor_actor_name(deployment_id)
         actor = QueueMonitorActor.options(
             name=actor_name,
             namespace=namespace,
@@ -195,9 +176,6 @@ def create_queue_monitor_actor(
             rabbitmq_http_url=rabbitmq_http_url,
         )
 
-        # Start metrics pusher after actor is created (event loop is now running)
-        actor.start_metrics_pusher.remote()
-
         logger.info(
             f"Created QueueMonitor actor '{actor_name}' in namespace '{namespace}'"
         )
@@ -205,14 +183,14 @@ def create_queue_monitor_actor(
 
 
 def get_queue_monitor_actor(
-    deployment_name: str,
+    deployment_id: DeploymentID,
     namespace: str = "serve",
 ) -> ray.actor.ActorHandle:
     """
     Get an existing QueueMonitor actor by name.
 
     Args:
-        deployment_name: Name of the deployment
+        deployment_id: ID of the deployment (contains app_name and name)
         namespace: Ray namespace
 
     Returns:
@@ -221,26 +199,26 @@ def get_queue_monitor_actor(
     Raises:
         ValueError: If actor doesn't exist
     """
-    actor_name = get_queue_monitor_actor_name(deployment_name)
+    actor_name = get_queue_monitor_actor_name(deployment_id)
     return ray.get_actor(actor_name, namespace=namespace)
 
 
 def kill_queue_monitor_actor(
-    deployment_name: str,
+    deployment_id: DeploymentID,
     namespace: str = "serve",
 ) -> None:
     """
     Delete a QueueMonitor actor by name.
 
     Args:
-        deployment_name: Name of the deployment
+        deployment_id: ID of the deployment (contains app_name and name)
         namespace: Ray namespace
 
     Raises:
         ValueError: If actor doesn't exist
     """
-    actor_name = get_queue_monitor_actor_name(deployment_name)
-    actor = get_queue_monitor_actor(deployment_name, namespace=namespace)
+    actor_name = get_queue_monitor_actor_name(deployment_id)
+    actor = get_queue_monitor_actor(deployment_id, namespace=namespace)
 
     ray.kill(actor, no_restart=True)
     logger.info(f"Deleted QueueMonitor actor '{actor_name}'")

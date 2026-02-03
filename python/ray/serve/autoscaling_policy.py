@@ -186,7 +186,7 @@ def _get_cold_start_scale_up_replicas(ctx: AutoscalingContext) -> Optional[int]:
     Returns the desired number of replicas if the cold start fast path applies, otherwise returns None.
     """
     if ctx.current_num_replicas == 0:
-        if ctx.total_num_requests > 0:
+        if ctx.total_num_requests > 0 or ctx.total_pending_async_requests > 0:
             return max(
                 math.ceil(1 * ctx.config.get_upscaling_factor()),
                 ctx.target_num_replicas,
@@ -334,10 +334,14 @@ def async_inference_autoscaling_policy(
     Scales replicas based on the total workload, which includes both
     HTTP requests and the async inference task queue length.
     """
+    cold_start_replicas = _get_cold_start_scale_up_replicas(ctx)
+    if cold_start_replicas is not None:
+        return cold_start_replicas, ctx.policy_state
+
     num_running_replicas = ctx.current_num_replicas
 
     # Calculate total workload = queue tasks + HTTP requests
-    total_workload = ctx.total_num_requests + ctx.async_inference_task_queue_length
+    total_workload = ctx.total_num_requests + ctx.total_pending_async_requests
 
     config = ctx.config
     if num_running_replicas == 0:
