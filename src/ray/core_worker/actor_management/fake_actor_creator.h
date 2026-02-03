@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/core_worker/actor_creator.h"
+#include "ray/core_worker/actor_management/actor_creator.h"
 
 namespace ray {
 namespace core {
