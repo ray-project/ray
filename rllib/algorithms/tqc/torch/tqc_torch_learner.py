@@ -48,6 +48,7 @@ def quantile_huber_loss_per_sample(
         Per-sample quantile Huber loss. Shape: (batch,)
     """
     n_quantiles = quantiles.shape[1]
+    n_target_quantiles = target_quantiles.shape[1]
 
     # Compute cumulative probabilities for quantiles (tau values)
     tau = (
@@ -55,8 +56,8 @@ def quantile_huber_loss_per_sample(
     ) / n_quantiles
 
     # Expand dimensions for broadcasting
-    quantiles_expanded = quantiles.unsqueeze(2)
-    target_expanded = target_quantiles.unsqueeze(1)
+    quantiles_expanded = quantiles.unsqueeze(2).expand(-1, -1, n_target_quantiles)
+    target_expanded = target_quantiles.unsqueeze(1).expand(-1, n_quantiles, -1)
 
     # Compute pairwise TD errors: (batch, n_quantiles, n_target_quantiles)
     td_error = target_expanded - quantiles_expanded
@@ -218,6 +219,7 @@ class TQCTorchLearner(SACTorchLearner, TQCLearner):
             # Get quantiles for this critic: (batch, n_quantiles)
             critic_quantiles = qf_preds[:, i, :]
             # Compute per-sample quantile huber loss
+            # assert critic_quantiles.shape == target_quantiles.shape, f'{critic_quantiles.shape=} == {target_quantiles.shape=}, {qf_preds.shape=}'
             critic_loss_per_sample = quantile_huber_loss_per_sample(
                 critic_quantiles,
                 target_quantiles,
