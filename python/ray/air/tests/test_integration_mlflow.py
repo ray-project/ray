@@ -343,7 +343,7 @@ class MLflowTest(unittest.TestCase):
             "trial1",
             0,
             "local_artifact",
-            "s3://bucket/path",
+            "bucket/path",
             mock_storage,
         )
 
