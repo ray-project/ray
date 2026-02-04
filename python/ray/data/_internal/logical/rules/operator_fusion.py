@@ -662,8 +662,14 @@ class FuseOperators(Rule):
         #
         if (
             upstream_op.can_modify_num_rows
-            and downstream_op.min_rows_per_bundled_input is not None
-        ):
+            # For historical consistency, we allow fusing `MapBatches` even if it
+            # can modify the number of rows. Before #60448, `MapBatches` was
+            # incorrectly marked as not modifying row counts, so it was always
+            # fused. We preserve that behavior here to avoid regressions.
+            #
+            # For the full history, see #TODO.
+            and not isinstance(upstream_op, MapBatches)
+        ) and downstream_op.min_rows_per_bundled_input is not None:
             logger.debug(
                 f"Upstream operator '{upstream_op}' could be modifying # of input "
                 f"rows, while downstream operator '{downstream_op}' expects at least "
