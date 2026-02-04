@@ -1360,6 +1360,8 @@ orjson==3.9.15
     # via
     #   gradio
     #   tensordict
+orbax-checkpoint==0.10.0
+    # via -r python/requirements/ml/dl-cpu-requirements.txt
 ormsgpack==1.7.0
     # via
     #   -r python/requirements.txt
