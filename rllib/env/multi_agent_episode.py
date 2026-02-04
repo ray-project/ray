@@ -838,6 +838,7 @@ class MultiAgentEpisode:
                 if agent_id not in self.env_t_to_agent_t:
                     self.env_t_to_agent_t[agent_id] = other.env_t_to_agent_t[agent_id]
                 else:
+                    # For a cut episode, the first timestep is a copy of the last timestep from the previous episode
                     for val in other.env_t_to_agent_t[agent_id][1:]:
                         self.env_t_to_agent_t[agent_id].append(val)
 
