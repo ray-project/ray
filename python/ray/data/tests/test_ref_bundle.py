@@ -394,12 +394,15 @@ def test_ref_bundle_str_with_pyarrow_schema():
         schema=schema,
     )
 
-    result = str(bundle)
-    # Should show clean schema format without truncated pandas metadata
-    assert "id: int64, name: string" in result
-    assert "pandas:" not in result  # No pandas metadata in output
-    assert "240.0B" in result  # Human-readable bytes
-    assert "12 rows" in result
+    expected = """RefBundle(1 blocks,
+  12 rows,
+  schema={id: int64, name: string},
+  owns_blocks=False,
+  blocks=(
+    0: 12 rows, 240.0B, slice=None (full block)
+  )
+)"""
+    assert str(bundle) == expected
 
 
 def test_ref_bundle_str_with_none_schema():
