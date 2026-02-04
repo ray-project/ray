@@ -110,8 +110,8 @@ class MemoryMonitorTest : public ::testing::Test {
                                                usage_threshold,
                                                min_memory_free_bytes,
                                                monitor_interval_ms,
-                                               root_cgroup_path,
-                                               std::move(monitor_callback));
+                                               std::move(monitor_callback),
+                                               root_cgroup_path);
     return *instance;
   }
   std::unique_ptr<MemoryMonitor> instance;

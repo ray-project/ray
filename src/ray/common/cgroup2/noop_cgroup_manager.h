@@ -38,7 +38,5 @@ class NoopCgroupManager : public CgroupManagerInterface {
   Status AddProcessToSystemCgroup(const std::string &pid) override {
     return Status::OK();
   }
-
-  std::string GetBaseCgroup() const override { return ""; }
 };  // namespace ray
 }  // namespace ray

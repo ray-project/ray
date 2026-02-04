@@ -30,11 +30,11 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
                              float usage_threshold,
                              int64_t min_memory_free_bytes,
                              uint64_t monitor_interval_ms,
-                             const std::string root_cgroup_path,
-                             MemoryUsageRefreshCallback monitor_callback)
+                             MemoryUsageRefreshCallback monitor_callback,
+                             const std::string root_cgroup_path)
     : usage_threshold_(usage_threshold),
       min_memory_free_bytes_(min_memory_free_bytes),
-      root_cgroup_path_(std::move(root_cgroup_path)),
+      root_cgroup_path_(root_cgroup_path),
       monitor_callback_(monitor_callback),
       runner_(PeriodicalRunner::Create(io_service)) {
   RAY_CHECK(monitor_callback_ != nullptr);

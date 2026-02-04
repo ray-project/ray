@@ -71,8 +71,8 @@ class MemoryMonitor {
                 float usage_threshold,
                 int64_t min_memory_free_bytes,
                 uint64_t monitor_interval_ms,
-                const std::string root_cgroup_path,
-                MemoryUsageRefreshCallback monitor_callback);
+                MemoryUsageRefreshCallback monitor_callback,
+                const std::string root_cgroup_path = kDefaultCgroupPath);
 
   /**
    * @param top_n The number of top memory-using processes.
@@ -106,6 +106,7 @@ class MemoryMonitor {
       const std::string proc_dir = kProcDirectory);
 
  private:
+  static constexpr char kDefaultCgroupPath[] = "/sys/fs/cgroup";
   static constexpr char kCgroupsV1MemoryMaxPath[] = "memory/memory.limit_in_bytes";
   static constexpr char kCgroupsV1MemoryUsagePath[] = "memory/memory.usage_in_bytes";
   static constexpr char kCgroupsV1MemoryStatPath[] = "memory/memory.stat";

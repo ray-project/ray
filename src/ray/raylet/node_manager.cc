@@ -239,7 +239,6 @@ NodeManager::NodeManager(
           RayConfig::instance().memory_usage_threshold(),
           RayConfig::instance().min_memory_free_bytes(),
           RayConfig::instance().memory_monitor_refresh_ms(),
-          cgroup_manager->GetBaseCgroup(),
           CreateMemoryUsageRefreshCallback())),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
