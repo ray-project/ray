@@ -3540,6 +3540,7 @@ py_test(
         "--stop-timesteps=2000000",
         "--framework=torch",
         "--algo=IMPALA",
+        "--seed=42",
     ],
     main = "examples/connectors/flatten_observations_dict_space.py",
     tags = [

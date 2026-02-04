@@ -115,6 +115,7 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("env")
+        .debugging(seed=args.seed)
         .env_runners(env_to_module_connector=_env_to_module_pipeline)
         .training(
             gamma=0.99,
