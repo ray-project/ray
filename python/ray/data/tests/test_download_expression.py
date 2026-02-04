@@ -253,8 +253,6 @@ class TestDownloadExpressionFunctionality:
     def test_download_expression_with_custom_filesystem(self, tmp_path):
         import pyarrow.fs as pafs
 
-        from ray.data.library import download
-
         # 1. Setup paths
         subdir = tmp_path / "data"
         subdir.mkdir()
