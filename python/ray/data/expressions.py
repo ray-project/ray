@@ -12,6 +12,7 @@ from typing import (
     Generic,
     List,
     Optional,
+    Protocol,
     Tuple,
     Type,
     TypeVar,
@@ -20,6 +21,7 @@ from typing import (
 
 import pyarrow
 import pyarrow.compute as pc
+from typing_extensions import override
 
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
@@ -38,9 +40,54 @@ UDFCallable = Callable[..., "UDFExpr"]
 Decorated = Union[UDFCallable, Type[T]]
 
 
+class _DataTypeInferFn(Protocol):
+    """Protocol for functions that infer output DataType from input DataTypes."""
+
+    def __call__(self, *args: DataType, **kwargs: DataType) -> DataType:
+        ...
+
+
+# TODO(Justin): I'm going to assume this is annoying for users to use if they want
+# to find all their options. So I'm going to add registry for all operations later.
+# This TODO is a reminder.
 @DeveloperAPI(stability="alpha")
-class Operation(Enum):
+class Operation:
+    """Mixin for operations that provide dtype inference."""
+
+    def infer_dtype(self, *dtype: DataType) -> DataType:
+        raise NotImplementedError(
+            f"{self.__class__.__name__}.infer_dtype() must be implemented"
+        )
+
+
+@DeveloperAPI(stability="alpha")
+class UnaryOperation(Operation, Enum):
     """Enumeration of supported operations in expressions.
+
+    This enum defines all the binary operations that can be performed
+    between expressions, including arithmetic, comparison, and boolean operations.
+
+    Attributes:
+        NOT: Logical NOT operation (~)
+        IS_NULL: Check if value is null
+        IS_NOT_NULL: Check if value is not null
+    """
+
+    NOT = "not"
+    IS_NULL = "is_null"
+    IS_NOT_NULL = "is_not_null"
+
+    @override
+    def infer_dtype(self, dtype: DataType) -> DataType:
+        match self:
+            case self.NOT | self.IS_NULL | self.IS_NOT_NULL:
+                return DataType.bool()
+        raise RuntimeError(f"Unreachable {self}")
+
+
+@DeveloperAPI(stability="alpha")
+class BinaryOperation(Operation, Enum):
+    """Enumeration of supported binary operations in expressions.
 
     This enum defines all the binary operations that can be performed
     between expressions, including arithmetic, comparison, and boolean operations.
@@ -50,6 +97,7 @@ class Operation(Enum):
         SUB: Subtraction operation (-)
         MUL: Multiplication operation (*)
         DIV: Division operation (/)
+        MOD: Modular operation (%)
         FLOORDIV: Floor division operation (//)
         GT: Greater than comparison (>)
         LT: Less than comparison (<)
@@ -59,9 +107,6 @@ class Operation(Enum):
         NE: Not equal comparison (!=)
         AND: Logical AND operation (&)
         OR: Logical OR operation (|)
-        NOT: Logical NOT operation (~)
-        IS_NULL: Check if value is null
-        IS_NOT_NULL: Check if value is not null
         IN: Check if value is in a list
         NOT_IN: Check if value is not in a list
     """
@@ -80,38 +125,54 @@ class Operation(Enum):
     NE = "ne"
     AND = "and"
     OR = "or"
-    NOT = "not"
-    IS_NULL = "is_null"
-    IS_NOT_NULL = "is_not_null"
     IN = "in"
     NOT_IN = "not_in"
+
+    @override
+    def infer_dtype(self, l_dtype: DataType, r_dtype: DataType) -> DataType:
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            _ARROW_EXPR_OPS_MAP,
+        )
+
+        left = pyarrow.array([], l_dtype.to_arrow_dtype())
+        right = pyarrow.array([], r_dtype.to_arrow_dtype())
+
+        return DataType.from_arrow(_ARROW_EXPR_OPS_MAP[self](left, right).type)
 
 
 class _ExprVisitor(ABC, Generic[T]):
     """Base visitor with generic dispatch for Ray Data expressions."""
 
     def visit(self, expr: "Expr") -> T:
-        if isinstance(expr, ColumnExpr):
-            return self.visit_column(expr)
+        # Check for specific column types before checking parent classes
+        # to avoid incorrect routing (AliasExpr and StarExpr inherit from NamedExpr)
+        if isinstance(expr, AliasExpr):
+            return self.visit_alias(expr)
+        elif isinstance(expr, StarExpr):
+            return self.visit_star(expr)
+        elif isinstance(expr, ResolvedColumnExpr):
+            return self.visit_resolved_column(expr)
+        elif isinstance(expr, UnresolvedColumnExpr):
+            return self.visit_unresolved_column(expr)
         elif isinstance(expr, LiteralExpr):
             return self.visit_literal(expr)
         elif isinstance(expr, BinaryExpr):
             return self.visit_binary(expr)
         elif isinstance(expr, UnaryExpr):
             return self.visit_unary(expr)
-        elif isinstance(expr, AliasExpr):
-            return self.visit_alias(expr)
         elif isinstance(expr, UDFExpr):
             return self.visit_udf(expr)
         elif isinstance(expr, DownloadExpr):
             return self.visit_download(expr)
-        elif isinstance(expr, StarExpr):
-            return self.visit_star(expr)
         else:
             raise TypeError(f"Unsupported expression type for conversion: {type(expr)}")
 
     @abstractmethod
-    def visit_column(self, expr: "ColumnExpr") -> T:
+    def visit_resolved_column(self, expr: "ResolvedColumnExpr") -> T:
+        pass
+
+    @abstractmethod
+    def visit_unresolved_column(self, expr: "UnresolvedColumnExpr") -> T:
         pass
 
     @abstractmethod
@@ -146,7 +207,14 @@ class _ExprVisitor(ABC, Generic[T]):
 class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
     """Visitor that converts Ray Data expressions to PyArrow compute expressions."""
 
-    def visit_column(self, expr: "ColumnExpr") -> "pyarrow.compute.Expression":
+    def visit_resolved_column(
+        self, expr: "ResolvedColumnExpr"
+    ) -> "pyarrow.compute.Expression":
+        return pc.field(expr.name)
+
+    def visit_unresolved_column(
+        self, expr: "UnresolvedColumnExpr"
+    ) -> "pyarrow.compute.Expression":
         return pc.field(expr.name)
 
     def visit_literal(self, expr: "LiteralExpr") -> "pyarrow.compute.Expression":
@@ -155,7 +223,11 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
     def visit_binary(self, expr: "BinaryExpr") -> "pyarrow.compute.Expression":
         import pyarrow as pa
 
-        if expr.op in (Operation.IN, Operation.NOT_IN):
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            _ARROW_EXPR_OPS_MAP,
+        )
+
+        if expr.op in (BinaryOperation.IN, BinaryOperation.NOT_IN):
             left = self.visit(expr.left)
             if isinstance(expr.right, LiteralExpr):
                 right_value = expr.right.value
@@ -170,23 +242,21 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
                     f"literal list, got {type(expr.right).__name__}."
                 )
             result = pc.is_in(left, right)
-            return pc.invert(result) if expr.op == Operation.NOT_IN else result
+            return pc.invert(result) if expr.op == BinaryOperation.NOT_IN else result
 
         left = self.visit(expr.left)
         right = self.visit(expr.right)
-        from ray.data._internal.planner.plan_expression.expression_evaluator import (
-            _ARROW_EXPR_OPS_MAP,
-        )
 
         if expr.op in _ARROW_EXPR_OPS_MAP:
             return _ARROW_EXPR_OPS_MAP[expr.op](left, right)
         raise ValueError(f"Unsupported binary operation for PyArrow: {expr.op}")
 
     def visit_unary(self, expr: "UnaryExpr") -> "pyarrow.compute.Expression":
-        operand = self.visit(expr.operand)
         from ray.data._internal.planner.plan_expression.expression_evaluator import (
             _ARROW_EXPR_OPS_MAP,
         )
+
+        operand = self.visit(expr.operand)
 
         if expr.op in _ARROW_EXPR_OPS_MAP:
             return _ARROW_EXPR_OPS_MAP[expr.op](operand)
@@ -224,25 +294,39 @@ class Expr(ABC):
         >>> # Create an expression tree: (col("x") + 5) * col("y")
         >>> expr = (col("x") + lit(5)) * col("y")
         >>> # This creates a BinaryExpr with operation=MUL
-        >>> # left=BinaryExpr(op=ADD, left=ColumnExpr("x"), right=LiteralExpr(5))
-        >>> # right=ColumnExpr("y")
+        >>> # left=BinaryExpr(op=ADD, left=UnresolvedColumnExpr("x"), right=LiteralExpr(5))
+        >>> # right=UnresolvedColumnExpr("y")
 
     Note:
         This class should not be instantiated directly. Use the concrete
-        subclasses like ColumnExpr, LiteralExpr, etc.
+        subclasses like ResolvedColumnExpr, UnresolvedColumnExpr, LiteralExpr, etc.
     """
 
-    data_type: DataType
+    # data_type: DataType
+
+    # TODO(Justin): This will probably break things
+    # @property
+    # def name(self) -> str | None:
+    #     """Get the name associated with this expression.
+    #
+    #     Returns:
+    #         The name for expressions that have one (ResolvedColumnExpr, UnresolvedColumnExpr, AliasExpr),
+    #         None otherwise.
+    #     """
+    #     return None
 
     @property
-    def name(self) -> str | None:
-        """Get the name associated with this expression.
-
-        Returns:
-            The name for expressions that have one (ColumnExpr, AliasExpr),
-            None otherwise.
+    @abstractmethod
+    def data_type(self) -> DataType:
+        """Return data type.
+        - If resolved=False: THROWS an exception
+        - If resolved=True: RETURNS a valid DataType
         """
-        return None
+        ...
+
+    @abstractmethod
+    def _is_resolved(self) -> bool:
+        ...
 
     @abstractmethod
     def structurally_equals(self, other: Any) -> bool:
@@ -274,9 +358,9 @@ class Expr(ABC):
             >>> print(expr)
             MUL
                 ├── left: ADD
-                │   ├── left: COL('x')
+                │   ├── left: UNRESOLVED_COL('x')
                 │   └── right: LIT(5)
-                └── right: COL('y')
+                └── right: UNRESOLVED_COL('y')
         """
         from ray.data._internal.planner.plan_expression.expression_visitors import (
             _TreeReprVisitor,
@@ -307,110 +391,110 @@ class Expr(ABC):
 
     def __add__(self, other: Any) -> "Expr":
         """Addition operator (+)."""
-        return self._bin(other, Operation.ADD)
+        return self._bin(other, BinaryOperation.ADD)
 
     def __radd__(self, other: Any) -> "Expr":
         """Reverse addition operator (for literal + expr)."""
-        return LiteralExpr(other)._bin(self, Operation.ADD)
+        return LiteralExpr(other)._bin(self, BinaryOperation.ADD)
 
     def __sub__(self, other: Any) -> "Expr":
         """Subtraction operator (-)."""
-        return self._bin(other, Operation.SUB)
+        return self._bin(other, BinaryOperation.SUB)
 
     def __rsub__(self, other: Any) -> "Expr":
         """Reverse subtraction operator (for literal - expr)."""
-        return LiteralExpr(other)._bin(self, Operation.SUB)
+        return LiteralExpr(other)._bin(self, BinaryOperation.SUB)
 
     def __mul__(self, other: Any) -> "Expr":
         """Multiplication operator (*)."""
-        return self._bin(other, Operation.MUL)
+        return self._bin(other, BinaryOperation.MUL)
 
     def __rmul__(self, other: Any) -> "Expr":
         """Reverse multiplication operator (for literal * expr)."""
-        return LiteralExpr(other)._bin(self, Operation.MUL)
+        return LiteralExpr(other)._bin(self, BinaryOperation.MUL)
 
     def __mod__(self, other: Any):
         """Modulation operator (%)."""
-        return self._bin(other, Operation.MOD)
+        return self._bin(other, BinaryOperation.MOD)
 
     def __rmod__(self, other: Any):
         """Modulation operator (%)."""
-        return LiteralExpr(other)._bin(self, Operation.MOD)
+        return LiteralExpr(other)._bin(self, BinaryOperation.MOD)
 
     def __truediv__(self, other: Any) -> "Expr":
         """Division operator (/)."""
-        return self._bin(other, Operation.DIV)
+        return self._bin(other, BinaryOperation.DIV)
 
     def __rtruediv__(self, other: Any) -> "Expr":
         """Reverse division operator (for literal / expr)."""
-        return LiteralExpr(other)._bin(self, Operation.DIV)
+        return LiteralExpr(other)._bin(self, BinaryOperation.DIV)
 
     def __floordiv__(self, other: Any) -> "Expr":
         """Floor division operator (//)."""
-        return self._bin(other, Operation.FLOORDIV)
+        return self._bin(other, BinaryOperation.FLOORDIV)
 
     def __rfloordiv__(self, other: Any) -> "Expr":
         """Reverse floor division operator (for literal // expr)."""
-        return LiteralExpr(other)._bin(self, Operation.FLOORDIV)
+        return LiteralExpr(other)._bin(self, BinaryOperation.FLOORDIV)
 
     # comparison
     def __gt__(self, other: Any) -> "Expr":
         """Greater than operator (>)."""
-        return self._bin(other, Operation.GT)
+        return self._bin(other, BinaryOperation.GT)
 
     def __lt__(self, other: Any) -> "Expr":
         """Less than operator (<)."""
-        return self._bin(other, Operation.LT)
+        return self._bin(other, BinaryOperation.LT)
 
     def __ge__(self, other: Any) -> "Expr":
         """Greater than or equal operator (>=)."""
-        return self._bin(other, Operation.GE)
+        return self._bin(other, BinaryOperation.GE)
 
     def __le__(self, other: Any) -> "Expr":
         """Less than or equal operator (<=)."""
-        return self._bin(other, Operation.LE)
+        return self._bin(other, BinaryOperation.LE)
 
     def __eq__(self, other: Any) -> "Expr":
         """Equality operator (==)."""
-        return self._bin(other, Operation.EQ)
+        return self._bin(other, BinaryOperation.EQ)
 
     def __ne__(self, other: Any) -> "Expr":
         """Not equal operator (!=)."""
-        return self._bin(other, Operation.NE)
+        return self._bin(other, BinaryOperation.NE)
 
     # boolean
     def __and__(self, other: Any) -> "Expr":
         """Logical AND operator (&)."""
-        return self._bin(other, Operation.AND)
+        return self._bin(other, BinaryOperation.AND)
 
     def __or__(self, other: Any) -> "Expr":
         """Logical OR operator (|)."""
-        return self._bin(other, Operation.OR)
+        return self._bin(other, BinaryOperation.OR)
 
     def __invert__(self) -> "Expr":
         """Logical NOT operator (~)."""
-        return UnaryExpr(Operation.NOT, self)
+        return UnaryExpr(UnaryOperation.NOT, self)
 
     # predicate methods
     def is_null(self) -> "Expr":
         """Check if the expression value is null."""
-        return UnaryExpr(Operation.IS_NULL, self)
+        return UnaryExpr(UnaryOperation.IS_NULL, self)
 
     def is_not_null(self) -> "Expr":
         """Check if the expression value is not null."""
-        return UnaryExpr(Operation.IS_NOT_NULL, self)
+        return UnaryExpr(UnaryOperation.IS_NOT_NULL, self)
 
     def is_in(self, values: Union[List[Any], "Expr"]) -> "Expr":
         """Check if the expression value is in a list of values."""
         if not isinstance(values, Expr):
             values = LiteralExpr(values)
-        return self._bin(values, Operation.IN)
+        return self._bin(values, BinaryOperation.IN)
 
     def not_in(self, values: Union[List[Any], "Expr"]) -> "Expr":
         """Check if the expression value is not in a list of values."""
         if not isinstance(values, Expr):
             values = LiteralExpr(values)
-        return self._bin(values, Operation.NOT_IN)
+        return self._bin(values, BinaryOperation.NOT_IN)
 
     def alias(self, name: str) -> "Expr":
         """Rename the expression.
@@ -431,9 +515,7 @@ class Expr(ABC):
             >>> expr = (col("price") * col("quantity")).alias("total")
             >>> # Can be used with Dataset operations that support named expressions
         """
-        return AliasExpr(
-            data_type=self.data_type, expr=self, _name=name, _is_rename=False
-        )
+        return AliasExpr(expr=self, _name=name, _is_rename=False)
 
     # rounding helpers
     def ceil(self) -> "UDFExpr":
@@ -668,7 +750,63 @@ class Expr(ABC):
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
-class ColumnExpr(Expr):
+class NamedExpr(Expr, ABC):
+
+    _name: str
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def get_root_name(self) -> str:
+        """The root name of a NamedExpr is the original source name after
+        aliases or renames. For example
+            >>> from ray.data.expressions import col
+            >>> assert col("a").get_root_name() == "a"
+            >>> assert col("a").alias("b").get_root_name() == "a"
+            >>> assert col("a").alias("b").alias("c").get_root_name() == "a"
+        """
+        return self._name
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False, repr=False)
+class UnresolvedColumnExpr(NamedExpr):
+    """Expression that references a column by name.
+
+    This expression type represents an unresolved reference to a possibly
+    existing column in the dataset. After resolution, it becomes a
+    `ResolvedColumnExpr`
+
+    Args:
+        _name: The name of the column to reference
+
+    Example:
+        >>> from ray.data.expressions import col
+        >>> # Reference the "age" column
+        >>> age_expr = col("age") # Creates UnresolvedColumnExpr(name="age")
+    """
+
+    @override
+    def _is_resolved(self) -> bool:
+        return False
+
+    @override
+    @property
+    def data_type(self) -> DataType:
+        raise ValueError("Cannot infer data type for unresolved column")
+
+    def _rename(self, name: str):
+        return AliasExpr(_name=name, expr=self, _is_rename=True)
+
+    @override
+    def structurally_equals(self, other: Any) -> bool:
+        return isinstance(other, UnresolvedColumnExpr) and self.name == other.name
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False, repr=False)
+class ResolvedColumnExpr(NamedExpr):
     """Expression that references a column by name.
 
     This expression type represents a reference to an existing column
@@ -676,27 +814,31 @@ class ColumnExpr(Expr):
     specified column.
 
     Args:
-        name: The name of the column to reference
+        _name: The name of the column to reference
+        _data_type: The data type of the column to refernce.
 
     Example:
         >>> from ray.data.expressions import col
         >>> # Reference the "age" column
-        >>> age_expr = col("age") # Creates ColumnExpr(name="age")
+        >>> age_expr = col("age") # Creates ResolvedColumnExpr(name="age")
     """
 
-    _name: str
-    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+    _data_type: DataType = field(default_factory=lambda: DataType(object))
 
+    def _is_resolved(self) -> bool:
+        return True
+
+    @override
     @property
-    def name(self) -> str:
-        """Get the column name."""
-        return self._name
+    def data_type(self) -> DataType:
+        return self._data_type
 
     def _rename(self, name: str):
-        return AliasExpr(self.data_type, self, name, _is_rename=True)
+        return AliasExpr(_name=name, expr=self, _is_rename=True)
 
+    @override
     def structurally_equals(self, other: Any) -> bool:
-        return isinstance(other, ColumnExpr) and self.name == other.name
+        return isinstance(other, ResolvedColumnExpr) and self.name == other.name
 
 
 @DeveloperAPI(stability="alpha")
@@ -720,15 +862,25 @@ class LiteralExpr(Expr):
     """
 
     value: Any
-    data_type: DataType = field(init=False)
+    _data_type: DataType = field(init=False)
 
     def __post_init__(self):
         # Infer the type from the value using DataType.infer_dtype
         inferred_dtype = DataType.infer_dtype(self.value)
 
         # Use object.__setattr__ since the dataclass is frozen
-        object.__setattr__(self, "data_type", inferred_dtype)
+        object.__setattr__(self, "_data_type", inferred_dtype)
 
+    @override
+    def _is_resolved(self) -> bool:
+        return True
+
+    @override
+    @property
+    def data_type(self) -> DataType:
+        return self._data_type
+
+    @override
     def structurally_equals(self, other: Any) -> bool:
         return (
             isinstance(other, LiteralExpr)
@@ -752,18 +904,28 @@ class BinaryExpr(Expr):
         right: The right operand expression
 
     Example:
-        >>> from ray.data.expressions import col, lit, Operation
+        >>> from ray.data.expressions import col, lit, BinaryOperation
         >>> # Manually create a binary expression (usually done via operators)
-        >>> expr = BinaryExpr(Operation.ADD, col("x"), lit(5))
+        >>> expr = BinaryExpr(BinaryOperation.ADD, col("x"), lit(5))
         >>> # This is equivalent to: col("x") + lit(5)
     """
 
-    op: Operation
+    op: BinaryOperation
     left: Expr
     right: Expr
 
-    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+    @override
+    def _is_resolved(self) -> bool:
+        return self.left._is_resolved() and self.right._is_resolved()
 
+    @override
+    @property
+    def data_type(self) -> DataType:
+        if not self._is_resolved():
+            raise ValueError("Can't infer data type for unresolved binary expression")
+        return self.op.infer_dtype(self.left.data_type, self.right.data_type)
+
+    @override
     def structurally_equals(self, other: Any) -> bool:
         return (
             isinstance(other, BinaryExpr)
@@ -782,7 +944,7 @@ class UnaryExpr(Expr):
     Common unary operations include logical NOT, IS NULL, IS NOT NULL, etc.
 
     Args:
-        op: The operation to perform (from Operation enum)
+        op: The operation to perform (from UnaryOperation enum)
         operand: The operand expression
 
     Example:
@@ -793,13 +955,24 @@ class UnaryExpr(Expr):
         >>> expr = ~(col("active"))  # Creates UnaryExpr(NOT, col("active"))
     """
 
-    op: Operation
+    op: UnaryOperation
     operand: Expr
 
     # Default to bool return dtype for unary operations like is_null() and NOT.
     # This enables chaining operations such as col("x").is_not_null().alias("valid"),
     # where downstream expressions (like AliasExpr) need the data type.
-    data_type: DataType = field(default_factory=lambda: DataType.bool(), init=False)
+    # data_type: DataType = field(default_factory=lambda: DataType.bool(), init=False)
+
+    @override
+    def _is_resolved(self) -> bool:
+        return self.operand._is_resolved()
+
+    @override
+    @property
+    def data_type(self) -> DataType:
+        if not self._is_resolved():
+            raise ValueError("Can't infer data type for unresolved unary expression")
+        return self.op.infer_dtype(self.operand.data_type)
 
     def structurally_equals(self, other: Any) -> bool:
         return (
@@ -999,6 +1172,28 @@ class UDFExpr(Expr):
     fn: Callable[..., BatchColumn]  # Can be regular function OR _CallableClassUDF
     args: List[Expr]
     kwargs: Dict[str, Expr]
+    # TODO(Justin): Is this strictly required?
+    _data_type: _DataTypeInferFn | DataType
+
+    @override
+    def _is_resolved(self) -> bool:
+        return all(arg._is_resolved() for arg in self.args) and all(
+            kwarg._is_resolved() for kwarg in self.kwargs.values()
+        )
+
+    @override
+    @property
+    def data_type(self) -> DataType:
+        # Infer data type from argument types
+        if not self._is_resolved():
+            raise ValueError("Cannnot infer data type for unresolved udf expression")
+        if isinstance(self._data_type, DataType):
+            return self._data_type
+        args_dtypes: List[DataType] = [arg.data_type for arg in self.args]
+        kwargs_dtypes: Dict[str, DataType] = {
+            name: kwarg.data_type for name, kwarg in self.kwargs.items()
+        }
+        return self._data_type(*args_dtypes, **kwargs_dtypes)
 
     @property
     def callable_class_spec(self) -> Optional[_CallableClassSpec]:
@@ -1039,7 +1234,7 @@ class UDFExpr(Expr):
 
 def _create_udf_callable(
     fn: Callable[..., BatchColumn],
-    return_dtype: DataType,
+    return_dtype: _DataTypeInferFn | DataType,
 ) -> Callable[..., UDFExpr]:
     """Create a callable that generates UDFExpr when called with expressions.
 
@@ -1072,7 +1267,7 @@ def _create_udf_callable(
             fn=fn,
             args=expr_args,
             kwargs=expr_kwargs,
-            data_type=return_dtype,
+            _data_type=return_dtype,
         )
 
     # Preserve original function metadata
@@ -1104,7 +1299,7 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         A callable that creates UDFExpr instances when called with expressions
 
     Example:
-        >>> from ray.data.expressions import col, udf
+        >>> from ray.data.expressions import col, DataType, udf
         >>> import pyarrow as pa
         >>> import pyarrow.compute as pc
         >>> import ray
@@ -1184,7 +1379,7 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
                     # The _CallableClassUDF is self-contained - no external setup needed
                     return _create_udf_callable(
                         self._expr_udf,
-                        return_dtype,
+                        return_dtype=return_dtype,
                     )(*call_args, **call_kwargs)
 
             # Preserve the original class name and module for better error messages
@@ -1195,7 +1390,7 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
             return ExpressionAwareCallableClass
         else:
             # Regular function
-            return _create_udf_callable(func_or_class, return_dtype)
+            return _create_udf_callable(func_or_class, return_dtype=return_dtype)
 
     return decorator
 
@@ -1256,7 +1451,7 @@ def _create_pyarrow_wrapper(
 
 
 @PublicAPI(stability="alpha")
-def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
+def pyarrow_udf(return_dtype: DataType | None = None) -> Callable[..., UDFExpr]:
     """Decorator for PyArrow compute functions with automatic format conversion.
 
     This decorator wraps PyArrow compute functions to automatically convert pandas
@@ -1264,7 +1459,7 @@ def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
     regardless of the underlying block format (pandas, arrow, or items).
 
     Used internally by namespace methods (list, str, struct) that wrap PyArrow
-    compute functions.
+    compute functions. TODO(Justin): Update the docstring
 
     Args:
         return_dtype: The data type of the return value
@@ -1274,10 +1469,24 @@ def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
     """
 
     def decorator(func: Callable[..., BatchColumn]) -> Callable[..., UDFExpr]:
+        nonlocal return_dtype
+        if return_dtype is None:
+            # If the return type is None, we will infer it by
+            # 1). Creating an *empty* null list with that type
+            # 2). Running the compute function and use the resulting type.
+            def _infer_dtype(*input_dtype: DataType):
+                dummy_arrs = [
+                    pyarrow.array([], type=dtype.to_arrow_dtype())
+                    for dtype in input_dtype
+                ]
+                return DataType.from_arrow(func(*dummy_arrs).type)
+
+            return_dtype = _infer_dtype
+
         # Wrap the function with PyArrow conversion logic
         wrapped_fn = _create_pyarrow_wrapper(func)
         # Create UDFExpr callable using the wrapped function
-        return _create_udf_callable(wrapped_fn, return_dtype)
+        return _create_udf_callable(wrapped_fn, return_dtype=return_dtype)
 
     return decorator
 
@@ -1289,7 +1498,7 @@ def _create_pyarrow_compute_udf(
     """Create an expression UDF backed by a PyArrow compute function."""
 
     def wrapper(expr: "Expr", *positional: Any, **kwargs: Any) -> "UDFExpr":
-        @pyarrow_udf(return_dtype=return_dtype or expr.data_type)
+        @pyarrow_udf(return_dtype=return_dtype)
         def udf(arr: pyarrow.Array) -> pyarrow.Array:
             return pc_func(arr, *positional, **kwargs)
 
@@ -1303,35 +1512,62 @@ def _create_pyarrow_compute_udf(
 class DownloadExpr(Expr):
     """Expression that represents a download operation."""
 
-    uri_column_name: str
-    data_type: DataType = field(default_factory=lambda: DataType.binary(), init=False)
+    uri_column: NamedExpr
+
+    @classmethod
+    def from_uri(cls, uri_column_name: str) -> "DownloadExpr":
+        return cls(uri_column=UnresolvedColumnExpr(_name=uri_column_name))
+
+    @property
+    def uri_column_name(self) -> str:
+        """Get the name of the URI column for backward compatibility."""
+        return self.uri_column.get_root_name()
+
+    @override
+    def _is_resolved(self) -> bool:
+        return self.uri_column._is_resolved()
+
+    @override
+    @property
+    def data_type(self) -> DataType:
+        # TODO(Justin): See comment for UDFExpr, same idea, can infer datatype
+        # before resolution.
+        return DataType.binary()
 
     def structurally_equals(self, other: Any) -> bool:
-        return (
-            isinstance(other, DownloadExpr)
-            and self.uri_column_name == other.uri_column_name
+        return isinstance(other, DownloadExpr) and self.uri_column.structurally_equals(
+            other.uri_column
         )
 
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
-class AliasExpr(Expr):
+class AliasExpr(NamedExpr):
     """Expression that represents an alias for an expression."""
 
     expr: Expr
-    _name: str
     _is_rename: bool
-
-    @property
-    def name(self) -> str:
-        """Get the alias name."""
-        return self._name
 
     def alias(self, name: str) -> "Expr":
         # Always unalias before creating new one
-        return AliasExpr(
-            self.expr.data_type, self.expr, _name=name, _is_rename=self._is_rename
-        )
+        return AliasExpr(_name=name, expr=self.expr, _is_rename=self._is_rename)
+
+    @override
+    def _is_resolved(self) -> bool:
+        return self.expr._is_resolved()
+
+    @override
+    def get_root_name(self) -> str:
+        if isinstance(self.expr, NamedExpr):
+            return self.expr.get_root_name()
+        return self._name
+
+    @override
+    @property
+    def data_type(self) -> DataType:
+        if not self._is_resolved():
+            raise ValueError("Cannot infer data type of unresolved alias expression")
+        return self.expr.data_type
 
     def _unalias(self) -> "Expr":
         return self.expr
@@ -1341,13 +1577,13 @@ class AliasExpr(Expr):
             isinstance(other, AliasExpr)
             and self.expr.structurally_equals(other.expr)
             and self.name == other.name
-            and self._is_rename == self._is_rename
+            and self._is_rename == other._is_rename
         )
 
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
-class StarExpr(Expr):
+class StarExpr(NamedExpr):
     """Expression that represents all columns from the input.
 
     This is a special expression used in projections to indicate that
@@ -1363,14 +1599,24 @@ class StarExpr(Expr):
     """
 
     # TODO: Add UnresolvedExpr. Both StarExpr and UnresolvedExpr won't have a defined data_type.
-    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+    _name: str = "*"
+    # data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    @override
+    def _is_resolved(self) -> bool:
+        return False
+
+    @override
+    @property
+    def data_type(self) -> DataType:
+        raise ValueError("Star expressions have no data type")
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, StarExpr)
 
 
 @PublicAPI(stability="beta")
-def col(name: str) -> ColumnExpr:
+def col(name: str) -> UnresolvedColumnExpr:
     """
     Reference an existing column by name.
 
@@ -1382,7 +1628,7 @@ def col(name: str) -> ColumnExpr:
         name: The name of the column to reference
 
     Returns:
-        A ColumnExpr that references the specified column
+        An UnresolvedColumnExpr that references the specified column
 
     Example:
         >>> from ray.data.expressions import col
@@ -1394,7 +1640,7 @@ def col(name: str) -> ColumnExpr:
         >>> ds = ray.data.from_items([{"price": 10, "quantity": 2}])
         >>> ds = ds.with_column("total", col("price") * col("quantity"))
     """
-    return ColumnExpr(name)
+    return UnresolvedColumnExpr(_name=name)
 
 
 @PublicAPI(stability="beta")
@@ -1448,7 +1694,7 @@ def star() -> StarExpr:
 
 
 @PublicAPI(stability="alpha")
-def download(uri_column_name: str) -> DownloadExpr:
+def download(uri_column_name: str | NamedExpr) -> DownloadExpr:
     """
     Create a download expression that downloads content from URIs.
 
@@ -1457,12 +1703,13 @@ def download(uri_column_name: str) -> DownloadExpr:
     and return the downloaded bytes.
 
     Args:
-        uri_column_name: The name of the column containing URIs to download from
+        uri_column_name: The name of the column containing URIs to download from,
+            or a named expressions. A named expression is one of col() or alias().
     Returns:
         A DownloadExpr that will download content from the specified URI column
 
     Example:
-        >>> from ray.data.expressions import download
+        >>> from ray.data.expressions import download, col
         >>> import ray
         >>> # Create dataset with URIs
         >>> ds = ray.data.from_items([
@@ -1470,9 +1717,18 @@ def download(uri_column_name: str) -> DownloadExpr:
         ...     {"uri": "s3://bucket/file2.jpg", "id": "2"}
         ... ])
         >>> # Add downloaded bytes column
-        >>> ds_with_bytes = ds.with_column("bytes", download("uri"))
+        >>> ds_with_bytes = ds.with_column("bytes", download("uri")) # OR
+        >>> ds_with_bytes = ds.with_column("bytes", download(col("uri")))
     """
-    return DownloadExpr(uri_column_name=uri_column_name)
+    if isinstance(uri_column_name, str):
+        return DownloadExpr.from_uri(uri_column_name=uri_column_name)
+    if isinstance(uri_column_name, NamedExpr) and not isinstance(
+        uri_column_name, StarExpr
+    ):
+        return DownloadExpr(uri_column=uri_column_name)
+    raise ValueError(
+        f"Expected a 'str' or 'NamedExpr', found {uri_column_name}: {type(uri_column_name)}"
+    )
 
 
 # ──────────────────────────────────────
@@ -1483,9 +1739,12 @@ def download(uri_column_name: str) -> DownloadExpr:
 # Re-export eval_expr for public use
 
 __all__ = [
-    "Operation",
+    "BinaryOperation",
+    "UnaryOperation",
     "Expr",
-    "ColumnExpr",
+    "NamedExpr",
+    "ResolvedColumnExpr",
+    "UnresolvedColumnExpr",
     "LiteralExpr",
     "BinaryExpr",
     "UnaryExpr",

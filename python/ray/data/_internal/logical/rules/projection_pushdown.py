@@ -14,9 +14,10 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 )
 from ray.data.expressions import (
     AliasExpr,
-    ColumnExpr,
     Expr,
+    ResolvedColumnExpr,
     StarExpr,
+    UnresolvedColumnExpr,
 )
 
 __all__ = [
@@ -441,7 +442,7 @@ def _is_renaming_expr(expr: Expr) -> bool:
     is_renaming = isinstance(expr, AliasExpr) and expr._is_rename
 
     assert not is_renaming or isinstance(
-        expr.expr, ColumnExpr
+        expr.expr, (ResolvedColumnExpr, UnresolvedColumnExpr)
     ), f"Renaming expression expected to be of the shape alias(col('source'), 'target') (got {expr})"
 
     return is_renaming

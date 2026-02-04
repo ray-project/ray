@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 import pyarrow
 import pyarrow.compute as pc
 
-from ray.data.datatype import DataType
 from ray.data.expressions import pyarrow_udf
 
 if TYPE_CHECKING:
@@ -59,18 +58,18 @@ class _StructNamespace:
             UDFExpr that extracts the specified field from each struct.
         """
         # Infer return type from the struct field type
-        return_dtype = DataType(object)  # fallback
-        if self._expr.data_type.is_arrow_type():
-            arrow_type = self._expr.data_type.to_arrow_dtype()
-            if pyarrow.types.is_struct(arrow_type):
-                try:
-                    field_type = arrow_type.field(field_name).type
-                    return_dtype = DataType.from_arrow(field_type)
-                except KeyError:
-                    # Field not found in schema, fallback to object
-                    pass
+        # return_dtype = DataType(object)  # fallback
+        # if self._expr._is_resolved() and self._expr.data_type.is_arrow_type():
+        #     arrow_type = self._expr.data_type.to_arrow_dtype()
+        #     if pyarrow.types.is_struct(arrow_type):
+        #         try:
+        #             field_type = arrow_type.field(field_name).type
+        #             return_dtype = DataType.from_arrow(field_type)
+        #         except KeyError:
+        #             # Field not found in schema, fallback to object
+        #             pass
 
-        @pyarrow_udf(return_dtype=return_dtype)
+        @pyarrow_udf()
         def _struct_field(arr: pyarrow.Array) -> pyarrow.Array:
             return pc.struct_field(arr, field_name)
 

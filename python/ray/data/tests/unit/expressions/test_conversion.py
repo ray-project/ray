@@ -32,7 +32,7 @@ from ray.data._internal.datasource.iceberg_datasource import _IcebergExpressionV
 from ray.data.datatype import DataType
 from ray.data.expressions import (
     BinaryExpr,
-    Operation,
+    BinaryOperation,
     UDFExpr,
     col,
     download,
@@ -287,7 +287,7 @@ class TestToPyArrow:
             fn=dummy_fn,
             args=[col("x")],
             kwargs={},
-            data_type=DataType(int),
+            _data_type=DataType(int),
         )
 
         with pytest.raises(TypeError, match="UDF expressions cannot be converted"):
@@ -513,7 +513,7 @@ class TestIcebergExpressionVisitor:
             fn=dummy_fn,
             args=[col("x")],
             kwargs={},
-            data_type=DataType(int),
+            _data_type=DataType(int),
         )
 
         visitor = _IcebergExpressionVisitor()
@@ -551,7 +551,7 @@ class TestIcebergExpressionVisitor:
         with pytest.raises(
             ValueError, match="IN operation requires right operand to be a literal list"
         ):
-            invalid_expr = BinaryExpr(Operation.IN, col("a"), col("b"))
+            invalid_expr = BinaryExpr(BinaryOperation.IN, col("a"), col("b"))
             visitor.visit(invalid_expr)
 
 

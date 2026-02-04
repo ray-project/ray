@@ -451,6 +451,9 @@ def test_dataset_explain(ray_start_regular_shared, capsys):
         "-------- Logical Plan --------\n"
         "MapRows[Map(<lambda>)]\n"
         "+- Read[ReadRange]\n"
+        "\n-------- Logical Plan (Analyzed) --------\n"
+        "MapRows[Map(<lambda>)]\n"
+        "+- Read[ReadRange]\n"
         "\n-------- Logical Plan (Optimized) --------\n"
         "MapRows[Map(<lambda>)]\n"
         "+- Read[ReadRange]\n"
@@ -468,6 +471,10 @@ def test_dataset_explain(ray_start_regular_shared, capsys):
     captured = capsys.readouterr()
     assert captured.out.strip() == (
         "-------- Logical Plan --------\n"
+        "Filter[Filter(<lambda>)]\n"
+        "+- MapRows[Map(<lambda>)]\n"
+        "   +- Read[ReadRange]\n"
+        "\n-------- Logical Plan (Analyzed) --------\n"
         "Filter[Filter(<lambda>)]\n"
         "+- MapRows[Map(<lambda>)]\n"
         "   +- Read[ReadRange]\n"
@@ -489,6 +496,12 @@ def test_dataset_explain(ray_start_regular_shared, capsys):
     captured = capsys.readouterr()
     assert captured.out.strip() == (
         "-------- Logical Plan --------\n"
+        "MapRows[Map(<lambda>)]\n"
+        "+- RandomShuffle[RandomShuffle]\n"
+        "   +- Filter[Filter(<lambda>)]\n"
+        "      +- MapRows[Map(<lambda>)]\n"
+        "         +- Read[ReadRange]\n"
+        "\n-------- Logical Plan (Analyzed) --------\n"
         "MapRows[Map(<lambda>)]\n"
         "+- RandomShuffle[RandomShuffle]\n"
         "   +- Filter[Filter(<lambda>)]\n"

@@ -118,6 +118,7 @@ class ExecutionPlan:
         convert_fns = [lambda x: x] + get_plan_conversion_fns()
         titles: List[str] = [
             "Logical Plan",
+            "Logical Plan (Analyzed)",
             "Logical Plan (Optimized)",
             "Physical Plan",
             "Physical Plan (Optimized)",

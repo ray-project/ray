@@ -28,17 +28,17 @@ class _ArrayNamespace:
 
     def to_list(self) -> "UDFExpr":
         """Convert FixedSizeList columns into variable-length lists."""
-        return_dtype = DataType(object)
+        # return_dtype = DataType(object)
 
-        expr_dtype = self._expr.data_type
-        if expr_dtype.is_list_type():
-            arrow_type = expr_dtype.to_arrow_dtype()
-            if pyarrow.types.is_fixed_size_list(arrow_type):
-                return_dtype = DataType.from_arrow(pyarrow.list_(arrow_type.value_type))
-            else:
-                return_dtype = expr_dtype
+        # expr_dtype = self._expr.data_type
+        # if expr_dtype.is_list_type():
+        #     arrow_type = expr_dtype.to_arrow_dtype()
+        #     if pyarrow.types.is_fixed_size_list(arrow_type):
+        #         return_dtype = DataType.from_arrow(pyarrow.list_(arrow_type.value_type))
+        #     else:
+        #         return_dtype = expr_dtype
 
-        @pyarrow_udf(return_dtype=return_dtype)
+        @pyarrow_udf()
         def _to_list(arr: pyarrow.Array) -> pyarrow.Array:
             arr_dtype = DataType.from_arrow(arr.type)
             if not arr_dtype.is_list_type():

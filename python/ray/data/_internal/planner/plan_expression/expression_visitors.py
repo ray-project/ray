@@ -4,14 +4,17 @@ from typing import Dict, List, TypeVar
 from ray.data.expressions import (
     AliasExpr,
     BinaryExpr,
-    ColumnExpr,
+    BinaryOperation,
     DownloadExpr,
     Expr,
     LiteralExpr,
     Operation,
+    ResolvedColumnExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UnaryOperation,
+    UnresolvedColumnExpr,
     _CallableClassUDF,
     _ExprVisitor,
 )
@@ -19,23 +22,23 @@ from ray.data.expressions import (
 T = TypeVar("T")
 
 # Mapping of operations to their string symbols for inline representation
-_INLINE_OP_SYMBOLS = {
-    Operation.ADD: "+",
-    Operation.SUB: "-",
-    Operation.MUL: "*",
-    Operation.DIV: "/",
-    Operation.MOD: "%",
-    Operation.FLOORDIV: "//",
-    Operation.GT: ">",
-    Operation.LT: "<",
-    Operation.GE: ">=",
-    Operation.LE: "<=",
-    Operation.EQ: "==",
-    Operation.NE: "!=",
-    Operation.AND: "&",
-    Operation.OR: "|",
-    Operation.IN: "in",
-    Operation.NOT_IN: "not in",
+_INLINE_BIN_OP_SYMBOLS: Dict[Operation, str] = {
+    BinaryOperation.ADD: "+",
+    BinaryOperation.SUB: "-",
+    BinaryOperation.MUL: "*",
+    BinaryOperation.DIV: "/",
+    BinaryOperation.MOD: "%",
+    BinaryOperation.FLOORDIV: "//",
+    BinaryOperation.GT: ">",
+    BinaryOperation.LT: "<",
+    BinaryOperation.GE: ">=",
+    BinaryOperation.LE: "<=",
+    BinaryOperation.EQ: "==",
+    BinaryOperation.NE: "!=",
+    BinaryOperation.AND: "&",
+    BinaryOperation.OR: "|",
+    BinaryOperation.IN: "in",
+    BinaryOperation.NOT_IN: "not in",
 }
 
 
@@ -66,6 +69,14 @@ class _ExprVisitorBase(_ExprVisitor[None]):
         for value in expr.kwargs.values():
             super().visit(value)
 
+    def visit_resolved_column(self, expr: "ResolvedColumnExpr") -> None:
+        """Visit a resolved column expression (leaf node, no traversal needed)."""
+        pass
+
+    def visit_unresolved_column(self, expr: "UnresolvedColumnExpr") -> None:
+        """Visit an unresolved column expression (leaf node, no traversal needed)."""
+        pass
+
     def visit_literal(self, expr: LiteralExpr) -> None:
         """Visit a literal expression (no columns to collect)."""
         pass
@@ -74,7 +85,7 @@ class _ExprVisitorBase(_ExprVisitor[None]):
         """Visit a star expression (no columns to collect)."""
         pass
 
-    def visit_download(self, expr: "Expr") -> None:
+    def visit_download(self, expr: "DownloadExpr") -> None:
         """Visit a download expression (no columns to collect)."""
         pass
 
@@ -95,11 +106,22 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
     def get_column_refs(self) -> List[str]:
         return list(self._col_refs.keys())
 
-    def visit_column(self, expr: ColumnExpr) -> None:
-        """Visit a column expression and collect its name.
+    def visit_resolved_column(self, expr: "ResolvedColumnExpr") -> None:
+        """Visit a resolved column expression and collect its name.
 
         Args:
-            expr: The column expression.
+            expr: The resolved column expression.
+
+        Returns:
+            None (only collects columns as a side effect).
+        """
+        self._col_refs[expr.name] = None
+
+    def visit_unresolved_column(self, expr: "UnresolvedColumnExpr") -> None:
+        """Visit an unresolved column expression and collect its name.
+
+        Args:
+            expr: The unresolved column expression.
 
         Returns:
             None (only collects columns as a side effect).
@@ -116,6 +138,9 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
             None (only collects columns as a side effect).
         """
         self.visit(expr.expr)
+
+    def visit_download(self, expr: "DownloadExpr") -> None:
+        self.visit(expr.uri_column)
 
 
 class _CallableClassUDFCollector(_ExprVisitorBase):
@@ -137,7 +162,11 @@ class _CallableClassUDFCollector(_ExprVisitorBase):
         """
         return self._expr_udfs
 
-    def visit_column(self, expr: ColumnExpr) -> None:
+    def visit_unresolved_column(self, expr: UnresolvedColumnExpr) -> None:
+        """Visit a column expression (no UDFs to collect)."""
+        pass
+
+    def visit_resolved_column(self, expr: ResolvedColumnExpr) -> None:
         """Visit a column expression (no UDFs to collect)."""
         pass
 
@@ -173,17 +202,28 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         """
         self._col_ref_substitutions = column_ref_substitutions
 
-    def visit_column(self, expr: ColumnExpr) -> Expr:
-        """Visit a column expression and substitute it.
+    def visit_resolved_column(self, expr: "ResolvedColumnExpr") -> Expr:
+        """Visit a resolved column expression and substitute it.
 
         Args:
-            expr: The column expression.
+            expr: The resolved column expression.
 
         Returns:
             The substituted expression or the original if no substitution exists.
         """
         substitution = self._col_ref_substitutions.get(expr.name)
+        return substitution if substitution is not None else expr
 
+    def visit_unresolved_column(self, expr: "UnresolvedColumnExpr") -> Expr:
+        """Visit an unresolved column expression and substitute it.
+
+        Args:
+            expr: The unresolved column expression.
+
+        Returns:
+            The substituted expression or the original if no substitution exists.
+        """
+        substitution = self._col_ref_substitutions.get(expr.name)
         return substitution if substitution is not None else expr
 
     def visit_literal(self, expr: LiteralExpr) -> Expr:
@@ -236,9 +276,9 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         new_kwargs = {key: self.visit(value) for key, value in expr.kwargs.items()}
         return UDFExpr(
             fn=expr.fn,
-            data_type=expr.data_type,
             args=new_args,
             kwargs=new_kwargs,
+            _data_type=expr._data_type,
         )
 
     def visit_alias(self, expr: AliasExpr) -> Expr:
@@ -264,7 +304,7 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
             _is_rename=expr._is_rename and _is_col_expr(visited),
         )
 
-    def visit_download(self, expr: "Expr") -> Expr:
+    def visit_download(self, expr: "DownloadExpr") -> Expr:
         """Visit a download expression (no rewriting needed).
 
         Args:
@@ -273,7 +313,7 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         Returns:
             The original download expression.
         """
-        return expr
+        return self.visit(expr.uri_column)
 
     def visit_star(self, expr: StarExpr) -> Expr:
         """Visit a star expression (no rewriting needed).
@@ -288,8 +328,9 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
 
 
 def _is_col_expr(expr: Expr) -> bool:
-    return isinstance(expr, ColumnExpr) or (
-        isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr)
+    return isinstance(expr, (ResolvedColumnExpr, UnresolvedColumnExpr)) or (
+        isinstance(expr, AliasExpr)
+        and isinstance(expr.expr, (ResolvedColumnExpr, UnresolvedColumnExpr))
     )
 
 
@@ -353,8 +394,11 @@ class _TreeReprVisitor(_ExprVisitor[str]):
 
         return "\n".join(lines)
 
-    def visit_column(self, expr: "ColumnExpr") -> str:
-        return self._make_tree_lines(f"COL({expr.name!r})", expr=expr)
+    def visit_resolved_column(self, expr: "ResolvedColumnExpr") -> str:
+        return self._make_tree_lines(f"RESOLVED_COL({expr.name!r})", expr=expr)
+
+    def visit_unresolved_column(self, expr: "UnresolvedColumnExpr") -> str:
+        return self._make_tree_lines(f"UNRESOLVED_COL({expr.name!r})", expr=expr)
 
     def visit_literal(self, expr: "LiteralExpr") -> str:
         # Truncate long values for readability
@@ -430,8 +474,14 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
         """
         self._max_literal_length = max_literal_length
 
-    def visit_column(self, expr: "ColumnExpr") -> str:
-        """Visit a column expression and return its inline representation."""
+    def visit_resolved_column(self, expr: "ResolvedColumnExpr") -> str:
+        """Visit a resolved column expression and return its inline representation."""
+        # TODO(Justin): Check with team if this is the display we want.
+        return f"col({expr.name!r})"
+
+    def visit_unresolved_column(self, expr: "UnresolvedColumnExpr") -> str:
+        """Visit an unresolved column expression and return its inline representation."""
+        # TODO(Justin): Check with team if this is the display we want.
         return f"col({expr.name!r})"
 
     def visit_literal(self, expr: "LiteralExpr") -> str:
@@ -452,7 +502,7 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
         if isinstance(expr.right, BinaryExpr):
             right_str = f"({right_str})"
 
-        op_str = _INLINE_OP_SYMBOLS.get(expr.op, expr.op.name.lower())
+        op_str = _INLINE_BIN_OP_SYMBOLS.get(expr.op, expr.op.name.lower())
         return f"{left_str} {op_str} {right_str}"
 
     def visit_unary(self, expr: "UnaryExpr") -> str:
@@ -464,11 +514,11 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
             operand_str = f"({operand_str})"
 
         # Map operations to symbols/functions
-        if expr.op == Operation.NOT:
+        if expr.op == UnaryOperation.NOT:
             return f"~{operand_str}"
-        elif expr.op == Operation.IS_NULL:
+        elif expr.op == UnaryOperation.IS_NULL:
             return f"{operand_str}.is_null()"
-        elif expr.op == Operation.IS_NOT_NULL:
+        elif expr.op == UnaryOperation.IS_NOT_NULL:
             return f"{operand_str}.is_not_null()"
         else:
             return f"{expr.op.name.lower()}({operand_str})"

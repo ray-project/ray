@@ -136,17 +136,17 @@ class _ListNamespace:
             UDFExpr that extracts the element at the given index.
         """
         # Infer return type from the list's value type
-        return_dtype = DataType(object)  # fallback
-        if self._expr.data_type.is_arrow_type():
-            arrow_type = self._expr.data_type.to_arrow_dtype()
-            if pyarrow.types.is_list(arrow_type) or pyarrow.types.is_large_list(
-                arrow_type
-            ):
-                return_dtype = DataType.from_arrow(arrow_type.value_type)
-            elif pyarrow.types.is_fixed_size_list(arrow_type):
-                return_dtype = DataType.from_arrow(arrow_type.value_type)
+        # return_dtype = DataType(object)  # fallback
+        # if self._expr._is_resolved() and self._expr.data_type.is_arrow_type():
+        #     arrow_type = self._expr.data_type.to_arrow_dtype()
+        #     if pyarrow.types.is_list(arrow_type) or pyarrow.types.is_large_list(
+        #         arrow_type
+        #     ):
+        #         return_dtype = DataType.from_arrow(arrow_type.value_type)
+        #     elif pyarrow.types.is_fixed_size_list(arrow_type):
+        #         return_dtype = DataType.from_arrow(arrow_type.value_type)
 
-        @pyarrow_udf(return_dtype=return_dtype)
+        @pyarrow_udf()
         def _list_get(arr: pyarrow.Array) -> pyarrow.Array:
             return pc.list_element(arr, index)
 
@@ -166,9 +166,12 @@ class _ListNamespace:
             UDFExpr that extracts a slice from each list.
         """
         # Return type is the same as the input list type
-        return_dtype = self._expr.data_type
+        # if self._expr._is_resolved():
+        #     return_dtype = self._expr.data_type
+        # else:
+        #     return_dtype = DataType(object)
 
-        @pyarrow_udf(return_dtype=return_dtype)
+        @pyarrow_udf()
         def _list_slice(arr: pyarrow.Array) -> pyarrow.Array:
             return pc.list_slice(
                 arr,

@@ -18,13 +18,15 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.expressions import (
     AliasExpr,
     BinaryExpr,
-    ColumnExpr,
+    BinaryOperation,
     DownloadExpr,
     LiteralExpr,
-    Operation,
+    ResolvedColumnExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UnaryOperation,
+    UnresolvedColumnExpr,
 )
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
@@ -51,19 +53,19 @@ try:
     )
 
     RAY_DATA_OPERATION_TO_ICEBERG = {
-        Operation.EQ: EqualTo,
-        Operation.NE: NotEqualTo,
-        Operation.GT: GreaterThan,
-        Operation.GE: GreaterThanOrEqual,
-        Operation.LT: LessThan,
-        Operation.LE: LessThanOrEqual,
-        Operation.AND: And,
-        Operation.OR: Or,
-        Operation.IN: In,
-        Operation.NOT_IN: NotIn,
-        Operation.IS_NULL: IsNull,
-        Operation.IS_NOT_NULL: NotNull,
-        Operation.NOT: Not,
+        BinaryOperation.EQ: EqualTo,
+        BinaryOperation.NE: NotEqualTo,
+        BinaryOperation.GT: GreaterThan,
+        BinaryOperation.GE: GreaterThanOrEqual,
+        BinaryOperation.LT: LessThan,
+        BinaryOperation.LE: LessThanOrEqual,
+        BinaryOperation.AND: And,
+        BinaryOperation.OR: Or,
+        BinaryOperation.IN: In,
+        BinaryOperation.NOT_IN: NotIn,
+        UnaryOperation.IS_NULL: IsNull,
+        UnaryOperation.IS_NOT_NULL: NotNull,
+        UnaryOperation.NOT: Not,
     }
 except ImportError:
     log_once("pyiceberg.expressions not found. Please install pyiceberg >= 0.9.0")
@@ -98,8 +100,18 @@ class _IcebergExpressionVisitor(
         >>> # iceberg_expr can now be used with PyIceberg's filter APIs
     """
 
-    def visit_column(self, expr: "ColumnExpr") -> "UnboundTerm[Any]":
-        """Convert a column reference to an Iceberg reference."""
+    def visit_resolved_column(self, expr: "ResolvedColumnExpr") -> "UnboundTerm[Any]":
+        """Convert a resolved column reference to an Iceberg reference."""
+        # TODO(Justin): Iceberg has BoundReference, which contains a reference to a schema. I need
+        # to research what's the difference, if any, but I know that Daft actually has 3 types of columns,
+        # Unresolved, Resolved, and Bound, Bound meaning it references an actual physical schema
+        # (as opposed to logical).
+        return Reference(expr.name)
+
+    def visit_unresolved_column(
+        self, expr: "UnresolvedColumnExpr"
+    ) -> "UnboundTerm[Any]":
+        """Convert an unresolved column reference to an Iceberg reference."""
         return Reference(expr.name)
 
     def visit_literal(self, expr: "LiteralExpr") -> "Literal[Any]":
@@ -110,7 +122,7 @@ class _IcebergExpressionVisitor(
         """Convert a binary operation to an Iceberg expression."""
         # Handle IN/NOT_IN specially since they don't visit the right operand
         # (the right operand is a list literal that can't be converted)
-        if expr.op in (Operation.IN, Operation.NOT_IN):
+        if expr.op in (BinaryOperation.IN, BinaryOperation.NOT_IN):
             left = self.visit(expr.left)
             if not isinstance(expr.right, LiteralExpr):
                 raise ValueError(
