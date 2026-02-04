@@ -310,13 +310,11 @@ class NixlTensorTransport(TensorTransportManager):
                     tensor_desc = self._tensor_desc_cache[key]
                     tensor_desc.metadata_count -= 1
                     if tensor_desc.metadata_count == 0:
-                        if tensor_desc.cache_metadata:
-                            # If cache_metadata is True, we never deregister the pinned memory and keep it for reuse.
-                            pass
-                        else:
+                        # If cache_metadata is True, we never deregister the pinned memory and keep it for reuse.
+                        if not tensor_desc.cache_metadata:
                             self._tensor_desc_cache.pop(key)
                             self.get_nixl_agent().deregister_memory(
-                                tensor_desc.reg_desc
+                                tensor_desc.reg_desc,
                             )
 
     def abort_transport(
