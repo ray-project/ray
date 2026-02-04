@@ -790,10 +790,18 @@ def dedupe_schemas_with_validation(
 
     diverged = True
     if warn and enforce_schemas:
+        (
+            new_excl_fields_message,
+            old_excl_fields_message,
+            changed_fields_message,
+        ) = _find_schemas_mismatch(old_schema, bundle.schema)
         logger.warning(
             f"Operator produced a RefBundle with a different schema "
-            f"than the previous one. Previous schema: {old_schema}, "
-            f"new schema: {bundle.schema}. This may lead to unexpected behavior."
+            f"than the previous one."
+            f"{new_excl_fields_message}"
+            f"{old_excl_fields_message}"
+            f"{changed_fields_message}"
+            f"This may lead to unexpected behavior."
         )
     if enforce_schemas:
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
