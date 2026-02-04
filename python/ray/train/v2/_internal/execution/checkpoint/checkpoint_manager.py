@@ -281,7 +281,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             manager_snapshot = _CheckpointManagerState.parse_obj(json_dict)
         except Exception as e:
             if not json_dict:
-                error = repr(e)
+                error = e
             elif "ray_version" not in json_dict:
                 error = (
                     "You are loading a checkpoint manager snapshot saved with an unknown Ray version "
@@ -296,7 +296,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                     "manager snapshot was saved with."
                 )
             else:
-                error = repr(e)
+                error = e
             raise CheckpointManagerInitializationError(error) from e
 
         # Do this so we are using the same checkpoint and trainingresult objects.
