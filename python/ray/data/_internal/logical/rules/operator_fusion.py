@@ -667,7 +667,7 @@ class FuseOperators(Rule):
             # incorrectly marked as not modifying row counts, so it was always
             # fused. We preserve that behavior here to avoid regressions.
             #
-            # For the full history, see #TODO.
+            # For the full history, see https://github.com/ray-project/ray/pull/60756.
             and not isinstance(upstream_op, MapBatches)
         ) and downstream_op.min_rows_per_bundled_input is not None:
             logger.debug(
