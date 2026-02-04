@@ -79,6 +79,7 @@
 /python/ray/dashboard/modules/metrics/dashboards/serve_llm_grafana_dashboard_base.json @ray-project/ray-llm
 /python/ray/serve/llm/ @ray-project/ray-llm
 /doc/source/serve/llm/ @ray-project/ray-llm
+/doc/source/data/doc_code/working-with-llms/ @ray-project/ray-llm
 
 # ML Docker Dependencies
 /python/requirements/ml/dl-cpu-requirements.txt @richardliaw @matthewdeng
@@ -107,6 +108,9 @@
 # CI
 /ci/docker @ray-project/ray-ci
 /ci/ray_ci @ray-project/ray-ci
+/ci/ray_ci/serve_di_test_names.txt @ray-project/ray-serve
+
+/.rayciversion @ray-project/ray-ci
 
 # Buildkite pipeline management
 .buildkite/hooks @ray-project/ray-ci

@@ -203,6 +203,8 @@ class RayTrainWorker:
         controller_actor: ActorHandle,
         dataset_shard_provider: Optional["DatasetShardProvider"] = None,
         checkpoint: Optional[Checkpoint] = None,
+        has_validation_fn: Optional[bool] = None,
+        current_report_index: int = 0,
     ):
         self._callbacks = [c for c in worker_callbacks if isinstance(c, WorkerCallback)]
         context_callbacks_to_propagate = [
@@ -223,6 +225,8 @@ class RayTrainWorker:
             controller_actor=controller_actor,
             checkpoint=checkpoint,
             dataset_shard_provider=dataset_shard_provider,
+            has_validation_fn=has_validation_fn,
+            current_report_index=current_report_index,
         )
         # Configure the train and root logger for the worker processes.
         if ray_constants.env_bool(
