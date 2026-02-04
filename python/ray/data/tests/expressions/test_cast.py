@@ -1,6 +1,6 @@
 import pyarrow as pa
 import pytest
-from pkg_resources import parse_version
+from packaging.version import parse as parse_version
 
 import ray
 from ray.data._internal.util import rows_same
