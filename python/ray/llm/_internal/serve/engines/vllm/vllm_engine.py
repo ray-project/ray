@@ -9,7 +9,7 @@ from starlette.datastructures import State
 from starlette.requests import Request
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
-from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
+from vllm.entrypoints.openai.engine.protocol import ErrorResponse as VLLMErrorResponse
 
 import ray
 from ray.llm._internal.common.callbacks.base import CallbackCtx
@@ -463,7 +463,7 @@ class VLLMEngine(LLMEngine):
         return engine_client
 
     async def resolve_lora(self, disk_lora_model: DiskMultiplexConfig):
-        from vllm.entrypoints.openai.protocol import LoadLoRAAdapterRequest
+        from vllm.entrypoints.serve.lora.protocol import LoadLoRAAdapterRequest
 
         self._validate_openai_serving_models()
 
