@@ -690,9 +690,7 @@ def _format_info_message(
     return f"{title} ({len(entries)} total):\n{body}{suffix}\n"
 
 
-def _find_schemas_mismatch(
-    old_schema: "Schema", new_schema: "Schema"
-) -> Tuple[str, str, str, str]:
+def _find_schemas_mismatch(old_schema: "Schema", new_schema: "Schema") -> str:
     # We assume old_schema and new_schema have the same underlying type
     # and can only either be PyArrow schemas or PandasBlockSchema
     old_pairs = [(name, str(t)) for name, t in zip(old_schema.names, old_schema.types)]
@@ -753,10 +751,10 @@ def _find_schemas_mismatch(
         )
 
     return (
-        new_excl_fields_message,
-        old_excl_fields_message,
-        changed_fields_message,
-        disordered_message,
+        new_excl_fields_message
+        + old_excl_fields_message
+        + changed_fields_message
+        + disordered_message
     )
 
 
@@ -795,19 +793,20 @@ def dedupe_schemas_with_validation(
 
     diverged = True
     if warn and enforce_schemas:
-        (
-            new_excl_fields_message,
-            old_excl_fields_message,
-            changed_fields_message,
-            disordered_message,
-        ) = _find_schemas_mismatch(old_schema, bundle.schema)
+        if _is_empty_schema(bundle.schema):
+            old_fields = [
+                (name, str(t)) for name, t in zip(old_schema.names, old_schema.types)
+            ]
+            warning_message = _format_info_message(
+                "Operator produced a RefBundle with an empty/unknown schema.",
+                list(map(lambda field: f"{field[0]}: {field[1]}", old_fields)),
+            )
+        else:
+            warning_message = _find_schemas_mismatch(old_schema, bundle.schema)
         logger.warning(
             f"Operator produced a RefBundle with a different schema "
             f"than the previous one.\n"
-            f"{new_excl_fields_message}"
-            f"{old_excl_fields_message}"
-            f"{changed_fields_message}"
-            f"{disordered_message}"
+            f"{warning_message}"
             f"This may lead to unexpected behavior."
         )
     if enforce_schemas:

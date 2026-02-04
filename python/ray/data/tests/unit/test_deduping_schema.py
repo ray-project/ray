@@ -53,6 +53,52 @@ def test_dedupe_schema_handle_empty(
         assert old_schema == out_bundle.schema, (old_schema, incoming_schema)
 
 
+@pytest.mark.parametrize(
+    "incoming_schema",
+    [
+        pa.schema([]),  # Empty Schema
+        PandasBlockSchema(names=[], types=[]),
+        None,  # Null Schema
+    ],
+)
+@pytest.mark.parametrize("enforce_schemas", [False, True])
+def test_dedupe_schema_empty_warning(
+    enforce_schemas: bool, incoming_schema: Optional["Schema"], caplog, propagate_logs
+):
+    old_schema = pa.schema(
+        [
+            pa.field("foo", pa.int32()),
+            pa.field("bar", pa.string()),
+            pa.field("baz", pa.bool8()),
+        ]
+    )
+
+    incoming_bundle = RefBundle([], owns_blocks=False, schema=incoming_schema)
+
+    # Capture warnings
+    with caplog.at_level(
+        logging.WARNING,
+        logger="ray.data._internal.execution.streaming_executor_state",
+    ):
+        out_bundle, diverged = dedupe_schemas_with_validation(
+            old_schema, incoming_bundle, enforce_schemas=enforce_schemas, warn=True
+        )
+
+    assert diverged
+
+    if enforce_schemas:
+        assert out_bundle.schema == old_schema
+
+        msg = "\n".join(caplog.messages)
+        assert "Operator produced a RefBundle with an empty/unknown schema." in msg
+        assert "foo: int32" in msg
+        assert "bar: string" in msg
+        assert "baz: extension<arrow.bool8>" in msg
+    else:
+        assert out_bundle.schema == old_schema
+        assert not caplog.records
+
+
 @pytest.mark.parametrize("enforce_schemas", [False, True])
 @pytest.mark.parametrize(
     "incoming_schema", [pa.schema([pa.field("uuid", pa.string())])]
