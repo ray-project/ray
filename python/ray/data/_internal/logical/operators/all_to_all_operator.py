@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import (
@@ -12,7 +13,6 @@ from ray.data.aggregate import AggregateFn
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
-
     from ray.data.block import Schema
 
 __all__ = [
@@ -25,47 +25,36 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, repr=False)
 class AbstractAllToAll(LogicalOperator):
     """Abstract class for logical operators should be converted to physical
     AllToAllOperator.
     """
 
-    def __init__(
-        self,
-        name: str,
-        input_op: LogicalOperator,
-        num_outputs: Optional[int] = None,
-        sub_progress_bar_names: Optional[List[str]] = None,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-    ):
-        """
-        Args:
-            name: Name for this operator. This is the name that will appear when
-                inspecting the logical plan of a Dataset.
-            input_op: The operator preceding this operator in the plan DAG. The outputs
-                of `input_op` will be the inputs to this operator.
-            num_outputs: The number of expected output bundles outputted by this
-                operator.
-            ray_remote_args: Args to provide to :func:`ray.remote`.
-        """
-        super().__init__(name, [input_op], num_outputs=num_outputs)
-        self.ray_remote_args = ray_remote_args or {}
-        self.sub_progress_bar_names = sub_progress_bar_names
+    input_op: Optional[LogicalOperator] = None
+    ray_remote_args: Optional[Dict[str, Any]] = None
+    sub_progress_bar_names: Optional[List[str]] = None
+
+    def __post_init__(self) -> None:
+        if not self.input_dependencies and self.input_op is not None:
+            object.__setattr__(self, "input_dependencies", (self.input_op,))
+        if self.ray_remote_args is None:
+            object.__setattr__(self, "ray_remote_args", {})
+        super().__post_init__()
+        assert self.name is not None
+        assert len(self.input_dependencies) == 1, self.input_dependencies
 
 
+@dataclass(frozen=True, repr=False)
 class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for randomize_block_order."""
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        seed: Optional[int] = None,
-    ):
-        super().__init__(
-            "RandomizeBlockOrder",
-            input_op,
-        )
-        self.seed = seed
+    seed: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if self.name is None:
+            object.__setattr__(self, "name", "RandomizeBlockOrder")
+        super().__post_init__()
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -84,26 +73,25 @@ class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThro
         return PredicatePassThroughBehavior.PASSTHROUGH
 
 
+@dataclass(frozen=True, repr=False)
 class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
-    """Logical operator for random_shuffle."""
+    """Logical operator for randomshuffle."""
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        name: str = "RandomShuffle",
-        seed: Optional[int] = None,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-    ):
-        super().__init__(
-            name,
-            input_op,
-            sub_progress_bar_names=[
-                ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
-                ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
-            ],
-            ray_remote_args=ray_remote_args,
-        )
-        self.seed = seed
+    seed: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if self.name is None:
+            object.__setattr__(self, "name", "RandomShuffle")
+        if self.sub_progress_bar_names is None:
+            object.__setattr__(
+                self,
+                "sub_progress_bar_names",
+                [
+                    ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
+                    ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
+                ],
+            )
+        super().__post_init__()
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -122,35 +110,30 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
         return PredicatePassThroughBehavior.PASSTHROUGH
 
 
+@dataclass(frozen=True, repr=False)
 class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for repartition."""
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        num_outputs: int,
-        shuffle: bool,
-        keys: Optional[List[str]] = None,
-        sort: bool = False,
-    ):
-        if shuffle:
-            sub_progress_bar_names = [
-                ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
-                ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
-            ]
-        else:
-            sub_progress_bar_names = [
-                ShuffleTaskSpec.SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME,
-            ]
-        super().__init__(
-            "Repartition",
-            input_op,
-            num_outputs=num_outputs,
-            sub_progress_bar_names=sub_progress_bar_names,
-        )
-        self.shuffle = shuffle
-        self.keys = keys
-        self.sort = sort
+    shuffle: bool = False
+    keys: Optional[List[str]] = None
+    sort: bool = False
+
+    def __post_init__(self) -> None:
+        assert self.num_outputs is not None
+        if self.name is None:
+            object.__setattr__(self, "name", "Repartition")
+        if self.sub_progress_bar_names is None:
+            if self.shuffle:
+                sub_progress_bar_names = [
+                    ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
+                    ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
+                ]
+            else:
+                sub_progress_bar_names = [
+                    ShuffleTaskSpec.SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME,
+                ]
+            object.__setattr__(self, "sub_progress_bar_names", sub_progress_bar_names)
+        super().__post_init__()
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -169,26 +152,28 @@ class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough)
         return PredicatePassThroughBehavior.PASSTHROUGH
 
 
+@dataclass(frozen=True, repr=False)
 class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for sort."""
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        sort_key: SortKey,
-        batch_format: Optional[str] = "default",
-    ):
-        super().__init__(
-            "Sort",
-            input_op,
-            sub_progress_bar_names=[
-                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
-                ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
-                ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
-            ],
-        )
-        self.sort_key = sort_key
-        self.batch_format = batch_format
+    sort_key: Optional[SortKey] = None
+    batch_format: Optional[str] = "default"
+
+    def __post_init__(self) -> None:
+        assert self.sort_key is not None
+        if self.name is None:
+            object.__setattr__(self, "name", "Sort")
+        if self.sub_progress_bar_names is None:
+            object.__setattr__(
+                self,
+                "sub_progress_bar_names",
+                [
+                    SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
+                    ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
+                    ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
+                ],
+            )
+        super().__post_init__()
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -207,27 +192,27 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
         return PredicatePassThroughBehavior.PASSTHROUGH
 
 
+@dataclass(frozen=True, repr=False)
 class Aggregate(AbstractAllToAll):
     """Logical operator for aggregate."""
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        key: Optional[str],
-        aggs: List[AggregateFn],
-        num_partitions: Optional[int] = None,
-        batch_format: Optional[str] = "default",
-    ):
-        super().__init__(
-            "Aggregate",
-            input_op,
-            sub_progress_bar_names=[
-                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
-                ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
-                ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
-            ],
-        )
-        self.key = key
-        self.aggs = aggs
-        self.num_partitions = num_partitions
-        self.batch_format = batch_format
+    key: Optional[str] = None
+    aggs: List[AggregateFn] = None  # type: ignore[assignment]
+    num_partitions: Optional[int] = None
+    batch_format: Optional[str] = "default"
+
+    def __post_init__(self) -> None:
+        assert self.aggs is not None
+        if self.name is None:
+            object.__setattr__(self, "name", "Aggregate")
+        if self.sub_progress_bar_names is None:
+            object.__setattr__(
+                self,
+                "sub_progress_bar_names",
+                [
+                    SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
+                    ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
+                    ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
+                ],
+            )
+        super().__post_init__()

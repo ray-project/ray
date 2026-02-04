@@ -353,9 +353,9 @@ class FuseOperators(Rule):
 
         input_op = up_logical_op.input_dependency
         logical_op = AbstractUDFMap(
-            name,
-            input_op,
-            up_logical_op.fn,
+            name=name,
+            input_op=input_op,
+            fn=up_logical_op.fn,
             can_modify_num_rows=up_logical_op.can_modify_num_rows,
             fn_args=up_logical_op.fn_args,
             fn_kwargs=up_logical_op.fn_kwargs,
@@ -511,9 +511,9 @@ class FuseOperators(Rule):
         )
         if isinstance(down_logical_op, AbstractUDFMap):
             logical_op = AbstractUDFMap(
-                name,
-                input_op,
-                down_logical_op.fn,
+                name=name,
+                input_op=input_op,
+                fn=down_logical_op.fn,
                 fn_args=down_logical_op.fn_args,
                 fn_kwargs=down_logical_op.fn_kwargs,
                 fn_constructor_args=down_logical_op.fn_constructor_args,
@@ -527,8 +527,8 @@ class FuseOperators(Rule):
         else:
             # The downstream op is AbstractMap instead of AbstractUDFMap.
             logical_op = AbstractMap(
-                name,
-                input_op,
+                name=name,
+                input_op=input_op,
                 can_modify_num_rows=can_modify_num_rows,
                 min_rows_per_bundled_input=min_rows_per_bundled_input,
                 ray_remote_args_fn=ray_remote_args_fn,
@@ -617,13 +617,13 @@ class FuseOperators(Rule):
 
         if isinstance(down_logical_op, RandomShuffle):
             logical_op = RandomShuffle(
-                input_op,
+                input_op=input_op,
                 name=name,
                 ray_remote_args=ray_remote_args,
             )
         elif isinstance(down_logical_op, Repartition):
             logical_op = Repartition(
-                input_op,
+                input_op=input_op,
                 num_outputs=down_logical_op.num_outputs,
                 shuffle=down_logical_op.shuffle,
             )

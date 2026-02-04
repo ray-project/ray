@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import (
@@ -18,55 +19,36 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, repr=False)
 class AbstractOneToOne(LogicalOperator):
     """Abstract class for one-to-one logical operators, which
     have one input and one output dependency.
     """
 
-    def __init__(
-        self,
-        name: str,
-        input_op: Optional[LogicalOperator],
-        can_modify_num_rows: bool,
-        num_outputs: Optional[int] = None,
-    ):
-        """Initialize an AbstractOneToOne operator.
+    input_op: Optional[LogicalOperator] = None
+    can_modify_num_rows: bool = False
 
-        Args:
-            name: Name for this operator. This is the name that will appear when
-                inspecting the logical plan of a Dataset.
-            input_op: The operator preceding this operator in the plan DAG. The outputs
-                of `input_op` will be the inputs to this operator.
-            can_modify_num_rows: Whether the UDF can change the row count. False if
-                # of input rows = # of output rows. True otherwise.
-            num_outputs: If known, the number of blocks produced by this operator.
-        """
-        super().__init__(
-            name=name,
-            input_dependencies=[input_op] if input_op else [],
-            num_outputs=num_outputs,
-        )
-        self.can_modify_num_rows = can_modify_num_rows
+    def __post_init__(self) -> None:
+        if not self.input_dependencies and self.input_op is not None:
+            object.__setattr__(self, "input_dependencies", [self.input_op])
+        super().__post_init__()
 
     @property
     def input_dependency(self) -> LogicalOperator:
         return self.input_dependencies[0]
 
 
+@dataclass(frozen=True, repr=False)
 class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for limit."""
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        limit: int,
-    ):
-        super().__init__(
-            f"limit={limit}",
-            input_op=input_op,
-            can_modify_num_rows=True,
-        )
-        self.limit = limit
+    limit: int = 0
+
+    def __post_init__(self) -> None:
+        if self.name is None:
+            object.__setattr__(self, "name", f"limit={self.limit}")
+        object.__setattr__(self, "can_modify_num_rows", True)
+        super().__post_init__()
 
     def infer_metadata(self) -> BlockMetadata:
         return BlockMetadata(
@@ -103,25 +85,26 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
         return PredicatePassThroughBehavior.PASSTHROUGH
 
 
+@dataclass(frozen=True, repr=False)
 class Download(AbstractOneToOne):
     """Logical operator for download operation.
 
     Supports downloading from multiple URI columns in a single operation.
     """
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        uri_column_names: List[str],
-        output_bytes_column_names: List[str],
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-    ):
-        super().__init__("Download", input_op, can_modify_num_rows=False)
-        if len(uri_column_names) != len(output_bytes_column_names):
+    uri_column_names: List[str] = None  # type: ignore[assignment]
+    output_bytes_column_names: List[str] = None  # type: ignore[assignment]
+    ray_remote_args: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self) -> None:
+        if self.name is None:
+            object.__setattr__(self, "name", "Download")
+        if len(self.uri_column_names) != len(self.output_bytes_column_names):
             raise ValueError(
-                f"Number of URI columns ({len(uri_column_names)}) must match "
-                f"number of output columns ({len(output_bytes_column_names)})"
+                f"Number of URI columns ({len(self.uri_column_names)}) must match "
+                f"number of output columns ({len(self.output_bytes_column_names)})"
             )
-        self.uri_column_names = uri_column_names
-        self.output_bytes_column_names = output_bytes_column_names
-        self.ray_remote_args = ray_remote_args or {}
+        if self.ray_remote_args is None:
+            object.__setattr__(self, "ray_remote_args", {})
+        object.__setattr__(self, "can_modify_num_rows", False)
+        super().__post_init__()

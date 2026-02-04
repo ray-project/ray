@@ -1,5 +1,6 @@
 import abc
 import functools
+from dataclasses import InitVar, dataclass, field
 from typing import TYPE_CHECKING, List, Optional, Union
 
 from ray.data._internal.execution.interfaces import RefBundle
@@ -27,19 +28,25 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, repr=False)
 class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
     """Abstract logical operator for `from_*`."""
 
-    def __init__(
+    input_blocks: InitVar[Optional[List[ObjectRef[Block]]]] = None
+    input_metadata: InitVar[Optional[List[BlockMetadataWithSchema]]] = None
+    input_data: List[RefBundle] = field(init=False)
+
+    def __post_init__(
         self,
-        input_blocks: List[ObjectRef[Block]],
-        input_metadata: List[BlockMetadataWithSchema],
-    ):
-        super().__init__(
-            name=self.__class__.__name__,
-            input_dependencies=[],
-            num_outputs=len(input_blocks),
-        )
+        input_blocks: Optional[List[ObjectRef[Block]]],
+        input_metadata: Optional[List[BlockMetadataWithSchema]],
+    ) -> None:
+        assert input_blocks is not None
+        assert input_metadata is not None
+        if self.name is None:
+            object.__setattr__(self, "name", self.__class__.__name__)
+        object.__setattr__(self, "input_dependencies", [])
+        object.__setattr__(self, "num_outputs", len(input_blocks))
 
         assert len(input_blocks) == len(input_metadata), (
             len(input_blocks),
@@ -47,14 +54,19 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
         )
 
         # `owns_blocks` is False because this op may be shared by multiple Datasets.
-        self.input_data = [
-            RefBundle(
-                [(input_blocks[i], input_metadata[i])],
-                owns_blocks=False,
-                schema=input_metadata[i].schema,
-            )
-            for i in range(len(input_blocks))
-        ]
+        object.__setattr__(
+            self,
+            "input_data",
+            [
+                RefBundle(
+                    [(input_blocks[i], input_metadata[i])],
+                    owns_blocks=False,
+                    schema=input_metadata[i].schema,
+                )
+                for i in range(len(input_blocks))
+            ],
+        )
+        super().__post_init__()
 
     def output_data(self) -> Optional[List[RefBundle]]:
         return self.input_data

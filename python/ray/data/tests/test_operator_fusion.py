@@ -39,10 +39,7 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared_2_cpus):
     # Test that Read is fused with MapBatches.
     planner = create_planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(
-        read_op,
-        lambda x: x,
-    )
+    op = MapBatches(input_op=read_op, fn=lambda x: x)
     logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -64,10 +61,10 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared_2_cpus):
     # Test that a chain of different map operators are fused.
     planner = create_planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    map1 = MapRows(read_op, lambda x: x)
-    map2 = MapBatches(map1, lambda x: x)
-    map3 = FlatMap(map2, lambda x: x)
-    map4 = Filter(map3, fn=lambda x: x)
+    map1 = MapRows(input_op=read_op, fn=lambda x: x)
+    map2 = MapBatches(input_op=map1, fn=lambda x: x)
+    map3 = FlatMap(input_op=map2, fn=lambda x: x)
+    map4 = Filter(input_op=map3, fn=lambda x: x)
     logical_plan = LogicalPlan(map4, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -113,8 +110,10 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
             ray_remote_args={"resources": {"non-existent": 1}},
             parallelism=1,
         )
-        op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
-        op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
+        op = MapBatches(
+            input_op=read_op, fn=lambda x: x, ray_remote_args=up_remote_args
+        )
+        op = MapBatches(input_op=op, fn=lambda x: x, ray_remote_args=down_remote_args)
         logical_plan = LogicalPlan(op, ctx)
 
         physical_plan = planner.plan(logical_plan)
@@ -159,8 +158,10 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
         read_op = get_parquet_read_logical_op(
             ray_remote_args={"resources": {"non-existent": 1}}
         )
-        op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
-        op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
+        op = MapBatches(
+            input_op=read_op, fn=lambda x: x, ray_remote_args=up_remote_args
+        )
+        op = MapBatches(input_op=op, fn=lambda x: x, ray_remote_args=down_remote_args)
         logical_plan = LogicalPlan(op, ctx)
         physical_plan = planner.plan(logical_plan)
         physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -191,8 +192,8 @@ def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
     # the former comes before the latter.
     planner = create_planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x)
-    op = MapBatches(op, lambda x: x, compute=ray.data.ActorPoolStrategy())
+    op = MapBatches(input_op=read_op, fn=lambda x: x)
+    op = MapBatches(input_op=op, fn=lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -213,7 +214,9 @@ def test_read_map_batches_operator_fusion_compute_read_to_actors(
     # Test that reads fuse into an actor-based map operator.
     planner = create_planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
+    op = MapBatches(
+        input_op=read_op, fn=lambda x: x, compute=ray.data.ActorPoolStrategy()
+    )
     logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -234,8 +237,10 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     # Test that map operators are not fused when compute strategies are incompatible.
     planner = create_planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
-    op = MapBatches(op, lambda x: x)
+    op = MapBatches(
+        input_op=read_op, fn=lambda x: x, compute=ray.data.ActorPoolStrategy()
+    )
+    op = MapBatches(input_op=op, fn=lambda x: x)
     logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -298,27 +303,27 @@ def test_read_with_map_batches_fused_successfully(
         ),
         (
             # No fusion (could drastically reduce dataset)
-            Filter(InputData([]), fn=lambda x: False),
+            Filter(input_op=InputData(input_data=[]), fn=lambda x: False),
             False,
         ),
         (
             # No fusion (could drastically expand/reduce dataset)
-            FlatMap(InputData([]), lambda x: x),
+            FlatMap(input_op=InputData(input_data=[]), fn=lambda x: x),
             False,
         ),
         (
             # Fusion
-            MapBatches(InputData([]), lambda x: x),
+            MapBatches(input_op=InputData(input_data=[]), fn=lambda x: x),
             True,
         ),
         (
             # Fusion
-            MapRows(InputData([]), lambda x: x),
+            MapRows(input_op=InputData(input_data=[]), fn=lambda x: x),
             True,
         ),
         (
             # Fusion
-            Project(InputData([]), exprs=[star()]),
+            Project(input_op=InputData(input_data=[]), exprs=[star()]),
             True,
         ),
     ],
@@ -708,7 +713,7 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
     # Test the EliminateBuildOutputBlocks optimization rule.
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
-    op = MapBatches(read_op, lambda x: x)
+    op = MapBatches(input_op=read_op, fn=lambda x: x)
     logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
 

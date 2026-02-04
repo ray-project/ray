@@ -1,4 +1,5 @@
-from typing import Optional
+from dataclasses import dataclass
+from typing import List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -13,29 +14,37 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, init=False, repr=False)
 class NAry(LogicalOperator):
     """Base class for n-ary operators, which take multiple input operators."""
 
     def __init__(
         self,
         *input_ops: LogicalOperator,
+        input_dependencies: Optional[List[LogicalOperator]] = None,
         num_outputs: Optional[int] = None,
+        name: Optional[str] = None,
     ):
-        """
+        """Initialize an n-ary logical operator.
+
         Args:
-            input_ops: The input operators.
+            *input_ops: The input operators.
+            input_dependencies: The input operators. If set, overrides input_ops.
+            num_outputs: The output number of blocks. None means unknown.
+            name: The operator name. Defaults to the class name.
         """
-        super().__init__(self.__class__.__name__, list(input_ops), num_outputs)
+        if name is None:
+            name = self.__class__.__name__
+        if input_dependencies is None:
+            input_dependencies = list(input_ops)
+        super().__init__(
+            name=name, input_dependencies=input_dependencies, num_outputs=num_outputs
+        )
 
 
+@dataclass(frozen=True, init=False, repr=False)
 class Zip(NAry):
     """Logical operator for zip."""
-
-    def __init__(
-        self,
-        *input_ops: LogicalOperator,
-    ):
-        super().__init__(*input_ops)
 
     def estimated_num_outputs(self):
         total_num_outputs = 0
@@ -47,14 +56,9 @@ class Zip(NAry):
         return total_num_outputs
 
 
+@dataclass(frozen=True, init=False, repr=False)
 class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for union."""
-
-    def __init__(
-        self,
-        *input_ops: LogicalOperator,
-    ):
-        super().__init__(*input_ops)
 
     def estimated_num_outputs(self):
         total_num_outputs = 0

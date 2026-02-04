@@ -101,10 +101,7 @@ def test_split_blocks_operator(ray_start_regular_shared_2_cpus):
     assert physical_op._additional_split_factor == 10
 
     # Test that split blocks prevents fusion.
-    op = MapBatches(
-        op,
-        lambda x: x,
-    )
+    op = MapBatches(input_op=op, fn=lambda x: x)
     logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -127,7 +124,7 @@ def test_from_operators(ray_start_regular_shared_2_cpus):
     ]
     for op_cls in op_classes:
         planner = create_planner()
-        op = op_cls([], [])
+        op = op_cls(input_blocks=[], input_metadata=[])
         plan = LogicalPlan(op, ctx)
         physical_op = planner.plan(plan).dag
 
@@ -187,10 +184,7 @@ def test_map_operator_udf_name(ray_start_regular_shared_2_cpus):
     ]
 
     for udf, expected_name in zip(udf_list, expected_names):
-        op = MapRows(
-            get_parquet_read_logical_op(),
-            udf,
-        )
+        op = MapRows(input_op=get_parquet_read_logical_op(), fn=udf)
         assert op.name == f"Map({expected_name})"
 
 
@@ -199,10 +193,7 @@ def test_map_batches_operator(ray_start_regular_shared_2_cpus):
 
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
-    op = MapBatches(
-        read_op,
-        lambda x: x,
-    )
+    op = MapBatches(input_op=read_op, fn=lambda x: x)
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
@@ -227,10 +218,7 @@ def test_map_rows_operator(ray_start_regular_shared_2_cpus):
 
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
-    op = MapRows(
-        read_op,
-        lambda x: x,
-    )
+    op = MapRows(input_op=read_op, fn=lambda x: x)
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
@@ -254,10 +242,7 @@ def test_filter_operator(ray_start_regular_shared_2_cpus):
 
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
-    op = Filter(
-        read_op,
-        fn=lambda x: x,
-    )
+    op = Filter(input_op=read_op, fn=lambda x: x)
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
@@ -330,10 +315,7 @@ def test_flat_map(ray_start_regular_shared_2_cpus):
 
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
-    op = FlatMap(
-        read_op,
-        lambda x: x,
-    )
+    op = FlatMap(input_op=read_op, fn=lambda x: x)
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
