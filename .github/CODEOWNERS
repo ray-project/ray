@@ -108,6 +108,9 @@
 # CI
 /ci/docker @ray-project/ray-ci
 /ci/ray_ci @ray-project/ray-ci
+/ci/ray_ci/serve_di_test_names.txt @ray-project/ray-serve
+
+/.rayciversion @ray-project/ray-ci
 
 # Buildkite pipeline management
 .buildkite/hooks @ray-project/ray-ci

@@ -21,9 +21,9 @@ steps:
     wanda: ci/docker/ml.build.wanda.yaml
     depends_on: oss-ci-base_ml-multipy
     env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml-py{{matrix}}
-      IMAGE_TO: mlbuild-py{{matrix}}
       PYTHON: "{{matrix}}"
+      BASE_TYPE: "ml"
+      BUILD_VARIANT: "build"
       RAYCI_IS_GPU_BUILD: "false"
     matrix:
       - "3.10"
@@ -39,9 +39,9 @@ steps:
     wanda: ci/docker/ml.build.wanda.yaml
     depends_on: oss-ci-base_gpu-multipy
     env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu-py{{matrix}}
-      IMAGE_TO: mlgpubuild-py{{matrix}}
       PYTHON: "{{matrix}}"
+      BASE_TYPE: "gpu"
+      BUILD_VARIANT: "gpubuild"
       RAYCI_IS_GPU_BUILD: "true"
     matrix:
       - "3.10"

@@ -1,6 +1,5 @@
 import collections
 import logging
-import os
 import warnings
 from typing import (
     TYPE_CHECKING,
@@ -28,6 +27,9 @@ from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.datasource.binary_datasource import BinaryDatasource
 from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
+from ray.data._internal.datasource.databricks_credentials import (
+    DatabricksCredentialProvider,
+)
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
@@ -409,7 +411,7 @@ def read_datasource(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        read_args: Additional kwargs to pass to the :class:`~ray.data.Datasource`
+        **read_args: Additional kwargs to pass to the :class:`~ray.data.Datasource`
             implementation.
 
     Returns:
@@ -538,6 +540,8 @@ def read_audio(
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
         file_extensions: A list of file extensions to filter files by.
+        shuffle: If ``"files"``, randomly shuffle input files order before read.
+            Defaults to ``None``.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -636,22 +640,27 @@ def read_videos(
             that describes how paths are organized. Defaults to ``None``.
         include_paths: If ``True``, include the path to each image. File paths are
             stored in the ``'path'`` column.
-        include_timestmaps: If ``True``, include the frame timestamps from the video
+        include_timestamps: If ``True``, include the frame timestamps from the video
             as a ``'frame_timestamp'`` column.
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
         file_extensions: A list of file extensions to filter files by.
+        shuffle: If ``"files"``, randomly shuffle input files order before read.
+            Defaults to ``None``.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
-
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
     Returns:
         A :class:`~ray.data.Dataset` containing video frames from the video files.
     """
@@ -757,7 +766,7 @@ def read_mongo(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        mongo_args: kwargs passed to `aggregate_arrow_all() <https://mongo-arrow\
+        **mongo_args: kwargs passed to `aggregate_arrow_all() <https://mongo-arrow\
             .readthedocs.io/en/latest/api/api.html#pymongoarrow.api\
             aggregate_arrow_all>`_ in pymongoarrow in producing
             Arrow-formatted results.
@@ -842,6 +851,8 @@ def read_bigquery(
             For more information, see `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`_.
         dataset: The name of the dataset hosted in BigQuery in the format of ``dataset_id.table_id``.
             Both the dataset_id and table_id must exist otherwise an exception will be raised.
+        query: The SQL query to execute. `query` and `dataset` are mutually exclusive.
+            If `query` is provided, the query result is read as the dataset.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -1001,10 +1012,6 @@ def read_parquet(
         shuffle: If setting to "files", randomly shuffle input files order before read.
             If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
             shuffle the input files. Defaults to not shuffle with ``None``.
-        arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
-            set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
-                python/generated/pyarrow.dataset.Scanner.html\
-                    #pyarrow.dataset.Scanner.from_fragment>`_
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
         file_extensions: A list of file extensions to filter files by.
@@ -1016,6 +1023,10 @@ def read_parquet(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        **arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
+            set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
+                python/generated/pyarrow.dataset.Scanner.html\
+                    #pyarrow.dataset.Scanner.from_fragment>`_
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified parquet
@@ -1334,9 +1345,6 @@ def read_json(
             If setting to ``FileShuffleConfig``, you can pass a random seed to shuffle
             the input files, e.g. ``FileShuffleConfig(seed=42)``.
             Defaults to not shuffle with ``None``.
-        arrow_json_args: JSON read options to pass to `pyarrow.json.read_json <https://\
-            arrow.apache.org/docs/python/generated/pyarrow.json.read_json.html#pyarrow.\
-            json.read_json>`_.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1346,7 +1354,9 @@ def read_json(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        **arrow_json_args: JSON read options to pass to `pyarrow.json.read_json <https://\
+            arrow.apache.org/docs/python/generated/pyarrow.json.read_json.html#pyarrow.\
+            json.read_json>`_.
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """  # noqa: E501
@@ -1528,10 +1538,6 @@ def read_csv(
         shuffle: If setting to "files", randomly shuffle input files order before read.
             If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
             shuffle the input files. Defaults to not shuffle with ``None``.
-        arrow_csv_args: CSV read options to pass to
-            `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
-            pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_
-            when opening CSV files.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1541,7 +1547,10 @@ def read_csv(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        **arrow_csv_args: CSV read options to pass to
+            `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
+            pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_
+            when opening CSV files.
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
@@ -1616,6 +1625,8 @@ def read_text(
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
         encoding: The encoding of the files (e.g., "utf-8" or "ascii").
+        drop_empty_lines: If ``True``, drop empty lines from the dataset.
+            Defaults to ``True``.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `PyArrow docs <https://arrow.apache.org/docs/python/api/\
@@ -1844,7 +1855,6 @@ def read_numpy(
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`_.
-        numpy_load_args: Other options to pass to np.load.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
@@ -1868,7 +1878,7 @@ def read_numpy(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        **numpy_load_args: Other options to pass to np.load.
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """  # noqa: E501
@@ -2650,6 +2660,7 @@ def read_databricks_tables(
     query: Optional[str] = None,
     catalog: Optional[str] = None,
     schema: Optional[str] = None,
+    credential_provider: Optional[DatabricksCredentialProvider] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -2674,12 +2685,19 @@ def read_databricks_tables(
 
         export DATABRICKS_HOST=adb-<workspace-id>.<random-number>.azuredatabricks.net
 
+    Alternatively, you can provide a custom credential provider for more advanced
+    authentication scenarios (e.g., token refresh, dynamic credentials). Create a
+    subclass of ``DatabricksCredentialProvider`` and pass it via the
+    ``credential_provider`` parameter.
+
     .. note::
 
         This function is built on the
         `Databricks statement execution API <https://docs.databricks.com/api/workspace/statementexecution>`_.
 
     Examples:
+
+        Read using environment variables:
 
         .. testcode::
             :skipif: True
@@ -2693,6 +2711,33 @@ def read_databricks_tables(
                 query='select id from table_1 limit 750000',
             )
 
+        Read using a custom credential provider:
+
+        .. testcode::
+            :skipif: True
+
+            from ray.data._internal.datasource.databricks_credentials import (
+                DatabricksCredentialProvider,
+            )
+
+            class MyCredentialProvider(DatabricksCredentialProvider):
+                def get_token(self) -> str:
+                    return "my-token"  # Fetch token from custom source
+
+                def get_host(self) -> str:
+                    return "my-host.databricks.com"
+
+                def invalidate(self) -> None:
+                    pass  # Clear cached credentials if applicable
+
+            ds = ray.data.read_databricks_tables(
+                warehouse_id='...',
+                catalog='catalog_1',
+                schema='db_1',
+                query='select id from table_1 limit 750000',
+                credential_provider=MyCredentialProvider(),
+            )
+
     Args:
         warehouse_id: The ID of the Databricks warehouse. The query statement is
             executed on this warehouse.
@@ -2703,6 +2748,12 @@ def read_databricks_tables(
             you can't set ``table_name`` argument.
         catalog: (Optional) The default catalog name used by the query.
         schema: (Optional) The default schema used by the query.
+        credential_provider: (Optional) A custom credential provider for
+            authentication. Must be a subclass of ``DatabricksCredentialProvider``
+            implementing ``get_token()``, ``get_host()``, and ``invalidate()``.
+            The provider must be picklable (serializable) as it is sent to Ray
+            workers for distributed execution. If provided, the provider is used
+            exclusively and environment variables are ignored.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -2722,47 +2773,17 @@ def read_databricks_tables(
     Returns:
         A :class:`Dataset` containing the queried data.
     """  # noqa: E501
+    # Resolve credential provider (single source of truth for token and host)
+    from ray.data._internal.datasource.databricks_credentials import (
+        resolve_credential_provider,
+    )
     from ray.data._internal.datasource.databricks_uc_datasource import (
         DatabricksUCDatasource,
     )
 
-    def get_dbutils():
-        no_dbutils_error = RuntimeError("No dbutils module found.")
-        try:
-            import IPython
-
-            ip_shell = IPython.get_ipython()
-            if ip_shell is None:
-                raise no_dbutils_error
-            return ip_shell.ns_table["user_global"]["dbutils"]
-        except ImportError:
-            raise no_dbutils_error
-        except KeyError:
-            raise no_dbutils_error
-
-    token = os.environ.get("DATABRICKS_TOKEN")
-
-    if not token:
-        raise ValueError(
-            "Please set environment variable 'DATABRICKS_TOKEN' to "
-            "databricks workspace access token."
-        )
-
-    host = os.environ.get("DATABRICKS_HOST")
-    if not host:
-        from ray.util.spark.utils import is_in_databricks_runtime
-
-        if is_in_databricks_runtime():
-            ctx = (
-                get_dbutils().notebook.entry_point.getDbutils().notebook().getContext()
-            )
-            host = ctx.tags().get("browserHostName").get()
-        else:
-            raise ValueError(
-                "You are not in databricks runtime, please set environment variable "
-                "'DATABRICKS_HOST' to databricks workspace URL"
-                '(e.g. "adb-<workspace-id>.<random-number>.azuredatabricks.net").'
-            )
+    resolved_provider = resolve_credential_provider(
+        credential_provider=credential_provider
+    )
 
     if not catalog:
         from ray.util.spark.utils import get_spark_session
@@ -2784,12 +2805,11 @@ def read_databricks_tables(
         raise ValueError("One of 'query' and 'table' arguments should be set.")
 
     datasource = DatabricksUCDatasource(
-        host=host,
-        token=token,
         warehouse_id=warehouse_id,
         catalog=catalog,
         schema=schema,
         query=query,
+        credential_provider=resolved_provider,
     )
     return read_datasource(
         datasource=datasource,
@@ -4119,9 +4139,10 @@ def read_clickhouse(
 @PublicAPI(stability="alpha")
 def read_unity_catalog(
     table: str,
-    url: str,
-    token: str,
+    url: Optional[str] = None,
+    token: Optional[str] = None,
     *,
+    credential_provider: Optional["DatabricksCredentialProvider"] = None,
     data_format: Optional[str] = None,
     region: Optional[str] = None,
     reader_kwargs: Optional[dict] = None,
@@ -4151,21 +4172,63 @@ def read_unity_catalog(
         ... )
         >>> ds.show(3)  # doctest: +SKIP
 
+        Read using a custom credential provider:
+
+        >>> from ray.data._internal.datasource.databricks_credentials import (  # doctest: +SKIP
+        ...     StaticCredentialProvider,
+        ... )
+        >>> provider = StaticCredentialProvider(  # doctest: +SKIP
+        ...     token="dapi...",
+        ...     host="https://dbc-XXXXXXX-XXXX.cloud.databricks.com",
+        ... )
+        >>> ds = ray.data.read_unity_catalog(  # doctest: +SKIP
+        ...     table="main.sales.transactions",
+        ...     credential_provider=provider,
+        ...     region="us-west-2"
+        ... )
+
     Args:
         table: Unity Catalog table path in format ``catalog.schema.table``.
         url: Databricks workspace URL (e.g., ``"https://dbc-XXXXXXX-XXXX.cloud.databricks.com"``).
+            Required if ``credential_provider`` is not specified. Please prefer to use
+            credential_provider instead of url and token parameters. This parameter will be
+            deprecated in a future release.
         token: Databricks Personal Access Token with ``EXTERNAL USE SCHEMA`` permission.
+            Required if ``credential_provider`` is not specified. Please prefer to use
+            credential_provider instead of url and token parameters. This parameter will be
+            deprecated in a future release.
+        credential_provider: (Optional) A custom credential provider for
+            authentication. Must be a subclass of ``DatabricksCredentialProvider``
+            implementing ``get_token()``, ``get_host()``, and ``invalidate()``.
+            The provider must be picklable (serializable) as it is sent to Ray
+            workers for distributed execution. If provided, the provider is used
+            exclusively and ``url``/``token`` parameters are ignored.
         data_format: Data format (``"delta"`` or ``"parquet"``). If not specified, inferred from table metadata.
         region: AWS region for S3 access (e.g., ``"us-west-2"``). Required for AWS, not needed for Azure/GCP.
         reader_kwargs: Additional arguments passed to the underlying Ray Data reader.
 
     Returns:
         A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
-    """
+    """  # noqa: E501
+    from ray.data._internal.datasource.databricks_credentials import (
+        StaticCredentialProvider,
+        resolve_credential_provider,
+    )
+
+    # Resolve credentials: either from credential_provider or from url/token
+    if credential_provider is not None:
+        resolved_provider = resolve_credential_provider(credential_provider)
+    elif url is not None and token is not None:
+        # Backwards compatible: create provider from url/token
+        resolved_provider = StaticCredentialProvider(token=token, host=url)
+    else:
+        raise ValueError(
+            "Either 'credential_provider' or both 'url' and 'token' must be provided."
+        )
+
     connector = UnityCatalogConnector(
-        base_url=url,
-        token=token,
         table_full_name=table,
+        credential_provider=resolved_provider,
         data_format=data_format,
         region=region,
         reader_kwargs=reader_kwargs,

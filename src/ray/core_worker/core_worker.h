@@ -29,8 +29,8 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
-#include "ray/core_worker/actor_handle.h"
-#include "ray/core_worker/actor_manager.h"
+#include "ray/core_worker/actor_management/actor_handle.h"
+#include "ray/core_worker/actor_management/actor_manager.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_options.h"
@@ -1200,6 +1200,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                                rpc::SendReplyCallback send_reply_callback);
 
   // Implements gRPC server handler.
+  // A single endpoint to process different types of pubsub commands.
+  // Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
+  // messages.
   void HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,
                                 rpc::PubsubCommandBatchReply *reply,
                                 rpc::SendReplyCallback send_reply_callback);
@@ -1591,15 +1594,14 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
 
   /// Process the subscribe message received from the subscriber.
-  void ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
-                               rpc::ChannelType channel_type,
-                               const std::string &key_id,
-                               const NodeID &subscriber_id);
-
-  /// A single endpoint to process different types of pubsub commands.
-  /// Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
-  /// messages.
-  void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);
+  ///
+  /// \return StatusT::OK() if successful.
+  /// \return StatusT::InvalidArgument() if the channel or command type is invalid.
+  StatusSet<StatusT::InvalidArgument> ProcessSubscribeMessage(
+      const rpc::SubMessage &sub_message,
+      rpc::ChannelType channel_type,
+      const std::string &key_id,
+      const NodeID &subscriber_id);
 
   void AddSpilledObjectLocationOwner(const ObjectID &object_id,
                                      const std::string &spilled_url,
