@@ -64,9 +64,12 @@ EOF
 
 # For Python 3.14+, the PATH needs to include the conda environment directory
 # Create a symlink from the env-specific python to a standard location
-# Or prepend the env path to PATH permanently
 RUN bash -c 'if [[ -d /opt/miniforge/envs/py${PYTHON_VERSION}/bin ]]; then \
       for f in /opt/miniforge/envs/py${PYTHON_VERSION}/bin/*; do \
         ln -sf "$f" "/opt/miniforge/bin/$(basename "$f")" 2>/dev/null || true; \
       done \
     fi'
+
+# Ensure /opt/miniforge/bin is in PATH for all shells (including non-interactive)
+# This is needed for tests.env.Dockerfile which uses bash -i
+ENV PATH="/opt/miniforge/bin:${PATH}"
