@@ -1432,6 +1432,7 @@ def init(
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
     enable_resource_isolation: bool = False,
+    cgroup_path: Optional[str] = None,
     system_reserved_cpu: Optional[float] = None,
     system_reserved_memory: Optional[int] = None,
     **kwargs,
@@ -1545,6 +1546,11 @@ def init(
             memory and cpu resources for ray system processes. To use, only cgroupv2 (not cgroupv1)
             must be enabled with read and write permissions for the raylet. Cgroup memory and
             cpu controllers must also be enabled.
+        cgroup_path: The path for the cgroup the raylet should use to enforce resource isolation.
+            By default, the cgroup used for resource isolation will be /sys/fs/cgroup.
+            The process starting ray must have read/write permissions to this path.
+            Cgroup memory and cpu controllers must be enabled for this cgroup.
+            This option only works if enable_resource_isolation is True.
         system_reserved_cpu: The number of cpu cores to reserve for ray system processes.
             Cores can be fractional i.e. 1.5 means one and a half a cpu core.
             By default, the value will be atleast 1 core, and at maximum 3 cores. The default value
@@ -1553,11 +1559,6 @@ def init(
         system_reserved_memory: The amount of memory (in bytes) to reserve for ray system processes.
             By default, the value will be atleast 500MB, and at most 10GB. The default value is
             calculated using the formula min(10GB, max(500MB, 0.10 * memory_available_on_the_system))
-            This option only works if enable_resource_isolation is True.
-        _cgroup_path: The path for the cgroup the raylet should use to enforce resource isolation.
-            By default, the cgroup used for resource isolation will be /sys/fs/cgroup.
-            The process starting ray must have read/write permissions to this path.
-            Cgroup memory and cpu controllers be enabled for this cgroup.
             This option only works if enable_resource_isolation is True.
         _enable_object_reconstruction: If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
@@ -1620,8 +1621,6 @@ def init(
         logging_config._apply()
 
     # Parse the hidden options
-    _cgroup_path: str = kwargs.pop("_cgroup_path", None)
-
     _enable_object_reconstruction: bool = kwargs.pop(
         "_enable_object_reconstruction", False
     )
@@ -1652,7 +1651,7 @@ def init(
 
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
-        cgroup_path=_cgroup_path,
+        cgroup_path=cgroup_path,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
     )

@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import ray
@@ -24,6 +25,7 @@ from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_executi
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
+from ray.data._internal.util import rows_same
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data.expressions import star
@@ -681,7 +683,9 @@ def test_map_fusion_with_concurrency_arg(
         ds = ds.map(Map, num_cpus=0, concurrency=down_concurrency)
         down_name = "Map(Map)"
 
-    assert extract_values("id", ds.take_all()) == list(range(10))
+    actual_data = ds.to_pandas()
+    expected_data = pd.DataFrame({"id": list(range(10))})
+    assert rows_same(actual_data, expected_data)
 
     name = f"{up_name}->{down_name}"
     stats = ds.stats()
