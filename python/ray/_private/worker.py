@@ -1864,7 +1864,7 @@ def init(
 
         resource_isolation_config = ResourceIsolationConfig(
             enable_resource_isolation=enable_resource_isolation,
-            cgroup_path=_cgroup_path,
+            cgroup_path=cgroup_path,
             system_reserved_cpu=system_reserved_cpu,
             system_reserved_memory=system_reserved_memory,
             object_store_memory=object_store_memory,
