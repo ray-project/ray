@@ -704,11 +704,8 @@ def _find_schemas_mismatch(old_schema: "Schema", new_schema: Optional["Schema"])
 
     # We assume old_schema and new_schema have the same underlying type
     # and can only either be PyArrow schemas or PandasBlockSchema
-    old_pairs = [(name, str(t)) for name, t in zip(old_schema.names, old_schema.types)]
-    new_pairs = [(name, str(t)) for name, t in zip(new_schema.names, new_schema.types)]
-
-    old_fields = dict(old_pairs)
-    new_fields = dict(new_pairs)
+    old_fields = {name: str(t) for name, t in zip(old_schema.names, old_schema.types)}
+    new_fields = {name: str(t) for name, t in zip(new_schema.names, new_schema.types)}
 
     new_exclusive_fields = [name for name in new_fields if name not in old_fields]
     old_exclusive_fields = [name for name in old_fields if name not in new_fields]
@@ -744,22 +741,8 @@ def _find_schemas_mismatch(old_schema: "Schema", new_schema: Optional["Schema"])
 
     disordered_message = ""
     if not new_exclusive_fields and not old_exclusive_fields and not changed_fields:
-        assert old_pairs != new_pairs
-        disordered_pairs = [
-            old_pair
-            for old_pair, new_pair in zip(old_pairs, new_pairs)
-            if old_pair != new_pair
-        ]
-        disordered_pairs_info = list(
-            map(
-                lambda pair: f"{pair[0]}: {pair[1]}",
-                disordered_pairs,
-            )
-        )
-        disordered_message = _format_info_message(
-            "Fields ordered differently across the old and the incoming schemas",
-            disordered_pairs_info,
-        )
+        assert old_fields == new_fields
+        disordered_message = "Some fields are ordered differently across the old and the incoming schemas.\n"
 
     return (
         "Operator produced a RefBundle with a different schema "
@@ -807,7 +790,7 @@ def dedupe_schemas_with_validation(
     diverged = True
     if warn and enforce_schemas:
         warning_message = _find_schemas_mismatch(old_schema, bundle.schema)
-        logger.warning(f"{warning_message}" f"This may lead to unexpected behavior.")
+        logger.warning(f"{warning_message}This may lead to unexpected behavior.")
     if enforce_schemas:
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
 

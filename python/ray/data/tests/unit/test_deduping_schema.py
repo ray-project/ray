@@ -277,9 +277,7 @@ def test_dedupe_schema_disordered_warning(
         msg = "\n".join(caplog.messages)
         assert (
             """Operator produced a RefBundle with a different schema than the previous one.
-Fields ordered differently across the old and the incoming schemas (2 total):
-    bar: string
-    baz: extension<arrow.bool8>
+Some fields are ordered differently across the old and the incoming schemas.
 This may lead to unexpected behavior."""
             == msg
         )
