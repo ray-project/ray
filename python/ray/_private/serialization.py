@@ -705,10 +705,7 @@ class SerializationContext:
         return serialized_val, tensors
 
     def store_gpu_objects(
-        self,
-        obj_id: str,
-        tensors: List["torch.Tensor"],
-        tensor_transport: str,
+        self, obj_id: str, tensors: List["torch.Tensor"], tensor_transport: str
     ) -> bytes:
         """
         Store GPU objects in the GPU object store.
@@ -731,7 +728,7 @@ class SerializationContext:
         worker = ray._private.worker.global_worker
         gpu_object_manager = worker.gpu_object_manager
         tensor_transport_meta = gpu_object_manager.gpu_object_store.add_object_primary(
-            obj_id, tensors, tensor_transport, cache_metadata=False
+            obj_id, tensors, tensor_transport
         )
         return pickle.dumps(tensor_transport_meta)
 

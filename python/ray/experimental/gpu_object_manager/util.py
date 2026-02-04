@@ -1,5 +1,4 @@
 import threading
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional
 
 import ray
@@ -197,18 +196,11 @@ def validate_one_sided(tensor_transport: str, ray_usage_func: str):
         )
 
 
-def validate_put_tensor_options(options: PutTensorOptions) -> str:
-    """Validate PutTensorOptions and return the normalized transport name."""
-    if not isinstance(options, PutTensorOptions):
-        raise TypeError(
-            f"_tensor_transport must be a PutTensorOptions, got: {type(options)}"
-        )
-    transport = normalize_and_validate_tensor_transport(options.transport)
-    if options.cache_metadata and transport != "NIXL":
-        raise ValueError(
-            f"cache_metadata=True is only supported with NIXL transport, got: {transport}"
-        )
-    return transport
+@PublicAPI(stability="alpha")
+def cache_memory_registration(tensor: "torch.Tensor") -> None:
+    """Cache a tensor's memory registration with NIXL for efficient reuse."""
+    nixl_transport = get_tensor_transport_manager("NIXL")
+    nixl_transport.cache_memory_registration(tensor)
 
 
 def create_empty_tensors_from_metadata(
