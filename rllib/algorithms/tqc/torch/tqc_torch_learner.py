@@ -219,7 +219,6 @@ class TQCTorchLearner(SACTorchLearner, TQCLearner):
             # Get quantiles for this critic: (batch, n_quantiles)
             critic_quantiles = qf_preds[:, i, :]
             # Compute per-sample quantile huber loss
-            # assert critic_quantiles.shape == target_quantiles.shape, f'{critic_quantiles.shape=} == {target_quantiles.shape=}, {qf_preds.shape=}'
             critic_loss_per_sample = quantile_huber_loss_per_sample(
                 critic_quantiles,
                 target_quantiles,
