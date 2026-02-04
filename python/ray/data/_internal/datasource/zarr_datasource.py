@@ -28,6 +28,7 @@ class ZarrDatasource(Datasource):
         paths: Union[str, List[str]],
         storage_options: Optional[Dict[str, Any]] = None,
     ):
+        super().__init__()
         _check_import(self, module="zarr", package="zarr")
         self._paths = [paths] if isinstance(paths, str) else list(paths)
         self._storage_options = storage_options
