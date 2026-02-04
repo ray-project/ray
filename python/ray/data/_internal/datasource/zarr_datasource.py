@@ -1,7 +1,7 @@
 """Zarr datasource for Ray Data."""
 
 import itertools
-from typing import TYPE_CHECKING, Iterable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
@@ -9,10 +9,8 @@ import pyarrow as pa
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
-from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
 if TYPE_CHECKING:
-    import pyarrow.fs
     import zarr
 
     from ray.data.context import DataContext
@@ -28,10 +26,11 @@ class ZarrDatasource(Datasource):
     def __init__(
         self,
         paths: Union[str, List[str]],
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
     ):
         _check_import(self, module="zarr", package="zarr")
-        self._paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        self._paths = [paths] if isinstance(paths, str) else list(paths)
+        self._storage_options = storage_options
 
     def get_read_tasks(
         self,
@@ -43,8 +42,7 @@ class ZarrDatasource(Datasource):
 
         read_tasks = []
         for path in self._paths:
-            zarr_path = _get_zarr_path(path, self._filesystem)
-            store = zarr.open(zarr_path, mode="r")
+            store = zarr.open(path, mode="r", storage_options=self._storage_options)
             for array_name, arr in _get_arrays(store):
                 for chunk_idx in _get_chunk_indices(arr):
                     # Estimate size of this chunk
@@ -61,7 +59,9 @@ class ZarrDatasource(Datasource):
                     )
                     read_tasks.append(
                         ReadTask(
-                            _create_read_fn(zarr_path, array_name, chunk_idx),
+                            _create_read_fn(
+                                path, array_name, chunk_idx, self._storage_options
+                            ),
                             metadata,
                         )
                     )
@@ -72,28 +72,10 @@ class ZarrDatasource(Datasource):
 
         total = 0
         for path in self._paths:
-            zarr_path = _get_zarr_path(path, self._filesystem)
-            store = zarr.open(zarr_path, mode="r")
+            store = zarr.open(path, mode="r", storage_options=self._storage_options)
             for _, arr in _get_arrays(store):
                 total += arr.nbytes
         return total
-
-
-def _get_zarr_path(path: str, filesystem: Optional["pyarrow.fs.FileSystem"]) -> str:
-    """Build a zarr-compatible path from the resolved path and filesystem.
-
-    The `_resolve_paths_and_filesystem` function strips URI schemes from paths.
-    Since zarr uses fsspec for remote storage and expects full URIs, we
-    reconstruct the URI from the filesystem type.
-    """
-    if filesystem is None:
-        return path
-    fs_type = filesystem.type_name
-    if fs_type == "s3":
-        return f"s3://{path}"
-    elif fs_type == "gcs":
-        return f"gs://{path}"
-    return path
 
 
 def _get_arrays(
@@ -119,13 +101,18 @@ def _get_chunk_indices(arr: "zarr.Array") -> List[Tuple[int, ...]]:
     return list(itertools.product(*[range(n) for n in chunks_per_dim]))
 
 
-def _create_read_fn(zarr_path: str, array_name: str, chunk_idx: Tuple[int, ...]):
+def _create_read_fn(
+    path: str,
+    array_name: str,
+    chunk_idx: Tuple[int, ...],
+    storage_options: Optional[Dict[str, Any]],
+):
     """Create a read function for a specific chunk."""
 
     def read_fn() -> Iterable[Block]:
         import zarr
 
-        store = zarr.open(zarr_path, mode="r")
+        store = zarr.open(path, mode="r", storage_options=storage_options)
         arr = store[array_name] if array_name else store
         slices = tuple(
             slice(i * c, min((i + 1) * c, s))

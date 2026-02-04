@@ -1909,7 +1909,7 @@ def read_numpy(
 def read_zarr(
     paths: Union[str, List[str]],
     *,
-    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
@@ -1921,6 +1921,12 @@ def read_zarr(
 
     Each Zarr chunk becomes one block in the Dataset. Supports both single
     arrays and groups containing multiple arrays.
+
+    This function uses ``storage_options`` for filesystem configuration rather than
+    a ``filesystem`` parameter. This aligns with the zarr/dask/xarray ecosystem,
+    which uses fsspec for storage backends. For details on configuring
+    ``storage_options`` for different cloud providers, see
+    https://docs.dask.org/en/stable/how-to/connect-to-remote-data.html
 
     Examples:
         Read a single Zarr array.
@@ -1937,17 +1943,28 @@ def read_zarr(
         >>> ds = ray.data.read_zarr(  # doctest: +SKIP
         ...     ["store1.zarr", "store2.zarr"])
 
-        Read from cloud storage. The filesystem is auto-detected from the URI.
+        Read from S3 with anonymous access.
 
-        >>> ds = ray.data.read_zarr("s3://bucket/path.zarr")  # doctest: +SKIP
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        ...     "s3://bucket/path.zarr",
+        ...     storage_options={"anon": True})
+
+        Read from S3 with a specific AWS profile.
+
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        ...     "s3://bucket/path.zarr",
+        ...     storage_options={"profile": "my-profile"})
 
     Args:
         paths: A single file/directory path or a list of paths.
-            Supports local paths, ``s3://``, and ``gs://``. The filesystem
-            is automatically inferred from the URI scheme.
-        filesystem: The filesystem to use for reading. If not provided, the
-            filesystem is inferred from the path URI scheme. Specify this
-            to use a custom configuration (e.g., custom S3 endpoint, credentials).
+            Supports local paths and URIs for remote storage (``s3://``, ``gs://``,
+            ``abfs://``, etc.). The filesystem is inferred from the URI scheme.
+        storage_options: Extra options for the storage backend (e.g., credentials,
+            endpoint URL). These are passed directly to fsspec. Common options
+            include ``anon`` (bool) for anonymous access, ``profile`` (str) for
+            AWS profile, ``account_name``/``account_key`` for Azure, and
+            ``project``/``token`` for GCS. See
+            https://docs.dask.org/en/stable/how-to/connect-to-remote-data.html
         num_cpus: The number of CPUs to reserve for each parallel read task.
         num_gpus: The number of GPUs to reserve for each parallel read task.
         memory: The heap memory in bytes to reserve for each parallel read task.
@@ -1965,7 +1982,7 @@ def read_zarr(
         :class:`~ray.data.Dataset` with columns: ``array_name``, ``data``, ``shape``,
         ``dtype``, ``chunk_index``.
     """
-    datasource = ZarrDatasource(paths, filesystem=filesystem)
+    datasource = ZarrDatasource(paths, storage_options=storage_options)
     return read_datasource(
         datasource,
         num_cpus=num_cpus,
