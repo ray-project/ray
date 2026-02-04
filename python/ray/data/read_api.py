@@ -52,6 +52,7 @@ from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRa
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.datasource.zarr_datasource import ZarrDatasource
 from ray.data._internal.datasource.range_datasource import RangeDatasource
 from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
@@ -1899,6 +1900,78 @@ def read_numpy(
     return read_datasource(
         datasource,
         parallelism=parallelism,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI
+def read_zarr(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Dict[str, Any] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Read Zarr arrays into a :class:`~ray.data.Dataset`.
+
+    Each Zarr chunk becomes one block in the Dataset. Supports both single
+    arrays and groups containing multiple arrays.
+
+    Examples:
+        Read a single Zarr array.
+
+        >>> import ray
+        >>> ds = ray.data.read_zarr("/path/to/array.zarr")  # doctest: +SKIP
+
+        Read all arrays in a group.
+
+        >>> ds = ray.data.read_zarr("/path/to/group.zarr")  # doctest: +SKIP
+
+        Read from multiple stores.
+
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        ...     ["store1.zarr", "store2.zarr"])
+
+        Read from cloud storage. The filesystem is auto-detected from the URI.
+
+        >>> ds = ray.data.read_zarr("s3://bucket/path.zarr")  # doctest: +SKIP
+
+    Args:
+        paths: A single file/directory path or a list of paths.
+            Supports local paths, ``s3://``, and ``gs://``. The filesystem
+            is automatically inferred from the URI scheme.
+        filesystem: The filesystem to use for reading. If not provided, the
+            filesystem is inferred from the path URI scheme. Specify this
+            to use a custom configuration (e.g., custom S3 endpoint, credentials).
+        num_cpus: The number of CPUs to reserve for each parallel read task.
+        num_gpus: The number of GPUs to reserve for each parallel read task.
+        memory: The heap memory in bytes to reserve for each parallel read task.
+        ray_remote_args: Additional kwargs passed to :func:`ray.remote` in read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        :class:`~ray.data.Dataset` with columns: ``array_name``, ``data``, ``shape``,
+        ``dtype``, ``chunk_index``.
+    """
+    datasource = ZarrDatasource(paths, filesystem=filesystem)
+    return read_datasource(
+        datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
