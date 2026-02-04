@@ -252,22 +252,43 @@ class DeltaFileWriter:
             use_dictionary_keys = True
         except pa.ArrowNotImplementedError:
             # Some PyArrow builds don't support dictionary_encode on struct types.
-            # Fallback: hash-based grouping (portable across versions).
+            # Fallback: manual grouping by iterating through rows and grouping by partition values.
             use_dictionary_keys = False
 
-            # Hash each column and combine hashes deterministically into a single int64-like key.
-            # We can't rely on hash_combine across versions, so do a simple mixing.
-            combined = None
-            for c in cols:
-                h = pc.hash(table[c])
-                if combined is None:
-                    combined = h
-                else:
-                    # mix: combined = combined * 1315423911 + h
-                    combined = pc.add(pc.multiply(combined, 1315423911), h)
+            # Build groups manually by iterating through rows
+            # Extract columns as arrays for efficient access
+            col_arrays = [table[c] for c in cols]
+            # Handle ChunkedArrays by combining chunks if needed
+            col_arrays = [
+                arr.combine_chunks() if isinstance(arr, pa.ChunkedArray) else arr
+                for arr in col_arrays
+            ]
 
-            enc = pc.dictionary_encode(combined)
-            dictionary, indices = enc.dictionary, enc.indices
+            groups: Dict[Tuple, List[int]] = {}
+            for i in range(len(table)):
+                key = tuple(
+                    arr[i].as_py() if arr[i].is_valid else None for arr in col_arrays
+                )
+                if key not in groups:
+                    groups[key] = []
+                groups[key].append(i)
+
+            if len(groups) > _MAX_PARTITIONS:
+                raise ValueError(
+                    f"Too many partition combinations ({len(groups)}). Max: {_MAX_PARTITIONS}"
+                )
+
+            # Convert groups to dictionary of tables
+            out = {}
+            for key, indices_list in groups.items():
+                for v in key:
+                    if v is not None:
+                        validate_partition_value(v)
+                # Use take() to extract rows by index
+                sub = table.take(pa.array(indices_list))
+                if len(sub) > 0:
+                    out[key] = sub
+            return out
 
         if len(dictionary) > _MAX_PARTITIONS:
             raise ValueError(

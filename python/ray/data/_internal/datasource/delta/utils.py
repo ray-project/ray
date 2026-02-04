@@ -277,6 +277,8 @@ def normalize_commit_properties(
         )
 
     # Extract max_commit_retries if present (special handling)
+    # Make a copy to avoid mutating the caller's dictionary
+    commit_properties = commit_properties.copy()
     max_commit_retries = commit_properties.pop("max_commit_retries", None)
     if max_commit_retries is not None:
         try:
