@@ -63,7 +63,10 @@ class DefaultPlacementGroupHandle(PlacementGroupHandle):
         return self._pg.ready()
 
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
-        return self._pg.wait(timeout_seconds)
+        try:
+            return self._pg.wait(timeout_seconds)
+        except Exception:
+            return False
 
     def shutdown(self) -> None:
         remove_placement_group(self._pg)
@@ -83,7 +86,10 @@ class SlicePlacementGroupHandle(PlacementGroupHandle):
         return self._spg.placement_group.ready()
 
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
-        return self._spg.placement_group.wait(timeout_seconds)
+        try:
+            return self._spg.placement_group.wait(timeout_seconds)
+        except Exception:
+            return False
 
     def shutdown(self) -> None:
         self._spg.shutdown()
