@@ -15,6 +15,7 @@ ray_cc_library(
     deps = [
         "//src/ray/common:constants",
         "//src/ray/common:ray_config",
+        "//src/ray/rpc:common",
         "//src/ray/rpc/authentication:authentication_mode",
         "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:logging",
