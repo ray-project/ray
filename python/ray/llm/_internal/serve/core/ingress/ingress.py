@@ -93,9 +93,11 @@ T = TypeVar("T")
 DEFAULT_INGRESS_OPTIONS = {
     "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
     "autoscaling_config": {
+        "min_replicas": 0,
         "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
     },
 }
+
 
 # These methods correspond to functions defined in the LLMEngine class in python/ray/llm/_internal/serve/deployments/llm/llm_engine.py
 class CallMethod(Enum):
