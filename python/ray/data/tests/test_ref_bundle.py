@@ -460,12 +460,17 @@ def test_ref_bundle_str_with_large_bytes():
         schema=None,
     )
 
-    result = str(bundle)
-    # Check that human-readable formats are used
-    assert "2.0KiB" in result
-    assert "2.0MiB" in result
-    assert "3.0GiB" in result
-    assert "11100 rows" in result  # Total rows
+    expected = """RefBundle(3 blocks,
+  11100 rows,
+  schema=None,
+  owns_blocks=True,
+  blocks=(
+    0: 100 rows, 2.0KiB, slice=None (full block)
+    1: 1000 rows, 2.0MiB, slice=None (full block)
+    2: 10000 rows, 3.0GiB, slice=None (full block)
+  )
+)"""
+    assert str(bundle) == expected
 
 
 def test_ref_bundle_str_with_pandas_schema():
