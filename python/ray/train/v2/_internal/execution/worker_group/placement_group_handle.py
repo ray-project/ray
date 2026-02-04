@@ -1,3 +1,4 @@
+import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Union
 
@@ -6,6 +7,8 @@ from ray.util.placement_group import PlacementGroup, remove_placement_group
 
 if TYPE_CHECKING:
     from ray.util.tpu import SlicePlacementGroup
+
+logger = logging.getLogger(__name__)
 
 
 class PlacementGroupHandle(ABC):
@@ -66,6 +69,10 @@ class DefaultPlacementGroupHandle(PlacementGroupHandle):
         try:
             return self._pg.wait(timeout_seconds)
         except Exception:
+            logger.warning(
+                "Placement group wait failed; treating as not ready.",
+                exc_info=True,
+            )
             return False
 
     def shutdown(self) -> None:
@@ -89,6 +96,10 @@ class SlicePlacementGroupHandle(PlacementGroupHandle):
         try:
             return self._spg.placement_group.wait(timeout_seconds)
         except Exception:
+            logger.warning(
+                "Slice placement group wait failed; treating as not ready.",
+                exc_info=True,
+            )
             return False
 
     def shutdown(self) -> None:
