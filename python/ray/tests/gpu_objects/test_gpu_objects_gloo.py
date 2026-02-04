@@ -14,7 +14,6 @@ from ray.experimental.collective import create_collective_group
 from ray.experimental.gpu_object_manager.collective_tensor_transport import (
     CollectiveTransportMetadata,
 )
-from ray.experimental.gpu_object_manager.util import PutTensorOptions
 
 # tensordict is not supported on macos ci, so we skip the tests
 support_tensordict = sys.platform != "darwin"
@@ -589,11 +588,6 @@ def test_invalid_tensor_transport(ray_start_regular):
         actor.double.options(tensor_transport="invalid").remote(torch.randn((1,)))
 
     with pytest.raises(ValueError, match="Invalid tensor transport"):
-        ray.put(
-            torch.randn((1,)), _tensor_transport=PutTensorOptions(transport="invalid")
-        )
-
-    with pytest.raises(TypeError, match="_tensor_transport must be a PutTensorOptions"):
         ray.put(torch.randn((1,)), _tensor_transport="invalid")
 
 

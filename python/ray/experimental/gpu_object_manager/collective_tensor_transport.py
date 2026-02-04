@@ -57,7 +57,6 @@ class CollectiveTensorTransport(TensorTransportManager):
         self,
         obj_id: str,
         gpu_object: List["torch.Tensor"],
-        cache_metadata: bool,
     ) -> CollectiveTransportMetadata:
         tensor_meta = []
         device = None

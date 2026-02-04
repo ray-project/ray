@@ -80,7 +80,6 @@ class TensorTransportManager(ABC):
         self,
         obj_id: str,
         gpu_object: List["torch.Tensor"],
-        cache_metadata: bool,
     ) -> TensorTransportMetadata:
         """
         Extract the tensor transport metadata from the GPU object. This is called on the
@@ -89,8 +88,6 @@ class TensorTransportManager(ABC):
         Args:
             obj_id: The ID of the GPU object to extract the tensor transport metadata from.
             gpu_object: The GPU object to extract the tensor transport metadata from.
-            cache_metadata: If True, cache the memory registration for reuse on
-                subsequent puts with the same tensor memory region.
 
         Returns:
             TensorTransportMetadata: The tensor transport metadata.

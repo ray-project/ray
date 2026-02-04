@@ -59,6 +59,8 @@ class NixlTensorTransport(TensorTransportManager):
         # Lock protecting _tensor_desc_cache and _managed_meta_nixl since they can be
         # accessed from the main task execution thread or the _ray_system thread.
         self._cache_lock = threading.Lock()
+        # Set of data_ptrs to tensors whose memory registrations are cached and not deregistered when the ref goes out of scope.
+        self._cached_memory_registrations: set = set()
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
@@ -70,6 +72,15 @@ class NixlTensorTransport(TensorTransportManager):
     @staticmethod
     def can_abort_transport() -> bool:
         return True
+
+    def cache_memory_registration(self, tensor: "torch.Tensor") -> None:
+        """Cache a tensor's memory registration with NIXL for efficient reuse."""
+        key = tensor.data_ptr()
+        with self._cache_lock:
+            self._cached_memory_registrations.add(key)
+            # If the tensor is already registered, mark that it shouldn't be deregistered
+            if key in self._tensor_desc_cache:
+                self._tensor_desc_cache[key].cache_metadata = True
 
     def get_nixl_agent(self):
         """
@@ -117,16 +128,13 @@ class NixlTensorTransport(TensorTransportManager):
         self,
         obj_id: str,
         gpu_object: List["torch.Tensor"],
-        cache_metadata: bool,
     ) -> NixlTransportMetadata:
         import torch
 
         with self._cache_lock:
             device = None
             tensor_meta = []
-            duplicate_meta = self._record_and_get_meta_if_duplicate(
-                obj_id, gpu_object, cache_metadata
-            )
+            duplicate_meta = self._record_and_get_meta_if_duplicate(obj_id, gpu_object)
             if duplicate_meta is not None:
                 return duplicate_meta
 
@@ -160,7 +168,7 @@ class NixlTensorTransport(TensorTransportManager):
                         torch.cuda.synchronize(dev)
 
                 nixl_agent = self.get_nixl_agent()
-                self._add_tensor_descs(gpu_object, cache_metadata)
+                self._add_tensor_descs(gpu_object)
                 xfer_descs = nixl_agent.get_xfer_descs(gpu_object)
                 serialized_descs = nixl_agent.get_serialized_descs(xfer_descs)
                 agent_meta = nixl_agent.get_agent_metadata()
@@ -319,7 +327,6 @@ class NixlTensorTransport(TensorTransportManager):
         self,
         src_obj_id: str,
         src_gpu_object: List["torch.Tensor"],
-        cache_metadata: bool,
     ) -> Optional[NixlTransportMetadata]:
         """
         Record the NIXL managed meta for the given object ID if it is a duplicate of another object, and return the meta if it is.
@@ -337,7 +344,7 @@ class NixlTensorTransport(TensorTransportManager):
                     f"NIXL transport metadata for object id {duplicate_obj_id} not found"
                 )
             self._put_meta(src_obj_id, meta)
-            self._add_tensor_descs(src_gpu_object, cache_metadata)
+            self._add_tensor_descs(src_gpu_object)
             return meta
         return None
 
@@ -359,7 +366,7 @@ class NixlTensorTransport(TensorTransportManager):
         """
         self._managed_meta_nixl[object_id] = meta
 
-    def _add_tensor_descs(self, tensors: List["torch.Tensor"], cache_metadata: bool):
+    def _add_tensor_descs(self, tensors: List["torch.Tensor"]):
         """
         If this is the first time the tensor is being added, we register the memory with NIXL.
         Otherwise, we increment the reference count.
@@ -372,12 +379,6 @@ class NixlTensorTransport(TensorTransportManager):
                     raise ValueError(
                         "Tensors in an RDT object cannot partially overlap with each other."
                     )
-                if cache_metadata != tensor_desc.cache_metadata:
-                    raise ValueError(
-                        f"Inconsistent cache_metadata for tensor created through ray.put calls. "
-                        f"existing={tensor_desc.cache_metadata}, new={cache_metadata}. "
-                        "cache_metadata must be consistent across all ray.put calls for the same tensor."
-                    )
                 tensor_desc.metadata_count += 1
             else:
                 reg_desc = self.get_nixl_agent().register_memory([tensor])
@@ -385,5 +386,6 @@ class NixlTensorTransport(TensorTransportManager):
                     reg_desc=reg_desc,
                     metadata_count=1,
                     nbytes=tensor.nbytes,
-                    cache_metadata=cache_metadata,
+                    cache_metadata=tensor.data_ptr()
+                    in self._cached_memory_registrations,
                 )
