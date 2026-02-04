@@ -19,18 +19,9 @@ if TYPE_CHECKING:
     from deltalake import DeltaTable
     from deltalake.transaction import AddAction, CommitProperties, Transaction
 
-# =============================================================================
-# Constants
-# =============================================================================
-
 UPSERT_JOIN_COLS = "join_cols"
 MAX_PARTITION_PATH_LENGTH = 200
 MAX_PARTITION_COLUMNS = 10
-
-
-# =============================================================================
-# Data Classes
-# =============================================================================
 
 
 @dataclass
@@ -50,11 +41,6 @@ class DeltaWriteResult:
     schemas: List[pa.Schema] = field(default_factory=list)
     written_files: List[str] = field(default_factory=list)
     write_uuid: Optional[str] = None
-
-
-# =============================================================================
-# Path Utilities
-# =============================================================================
 
 
 def join_delta_path(base: str, relative: str) -> str:
@@ -122,11 +108,6 @@ def validate_file_path(path: str, max_length: int = 500) -> None:
     for char in '<>:"|?*':
         if char in path:
             raise ValueError(f"Path contains invalid character '{char}': {path}")
-
-
-# =============================================================================
-# Partition Utilities
-# =============================================================================
 
 
 def build_partition_path(
@@ -212,11 +193,6 @@ def validate_partition_columns_in_table(cols: List[str], table: pa.Table) -> Non
             raise ValueError(f"Partition column '{col}' has nested type {col_type}")
         if pa.types.is_dictionary(col_type):
             raise ValueError(f"Partition column '{col}' has dictionary type")
-
-
-# =============================================================================
-# Schema Utilities
-# =============================================================================
 
 
 def _safe_type_check(t: pa.DataType, check_func) -> bool:
@@ -485,11 +461,6 @@ def is_numeric_type(t: pa.DataType) -> bool:
 
 def is_temporal_type(t: pa.DataType) -> bool:
     return pa.types.is_date(t) or pa.types.is_timestamp(t)
-
-
-# =============================================================================
-# Storage and Table Utilities
-# =============================================================================
 
 
 def create_filesystem_from_storage_options(
@@ -856,11 +827,6 @@ def create_app_transaction_id(write_uuid: Optional[str]) -> "Transaction":
         version=version,
         last_updated=None,
     )
-
-
-# =============================================================================
-# Statistics Utilities
-# =============================================================================
 
 
 def _to_json_serializable(val: Any) -> Any:
