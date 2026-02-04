@@ -109,6 +109,7 @@ class MockReplicaActorWrapper:
         self._docs_path = None
         self._rank = replica_rank_context.get(replica_id.unique_id, None)
         self._assign_rank_callback = None
+        self._ingress = False
 
     @property
     def is_cross_language(self) -> bool:

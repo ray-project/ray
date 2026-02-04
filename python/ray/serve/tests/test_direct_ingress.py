@@ -2037,8 +2037,9 @@ def test_shutdown_replica_only_after_draining_requests(
     """Test that the replica is shutdown correctly when the deployment is shutdown."""
     signal = SignalActor.remote()
 
-    # Increase graceful_shutdown_timeout_s to ensure replicas aren't force-killed
-    # before requests complete when RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
+    # In direct ingress mode, graceful_shutdown_timeout_s is automatically bumped to
+    # max(graceful_shutdown_timeout_s, RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S)
+    # to give external load balancers time to deregister the replica.
     @serve.deployment(name="replica-shutdown-deployment", graceful_shutdown_timeout_s=5)
     class ReplicaShutdownTest:
         async def __call__(self):
