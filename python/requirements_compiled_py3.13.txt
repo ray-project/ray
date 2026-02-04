@@ -90,7 +90,7 @@ antlr4-python3-runtime==4.11.1
     # via
     #   fugue-sql-antlr
     #   qpd
-anyio==4.5.0
+anyio==4.12.0
     # via
     #   gradio
     #   httpx
@@ -208,7 +208,7 @@ backoff==1.10.0
     #   segment-analytics-python
 base58==2.0.1
     # via aimrecords
-bayesian-optimization==1.4.0
+bayesian-optimization==1.4.3
     # via
     #   -r python/requirements/ml/tune-requirements.txt
     #   nevergrad
@@ -964,7 +964,7 @@ junit-xml==1.9
     # via cfn-lint
 jupyter-cache==0.6.1
     # via myst-nb
-jupyter-client==8.6.3
+jupyter-client==8.7.0
     # via
     #   ipykernel
     #   jupyter-server
@@ -989,7 +989,7 @@ jupyter-server==2.10.0
     #   notebook-shim
 jupyter-server-terminals==0.5.3
     # via jupyter-server
-jupyterlab==4.5.0
+jupyterlab==4.5.1
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
@@ -1107,9 +1107,9 @@ ml-dtypes==0.5.4
     #   jaxlib
     #   keras
     #   tensorflow
-mlflow==2.22.0
+mlflow==3.1.4
     # via -r python/requirements/ml/core-requirements.txt
-mlflow-skinny==2.22.0
+mlflow-skinny==3.1.4
     # via mlflow
 mmh3==4.1.0
     # via pyiceberg
@@ -1125,7 +1125,7 @@ more-itertools==10.7.0
     # via configspace
 mosaicml==0.3.1 ; python_version < "3.12"
     # via -r python/requirements/ml/train-test-requirements.txt
-moto==4.2.12
+moto==5.1.18
     # via -r python/requirements/test-requirements.txt
 moviepy==0.2.3.1
     # via -r python/requirements/ml/rllib-test-requirements.txt
@@ -1221,7 +1221,7 @@ networkx==3.2.1
     #   cfn-lint
     #   hyperopt
     #   torch
-nevergrad==1.0.12
+nevergrad==0.4.3.post7
     # via -r python/requirements/ml/tune-requirements.txt
 ninja==1.11.1.1
     # via deepspeed
@@ -1627,7 +1627,7 @@ py==1.11.0
     # via pytest-forked
 py-cpuinfo==9.0.0
     # via deepspeed
-py-partiql-parser==0.5.0
+py-partiql-parser==0.6.3
     # via moto
 py-spy==0.4.0 ; python_version < "3.12"
     # via -r python/requirements.txt
@@ -1977,7 +1977,7 @@ requests-oauthlib==2.0.0
     #   msrest
 requests-toolbelt==1.0.0
     # via comet-ml
-responses==0.13.4
+responses==0.25.8
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   moto
@@ -2279,7 +2279,7 @@ testfixtures==7.0.0
     # via -r python/requirements/test-requirements.txt
 textual==4.0.0
     # via memray
-tf-keras==2.20.0
+tf-keras==2.20.1
     # via -r python/requirements/test-requirements.txt
 threadpoolctl==3.1.0
     # via
@@ -2351,7 +2351,7 @@ torchvision==0.18.0
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   mosaicml
     #   timm
-tornado==6.5.2
+tornado==6.5.4
     # via
     #   -r python/requirements/test-requirements.txt
     #   bokeh
