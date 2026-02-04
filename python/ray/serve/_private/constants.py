@@ -360,8 +360,7 @@ RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S = get_env_float(
 # Handle autoscaling metrics push interval. (This interval will affect the cold start time period)
 RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S",
-    # Legacy env var for RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S
-    get_env_float("RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S", 10.0),
+    10.0,
 )
 
 # Serve multiplexed matching timeout.

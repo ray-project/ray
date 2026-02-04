@@ -3705,51 +3705,41 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
   }
 }
 
-void CoreWorker::ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
-                                         rpc::ChannelType channel_type,
-                                         const std::string &key_id,
-                                         const NodeID &subscriber_id) {
-  object_info_publisher_->RegisterSubscription(channel_type, subscriber_id, key_id);
+StatusSet<StatusT::InvalidArgument> CoreWorker::ProcessSubscribeMessage(
+    const rpc::SubMessage &sub_message,
+    rpc::ChannelType channel_type,
+    const std::string &key_id,
+    const NodeID &subscriber_id) {
+  StatusSet<StatusT::InvalidArgument> result =
+      object_info_publisher_->RegisterSubscription(channel_type, subscriber_id, key_id);
+  if (result.has_error()) {
+    return result;
+  }
+
+  if (!sub_message.has_worker_object_eviction_message() &&
+      !sub_message.has_worker_ref_removed_message() &&
+      !sub_message.has_worker_object_locations_message()) {
+    return StatusT::InvalidArgument(
+        absl::StrFormat("Unexpected subscribe command has been received: %s"
+                        "Expected worker_object_eviction, worker_ref_removed, or "
+                        "worker_object_locations message",
+                        sub_message.DebugString()));
+  }
 
   if (sub_message.has_worker_object_eviction_message()) {
     ProcessSubscribeForObjectEviction(sub_message.worker_object_eviction_message());
   } else if (sub_message.has_worker_ref_removed_message()) {
     ProcessSubscribeForRefRemoved(sub_message.worker_ref_removed_message());
-  } else if (sub_message.has_worker_object_locations_message()) {
+  } else {  // worker_object_locations_message case
     ProcessSubscribeObjectLocations(sub_message.worker_object_locations_message());
-  } else {
-    RAY_LOG(FATAL)
-        << "Invalid command has received: "
-        << static_cast<int>(sub_message.sub_message_one_of_case())
-        << " has received. If you see this message, please report to Ray Github.";
   }
-}
-
-void CoreWorker::ProcessPubsubCommands(const Commands &commands,
-                                       const NodeID &subscriber_id) {
-  for (const auto &command : commands) {
-    if (command.has_unsubscribe_message()) {
-      object_info_publisher_->UnregisterSubscription(
-          command.channel_type(), subscriber_id, command.key_id());
-    } else if (command.has_subscribe_message()) {
-      ProcessSubscribeMessage(command.subscribe_message(),
-                              command.channel_type(),
-                              command.key_id(),
-                              subscriber_id);
-    } else {
-      RAY_LOG(FATAL) << "Invalid command has received, "
-                     << static_cast<int>(command.command_message_one_of_case())
-                     << ". If you see this message, please "
-                        "report to Ray "
-                        "Github.";
-    }
-  }
+  return StatusT::OK();
 }
 
 void CoreWorker::HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
                                          rpc::PubsubLongPollingReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
+  const NodeID subscriber_id = NodeID::FromBinary(request.subscriber_id());
   RAY_LOG(DEBUG).WithField(subscriber_id) << "Got a long polling request from a node";
   object_info_publisher_->ConnectToSubscriber(request,
                                               reply->mutable_publisher_id(),
@@ -3760,8 +3750,38 @@ void CoreWorker::HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
 void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,
                                           rpc::PubsubCommandBatchReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
-  ProcessPubsubCommands(request.commands(), subscriber_id);
+  const NodeID subscriber_id = NodeID::FromBinary(request.subscriber_id());
+  for (const auto &command : request.commands()) {
+    if (!command.has_unsubscribe_message() && !command.has_subscribe_message()) {
+      send_reply_callback(Status::InvalidArgument(absl::StrFormat(
+                              "Unexpected pubsub command has been received: %s."
+                              "Expected either unsubscribe or subscribe message",
+                              command.DebugString())),
+                          nullptr,
+                          nullptr);
+      return;
+    }
+
+    if (command.has_unsubscribe_message()) {
+      object_info_publisher_->UnregisterSubscription(
+          command.channel_type(), subscriber_id, command.key_id());
+    } else {  // subscribe_message case
+      StatusSet<StatusT::InvalidArgument> result =
+          ProcessSubscribeMessage(command.subscribe_message(),
+                                  command.channel_type(),
+                                  command.key_id(),
+                                  subscriber_id);
+      if (result.has_error()) {
+        // Terminate the worker if the subscribe message is invalid.
+        send_reply_callback(
+            Status::InvalidArgument(
+                std::get<StatusT::InvalidArgument>(result.error()).message()),
+            nullptr,
+            nullptr);
+        return;
+      }
+    }
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

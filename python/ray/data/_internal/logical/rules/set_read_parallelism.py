@@ -121,14 +121,14 @@ class SetReadParallelismRule(Rule):
             estimated_num_blocks,
             k,
         ) = compute_additional_split_factor(
-            logical_op._datasource_or_legacy_reader,
-            logical_op._parallelism,
+            logical_op.datasource_or_legacy_reader,
+            logical_op.parallelism,
             estimated_in_mem_bytes,
             op.target_max_block_size_override or op.data_context.target_max_block_size,
             op._additional_split_factor,
         )
 
-        if logical_op._parallelism == -1:
+        if logical_op.parallelism == -1:
             assert reason != ""
             logger.debug(
                 f"Using autodetected parallelism={detected_parallelism} "
