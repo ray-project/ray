@@ -614,6 +614,7 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
         "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP", "0"
     )
     RAY_SERVE_LOG_TO_STDERR = get_env_bool("RAY_SERVE_LOG_TO_STDERR", "0")
+    RAY_SERVE_ENABLE_DIRECT_INGRESS = get_env_bool("RAY_SERVE_ENABLE_DIRECT_INGRESS", "1")
 
 # The maximum allowed RPC latency in milliseconds.
 # This is used to detect and warn about long RPC latencies
