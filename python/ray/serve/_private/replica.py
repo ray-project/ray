@@ -70,6 +70,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
+    RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS,
+    RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S,
+    RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
@@ -121,6 +124,7 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.proxy_request_response import ResponseStatus
 from ray.serve._private.replica_response_generator import ReplicaResponseGenerator
+from ray.serve._private.rolling_window_accumulator import RollingWindowAccumulator
 from ray.serve._private.serialization import RPCSerializer
 from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve._private.thirdparty.get_asgi_route_name import (
@@ -299,6 +303,7 @@ class ReplicaMetricsManager:
         event_loop: asyncio.BaseEventLoop,
         autoscaling_config: Optional[AutoscalingConfig],
         ingress: bool,
+        max_ongoing_requests: int,
     ):
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
@@ -309,6 +314,7 @@ class ReplicaMetricsManager:
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
         self._num_ongoing_requests = 0
+        self._max_ongoing_requests = max_ongoing_requests
         # Store event loop for scheduling async tasks from sync context
         self._event_loop = event_loop or asyncio.get_event_loop()
 
@@ -383,6 +389,26 @@ class ReplicaMetricsManager:
             ),
             boundaries=REQUEST_LATENCY_BUCKETS_MS,
         )
+
+        # Replica utilization tracking with rolling window.
+        # Tracks total user code execution time over a rolling window to calculate
+        # utilization as: user_code_time / (window_duration * max_ongoing_requests).
+        self._user_code_time_accumulator = RollingWindowAccumulator(
+            window_duration_s=RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S,
+            num_buckets=RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS,
+        )
+        self._replica_utilization_gauge = metrics.Gauge(
+            "serve_replica_utilization_percent",
+            description=(
+                "Percentage of replica capacity utilized by user code execution "
+                "over a rolling window. Calculated as: "
+                "user_code_time / (window_duration * max_ongoing_requests)."
+            ),
+        )
+        self._utilization_report_interval_s = (
+            RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S
+        )
+        self._event_loop.create_task(self._report_utilization_forever())
 
         self.set_autoscaling_config(autoscaling_config)
 
@@ -701,8 +727,46 @@ class ReplicaMetricsManager:
         """Get current total queue length of requests for this replica."""
         return self._num_ongoing_requests
 
+    def set_max_ongoing_requests(self, max_ongoing_requests: int) -> None:
+        """Update max_ongoing_requests when deployment config changes."""
+        self._max_ongoing_requests = max_ongoing_requests
+
+    async def _report_utilization_forever(self) -> None:
+        """Background task to emit utilization gauge continuously."""
+        while True:
+            await asyncio.sleep(self._utilization_report_interval_s)
+            utilization = self._calculate_utilization()
+            self._replica_utilization_gauge.set(utilization)
+
+    def _calculate_utilization(self) -> float:
+        """Calculate current utilization percentage based on rolling window.
+
+        Utilization is calculated as:
+            user_code_time / (window_duration * max_ongoing_requests)
+
+        This represents the percentage of the replica's theoretical maximum
+        capacity that was used for executing user code.
+        """
+        total_user_code_time_ms = self._user_code_time_accumulator.get_total()
+
+        # Max capacity = window_duration_ms * max_ongoing_requests
+        window_duration_ms = RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S * 1000
+        max_capacity_ms = window_duration_ms * self._max_ongoing_requests
+
+        if max_capacity_ms > 0:
+            utilization_percent = (total_user_code_time_ms / max_capacity_ms) * 100
+            # Cap at 100% (can theoretically exceed if requests overlap heavily)
+            utilization_percent = min(utilization_percent, 100.0)
+        else:
+            utilization_percent = 0.0
+
+        return utilization_percent
+
     def record_request_metrics(self, *, route: str, latency_ms: float, was_error: bool):
         """Records per-request metrics."""
+        # Track latency for utilization calculation (rolling window).
+        self._user_code_time_accumulator.add(latency_ms)
+
         if self._cached_metrics_enabled:
             self._cached_latencies[route].append(latency_ms)
             if was_error:
@@ -948,6 +1012,7 @@ class ReplicaBase(ABC):
             event_loop=self._event_loop,
             autoscaling_config=self._deployment_config.autoscaling_config,
             ingress=ingress,
+            max_ongoing_requests=self._deployment_config.max_ongoing_requests,
         )
 
         # Start event loop monitoring for the replica's main event loop.
@@ -1459,6 +1524,9 @@ class ReplicaBase(ABC):
 
             self._metrics_manager.set_autoscaling_config(
                 deployment_config.autoscaling_config
+            )
+            self._metrics_manager.set_max_ongoing_requests(
+                deployment_config.max_ongoing_requests
             )
             if logging_config_changed:
                 self._configure_logger_and_profilers(deployment_config.logging_config)
