@@ -299,7 +299,7 @@ def add_rllib_example_script_args(
     parser.add_argument(
         "--local-mode",
         action="store_true",
-        help=argparse.SUPPRESS, # Deprecated.
+        help=argparse.SUPPRESS,  # Deprecated.
     )
 
     # Old API stack: config.num_gpus.
