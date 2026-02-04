@@ -13,9 +13,9 @@ steps:
       - "3.10"
       - "3.12"
     env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_build-py{{matrix}}
-      IMAGE_TO: corebuild-py{{matrix}}
       PYTHON: "{{matrix}}"
+      BASE_TYPE: "build"
+      BUILD_VARIANT: "build"
     depends_on: oss-ci-base_build-multipy
 
   - name: coregpubuild-multipy
@@ -24,10 +24,10 @@ steps:
     tags: cibase
     depends_on: oss-ci-base_gpu-multipy
     env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu-py{{matrix}}
-      IMAGE_TO: coregpubuild-py{{matrix}}
-      RAYCI_IS_GPU_BUILD: "true"
       PYTHON: "{{matrix}}"
+      BASE_TYPE: "gpu"
+      BUILD_VARIANT: "gpubuild"
+      RAYCI_IS_GPU_BUILD: "true"
     matrix:
       - "3.10"
 
@@ -313,7 +313,9 @@ steps:
       - "3.13"
 
   - label: ":ray: core: cgroup tests"
-    tags: core_cpp
+    tags:
+      - core_cpp
+      - python
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all
@@ -330,6 +332,7 @@ steps:
 
   - label: ":ray: core: cpp tests"
     tags: core_cpp
+
     instance_type: medium
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker --
