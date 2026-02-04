@@ -44,18 +44,6 @@ class AbstractAllToAll(LogicalOperator):
         assert self.name is not None
         assert len(self.input_dependencies) == 1, self.input_dependencies
 
-
-@dataclass(frozen=True, repr=False)
-class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
-    """Logical operator for randomize_block_order."""
-
-    seed: Optional[int] = None
-
-    def __post_init__(self) -> None:
-        if self.name is None:
-            object.__setattr__(self, "name", "RandomizeBlockOrder")
-        super().__post_init__()
-
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         assert isinstance(self.input_dependencies[0], LogicalOperator)
@@ -67,6 +55,18 @@ class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThro
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         assert isinstance(self.input_dependencies[0], LogicalOperator)
         return self.input_dependencies[0].infer_schema()
+
+
+@dataclass(frozen=True, repr=False)
+class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
+    """Logical operator for randomize_block_order."""
+
+    seed: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if self.name is None:
+            object.__setattr__(self, "name", "RandomizeBlockOrder")
+        super().__post_init__()
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Randomizing block order doesn't affect filtering correctness
@@ -92,18 +92,6 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
                 ],
             )
         super().__post_init__()
-
-    def infer_metadata(self) -> "BlockMetadata":
-        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        assert isinstance(self.input_dependencies[0], LogicalOperator)
-        return self.input_dependencies[0].infer_metadata()
-
-    def infer_schema(
-        self,
-    ) -> Optional["Schema"]:
-        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        assert isinstance(self.input_dependencies[0], LogicalOperator)
-        return self.input_dependencies[0].infer_schema()
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Random shuffle doesn't affect filtering correctness
@@ -135,18 +123,6 @@ class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough)
             object.__setattr__(self, "sub_progress_bar_names", sub_progress_bar_names)
         super().__post_init__()
 
-    def infer_metadata(self) -> "BlockMetadata":
-        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        assert isinstance(self.input_dependencies[0], LogicalOperator)
-        return self.input_dependencies[0].infer_metadata()
-
-    def infer_schema(
-        self,
-    ) -> Optional["Schema"]:
-        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        assert isinstance(self.input_dependencies[0], LogicalOperator)
-        return self.input_dependencies[0].infer_schema()
-
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Repartition doesn't affect filtering correctness
         return PredicatePassThroughBehavior.PASSTHROUGH
@@ -174,18 +150,6 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
                 ],
             )
         super().__post_init__()
-
-    def infer_metadata(self) -> "BlockMetadata":
-        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        assert isinstance(self.input_dependencies[0], LogicalOperator)
-        return self.input_dependencies[0].infer_metadata()
-
-    def infer_schema(
-        self,
-    ) -> Optional["Schema"]:
-        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        assert isinstance(self.input_dependencies[0], LogicalOperator)
-        return self.input_dependencies[0].infer_schema()
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Sort doesn't affect filtering correctness
