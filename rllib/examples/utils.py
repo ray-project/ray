@@ -296,11 +296,6 @@ def add_rllib_example_script_args(
 
     # Ray init options.
     parser.add_argument("--num-cpus", type=int, default=0)
-    parser.add_argument(
-        "--local-mode",
-        action="store_true",
-        help=argparse.SUPPRESS,  # Deprecated.
-    )
 
     # Old API stack: config.num_gpus.
     parser.add_argument(
