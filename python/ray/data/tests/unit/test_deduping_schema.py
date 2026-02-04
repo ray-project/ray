@@ -175,6 +175,57 @@ def test_dedupe_schema_many_fields(caplog, propagate_logs):
     assert "foo0: int64" not in msg
 
 
+@pytest.mark.parametrize("enforce_schemas", [False, True])
+def test_dedupe_schema_disordered(enforce_schemas: bool, caplog, propagate_logs):
+    old_schema = pa.schema(
+        [
+            pa.field("foo", pa.int32()),
+            pa.field("bar", pa.string()),
+            pa.field("baz", pa.bool8()),
+            pa.field("qux", pa.float64()),
+        ]
+    )
+    incoming_schema = pa.schema(
+        [
+            pa.field("foo", pa.int32()),
+            pa.field("baz", pa.bool8()),
+            pa.field("bar", pa.string()),
+            pa.field("qux", pa.float64()),
+        ]
+    )
+
+    incoming_bundle = RefBundle([], owns_blocks=False, schema=incoming_schema)
+
+    # Capture warnings
+    with caplog.at_level(
+        logging.WARNING,
+        logger="ray.data._internal.execution.streaming_executor_state",
+    ):
+        out_bundle, diverged = dedupe_schemas_with_validation(
+            old_schema, incoming_bundle, enforce_schemas=enforce_schemas, warn=True
+        )
+
+    assert diverged
+
+    assert out_bundle.schema == old_schema
+
+    if enforce_schemas:
+        # Warning message should have truncated 9 schema fields
+        msg = "\n".join(caplog.messages)
+        assert (
+            "Operator produced a RefBundle with a different schema than the previous one."
+            in msg
+        )
+        assert (
+            "Fields ordered differently across the old and the incoming schemas (2 total):"
+            in msg
+        )
+        assert "bar: string" in msg
+        assert "baz: extension<arrow.bool8>" in msg
+    else:
+        assert not caplog.records
+
+
 if __name__ == "__main__":
     import sys
 
