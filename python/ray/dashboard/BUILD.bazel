@@ -36,6 +36,7 @@ py_test_run_all_subdirectory(
         "modules/job/tests/test_cli_integration.py",
         "modules/job/tests/test_http_job_server.py",
         "modules/job/tests/test_job_agent.py",
+        "modules/aggregator/tests/test_aggregator_agent.py",
         "modules/node/tests/test_node.py",
         "tests/test_dashboard.py",
         "tests/test_state_head.py",
@@ -43,6 +44,17 @@ py_test_run_all_subdirectory(
         "modules/job/tests/test_job_manager.py",
     ],
     extra_srcs = [],
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "modules/aggregator/tests/test_aggregator_agent",
+    size = "large",
+    srcs = ["modules/aggregator/tests/test_aggregator_agent.py"],
     tags = [
         "exclusive",
         "team:core",
