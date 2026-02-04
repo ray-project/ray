@@ -21,7 +21,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
     RandomShuffle,
     Repartition,
     Sort,
@@ -255,7 +255,7 @@ def test_inherit_batch_format_rule():
 
     rule = InheritBatchFormatRule()
     optimized_plan = rule.apply(original_plan)
-    assert optimized_plan.dag._batch_format == "pandas"
+    assert optimized_plan.dag.batch_format == "pandas"
 
 
 def test_batch_format_on_sort(ray_start_regular_shared_2_cpus):

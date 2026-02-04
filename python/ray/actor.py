@@ -617,7 +617,7 @@ class ActorMethod:
             is_generator: True if a given method is a Python generator.
             generator_backpressure_num_objects: Generator-only config.
                 If a number of unconsumed objects reach this threshold,
-                a actor task stop pausing.
+                the actor task stops pausing.
             enable_task_events: True if task events is enabled, i.e., task events from
                 the actor should be reported. Defaults to True.
             decorator: An optional decorator that should be applied to the actor

@@ -3,12 +3,14 @@ import logging
 import os
 import pickle
 import time
+from collections import defaultdict
 from typing import (
     Any,
     Dict,
     Iterable,
     List,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -35,6 +37,7 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
@@ -42,9 +45,15 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.controller_health_metrics_tracker import (
+    ControllerHealthMetricsTracker,
+)
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.deployment_state import DeploymentStateManager
+from ray.serve._private.deployment_state import (
+    DeploymentReplica,
+    DeploymentStateManager,
+)
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.exceptions import ExternalScalerDisabledError
 from ray.serve._private.grpc_util import set_proxy_default_grpc_options
@@ -58,6 +67,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
+from ray.serve._private.node_port_manager import NodePortManager
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
@@ -67,7 +77,7 @@ from ray.serve._private.utils import (
     get_head_node_id,
     is_grpc_enabled,
 )
-from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
+from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
     ApplicationArgs,
@@ -83,11 +93,13 @@ from ray.serve.schema import (
     HTTPOptionsSchema,
     LoggingConfig,
     ProxyDetails,
+    ReplicaDetails,
     ReplicaRank,
     ServeActorDetails,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    Target,
     TargetGroup,
     gRPCOptionsSchema,
 )
@@ -175,6 +187,15 @@ class ServeController:
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
 
+        self._direct_ingress_enabled = RAY_SERVE_ENABLE_DIRECT_INGRESS
+        if self._direct_ingress_enabled:
+            logger.info(
+                "Direct ingress is enabled in ServeController, enabling proxy "
+                "on head node only."
+            )
+
+            http_options.location = DeploymentMode.HeadOnly
+
         # Configure proxy default HTTP and gRPC options.
         self.proxy_state_manager = ProxyStateManager(
             http_options=configure_http_options_with_defaults(http_options),
@@ -230,6 +251,14 @@ class ServeController:
         self._shutdown_event = asyncio.Event()
         self._shutdown_start_time = None
 
+        # Actors registered for cleanup on serve.shutdown(), keyed by actor ID
+        self._registered_cleanup_actors: Dict[str, ActorHandle] = {}
+
+        # Initialize health metrics tracker
+        self._health_metrics_tracker = ControllerHealthMetricsTracker(
+            controller_start_time=time.time()
+        )
+
         self._create_control_loop_metrics()
         run_background_task(self.run_control_loop())
 
@@ -248,6 +277,8 @@ class ServeController:
             Tuple[str, str, DeploymentDetails, Any]
         ] = []
         self._refresh_autoscaling_deployments_cache()
+
+        self._last_broadcasted_target_groups: List[TargetGroup] = []
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
@@ -304,6 +335,8 @@ class ServeController:
                 "replica": replica_metric_report.replica_id.unique_id,
             },
         )
+        # Track in health metrics
+        self._health_metrics_tracker.record_replica_metrics_delay(latency_ms)
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
             logger.warning(
                 f"Received autoscaling metrics from replica {replica_metric_report.replica_id} with timestamp {replica_metric_report.timestamp} "
@@ -329,6 +362,8 @@ class ServeController:
                 "handle": handle_metric_report.handle_id,
             },
         )
+        # Track in health metrics
+        self._health_metrics_tracker.record_handle_metrics_delay(latency_ms)
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
             logger.warning(
                 f"Received autoscaling metrics from handle {handle_metric_report.handle_id} for deployment {handle_metric_report.deployment_id} with timestamp {handle_metric_report.timestamp} "
@@ -507,13 +542,18 @@ class ServeController:
                     extra={"log_to_stderr": False},
                 )
             self.control_loop_duration_gauge_s.set(loop_duration)
+            # Track in health metrics
+            self._health_metrics_tracker.record_loop_duration(loop_duration)
 
             num_loops += 1
             self.num_control_loops_gauge.set(num_loops)
+            self._health_metrics_tracker.num_control_loops = num_loops
 
             sleep_start_time = time.time()
             await asyncio.sleep(CONTROL_LOOP_INTERVAL_S)
-            self.sleep_duration_gauge_s.set(time.time() - sleep_start_time)
+            sleep_duration = time.time() - sleep_start_time
+            self.sleep_duration_gauge_s.set(sleep_duration)
+            self._health_metrics_tracker.last_sleep_duration_s = sleep_duration
 
     async def run_control_loop_step(
         self, start_time: float, recovering_timeout: float, num_loops: int
@@ -546,7 +586,9 @@ class ServeController:
             dsm_update_start_time = time.time()
             any_recovering = self.deployment_state_manager.update()
 
-            self.dsm_update_duration_gauge_s.set(time.time() - dsm_update_start_time)
+            dsm_duration = time.time() - dsm_update_start_time
+            self.dsm_update_duration_gauge_s.set(dsm_duration)
+            self._health_metrics_tracker.record_dsm_update_duration(dsm_duration)
             if not self.done_recovering_event.is_set() and not any_recovering:
                 self.done_recovering_event.set()
                 if num_loops > 0:
@@ -564,7 +606,9 @@ class ServeController:
             any_target_state_changed = self.application_state_manager.update()
             if any_recovering or any_target_state_changed:
                 self._refresh_autoscaling_deployments_cache()
-            self.asm_update_duration_gauge_s.set(time.time() - asm_update_start_time)
+            asm_duration = time.time() - asm_update_start_time
+            self.asm_update_duration_gauge_s.set(asm_duration)
+            self._health_metrics_tracker.record_asm_update_duration(asm_duration)
         except Exception:
             logger.exception("Exception updating application state.")
 
@@ -577,7 +621,9 @@ class ServeController:
         # so they are more consistent.
         node_update_start_time = time.time()
         self._update_proxy_nodes()
-        self.node_update_duration_gauge_s.set(time.time() - node_update_start_time)
+        node_update_duration = time.time() - node_update_start_time
+        self.node_update_duration_gauge_s.set(node_update_duration)
+        self._health_metrics_tracker.record_node_update_duration(node_update_duration)
 
         # Don't update proxy_state until after the done recovering event is set,
         # otherwise we may start a new proxy but not broadcast it any
@@ -586,8 +632,10 @@ class ServeController:
             try:
                 proxy_update_start_time = time.time()
                 self.proxy_state_manager.update(proxy_nodes=self._proxy_nodes)
-                self.proxy_update_duration_gauge_s.set(
-                    time.time() - proxy_update_start_time
+                proxy_update_duration = time.time() - proxy_update_start_time
+                self.proxy_update_duration_gauge_s.set(proxy_update_duration)
+                self._health_metrics_tracker.record_proxy_update_duration(
+                    proxy_update_duration
                 )
             except Exception:
                 logger.exception("Exception updating proxy state.")
@@ -599,6 +647,20 @@ class ServeController:
                 self.deployment_state_manager.get_alive_replica_actor_ids()
                 | self.proxy_state_manager.get_alive_proxy_actor_ids()
             )
+
+        # Direct ingress port management
+        if self._direct_ingress_enabled:
+            # Update port values for ingress replicas.
+            # Non-ingress replicas are not expected to have ports allocated.
+            ingress_replicas_info_list: List[
+                Tuple[str, str, int, int]
+            ] = self.deployment_state_manager.get_ingress_replicas_info()
+
+            NodePortManager.update_ports(ingress_replicas_info_list)
+
+            # Clean up stale ports
+            # get all alive replica ids and their node ids.
+            NodePortManager.prune(self._get_node_id_to_alive_replica_ids())
 
     def _create_control_loop_metrics(self):
         self.node_update_duration_gauge_s = metrics.Gauge(
@@ -725,6 +787,26 @@ class ServeController:
         """
         return self._actor_details
 
+    def get_health_metrics(self) -> Dict[str, Any]:
+        """Returns comprehensive health metrics for the controller.
+
+        This method provides detailed performance metrics to help diagnose
+        controller health issues, especially as cluster size increases.
+
+        Returns:
+            Dictionary containing health metrics including:
+            - Control loop performance (iteration speed, durations)
+            - Event loop health (task count, scheduling delay)
+            - Component update latencies
+            - Autoscaling metrics latency (handle/replica)
+            - Memory usage
+        """
+        try:
+            return self._health_metrics_tracker.collect_metrics().dict()
+        except Exception:
+            logger.exception("Exception collecting controller health metrics.")
+            raise
+
     def get_proxy_details(self, node_id: str) -> Optional[ProxyDetails]:
         """Returns the proxy details for the proxy on the given node.
 
@@ -794,6 +876,36 @@ class ServeController:
         """
         return self.kv_store.get(CONFIG_CHECKPOINT_KEY) is None
 
+    def _register_shutdown_cleanup_actor(self, actor_handle: ActorHandle) -> None:
+        """Register an actor to be killed on serve.shutdown().
+
+        This allows deployments to register auxiliary actors (like caches,
+        coordinators, etc.) that should be cleaned up when Serve shuts down.
+        The actors must use lifetime="detached" to survive replica restarts,
+        but will be explicitly killed during serve.shutdown().
+
+        Note: Registered actors are NOT persisted across controller restarts.
+        For full persistence, use controller-managed deployment-scoped actors
+        (see https://github.com/ray-project/ray/issues/60359).
+
+        If the same actor is registered multiple times (e.g., from multiple
+        router instances sharing a tree actor via get_if_exists=True), it will
+        only be stored once.
+
+        Args:
+            actor_handle: The actor handle to register for cleanup.
+        """
+        actor_id = actor_handle._actor_id.hex()
+        self._registered_cleanup_actors[actor_id] = actor_handle
+
+    def _kill_registered_cleanup_actors(self) -> None:
+        """Kill all actors registered for shutdown cleanup."""
+        for actor in self._registered_cleanup_actors.values():
+            try:
+                ray.kill(actor, no_restart=True)
+            except Exception:
+                pass  # Actor may already be dead
+
     def shutdown(self):
         """Shuts down the serve instance completely.
 
@@ -832,6 +944,7 @@ class ServeController:
             and endpoint_is_shutdown
             and proxy_state_is_shutdown
         ):
+            self._kill_registered_cleanup_actors()
             logger.warning(
                 "All resources have shut down, controller exiting.",
                 extra={"log_to_stderr": False},
@@ -1165,16 +1278,8 @@ class ServeController:
             target_groups=self.get_target_groups(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
-    def get_target_groups(
-        self,
-        app_name: Optional[str] = None,
-        from_proxy_manager: bool = False,
-    ) -> List[TargetGroup]:
-        """Target groups contains information about IP
-        addresses and ports of all proxies in the cluster.
-
-        This information is used to setup the load balancer.
-        """
+    def _get_proxy_target_groups(self) -> List[TargetGroup]:
+        """Get target groups for proxy-based routing."""
         target_groups: List[TargetGroup] = []
 
         if self.proxy_state_manager.get_proxy_details():
@@ -1199,6 +1304,246 @@ class ServeController:
                     )
                 )
         return target_groups
+
+    def get_target_groups(
+        self,
+        app_name: Optional[str] = None,
+        from_proxy_manager: bool = False,
+    ) -> List[TargetGroup]:
+        """Get target groups for direct ingress deployments.
+
+        This returns target groups that point directly to replica ports
+        rather than proxy ports when direct ingress is enabled.
+
+        Following situations are possible:
+        1. Direct ingress is not enabled. In this case, we just return the
+        target groups from the proxy implementation.
+        2. Direct ingress is enabled and there are no applications. In this case,
+        we return target groups for proxy. Serve controller is running but there
+        are no applications to route traffic to.
+        3. Direct ingress is enabled and there are applications. All applications
+        have atleast one running replica. In this case, we return target groups
+        for all applications with targets pointing to the running replicas.
+        4. Direct ingress is enabled and there are applications. Some applications
+        have no running replicas. In this case, for applications that have no
+        running replicas, we return target groups for proxy and for applications
+        that have running replicas, we return target groups for direct ingress.
+        If there are multiple applications with no running replicas, we return
+        one target group per application with unique route prefix.
+        """
+        proxy_target_groups = self._get_proxy_target_groups()
+        if not self._direct_ingress_enabled:
+            return proxy_target_groups
+
+        # Get all applications and their metadata
+        if app_name is None:
+            apps = [
+                _app_name
+                for _app_name, _ in self.application_state_manager.list_app_statuses().items()
+            ]
+        else:
+            apps = [app_name]
+
+        # TODO(landscapepainter): A better way to handle this is to write an API that can tell
+        # if the ingress deployment is healthy regardless of the application status.
+        apps = [
+            app
+            for app in apps
+            if self.application_state_manager.get_route_prefix(app) is not None
+        ]
+
+        if not apps:
+            return proxy_target_groups
+
+        # Create target groups for each application
+        target_groups = []
+        for app_name in apps:
+            route_prefix = self.application_state_manager.get_route_prefix(app_name)
+            app_target_groups = self._get_target_groups_for_app(app_name, route_prefix)
+            if app_target_groups:
+                target_groups.extend(app_target_groups)
+            else:
+                target_groups.extend(
+                    self._get_target_groups_for_app_with_no_running_replicas(
+                        route_prefix, app_name
+                    )
+                )
+
+        return target_groups
+
+    def _get_running_replica_details_for_ingress_deployment(
+        self, app_name: str
+    ) -> List[ReplicaDetails]:
+        """Get running replica details for a specific application."""
+        ingress_deployment_name = (
+            self.application_state_manager.get_ingress_deployment_name(app_name)
+        )
+        deployment_id = DeploymentID(app_name=app_name, name=ingress_deployment_name)
+        details = self.deployment_state_manager.get_deployment_details(deployment_id)
+        if not details:
+            return []
+        replica_details = details.replicas
+        running_replica_ids = {
+            replica_info.replica_id.unique_id
+            for replica_info in self.deployment_state_manager.get_running_replica_infos().get(
+                deployment_id, []
+            )
+        }
+        return [
+            replica_detail
+            for replica_detail in replica_details
+            if replica_detail.replica_id in running_replica_ids
+        ]
+
+    def _get_target_groups_for_app(
+        self, app_name: str, route_prefix: str
+    ) -> List[TargetGroup]:
+        """
+        Create HTTP and gRPC target groups for a specific application.
+
+        This function can return empty list if there are no running replicas.
+        Or replicas have not fully initialized yet, where their ports are not
+        allocated yet.
+        """
+        # Get running replicas for the ingress deployment
+        replica_details = self._get_running_replica_details_for_ingress_deployment(
+            app_name
+        )
+        if not replica_details:
+            return []
+
+        target_groups = []
+
+        # Create targets for each protocol
+        http_targets = self._get_targets_for_protocol(
+            replica_details, RequestProtocol.HTTP
+        )
+        if http_targets:
+            target_groups.append(
+                TargetGroup(
+                    protocol=RequestProtocol.HTTP,
+                    route_prefix=route_prefix,
+                    targets=http_targets,
+                    app_name=app_name,
+                )
+            )
+
+        # Add gRPC targets if enabled
+        if is_grpc_enabled(self.get_grpc_config()):
+            grpc_targets = self._get_targets_for_protocol(
+                replica_details, RequestProtocol.GRPC
+            )
+            if grpc_targets:
+                target_groups.append(
+                    TargetGroup(
+                        protocol=RequestProtocol.GRPC,
+                        route_prefix=route_prefix,
+                        targets=grpc_targets,
+                        app_name=app_name,
+                    )
+                )
+
+        return target_groups
+
+    def _get_target_groups_for_app_with_no_running_replicas(
+        self, route_prefix: str, app_name: str
+    ) -> List[TargetGroup]:
+        """
+        For applications that have no running replicas, we return target groups
+        for proxy. This will allow applications to be discoverable via the
+        proxy in situations where their replicas have scaled down to 0.
+        """
+        target_groups = []
+        http_targets = self.proxy_state_manager.get_targets(RequestProtocol.HTTP)
+        grpc_targets = self.proxy_state_manager.get_targets(RequestProtocol.GRPC)
+
+        if http_targets:
+            target_groups.append(
+                TargetGroup(
+                    protocol=RequestProtocol.HTTP,
+                    route_prefix=route_prefix,
+                    targets=http_targets,
+                    app_name=app_name,
+                )
+            )
+        if grpc_targets:
+            target_groups.append(
+                TargetGroup(
+                    protocol=RequestProtocol.GRPC,
+                    route_prefix=route_prefix,
+                    targets=grpc_targets,
+                    app_name=app_name,
+                )
+            )
+        return target_groups
+
+    def _get_targets_for_protocol(
+        self, replica_details: List[ReplicaDetails], protocol: RequestProtocol
+    ) -> List[Target]:
+        """Create targets for a specific protocol from a list of replicas."""
+        return [
+            Target(
+                ip=replica_detail.node_ip,
+                port=self._get_port(replica_detail, protocol),
+                instance_id=replica_detail.node_instance_id,
+                name=replica_detail.actor_name,
+            )
+            for replica_detail in replica_details
+            if self._is_port_allocated(replica_detail, protocol)
+        ]
+
+    def _get_node_id_to_alive_replica_ids(self) -> Dict[str, Set[str]]:
+        node_id_to_alive_replica_ids = defaultdict(set)
+        # TODO(abrar): Expose the right APIs in the DeploymentStateManager
+        # to get the alive replicas for a deployment.
+        for ds in self.deployment_state_manager._deployment_states.values():
+            # here we get all the replicas irrespective of their state
+            # unlike in the get_running_replica_infos_for_ingress_deployment
+            # where we only get the replicas that are running, because we dont
+            # wish to agressively cleanup ports for replicas that are not running
+            # and are in the process of being updated or are in the process of
+            # being started.
+            replicas: List[DeploymentReplica] = ds._replicas.get()
+            for replica in replicas:
+                node_id: Optional[str] = replica.actor_node_id
+                if node_id is None:
+                    continue
+                replica_unique_id = replica.replica_id.unique_id
+                node_id_to_alive_replica_ids[node_id].add(replica_unique_id)
+        return node_id_to_alive_replica_ids
+
+    def allocate_replica_port(
+        self, node_id: str, replica_id: str, protocol: RequestProtocol
+    ) -> int:
+        """Allocate an HTTP port for a replica in direct ingress mode."""
+        node_manager = NodePortManager.get_node_manager(node_id)
+        return node_manager.allocate_port(replica_id, protocol)
+
+    def release_replica_port(
+        self,
+        node_id: str,
+        replica_id: str,
+        port: int,
+        protocol: RequestProtocol,
+        block_port: bool = False,
+    ):
+        """Release an HTTP port for a replica in direct ingress mode."""
+        node_manager = NodePortManager.get_node_manager(node_id)
+        node_manager.release_port(replica_id, port, protocol, block_port)
+
+    def _get_port(
+        self, replica_detail: ReplicaDetails, protocol: RequestProtocol
+    ) -> int:
+        """Get the port for a replica."""
+        node_manager = NodePortManager.get_node_manager(replica_detail.node_id)
+        return node_manager.get_port(replica_detail.replica_id, protocol)
+
+    def _is_port_allocated(
+        self, replica_detail: ReplicaDetails, protocol: RequestProtocol
+    ) -> bool:
+        """Check if the port for a replica is allocated."""
+        node_manager = NodePortManager.get_node_manager(replica_detail.node_id)
+        return node_manager.is_port_allocated(replica_detail.replica_id, protocol)
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status

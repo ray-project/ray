@@ -78,12 +78,12 @@ class FuseOperators(Rule):
         return new_plan
 
     def _remove_output_deps(self, op: PhysicalOperator) -> None:
-        for input in op._input_dependencies:
+        for input in op.input_dependencies:
             input._output_dependencies = []
             self._remove_output_deps(input)
 
     def _update_output_deps(self, op: PhysicalOperator) -> None:
-        for input in op._input_dependencies:
+        for input in op.input_dependencies:
             input._output_dependencies.append(op)
             self._update_output_deps(input)
 
@@ -229,7 +229,7 @@ class FuseOperators(Rule):
 
         # If the downstream operator takes no input, it cannot be fused with
         # the upstream operator.
-        if not down_logical_op._input_dependencies:
+        if not down_logical_op.input_dependencies:
             return False
 
         # We currently only support fusing for the following cases:
@@ -251,22 +251,22 @@ class FuseOperators(Rule):
             or (
                 isinstance(up_logical_op, AbstractMap)
                 and isinstance(down_logical_op, Repartition)
-                and down_logical_op._shuffle
+                and down_logical_op.shuffle
             )
         ):
             return False
 
         # Only fuse if the ops' remote arguments are compatible.
         if not are_remote_args_compatible(
-            getattr(up_logical_op, "_ray_remote_args", {}),
-            getattr(down_logical_op, "_ray_remote_args", {}),
+            getattr(up_logical_op, "ray_remote_args", {}),
+            getattr(down_logical_op, "ray_remote_args", {}),
         ):
             return False
 
-        # Do not fuse if either op specifies a `_ray_remote_args_fn`,
+        # Do not fuse if either op specifies a `ray_remote_args_fn`,
         # since it is not known whether the generated args will be compatible.
-        if getattr(up_logical_op, "_ray_remote_args_fn", None) or getattr(
-            down_logical_op, "_ray_remote_args_fn", None
+        if getattr(up_logical_op, "ray_remote_args_fn", None) or getattr(
+            down_logical_op, "ray_remote_args_fn", None
         ):
             return False
 
@@ -280,7 +280,7 @@ class FuseOperators(Rule):
         if isinstance(down_logical_op, StreamingRepartition):
             return (
                 isinstance(up_logical_op, MapBatches)
-                and up_logical_op._batch_size is not None
+                and up_logical_op.batch_size is not None
                 and down_logical_op.target_num_rows_per_block is not None
                 and down_logical_op.target_num_rows_per_block > 0
                 # When the batch_size is a multiple of target_num_rows_per_block, fusing would still produce exactly identical sequence of blocks.
@@ -288,8 +288,7 @@ class FuseOperators(Rule):
                 # TODO: when the StreamingRepartition supports none_strict_mode, we can fuse
                 # `MapBatches -> StreamingRepartition` no matter what the `batch_size` and `target_num_rows` are.
                 # https://anyscale1.atlassian.net/browse/DATA-1731
-                and up_logical_op._batch_size
-                % down_logical_op.target_num_rows_per_block
+                and up_logical_op.batch_size % down_logical_op.target_num_rows_per_block
                 == 0
             )
         # Other operators cannot fuse with StreamingRepartition.
@@ -313,21 +312,19 @@ class FuseOperators(Rule):
         up_logical_op = self._op_map.pop(up_op)
         assert isinstance(up_logical_op, MapBatches)
         assert isinstance(down_logical_op, StreamingRepartition)
-        assert (
-            up_logical_op._batch_size % down_logical_op.target_num_rows_per_block == 0
-        )
-        batch_size = up_logical_op._batch_size
+        assert up_logical_op.batch_size % down_logical_op.target_num_rows_per_block == 0
+        batch_size = up_logical_op.batch_size
 
         compute = self._fuse_compute_strategy(
-            up_logical_op._compute, down_logical_op._compute
+            up_logical_op.compute, down_logical_op.compute
         )
         assert compute is not None
 
         map_task_kwargs = {**up_op._map_task_kwargs, **down_op._map_task_kwargs}
 
-        ray_remote_args = up_logical_op._ray_remote_args
+        ray_remote_args = up_logical_op.ray_remote_args
         ray_remote_args_fn = (
-            up_logical_op._ray_remote_args_fn or down_logical_op._ray_remote_args_fn
+            up_logical_op.ray_remote_args_fn or down_logical_op.ray_remote_args_fn
         )
         input_deps = up_op.input_dependencies
         assert len(input_deps) == 1
@@ -358,12 +355,12 @@ class FuseOperators(Rule):
         logical_op = AbstractUDFMap(
             name,
             input_op,
-            up_logical_op._fn,
-            can_modify_num_rows=up_logical_op.can_modify_num_rows(),
-            fn_args=up_logical_op._fn_args,
-            fn_kwargs=up_logical_op._fn_kwargs,
-            fn_constructor_args=up_logical_op._fn_constructor_args,
-            fn_constructor_kwargs=up_logical_op._fn_constructor_kwargs,
+            up_logical_op.fn,
+            can_modify_num_rows=up_logical_op.can_modify_num_rows,
+            fn_args=up_logical_op.fn_args,
+            fn_kwargs=up_logical_op.fn_kwargs,
+            fn_constructor_args=up_logical_op.fn_constructor_args,
+            fn_constructor_kwargs=up_logical_op.fn_constructor_kwargs,
             min_rows_per_bundled_input=batch_size,
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
@@ -449,16 +446,16 @@ class FuseOperators(Rule):
         )
 
         compute = self._fuse_compute_strategy(
-            up_logical_op._compute, down_logical_op._compute
+            up_logical_op.compute, down_logical_op.compute
         )
         assert compute is not None
 
         # Merge map task kwargs
         map_task_kwargs = {**up_op._map_task_kwargs, **down_op._map_task_kwargs}
 
-        ray_remote_args = up_logical_op._ray_remote_args
+        ray_remote_args = up_logical_op.ray_remote_args
         ray_remote_args_fn = (
-            up_logical_op._ray_remote_args_fn or down_logical_op._ray_remote_args_fn
+            up_logical_op.ray_remote_args_fn or down_logical_op.ray_remote_args_fn
         )
         # Make the upstream operator's inputs the new, fused operator's inputs.
         input_deps = up_op.input_dependencies
@@ -510,17 +507,17 @@ class FuseOperators(Rule):
             input_op = up_logical_op
 
         can_modify_num_rows = (
-            up_logical_op.can_modify_num_rows() or down_logical_op.can_modify_num_rows()
+            up_logical_op.can_modify_num_rows or down_logical_op.can_modify_num_rows
         )
         if isinstance(down_logical_op, AbstractUDFMap):
             logical_op = AbstractUDFMap(
                 name,
                 input_op,
-                down_logical_op._fn,
-                fn_args=down_logical_op._fn_args,
-                fn_kwargs=down_logical_op._fn_kwargs,
-                fn_constructor_args=down_logical_op._fn_constructor_args,
-                fn_constructor_kwargs=down_logical_op._fn_constructor_kwargs,
+                down_logical_op.fn,
+                fn_args=down_logical_op.fn_args,
+                fn_kwargs=down_logical_op.fn_kwargs,
+                fn_constructor_args=down_logical_op.fn_constructor_args,
+                fn_constructor_kwargs=down_logical_op.fn_constructor_kwargs,
                 min_rows_per_bundled_input=min_rows_per_bundled_input,
                 compute=compute,
                 can_modify_num_rows=can_modify_num_rows,
@@ -547,8 +544,8 @@ class FuseOperators(Rule):
         down_logical_op: AbstractMap,
         up_logical_op: AbstractMap,
     ) -> Optional[int]:
-        us_bundle_min_rows_req = up_logical_op._min_rows_per_bundled_input
-        ds_bundle_min_rows_req = down_logical_op._min_rows_per_bundled_input
+        us_bundle_min_rows_req = up_logical_op.min_rows_per_bundled_input
+        ds_bundle_min_rows_req = down_logical_op.min_rows_per_bundled_input
 
         # In case neither of the ops specify `min_rows_per_bundled_input`,
         # return None
@@ -579,7 +576,7 @@ class FuseOperators(Rule):
         assert isinstance(up_logical_op, AbstractMap)
 
         # Fuse transformation functions.
-        ray_remote_args = up_logical_op._ray_remote_args
+        ray_remote_args = up_logical_op.ray_remote_args
         down_transform_fn = down_op.get_transformation_fn()
         up_map_transformer = up_op.get_map_transformer()
 
@@ -627,8 +624,8 @@ class FuseOperators(Rule):
         elif isinstance(down_logical_op, Repartition):
             logical_op = Repartition(
                 input_op,
-                num_outputs=down_logical_op._num_outputs,
-                shuffle=down_logical_op._shuffle,
+                num_outputs=down_logical_op.num_outputs,
+                shuffle=down_logical_op.shuffle,
             )
         self._op_map[op] = logical_op
         # Return the fused physical operator.
@@ -642,8 +639,8 @@ class FuseOperators(Rule):
     ) -> bool:
         if (
             cls._fuse_compute_strategy(
-                upstream_op._compute,
-                downstream_op._compute,
+                upstream_op.compute,
+                downstream_op.compute,
             )
             is None
         ):
@@ -664,13 +661,13 @@ class FuseOperators(Rule):
         #   ``Filter->MapBatches(batch_size=...)``
         #
         if (
-            upstream_op.can_modify_num_rows()
-            and downstream_op._min_rows_per_bundled_input is not None
+            upstream_op.can_modify_num_rows
+            and downstream_op.min_rows_per_bundled_input is not None
         ):
             logger.debug(
                 f"Upstream operator '{upstream_op}' could be modifying # of input "
                 f"rows, while downstream operator '{downstream_op}' expects at least "
-                f"{downstream_op._min_rows_per_bundled_input} rows in a batch. "
+                f"{downstream_op.min_rows_per_bundled_input} rows in a batch. "
                 f"Skipping fusion"
             )
 

@@ -124,6 +124,7 @@ def gen_expected_metrics(
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue': Z",
             "'obj_store_mem_pending_task_inputs': Z",
+            "'obj_store_mem_pending_task_outputs': Z",
             "'average_bytes_inputs_per_task': N",
             "'average_rows_inputs_per_task': N",
             "'average_bytes_outputs_per_task': N",
@@ -156,6 +157,7 @@ def gen_expected_metrics(
             "'num_tasks_finished': N",
             "'num_tasks_failed': Z",
             "'block_generation_time': N",
+            "'block_serialization_time_s': N",
             (
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
@@ -192,6 +194,7 @@ def gen_expected_metrics(
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue': Z",
             "'obj_store_mem_pending_task_inputs': Z",
+            "'obj_store_mem_pending_task_outputs': Z",
             "'average_bytes_inputs_per_task': None",
             "'average_rows_inputs_per_task': None",
             "'average_bytes_outputs_per_task': None",
@@ -224,6 +227,7 @@ def gen_expected_metrics(
             "'num_tasks_finished': Z",
             "'num_tasks_failed': Z",
             "'block_generation_time': Z",
+            "'block_serialization_time_s': Z",
             (
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
@@ -663,6 +667,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_internal_inqueue: Z,\n"
         "      obj_store_mem_internal_outqueue: Z,\n"
         "      obj_store_mem_pending_task_inputs: Z,\n"
+        "      obj_store_mem_pending_task_outputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
@@ -695,6 +700,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_finished: N,\n"
         "      num_tasks_failed: Z,\n"
         "      block_generation_time: N,\n"
+        "      block_serialization_time_s: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
         "      task_completion_time_total_s: N,\n"
@@ -807,6 +813,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_internal_inqueue: Z,\n"
         "      obj_store_mem_internal_outqueue: Z,\n"
         "      obj_store_mem_pending_task_inputs: Z,\n"
+        "      obj_store_mem_pending_task_outputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
@@ -839,6 +846,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_finished: N,\n"
         "      num_tasks_failed: Z,\n"
         "      block_generation_time: N,\n"
+        "      block_serialization_time_s: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
         "      task_completion_time_total_s: N,\n"
@@ -904,6 +912,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            obj_store_mem_internal_inqueue: Z,\n"
         "            obj_store_mem_internal_outqueue: Z,\n"
         "            obj_store_mem_pending_task_inputs: Z,\n"
+        "            obj_store_mem_pending_task_outputs: Z,\n"
         "            average_bytes_inputs_per_task: N,\n"
         "            average_rows_inputs_per_task: N,\n"
         "            average_bytes_outputs_per_task: N,\n"
@@ -936,6 +945,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_tasks_finished: N,\n"
         "            num_tasks_failed: Z,\n"
         "            block_generation_time: N,\n"
+        "            block_serialization_time_s: N,\n"
         "            task_submission_backpressure_time: N,\n"
         "            task_output_backpressure_time: Z,\n"
         "            task_completion_time_total_s: N,\n"
@@ -1583,13 +1593,16 @@ def test_runtime_metrics(ray_start_regular_shared):
     total_time, total_percent = metrics_dict.pop("Total")
     assert total_percent == 100
 
+    # Tolerance for floating-point rounding errors (100ms)
+    # Individual operator times may appear slightly larger than total time
+    # due to rounding (e.g., 2.265s rounds to 2.27s for operator but 2.26s for total)
+    TOLERANCE = 0.02
+
     for time_s, percent in metrics_dict.values():
-        # Verify times are positive and reasonable
-        assert time_s > 0, f"Time should be positive, got {time_s}"
-        # Check percentage calculation is consistent (allow tolerance for rounding)
-        # Note: Individual operator times may exceed total due to measurement
-        # variations and profiling overhead, so we only check percentages.
-        assert isclose(percent, time_s / total_time * 100, rel_tol=0.1)
+        assert time_s <= total_time + TOLERANCE
+        # Check percentage, this is done with some expected loss of precision
+        # due to rounding in the intital output.
+        assert isclose(percent, time_s / total_time * 100, rel_tol=0.01)
 
 
 def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
