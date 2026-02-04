@@ -10,7 +10,7 @@ import logging
 import time
 import uuid
 from collections import defaultdict
-from typing import Any, DefaultDict, Dict, List, Optional, Set, Tuple, Dict as TDict
+from typing import Any, DefaultDict, Dict, Dict as TDict, List, Optional, Set, Tuple
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -18,7 +18,6 @@ import pyarrow.fs as pa_fs
 import pyarrow.parquet as pq
 
 from ray._common.retry import call_with_retry
-from ray.data.context import DataContext
 from ray.data._internal.datasource.delta.utils import (
     build_partition_path,
     compute_parquet_statistics,
@@ -31,6 +30,7 @@ from ray.data._internal.datasource.parquet_datasink import (
     WRITE_FILE_MAX_ATTEMPTS,
     WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
 )
+from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ def _import_add_action():
     for mod in ("deltalake.transaction", "deltalake", "deltalake.writer"):
         try:
             m = __import__(mod, fromlist=["AddAction"])
-            return getattr(m, "AddAction")
+            return m.AddAction
         except Exception:
             continue
     raise ImportError(
