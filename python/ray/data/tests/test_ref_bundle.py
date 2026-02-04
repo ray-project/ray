@@ -489,10 +489,15 @@ def test_ref_bundle_str_with_pandas_schema():
         schema=schema,
     )
 
-    result = str(bundle)
-    # Should format with column names and types
-    assert "col1: int, col2: str" in result
-    assert "500.0B" in result
+    expected = """RefBundle(1 blocks,
+  10 rows,
+  schema={col1: int, col2: str},
+  owns_blocks=True,
+  blocks=(
+    0: 10 rows, 500.0B, slice=None (full block)
+  )
+)"""
+    assert str(bundle) == expected
 
 
 def test_merge_ref_bundles():
