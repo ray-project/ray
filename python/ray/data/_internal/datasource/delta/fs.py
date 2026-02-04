@@ -6,13 +6,14 @@ rebuilding filesystems on every block write.
 PyArrow filesystems: https://arrow.apache.org/docs/python/api/filesystems.html
 """
 
-import pyarrow.fs as pa_fs
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
+import pyarrow.fs as pa_fs
+
+from ray.data._internal.util import RetryingPyFileSystem
 from ray.data.context import DataContext
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
-from ray.data._internal.util import RetryingPyFileSystem
 
 
 @dataclass(frozen=True)
@@ -111,7 +112,7 @@ def worker_filesystem(config: DeltaFSConfig) -> pa_fs.FileSystem:
     """Build filesystem on worker from serializable config.
 
     Uses config.table_root directly to avoid re-resolution differences.
-    Only re-resolves raw filesystem for credentials.
+    Reconstructs filesystem using storage_options to ensure credentials are available.
 
     Args:
         config: Serializable filesystem configuration.
@@ -119,8 +120,16 @@ def worker_filesystem(config: DeltaFSConfig) -> pa_fs.FileSystem:
     Returns:
         Worker filesystem (SubTreeFileSystem with retry support).
     """
-    # Use config.table_root directly (already resolved on driver)
-    # Only re-resolve raw filesystem for credentials
-    _, raw_fs = resolve_table_root_and_fs(config.table_uri, None)
+    from ray.data._internal.datasource.delta.utils import (
+        create_filesystem_from_storage_options,
+    )
+
+    # Build filesystem from storage_options if credentials are provided
+    raw_fs = create_filesystem_from_storage_options(
+        config.table_uri, config.storage_options
+    )
+    if raw_fs is None:
+        # Fall back to default resolution if no explicit credentials
+        _, raw_fs = resolve_table_root_and_fs(config.table_uri, None)
     ensure_dir_exists(raw_fs, config.table_root)
     return build_subtree_fs(config.table_root, raw_fs)

@@ -5,21 +5,30 @@ then commit to transaction log. It delegates details to focused modules.
 """
 
 import logging
-from typing import Any, Dict, Iterable, List, Optional, TYPE_CHECKING, Set
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set
 
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.fs as pa_fs
 
-from ray.data.block import Block, BlockAccessor
-from ray.data.context import DataContext
-from ray.data.datasource.datasink import Datasink, WriteResult
-from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
-from ray.data._internal.savemode import SaveMode
-from ray.data._internal.util import _check_import, _is_local_scheme
+from .committer import (
+    CommitInputs,
+    commit_to_existing_table,
+    create_table_with_files,
+    validate_file_actions,
+    validate_partition_columns_match_existing,
+)
+from .fs import make_fs_config, worker_filesystem
+from .schema import (
+    SchemaPolicy,
+    evolve_schema,
+    existing_table_pyarrow_schema,
+    reconcile_worker_schemas,
+    validate_and_plan_evolution,
+)
+from .upsert import commit_upsert
+from .writer import DeltaFileWriter
 from ray.data._internal.arrow_ops.transform_pyarrow import concat
-
 from ray.data._internal.datasource.delta.utils import (
     UPSERT_JOIN_COLS,
     DeltaWriteResult,
@@ -31,27 +40,14 @@ from ray.data._internal.datasource.delta.utils import (
     validate_partition_column_names,
     validate_partition_columns_in_table,
 )
-
-from .fs import DeltaFSConfig, make_fs_config, worker_filesystem
-from .writer import DeltaFileWriter
-from .committer import (
-    CommitInputs,
-    commit_to_existing_table,
-    create_table_with_files,
-    validate_file_actions,
-    validate_partition_columns_match_existing,
-)
-from .schema import (
-    SchemaPolicy,
-    existing_table_pyarrow_schema,
-    reconcile_worker_schemas,
-    validate_and_plan_evolution,
-    evolve_schema,
-)
-from .upsert import commit_upsert
+from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
+from ray.data._internal.savemode import SaveMode
+from ray.data._internal.util import _check_import, _is_local_scheme
+from ray.data.block import Block, BlockAccessor
+from ray.data.datasource.datasink import Datasink, WriteResult
 
 if TYPE_CHECKING:
-    from deltalake import DeltaTable
     from deltalake.transaction import AddAction, CommitProperties
 
 logger = logging.getLogger(__name__)
@@ -61,6 +57,7 @@ def _build_commit_properties(
     write_kwargs: Dict[str, Any], write_uuid: Optional[str]
 ) -> Optional["CommitProperties"]:
     """Build CommitProperties for THIS commit only. Does not mutate write_kwargs.
+
     Adds app_transactions (deduped) and max_commit_retries if provided.
 
     Args:
@@ -268,7 +265,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         if self.mode == SaveMode.UPSERT:
             if not existing:
                 raise ValueError(
-                    "UPSERT requires an existing table. Create it first with APPEND."
+                    "UPSERT requires an existing Delta table. Create it first with APPEND."
                 )
             if not self._upsert_cols():
                 raise ValueError(
@@ -423,19 +420,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                     inputs, actions, self.schema, self._driver_fs()
                 )
         except Exception as e:
-            # conservative: do not delete files on commit errors
             e._delta_written_files = written_files
-            # Log detailed info for manual reconciliation
-            file_paths_preview = written_files[:5]
             logger.warning(
-                "Delta commit raised exception for %s: %s. Not cleaning up %d files to avoid deleting committed files. "
-                "Write UUID: %s, Actions: %d, Sample files: %s",
-                self.table_uri,
-                e,
-                len(written_files),
-                write_uuid or "unknown",
-                len(actions),
-                file_paths_preview,
+                f"Delta commit failed for table {self.table_uri}. Files not cleaned up to avoid deleting committed data."
             )
             raise
 
@@ -444,19 +431,13 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         files = getattr(error, "_delta_written_files", []) or []
         if not files:
             logger.error(
-                "Delta write failed for %s: %s. Could not determine files to cleanup.",
-                self.table_uri,
-                error,
+                f"Delta write failed for {self.table_uri}: {error}. Could not determine files to cleanup."
             )
             return
         logger.warning(
-            "Delta write failed for %s. Cleaning up %d orphaned files.",
-            self.table_uri,
-            len(files),
+            f"Delta write failed for {self.table_uri}. Cleaning up {len(files)} orphaned files."
         )
         self._cleanup_files_driver(files)
-
-    # ---------------- internal helpers ----------------
 
     def _driver_fs(self) -> pa_fs.FileSystem:
         """Get driver filesystem (recreate if needed)."""
@@ -553,9 +534,12 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         if (
             self._table_existed_at_start
             and existing is None
-            and self.mode in (SaveMode.APPEND, SaveMode.UPSERT)
+            and self.mode in (SaveMode.APPEND, SaveMode.UPSERT, SaveMode.OVERWRITE)
         ):
             self._cleanup_files_driver(written_files)
+            if self.mode == SaveMode.OVERWRITE:
+                # For OVERWRITE, table deletion is expected - create new table
+                return None
             raise ValueError(
                 f"Delta table was deleted at {self.table_uri} after write started. Use OVERWRITE."
             )
@@ -613,7 +597,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 if info.type != pa_fs.FileType.NotFound:
                     fs.delete_file(p)
             except Exception as e:
-                logger.warning("Failed to cleanup file %s: %s", p, e)
+                logger.warning(f"Failed to cleanup file {p}: {e}")
 
     def _cleanup_files_worker(self, file_paths: List[str]) -> None:
         """Clean up files on worker (best-effort)."""

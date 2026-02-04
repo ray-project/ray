@@ -8,11 +8,15 @@ deltalake Python library: https://delta-io.github.io/delta-rs/python/
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import pyarrow as pa
 import pyarrow.fs as pa_fs
 import pyarrow.parquet as pq
+
+if TYPE_CHECKING:
+    from deltalake import DeltaTable
+    from deltalake.transaction import AddAction
 
 from ray.data._internal.datasource.delta.utils import (
     convert_schema_to_delta,
@@ -39,7 +43,7 @@ class CommitInputs:
 
 
 def validate_file_actions(
-    file_actions, filesystem: pa_fs.FileSystem
+    file_actions: List["AddAction"], filesystem: pa_fs.FileSystem
 ) -> None:
     """Validate file actions before committing.
 
@@ -64,7 +68,7 @@ def validate_file_actions(
 
 
 def infer_schema_from_files(
-    add_actions,
+    add_actions: List["AddAction"],
     partition_cols: List[str],
     filesystem: pa_fs.FileSystem,
     provided_schema: Optional[pa.Schema],
@@ -106,22 +110,36 @@ def infer_schema_from_files(
         )
 
     # Add partition columns to schema if missing
+    # Prefer types from provided_schema if available to avoid type drift
+    partition_types = {}
+    if provided_schema:
+        for col in partition_cols:
+            if col in provided_schema.names:
+                partition_types[col] = provided_schema.field(col).type
+
     for col in partition_cols:
         if col in schema.names:
             continue
-        col_type = pa.string()
-        for a in add_actions:
-            pv = getattr(a, "partition_values", None) or {}
-            if col in pv and pv[col] is not None:
-                col_type = infer_partition_type(pv[col])
-                break
+        # Use type from provided_schema if available, else infer from partition values
+        if col in partition_types:
+            col_type = partition_types[col]
+        else:
+            col_type = pa.string()
+            for a in add_actions:
+                pv = getattr(a, "partition_values", None) or {}
+                if col in pv and pv[col] is not None:
+                    col_type = infer_partition_type(pv[col])
+                    break
         schema = schema.append(pa.field(col, col_type))
 
     return schema
 
 
 def create_table_with_files(
-    inputs: CommitInputs, file_actions, schema: Optional[pa.Schema], filesystem
+    inputs: CommitInputs,
+    file_actions: List["AddAction"],
+    schema: Optional[pa.Schema],
+    filesystem: pa_fs.FileSystem,
 ) -> None:
     """Create new Delta table and commit files atomically.
 
@@ -170,10 +188,10 @@ def create_table_with_files(
 
 def commit_to_existing_table(
     inputs: CommitInputs,
-    table,
-    file_actions,
+    table: "DeltaTable",
+    file_actions: List["AddAction"],
     schema: Optional[pa.Schema],
-    filesystem,
+    filesystem: pa_fs.FileSystem,
 ) -> None:
     """Commit files to existing Delta table using write transaction.
 
@@ -211,7 +229,7 @@ def commit_to_existing_table(
 
 
 def validate_partition_columns_match_existing(
-    existing_table, partition_cols: List[str]
+    existing_table: "DeltaTable", partition_cols: List[str]
 ) -> None:
     """Validate partition columns align with the existing table metadata.
 

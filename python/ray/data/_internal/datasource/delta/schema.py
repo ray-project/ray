@@ -5,9 +5,12 @@ PyArrow schemas: https://arrow.apache.org/docs/python/api/datatypes.html
 
 import logging
 from dataclasses import dataclass
-from typing import Optional, Sequence, List, Tuple
+from typing import TYPE_CHECKING, List, Optional, Sequence, Tuple
 
 import pyarrow as pa
+
+if TYPE_CHECKING:
+    from deltalake import DeltaTable
 
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data._internal.datasource.delta.utils import (
@@ -40,12 +43,12 @@ def reconcile_worker_schemas(
     """
     if not worker_schemas and not existing_table_schema:
         return None
-    
+
     # Early-exit optimization: if all schemas are identical, skip unification
     if worker_schemas and all(s == worker_schemas[0] for s in worker_schemas):
         if existing_table_schema in (None, worker_schemas[0]):
             return existing_table_schema or worker_schemas[0]
-    
+
     schemas = list(worker_schemas)
     if existing_table_schema is not None:
         schemas = [existing_table_schema] + schemas
@@ -102,7 +105,7 @@ def validate_and_plan_evolution(
 
 
 def evolve_schema(
-    existing_table, new_fields: List[Tuple[str, pa.DataType, bool]]
+    existing_table: "DeltaTable", new_fields: List[Tuple[str, pa.DataType, bool]]
 ) -> None:
     """Evolve table schema by adding new columns.
 
@@ -123,13 +126,11 @@ def evolve_schema(
 
     existing_table.alter.add_columns(delta_fields)
     logger.info(
-        "Schema evolution: added %d columns: %s",
-        len(new_fields),
-        [f[0] for f in new_fields],
+        f"Schema evolution: added {len(new_fields)} columns: {', '.join(f[0] for f in new_fields)}"
     )
 
 
-def existing_table_pyarrow_schema(existing_table) -> pa.Schema:
+def existing_table_pyarrow_schema(existing_table: "DeltaTable") -> pa.Schema:
     """Extract PyArrow schema from existing Delta table.
 
     Args:

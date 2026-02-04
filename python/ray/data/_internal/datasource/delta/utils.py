@@ -276,16 +276,29 @@ def normalize_commit_properties(
             "a deltalake.transaction.CommitProperties object"
         )
 
+    # Extract max_commit_retries if present (special handling)
+    max_commit_retries = commit_properties.pop("max_commit_retries", None)
+    if max_commit_retries is not None:
+        try:
+            max_commit_retries = int(max_commit_retries)
+        except (ValueError, TypeError):
+            raise TypeError(
+                "commit_properties['max_commit_retries'] must be an integer"
+            )
+
+    # Validate remaining keys are strings
+    custom_metadata = {}
     for key, value in commit_properties.items():
         if not isinstance(key, str) or not isinstance(value, str):
             raise TypeError(
                 "commit_properties must be a dict of string keys and values"
             )
+        custom_metadata[key] = value
 
     # Convert dict to CommitProperties
     return CommitProperties(
-        custom_metadata=dict(commit_properties),
-        max_commit_retries=None,
+        custom_metadata=custom_metadata if custom_metadata else None,
+        max_commit_retries=max_commit_retries,
         app_transactions=None,
     )
 
@@ -804,7 +817,6 @@ def create_app_transaction_id(write_uuid: Optional[str]) -> "Transaction":
     Returns:
         Transaction object for app_transactions in CommitProperties.
     """
-    import hashlib
 
     from deltalake.transaction import Transaction
 
@@ -814,12 +826,10 @@ def create_app_transaction_id(write_uuid: Optional[str]) -> "Transaction":
 
         write_uuid = f"ray_data_write_{int(time.time() * 1000000)}"
 
-    # Create deterministic app_id and version from write_uuid
-    # app_id identifies the application (Ray Data)
-    # version is a monotonic sequence derived from write_uuid hash
-    app_id = "ray.data.write_delta"
-    # Hash write_uuid to get a deterministic integer version
-    version = int(hashlib.md5(write_uuid.encode()).hexdigest()[:8], 16)
+    # Use unique app_id per write to avoid monotonic version requirements.
+    # Each write gets its own app_id, so version=1 is sufficient for idempotence.
+    app_id = f"ray.data.write_delta:{write_uuid}"
+    version = 1
 
     # Return Transaction object as required by delta-rs
     return Transaction(

@@ -142,6 +142,13 @@ class DeltaDatasource(Datasource):
                     f"Invalid partition filter operator '{op}'. Valid: {valid_ops}"
                 )
 
+            # Validate that "in" and "not in" operators receive list/tuple
+            if op in {"in", "not in"}:
+                if not isinstance(value, (list, tuple)):
+                    raise ValueError(
+                        f"Operator '{op}' requires a list or tuple value, got {type(value).__name__}: {value}"
+                    )
+
             # Normalize value to string
             if value is None:
                 normalized_value = ""  # NULL represented as empty string in delta-rs

@@ -11,12 +11,16 @@ import datetime
 import functools
 import logging
 import math
-from typing import Any, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.datasource.delta.utils import normalize_commit_properties
+
+if TYPE_CHECKING:
+    from deltalake import DeltaTable
+    from deltalake.transaction import AddAction
 
 logger = logging.getLogger(__name__)
 
@@ -88,29 +92,47 @@ def build_delete_predicate(
             )
         return f"{quote_identifier(col)} IN ({', '.join(format_sql_value(v) for v in vals)})"
 
-    unique = keys_table.group_by(upsert_cols).aggregate([])
-    if len(unique) > _MAX_COMPOUND_KEYS:
+    # Build struct from key columns and use dictionary-encode for stable deduplication
+    struct_arrays = []
+    for col in upsert_cols:
+        arr = keys_table[col]
+        if isinstance(arr, pa.ChunkedArray):
+            arr = arr.combine_chunks()
+        struct_arrays.append(arr)
+
+    struct_type = pa.struct(
+        [pa.field(c, keys_table.schema.field(c).type) for c in upsert_cols]
+    )
+    struct_arr = pa.StructArray.from_arrays(struct_arrays, fields=struct_type)
+    encoded = pc.dictionary_encode(struct_arr)
+    unique_indices = pc.unique(encoded.indices)
+
+    if len(unique_indices) > _MAX_COMPOUND_KEYS:
         raise ValueError(
-            f"Upsert has {len(unique)} unique compound keys; limit is {_MAX_COMPOUND_KEYS}. Batch your upserts."
+            f"Upsert has {len(unique_indices)} unique compound keys; limit is {_MAX_COMPOUND_KEYS}. Batch your upserts."
         )
 
+    # Recover unique key tuples from dictionary
+    dictionary = encoded.dictionary
     ors = []
-    for i in range(len(unique)):
+    for idx_val in unique_indices:
+        idx = idx_val.as_py()
+        key_struct = dictionary[idx]
         ands = [
-            f"{quote_identifier(c)} = {format_sql_value(unique.column(c)[i].as_py())}"
-            for c in upsert_cols
+            f"{quote_identifier(c)} = {format_sql_value(key_struct[i].as_py())}"
+            for i, c in enumerate(upsert_cols)
         ]
         ors.append(f"({' AND '.join(ands)})")
     return " OR ".join(ors)
 
 
 def commit_upsert(
-    table,
-    file_actions,
+    table: "DeltaTable",
+    file_actions: List["AddAction"],
     upsert_keys: Optional[pa.Table],
     upsert_cols: List[str],
     partition_cols: List[str],
-    write_kwargs: dict,
+    write_kwargs: Dict[str, Any],
 ) -> None:
     """Commit upsert: delete matching rows, then append. NOT fully atomic.
 
