@@ -72,4 +72,6 @@ RUN bash -c 'if [[ -d /opt/miniforge/envs/py${PYTHON_VERSION}/bin ]]; then \
 
 # Ensure /opt/miniforge/bin is in PATH for all shells (including non-interactive)
 # This is needed for tests.env.Dockerfile which uses bash -i
-ENV PATH="/opt/miniforge/bin:${PATH}"
+# For Python 3.14+, also add the env-specific bin directory to PATH
+# so that console scripts installed later (like 'ray') are accessible
+ENV PATH="/opt/miniforge/bin:/opt/miniforge/envs/py${PYTHON_VERSION}/bin:${PATH}"
