@@ -50,7 +50,7 @@ from torchvision.transforms import Compose, Resize, CenterCrop
 import random
 
 # 02. Load 10% of food101 (~7,500 images)
-hf_ds = load_dataset("food101", split="train[:10%]")
+hf_ds = load_dataset("ethz/food101", split="train[:10%]")
 
 # 03. Resize + encode as JPEG bytes (Ray Data; BYTES-BASED)
 
