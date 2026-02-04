@@ -8,14 +8,14 @@ This example:
 - Trains on StatelessCartPole (CartPole without velocity observations)
 - Uses an LSTM-based policy network (use_lstm=True) with max sequence length of 20
 - Applies MeanStdFilter connector for observation normalization
-- Uses separate value function layers (vf_share_layers=False)
-- Expects to reach reward of 350.0 within 2 million timesteps
+- Uses shared value function layers (vf_share_layers=True)
+- Expects to reach reward of 350.0 within 5 million timesteps
 
 How to run this script
 ----------------------
 `python stateless_cartpole_ppo_with_lstm.py`
 
-The script defaults to using 3 env-runners for parallel sample collection.
+The script defaults to using 4 env-runners for parallel sample collection.
 
 To run with different configuration:
 `python stateless_cartpole_ppo_with_lstm.py --stop-reward=400.0 --stop-timesteps=3000000`
@@ -38,7 +38,7 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 With the default settings, you should expect to reach a reward of ~350.0
-within approximately 2 million environment timesteps. The LSTM allows the
+within approximately 300 thousand environment timesteps. The LSTM allows the
 agent to infer the hidden velocity state from the history of position
 observations. The learning rate is scaled with the square root of the number
 of learners for distributed training.
@@ -55,7 +55,7 @@ from ray.rllib.examples.utils import (
 parser = add_rllib_example_script_args(
     default_iters=200,
     default_reward=350.0,
-    default_timesteps=5_000_000,
+    default_timesteps=300_000,
 )
 parser.set_defaults(
     num_env_runners=4,

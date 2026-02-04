@@ -83,10 +83,10 @@ py_library(
 #   to ensure that the multi-learner is achieving something that the single shouldn’t be able to normally achieve.
 #
 # Compute Config
-#   - local (CPU) = 7 CPUs, 0 GPU: 4 Env Runners, 0 Learners on CPU, 2 Aggregator Actors per Learner on CPU, 1 CPU main process
-#   - single (CPU) = 8 CPUs, 0 GPU: 4 Env Runner, 1 Learners on CPU, 2 Aggregator Actors per Learner on CPU, 1 CPU main process
-#   - single (GPU) = 8 CPUs, 1 GPU: 4 Env Runner, 1 Learner on GPU, 2 Aggregator Actors per Learner on CPU, 1 CPU main process
-#   - multi (GPU) = 15 CPUs, 2 GPUs: 8 Env Runners, 2 Learners on GPU, 2 Aggregator Actors per Learner on CPU (4 total CPUs), 1 CPU main process
+#   - local (CPU) = 5 CPUs, 0 GPU: 4 Env Runners, 0 Learners on CPU, 1 CPU main process (APPO +2 Aggregator Actors per Learner on CPU for a total of 7)
+#   - single (CPU) = 6 CPUs, 0 GPU: 4 Env Runner, 1 Learners on CPU, 1 CPU main process (APPO +2 Aggregator Actors per Learner on CPU for a total of 8)
+#   - single (GPU) = 6 CPUs, 1 GPU: 4 Env Runner, 1 Learner on CPU and GPU, 1 CPU main process (APPO +2 Aggregator Actors per Learner on CPU for a total of 8)
+#   - multi (GPU) = 11 CPUs, 2 GPUs: 8 Env Runners, 2 Learners on CPU and GPU, 1 CPU main process (APPO +2 Aggregator Actors per Learner on CPU for a total of 15)
 #
 # Legend
 #   - SA = Single Agent Environment
@@ -768,14 +768,14 @@ py_test(
     ],
 )
 
-# | PPO (14 total tests)          |         |                Number of Learners (Device)                 |
+# | PPO (14 total tests)           |         |                Number of Learners (Device)                 |
 # | Environment                    | Success | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) |
 # |--------------------------------|---------|-------------|-----------------|--------------|-------------|
 # | (SA/D) Cartpole                | 200     | ✅          | ✅              | ❌           | ❌          |
 # | (SA/D/LSTM) Stateless Cartpole | 150     | ✅          | ❌              | ✅           | ❌          |
 # | (SA/D) Atari (Pong)            | 5       | ❌          | ❌              | ✅           | ✅          |
 # | (SA/C) MuJoCo (Humanoid)       | 200     | ❌          | ✅              | ❌           | ✅          |
-# | (MA/D) Footsies                |         | ❌          | ❌              | ✅           | ✅          |
+# | (MA/D) Footsies                | 4       | ❌          | ❌              | ✅           | ✅          |
 # | (SA/C) IsaacLab (Humanoid)     |         | ❌          | ✅ (with 1 GPU) | ⚠️           | ❌          |
 
 py_test(
@@ -784,7 +784,7 @@ py_test(
     srcs = ["examples/algorithms/ppo/cartpole_ppo.py"],
     args = [
         "--as-test",
-        "--num-cpus=7",
+        "--num-cpus=5",
         "--num-env-runners=4",
         "--num-learners=0",
         "--stop-reward=200",
@@ -798,12 +798,12 @@ py_test(
 )
 
 py_test(
-    name = "learning_test_ppo_cartpole_single",
+    name = "learning_test_ppo_cartpole_single_cpu",
     size = "large",
     srcs = ["examples/algorithms/ppo/cartpole_ppo.py"],
     args = [
         "--as-test",
-        "--num-cpus=7",
+        "--num-cpus=6",
         "--num-env-runners=4",
         "--num-learners=1",
         "--stop-reward=200",
@@ -822,7 +822,7 @@ py_test(
     srcs = ["examples/algorithms/ppo/stateless_cartpole_ppo_with_lstm.py"],
     args = [
         "--as-test",
-        "--num-cpus=7",
+        "--num-cpus=5",
         "--num-env-runners=4",
         "--num-learners=0",
         "--stop-reward=150",
@@ -836,12 +836,12 @@ py_test(
 )
 
 py_test(
-    name = "learning_test_ppo_stateless_cartpole_with_lstm_gpu",
+    name = "learning_test_ppo_stateless_cartpole_with_lstm_single_gpu",
     size = "large",
     srcs = ["examples/algorithms/ppo/stateless_cartpole_ppo_with_lstm.py"],
     args = [
         "--as-test",
-        "--num-cpus=7",
+        "--num-cpus=6",
         "--num-env-runners=4",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
@@ -857,12 +857,12 @@ py_test(
 )
 
 py_test(
-    name = "learning_test_ppo_atari_gpu",
+    name = "learning_test_ppo_atari_single_gpu",
     size = "large",
     srcs = ["examples/algorithms/ppo/atari_ppo.py"],
     args = [
         "--as-test",
-        "--num-cpus=7",
+        "--num-cpus=6",
         "--num-env-runners=4",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
@@ -883,7 +883,7 @@ py_test(
     srcs = ["examples/algorithms/ppo/atari_ppo.py"],
     args = [
         "--as-test",
-        "--num-cpus=16",
+        "--num-cpus=11",
         "--num-env-runners=8",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
@@ -899,12 +899,12 @@ py_test(
 )
 
 py_test(
-    name = "learning_test_ppo_mujoco_single",
+    name = "learning_test_ppo_mujoco_single_cpu",
     size = "large",
     srcs = ["examples/algorithms/ppo/mujoco_ppo.py"],
     args = [
         "--as-test",
-        "--num-cpus=7",
+        "--num-cpus=6",
         "--num-env-runners=4",
         "--num-learners=1",
         "--stop-reward=150",
@@ -923,7 +923,7 @@ py_test(
     srcs = ["examples/algorithms/ppo/mujoco_ppo.py"],
     args = [
         "--as-test",
-        "--num-cpus=16",
+        "--num-cpus=11",
         "--num-env-runners=8",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
@@ -939,12 +939,12 @@ py_test(
 )
 
 py_test(
-    name = "learning_test_ppo_footsies_gpu",
+    name = "learning_test_ppo_footsies_single_gpu",
     size = "large",
     srcs = ["examples/algorithms/ppo/multi_agent_footsies_ppo.py"],
     args = [
         "--as-test",
-        "--num-cpus=7",
+        "--num-cpus=6",
         "--num-env-runners=4",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
@@ -965,7 +965,7 @@ py_test(
     srcs = ["examples/algorithms/ppo/multi_agent_footsies_ppo.py"],
     args = [
         "--as-test",
-        "--num-cpus=16",
+        "--num-cpus=11",
         "--num-env-runners=8",
         "--num-learners=2",
         "--num-gpus-per-learner=1",

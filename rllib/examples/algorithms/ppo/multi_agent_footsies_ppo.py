@@ -16,10 +16,18 @@ This example:
 - Expects to reach target mix size of 5 opponents within 5 million timesteps
 
 Training progression:
-- Training starts against simple fixed opponents ("noop", "back")
+- Training starts against the "noop" fixed opponent, then adds "back" as part of the curriculum
 - When main policy achieves win rate threshold (default 80%) against current
   opponent, a new frozen copy of the main policy is added to the opponent mix
 - Training concludes when the target mix size is reached
+
+Evaluation process:
+- Evaluation runs after every training iteration (not in parallel with training)
+- Each evaluation plays 10 episodes to estimate the main policy's win rate
+- The MixManagerCallback checks the win rate after evaluation to decide whether
+  to add a new opponent to the mix
+- Evaluation must complete before training resumes because new RLModules may be
+  added to the mix based on evaluation results
 
 How to run this script
 ----------------------
@@ -42,7 +50,7 @@ To use a GPU-based learner add the number of GPUs per learners:
 `python multi_agent_footsies_ppo.py --num-learners=1 --num-gpus-per-learner=1`
 
 For debugging, use the following additional command line options
-`--no-tune --num-env-runners=0`
+`--no-tune --num-env-runners=0 --evaluation-num-env-runners=0 --num-learners=0`
 which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
 

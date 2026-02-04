@@ -29,7 +29,7 @@ To use a GPU-based learner add the number of GPUs per learners:
 `python atari_ppo.py --num-learners=1 --num-gpus-per-learner=1`
 
 For debugging, use the following additional command line options
-`--no-tune --num-env-runners=0`
+`--no-tune --num-env-runners=0 --num-learners=0`
 which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
 

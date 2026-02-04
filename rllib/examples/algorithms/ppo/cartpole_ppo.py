@@ -25,7 +25,7 @@ To use a GPU-based learner add the number of GPUs per learners:
 `python cartpole_ppo.py --num-learners=1 --num-gpus-per-learner=1`
 
 For debugging, use the following additional command line options
-`--no-tune --num-env-runners=0`
+`--no-tune --num-env-runners=0  --num-learners=0`
 which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
 
@@ -36,7 +36,7 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 With the default settings, you should expect to reach a reward of ~450.0
-(out of maximum 500) within approximately 300,000 environment timesteps.
+(out of maximum 500) within 300 thousand environment timesteps.
 CartPole-v1 terminates episodes at 500 steps, so rewards close to 500
 indicate successful pole balancing.
 """
@@ -50,7 +50,7 @@ from ray.rllib.examples.utils import (
 parser = add_rllib_example_script_args(
     default_iters=200,
     default_reward=450.0,
-    default_timesteps=4_000_000,
+    default_timesteps=300_000,
 )
 parser.set_defaults(
     num_env_runners=4,

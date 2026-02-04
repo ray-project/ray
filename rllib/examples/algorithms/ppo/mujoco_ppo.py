@@ -7,9 +7,10 @@ control policies for simulated robots.
 This example:
 - Trains on Humanoid-v4 by default (configurable via --env flag)
 - Uses tuned PPO hyperparameters for continuous control (high gamma, lambda)
-- Configures parallel environment runners (4 runners, 16 envs each)
-- Uses gradient clipping by value for training stability
-- Expects to reach reward of 800.0 within 3 million timesteps
+- Samples from multiple parallel environment (4 environment runners each with
+    16 vectorized environments)
+- Uses gradient clipping by global norm for training stability
+- Expects to reach reward of 300.0 within 1 million timesteps
 
 How to run this script
 ----------------------
@@ -35,7 +36,7 @@ To use a GPU-based learner add the number of GPUs per learners:
 `python mujoco_ppo.py --num-learners=1 --num-gpus-per-learner=1`
 
 For debugging, use the following additional command line options
-`--no-tune --num-env-runners=0`
+`--no-tune --num-env-runners=0 --num-learners=0`
 which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
 
@@ -46,7 +47,7 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 With the default settings on Humanoid-v4, you should expect to reach a reward
-of ~800.0 within approximately 3 million environment timesteps. Different MuJoCo
+of ~300.0 within a million environment timesteps. Different MuJoCo
 environments have varying difficulty levels and may require adjusted reward
 targets.
 """
@@ -112,7 +113,6 @@ config = (
             fcnet_activation="tanh",
             head_fcnet_hiddens=[256],
             head_fcnet_activation=None,
-            free_log_std=True,
         )
     )
 )
