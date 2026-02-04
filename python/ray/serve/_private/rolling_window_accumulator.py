@@ -1,12 +1,3 @@
-"""Rolling window accumulator for tracking values over a sliding time window.
-
-This module provides a thread-safe, lock-free accumulator that tracks cumulative
-values over a configurable rolling time window. It's designed for high-throughput
-scenarios where values are added frequently from multiple threads.
-
-Typical use case: tracking request latencies for utilization metrics.
-"""
-
 import threading
 import time
 from typing import List
@@ -184,6 +175,11 @@ class RollingWindowAccumulator:
 
         This aggregates values from all threads that have called add().
         Expired buckets (older than window_duration_s) are not included.
+
+        Note: We are accepting some inaccuracy in the total value to avoid the overhead of a lock.
+        This is acceptable because we are only using this for utilization metrics, which are not
+        critical for the overall system. Given that the default window duration is 600s and the
+        default report interval is 10s, the inaccuracy is less than 0.16%.
 
         Returns:
             The sum of all non-expired values in the rolling window.
