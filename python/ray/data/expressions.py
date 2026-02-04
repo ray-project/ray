@@ -578,49 +578,61 @@ class Expr(ABC):
         """
         return _create_pyarrow_compute_udf(pc.abs_checked)(self)
 
-    def cast(
-        self,
-        target_type: Union[str, "pyarrow.DataType", DataType],
-        *,
-        safe: bool = True,
-    ) -> "UDFExpr":
+    def cast(self, target_type: DataType, *, safe: bool = True) -> "UDFExpr":
         """Cast the expression to a specified type.
 
         This method allows you to convert the expression result to a different
         data type using PyArrow's cast function. By default, it uses safe casting
-        which will raise errors on overflow or invalid conversions.
+        which raises errors on overflow or invalid conversions.
 
         Args:
-            target_type: The target type to cast to. Can be:
-                - A string type name (e.g., "int64", "float64", "string")
-                - A PyArrow DataType object (e.g., pa.int64())
-                - A DataType object (e.g., DataType.int64())
+            target_type: The Ray Data :class:`~ray.data.datatype.DataType` to cast to,
+                for example ``DataType.int64()``, ``DataType.float64()``,
+                or ``DataType.string()``.
             safe: If True (default), raise errors on overflow or invalid conversions.
-                If False, allow unsafe conversions (may result in data loss).
+                If False, allow unsafe conversions (which may result in data loss).
 
         Returns:
             A UDFExpr that casts the expression to the target type.
 
         Example:
             >>> from ray.data.expressions import col
-            >>> import ray
-            >>> import pyarrow as pa
             >>> from ray.data.datatype import DataType
+            >>> import ray
             >>>
             >>> ds = ray.data.range(10)
-            >>> # Cast float result to int64 using string type name
-            >>> ds = ds.with_column("part", (col("id") % 2).cast("int64"))
-            >>> # Cast to float64 using PyArrow type
-            >>> ds = ds.with_column("id_float", col("id").cast(pa.float64()))
-            >>> # Cast to string using DataType object
+            >>> # Cast float result to int64
+            >>> ds = ds.with_column("part", (col("id") % 2).cast(DataType.int64()))
+            >>> # Cast to float64
+            >>> ds = ds.with_column("id_float", col("id").cast(DataType.float64()))
+            >>> # Cast to string
             >>> ds = ds.with_column("id_str", col("id").cast(DataType.string()))
         """
 
-        # Normalize target type to PyArrow DataType
-        pa_target_type = _normalize_cast_target_type(target_type)
+        # Only Ray Data's DataType is supported to keep the API surface small.
+        if not isinstance(target_type, DataType):
+            raise TypeError(
+                f"target_type must be a ray.data.datatype.DataType, got: "
+                f"{type(target_type).__name__}. "
+                "Use the DataType factories (e.g., DataType.int64(), DataType.string())."
+            )
 
-        # Create DataType object for return type
-        ray_target_dtype = DataType.from_arrow(pa_target_type)
+        # Python-type-backed DataTypes (e.g., DataType(int)) require values to infer
+        # the Arrow type, which isn't available in the expression context. Provide
+        # a clear error instead of a confusing failure later.
+        if target_type.is_python_type():
+            raise TypeError(
+                "Python-type-backed DataType (e.g., DataType(int), DataType(str)) "
+                "requires values to infer the Arrow type, which is not available in "
+                "the cast() context. Please use an Arrow-backed DataType instead, "
+                "such as DataType.int64(), DataType.float64(), or DataType.string()."
+            )
+
+        # Convert the target DataType to its Arrow representation.
+        pa_target_type = target_type.to_arrow_dtype()
+
+        # The expression result uses the provided DataType as its logical type.
+        ray_target_dtype = target_type
 
         # Create UDF that performs the cast
         @pyarrow_udf(return_dtype=ray_target_dtype)
@@ -1331,60 +1343,6 @@ def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         return _create_udf_callable(wrapped_fn, return_dtype)
 
     return decorator
-
-
-def _normalize_cast_target_type(
-    target_type: Union[str, "pyarrow.DataType", DataType]
-) -> "pyarrow.DataType":
-    """Normalize target type to PyArrow DataType.
-
-    Converts various type representations (string, PyArrow DataType, or DataType)
-    to a PyArrow DataType object.
-
-    Args:
-        target_type: The target type as a string (e.g., "int64"), PyArrow DataType,
-            or DataType object.
-
-    Returns:
-        A PyArrow DataType object.
-
-    Raises:
-        TypeError: If the target type cannot be converted to a PyArrow DataType.
-        ValueError: If the string type name is not recognized.
-    """
-    import pyarrow as pa
-
-    from ray.data.datatype import PYARROW_TYPE_DEFINITIONS
-
-    if isinstance(target_type, str):
-        # Use PyArrow's type_for_alias for type resolution
-        try:
-            return pa.type_for_alias(target_type)
-        except (ValueError, KeyError):
-            raise ValueError(
-                f"Unsupported type name: {target_type}. "
-                f"Supported types: {list(PYARROW_TYPE_DEFINITIONS.keys())}"
-            )
-    elif isinstance(target_type, DataType):
-        # Check if the DataType is Python-type-backed, which requires values
-        # to infer the Arrow type. If so, raise a clear error message.
-        if target_type.is_python_type():
-            raise TypeError(
-                "Python-type-backed DataType (e.g., DataType(int), DataType(str)) "
-                "requires values to infer the Arrow type, which is not available in "
-                "the cast() context. Please use a string type name (e.g., 'int64', "
-                "'string'), a PyArrow DataType (e.g., pa.int64(), pa.string()), or "
-                "a DataType created from Arrow/NumPy types (e.g., DataType.int64(), "
-                "DataType.string()) instead."
-            )
-        return target_type.to_arrow_dtype()
-    elif isinstance(target_type, pa.DataType):
-        return target_type
-    else:
-        raise TypeError(
-            f"Unsupported target type: {type(target_type)}. "
-            f"Expected str, pyarrow.DataType, or DataType."
-        )
 
 
 def _create_pyarrow_compute_udf(
