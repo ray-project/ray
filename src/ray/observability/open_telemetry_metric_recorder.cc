@@ -116,6 +116,10 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
     // Helper lambda to read certificate file contents
     auto read_cert_file = [](const std::string &filepath) -> std::string {
       std::ifstream file(filepath);
+      if (!file.is_open()) {
+        RAY_LOG(WARNING) << "Failed to open certificate file: " << filepath;
+        return "";
+      }
       std::stringstream buffer;
       buffer << file.rdbuf();
       return buffer.str();
@@ -132,6 +136,11 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
     // Ray's gRPC server requires client authentication when CA cert is configured.
     // Note: mTLS support requires the OpenTelemetry SDK to be built with
     // ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW defined.
+    //
+    // We reuse TLS_SERVER_CERT and TLS_SERVER_KEY for the client certificate because
+    // Ray components (raylet, gcs_server, etc.) act as both servers and clients,
+    // using the same certificate for bidirectional mTLS communication. This is
+    // consistent with how other Ray gRPC clients are configured.
     std::string client_cert_file = std::string(RayConfig::instance().TLS_SERVER_CERT());
     std::string client_key_file = std::string(RayConfig::instance().TLS_SERVER_KEY());
     if (!client_cert_file.empty()) {
