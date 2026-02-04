@@ -6,7 +6,6 @@ from typing import List, Optional
 from unittest.mock import MagicMock
 
 from ray.train import Checkpoint
-from ray.train._internal.session import _TrainingResult
 from ray.train.context import TrainContext
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
@@ -22,6 +21,7 @@ from ray.train.v2._internal.execution.scaling_policy import (
     ScalingPolicy,
 )
 from ray.train.v2._internal.execution.storage import StorageContext
+from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
     WorkerGroupContext,
@@ -40,6 +40,7 @@ from ray.train.v2._internal.state.schema import (
 )
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.exceptions import TrainingFailedError
+from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 
 class DummyWorkerGroup(WorkerGroup):
@@ -276,25 +277,32 @@ def create_dummy_train_context() -> TrainContext:
     return DummyTrainContext()
 
 
-def create_dummy_training_results(
+def create_dummy_training_reports(
     num_results: int,
     storage_context: StorageContext,
     include_metrics: bool = True,
-) -> List[_TrainingResult]:
+    include_validation: bool = False,
+    starting_checkpoint_index: int = 0,
+) -> List[_TrainingReport]:
     training_results = []
     for i in range(num_results):
         metrics = {"score": i} if include_metrics else {}
+        validation = (
+            ValidationTaskConfig(fn_kwargs={"arg": i}) if include_validation else False
+        )
         checkpoint_path = os.path.join(
-            storage_context.experiment_fs_path, f"checkpoint_{i}"
+            storage_context.experiment_fs_path,
+            f"checkpoint_{starting_checkpoint_index + i}",
         )
         os.makedirs(checkpoint_path, exist_ok=True)
         training_results.append(
-            _TrainingResult(
+            _TrainingReport(
                 checkpoint=Checkpoint(
                     path=Path(checkpoint_path).as_posix(),
                     filesystem=storage_context.storage_filesystem,
                 ),
                 metrics=metrics,
+                validation=validation,
             )
         )
     return training_results
