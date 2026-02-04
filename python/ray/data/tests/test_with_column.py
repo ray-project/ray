@@ -1148,8 +1148,8 @@ def test_cast_expression_multiple_types(
     ds = ds.with_column("id_float", col("id").cast("float64"))
     ds = ds.with_column("id_str", col("id").cast("string"))
 
-    # Cast score to int
-    ds = ds.with_column("score_int", col("score").cast("int64"))
+    # Cast score to int (use safe=False to allow float truncation to int)
+    ds = ds.with_column("score_int", col("score").cast("int64", safe=False))
 
     result = ds.take(1)[0]
     assert result["id_int"] == 42
@@ -1170,21 +1170,12 @@ def test_cast_expression_python_type_datatype_error(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
     """Test that using Python-type-backed DataType in cast() raises a clear error."""
-    ds = ray.data.range(5)
-
-    # Using DataType(int) or DataType(str) should raise a clear error message
-    # instead of an AssertionError
-    with pytest.raises(
-        TypeError,
-        match="Python-type-backed DataType.*requires.*values.*Use.*string.*PyArrow.*DataType",
-    ):
-        ds.with_column("result", col("id").cast(DataType(int))).materialize()
-
-    with pytest.raises(
-        TypeError,
-        match="Python-type-backed DataType.*requires.*values.*Use.*string.*PyArrow.*DataType",
-    ):
-        ds.with_column("result", col("id").cast(DataType(str))).materialize()
+    # Error is raised at expression build time when cast() is called (not at materialize).
+    error_match = "Python-type-backed DataType.*requires.*values"
+    with pytest.raises(TypeError, match=error_match):
+        col("id").cast(DataType(int))
+    with pytest.raises(TypeError, match=error_match):
+        col("id").cast(DataType(str))
 
 
 if __name__ == "__main__":
