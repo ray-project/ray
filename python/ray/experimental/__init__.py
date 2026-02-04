@@ -5,6 +5,7 @@ from ray.experimental.gpu_object_manager import (
     GPUObjectManager,
     TensorTransportManager,
     TensorTransportMetadata,
+    cache_memory_registration,
     register_tensor_transport,
     wait_tensor_freed,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "wait_tensor_freed",
     "register_tensor_transport",
     "GetTensorOptions",
+    "cache_memory_registration",
     "TensorTransportManager",
     "TensorTransportMetadata",
     "CommunicatorMetadata",
