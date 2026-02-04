@@ -481,10 +481,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         )
 
         # Error if we don't find enough GPUs.
-        if (
-            ray.is_initialized()
-            and not config._fake_gpus
-        ):
+        if ray.is_initialized() and not config._fake_gpus:
             devices = []
             if self.config.framework_str in ["tf2", "tf"]:
                 devices = get_tf_gpu_devices()
