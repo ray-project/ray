@@ -1,10 +1,11 @@
-import copy
 import functools
 import math
-from typing import Any, Dict, Optional, Union
+from dataclasses import dataclass, replace
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
     LogicalOperatorSupportsPredicatePushdown,
     LogicalOperatorSupportsProjectionPushdown,
     SourceOperator,
@@ -23,6 +24,7 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, init=False, repr=False)
 class Read(
     AbstractMap,
     SourceOperator,
@@ -31,40 +33,67 @@ class Read(
 ):
     """Logical operator for read."""
 
-    # TODO: make this a frozen dataclass. https://github.com/ray-project/ray/issues/55747
+    datasource: Datasource
+    datasource_or_legacy_reader: Union[Datasource, Reader]
+    parallelism: int
+    detected_parallelism: Optional[int]
+
     def __init__(
         self,
-        datasource: Datasource,
-        datasource_or_legacy_reader: Union[Datasource, Reader],
-        parallelism: int,
+        input_op: Optional[LogicalOperator] = None,
+        datasource: Optional[Datasource] = None,
+        datasource_or_legacy_reader: Optional[Union[Datasource, Reader]] = None,
+        parallelism: Optional[int] = None,
         num_outputs: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         compute: Optional[ComputeStrategy] = None,
+        name: Optional[str] = None,
+        min_rows_per_bundled_input: Optional[int] = None,
+        per_block_limit: Optional[int] = None,
+        detected_parallelism: Optional[int] = None,
+        can_modify_num_rows: bool = True,
+        input_dependencies: Optional[List[LogicalOperator]] = None,
     ):
+        assert datasource is not None
+        assert datasource_or_legacy_reader is not None
+        assert parallelism is not None
+        assert input_op is None
+        if name is None:
+            name = f"Read{datasource.get_name()}"
+        if input_dependencies is None:
+            input_dependencies = []
+        assert not input_dependencies, "Read should not have input dependencies."
         super().__init__(
-            name=f"Read{datasource.get_name()}",
+            name=name,
             input_op=None,
-            can_modify_num_rows=True,
+            can_modify_num_rows=can_modify_num_rows,
             num_outputs=num_outputs,
+            min_rows_per_bundled_input=min_rows_per_bundled_input,
             ray_remote_args=ray_remote_args,
+            ray_remote_args_fn=ray_remote_args_fn,
             compute=compute,
         )
-        self.datasource = datasource
-        self.datasource_or_legacy_reader = datasource_or_legacy_reader
-        self.parallelism = parallelism
-        self.detected_parallelism = None
+        if per_block_limit is not None:
+            object.__setattr__(self, "per_block_limit", per_block_limit)
+        object.__setattr__(self, "datasource", datasource)
+        object.__setattr__(
+            self, "datasource_or_legacy_reader", datasource_or_legacy_reader
+        )
+        object.__setattr__(self, "parallelism", parallelism)
+        object.__setattr__(self, "detected_parallelism", detected_parallelism)
 
     def output_data(self):
         return None
 
-    def set_detected_parallelism(self, parallelism: int):
+    def with_detected_parallelism(self, parallelism: int) -> "Read":
         """
         Set the true parallelism that should be used during execution. This
         should be specified by the user or detected by the optimizer.
         """
-        self.detected_parallelism = parallelism
+        return replace(self, detected_parallelism=parallelism)
 
-    def get_detected_parallelism(self) -> int:
+    def get_detected_parallelism(self) -> Optional[int]:
         """
         Get the true parallelism that should be used during execution.
         """
@@ -175,13 +204,12 @@ class Read(
         self,
         projection_map: Optional[Dict[str, str]],
     ) -> "Read":
-        clone = copy.copy(self)
-
         projected_datasource = self.datasource.apply_projection(projection_map)
-        clone.datasource = projected_datasource
-        clone.datasource_or_legacy_reader = projected_datasource
-
-        return clone
+        return replace(
+            self,
+            datasource=projected_datasource,
+            datasource_or_legacy_reader=projected_datasource,
+        )
 
     def get_column_renames(self) -> Optional[Dict[str, str]]:
         return self.datasource.get_column_renames()
@@ -194,9 +222,8 @@ class Read(
 
     def apply_predicate(self, predicate_expr: Expr) -> "Read":
         predicated_datasource = self.datasource.apply_predicate(predicate_expr)
-
-        clone = copy.copy(self)
-        clone.datasource = predicated_datasource
-        clone.datasource_or_legacy_reader = predicated_datasource
-
-        return clone
+        return replace(
+            self,
+            datasource=predicated_datasource,
+            datasource_or_legacy_reader=predicated_datasource,
+        )

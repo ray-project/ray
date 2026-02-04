@@ -146,7 +146,9 @@ def from_blocks(blocks: List[Block]):
     block_refs = [ray.put(block) for block in blocks]
     meta_with_schema = [BlockMetadataWithSchema.from_block(block) for block in blocks]
 
-    from_blocks_op = FromBlocks(block_refs, meta_with_schema)
+    from_blocks_op = FromBlocks(
+        input_blocks=block_refs, input_metadata=meta_with_schema
+    )
     execution_plan = ExecutionPlan(
         DatasetStats(metadata={"FromBlocks": meta_with_schema}, parent=None),
         DataContext.get_current().copy(),
@@ -243,7 +245,7 @@ def from_items(
             BlockMetadataWithSchema.from_block(block, stats=stats.build())
         )
 
-    from_items_op = FromItems(blocks, meta_with_schema)
+    from_items_op = FromItems(input_blocks=blocks, input_metadata=meta_with_schema)
     execution_plan = ExecutionPlan(
         DatasetStats(metadata={"FromItems": meta_with_schema}, parent=None),
         DataContext.get_current().copy(),
@@ -464,8 +466,8 @@ def read_datasource(
         parent=None,
     )
     read_op = Read(
-        datasource,
-        datasource_or_legacy_reader,
+        datasource=datasource,
+        datasource_or_legacy_reader=datasource_or_legacy_reader,
         parallelism=parallelism,
         num_outputs=len(read_tasks) if read_tasks else 0,
         ray_remote_args=ray_remote_args,
@@ -3159,7 +3161,8 @@ def from_pandas_refs(
             DataContext.get_current().copy(),
         )
         logical_plan = LogicalPlan(
-            FromPandas(dfs, metadata_schema), execution_plan._context
+            FromPandas(input_blocks=dfs, input_metadata=metadata_schema),
+            execution_plan._context,
         )
         return MaterializedDataset(
             execution_plan,
@@ -3176,7 +3179,8 @@ def from_pandas_refs(
         DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(
-        FromPandas(blocks, metadata_schema), execution_plan._context
+        FromPandas(input_blocks=blocks, input_metadata=metadata_schema),
+        execution_plan._context,
     )
     return MaterializedDataset(
         execution_plan,
@@ -3303,7 +3307,8 @@ def from_numpy_refs(
     )
 
     logical_plan = LogicalPlan(
-        FromNumpy(blocks, metadata_schema), execution_plan._context
+        FromNumpy(input_blocks=blocks, input_metadata=metadata_schema),
+        execution_plan._context,
     )
 
     return MaterializedDataset(
@@ -3457,7 +3462,8 @@ def from_arrow_refs(
         DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(
-        FromArrow(tables, metadata_schema), execution_plan._context
+        FromArrow(input_blocks=tables, input_metadata=metadata_schema),
+        execution_plan._context,
     )
 
     return MaterializedDataset(

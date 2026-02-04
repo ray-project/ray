@@ -47,10 +47,7 @@ def test_random_shuffle_operator(ray_start_regular_shared_2_cpus):
 
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
-    op = RandomShuffle(
-        read_op,
-        seed=0,
-    )
+    op = RandomShuffle(input_op=read_op, seed=0)
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
@@ -82,7 +79,7 @@ def test_repartition_operator(ray_start_regular_shared_2_cpus, shuffle):
 
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
-    op = Repartition(read_op, num_outputs=5, shuffle=shuffle)
+    op = Repartition(input_op=read_op, num_outputs=5, shuffle=shuffle)
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
@@ -155,8 +152,8 @@ def test_write_operator(ray_start_regular_shared_2_cpus, tmp_path):
     datasink = ParquetDatasink(tmp_path)
     read_op = get_parquet_read_logical_op()
     op = Write(
-        read_op,
-        datasink,
+        input_op=read_op,
+        datasink_or_legacy_datasource=datasink,
         compute=TaskPoolStrategy(concurrency),
     )
     plan = LogicalPlan(op, ctx)
@@ -179,10 +176,7 @@ def test_sort_operator(
 
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
-    op = Sort(
-        read_op,
-        sort_key=SortKey("col1"),
-    )
+    op = Sort(input_op=read_op, sort_key=SortKey("col1"))
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
@@ -248,9 +242,9 @@ def test_inherit_batch_format_rule():
     ctx = DataContext.get_current()
 
     operator1 = get_parquet_read_logical_op()
-    operator2 = MapBatches(operator1, fn=lambda g: g, batch_format="pandas")
+    operator2 = MapBatches(input_op=operator1, fn=lambda g: g, batch_format="pandas")
     sort_key = SortKey("number", descending=True)
-    operator3 = Sort(operator2, sort_key)
+    operator3 = Sort(input_op=operator2, sort_key=sort_key)
     original_plan = LogicalPlan(dag=operator3, context=ctx)
 
     rule = InheritBatchFormatRule()

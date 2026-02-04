@@ -65,7 +65,7 @@ class GroupedData:
 
         plan = self._dataset._plan.copy()
         op = Aggregate(
-            self._dataset._logical_plan.dag,
+            input_op=self._dataset._logical_plan.dag,
             key=self._key,
             aggs=aggs,
             num_partitions=self._num_partitions,

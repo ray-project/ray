@@ -1,5 +1,5 @@
-import copy
 import logging
+from dataclasses import replace
 from typing import List
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
@@ -47,7 +47,7 @@ class LimitPushdownRule(Rule):
                 if isinstance(upstream_op, Limit):
                     # Fuse consecutive Limits: Limit[n] -> Limit[m] becomes Limit[min(n,m)]
                     new_limit = min(node.limit, upstream_op.limit)
-                    return Limit(upstream_op.input_dependency, new_limit)
+                    return Limit(input_op=upstream_op.input_dependency, limit=new_limit)
 
                 # If no fusion, apply pushdown logic
                 if isinstance(upstream_op, Union):
@@ -123,7 +123,7 @@ class LimitPushdownRule(Rule):
             if _branch_has_limit(child, limit_op.limit):
                 branch_tails.append(child)
                 continue
-            raw_limit = Limit(child, limit_op.limit)  # child → limit
+            raw_limit = Limit(input_op=child, limit=limit_op.limit)  # child → limit
 
             if isinstance(raw_limit.input_dependency, Union):
                 # This represents the limit operator appended after the union.
@@ -134,7 +134,7 @@ class LimitPushdownRule(Rule):
             branch_tails.append(pushed_tail)
 
         new_union = Union(*branch_tails)
-        return Limit(new_union, limit_op.limit)
+        return Limit(input_op=new_union, limit=limit_op.limit)
 
     def _push_limit_down(self, limit_op: Limit) -> LogicalOperator:
         """Push a single limit down through compatible operators conservatively.
@@ -170,7 +170,7 @@ class LimitPushdownRule(Rule):
         )
 
         # Build the new operator chain: Chain non-preserving number of rows -> Limit -> Operators preserving number of rows
-        new_limit = Limit(limit_input, limit_op.limit)
+        new_limit = Limit(input_op=limit_input, limit=limit_op.limit)
         result_op = new_limit
 
         # Recreate the intermediate operators and apply per-block limits
@@ -187,9 +187,7 @@ class LimitPushdownRule(Rule):
     ) -> LogicalOperator:
         """Apply per-block limit to operators that support it."""
         if isinstance(op, AbstractMap):
-            new_op = copy.copy(op)
-            new_op.set_per_block_limit(limit)
-            return new_op
+            return replace(op, per_block_limit=limit)
         return op
 
     def _recreate_operator_with_new_input(
@@ -198,11 +196,6 @@ class LimitPushdownRule(Rule):
         """Create a new operator of the same type as original_op but with new_input as its input."""
 
         if isinstance(original_op, Limit):
-            return Limit(new_input, original_op.limit)
+            return Limit(input_op=new_input, limit=original_op.limit)
 
-        # Use copy and replace input dependencies approach
-        new_op = copy.copy(original_op)
-        new_op.input_dependencies = [new_input]
-        new_op._output_dependencies = []
-
-        return new_op
+        return replace(original_op, input_dependencies=[new_input])

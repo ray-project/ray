@@ -431,8 +431,8 @@ class Dataset:
 
         plan = self._plan.copy()
         map_op = MapRows(
-            self._logical_plan.dag,
-            fn,
+            input_op=self._logical_plan.dag,
+            fn=fn,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
@@ -797,8 +797,8 @@ class Dataset:
 
         plan = self._plan.copy()
         map_batches_op = MapBatches(
-            self._logical_plan.dag,
-            fn,
+            input_op=self._logical_plan.dag,
+            fn=fn,
             batch_size=batch_size,
             can_modify_num_rows=udf_modifying_row_count,
             batch_format=batch_format,
@@ -898,7 +898,7 @@ class Dataset:
         plan = self._plan.copy()
         if isinstance(expr, DownloadExpr):
             download_op = Download(
-                self._logical_plan.dag,
+                input_op=self._logical_plan.dag,
                 uri_column_names=[expr.uri_column_name],
                 output_bytes_column_names=[column_name],
                 ray_remote_args=ray_remote_args,
@@ -906,7 +906,7 @@ class Dataset:
             logical_plan = LogicalPlan(download_op, self.context)
         else:
             project_op = Project(
-                self._logical_plan.dag,
+                input_op=self._logical_plan.dag,
                 exprs=[StarExpr(), expr.alias(column_name)],
                 compute=compute,
                 ray_remote_args=ray_remote_args,
@@ -1159,7 +1159,7 @@ class Dataset:
 
         plan = self._plan.copy()
         select_op = Project(
-            self._logical_plan.dag,
+            input_op=self._logical_plan.dag,
             exprs=exprs,
             compute=compute,
             ray_remote_args=ray_remote_args,
@@ -1284,7 +1284,7 @@ class Dataset:
 
         plan = self._plan.copy()
         select_op = Project(
-            self._logical_plan.dag,
+            input_op=self._logical_plan.dag,
             exprs=[StarExpr(), *exprs],
             compute=compute,
             ray_remote_args=ray_remote_args,
@@ -1741,12 +1741,12 @@ class Dataset:
         plan = self._plan.copy()
         if target_num_rows_per_block is not None:
             op = StreamingRepartition(
-                self._logical_plan.dag,
+                input_op=self._logical_plan.dag,
                 target_num_rows_per_block=target_num_rows_per_block,
             )
         else:
             op = Repartition(
-                self._logical_plan.dag,
+                input_op=self._logical_plan.dag,
                 num_outputs=num_blocks,
                 shuffle=shuffle,
                 keys=keys,
@@ -1799,7 +1799,7 @@ class Dataset:
             )
         plan = self._plan.copy()
         op = RandomShuffle(
-            self._logical_plan.dag,
+            input_op=self._logical_plan.dag,
             seed=seed,
             ray_remote_args=ray_remote_args,
         )
@@ -1836,10 +1836,7 @@ class Dataset:
         """  # noqa: E501
 
         plan = self._plan.copy()
-        op = RandomizeBlocks(
-            self._logical_plan.dag,
-            seed=seed,
-        )
+        op = RandomizeBlocks(input_op=self._logical_plan.dag, seed=seed)
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
@@ -2004,7 +2001,7 @@ class Dataset:
         """
         plan = self._plan.copy()
         op = StreamingSplit(
-            self._logical_plan.dag,
+            input_op=self._logical_plan.dag,
             num_splits=n,
             equal=equal,
             locality_hints=locality_hints,
@@ -3502,10 +3499,7 @@ class Dataset:
             raise ValueError("The 'key' parameter cannot be None for sorting.")
         sort_key = SortKey(key, descending, boundaries)
         plan = self._plan.copy()
-        op = Sort(
-            self._logical_plan.dag,
-            sort_key=sort_key,
-        )
+        op = Sort(input_op=self._logical_plan.dag, sort_key=sort_key)
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
@@ -3574,7 +3568,7 @@ class Dataset:
             The truncated dataset.
         """
         plan = self._plan.copy()
-        op = Limit(self._logical_plan.dag, limit=limit)
+        op = Limit(input_op=self._logical_plan.dag, limit=limit)
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
@@ -3795,7 +3789,7 @@ class Dataset:
 
         # NOTE: Project the dataset to avoid the need to carry actual
         #       data when we're only interested in the total count
-        count_op = Count(Project(self._logical_plan.dag, exprs=[]))
+        count_op = Count(input_op=Project(input_op=self._logical_plan.dag, exprs=[]))
         logical_plan = LogicalPlan(count_op, self.context)
         count_ds = Dataset(plan, logical_plan)
 
@@ -5353,8 +5347,8 @@ class Dataset:
 
         plan = self._plan.copy()
         write_op = Write(
-            self._logical_plan.dag,
-            datasink,
+            input_op=self._logical_plan.dag,
+            datasink_or_legacy_datasource=datasink,
             ray_remote_args=ray_remote_args,
             compute=TaskPoolStrategy(concurrency),
         )

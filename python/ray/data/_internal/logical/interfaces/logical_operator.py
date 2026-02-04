@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
-from .operator import Operator
 from ray.data.block import BlockMetadata
 from ray.data.expressions import Expr
 
@@ -10,27 +10,21 @@ if TYPE_CHECKING:
     from ray.data.block import Schema
 
 
-class LogicalOperator(Operator):
+@dataclass(frozen=True, repr=False)
+class LogicalOperator:
     """Abstract class for logical operators.
 
     A logical operator describes transformation, and later is converted into
     physical operator.
     """
 
-    def __init__(
-        self,
-        name: str,
-        input_dependencies: List["LogicalOperator"],
-        num_outputs: Optional[int] = None,
-    ):
-        super().__init__(
-            name,
-            input_dependencies,
-        )
-        for x in input_dependencies:
-            assert isinstance(x, LogicalOperator), x
+    name: Optional[str] = None
+    input_dependencies: List["LogicalOperator"] = field(default_factory=list)
+    num_outputs: Optional[int] = None
 
-        self.num_outputs: Optional[int] = num_outputs
+    def __post_init__(self) -> None:
+        for x in self.input_dependencies:
+            assert isinstance(x, LogicalOperator), x
 
     def estimated_num_outputs(self) -> Optional[int]:
         """Returns the estimated number of blocks that
@@ -47,27 +41,29 @@ class LogicalOperator(Operator):
             return self.input_dependencies[0].estimated_num_outputs()
         return None
 
-    # Override the following 3 methods to correct type hints.
-
-    @property
-    def input_dependencies(self) -> List["LogicalOperator"]:
-        return super().input_dependencies  # type: ignore
-
-    @input_dependencies.setter
-    def input_dependencies(self, value: List["LogicalOperator"]) -> None:
-        self._input_dependencies = value
-
-    @property
-    def output_dependencies(self) -> List["LogicalOperator"]:
-        return super().output_dependencies  # type: ignore
-
     def post_order_iter(self) -> Iterator["LogicalOperator"]:
-        return super().post_order_iter()  # type: ignore
+        for op in self.input_dependencies:
+            yield from op.post_order_iter()
+        yield self
 
     def _apply_transform(
         self, transform: Callable[["LogicalOperator"], "LogicalOperator"]
     ) -> "LogicalOperator":
-        return super()._apply_transform(transform)  # type: ignore
+        transformed_input_ops = []
+        new_ops = []
+
+        for input_op in self.input_dependencies:
+            transformed_input_op = input_op._apply_transform(transform)
+            transformed_input_ops.append(transformed_input_op)
+            if transformed_input_op is not input_op:
+                new_ops.append(transformed_input_op)
+
+        if new_ops:
+            target = replace(self, input_dependencies=transformed_input_ops)
+        else:
+            target = self
+
+        return transform(target)
 
     def _get_args(self) -> Dict[str, Any]:
         """This Dict must be serializable"""
@@ -78,7 +74,26 @@ class LogicalOperator(Operator):
             else:
                 # Keep underscore-prefixed keys to preserve legacy export schema.
                 args[f"_{key}"] = value
+        # Preserve legacy export shape even though output deps are no longer tracked.
+        args["_output_dependencies"] = []
         return args
+
+    @property
+    def dag_str(self) -> str:
+        """String representation of the whole DAG."""
+        if self.input_dependencies:
+            out_str = ", ".join([x.dag_str for x in self.input_dependencies])
+            out_str += " -> "
+        else:
+            out_str = ""
+        out_str += f"{self.__class__.__name__}[{self.name}]"
+        return out_str
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}[{self.name}]"
+
+    def __str__(self) -> str:
+        return repr(self)
 
     def infer_schema(self) -> Optional["Schema"]:
         """Returns the inferred schema of the output blocks."""

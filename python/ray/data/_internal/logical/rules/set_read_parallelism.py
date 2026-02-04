@@ -6,16 +6,11 @@ from ray import available_resources as ray_available_resources
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
-from ray.data._internal.logical.operators import Read
+from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.planner.plan_read_op import _make_input_data_factory
 from ray.data._internal.util import _autodetect_parallelism
 from ray.data.context import WARN_PREFIX, DataContext
 from ray.data.datasource.datasource import Datasource, Reader
-
-__all__ = [
-    "SetReadParallelismRule",
-    "compute_additional_split_factor",
-]
-
 
 logger = logging.getLogger(__name__)
 
@@ -107,12 +102,12 @@ class SetReadParallelismRule(Rule):
                 continue
             logical_op = plan.op_map[op]
             if isinstance(logical_op, Read):
-                self._apply(op, logical_op)
+                self._apply(plan, op, logical_op)
             ops += op.input_dependencies
 
         return plan
 
-    def _apply(self, op: PhysicalOperator, logical_op: Read):
+    def _apply(self, plan: PhysicalPlan, op: PhysicalOperator, logical_op: Read):
         estimated_in_mem_bytes = logical_op.infer_metadata().size_bytes
 
         (
@@ -134,7 +129,17 @@ class SetReadParallelismRule(Rule):
                 f"Using autodetected parallelism={detected_parallelism} "
                 f"for operator {logical_op.name} to satisfy {reason}."
             )
-        logical_op.set_detected_parallelism(detected_parallelism)
+        updated_logical_op = logical_op.with_detected_parallelism(detected_parallelism)
+        # Update the physical InputDataBuffer to avoid mutating the logical op.
+        if op.input_dependencies and isinstance(
+            op.input_dependencies[0], InputDataBuffer
+        ):
+            op.input_dependencies[0]._input_data_factory = _make_input_data_factory(
+                updated_logical_op,
+                op.data_context,
+                detected_parallelism,
+            )
+        plan.op_map[op] = updated_logical_op
 
         if k is not None:
             logger.debug(
