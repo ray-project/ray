@@ -10,11 +10,10 @@ import logging
 import time
 import uuid
 from collections import defaultdict
-from typing import Any, DefaultDict, Dict, Dict as TDict, List, Optional, Set, Tuple
+from typing import Any, DefaultDict, Dict, List, Optional, Set, Tuple
 
 import pyarrow as pa
 import pyarrow.compute as pc
-import pyarrow.fs as pa_fs
 import pyarrow.parquet as pq
 
 from ray._common.retry import call_with_retry
@@ -60,7 +59,7 @@ class DeltaFileWriter:
     def __init__(
         self,
         *,
-        filesystem: pa_fs.FileSystem,
+        filesystem: pa.fs.FileSystem,
         partition_cols: List[str],
         write_uuid: Optional[str],
         write_kwargs: Dict[str, Any],
@@ -195,7 +194,7 @@ class DeltaFileWriter:
 
     def partition_table(
         self, table: pa.Table, cols: List[str]
-    ) -> TDict[Tuple, pa.Table]:
+    ) -> Dict[Tuple, pa.Table]:
         """Partition table by columns efficiently using Arrow-native operations.
 
         Args:
@@ -246,8 +245,29 @@ class DeltaFileWriter:
             )
 
         struct_arr = pa.StructArray.from_arrays(arrays, fields=fields)
-        enc = pc.dictionary_encode(struct_arr)
-        dictionary, indices = enc.dictionary, enc.indices
+
+        try:
+            enc = pc.dictionary_encode(struct_arr)
+            dictionary, indices = enc.dictionary, enc.indices
+            use_dictionary_keys = True
+        except pa.ArrowNotImplementedError:
+            # Some PyArrow builds don't support dictionary_encode on struct types.
+            # Fallback: hash-based grouping (portable across versions).
+            use_dictionary_keys = False
+
+            # Hash each column and combine hashes deterministically into a single int64-like key.
+            # We can't rely on hash_combine across versions, so do a simple mixing.
+            combined = None
+            for c in cols:
+                h = pc.hash(table[c])
+                if combined is None:
+                    combined = h
+                else:
+                    # mix: combined = combined * 1315423911 + h
+                    combined = pc.add(pc.multiply(combined, 1315423911), h)
+
+            enc = pc.dictionary_encode(combined)
+            dictionary, indices = enc.dictionary, enc.indices
 
         if len(dictionary) > _MAX_PARTITIONS:
             raise ValueError(
@@ -259,11 +279,20 @@ class DeltaFileWriter:
             sub = table.filter(pc.equal(indices, dict_idx))
             if len(sub) == 0:
                 continue
-            key_struct = dictionary[dict_idx]
-            key = tuple(
-                key_struct[i].as_py() if key_struct[i].is_valid else None
-                for i in range(len(cols))
-            )
+
+            if use_dictionary_keys:
+                key_struct = dictionary[dict_idx]
+                key = tuple(
+                    key_struct[i].as_py() if key_struct[i].is_valid else None
+                    for i in range(len(cols))
+                )
+            else:
+                # Derive actual partition key from the first row of the group.
+                # (Hash collisions are extremely unlikely; if you want, you can add
+                # a debug-only collision check here.)
+                first = sub.slice(0, 1)
+                key = tuple(first[c][0].as_py() for c in cols)
+
             for v in key:
                 if v is not None:
                     validate_partition_value(v)
