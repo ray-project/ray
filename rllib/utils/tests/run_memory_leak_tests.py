@@ -49,7 +49,7 @@ parser.add_argument(
 parser.add_argument(
     "--local-mode",
     action="store_true",
-    help="Run ray in local mode for easier debugging.",
+    help=argparse.SUPPRESS,  # Deprecated.
 )
 parser.add_argument(
     "--to-check",
@@ -122,6 +122,9 @@ if __name__ == "__main__":
         # Print out the actual config.
         print("== Test config ==")
         print(yaml.dump(experiment))
+
+        if args.local_mode:
+            raise ValueError("`--local-mode` is no longer supported.")
 
         # Construct the Algorithm instance based on the given config.
         leaking = True

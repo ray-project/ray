@@ -51,7 +51,7 @@ parser.add_argument("--num-cpus", type=int, default=None)
 parser.add_argument(
     "--local-mode",
     action="store_true",
-    help="Run ray in local mode for easier debugging.",
+    help=argparse.SUPPRESS,  # Deprecated.
 )
 parser.add_argument(
     "--num-samples",
@@ -275,6 +275,9 @@ if __name__ == "__main__":
                     **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
                 )
             ]
+
+        if args.local_mode:
+            raise ValueError("`--local-mode` is no longer supported.")
 
         # Try running each test 3 times and make sure it reaches the given
         # reward.
