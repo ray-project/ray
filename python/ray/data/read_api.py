@@ -4359,6 +4359,15 @@ def read_delta(
     else:
         paths = dt.file_uris()
 
+    # If no filesystem was supplied, try to construct one from storage options
+    # so that Parquet reads use the same credentials as Delta metadata access.
+    if filesystem is None and storage_options:
+        from ray.data._internal.datasource.delta.utils import (
+            create_filesystem_from_storage_options,
+        )
+
+        filesystem = create_filesystem_from_storage_options(path, storage_options)
+
     return read_parquet(
         paths,
         filesystem=filesystem,
