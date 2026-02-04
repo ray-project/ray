@@ -1814,17 +1814,10 @@ std::string ReferenceCounter::DebugString() const {
 }
 
 json ReferenceCounter::NestedReferenceCount::ToJson() const {
-  auto object_id_container_to_json = [](const absl::flat_hash_set<ObjectID> &object_ids) {
-    json output = json::array();
-    for (const auto &object_id : object_ids) {
-      output.push_back(object_id.Hex());
-    }
-    return output;
-  };
-  return {{"contained_in_owned", object_id_container_to_json(contained_in_owned)},
-          {"contained_in_borrowed_ids",
-           object_id_container_to_json(contained_in_borrowed_ids)},
-          {"contains", object_id_container_to_json(contains)}};
+  return {
+      {"contained_in_owned", IdContainerToJsonArray(contained_in_owned)},
+      {"contained_in_borrowed_ids", IdContainerToJsonArray(contained_in_borrowed_ids)},
+      {"contains", IdContainerToJsonArray(contains)}};
 }
 
 json ReferenceCounter::BorrowInfo::ToJson() const {
@@ -1859,22 +1852,14 @@ std::string ReferenceCounter::ToJsonString() const {
 }
 
 json ReferenceCounter::Reference::ToJson() const {
-  auto node_id_collection_to_json = [](const absl::flat_hash_set<NodeID> &node_ids) {
-    json output = json::array();
-    for (const auto &node_id : node_ids) {
-      output.push_back(node_id.Hex());
-    }
-    return output;
-  };
   return {
       {"call_site", call_site_},
       {"object_size", object_size_},
-      {"locations", node_id_collection_to_json(locations)},
+      {"locations", IdContainerToJsonArray(locations)},
       {"owner_address", owner_address_ ? AddressToJson(*owner_address_) : json(nullptr)},
       {"pinned_at_node_id",
        pinned_at_node_id_ ? json(pinned_at_node_id_->Hex()) : json(nullptr)},
-      {"tensport_transport",
-       tensor_transport_ ? json(*tensor_transport_) : json(nullptr)},
+      {"tensor_transport", tensor_transport_ ? json(*tensor_transport_) : json(nullptr)},
       {"owned_by_us", owned_by_us_},
       {"lineage_eligibility",
        LineageReconstructionEligibilityToString(lineage_eligibility_)},
