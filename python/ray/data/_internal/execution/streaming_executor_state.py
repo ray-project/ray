@@ -690,7 +690,18 @@ def _format_info_message(
     return f"{title} ({len(entries)} total):\n{body}{suffix}\n"
 
 
-def _find_schemas_mismatch(old_schema: "Schema", new_schema: "Schema") -> str:
+def _find_schemas_mismatch(old_schema: "Schema", new_schema: Optional["Schema"]) -> str:
+    from ray.data.block import _is_empty_schema
+
+    if _is_empty_schema(new_schema):
+        old_fields_info = [
+            f"{name}: {str(t)}" for name, t in zip(old_schema.names, old_schema.types)
+        ]
+        return _format_info_message(
+            "Operator produced a RefBundle with an empty/unknown schema.",
+            old_fields_info,
+        )
+
     # We assume old_schema and new_schema have the same underlying type
     # and can only either be PyArrow schemas or PandasBlockSchema
     old_pairs = [(name, str(t)) for name, t in zip(old_schema.names, old_schema.types)]
@@ -751,7 +762,9 @@ def _find_schemas_mismatch(old_schema: "Schema", new_schema: "Schema") -> str:
         )
 
     return (
-        new_excl_fields_message
+        "Operator produced a RefBundle with a different schema "
+        "than the previous one.\n"
+        + new_excl_fields_message
         + old_excl_fields_message
         + changed_fields_message
         + disordered_message
@@ -793,22 +806,8 @@ def dedupe_schemas_with_validation(
 
     diverged = True
     if warn and enforce_schemas:
-        if _is_empty_schema(bundle.schema):
-            old_fields = [
-                (name, str(t)) for name, t in zip(old_schema.names, old_schema.types)
-            ]
-            warning_message = _format_info_message(
-                "Operator produced a RefBundle with an empty/unknown schema.",
-                list(map(lambda field: f"{field[0]}: {field[1]}", old_fields)),
-            )
-        else:
-            warning_message = _find_schemas_mismatch(old_schema, bundle.schema)
-        logger.warning(
-            f"Operator produced a RefBundle with a different schema "
-            f"than the previous one.\n"
-            f"{warning_message}"
-            f"This may lead to unexpected behavior."
-        )
+        warning_message = _find_schemas_mismatch(old_schema, bundle.schema)
+        logger.warning(f"{warning_message}" f"This may lead to unexpected behavior.")
     if enforce_schemas:
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
 
