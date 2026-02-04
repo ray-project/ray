@@ -63,6 +63,7 @@ from ray.serve._private.constants import (
     HEALTH_CHECK_METHOD,
     HEALTHY_MESSAGE,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
@@ -2310,7 +2311,17 @@ class Replica(ReplicaBase):
                 raise asyncio.CancelledError
 
     async def perform_graceful_shutdown(self):
-        await super().perform_graceful_shutdown()
+        if RAY_SERVE_ENABLE_DIRECT_INGRESS and self._ingress:
+            # In direct ingress mode, we need to wait at least
+            # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give external load
+            # balancers (e.g., ALB) time to deregister the replica, in addition to
+            # waiting for requests to drain.
+            await asyncio.gather(
+                asyncio.sleep(RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S),
+                super().perform_graceful_shutdown(),
+            )
+        else:
+            await super().perform_graceful_shutdown()
 
         # Cancel direct ingress HTTP/gRPC server tasks if they exist.
         if self._direct_ingress_http_server_task:

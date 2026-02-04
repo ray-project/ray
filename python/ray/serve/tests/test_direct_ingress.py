@@ -2072,53 +2072,6 @@ def test_shutdown_replica_only_after_draining_requests(
     )
 
 
-def test_stuck_requests_are_force_killed(_skip_if_ff_not_enabled, serve_instance):
-    signal = SignalActor.remote()
-
-    @serve.deployment(
-        name="stuck-requests-deployment",
-        graceful_shutdown_timeout_s=1,
-    )
-    class StuckRequestsTest:
-        async def __call__(self):
-            # This request will never complete - it waits forever
-            await signal.wait.remote()
-            return "ok"
-
-    serve.run(StuckRequestsTest.bind(), name="stuck-requests-deployment")
-
-    http_url = get_application_url("HTTP", app_name="stuck-requests-deployment")
-
-    with ThreadPoolExecutor() as executor:
-        # Send requests that will hang forever (signal is never sent)
-        futures = [executor.submit(httpx.get, http_url, timeout=60) for _ in range(2)]
-
-        # Wait for requests to be received by the replica
-        wait_for_condition(
-            lambda: ray.get(signal.cur_num_waiters.remote()) == 2, timeout=10
-        )
-
-        # Delete the deployment - requests are still stuck
-        serve.delete("stuck-requests-deployment", _blocking=False)
-
-        # Verify the application is eventually deleted (replica was force-killed).
-        # This should complete within graceful_shutdown_timeout_s (35s) + buffer.
-        wait_for_condition(
-            lambda: "stuck-requests-deployment" not in serve.status().applications,
-            timeout=10,
-        )
-
-        # The stuck requests should fail (connection closed or similar)
-        for future in futures:
-            try:
-                result = future.result(timeout=5)
-                # If we get a response, it should be an error (not 200)
-                assert result.status_code != 200
-            except Exception:
-                # Expected - request failed due to force-kill
-                pass
-
-
 # TODO: haproxy doesn't support /-/routes yet so skipping this test
 def test_http_routes_endpoint(
     _skip_if_ff_not_enabled, _skip_if_haproxy_enabled, serve_instance
@@ -2485,6 +2438,54 @@ def test_get_deployment_config(_skip_if_ff_not_enabled, serve_instance):
     )
     # After the deployment is created, the config should be DeploymentConfig.
     assert isinstance(deployment_config, DeploymentConfig)
+
+
+def test_stuck_requests_are_force_killed(_skip_if_ff_not_enabled, serve_instance):
+    """Keep this test in the end because it leave ports open after the test is done."""
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        name="stuck-requests-deployment",
+        graceful_shutdown_timeout_s=1,
+    )
+    class StuckRequestsTest:
+        async def __call__(self):
+            # This request will never complete - it waits forever
+            await signal.wait.remote()
+            return "ok"
+
+    serve.run(StuckRequestsTest.bind(), name="stuck-requests-deployment")
+
+    http_url = get_application_url("HTTP", app_name="stuck-requests-deployment")
+
+    with ThreadPoolExecutor() as executor:
+        # Send requests that will hang forever (signal is never sent)
+        futures = [executor.submit(httpx.get, http_url, timeout=60) for _ in range(2)]
+
+        # Wait for requests to be received by the replica
+        wait_for_condition(
+            lambda: ray.get(signal.cur_num_waiters.remote()) == 2, timeout=10
+        )
+
+        # Delete the deployment - requests are still stuck
+        serve.delete("stuck-requests-deployment", _blocking=False)
+
+        # Verify the application is eventually deleted (replica was force-killed).
+        # This should complete within graceful_shutdown_timeout_s (35s) + buffer.
+        wait_for_condition(
+            lambda: "stuck-requests-deployment" not in serve.status().applications,
+            timeout=10,
+        )
+
+        # The stuck requests should fail (connection closed or similar)
+        for future in futures:
+            try:
+                result = future.result(timeout=5)
+                # If we get a response, it should be an error (not 200)
+                assert result.status_code != 200
+            except Exception:
+                # Expected - request failed due to force-kill
+                pass
 
 
 if __name__ == "__main__":
