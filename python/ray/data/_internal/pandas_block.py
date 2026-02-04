@@ -32,7 +32,6 @@ from ray.data.block import (
     BlockType,
     U,
 )
-from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DataContext
 from ray.data.expressions import Expr
 
@@ -370,17 +369,6 @@ class PandasBlockAccessor(TableBlockAccessor):
             return self.upsert_column(name, value)
         # Scalar value - use original fill_column logic
         return self._table.assign(**{name: value})
-
-    @staticmethod
-    def _build_tensor_row(row: PandasRow, row_idx: int) -> np.ndarray:
-        from ray.data.extensions import TensorArrayElement
-
-        tensor = row[TENSOR_COLUMN_NAME].iloc[row_idx]
-        if isinstance(tensor, TensorArrayElement):
-            # Getting an item in a Pandas tensor column may return a TensorArrayElement,
-            # which we have to convert to an ndarray.
-            tensor = tensor.to_numpy()
-        return tensor
 
     def slice(self, start: int, end: int, copy: bool = False) -> "pandas.DataFrame":
         view = self._table[start:end]

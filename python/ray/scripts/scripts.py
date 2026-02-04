@@ -669,7 +669,6 @@ Windows powershell users need additional escaping:
 @click.option(
     "--cgroup-path",
     required=False,
-    hidden=True,
     type=str,
     help="The path for the cgroup the raylet should use to enforce resource isolation. "
     "By default, the cgroup used for resource isolation will be /sys/fs/cgroup. "
