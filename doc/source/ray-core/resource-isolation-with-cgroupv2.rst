@@ -111,8 +111,8 @@ Usage
 
 Resource isolation can be enabled and configured when starting a Ray cluster using ``ray start`` or when running Ray locally using ``ray.init``.
 
-Enable Resource Isolation with the CLI
---------------------------------------
+Enable Resource Isolation on a Ray Cluster
+------------------------------------------
 
 .. code-block:: bash
 
@@ -127,6 +127,11 @@ Enable Resource Isolation with the CLI
        --cgroup-path=/sys/fs/cgroup/ray \
        --system-reserved-cpu=1.5 \
        --system-reserved-memory=5368709120
+
+
+If you are using the :doc:`Ray Cluster Launcher </cluster/vms/user-guides/launching-clusters/on-premises>`, you must add the resource isolation flags into the 
+``head_start_ray_commands`` and ``worker_start_ray_commands``.
+
 
 Enable Resource Isolation with the SDK
 --------------------------------------
