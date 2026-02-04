@@ -236,7 +236,7 @@ class NixlTensorTransport(TensorTransportManager):
                 tensor_transport_metadata.nixl_agent_meta_version
             )
 
-            # If the remote agent metadata version is different from the cached version,
+            # If the remote agent metadata version is different from the cached one,
             # it means there was memory deregistered. We need to remove the remote agent
             # and add it again, because `nixlRemoteSection` currently does not support
             # updating descriptor list in such a case (there is potential memory overlap).
