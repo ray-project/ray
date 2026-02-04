@@ -332,4 +332,6 @@ Status CgroupManager::AddProcessToSystemCgroup(const std::string &pid) {
   return AddProcessToCgroup(system_leaf_cgroup_, pid);
 }
 
+std::string CgroupManager::GetBaseCgroup() const { return base_cgroup_; }
+
 }  // namespace ray

@@ -77,6 +77,12 @@ class CgroupManagerInterface {
   virtual Status AddProcessToSystemCgroup(const std::string &pid) = 0;
 
   /**
+    @return the base cgroup path. This is the path to the root cgroup that the cgroup
+            manager will use to create the cgroup hierarchy.
+  */
+  virtual std::string GetBaseCgroup() const = 0;
+
+  /**
     Cleans up the cgroup hierarchy, disables all controllers and removes all
     constraints.
   */

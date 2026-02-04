@@ -34,6 +34,7 @@
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/buffer.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/common/cgroup2/cgroup_manager_factory.h"
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/resource_set.h"
@@ -448,7 +449,12 @@ class NodeManagerTest : public ::testing::Test {
         /*shutdown_raylet_gracefully=*/
         [](const auto &) {},
         [](const std::string &) {},
-        nullptr,
+        CgroupManagerFactory::Create(/*enable_resource_isolation=*/false,
+                                     /*cgroup_path=*/"",
+                                     /*node_id=*/raylet_node_id_.Hex(),
+                                     /*system_reserved_cpu_weight=*/0,
+                                     /*system_reserved_memory_bytes=*/0,
+                                     /*system_pids=*/""),
         shutting_down_,
         *placement_group_resource_manager_,
         boost::asio::basic_socket_acceptor<local_stream_protocol>(io_service_),

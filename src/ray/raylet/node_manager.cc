@@ -239,6 +239,7 @@ NodeManager::NodeManager(
           RayConfig::instance().memory_usage_threshold(),
           RayConfig::instance().min_memory_free_bytes(),
           RayConfig::instance().memory_monitor_refresh_ms(),
+          cgroup_manager->GetBaseCgroup(),
           CreateMemoryUsageRefreshCallback())),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
@@ -3039,7 +3040,7 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
 // below the memory threshold.
 MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
   return [this](bool is_usage_above_threshold,
-                MemorySnapshot system_memory,
+                SystemMemorySnapshot system_memory_snapshot,
                 float usage_threshold) {
     if (high_memory_eviction_target_ != nullptr) {
       if (!high_memory_eviction_target_->GetProcess().IsAlive()) {
@@ -3060,7 +3061,8 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
             << "Still waiting for worker eviction to free up memory. "
             << "worker pid: " << high_memory_eviction_target_->GetProcess().GetId();
       } else {
-        system_memory.process_used_bytes = MemoryMonitor::GetProcessMemoryUsage();
+        ProcessesMemorySnapshot process_memory_snapshot =
+            MemoryMonitor::TakePerProcessMemorySnapshot();
         auto workers = worker_pool_.GetAllRegisteredWorkers();
         if (workers.empty()) {
           RAY_LOG_EVERY_MS(WARNING, 5000)
@@ -3071,7 +3073,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           return;
         }
         auto worker_to_kill_and_should_retry =
-            worker_killing_policy_->SelectWorkerToKill(workers, system_memory);
+            worker_killing_policy_->SelectWorkerToKill(workers, process_memory_snapshot);
         auto worker_to_kill = worker_to_kill_and_should_retry.first;
         bool should_retry = worker_to_kill_and_should_retry.second;
         if (worker_to_kill == nullptr) {
@@ -3081,8 +3083,12 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           high_memory_eviction_target_ = worker_to_kill;
 
           /// TODO: (clarng) expose these strings in the frontend python error as well.
-          std::string oom_kill_details = this->CreateOomKillMessageDetails(
-              worker_to_kill, this->self_node_id_, system_memory, usage_threshold);
+          std::string oom_kill_details =
+              this->CreateOomKillMessageDetails(worker_to_kill,
+                                                this->self_node_id_,
+                                                std::move(system_memory_snapshot),
+                                                std::move(process_memory_snapshot),
+                                                usage_threshold);
           std::string oom_kill_suggestions =
               this->CreateOomKillMessageSuggestions(worker_to_kill, should_retry);
 
@@ -3143,20 +3149,22 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
 std::string NodeManager::CreateOomKillMessageDetails(
     const std::shared_ptr<WorkerInterface> &worker,
     const NodeID &node_id,
-    const MemorySnapshot &system_memory,
+    const SystemMemorySnapshot &system_memory_snapshot,
+    const ProcessesMemorySnapshot &process_memory_snapshot,
     float usage_threshold) const {
-  float usage_fraction =
-      static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
+  float usage_fraction = static_cast<float>(system_memory_snapshot.used_bytes) /
+                         system_memory_snapshot.total_bytes;
   std::string used_bytes_gb = absl::StrFormat(
-      "%.2f", static_cast<float>(system_memory.used_bytes) / 1024 / 1024 / 1024);
+      "%.2f", static_cast<float>(system_memory_snapshot.used_bytes) / 1024 / 1024 / 1024);
   std::string total_bytes_gb = absl::StrFormat(
-      "%.2f", static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024);
+      "%.2f",
+      static_cast<float>(system_memory_snapshot.total_bytes) / 1024 / 1024 / 1024);
   std::stringstream oom_kill_details_ss;
 
   auto pid = worker->GetProcess().GetId();
   int64_t used_bytes = 0;
-  const auto pid_entry = system_memory.process_used_bytes.find(pid);
-  if (pid_entry != system_memory.process_used_bytes.end()) {
+  const auto pid_entry = process_memory_snapshot.find(pid);
+  if (pid_entry != process_memory_snapshot.end()) {
     used_bytes = pid_entry->second;
   } else {
     return "";
@@ -3181,7 +3189,7 @@ std::string NodeManager::CreateOomKillMessageDetails(
       << worker->IpAddress() << "`. To see the logs of the worker, use `ray logs worker-"
       << worker->WorkerId() << "*out -ip " << worker->IpAddress()
       << ". Top 10 memory users:\n"
-      << MemoryMonitor::TopNMemoryDebugString(10, system_memory);
+      << MemoryMonitor::TopNMemoryDebugString(10, process_memory_snapshot);
   return oom_kill_details_ss.str();
 }
 

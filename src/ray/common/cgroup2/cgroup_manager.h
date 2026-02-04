@@ -108,6 +108,12 @@ class CgroupManager : public CgroupManagerInterface {
   Status AddProcessToSystemCgroup(const std::string &pid) override;
 
   /**
+    @return the base cgroup path. This is the path to the root cgroup that the cgroup
+            manager will use to create the cgroup hierarchy.
+  */
+  std::string GetBaseCgroup() const override;
+
+  /**
     Performs cleanup in reverse order from the Initialize function:
       1. remove resource constraints to the system, and user cgroups.
       2. disable controllers on the base, system, and user cgroups respectively.
