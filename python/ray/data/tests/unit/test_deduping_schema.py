@@ -118,7 +118,10 @@ def test_dedupe_schema_mismatch(enforce_schemas: bool, caplog, propagate_logs):
         )
 
         msg = "\n".join(caplog.messages)
-        assert "Operator produced a RefBundle with a different schema" in msg
+        assert (
+            "Operator produced a RefBundle with a different schema than the previous one."
+            in msg
+        )
         assert "Fields exclusive to the incoming schema (1 total):" in msg
         assert "qux: double" in msg
         assert "Fields exclusive to the old schema (1 total):" in msg
@@ -161,7 +164,10 @@ def test_dedupe_schema_many_fields(caplog, propagate_logs):
 
     # Warning message should have truncated 9 schema fields
     msg = "\n".join(caplog.messages)
-    assert "Operator produced a RefBundle with a different schema" in msg
+    assert (
+        "Operator produced a RefBundle with a different schema than the previous one."
+        in msg
+    )
     assert "Fields exclusive to the old schema (29 total):" in msg
     for i in range(1, 21):
         assert f"foo{i}: int64" in msg

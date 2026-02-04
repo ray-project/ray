@@ -675,37 +675,14 @@ def _actor_info_summary_str(info: _ActorPoolInfo) -> str:
         return f"{base} ({info})"
 
 
-SCHEMA_MISMATCH_FIELDS_TO_SHOW = 20
-
-
-def _schema_to_fields(schema: Optional["Schema"]) -> Dict[str, str]:
-    # Helper function for converting Schemas into List of FieldRepr
-    if schema is None:
-        return {}
-
-    import pyarrow as pa
-
-    if isinstance(schema, pa.Schema):
-        return {field.name: str(field.type) for field in schema}
-
-    from ray.data._internal.pandas_block import PandasBlockSchema
-
-    if isinstance(schema, PandasBlockSchema):
-        return {name: str(t) for name, t in zip(schema.names, schema.types)}
-
-    if isinstance(schema, type):
-        return {"<plain Python type>": schema.__name__}
-
-    # Fallback
-    return {"<unknown schema type>": str(schema)}
-
-
-def _format_info_message(title: str, entries: list[str]) -> str:
+def _format_info_message(
+    title: str, entries: list[str], truncate_num_mismatched_fields_to: int = 20
+) -> str:
     if not entries:
         return ""
 
-    shown = entries[:SCHEMA_MISMATCH_FIELDS_TO_SHOW]
-    remainder = len(entries) - SCHEMA_MISMATCH_FIELDS_TO_SHOW
+    shown = entries[:truncate_num_mismatched_fields_to]
+    remainder = len(entries) - truncate_num_mismatched_fields_to
 
     body = "\n".join(f"    {line}" for line in shown)
     suffix = f"\n    ... and {remainder} more" if remainder > 0 else ""
@@ -716,9 +693,10 @@ def _format_info_message(title: str, entries: list[str]) -> str:
 def _find_schemas_mismatch(
     old_schema: "Schema", new_schema: "Schema"
 ) -> Tuple[str, str, str]:
-    # Transform both schemas into FieldRepr Lists
-    old_fields = _schema_to_fields(old_schema)
-    new_fields = _schema_to_fields(new_schema)
+    # We assume old_schema and new_schema have the same underlying type
+    # and can only either be PyArrow schemas or PandasBlockSchema
+    old_fields = {name: str(t) for name, t in zip(old_schema.names, old_schema.types)}
+    new_fields = {name: str(t) for name, t in zip(new_schema.names, new_schema.types)}
 
     new_exclusive_fields = [name for name in new_fields if name not in old_fields]
     old_exclusive_fields = [name for name in old_fields if name not in new_fields]
@@ -797,7 +775,7 @@ def dedupe_schemas_with_validation(
         ) = _find_schemas_mismatch(old_schema, bundle.schema)
         logger.warning(
             f"Operator produced a RefBundle with a different schema "
-            f"than the previous one."
+            f"than the previous one.\n"
             f"{new_excl_fields_message}"
             f"{old_excl_fields_message}"
             f"{changed_fields_message}"
