@@ -27,6 +27,8 @@
 #include <opentelemetry/sdk/metrics/view/view_registry.h>
 
 #include <cassert>
+#include <fstream>
+#include <sstream>
 #include <utility>
 
 #include "ray/common/constants.h"
@@ -103,6 +105,47 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
       exporter_options.metadata.insert(
           {std::string(kAuthTokenKey), token->ToAuthorizationHeaderValue()});
     }
+  }
+  // Configure TLS/SSL credentials to match how Ray's gRPC servers are configured.
+  // When USE_TLS is enabled, the dashboard agent's gRPC server uses SSL, so the
+  // OpenTelemetry exporter must also use SSL to connect successfully.
+  // See https://github.com/ray-project/ray/issues/59968
+  if (RayConfig::instance().USE_TLS()) {
+    exporter_options.use_ssl_credentials = true;
+
+    // Helper lambda to read certificate file contents
+    auto read_cert_file = [](const std::string &filepath) -> std::string {
+      std::ifstream file(filepath);
+      std::stringstream buffer;
+      buffer << file.rdbuf();
+      return buffer.str();
+    };
+
+    // Load CA certificate for server verification
+    std::string ca_cert_file = std::string(RayConfig::instance().TLS_CA_CERT());
+    if (!ca_cert_file.empty()) {
+      exporter_options.ssl_credentials_cacert_as_string = read_cert_file(ca_cert_file);
+    }
+
+#ifdef ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW
+    // Load client certificate and key for mutual TLS (mTLS).
+    // Ray's gRPC server requires client authentication when CA cert is configured.
+    // Note: mTLS support requires the OpenTelemetry SDK to be built with
+    // ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW defined.
+    std::string client_cert_file = std::string(RayConfig::instance().TLS_SERVER_CERT());
+    std::string client_key_file = std::string(RayConfig::instance().TLS_SERVER_KEY());
+    if (!client_cert_file.empty()) {
+      exporter_options.ssl_client_cert_string = read_cert_file(client_cert_file);
+    }
+    if (!client_key_file.empty()) {
+      exporter_options.ssl_client_key_string = read_cert_file(client_key_file);
+    }
+    RAY_LOG(INFO) << "OpenTelemetry metric exporter configured with TLS and mTLS enabled";
+#else
+    RAY_LOG(INFO) << "OpenTelemetry metric exporter configured with TLS enabled "
+                  << "(mTLS not available - SDK built without "
+                  << "ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW)";
+#endif
   }
   auto exporter = std::make_unique<OpenTelemetryMetricExporter>(exporter_options);
 
