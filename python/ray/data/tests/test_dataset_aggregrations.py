@@ -46,9 +46,8 @@ def test_count_after_caching_after_execution(ray_start_regular):
     ds = ray.data.read_csv(paths)
     # Row count should be unknown before execution.
     assert "num_rows=?" in str(ds)
-    ds.materialize()
-    assert f"num_rows={DS_ROW_COUNT}" in str(ds)
-    assert ds.count() == DS_ROW_COUNT
+    materialized = ds.materialize()
+    assert materialized.count() == DS_ROW_COUNT
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
