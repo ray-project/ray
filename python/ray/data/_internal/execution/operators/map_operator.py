@@ -651,7 +651,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
     def all_inputs_done(self):
         self._block_ref_bundler.done_adding_bundles()
-        if self._block_ref_bundler.has_bundle():
+        while self._block_ref_bundler.has_bundle():
             # Handle any leftover bundles in the bundler.
             (
                 _,
@@ -659,6 +659,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             ) = self._block_ref_bundler.get_next_bundle()
 
             self._add_bundled_input(bundled_input)
+
+        assert self._block_ref_bundler.num_blocks() == 0, "Bundler must be empty"
 
         super().all_inputs_done()
 
@@ -855,7 +857,7 @@ class BlockRefBundler(BaseRefBundler):
 
             # Add bundle to the output buffer so long as either
             #   - Output buffer size is still 0
-            #   - Output buffer doesn't exceeds the `_min_rows_per_bundle` threshold
+            #   - Output buffer doesn't exceed the `_min_rows_per_bundle` threshold
             if (
                 output_buffer_size < self._min_rows_per_bundle
                 or output_buffer_size == 0
@@ -864,6 +866,7 @@ class BlockRefBundler(BaseRefBundler):
                 output_buffer_size += bundle_size
             else:
                 remainder = self._bundle_buffer[idx:]
+                break
 
         self._bundle_buffer = remainder
         self._bundle_buffer_size = sum(
