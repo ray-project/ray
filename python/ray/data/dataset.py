@@ -5316,9 +5316,9 @@ class Dataset:
         topic: str,
         bootstrap_servers: str,
         key_field: str | None = None,
+        key_serializer: str = "string",
         value_serializer: str = "json",
         producer_config: dict[str, Any] | None = None,
-        batch_size: int = 100,
         delivery_callback: Callable | None = None,
     ) -> Any:
         """
@@ -5335,18 +5335,18 @@ class Dataset:
             topic: Kafka topic name
             bootstrap_servers: Comma-separated Kafka broker addresses
             key_field: Optional field name to use as message key
-            value_serializer: Serialization format ('json', 'string', or 'bytes')
+            key_serializer: Key serialization format ('json', 'string', or 'bytes')
+            value_serializer: Value serialization format ('json', 'string', or 'bytes')
             producer_config: Additional Kafka producer configuration (kafka-python format)
-            batch_size: Number of records to batch before flushing
             delivery_callback: Optional callback for delivery reports
         """
         sink = KafkaDatasink(
             topic=topic,
             bootstrap_servers=bootstrap_servers,
             key_field=key_field,
+            key_serializer=key_serializer,
             value_serializer=value_serializer,
             producer_config=producer_config,
-            batch_size=batch_size,
             delivery_callback=delivery_callback,
         )
         return self.write_datasink(sink)
