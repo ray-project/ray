@@ -56,16 +56,17 @@ using MemoryUsageRefreshCallback = std::function<void(bool is_usage_above_thresh
 class MemoryMonitor {
  public:
   /**
-   * @param io_service The event loop.
+   * @param io_service the io context the memory monitor will run on
+   *                   and post the callback to.
    * @param usage_threshold A value in [0-1] to indicate the max usage.
    * @param min_memory_free_bytes The minimum amount of free space before it
    *        becomes over the threshold.
    * @param monitor_interval_ms The frequency to update the usage. 0 disables the
    *        monitor and callbacks won't fire.
-   * @param root_cgroup_path The path to the root cgroup that the threshold monitor will
-   *        use to calculate the system memory usage.
    * @param monitor_callback Function to execute on a dedicated thread owned by this
    *        monitor when the usage is refreshed.
+   * @param root_cgroup_path The path to the root cgroup that the threshold monitor will
+   *        use to calculate the system memory usage.
    */
   MemoryMonitor(instrumented_io_context &io_service,
                 float usage_threshold,
@@ -127,17 +128,18 @@ class MemoryMonitor {
    * @brief Checks if memory usage is above the threshold.
    *
    * @param system_memory Snapshot of system memory information.
-   * @param threshold_bytes Usage threshold in bytes.
+   * @param threshold_bytes Usage threshold to check against.
    * @return true if the memory usage of this node is above the threshold.
    */
-  static bool IsUsageAboveThreshold(SystemMemorySnapshot &system_memory,
+  static bool IsUsageAboveThreshold(const SystemMemorySnapshot &system_memory,
                                     int64_t threshold_bytes);
 
   /**
-   * @brief Gets memory information from Cgroup.
+   * @brief Gets memory information from the given cgroup.
    *
-   * @param root_cgroup_path The path to the root cgroup.
-   * @return The used and total memory in bytes from Cgroup.
+   * @param root_cgroup_path The path to the root cgroup
+   *                         to read the memory usage from.
+   * @return The used and total memory in bytes from the cgroup.
    */
   static std::tuple<int64_t, int64_t> GetCGroupMemoryBytes(
       const std::string root_cgroup_path);
@@ -160,7 +162,7 @@ class MemoryMonitor {
   /**
    * @brief Gets memory information for Linux OS.
    *
-   * @param proc_dir The proc directory path.
+   * @param proc_dir The proc directory path to read the memory usage from.
    * @return The used and total memory in bytes for Linux OS.
    */
   static std::tuple<int64_t, int64_t> GetLinuxMemoryBytes(const std::string proc_dir);

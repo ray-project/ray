@@ -20,6 +20,7 @@
 #include <tuple>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
@@ -76,7 +77,7 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
   }
 }
 
-bool MemoryMonitor::IsUsageAboveThreshold(SystemMemorySnapshot &system_memory,
+bool MemoryMonitor::IsUsageAboveThreshold(const SystemMemorySnapshot &system_memory,
                                           int64_t threshold_bytes) {
   int64_t used_memory_bytes = system_memory.used_bytes;
   int64_t total_memory_bytes = system_memory.total_bytes;
@@ -421,18 +422,22 @@ const std::string MemoryMonitor::TopNMemoryDebugString(
     uint32_t top_n,
     const ProcessesMemorySnapshot &process_memory_snapshot,
     const std::string proc_dir) {
-  auto pid_to_memory_usage =
+  std::vector<std::tuple<pid_t, int64_t>> pid_to_memory_usage =
       MemoryMonitor::GetTopNMemoryUsage(top_n, process_memory_snapshot);
 
-  std::string debug_string = "PID\tMEM(GB)\tCOMMAND";
-  for (std::tuple<pid_t, int64_t> entry : pid_to_memory_usage) {
-    auto [pid, memory_used_bytes] = entry;
-    auto pid_string = std::to_string(pid);
-    auto memory_usage_gb = absl::StrFormat(
-        "%.2f", static_cast<float>(memory_used_bytes) / 1024 / 1024 / 1024);
-    auto commandline = MemoryMonitor::TruncateString(
-        MemoryMonitor::GetCommandLineForPid(pid, proc_dir), 100);
-    debug_string += "\n" + pid_string + "\t" + memory_usage_gb + "\t" + commandline;
+  std::string debug_string = "PID\tMEM(GB)\tCOMMAND, ";
+  if (!pid_to_memory_usage.empty()) {
+    debug_string += absl::StrJoin(
+        pid_to_memory_usage,
+        ", ",
+        [&proc_dir](std::string *out, const std::tuple<pid_t, int64_t> &entry) {
+          auto [pid, memory_used_bytes] = entry;
+          std::string memory_usage_gb = absl::StrFormat(
+              "%.2f", static_cast<float>(memory_used_bytes) / 1024 / 1024 / 1024);
+          std::string commandline = MemoryMonitor::TruncateString(
+              MemoryMonitor::GetCommandLineForPid(pid, proc_dir), 100);
+          absl::StrAppend(out, pid, "\t", memory_usage_gb, "\t", commandline);
+        });
   }
 
   return debug_string;

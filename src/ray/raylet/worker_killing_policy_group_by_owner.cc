@@ -90,9 +90,10 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
       selected_group.GetAllWorkers().size() > 1 && selected_group.IsRetriable();
   auto worker_to_kill = selected_group.SelectWorkerToKill();
 
-  RAY_LOG(INFO) << "Sorted list of leases based on the policy:\n"
-                << PolicyDebugString(sorted, process_memory_snapshot)
-                << "\nLease should be retried? " << should_retry;
+  RAY_LOG(INFO) << absl::StrFormat(
+      "Sorted list of leases based on the policy: %s, Lease should be retried? %s",
+      PolicyDebugString(sorted, process_memory_snapshot),
+      should_retry);
 
   return std::make_pair(worker_to_kill, should_retry);
 }
@@ -103,10 +104,12 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
   std::stringstream result;
   int32_t group_index = 0;
   for (auto &group : groups) {
+    if (group_index > 0) {
+      result << ", ";
+    }
     result << "Leases (retriable: " << group.IsRetriable()
            << ") (parent task id: " << group.OwnerId() << ") (Earliest granted time: "
-           << absl::FormatTime(group.GetGrantedLeaseTime(), absl::UTCTimeZone())
-           << "):\n";
+           << absl::FormatTime(group.GetGrantedLeaseTime(), absl::UTCTimeZone()) << "): ";
 
     int64_t worker_index = 0;
     for (auto &worker : group.GetAllWorkers()) {
@@ -119,11 +122,14 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
         RAY_LOG_EVERY_MS(INFO, 60000)
             << "Can't find memory usage for PID, reporting zero. PID: " << pid;
       }
+      if (worker_index > 0) {
+        result << ", ";
+      }
       result << "Lease granted time "
              << absl::FormatTime(worker->GetGrantedLeaseTime(), absl::UTCTimeZone())
              << " worker id " << worker->WorkerId() << " memory used " << used_memory
              << " lease spec "
-             << worker->GetGrantedLease().GetLeaseSpecification().DebugString() << "\n";
+             << worker->GetGrantedLease().GetLeaseSpecification().DebugString();
 
       worker_index += 1;
       if (worker_index > 10) {

@@ -26,6 +26,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/cgroup2/cgroup_test_utils.h"
 #include "ray/common/id.h"
 #include "ray/util/process.h"
 
@@ -44,10 +45,6 @@ class MemoryMonitorTest : public ::testing::Test {
     io_context_.stop();
     thread_->join();
     instance.reset();
-    // Clean up any mock cgroup directories created during the test
-    if (!mock_cgroup_dir_.empty()) {
-      boost::filesystem::remove_all(mock_cgroup_dir_);
-    }
   }
   std::unique_ptr<std::thread> thread_;
   instrumented_io_context io_context_;
@@ -68,7 +65,8 @@ class MemoryMonitorTest : public ::testing::Test {
   }
 
   /**
-   * Creates a mock cgroup v2 directory for emulating memory usage
+   * Sets up a mock cgroup v2 directory for emulating memory usage and populates
+   * the files with the provided mock memory values.
    *
    * @param total_bytes the value to write to memory.max (total memory limit)
    * @param current_bytes the value to write to memory.current (current usage)
@@ -76,29 +74,33 @@ class MemoryMonitorTest : public ::testing::Test {
    * @param active_file_bytes the active_file value in memory.stat
    * @return the path to the created mock cgroup directory
    */
-  std::string MakeMockCgroupV2(int64_t total_bytes,
-                               int64_t current_bytes,
-                               int64_t inactive_file_bytes,
-                               int64_t active_file_bytes) {
-    mock_cgroup_dir_ = UniqueID::FromRandom().Hex();
-    boost::filesystem::create_directory(mock_cgroup_dir_);
+  std::string MockCgroupMemoryUsage(int64_t total_bytes,
+                                    int64_t current_bytes,
+                                    int64_t inactive_file_bytes,
+                                    int64_t active_file_bytes) {
+    auto temp_dir_or = TempDirectory::Create();
+    RAY_CHECK(temp_dir_or.ok())
+        << "Failed to create temp directory: " << temp_dir_or.status().message();
+    mock_cgroup_dir_ = std::move(temp_dir_or.value());
 
-    std::ofstream max_file(mock_cgroup_dir_ + "/memory.max");
-    max_file << total_bytes << std::endl;
-    max_file.close();
+    const std::string &cgroup_path = mock_cgroup_dir_->GetPath();
 
-    std::ofstream current_file(mock_cgroup_dir_ + "/memory.current");
-    current_file << current_bytes << std::endl;
-    current_file.close();
+    mock_memory_max_file_ = std::make_unique<TempFile>(cgroup_path + "/memory.max");
+    mock_memory_max_file_->AppendLine(std::to_string(total_bytes) + "\n");
 
-    std::ofstream stat_file(mock_cgroup_dir_ + "/memory.stat");
-    stat_file << "anon 123456" << std::endl;
-    stat_file << "inactive_file " << inactive_file_bytes << std::endl;
-    stat_file << "active_file " << active_file_bytes << std::endl;
-    stat_file << "some_other_key 789" << std::endl;
-    stat_file.close();
+    mock_memory_current_file_ =
+        std::make_unique<TempFile>(cgroup_path + "/memory.current");
+    mock_memory_current_file_->AppendLine(std::to_string(current_bytes) + "\n");
 
-    return mock_cgroup_dir_;
+    mock_memory_stat_file_ = std::make_unique<TempFile>(cgroup_path + "/memory.stat");
+    mock_memory_stat_file_->AppendLine("anon 123456\n");
+    mock_memory_stat_file_->AppendLine("inactive_file " +
+                                       std::to_string(inactive_file_bytes) + "\n");
+    mock_memory_stat_file_->AppendLine("active_file " +
+                                       std::to_string(active_file_bytes) + "\n");
+    mock_memory_stat_file_->AppendLine("some_other_key 789\n");
+
+    return cgroup_path;
   }
 
   MemoryMonitor &MakeMemoryMonitor(float usage_threshold,
@@ -115,7 +117,12 @@ class MemoryMonitorTest : public ::testing::Test {
     return *instance;
   }
   std::unique_ptr<MemoryMonitor> instance;
-  std::string mock_cgroup_dir_;
+
+  // Mock cgroup directory and files
+  std::unique_ptr<TempDirectory> mock_cgroup_dir_;
+  std::unique_ptr<TempFile> mock_memory_max_file_;
+  std::unique_ptr<TempFile> mock_memory_current_file_;
+  std::unique_ptr<TempFile> mock_memory_stat_file_;
 };
 
 TEST_F(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold) {
@@ -153,7 +160,7 @@ TEST_F(MemoryMonitorTest, TestTakeSystemMemorySnapshotUsesCgroupWhenLowerThanSys
   int64_t expected_used_bytes =
       cgroup_current_bytes - inactive_file_bytes - active_file_bytes;
 
-  std::string cgroup_dir = MakeMockCgroupV2(
+  std::string cgroup_dir = MockCgroupMemoryUsage(
       cgroup_total_bytes, cgroup_current_bytes, inactive_file_bytes, active_file_bytes);
 
   auto system_memory = MemoryMonitor::TakeSystemMemorySnapshot(cgroup_dir);
@@ -233,7 +240,7 @@ TEST_F(MemoryMonitorTest, TestMonitorDetectsMemoryAboveThresholdCallbackExecuted
   int64_t active_file_bytes = 20 * 1024 * 1024;      // 20 MB active file cache
   // Working set = 850 - 30 - 20 = 800 MB (80% of 1GB, above 70% threshold)
 
-  std::string cgroup_dir = MakeMockCgroupV2(
+  std::string cgroup_dir = MockCgroupMemoryUsage(
       cgroup_total_bytes, cgroup_current_bytes, inactive_file_bytes, active_file_bytes);
 
   std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
