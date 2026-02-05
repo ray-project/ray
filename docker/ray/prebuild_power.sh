@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKDIR=$(pwd)
 apt-get update
 apt-get install -y libopenblas-dev liblapack-dev gcc g++ gfortran pkg-config git \
                     make cmake ninja-build openssl libcurl4-openssl-dev
@@ -16,7 +15,7 @@ cd scipy
 git checkout v1.11.4
 git submodule update --init
 pip install -e .
-cd $WORKDIR
+cd /home/ray
 
 
 PYARROW_VER=19.0.1
@@ -53,5 +52,5 @@ python setup.py build_ext --build-type=$BUILD_TYPE --bundle-arrow-cpp bdist_whee
 pip install dist/*.whl
 
 # Cleanup Arrow sources and build artifacts
-cd $WORKDIR
+cd /home/ray
 rm -rf arrow scipy
