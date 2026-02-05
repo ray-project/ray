@@ -51,3 +51,7 @@ cd ../../python
 export BUILD_TYPE=release
 python setup.py build_ext --build-type=$BUILD_TYPE --bundle-arrow-cpp bdist_wheel
 pip install dist/*.whl
+
+# Cleanup Arrow sources and build artifacts
+cd $WORKDIR
+rm -rf arrow scipy
