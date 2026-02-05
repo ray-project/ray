@@ -733,10 +733,20 @@ class ReplicaMetricsManager:
 
     async def _report_utilization_forever(self) -> None:
         """Background task to emit utilization gauge continuously."""
+        consecutive_errors = 0
         while True:
-            await asyncio.sleep(self._utilization_report_interval_s)
-            utilization = self._calculate_utilization()
-            self._replica_utilization_gauge.set(utilization)
+            try:
+                await asyncio.sleep(self._utilization_report_interval_s)
+                utilization = self._calculate_utilization()
+                self._replica_utilization_gauge.set(utilization)
+                consecutive_errors = 0
+            except Exception:
+                logger.exception("Unexpected error reporting utilization metrics.")
+
+                # Exponential backoff starting at 1s and capping at 10s.
+                backoff_time_s = min(10, 2**consecutive_errors)
+                consecutive_errors += 1
+                await asyncio.sleep(backoff_time_s)
 
     def _calculate_utilization(self) -> float:
         """Calculate current utilization percentage based on rolling window.
