@@ -289,7 +289,7 @@ cdef class WorkerID(UniqueID):
     cdef CWorkerID native(self):
         return <CWorkerID>self.data
 
-cdef class ActorID(BaseID):
+cdef class ActorID(BaseID): # TODO: Make generic with __class_getitem__?
 
     def __init__(self, id):
         self._set_id(id)
@@ -323,6 +323,8 @@ cdef class ActorID(BaseID):
         check_id(id, CActorID.Size())
         self.data = CActorID.FromBinary(<c_string>id)
 
+    # TODO: https://github.com/ray-project/ray/issues/53872 crash if ActorID is initialized with .nil()
+    # Add a nil check to the CActorID.JobId() method when this ActorID is nil? or just make the nil() constructor initialize JobID to nil
     @property
     def job_id(self):
         check_nil(self)
