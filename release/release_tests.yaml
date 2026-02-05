@@ -2253,12 +2253,13 @@
   cluster:
     byod:
       type: gpu
+      runtime_env:
+        - RAY_RDT_BENCH_MAX_IN_FLIGHT_BYTES=1073741824
     cluster_compute: experimental/compute_t4_gpu.yaml
 
   run:
     timeout: 1800
     # NIXL currently only works on T4's for <100mb tensors so not enabling.
-    # small change to raise pr
     script: python experimental/rdt_single_node_microbenchmark.py
 
 - name: rdt_single_node_A100_microbenchmark

@@ -12,6 +12,10 @@ from ray.experimental.collective import (
     destroy_all_collective_groups,
 )
 
+# Limit concurrent in-flight transfers to avoid overwhelming GPU object store.
+# Disabled by default; set RAY_RDT_BENCH_MAX_IN_FLIGHT_BYTES to enable.
+MAX_IN_FLIGHT_BYTES = int(os.environ.get("RAY_RDT_BENCH_MAX_IN_FLIGHT_BYTES", "-1"))
+
 ray.init(
     runtime_env={
         "env_vars": {
@@ -84,9 +88,14 @@ def throughput_new_send_per_recv(
     ray.get(receiver.recv.remote(send_ref))
     ############
     start = time.perf_counter()
+    max_in_flight = (
+        None if MAX_IN_FLIGHT_BYTES <= 0 else max(1, MAX_IN_FLIGHT_BYTES // size)
+    )
     for _ in range(num_transfers):
         send_ref = sender.send.options(tensor_transport=transport).remote(size, device)
         refs.append(receiver.recv.remote(send_ref))
+        if max_in_flight is not None and len(refs) >= max_in_flight:
+            _, refs = ray.wait(refs, num_returns=1)
     ray.get(refs)
     return time.perf_counter() - start
 
