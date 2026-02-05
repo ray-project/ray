@@ -216,7 +216,7 @@ class ResourceManager:
             op.update_resource_usage()
             op_usage = op.current_logical_usage()
             op_running_usage = op.running_processor_usage()
-            op_pending_usage = op.pending_processor_usage()
+            op_pending_usage = op.pending_logical_usage()
 
             assert not op_usage.object_store_memory
             assert not op_running_usage.object_store_memory

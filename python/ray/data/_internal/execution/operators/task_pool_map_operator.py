@@ -145,7 +145,7 @@ class TaskPoolMapOperator(MapOperator):
             memory=self._ray_remote_args.get("memory", 0) * num_active_workers,
         )
 
-    def pending_processor_usage(self) -> ExecutionResources:
+    def pending_logical_usage(self) -> ExecutionResources:
         return ExecutionResources()
 
     def incremental_resource_usage(self) -> ExecutionResources:

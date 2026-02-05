@@ -697,22 +697,22 @@ class PhysicalOperator(Operator):
         progress bar.
 
         Note, this method returns `current_logical_usage() -
-        pending_processor_usage()` by default. Subclasses should only override
-        `pending_processor_usage()` if needed.
+        pending_logical_usage()` by default. Subclasses should only override
+        `pending_logical_usage()` if needed.
         """
         usage = self.current_logical_usage()
-        usage = usage.subtract(self.pending_processor_usage())
+        usage = usage.subtract(self.pending_logical_usage())
         return usage
 
-    def pending_processor_usage(self) -> ExecutionResources:
-        """Returns the estimated pending CPU and GPU usage of this operator, excluding
-        object store memory.
+    def pending_logical_usage(self) -> ExecutionResources:
+        """Returns the estimated pending CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
 
         This method is called by the resource manager and the streaming
         executor to display the number of currently pending actors in the
         progress bar.
         """
-        return ExecutionResources(0, 0, 0)
+        return ExecutionResources(0, 0, 0, 0)
 
     def min_max_resource_requirements(
         self,

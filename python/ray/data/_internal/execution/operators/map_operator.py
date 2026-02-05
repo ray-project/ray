@@ -706,7 +706,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def pending_processor_usage(self) -> ExecutionResources:
+    def pending_logical_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
     @abstractmethod
