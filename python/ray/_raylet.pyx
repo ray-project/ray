@@ -4604,8 +4604,8 @@ cdef class CoreWorker:
     def get_reference_counter_debug_json(self):
         """Returns a JSON string of the internal state of the ReferenceCounter.
 
-        NOTE: This is an expensive method and must only be used for debugging.
-        Do NOT use this for writing tests or production observability.
+        NOTE: This is NOT a stable API. It should only be used for debugging and
+        NEVER in tests or production code.
         """
         cdef:
             c_string debug_json
