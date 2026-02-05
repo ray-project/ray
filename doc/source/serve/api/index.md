@@ -141,6 +141,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.get_app_handle
    serve.get_deployment_handle
    serve.grpc_util.RayServegRPCContext
+   serve.grpc_util.gRPCInputStream
    serve.exceptions.BackPressureError
    serve.exceptions.RayServeException
    serve.exceptions.RequestCancelledError
