@@ -2415,9 +2415,7 @@ typing-extensions==4.15.0
 typing-inspection==0.4.2
     # via pydantic
 tzdata==2025.2
-    # via
-    #   kombu
-    #   pandas
+    # via kombu
 tzlocal==5.3
     # via -r python/requirements/cloud-requirements.txt
 uc-micro-py==1.0.3
