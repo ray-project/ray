@@ -356,7 +356,11 @@ class RefBundle:
                 if metadata.num_rows is not None
                 else "unknown rows"
             )
-            bytes_str = memory_string(metadata.size_bytes)
+            bytes_str = (
+                memory_string(metadata.size_bytes)
+                if metadata.size_bytes is not None
+                else "unknown bytes"
+            )
             slice_str = (
                 f"slice={block_slice}"
                 if block_slice is not None
