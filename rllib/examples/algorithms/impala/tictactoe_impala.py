@@ -44,7 +44,7 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 Four policies are trained plus a fifth random policy are randomly paired against
-each other. Training is stopped when policy 0 achieves a random of < -0.3 within
+each other. Training is stopped when policy 0 achieves a return of < -0.3 within
 2 million timesteps. A reward close to 0 or positive indicates
 the policies are learning to win or draw more often than they lose.
 """
@@ -63,7 +63,6 @@ from ray.rllib.examples.utils import (
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_MODULE_RETURN_MEAN,
-    EPISODE_RETURN_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 
@@ -125,7 +124,9 @@ stop = {
     f"{ENV_RUNNER_RESULTS}/{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
     TRAINING_ITERATION: args.stop_iters,
 }
-success_metric = {f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}/p0": args.stop_reward}
+success_metric = {
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_MODULE_RETURN_MEAN}/p0": args.stop_reward
+}
 
 if __name__ == "__main__":
     run_rllib_example_script_experiment(
