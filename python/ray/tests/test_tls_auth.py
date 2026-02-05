@@ -182,18 +182,30 @@ try:
     # Try to fetch metrics from the Prometheus endpoint
     metrics_url = f"http://127.0.0.1:{metrics_port}"
 
-    # Give the metrics agent time to start
+    # C++ component metrics that only appear when the OpenTelemetry gRPC exporter
+    # successfully connects with TLS. Python metrics (~26) are exported even when
+    # TLS is broken, but C++ metrics (~87 total) require working TLS configuration.
+    cpp_metric_prefixes = ["ray_gcs_", "ray_object_directory_", "ray_grpc_"]
+
+    # Give the metrics agent time to start and export C++ metrics
     for _ in range(30):
         try:
             response = requests.get(metrics_url, timeout=1)
             if response.status_code == 200:
-                # Successfully fetched metrics
-                assert "ray_" in response.text, "Expected ray metrics in response"
-                break
+                # Check for C++ component metrics (proves TLS is working)
+                has_cpp_metrics = any(
+                    prefix in response.text for prefix in cpp_metric_prefixes
+                )
+                if has_cpp_metrics:
+                    break
         except requests.exceptions.RequestException:
-            time.sleep(1)
+            pass
+        time.sleep(1)
     else:
-        raise AssertionError("Failed to fetch metrics within timeout")
+        raise AssertionError(
+            "Failed to fetch C++ component metrics within timeout. "
+            "This indicates TLS configuration may not be working correctly."
+        )
 finally:
     ray.shutdown()
     """,

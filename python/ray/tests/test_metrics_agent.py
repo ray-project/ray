@@ -1244,14 +1244,22 @@ def test_metrics_export_with_tls(use_tls, ray_start_cluster):
         prom_addresses = [build_address(addr, metrics_export_port)]
         timeseries = PrometheusTimeseries()
 
-        def check_metrics_available():
+        def check_cpp_metrics_available():
             fetch_prometheus_timeseries(prom_addresses, timeseries)
-            metric_names = timeseries.metric_descriptors.keys()
-            # Check for some basic Ray metrics
-            return any("ray_" in name for name in metric_names)
+            metric_names = list(timeseries.metric_descriptors.keys())
+            # Check for C++ component metrics that only appear when the OpenTelemetry
+            # gRPC exporter successfully connects with TLS. Python metrics (~26) are
+            # exported even when TLS is broken, but C++ metrics (~87 total) require
+            # working TLS configuration to be exported via OpenTelemetry.
+            cpp_metric_prefixes = ["ray_gcs_", "ray_object_directory_", "ray_grpc_"]
+            has_cpp_metrics = any(
+                any(name.startswith(prefix) for prefix in cpp_metric_prefixes)
+                for name in metric_names
+            )
+            return has_cpp_metrics
 
-        # Wait for metrics to be available
-        wait_for_condition(check_metrics_available, timeout=30, retry_interval_ms=1000)
+        # Wait for C++ metrics to be available (proves TLS is working)
+        wait_for_condition(check_cpp_metrics_available, timeout=30, retry_interval_ms=1000)
 
     finally:
         if "RAY_enable_open_telemetry" in os.environ:
