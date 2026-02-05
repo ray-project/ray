@@ -54,7 +54,7 @@ def run_validation_fn(
     )
     if not isinstance(metrics_dict, dict):
         raise ValueError(
-            "The validate function must return a dictionary of metrics. "
+            "The validation function must return a dictionary of metrics. "
             f"Got {type(metrics_dict)} instead."
         )
     return metrics_dict
@@ -79,7 +79,22 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         # Finished validations that have yet to be processed
         self._finished_validations = OrderedDict()
 
-        # TODO: checkpoint/restore validation manager state
+        self._requeue_incomplete_validations()
+
+    def _requeue_incomplete_validations(self):
+        """Add _TrainingReports for incomplete validations to the queue."""
+        for checkpoint, (
+            training_result,
+            validation,
+        ) in self._checkpoint_manager.get_pending_training_results().items():
+            if validation:
+                self._training_report_queue.append(
+                    _TrainingReport(
+                        metrics=training_result.metrics,
+                        checkpoint=checkpoint,
+                        validation=validation,
+                    )
+                )
 
     def after_report(
         self,
@@ -132,14 +147,9 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         for _ in range(num_validations_to_start):
             training_report = self._training_report_queue.popleft()
             # TODO: handle timeouts - ray.remote() does not have them
-            if isinstance(training_report.validation, ValidationTaskConfig):
-                merged_kwargs = {
-                    **self._validation_config.task_config.ray_remote_kwargs,
-                    **training_report.validation.ray_remote_kwargs,
-                }
-            else:
-                merged_kwargs = self._validation_config.task_config.ray_remote_kwargs
-            run_validation_fn_with_options = run_validation_fn.options(**merged_kwargs)
+            run_validation_fn_with_options = run_validation_fn.options(
+                **self._validation_config.ray_remote_kwargs,
+            )
             validate_task = run_validation_fn_with_options.remote(
                 self._validation_config,
                 training_report.validation,
