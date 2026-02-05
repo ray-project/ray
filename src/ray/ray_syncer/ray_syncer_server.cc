@@ -54,7 +54,7 @@ RayServerBidiReactor::RayServerBidiReactor(
       auth_token_(std::move(auth_token)),
       auth_token_validator_(auth_token_validator) {
   if (ray::rpc::GetAuthenticationMode() == ray::rpc::AuthenticationMode::TOKEN) {
-    if ((!auth_token_ || auth_token_->empty()) && !IsK8sTokenAuthEnabled()) {
+    if ((!auth_token_ || auth_token_->empty()) && !ray::rpc::IsK8sTokenAuthEnabled()) {
       RAY_LOG(WARNING) << "Missing token in syncer "
                        << NodeID::FromBinary(GetRemoteNodeID());
       Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "Missing token in syncer"));
