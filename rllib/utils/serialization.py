@@ -11,8 +11,6 @@ import numpy as np
 import ray
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.error import NotSerializable
-from ray.rllib.utils.spaces.flexdict import FlexDict
-from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
 
 NOT_SERIALIZABLE = "__not_serializable__"
@@ -150,21 +148,6 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
             "dtype": sp.dtype.str,
         }
 
-    def _repeated(sp: Repeated) -> Dict:
-        return {
-            "space": "repeated",
-            "child_space": gym_space_to_dict(sp.child_space),
-            "max_len": sp.max_len,
-        }
-
-    def _flex_dict(sp: FlexDict) -> Dict:
-        d = {
-            "space": "flex_dict",
-        }
-        for k, s in sp.spaces:
-            d[k] = gym_space_to_dict(s)
-        return d
-
     def _text(sp: "gym.spaces.Text") -> Dict:
         # Note (Kourosh): This only works in gym >= 0.25.0
         charset = getattr(sp, "character_set", None)
@@ -197,10 +180,6 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
         return _text(space)
     elif isinstance(space, Simplex):
         return _simplex(space)
-    elif isinstance(space, Repeated):
-        return _repeated(space)
-    elif isinstance(space, FlexDict):
-        return _flex_dict(space)
     else:
         raise ValueError("Unknown space type for serialization, ", type(space))
 
@@ -281,14 +260,6 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
     def _simplex(d: Dict) -> Simplex:
         return Simplex(**__common(d))
 
-    def _repeated(d: Dict) -> Repeated:
-        child_space = gym_space_from_dict(d["child_space"])
-        return Repeated(child_space=child_space, max_len=d["max_len"])
-
-    def _flex_dict(d: Dict) -> FlexDict:
-        spaces = {k: gym_space_from_dict(s) for k, s in d.items() if k != "space"}
-        return FlexDict(spaces=spaces)
-
     def _text(d: Dict) -> "gym.spaces.Text":
         return gym.spaces.Text(**__common(d))
 
@@ -300,8 +271,6 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
         "tuple": _tuple,
         "dict": _dict,
         "simplex": _simplex,
-        "repeated": _repeated,
-        "flex_dict": _flex_dict,
         "text": _text,
     }
 
