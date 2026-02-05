@@ -16,6 +16,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>  // Changed for read-only string parameters
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -99,10 +100,7 @@ class ReferenceCounterInterface {
   ///
   /// \param[in] object_id The object to to increment the count for.
   virtual void AddLocalReference(const ObjectID &object_id,
-                                 const std::string &call_site) = 0;
-
-  /// Decrease the local reference count for the ObjectID by one.
-  ///
+                                 std::string_view call_site) = 0;  // Changed: read-only param
   /// \param[in] object_id The object to decrement the count for.
   /// \param[out] deleted List to store objects that hit zero ref count.
   virtual void RemoveLocalReference(const ObjectID &object_id,
@@ -187,7 +185,7 @@ class ReferenceCounterInterface {
       const ObjectID &object_id,
       const std::vector<ObjectID> &contained_ids,
       const rpc::Address &owner_address,
-      const std::string &call_site,
+      std::string_view call_site,  // Changed: read-only param
       const int64_t object_size,
       LineageReconstructionEligibility lineage_eligibility,
       bool add_local_ref,
@@ -532,7 +530,7 @@ class ReferenceCounterInterface {
   /// \param[in] spilled_node_id The ID of the node on which the object was spilled.
   /// \return True if the reference exists and is in scope, false otherwise.
   virtual bool HandleObjectSpilled(const ObjectID &object_id,
-                                   const std::string &spilled_url,
+                                   std::string_view spilled_url,  // Changed: read-only param
                                    const NodeID &spilled_node_id) = 0;
 
   /// Get locality data for object. This is used by the leasing policy to implement

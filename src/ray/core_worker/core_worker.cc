@@ -249,37 +249,39 @@ void TaskCounter::RecordMetrics() {
   }
 }
 
-void TaskCounter::SetMetricStatus(const std::string &func_name,
+void TaskCounter::SetMetricStatus(std::string_view func_name,  // Changed: read-only param
                                   rpc::TaskStatus status,
                                   bool is_retry) {
   absl::MutexLock l(&mu_);
+  auto func_name_str = std::string(func_name);  // Convert once for reuse
   // Add a no-op increment to counter_ so that
   // it will invoke a callback upon RecordMetrics.
-  counter_.Increment({func_name, TaskStatusType::kRunning, is_retry}, 0);
+  counter_.Increment({func_name_str, TaskStatusType::kRunning, is_retry}, 0);
   if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
-    running_in_get_counter_.Increment({func_name, is_retry});
+    running_in_get_counter_.Increment({func_name_str, is_retry});
   } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
-    running_in_wait_counter_.Increment({func_name, is_retry});
+    running_in_wait_counter_.Increment({func_name_str, is_retry});
   } else if (status == rpc::TaskStatus::GETTING_AND_PINNING_ARGS) {
-    pending_getting_and_pinning_args_fetch_counter_.Increment({func_name, is_retry});
+    pending_getting_and_pinning_args_fetch_counter_.Increment({func_name_str, is_retry});
   } else {
     RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
   }
 }
 
-void TaskCounter::UnsetMetricStatus(const std::string &func_name,
+void TaskCounter::UnsetMetricStatus(std::string_view func_name,  // Changed: read-only param
                                     rpc::TaskStatus status,
                                     bool is_retry) {
   absl::MutexLock l(&mu_);
+  auto func_name_str = std::string(func_name);  // Convert once for reuse
   // Add a no-op decrement to counter_ so that
   // it will invoke a callback upon RecordMetrics.
-  counter_.Decrement({func_name, TaskStatusType::kRunning, is_retry}, 0);
+  counter_.Decrement({func_name_str, TaskStatusType::kRunning, is_retry}, 0);
   if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
-    running_in_get_counter_.Decrement({func_name, is_retry});
+    running_in_get_counter_.Decrement({func_name_str, is_retry});
   } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
-    running_in_wait_counter_.Decrement({func_name, is_retry});
+    running_in_wait_counter_.Decrement({func_name_str, is_retry});
   } else if (status == rpc::TaskStatus::GETTING_AND_PINNING_ARGS) {
-    pending_getting_and_pinning_args_fetch_counter_.Decrement({func_name, is_retry});
+    pending_getting_and_pinning_args_fetch_counter_.Decrement({func_name_str, is_retry});
   } else {
     RAY_LOG(FATAL) << "Unexpected status " << rpc::TaskStatus_Name(status);
   }
@@ -569,7 +571,7 @@ void CoreWorker::ConnectToRayletInternal() {
 
 void CoreWorker::Disconnect(
     const rpc::WorkerExitType &exit_type,
-    const std::string &exit_detail,
+    std::string_view exit_detail,  // Changed: read-only param
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   // Force stats export before exiting the worker.
   RecordMetrics();
@@ -657,7 +659,7 @@ void CoreWorker::KillChildProcs() {
 
 void CoreWorker::Exit(
     const rpc::WorkerExitType exit_type,
-    const std::string &detail,
+    std::string_view detail,  // Changed: read-only param
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   // Preserve actor creation failure details by marking a distinct shutdown reason
   // when initialization raised an exception. An exception payload is provided.
@@ -673,7 +675,7 @@ void CoreWorker::Exit(
 }
 
 void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
-                           const std::string &detail) {
+                           std::string_view detail) {  // Changed: read-only param
   RAY_LOG(DEBUG) << "ForceExit called: exit_type=" << static_cast<int>(exit_type)
                  << ", detail=" << detail;
 
@@ -688,12 +690,12 @@ const WorkerID &CoreWorker::GetWorkerID() const { return worker_context_->GetWor
 
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id,
                                   uint64_t attempt_number,
-                                  const std::string &task_name) {
+                                  std::string_view task_name) {  // Changed: read-only param
   worker_context_->SetCurrentTaskId(task_id, attempt_number);
   {
     absl::MutexLock lock(&mutex_);
     main_thread_task_id_ = task_id;
-    main_thread_task_name_ = task_name;
+    main_thread_task_name_ = std::string(task_name);  // Convert for storage
   }
 }
 
@@ -945,13 +947,13 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
     const ObjectID &object_id,
     const ObjectID &outer_object_id,
     const rpc::Address &owner_address,
-    const std::string &serialized_object_status) {
+    std::string_view serialized_object_status) {  // Changed: read-only param
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
   reference_counter_->AddBorrowedObject(object_id, outer_object_id, owner_address);
 
   rpc::GetObjectStatusReply object_status;
-  object_status.ParseFromString(serialized_object_status);
+  object_status.ParseFromString(std::string(serialized_object_status));  // Convert for protobuf
 
   if (object_status.has_object() && !reference_counter_->OwnedByUs(object_id)) {
     // We already have the inlined object status, process it immediately.
@@ -1751,8 +1753,8 @@ TaskID CoreWorker::GetCallerId() const {
 }
 
 Status CoreWorker::PushError(const JobID &job_id,
-                             const std::string &type,
-                             const std::string &error_message,
+                             std::string_view type,  // Changed: read-only param
+                             std::string_view error_message,  // Changed: read-only param
                              double timestamp) {
   return raylet_ipc_client_->PushError(job_id, type, error_message, timestamp);
 }
@@ -1780,16 +1782,16 @@ json CoreWorker::OverrideRuntimeEnv(const json &child,
 }
 
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
-    const std::string &serialized_runtime_env_info) const {
+    std::string_view serialized_runtime_env_info) const {  // Changed: read-only param
   auto factory = [this](const std::string &runtime_env_info_str) {
     return OverrideTaskOrActorRuntimeEnvInfoImpl(runtime_env_info_str);
   };
-  return runtime_env_json_serialization_cache_.GetOrCreate(serialized_runtime_env_info,
+  return runtime_env_json_serialization_cache_.GetOrCreate(std::string(serialized_runtime_env_info),  // Convert for cache key
                                                            std::move(factory));
 }
 
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfoImpl(
-    const std::string &serialized_runtime_env_info) const {
+    std::string_view serialized_runtime_env_info) const {  // Changed: read-only param
   // TODO(Catch-Bull,SongGuyang): task runtime env not support the field eager_install
   // yet, we will overwrite the filed eager_install when it did.
   std::shared_ptr<json> parent = nullptr;
@@ -1798,7 +1800,7 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
   runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>();
 
   if (!IsRuntimeEnvInfoEmpty(serialized_runtime_env_info)) {
-    RAY_CHECK(google::protobuf::util::JsonStringToMessage(serialized_runtime_env_info,
+    RAY_CHECK(google::protobuf::util::JsonStringToMessage(std::string(serialized_runtime_env_info),  // Convert for protobuf
                                                           runtime_env_info.get())
                   .ok());
   }
@@ -1854,7 +1856,7 @@ void CoreWorker::BuildCommonTaskSpec(
     TaskSpecBuilder &builder,
     const JobID &job_id,
     const TaskID &task_id,
-    const std::string &name,
+    std::string_view name,  // Changed: read-only param
     const TaskID &current_task_id,
     uint64_t task_index,
     const TaskID &caller_id,
@@ -1864,12 +1866,12 @@ void CoreWorker::BuildCommonTaskSpec(
     int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    const std::string &debugger_breakpoint,
+    std::string_view debugger_breakpoint,  // Changed: read-only param
     int64_t depth,
-    const std::string &serialized_runtime_env_info,
-    const std::string &call_site,
+    std::string_view serialized_runtime_env_info,  // Changed: read-only param
+    std::string_view call_site,  // Changed: read-only param
     const TaskID &main_thread_current_task_id,
-    const std::string &concurrency_group_name,
+    std::string_view concurrency_group_name,  // Changed: read-only param
     bool include_job_config,
     int64_t generator_backpressure_num_objects,
     bool enable_task_events,
@@ -1932,7 +1934,7 @@ void CoreWorker::BuildCommonTaskSpec(
   }
 }
 
-void CoreWorker::PrestartWorkers(const std::string &serialized_runtime_env_info,
+void CoreWorker::PrestartWorkers(std::string_view serialized_runtime_env_info,  // Changed: read-only param
                                  uint64_t keep_alive_duration_secs,
                                  size_t num_workers) {
   rpc::PrestartWorkersRequest request;
@@ -1957,9 +1959,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     int max_retries,
     bool retry_exceptions,
     const rpc::SchedulingStrategy &scheduling_strategy,
-    const std::string &debugger_breakpoint,
-    const std::string &serialized_retry_exception_allowlist,
-    const std::string &call_site,
+    std::string_view debugger_breakpoint,  // Changed: read-only param
+    std::string_view serialized_retry_exception_allowlist,  // Changed: read-only param
+    std::string_view call_site,  // Changed: read-only param
     const TaskID current_task_id) {
   SubscribeToNodeChanges();
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
@@ -2033,8 +2035,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
                                const ActorCreationOptions &actor_creation_options,
-                               const std::string &extension_data,
-                               const std::string &call_site,
+                               std::string_view extension_data,  // Changed: read-only param
+                               std::string_view call_site,  // Changed: read-only param
                                ActorID *return_actor_id) {
   SubscribeToNodeChanges();
   RAY_CHECK(actor_creation_options.scheduling_strategy.scheduling_strategy_case() !=
@@ -2372,8 +2374,8 @@ Status CoreWorker::SubmitActorTask(
     const TaskOptions &task_options,
     int max_retries,
     bool retry_exceptions,
-    const std::string &serialized_retry_exception_allowlist,
-    const std::string &call_site,
+    std::string_view serialized_retry_exception_allowlist,  // Changed: read-only param
+    std::string_view call_site,  // Changed: read-only param
     std::vector<rpc::ObjectReference> &task_returns,
     const TaskID current_task_id) {
   SubscribeToNodeChanges();
@@ -2596,10 +2598,10 @@ std::optional<rpc::ActorTableData::ActorState> CoreWorker::GetLocalActorState(
   return actor_task_submitter_->GetLocalActorState(actor_id);
 }
 
-ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized,
+ActorID CoreWorker::DeserializeAndRegisterActorHandle(std::string_view serialized,  // Changed: read-only param
                                                       const ObjectID &outer_object_id,
                                                       bool add_local_ref) {
-  auto actor_handle = std::make_unique<ActorHandle>(serialized);
+  auto actor_handle = std::make_unique<ActorHandle>(std::string(serialized));  // Convert for constructor
   return actor_manager_->RegisterActorHandle(std::move(actor_handle),
                                              outer_object_id,
                                              CurrentCallSite(),
@@ -2622,12 +2624,12 @@ std::shared_ptr<const ActorHandle> CoreWorker::GetActorHandle(
 }
 
 std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorHandle(
-    const std::string &name, const std::string &ray_namespace) {
+    std::string_view name, std::string_view ray_namespace) {  // Changed: read-only params
   RAY_CHECK(!name.empty());
   return actor_manager_->GetNamedActorHandle(
-      name,
+      std::string(name),  // Convert for function expecting std::string
       ray_namespace.empty() ? worker_context_->GetCurrentJobConfig().ray_namespace()
-                            : ray_namespace,
+                            : std::string(ray_namespace),  // Convert if needed
       CurrentCallSite(),
       rpc_address_);
 }
@@ -2661,7 +2663,7 @@ ResourceMappingType CoreWorker::GetResourceIDs() const {
 }
 
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
-    const std::string &event_name) {
+    std::string_view event_name) {  // Changed: read-only param
   return std::make_unique<worker::ProfileEvent>(
       *task_event_buffer_, *worker_context_, options_.node_ip_address, event_name);
 }
@@ -3603,10 +3605,10 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
 StatusSet<StatusT::InvalidArgument> CoreWorker::ProcessSubscribeMessage(
     const rpc::SubMessage &sub_message,
     rpc::ChannelType channel_type,
-    const std::string &key_id,
+    std::string_view key_id,  // Changed: read-only param
     const NodeID &subscriber_id) {
   StatusSet<StatusT::InvalidArgument> result =
-      object_info_publisher_->RegisterSubscription(channel_type, subscriber_id, key_id);
+      object_info_publisher_->RegisterSubscription(channel_type, subscriber_id, std::string(key_id));  // Convert for function
   if (result.has_error()) {
     return result;
   }
@@ -3729,7 +3731,7 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
 
 void CoreWorker::AddSpilledObjectLocationOwner(
     const ObjectID &object_id,
-    const std::string &spilled_url,
+    std::string_view spilled_url,  // Changed: read-only param
     const NodeID &spilled_node_id,
     const std::optional<ObjectID> &generator_id) {
   RAY_LOG(DEBUG).WithField(object_id).WithField(spilled_node_id)
@@ -4539,13 +4541,13 @@ std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
 
 void CoreWorker::RecordTaskLogStart(const TaskID &task_id,
                                     int32_t attempt_number,
-                                    const std::string &stdout_path,
-                                    const std::string &stderr_path,
+                                    std::string_view stdout_path,  // Changed: read-only param
+                                    std::string_view stderr_path,  // Changed: read-only param
                                     int64_t stdout_start_offset,
                                     int64_t stderr_start_offset) const {
   rpc::TaskLogInfo task_log_info;
-  task_log_info.set_stdout_file(stdout_path);
-  task_log_info.set_stderr_file(stderr_path);
+  task_log_info.set_stdout_file(std::string(stdout_path));  // Convert for protobuf
+  task_log_info.set_stderr_file(std::string(stderr_path));  // Convert for protobuf
   task_log_info.set_stdout_start(stdout_start_offset);
   task_log_info.set_stderr_start(stderr_start_offset);
 
