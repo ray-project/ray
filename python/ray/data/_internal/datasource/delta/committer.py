@@ -203,7 +203,6 @@ def _build_partition_delete_predicate(
         quote_identifier,
     )
 
-
     # Extract unique partition value combinations from file actions
     partition_combinations = set()
     for action in file_actions:
@@ -266,7 +265,9 @@ def commit_to_existing_table(
     """
     # For OVERWRITE mode, delete existing data
     if inputs.mode == "overwrite":
-        partition_overwrite_mode = inputs.write_kwargs.get("partition_overwrite_mode", "static")
+        partition_overwrite_mode = inputs.write_kwargs.get(
+            "partition_overwrite_mode", "static"
+        )
         if partition_overwrite_mode not in ("static", "dynamic"):
             raise ValueError(
                 f"Invalid partition_overwrite_mode '{partition_overwrite_mode}'. "
@@ -274,7 +275,9 @@ def commit_to_existing_table(
             )
         if partition_overwrite_mode == "dynamic" and inputs.partition_cols:
             # Dynamic partition overwrite: only delete partitions being written
-            pred = _build_partition_delete_predicate(file_actions, inputs.partition_cols)
+            pred = _build_partition_delete_predicate(
+                file_actions, inputs.partition_cols
+            )
             if pred:
                 table.delete(pred)
             else:

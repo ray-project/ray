@@ -457,11 +457,19 @@ def test_write_delta_overwrite_dynamic_multiple_partitions(
     result = ray.data.read_delta(temp_delta_path).take_all()
     assert len(result) == 4
     # Check updated values
-    assert any(r["year"] == 2023 and r["month"] == 1 and r["value"] == 111 for r in result)
-    assert any(r["year"] == 2024 and r["month"] == 2 and r["value"] == 444 for r in result)
+    assert any(
+        r["year"] == 2023 and r["month"] == 1 and r["value"] == 111 for r in result
+    )
+    assert any(
+        r["year"] == 2024 and r["month"] == 2 and r["value"] == 444 for r in result
+    )
     # Check unchanged partitions
-    assert any(r["year"] == 2023 and r["month"] == 2 and r["value"] == 200 for r in result)
-    assert any(r["year"] == 2024 and r["month"] == 1 and r["value"] == 300 for r in result)
+    assert any(
+        r["year"] == 2023 and r["month"] == 2 and r["value"] == 200 for r in result
+    )
+    assert any(
+        r["year"] == 2024 and r["month"] == 1 and r["value"] == 300 for r in result
+    )
 
 
 def test_write_delta_overwrite_dynamic_no_partitions(
@@ -658,14 +666,16 @@ def test_write_delta_overwrite_dynamic_all_null_partitions(
     result = ray.data.read_delta(temp_delta_path).take_all()
     assert len(result) == 3
     # Check all-NULL partition was updated
-    all_null = [
-        r for r in result if r["year"] is None and r["month"] is None
-    ]
+    all_null = [r for r in result if r["year"] is None and r["month"] is None]
     assert len(all_null) == 1
     assert all_null[0]["value"] == 999
     # Check other partitions unchanged
-    assert any(r["year"] == 2023 and r["month"] == 1 and r["value"] == 100 for r in result)
-    assert any(r["year"] == 2023 and r["month"] is None and r["value"] == 200 for r in result)
+    assert any(
+        r["year"] == 2023 and r["month"] == 1 and r["value"] == 100 for r in result
+    )
+    assert any(
+        r["year"] == 2023 and r["month"] is None and r["value"] == 200 for r in result
+    )
 
 
 def test_build_partition_delete_predicate_unit():
