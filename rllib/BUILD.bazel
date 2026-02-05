@@ -665,7 +665,7 @@ py_test(
         "--num-env-runners=8",
         "--num-gpus-per-learner=1",
         "--num-learners=2",
-        "--stop-reward=-2.0",
+        "--stop-reward=-1",
     ],
     main = "examples/algorithms/impala/tictactoe_impala.py",
     tags = [
@@ -1985,6 +1985,17 @@ py_test(
     name = "env/tests/test_infinite_lookback_buffer",
     size = "small",
     srcs = ["env/tests/test_infinite_lookback_buffer.py"],
+    tags = [
+        "env",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "env/tests/test_env_runner",
+    size = "medium",
+    srcs = ["env/tests/test_env_runner.py"],
     tags = [
         "env",
         "team:rllib",
