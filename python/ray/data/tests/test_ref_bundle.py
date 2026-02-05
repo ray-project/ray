@@ -394,12 +394,15 @@ def test_ref_bundle_str_with_pyarrow_schema():
         schema=schema,
     )
 
-    result = str(bundle)
-    # Should show clean schema format without truncated pandas metadata
-    assert "id: int64, name: string" in result
-    assert "pandas:" not in result  # No pandas metadata in output
-    assert "240.0B" in result  # Human-readable bytes
-    assert "12 rows" in result
+    expected = """RefBundle(1 blocks,
+  12 rows,
+  schema={id: int64, name: string},
+  owns_blocks=False,
+  blocks=(
+    0: 12 rows, 240.0B, slice=None (full block)
+  )
+)"""
+    assert str(bundle) == expected
 
 
 def test_ref_bundle_str_with_none_schema():
@@ -457,12 +460,17 @@ def test_ref_bundle_str_with_large_bytes():
         schema=None,
     )
 
-    result = str(bundle)
-    # Check that human-readable formats are used
-    assert "2.0KiB" in result
-    assert "2.0MiB" in result
-    assert "3.0GiB" in result
-    assert "11100 rows" in result  # Total rows
+    expected = """RefBundle(3 blocks,
+  11100 rows,
+  schema=None,
+  owns_blocks=True,
+  blocks=(
+    0: 100 rows, 2.0KiB, slice=None (full block)
+    1: 1000 rows, 2.0MiB, slice=None (full block)
+    2: 10000 rows, 3.0GiB, slice=None (full block)
+  )
+)"""
+    assert str(bundle) == expected
 
 
 def test_ref_bundle_str_with_pandas_schema():
@@ -481,10 +489,15 @@ def test_ref_bundle_str_with_pandas_schema():
         schema=schema,
     )
 
-    result = str(bundle)
-    # Should format with column names and types
-    assert "col1: int, col2: str" in result
-    assert "500.0B" in result
+    expected = """RefBundle(1 blocks,
+  10 rows,
+  schema={col1: int, col2: str},
+  owns_blocks=True,
+  blocks=(
+    0: 10 rows, 500.0B, slice=None (full block)
+  )
+)"""
+    assert str(bundle) == expected
 
 
 def test_merge_ref_bundles():
