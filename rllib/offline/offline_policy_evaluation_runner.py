@@ -14,10 +14,10 @@ import gymnasium as gym
 import numpy
 
 import ray
-from ray.air._internal.torch_utils import (
+from ray.data.iterator import DataIterator
+from ray.data.util.torch_utils import (
     convert_ndarray_batch_to_torch_tensor_batch,
 )
-from ray.data.iterator import DataIterator
 from ray.rllib.connectors.env_to_module import EnvToModulePipeline
 from ray.rllib.core import (
     ALL_MODULES,
