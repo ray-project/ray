@@ -44,6 +44,8 @@ constexpr const char *kNoTokenErrorMessage =
     "or store the token in any file and set RAY_AUTH_TOKEN_PATH to point to it, "
     "or set the RAY_AUTH_TOKEN environment variable.";
 
+const int32_t kRaySATokenTTLSeconds = 300;
+
 AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
   static AuthenticationTokenLoader instance;
   return instance;
@@ -52,6 +54,16 @@ AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
 std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
     bool ignore_auth_mode) {
   absl::MutexLock lock(&token_mutex_);
+
+  // If k8s token auth is enabled, revoke cached token as Kubelet
+  // will expire and auto rotate new service account tokens every hour by default.
+  // Use 5 minutes as a default as users can configure the expiration time.
+  if (IsK8sTokenAuthEnabled()) {
+    if (cached_token_ && std::chrono::steady_clock::now() - last_load_time_ >
+                             std::chrono::seconds(kRaySATokenTTLSeconds)) {
+      cached_token_ = nullptr;
+    }
+  }
 
   // If already loaded, return cached value
   if (cached_token_) {
@@ -76,6 +88,7 @@ std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
   // Cache and return the loaded token
   if (has_token) {
     cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
+    last_load_time_ = std::chrono::steady_clock::now();
   }
   return cached_token_;
 }
@@ -83,6 +96,16 @@ std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
 TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
   absl::MutexLock lock(&token_mutex_);
   TokenLoadResult result;
+
+  // If k8s token auth is enabled, revoke cached token as Kubelet
+  // will expire and auto rotate new service account tokens every hour by default.
+  // Use 5 minutes as a default as users can configure the expiration time.
+  if (IsK8sTokenAuthEnabled()) {
+    if (cached_token_ && std::chrono::steady_clock::now() - last_load_time_ >
+                             std::chrono::seconds(kRaySATokenTTLSeconds)) {
+      cached_token_ = nullptr;
+    }
+  }
 
   // If already loaded, return cached value
   if (cached_token_) {
@@ -112,6 +135,7 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
   }
   // Cache and return success
   cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
+  last_load_time_ = std::chrono::steady_clock::now();
   result.token = *cached_token_;  // Copy back for return
   return result;
 }
