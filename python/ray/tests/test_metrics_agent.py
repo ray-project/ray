@@ -1213,5 +1213,63 @@ def test_invalid_system_metric_names(caplog):
         MetricsAgentGauge("name.cannot.have.dots", "", "", [])
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Cryptography (TLS dependency) doesn't install in Mac build pipeline",
+)
+@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+@pytest.mark.parametrize("use_tls", [True], indirect=True)
+def test_metrics_export_with_tls(use_tls, monkeypatch):
+    """Test that OpenTelemetry metrics can be exported when TLS is enabled.
+
+    This verifies that the OpenTelemetry metric exporter correctly configures
+    TLS/mTLS credentials to communicate with the dashboard agent's gRPC server.
+    See https://github.com/ray-project/ray/issues/59968
+    """
+    # Enable OpenTelemetry metrics - set before ray.init()
+    monkeypatch.setenv("RAY_enable_open_telemetry", "true")
+
+    # Start Ray directly in this process (not via run_string_as_driver)
+    # This ensures TLS environment variables set by use_tls fixture are inherited
+    ray.init(_system_config={"metrics_report_interval_ms": 1000})
+    try:
+        # Run a simple task to generate activity and trigger metrics
+        @ray.remote
+        def dummy_task():
+            return 1
+
+        ray.get(dummy_task.remote())
+
+        # Get metrics port
+        node_info = ray.nodes()[0]
+        metrics_port = node_info["MetricsExportPort"]
+        assert metrics_port > 0, f"Expected valid metrics port, got {metrics_port}"
+
+        metrics_url = f"http://127.0.0.1:{metrics_port}"
+
+        # C++ component metrics that only appear when the OpenTelemetry gRPC exporter
+        # successfully connects with TLS. Python metrics (~26) are exported even when
+        # TLS is broken, but C++ metrics (~87 total) require working TLS configuration.
+        cpp_metric_prefixes = ["ray_gcs_", "ray_object_directory_", "ray_grpc_"]
+
+        def check_cpp_metrics():
+            import requests
+
+            try:
+                response = requests.get(metrics_url, timeout=2)
+                if response.status_code == 200:
+                    return any(
+                        prefix in response.text for prefix in cpp_metric_prefixes
+                    )
+            except requests.exceptions.RequestException:
+                pass
+            return False
+
+        # Wait for C++ metrics to be available (proves TLS is working)
+        wait_for_condition(check_cpp_metrics, timeout=60, retry_interval_ms=1000)
+    finally:
+        ray.shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
