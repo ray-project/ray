@@ -1905,7 +1905,7 @@ def read_numpy(
     )
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 def read_zarr(
     paths: Union[str, List[str]],
     *,
