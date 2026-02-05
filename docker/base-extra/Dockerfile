@@ -8,7 +8,8 @@ ENV TERM=xterm
 
 ARG SSH_PORT=5020
 
-ARG PYTHON_DEPSET
+ARG PYTHON_VERSION=3.10
+ARG PYTHON_DEPSET="python/deplocks/base_extra/ray_base_extra_py${PYTHON_VERSION}.lock"
 
 COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
@@ -58,6 +59,10 @@ APT_PKGS=(
     ssh
     curl
     gdb
+
+    # For HAProxy
+    socat
+    liblua5.3-0
 )
 
 sudo apt-get update -y
@@ -91,8 +96,6 @@ if [[ "$ARCH" == "x86_64" ]]; then
     )
     rm -rf "${DYNOLOG_TMP}"
 fi
-
-PYTHON_VERSION="$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 
 uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
     -r $HOME/python_depset.lock
@@ -233,13 +236,9 @@ RUN <<EOF
 #!/bin/bash
 set -euo pipefail
 
-apt-get update -y
-apt-get install -y --no-install-recommends socat liblua5.3-0
-
 mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
 chown -R ray:"$(id -gn ray)" /run/haproxy
 
-rm -rf /var/lib/apt/lists/*
 EOF
 
 USER ray

@@ -38,9 +38,9 @@ while [[ $# -gt 0 ]]; do
             BUILD_ARGS+=("-q")
         ;;
         --python-version)
-            # Python version to install. e.g. 3.9
+            # Python version to install. e.g. 3.10
             # Changing python versions may require a different wheel.
-            # If not provided defaults to 3.9
+            # If not provided defaults to 3.10
             shift
             PYTHON_VERSION="$1"
         ;;
@@ -64,6 +64,7 @@ RAY_DEPS_BUILD_DIR="$(mktemp -d)"
 cp docker/base-deps/Dockerfile "${RAY_DEPS_BUILD_DIR}/."
 mkdir -p "${RAY_DEPS_BUILD_DIR}/python"
 cp python/requirements_compiled.txt "${RAY_DEPS_BUILD_DIR}/python/requirements_compiled.txt"
+cp python/requirements_compiled_py${PYTHON_VERSION}.txt "${RAY_DEPS_BUILD_DIR}/python/requirements_compiled_py${PYTHON_VERSION}.txt"
 PYTHON_DEPSET_FILE_NAME="ray_base_deps_py${PYTHON_VERSION}.lock"
 REQUIREMENTS_FILE_BASE_DEPS="python/deplocks/base_deps/${PYTHON_DEPSET_FILE_NAME}"
 

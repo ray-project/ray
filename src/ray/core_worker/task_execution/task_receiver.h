@@ -51,22 +51,19 @@ class TaskReceiver {
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       RepeatedObjectRefCount *borrower_refs,
       bool *is_retryable_error,
+      std::string *actor_repr_name,
       std::string *application_error)>;
-
-  using OnActorCreationTaskDone = std::function<Status()>;
 
   TaskReceiver(instrumented_io_context &task_execution_service,
                worker::TaskEventBuffer &task_event_buffer,
                TaskHandler task_handler,
                ActorTaskExecutionArgWaiter &actor_task_execution_arg_waiter,
-               std::function<std::function<void()>()> initialize_thread_callback,
-               OnActorCreationTaskDone actor_creation_task_done)
+               std::function<std::function<void()>()> initialize_thread_callback)
       : task_handler_(std::move(task_handler)),
         task_execution_service_(task_execution_service),
         task_event_buffer_(task_event_buffer),
         waiter_(actor_task_execution_arg_waiter),
         initialize_thread_callback_(std::move(initialize_thread_callback)),
-        actor_creation_task_done_(std::move(actor_creation_task_done)),
         normal_task_execution_queue_(std::make_unique<NormalTaskExecutionQueue>()),
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
         fiber_state_manager_(nullptr) {}
@@ -101,21 +98,21 @@ class TaskReceiver {
 
   void Stop();
 
-  /// Set the actor repr name for an actor.
-  ///
-  /// The actor repr name is only available after actor creation task has been run since
-  /// the repr name could include data only initialized during the creation task.
-  void SetActorReprName(const std::string &repr_name);
-
  private:
-  // True once shutdown begins. Requests to execute new tasks will be rejected.
-  std::atomic<bool> stopping_ = false;
-
   /// Set up the configs for an actor.
   /// This should be called once for the actor creation task.
   void SetupActor(bool is_asyncio,
                   int fiber_max_concurrency,
                   bool allow_out_of_order_execution);
+
+  void HandleTaskExecutionResult(Status status,
+                                 const TaskSpecification &task_spec,
+                                 const TaskExecutionResult &result,
+                                 const rpc::SendReplyCallback &send_reply_callback,
+                                 rpc::PushTaskReply *reply);
+
+  // True once shutdown begins. Requests to execute new tasks will be rejected.
+  std::atomic<bool> stopping_ = false;
 
   /// The callback function to process a task.
   TaskHandler task_handler_;
@@ -130,9 +127,6 @@ class TaskReceiver {
 
   /// The language-specific callback function that initializes threads.
   std::function<std::function<void()>()> initialize_thread_callback_;
-
-  /// The callback function to be invoked when finishing a task.
-  OnActorCreationTaskDone actor_creation_task_done_;
 
   /// Queue of actor tasks waiting to execute, keyed on the ID of the worker that
   /// submitted the task.
@@ -160,10 +154,6 @@ class TaskReceiver {
   /// Whether this actor executes tasks out of order with respect to client submission
   /// order.
   bool allow_out_of_order_execution_ = false;
-
-  /// The repr name of the actor instance for an anonymous actor.
-  /// This is only available after the actor creation task.
-  std::string actor_repr_name_;
 
   /// The concurrency groups of this worker's actor, computed from actor creation task
   /// spec.

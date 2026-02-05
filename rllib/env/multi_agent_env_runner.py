@@ -230,6 +230,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
             # Sample "num_timesteps" timesteps.
             if num_timesteps is not None:
+                assert num_timesteps >= 0
                 samples = self._sample(
                     num_timesteps=num_timesteps,
                     explore=explore,
@@ -238,6 +239,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 )
             # Sample "num_episodes" episodes.
             elif num_episodes is not None:
+                assert num_episodes >= 0
                 samples = self._sample(
                     num_episodes=num_episodes,
                     explore=explore,
@@ -461,18 +463,15 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
                     old_episode_id = self._ongoing_episodes[env_index].id_
                     # Create a new episode object with no data in it.
-                    # Note: If we're about to break (reached target num_episodes), skip
-                    # the `on_episode_created` callback since this episode will never be
-                    # used (it gets discarded on the next sample() call).
-                    self._new_episode(
-                        env_index,
-                        self._ongoing_episodes,
-                        call_on_episode_created=(eps != num_episodes),
-                    )
+                    self._new_episode(env_index, self._ongoing_episodes)
                     # Register the mapping of new episode ID to old episode ID.
                     self._shared_data["vector_env_episodes_map"].update(
                         {old_episode_id: self._ongoing_episodes[env_index].id_}
                     )
+
+                    # Stop processing more envs if we've collected enough episodes.
+                    if num_episodes is not None and eps >= num_episodes:
+                        break
 
             # Env-to-module connector pass (cache results as we will do the RLModule
             # forward pass only in the next `while`-iteration).
@@ -634,13 +633,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     for sa_eps in eps.agent_episodes.values()
                 },
             )
-            module_episode_returns = defaultdict(
-                float,
-                {
-                    sa_eps.module_id: sa_eps.get_return()
-                    for sa_eps in eps.agent_episodes.values()
-                },
-            )
+            # Multiple agents can point to same module_id so we need to accumulate returns per module_id.
+            module_episode_returns = defaultdict(float)
+            for sa_eps in eps.agent_episodes.values():
+                module_episode_returns[sa_eps.module_id] += sa_eps.get_return()
 
             # Don't forget about the already returned chunks of this episode.
             if eps.id_ in self._ongoing_episodes_for_metrics:
@@ -916,7 +912,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         if self.env is not None:
             self.env.close()
 
-    def _new_episode(self, env_index, episodes=None, call_on_episode_created=True):
+    def _new_episode(self, env_index, episodes=None):
         episodes = episodes if episodes is not None else self._ongoing_episodes
         episodes[env_index] = MultiAgentEpisode(
             observation_space={
@@ -929,8 +925,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             },
             agent_to_module_mapping_fn=self.config.policy_mapping_fn,
         )
-        if call_on_episode_created:
-            self._make_on_episode_callback("on_episode_created", env_index, episodes)
+        self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
     def _make_on_episode_callback(
         self, which: str, idx: int, episodes: List[MultiAgentEpisode]

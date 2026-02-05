@@ -8,7 +8,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from itertools import chain
-from typing import TYPE_CHECKING, Awaitable, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Awaitable, Dict, List, Optional, Set
 
 import aioboto3
 import boto3
@@ -361,6 +361,8 @@ class Test(dict):
         """
         Returns whether this test is jailed with open issue.
         """
+        from github import GithubException
+
         # is jailed
         state = self.get_state()
         if state != TestState.JAILED:
@@ -370,8 +372,14 @@ class Test(dict):
         issue_number = self.get(self.KEY_GITHUB_ISSUE_NUMBER)
         if issue_number is None:
             return False
-        issue = ray_github.get_issue(issue_number)
-        return issue.state == "open"
+        try:
+            issue = ray_github.get_issue(issue_number)
+            return issue.state == "open"
+        except GithubException as e:
+            logger.warning(
+                f"Failed to get issue {issue_number} for test {self.get_name()} from GitHub: {e}"
+            )
+            return False
 
     def is_stable(self) -> bool:
         """
@@ -420,44 +428,32 @@ class Test(dict):
             return WINDOWS_BISECT_DAILY_RATE_LIMIT
         return BISECT_DAILY_RATE_LIMIT
 
+    def _get_byod_config(self) -> Dict[str, Any]:
+        """Returns the BYOD configuration for the test."""
+        return self.get("cluster", {}).get("byod", {})
+
     def get_byod_type(self) -> str:
-        """
-        Returns the type of the BYOD cluster.
-        """
-        return self["cluster"]["byod"].get("type", "cpu")
+        """Returns the type of the BYOD cluster."""
+        return self._get_byod_config().get("type", "cpu")
 
     def get_tag_suffix(self) -> str:
-        """
-        Returns the tag suffix for the BYOD image.
-        """
+        """Returns the tag suffix for the BYOD image."""
         byod_type = self.get_byod_type()
         if byod_type.startswith("llm-"):
             return byod_type[len("llm-") :]
         return byod_type
 
     def get_byod_post_build_script(self) -> Optional[str]:
-        """
-        Returns the post-build script for the BYOD cluster.
-        """
-        return self["cluster"]["byod"].get("post_build_script", None)
+        """Returns the post-build script for the BYOD cluster."""
+        return self._get_byod_config().get("post_build_script", None)
 
     def get_byod_python_depset(self) -> Optional[str]:
-        """
-        Returns the lock file path.
-        """
-        return self["cluster"]["byod"].get("python_depset", None)
+        """Returns the lock file path."""
+        return self._get_byod_config().get("python_depset", None)
 
     def get_byod_runtime_env(self) -> Dict[str, str]:
-        """
-        Returns the runtime environment variables for the BYOD cluster.
-        """
-        return _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
-
-    def get_byod_pips(self) -> List[str]:
-        """
-        Returns the list of pips for the BYOD cluster.
-        """
-        return self["cluster"]["byod"].get("pip", [])
+        """Returns the runtime environment variables for the BYOD cluster."""
+        return _convert_env_list_to_dict(self._get_byod_config().get("runtime_env", []))
 
     def get_ray_version(self) -> Optional[str]:
         """
@@ -468,9 +464,7 @@ class Test(dict):
         return self["cluster"].get("ray_version", None)
 
     def get_name(self) -> str:
-        """
-        Returns the name of the test.
-        """
+        """Returns the name of the test."""
         return self["name"]
 
     def get_target(self) -> str:
@@ -494,15 +488,11 @@ class Test(dict):
         return test_name.replace("/", "_")
 
     def get_oncall(self) -> str:
-        """
-        Returns the oncall for the test.
-        """
+        """Returns the oncall for the test."""
         return self["team"]
 
     def update_from_s3(self, force_branch_bucket: bool = True) -> None:
-        """
-        Update test object with data fields that exist only on s3
-        """
+        """Update test object with data fields that exist only on s3."""
         try:
             data = (
                 boto3.client("s3")
@@ -522,15 +512,11 @@ class Test(dict):
                 self[key] = value
 
     def get_state(self) -> TestState:
-        """
-        Returns the state of the test.
-        """
+        """Returns the state of the test."""
         return TestState(self.get("state", TestState.PASSING.value))
 
     def set_state(self, state: TestState) -> None:
-        """
-        Sets the state of the test.
-        """
+        """Sets the state of the test."""
         self["state"] = state.value
 
     def get_python_version(self) -> str:
@@ -557,9 +543,7 @@ class Test(dict):
         return f"{build_id}-{python_version}-{self.get_tag_suffix()}"
 
     def get_byod_image_tag(self, build_id: Optional[str] = None) -> str:
-        """
-        Returns the byod custom image tag to use for this test.
-        """
+        """Returns the byod custom image tag to use for this test."""
         if not self.require_custom_byod_image():
             return self.get_byod_base_image_tag(build_id)
         custom_info = {
@@ -580,9 +564,7 @@ class Test(dict):
         return self.get_byod_type().startswith("llm-")
 
     def get_byod_repo(self) -> str:
-        """
-        Returns the byod repo to use for this test.
-        """
+        """Returns the byod repo to use for this test."""
         if self.use_byod_ml_image():
             return DATAPLANE_ECR_ML_REPO
         if self.use_byod_llm_image():
@@ -590,17 +572,16 @@ class Test(dict):
         return DATAPLANE_ECR_REPO
 
     def get_byod_ecr(self) -> str:
-        """
-        Returns the anyscale byod ecr to use for this test.
-        """
+        """Returns the anyscale byod ecr to use for this test."""
+        global_config = get_global_config()
         if self.is_gce() or self.is_kuberay():
-            return get_global_config()["byod_gcp_cr"]
+            return global_config["byod_gcp_cr"]
         if self.is_azure():
-            return get_global_config()["byod_azure_cr"]
-        byod_ecr = get_global_config()["byod_aws_cr"]
+            return global_config["byod_azure_cr"]
+        byod_ecr = global_config["byod_aws_cr"]
         if byod_ecr:
             return byod_ecr
-        return get_global_config()["byod_ecr"]
+        return global_config["byod_ecr"]
 
     def get_anyscale_base_byod_image(self, build_id: Optional[str] = None) -> str:
         """
@@ -721,15 +702,11 @@ class Test(dict):
         return TestResult.from_dict(json.loads(object_body.decode("utf-8")))
 
     def persist_result_to_s3(self, result: Result) -> bool:
-        """
-        Persist result object to s3
-        """
+        """Persist result object to s3."""
         self.persist_test_result_to_s3(TestResult.from_result(result))
 
     def persist_test_result_to_s3(self, test_result: TestResult) -> bool:
-        """
-        Persist test result object to s3
-        """
+        """Persist test result object to s3."""
         s3_put_rayci_test_data(
             Bucket=get_write_state_machine_aws_bucket(),
             Key=f"{AWS_TEST_RESULT_KEY}/"
@@ -738,9 +715,7 @@ class Test(dict):
         )
 
     def persist_to_s3(self) -> bool:
-        """
-        Persist test object to s3
-        """
+        """Persist test object to s3."""
         s3_put_rayci_test_data(
             Bucket=get_write_state_machine_aws_bucket(),
             Key=f"{AWS_TEST_KEY}/{self._get_s3_name(self.get_name())}.json",

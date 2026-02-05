@@ -2,7 +2,7 @@ import abc
 import time
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from ray_release.anyscale_util import LAST_LOGS_LENGTH, get_project_name
+from ray_release.anyscale_util import get_project_name
 from ray_release.aws import (
     RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
     add_tags_to_aws_config,
@@ -22,7 +22,6 @@ class ClusterManager(abc.ABC):
         project_id: str,
         sdk: Optional["AnyscaleSDK"] = None,
         smoke_test: bool = False,
-        log_streaming_limit: int = LAST_LOGS_LENGTH,
     ):
         self.sdk = sdk or get_anyscale_sdk()
 
@@ -30,7 +29,6 @@ class ClusterManager(abc.ABC):
         self.smoke_test = smoke_test
         self.project_id = project_id
         self.project_name = get_project_name(self.project_id, self.sdk)
-        self.log_streaming_limit = log_streaming_limit
 
         self.cluster_name = (
             f"{test.get_name()}{'-smoke-test' if smoke_test else ''}_{int(time.time())}"
