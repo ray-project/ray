@@ -1233,8 +1233,20 @@ def test_metrics_export_with_tls(use_tls, ray_start_cluster):
 
     try:
         cluster = ray_start_cluster
-        cluster.add_node()
+        # Configure metrics reporting interval for faster metric collection
+        cluster.add_node(
+            _system_config={
+                "metrics_report_interval_ms": 1000,
+            }
+        )
         ray.init(address=cluster.address)
+
+        # Run a simple task to generate some activity and trigger metrics
+        @ray.remote
+        def dummy_task():
+            return 1
+
+        ray.get(dummy_task.remote())
 
         node_info = ray.nodes()[0]
         metrics_export_port = node_info["MetricsExportPort"]
@@ -1258,11 +1270,15 @@ def test_metrics_export_with_tls(use_tls, ray_start_cluster):
                 any(name.startswith(prefix) for prefix in cpp_metric_prefixes)
                 for name in metric_names
             )
+            if not has_cpp_metrics and metric_names:
+                # Debug: print what metrics we do have
+                print(f"Available metrics ({len(metric_names)}): {sorted(metric_names)[:20]}...")
             return has_cpp_metrics
 
         # Wait for C++ metrics to be available (proves TLS is working)
+        # Use longer timeout since metrics may take time to be collected and exported
         wait_for_condition(
-            check_cpp_metrics_available, timeout=30, retry_interval_ms=1000
+            check_cpp_metrics_available, timeout=60, retry_interval_ms=2000
         )
 
     finally:
