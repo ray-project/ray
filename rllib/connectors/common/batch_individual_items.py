@@ -20,7 +20,7 @@ class BatchIndividualItems(ConnectorV2):
     Note: This is one of the default env-to-module or Learner ConnectorV2 pieces that
     are added automatically by RLlib into every env-to-module/Learner connector
     pipeline, unless `config.add_default_connectors_to_env_to_module_pipeline` or
-    `config.add_default_connectors_to_learner_pipeline ` are set to
+    `config.add_default_connectors_to_learner_pipeline` are set to
     False.
 
     The default env-to-module connector pipeline is:
