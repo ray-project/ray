@@ -280,7 +280,6 @@ class FuseOperators(Rule):
         if isinstance(down_logical_op, StreamingRepartition):
             if not (
                 isinstance(up_logical_op, MapBatches)
-                and up_logical_op.batch_size is not None
                 and down_logical_op.target_num_rows_per_block is not None
                 and down_logical_op.target_num_rows_per_block > 0
             ):
@@ -296,8 +295,8 @@ class FuseOperators(Rule):
             # without cross-task buffering. See `_fuse_streaming_repartition_operators_in_dag`
             # docstring for details.
             return (
-                up_logical_op.batch_size % down_logical_op.target_num_rows_per_block
-                == 0
+                up_logical_op.batch_size is not None
+                and up_logical_op.batch_size % down_logical_op.target_num_rows_per_block == 0
             )
         # Other operators cannot fuse with StreamingRepartition.
         if isinstance(up_logical_op, StreamingRepartition):
