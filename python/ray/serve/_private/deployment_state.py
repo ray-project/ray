@@ -3350,6 +3350,11 @@ class DeploymentState:
         if (
             active_replicas
             and self._curr_status_info.status == DeploymentStatus.HEALTHY
+            # Skip consistency check if there are STARTING replicas. During node
+            # migration, new replicas are created in STARTING state (without ranks)
+            # after the status is set to HEALTHY. Running the consistency check
+            # with STARTING replicas causes "active keys without ranks" error.
+            and self._replicas.count(states=[ReplicaState.STARTING]) == 0
         ):
             replicas_to_reconfigure = (
                 self._rank_manager.check_rank_consistency_and_reassign_minimally(
