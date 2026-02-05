@@ -254,10 +254,10 @@ class TestResourceManager:
         for op in [o1, o2, o3]:
             op.update_resource_usage = MagicMock()
             op.current_processor_usage = MagicMock(
-                return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0)
+                return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0, memory=0)
             )
             op.running_processor_usage = MagicMock(
-                return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0)
+                return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0, memory=0)
             )
             op.pending_processor_usage = MagicMock(
                 return_value=ExecutionResources.zero()
