@@ -98,16 +98,24 @@ def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
             fetch_local=False,
             timeout=0.1,
         )
+
         for ref in ready:
             task = ref_to_task[ref]
             if isinstance(task, DataOpTask):
-                task.on_data_ready(None)
+                # NOTE: This will read out task outputs to completion
+                task.on_data_ready(max_bytes_to_read=None)
             else:
                 assert isinstance(task, MetadataOpTask)
                 task.on_task_finished()
+
+            tasks.remove(task)
+
+        # NOTE: If only existing tasks need to be handled skip refreshing list
+        #       of outstanding tasks
         if only_existing:
-            return
-        tasks = op.get_active_tasks()
+            pass
+        else:
+            tasks = op.get_active_tasks()
 
 
 def run_one_op_task(op):
