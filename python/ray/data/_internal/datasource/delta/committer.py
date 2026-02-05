@@ -100,14 +100,10 @@ def infer_schema_from_files(
         with filesystem.open_input_file(first.path) as f:
             schema = pq.ParquetFile(f).schema_arrow
     except Exception as e:
-        raise ValueError(
-            f"Failed to read schema from {first.path}: {e}"
-        ) from e
+        raise ValueError(f"Failed to read schema from {first.path}: {e}") from e
 
     if len(schema) == 0:
-        raise ValueError(
-            f"Cannot infer schema from file with no columns: {first.path}"
-        )
+        raise ValueError(f"Cannot infer schema from file with no columns: {first.path}")
 
     # Add partition columns to schema if missing
     # Prefer types from provided_schema if available to avoid type drift

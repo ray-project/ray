@@ -92,7 +92,9 @@ def _build_commit_properties(
 
     return CommitProperties(
         custom_metadata=existing.custom_metadata,
-        max_commit_retries=max_retries if max_retries is not None else existing.max_commit_retries,
+        max_commit_retries=max_retries
+        if max_retries is not None
+        else existing.max_commit_retries,
         app_transactions=txns or None,
     )
 
@@ -146,18 +148,14 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         self.table_uri = path
         self.mode = self._validate_mode(mode)
-        self.partition_cols = validate_partition_column_names(
-            partition_cols or []
-        )
+        self.partition_cols = validate_partition_column_names(partition_cols or [])
         self.schema = schema
         self.write_kwargs = write_kwargs
         self._upsert_kwargs = dict(upsert_kwargs or {})
         self._schema_policy = SchemaPolicy(mode=schema_mode.lower())
 
         if self._upsert_kwargs and self.mode != SaveMode.UPSERT:
-            raise ValueError(
-                "upsert_kwargs can only be specified with SaveMode.UPSERT"
-            )
+            raise ValueError("upsert_kwargs can only be specified with SaveMode.UPSERT")
 
         self._skip_write = False
         self._table_existed_at_start = False
@@ -172,8 +170,13 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         # per-worker cache (used in write())
         self._worker_fs: Optional[pa_fs.FileSystem] = None
         # new: control small files
-        self._target_file_size_bytes: Optional[int] = write_kwargs.get("target_file_size_bytes")
-        if self._target_file_size_bytes is not None and self._target_file_size_bytes <= 0:
+        self._target_file_size_bytes: Optional[int] = write_kwargs.get(
+            "target_file_size_bytes"
+        )
+        if (
+            self._target_file_size_bytes is not None
+            and self._target_file_size_bytes <= 0
+        ):
             raise ValueError("target_file_size_bytes must be > 0")
 
     def __getstate__(self) -> dict:
@@ -217,9 +220,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 "ignore": SaveMode.IGNORE,
             }
             if m not in mp:
-                raise ValueError(
-                    f"Invalid mode '{mode}'. Supported: {list(mp.keys())}"
-                )
+                raise ValueError(f"Invalid mode '{mode}'. Supported: {list(mp.keys())}")
             return mp[m]
         raise ValueError(f"Invalid mode type: {type(mode).__name__}")
 
@@ -237,13 +238,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         if existing:
             if not self.partition_cols:
-                self.partition_cols = (
-                    existing.metadata().partition_columns or []
-                )
+                self.partition_cols = existing.metadata().partition_columns or []
             else:
-                validate_partition_columns_match_existing(
-                    existing, self.partition_cols
-                )
+                validate_partition_columns_match_existing(existing, self.partition_cols)
 
             if self.schema is not None:
                 existing_schema = existing_table_pyarrow_schema(existing)
@@ -258,9 +255,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 f"Delta table already exists at {self.table_uri}. Use APPEND or OVERWRITE."
             )
 
-        self._skip_write = (
-            self.mode == SaveMode.IGNORE and existing is not None
-        )
+        self._skip_write = self.mode == SaveMode.IGNORE and existing is not None
 
         if self.mode == SaveMode.UPSERT:
             if not existing:
@@ -274,9 +269,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
             logger.warning("UPSERT is NOT fully atomic (delete then append).")
 
-    def write(
-        self, blocks: Iterable[Block], ctx: TaskContext
-    ) -> DeltaWriteResult:
+    def write(self, blocks: Iterable[Block], ctx: TaskContext) -> DeltaWriteResult:
         """Phase 1: Write Parquet files and return metadata for commit."""
         if self._skip_write:
             return DeltaWriteResult()
@@ -317,9 +310,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 block_schemas.append(t.schema)
 
                 if use_upsert and upsert_cols:
-                    missing = [
-                        c for c in upsert_cols if c not in t.column_names
-                    ]
+                    missing = [c for c in upsert_cols if c not in t.column_names]
                     if missing:
                         raise ValueError(
                             f"UPSERT join columns not found: {missing}. Available: {t.column_names}"
@@ -348,9 +339,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             self._cleanup_files_worker(list(written_files))
             raise
 
-    def on_write_complete(
-        self, write_result: WriteResult[DeltaWriteResult]
-    ) -> None:
+    def on_write_complete(self, write_result: WriteResult[DeltaWriteResult]) -> None:
         """Phase 2: Commit all files in single ACID transaction."""
         (
             actions,
@@ -376,7 +365,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             return
 
         # Build commit_properties for THIS commit only (do not mutate self.write_kwargs)
-        commit_props = _build_commit_properties(self.write_kwargs, write_uuid, existing)
+        commit_props = _build_commit_properties(self.write_kwargs, write_uuid)
 
         # Pass a shallow-copied write_kwargs with commit_properties injected
         # so committer/upsert sees it, without polluting the instance state.
@@ -384,9 +373,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         write_kwargs_for_commit["commit_properties"] = commit_props
 
         # reconcile schema (driver-side) before committing
-        existing_schema = (
-            existing_table_pyarrow_schema(existing) if existing else None
-        )
+        existing_schema = existing_table_pyarrow_schema(existing) if existing else None
         reconciled = reconcile_worker_schemas(schemas, existing_schema)
         if reconciled is not None:
             self.schema = reconciled
@@ -416,9 +403,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                         inputs, existing, actions, self.schema, self._driver_fs()
                     )
             else:
-                create_table_with_files(
-                    inputs, actions, self.schema, self._driver_fs()
-                )
+                create_table_with_files(inputs, actions, self.schema, self._driver_fs())
         except Exception as e:
             e._delta_written_files = written_files
             logger.warning(
@@ -442,9 +427,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     def _driver_fs(self) -> pa_fs.FileSystem:
         """Get driver filesystem (recreate if needed)."""
         if self.filesystem is None:
-            _, fs = make_fs_config(
-                self.table_uri, None, self.storage_options
-            )
+            _, fs = make_fs_config(self.table_uri, None, self.storage_options)
             self.filesystem = fs
         return self.filesystem
 
@@ -476,7 +459,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
     def _collect(
         self, wr: WriteResult[DeltaWriteResult]
-    ) -> tuple[List["AddAction"], Optional[pa.Table], List[pa.Schema], List[str], Optional[str]]:
+    ) -> tuple[
+        List["AddAction"], Optional[pa.Table], List[pa.Schema], List[str], Optional[str]
+    ]:
         """Collect all results from distributed write tasks."""
         if not wr.write_returns:
             return [], None, [], [], None
@@ -509,9 +494,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         upsert_keys = concat(upsert_tables) if upsert_tables else None
         return actions, upsert_keys, schemas, files, write_uuid
 
-    def _handle_races(
-        self, existing, written_files: List[str]
-    ):
+    def _handle_races(self, existing, written_files: List[str]):
         """Validate race conditions and raise errors or cleanup as needed."""
         if (
             not self._table_existed_at_start
@@ -550,9 +533,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             and existing is not None
             and self.mode in (SaveMode.APPEND, SaveMode.OVERWRITE)
         ):
-            validate_partition_columns_match_existing(
-                existing, self.partition_cols
-            )
+            validate_partition_columns_match_existing(existing, self.partition_cols)
             self._table_existed_at_start = True
             return existing
 
@@ -565,7 +546,11 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         write_kwargs_for_commit = dict(self.write_kwargs)
         write_kwargs_for_commit["commit_properties"] = commit_props
 
-        if self._table_existed_at_start and existing and self.mode == SaveMode.OVERWRITE:
+        if (
+            self._table_existed_at_start
+            and existing
+            and self.mode == SaveMode.OVERWRITE
+        ):
             inputs = CommitInputs(
                 self.table_uri,
                 self.mode.value,
@@ -578,11 +563,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             )
             return
 
-        if (
-            self.schema
-            and not existing
-            and (not self._table_existed_at_start)
-        ):
+        if self.schema and not existing and (not self._table_existed_at_start):
             inputs = CommitInputs(
                 self.table_uri,
                 self.mode.value,
@@ -590,9 +571,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 self.storage_options,
                 write_kwargs_for_commit,
             )
-            create_table_with_files(
-                inputs, [], self.schema, self._driver_fs()
-            )
+            create_table_with_files(inputs, [], self.schema, self._driver_fs())
 
     def _cleanup_files_driver(self, file_paths: List[str]) -> None:
         """Clean up files on driver."""

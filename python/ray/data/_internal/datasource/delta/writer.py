@@ -189,7 +189,9 @@ class DeltaFileWriter:
         self._buffers[partition_values].clear()
         self._buffer_bytes[partition_values] = 0
         self._file_seq += 1
-        a = self.write_partition(merged, partition_values, task_idx, block_idx=self._file_seq)
+        a = self.write_partition(
+            merged, partition_values, task_idx, block_idx=self._file_seq
+        )
         return [a] if a else []
 
     def partition_table(
@@ -240,9 +242,7 @@ class DeltaFileWriter:
             if isinstance(arr, pa.ChunkedArray):
                 arr = arr.combine_chunks()
             arrays.append(arr)
-            fields.append(
-                pa.field(c, table.schema.field(c).type, nullable=True)
-            )
+            fields.append(pa.field(c, table.schema.field(c).type, nullable=True))
 
         struct_arr = pa.StructArray.from_arrays(arrays, fields=fields)
 
@@ -343,9 +343,7 @@ class DeltaFileWriter:
 
         # Drop partition columns from file payload (Delta convention)
         if self.partition_cols:
-            data_cols = [
-                c for c in table.column_names if c not in self.partition_cols
-            ]
+            data_cols = [c for c in table.column_names if c not in self.partition_cols]
             table = table.select(data_cols)
 
         filename = self._filename(task_idx, block_idx)
@@ -380,7 +378,7 @@ class DeltaFileWriter:
             Unique filename string.
         """
         uid = uuid.uuid4().hex[:16]
-        prefix = (self.write_uuid or "00000000")
+        prefix = self.write_uuid or "00000000"
         prefix = prefix[:8].ljust(8, "0")
         return f"part-{prefix}-{task_idx:05d}-{block_idx:05d}-{uid}.parquet"
 
@@ -394,7 +392,9 @@ class DeltaFileWriter:
         Returns:
             Size of written file in bytes.
         """
-        compression = self.write_kwargs.get("compression", "snappy")  # already validated
+        compression = self.write_kwargs.get(
+            "compression", "snappy"
+        )  # already validated
         write_statistics = self.write_kwargs.get("write_statistics", True)
 
         parent = safe_dirname(rel_path)

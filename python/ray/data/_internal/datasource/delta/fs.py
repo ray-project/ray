@@ -42,15 +42,11 @@ def resolve_table_root_and_fs(
     """
     resolved_paths, raw_fs = _resolve_paths_and_filesystem(table_uri, filesystem)
     if len(resolved_paths) != 1:
-        raise ValueError(
-            f"Expected exactly one path, got {len(resolved_paths)}"
-        )
+        raise ValueError(f"Expected exactly one path, got {len(resolved_paths)}")
     return resolved_paths[0], raw_fs
 
 
-def build_subtree_fs(
-    table_root: str, raw_fs: pa_fs.FileSystem
-) -> pa_fs.FileSystem:
+def build_subtree_fs(table_root: str, raw_fs: pa_fs.FileSystem) -> pa_fs.FileSystem:
     """Build SubTreeFileSystem rooted at table path with retry support.
 
     Args:
@@ -62,9 +58,7 @@ def build_subtree_fs(
     """
     fs = pa_fs.SubTreeFileSystem(table_root, raw_fs)
     ctx = DataContext.get_current()
-    return RetryingPyFileSystem.wrap(
-        fs, retryable_errors=ctx.retried_io_errors
-    )
+    return RetryingPyFileSystem.wrap(fs, retryable_errors=ctx.retried_io_errors)
 
 
 def ensure_dir_exists(raw_fs: pa_fs.FileSystem, table_root: str) -> None:

@@ -91,7 +91,9 @@ def test_write_delta_partitioning(ray_start_regular_shared, temp_delta_path):
         {"year": 2024, "month": 2, "value": 200},
         {"year": 2023, "month": 12, "value": 300},
     ]
-    ray.data.from_items(data).write_delta(temp_delta_path, partition_cols=["year", "month"])
+    ray.data.from_items(data).write_delta(
+        temp_delta_path, partition_cols=["year", "month"]
+    )
     assert ray.data.read_delta(temp_delta_path).count() == 3
 
     # Local path check (tests run on local tmp dir).
@@ -99,18 +101,24 @@ def test_write_delta_partitioning(ray_start_regular_shared, temp_delta_path):
     assert os.path.isdir(os.path.join(temp_delta_path, "year=2023"))
 
 
-def test_write_delta_partition_error_missing_column(ray_start_regular_shared, temp_delta_path):
+def test_write_delta_partition_error_missing_column(
+    ray_start_regular_shared, temp_delta_path
+):
     ds = ray.data.range(10)
     with pytest.raises(ValueError, match=r"Missing partition columns"):
         ds.write_delta(temp_delta_path, partition_cols=["nonexistent"])
 
 
-def test_write_delta_partition_mismatch_existing(ray_start_regular_shared, temp_delta_path):
+def test_write_delta_partition_mismatch_existing(
+    ray_start_regular_shared, temp_delta_path
+):
     data = [{"year": 2024, "value": 1}]
     ray.data.from_items(data).write_delta(temp_delta_path, partition_cols=["year"])
 
     with pytest.raises(ValueError, match=r"Partition columns mismatch"):
-        ray.data.from_items(data).write_delta(temp_delta_path, partition_cols=["year", "month"])
+        ray.data.from_items(data).write_delta(
+            temp_delta_path, partition_cols=["year", "month"]
+        )
 
 
 def test_read_delta_with_partition_filters(ray_start_regular_shared, temp_delta_path):
@@ -122,7 +130,9 @@ def test_read_delta_with_partition_filters(ray_start_regular_shared, temp_delta_
     ray.data.from_items(data).write_delta(temp_delta_path, partition_cols=["year"])
 
     # Your DeltaDatasource normalizes values to strings internally; passing int is fine.
-    ds_filtered = ray.data.read_delta(temp_delta_path, partition_filters=[("year", "=", 2024)])
+    ds_filtered = ray.data.read_delta(
+        temp_delta_path, partition_filters=[("year", "=", 2024)]
+    )
     rows = ds_filtered.take_all()
     assert len(rows) == 1
     assert rows[0]["value"] == 300
@@ -164,7 +174,9 @@ def test_write_delta_decimal_data(ray_start_regular_shared, temp_delta_path):
     from decimal import Decimal
 
     schema = pa.schema([("id", pa.int64()), ("amount", pa.decimal128(10, 2))])
-    tbl = pa.table({"id": [1, 2], "amount": [Decimal("123.45"), Decimal("678.90")]}, schema=schema)
+    tbl = pa.table(
+        {"id": [1, 2], "amount": [Decimal("123.45"), Decimal("678.90")]}, schema=schema
+    )
     ray.data.from_arrow(tbl).write_delta(temp_delta_path)
     assert ray.data.read_delta(temp_delta_path).count() == 2
 
@@ -200,9 +212,13 @@ def test_read_delta_column_projection(ray_start_regular_shared, temp_delta_path)
 
 def test_read_delta_time_travel_version(ray_start_regular_shared, temp_delta_path):
     # version 0
-    ray.data.from_items([{"id": 1, "value": "v0"}]).write_delta(temp_delta_path, mode="append")
+    ray.data.from_items([{"id": 1, "value": "v0"}]).write_delta(
+        temp_delta_path, mode="append"
+    )
     # version 1
-    ray.data.from_items([{"id": 2, "value": "v1"}]).write_delta(temp_delta_path, mode="append")
+    ray.data.from_items([{"id": 2, "value": "v1"}]).write_delta(
+        temp_delta_path, mode="append"
+    )
 
     assert ray.data.read_delta(temp_delta_path).count() == 2
 
@@ -252,7 +268,9 @@ def test_write_delta_upsert_basic(ray_start_regular_shared, temp_delta_path):
     assert rows_dict[3] == "new"
 
 
-def test_write_delta_upsert_requires_existing_table(ray_start_regular_shared, temp_delta_path):
+def test_write_delta_upsert_requires_existing_table(
+    ray_start_regular_shared, temp_delta_path
+):
     from ray.data import SaveMode
 
     with pytest.raises(ValueError, match=r"requires an existing Delta table"):
@@ -264,19 +282,31 @@ def test_write_delta_upsert_requires_existing_table(ray_start_regular_shared, te
         )
 
 
-def test_write_delta_upsert_requires_join_cols(ray_start_regular_shared, temp_delta_path):
+def test_write_delta_upsert_requires_join_cols(
+    ray_start_regular_shared, temp_delta_path
+):
     from ray.data import SaveMode
 
-    _write_to_delta([{"id": 1, "value": "original"}], temp_delta_path, mode=SaveMode.APPEND)
+    _write_to_delta(
+        [{"id": 1, "value": "original"}], temp_delta_path, mode=SaveMode.APPEND
+    )
 
-    with pytest.raises(ValueError, match=r"requires join_cols|requires join_cols in upsert_kwargs"):
-        _write_to_delta([{"id": 2, "value": "x"}], temp_delta_path, mode=SaveMode.UPSERT)
+    with pytest.raises(
+        ValueError, match=r"requires join_cols|requires join_cols in upsert_kwargs"
+    ):
+        _write_to_delta(
+            [{"id": 2, "value": "x"}], temp_delta_path, mode=SaveMode.UPSERT
+        )
 
 
-def test_write_delta_upsert_kwargs_validation(ray_start_regular_shared, temp_delta_path):
+def test_write_delta_upsert_kwargs_validation(
+    ray_start_regular_shared, temp_delta_path
+):
     from ray.data import SaveMode
 
-    with pytest.raises(ValueError, match=r"upsert_kwargs can only be specified with SaveMode\.UPSERT"):
+    with pytest.raises(
+        ValueError, match=r"upsert_kwargs can only be specified with SaveMode\.UPSERT"
+    ):
         _write_to_delta(
             [{"id": 1, "value": "x"}],
             temp_delta_path,

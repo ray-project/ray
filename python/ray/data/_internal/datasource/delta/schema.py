@@ -80,8 +80,7 @@ def validate_and_plan_evolution(
     mismatches = [
         c
         for c, t in existing_cols.items()
-        if c in incoming_cols
-        and not types_compatible(t, incoming_cols[c][0])
+        if c in incoming_cols and not types_compatible(t, incoming_cols[c][0])
     ]
     if mismatches:
         raise ValueError(
@@ -99,9 +98,7 @@ def validate_and_plan_evolution(
         )
 
     # merge mode
-    return [
-        (c, incoming_cols[c][0], incoming_cols[c][1]) for c in new_cols
-    ]
+    return [(c, incoming_cols[c][0], incoming_cols[c][1]) for c in new_cols]
 
 
 def evolve_schema(
