@@ -54,7 +54,8 @@ class DeploymentAutoscalingState:
         # are removed from this dict when a replica is stopped.
         # Prometheus + Custom metrics from each replica are also included
         self._replica_metrics: Dict[ReplicaID, ReplicaMetricReport] = dict()
-        # Async inference task queue length (from QueueMonitor)
+        # Async inference task queue length (from QueueMonitor).
+        # QueueMonitor is a singleton per deployment i.e. we run a single QueueMonitor actor per task consumer (deployment).
         self._total_pending_async_requests: int = 0
 
         self._deployment_info = None
