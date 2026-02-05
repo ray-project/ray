@@ -23,6 +23,7 @@ from ray.train.v2._internal.execution.callback import (
     WorkerCallback,
     WorkerGroupCallback,
 )
+from ray.train.v2._internal.execution.callback_manager import CallbackManager
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
@@ -163,6 +164,7 @@ class TrainController:
             + ([validation_manager] if validation_manager else [])
             + [c for c in self._callbacks if isinstance(c, ControllerCallback)]
         )
+        self._controller_callback_manager = CallbackManager(self._controller_callbacks)
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
         self._worker_group_callbacks_to_propagate = (
@@ -190,13 +192,56 @@ class TrainController:
 
         self._start()
 
+    def _run_controller_hook(
+        self,
+        hook_name: str,
+        *args,
+        invoke_failure_decision_callbacks: bool = True,
+        **context,
+    ) -> Optional["TrainControllerLoopIterationResult"]:
+        """Invoke a named controller hook and catch any exceptions.
+
+        This method invokes all callbacks registered for the given controller hook.
+        If a callback raises an error, the error is routed through the failure policy
+        and may produce a ``TrainControllerLoopIterationResult``, indicating that the
+        current controller step should exit early with this failure result.
+
+        Args:
+            hook_name: The controller hook name to invoke.
+            *args: Positional arguments to pass to the hook.
+            invoke_failure_decision_callbacks: Whether to invoke failure-decision hooks
+                when handling a callback failure.
+            **context: Keyword arguments to pass to the hook.
+
+        Returns:
+            failure_result: A``TrainControllerLoopIterationResult`` if the hook execution results
+            in an early exit from the controller loop to raise the callback error,
+            or ``None`` if hook execution completes successfully.
+        """
+        try:
+            self._controller_callback_manager.invoke(hook_name, *args, **context)
+        except ControllerError as error:
+            failure_decision = self._failure_policy.make_decision(
+                training_failed_error=error,
+            )
+            # Avoid re-entering controller callback hooks while handling a callback failure.
+            return self._execute_failure_decision(
+                failure_decision,
+                training_failed_error=error,
+                invoke_failure_decision_callbacks=invoke_failure_decision_callbacks,
+            )
+        return None
+
     def _execute_resize_decision(
         self, decision: ResizeDecision
     ) -> TrainControllerLoopIterationResult:
         """Executes resize decisions."""
 
-        for callback in self._controller_callbacks:
-            callback.before_controller_execute_resize_decision(decision)
+        failure_result = self._run_controller_hook(
+            "before_controller_execute_resize_decision", decision
+        )
+        if failure_result:
+            return failure_result
 
         if self._worker_group:
             self._shutdown_worker_group()
@@ -239,13 +284,20 @@ class TrainController:
         self,
         failure_decision: FailureDecision,
         training_failed_error: TrainingFailedError,
+        invoke_failure_decision_callbacks: bool = True,
     ) -> TrainControllerLoopIterationResult:
         """Executes failure handling decisions for a scheduling or poll error."""
 
         controller_state = self.get_state()
 
-        for callback in self._controller_callbacks:
-            callback.before_controller_execute_failure_decision(failure_decision)
+        if invoke_failure_decision_callbacks:
+            failure_result = self._run_controller_hook(
+                "before_controller_execute_failure_decision",
+                failure_decision,
+                invoke_failure_decision_callbacks=False,
+            )
+            if failure_result:
+                return failure_result
 
         # TODO: What should we do here?
         # This currently never happens because there must be errors.
@@ -395,8 +447,30 @@ class TrainController:
         previous_state = self._state
         self._state = state
 
-        for callback in self._controller_callbacks:
-            callback.after_controller_state_update(previous_state, state)
+        failure_result = self._run_controller_hook(
+            "after_controller_state_update", previous_state, state
+        )
+        if failure_result:
+            # If we're transitioning into a terminal state, or if we're already in the shutdown path to an errored terminal state
+            # (ShuttingDownState -> ErroredState), preserve the original failure as the
+            # surfaced error. A failure in a state-update callback should not overwrite
+            # the underlying root-cause error.
+            if state.is_terminal() or (
+                isinstance(state, ShuttingDownState)
+                and isinstance(state.next_state, ErroredState)
+            ):
+                logger.warning(
+                    "A callback failed during a terminal state transition. "
+                    "This failure is being ignored to preserve the original "
+                    "training result. Error: %s",
+                    failure_result.training_failed_error,
+                )
+                return
+
+            # NOTE: We intentionally do *not* re-invoke `after_controller_state_update`
+            # for this transition to avoid re-entering callback hooks while handling
+            # a callback failure.
+            self._state = failure_result.next_state
 
     def _make_and_handle_scaling_decision_for_non_running_worker_group(
         self,

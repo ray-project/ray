@@ -7,20 +7,21 @@ they will be upstreamed to vLLM.
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
-from vllm.entrypoints.openai.protocol import (
+from vllm.entrypoints.openai.chat_completion.protocol import (
     ChatCompletionRequest as vLLMChatCompletionRequest,
     ChatCompletionResponse as vLLMChatCompletionResponse,
     ChatCompletionStreamResponse as vLLMChatCompletionStreamResponse,
+)
+from vllm.entrypoints.openai.completion.protocol import (
     CompletionRequest as vLLMCompletionRequest,
     CompletionResponse as vLLMCompletionResponse,
     CompletionStreamResponse as vLLMCompletionStreamResponse,
-    DetokenizeRequest as vLLMDetokenizeRequest,
-    DetokenizeResponse as vLLMDetokenizeResponse,
+)
+from vllm.entrypoints.openai.engine.protocol import (
     ErrorInfo as vLLMErrorInfo,
     ErrorResponse as vLLMErrorResponse,
-    TokenizeChatRequest as vLLMTokenizeChatRequest,
-    TokenizeCompletionRequest as vLLMTokenizeCompletionRequest,
-    TokenizeResponse as vLLMTokenizeResponse,
+)
+from vllm.entrypoints.openai.translations.protocol import (
     TranscriptionRequest as vLLMTranscriptionRequest,
     TranscriptionResponse as vLLMTranscriptionResponse,
     TranscriptionStreamResponse as vLLMTranscriptionStreamResponse,
@@ -31,8 +32,15 @@ from vllm.entrypoints.pooling.embed.protocol import (
     EmbeddingResponse as vLLMEmbeddingResponse,
 )
 from vllm.entrypoints.pooling.score.protocol import (
-    ScoreRequest as vLLMScoreRequest,
     ScoreResponse as vLLMScoreResponse,
+    ScoreTextRequest as vLLMScoreTextRequest,
+)
+from vllm.entrypoints.serve.tokenize.protocol import (
+    DetokenizeRequest as vLLMDetokenizeRequest,
+    DetokenizeResponse as vLLMDetokenizeResponse,
+    TokenizeChatRequest as vLLMTokenizeChatRequest,
+    TokenizeCompletionRequest as vLLMTokenizeCompletionRequest,
+    TokenizeResponse as vLLMTokenizeResponse,
 )
 from vllm.utils import random_uuid
 
@@ -107,7 +115,7 @@ class TranscriptionStreamResponse(vLLMTranscriptionStreamResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class ScoreRequest(vLLMScoreRequest):
+class ScoreRequest(vLLMScoreTextRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
