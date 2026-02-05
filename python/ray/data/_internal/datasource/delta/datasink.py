@@ -372,11 +372,11 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             return
 
         if not actions:
-            self._handle_empty(existing)
+            self._handle_empty(existing, write_uuid)
             return
 
         # Build commit_properties for THIS commit only (do not mutate self.write_kwargs)
-        commit_props = _build_commit_properties(self.write_kwargs, write_uuid)
+        commit_props = _build_commit_properties(self.write_kwargs, write_uuid, existing)
 
         # Pass a shallow-copied write_kwargs with commit_properties injected
         # so committer/upsert sees it, without polluting the instance state.
@@ -558,15 +558,20 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         return existing
 
-    def _handle_empty(self, existing):
+    def _handle_empty(self, existing, write_uuid: Optional[str]):
         """Handle empty writes (no files written)."""
+        # Build commit_properties for idempotency (same as non-empty writes)
+        commit_props = _build_commit_properties(self.write_kwargs, write_uuid)
+        write_kwargs_for_commit = dict(self.write_kwargs)
+        write_kwargs_for_commit["commit_properties"] = commit_props
+
         if self._table_existed_at_start and existing and self.mode == SaveMode.OVERWRITE:
             inputs = CommitInputs(
                 self.table_uri,
                 self.mode.value,
                 self.partition_cols,
                 self.storage_options,
-                self.write_kwargs,
+                write_kwargs_for_commit,
             )
             commit_to_existing_table(
                 inputs, existing, [], self.schema, self._driver_fs()
@@ -583,7 +588,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 self.mode.value,
                 self.partition_cols,
                 self.storage_options,
-                self.write_kwargs,
+                write_kwargs_for_commit,
             )
             create_table_with_files(
                 inputs, [], self.schema, self._driver_fs()

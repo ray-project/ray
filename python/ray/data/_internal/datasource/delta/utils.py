@@ -559,13 +559,10 @@ def try_get_deltatable(
     except ImportError:
         pass
 
-    # PyDeltaTableError: path exists but is not a valid Delta table (empty dir, etc.)
-    try:
-        from deltalake import PyDeltaTableError
-
-        not_found_exceptions.append(PyDeltaTableError)
-    except ImportError:
-        pass
+    # Note: PyDeltaTableError is NOT included because it's a broad exception
+    # that covers authentication failures, S3 configuration errors, corrupt delta logs,
+    # protocol violations, and network issues - not just "table not found".
+    # Catching it would silently hide real errors.
 
     try:
         return DeltaTable(table_uri, storage_options=storage_options)
