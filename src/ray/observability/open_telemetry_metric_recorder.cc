@@ -148,9 +148,13 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
     }
     RAY_LOG(INFO) << "OpenTelemetry metric exporter configured with TLS and mTLS enabled";
 #else
-    RAY_LOG(INFO) << "OpenTelemetry metric exporter configured with TLS enabled "
-                  << "(mTLS not available - SDK built without "
-                  << "ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW)";
+    // Ray's gRPC server requires client certificates (mTLS) when TLS is enabled.
+    // Without mTLS support, the OpenTelemetry exporter will fail to connect.
+    // This is a fatal error because metric export will silently fail otherwise.
+    RAY_LOG(FATAL) << "OpenTelemetry metric exporter cannot be configured: TLS is enabled "
+                   << "but mTLS support is not available (SDK built without "
+                   << "ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW). Ray's gRPC servers require "
+                   << "client certificates when TLS is enabled.";
 #endif
   }
   auto exporter = std::make_unique<OpenTelemetryMetricExporter>(exporter_options);
