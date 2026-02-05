@@ -75,13 +75,15 @@ class ScalingConfig(ScalingConfigV1):
     """
 
     num_workers: Union[int, Tuple[int, int]] = 1
-    elastic_resize_monitor_interval_s: float = 60.0
     trainer_resources: Optional[dict] = None
     label_selector: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
 
     # Accelerator specific fields.
     use_tpu: Union[bool] = False
     topology: Optional[str] = None
+
+    # Elasticity specific fields.
+    elastic_resize_monitor_interval_s: float = 60.0
 
     def __post_init__(self):
         if self.trainer_resources is not None:
@@ -115,7 +117,7 @@ class ScalingConfig(ScalingConfigV1):
         ):
             raise ValueError(
                 "If `label_selector` is a list, it must be the same length as "
-                "`max_workers`."
+                "`max_workers` (or `num_workers` when fixed)."
             )
 
         if self.num_workers == 0:
