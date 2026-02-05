@@ -30,6 +30,51 @@
 namespace ray {
 namespace core {
 
+/// Lineage eligibility for object reconstruction.
+/// Determined before task resubmission. See
+/// https://github.com/ray-project/ray/pull/59625.
+enum class LineageReconstructionEligibility {
+  /// Eligible - lineage is available for reconstruction attempt.
+  ELIGIBLE,
+  /// Created by ray.put(), no task lineage to replay.
+  INELIGIBLE_PUT,
+  /// Task created with max_retries=0.
+  INELIGIBLE_NO_RETRIES,
+  /// Local mode does not support object reconstruction.
+  INELIGIBLE_LOCAL_MODE,
+  /// Lineage evicted due to memory pressure.
+  INELIGIBLE_LINEAGE_EVICTED,
+  /// Lineage pinning is disabled system-wide, reconstruction not supported.
+  INELIGIBLE_LINEAGE_DISABLED,
+  /// Object reference not found in table.
+  INELIGIBLE_REF_NOT_FOUND,
+};
+
+/// Convert LineageReconstructionEligibility to the corresponding ErrorType for
+/// reporting to users.
+/// Returns std::nullopt if the object is eligible for reconstruction.
+inline std::optional<rpc::ErrorType> ToErrorType(
+    LineageReconstructionEligibility eligibility) {
+  switch (eligibility) {
+  case LineageReconstructionEligibility::ELIGIBLE:
+    return std::nullopt;
+  case LineageReconstructionEligibility::INELIGIBLE_PUT:
+    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_PUT;
+  case LineageReconstructionEligibility::INELIGIBLE_NO_RETRIES:
+    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED;
+  case LineageReconstructionEligibility::INELIGIBLE_LINEAGE_EVICTED:
+    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED;
+  case LineageReconstructionEligibility::INELIGIBLE_LOCAL_MODE:
+    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE;
+  case LineageReconstructionEligibility::INELIGIBLE_LINEAGE_DISABLED:
+    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED;
+  case LineageReconstructionEligibility::INELIGIBLE_REF_NOT_FOUND:
+    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND;
+  }
+  // Should not reach here, but return OBJECT_LOST as fallback.
+  return rpc::ErrorType::OBJECT_LOST;
+}
+
 class ReferenceCounterInterface {
  protected:
   // Returns the amount of lineage in bytes released.
@@ -133,8 +178,9 @@ class ReferenceCounterInterface {
   /// \param[in] owner_address The address of the object's owner.
   /// \param[in] call_site Description of the call site where the reference was created.
   /// \param[in] object_size Object size if known, otherwise -1;
-  /// \param[in] is_reconstructable Whether the object can be reconstructed
-  /// through lineage re-execution.
+  /// \param[in] lineage_eligibility The eligibility of this object for lineage-based
+  /// reconstruction. Use LineageReconstructionEligibility::ELIGIBLE if the object can
+  /// attempt reconstruction (though it may still fail in task resubmission).
   /// \param[in] add_local_ref Whether to initialize the local ref count to 1.
   /// This is used to ensure that the ref is considered in scope before the
   /// corresponding ObjectRef has been returned to the language frontend.
@@ -147,10 +193,10 @@ class ReferenceCounterInterface {
       const rpc::Address &owner_address,
       const std::string &call_site,
       const int64_t object_size,
-      bool is_reconstructable,
+      LineageReconstructionEligibility lineage_eligibility,
       bool add_local_ref,
       const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
-      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE) = 0;
+      const std::optional<std::string> &tensor_transport = std::nullopt) = 0;
 
   /// Add an owned object that was dynamically created. These are objects that
   /// were created by a task that we called, but that we own.
@@ -521,9 +567,12 @@ class ReferenceCounterInterface {
   virtual void AddBorrowerAddress(const ObjectID &object_id,
                                   const rpc::Address &borrower_address) = 0;
 
-  virtual bool IsObjectReconstructable(const ObjectID &object_id,
-                                       bool *lineage_evicted) const = 0;
-
+  /// Check if an object is eligible for lineage-based reconstruction.
+  ///
+  /// \param[in] object_id The ID of the object to check.
+  /// \return The lineage eligibility of the object.
+  virtual LineageReconstructionEligibility GetLineageReconstructionEligibility(
+      const ObjectID &object_id) const = 0;
   /// Evict lineage of objects that are still in scope. This evicts lineage in
   /// FIFO order, based on when the ObjectRef was created.
   ///
@@ -542,7 +591,7 @@ class ReferenceCounterInterface {
   virtual void ReleaseAllLocalReferences() = 0;
 
   /// Get the tensor transport for the given object.
-  virtual std::optional<rpc::TensorTransport> GetTensorTransport(
+  virtual std::optional<std::string> GetTensorTransport(
       const ObjectID &object_id) const = 0;
 
   virtual ~ReferenceCounterInterface() = default;

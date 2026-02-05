@@ -23,6 +23,7 @@ constexpr char kK8sServicePortEnvVar[] = "KUBERNETES_SERVICE_PORT";
 
 constexpr char kK8sCaCertPath[] = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt";
 constexpr char kK8sSaTokenPath[] = "/var/run/secrets/kubernetes.io/serviceaccount/token";
+constexpr char kRaySaTokenPath[] = "/var/run/secrets/ray.io/serviceaccount/token";
 
 constexpr char kRayClusterNameEnvVar[] = "RAY_CLUSTER_NAME";
 constexpr char kRayClusterNamespaceEnvVar[] = "RAY_CLUSTER_NAMESPACE";
@@ -40,7 +41,7 @@ constexpr char kAuthorizationAPIVersion[] = "authorization.k8s.io/v1";
 
 constexpr char kRayResourceGroup[] = "ray.io";
 constexpr char kRayClusterResourceName[] = "rayclusters";
-constexpr char kRayClusterRayUserVerb[] = "ray-user";
+constexpr char kRayClusterRayUserVerb[] = "ray:write";
 
 }  // namespace k8s
 }  // namespace rpc

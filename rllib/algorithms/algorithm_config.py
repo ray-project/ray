@@ -494,6 +494,7 @@ class AlgorithmConfig(_Config):
         self.prelearner_buffer_class = None
         self.prelearner_buffer_kwargs = {}
         self.prelearner_module_synch_period = 10
+        self.prelearner_use_recorded_module_states = False
         self.dataset_num_iters_per_learner = None
         self.input_config = {}
         self.actions_in_input_normalized = False
@@ -536,7 +537,7 @@ class AlgorithmConfig(_Config):
         # Offline evaluation.
         self.offline_evaluation_interval = None
         self.num_offline_eval_runners = 0
-        self.offline_evaluation_type: str = None
+        self.offline_evaluation_type: str = "eval_loss"
         self.offline_eval_runner_class = None
         # TODO (simon): Only `_offline_evaluate_with_fixed_duration` works. Also,
         # decide, if we use `offline_evaluation_duration` or
@@ -3124,6 +3125,7 @@ class AlgorithmConfig(_Config):
         prelearner_buffer_class: Optional[Type] = NotProvided,
         prelearner_buffer_kwargs: Optional[Dict] = NotProvided,
         prelearner_module_synch_period: Optional[int] = NotProvided,
+        prelearner_use_recorded_module_states: Optional[bool] = NotProvided,
         dataset_num_iters_per_learner: Optional[int] = NotProvided,
         input_config: Optional[Dict] = NotProvided,
         actions_in_input_normalized: Optional[bool] = NotProvided,
@@ -3296,6 +3298,12 @@ class AlgorithmConfig(_Config):
                 Values too small force the `PreLearner` to sync more frequently
                 and thus might slow down the data pipeline. The default value chosen
                 by the `OfflinePreLearner` is 10.
+            prelearner_use_recorded_module_states: Whether the `PreLearner` should
+                keep recorded module states from the offline data and use these states
+                as initial module states when training on sequences. This could be
+                useful when the offline data was recorded with a policy that uses
+                stateful modules (e.g., RNNs or Transformers) and the recorded module
+                states are accurate. The default is `False`.
             dataset_num_iters_per_learner: Number of updates to run in each learner
                 during a single training iteration. If None, each learner runs a
                 complete epoch over its data block (the dataset is partitioned into
@@ -3408,6 +3416,10 @@ class AlgorithmConfig(_Config):
             self.prelearner_buffer_kwargs = prelearner_buffer_kwargs
         if prelearner_module_synch_period is not NotProvided:
             self.prelearner_module_synch_period = prelearner_module_synch_period
+        if prelearner_use_recorded_module_states is not NotProvided:
+            self.prelearner_use_recorded_module_states = (
+                prelearner_use_recorded_module_states
+            )
         if dataset_num_iters_per_learner is not NotProvided:
             self.dataset_num_iters_per_learner = dataset_num_iters_per_learner
         if input_config is not NotProvided:
@@ -3512,7 +3524,7 @@ class AlgorithmConfig(_Config):
             policy_map_capacity: Keep this many policies in the "policy_map" (before
                 writing least-recently used ones to disk/S3).
             policy_mapping_fn: Function mapping agent ids to policy ids. The signature
-                is: `(agent_id, episode, worker, **kwargs) -> PolicyID`.
+                is: `(agent_id, episode, **kwargs) -> PolicyID`.
             policies_to_train: Determines those policies that should be updated.
                 Options are:
                 - None, for training all policies.
@@ -5384,31 +5396,45 @@ class AlgorithmConfig(_Config):
             )
 
         # Offline evaluation.
-        from ray.rllib.offline.offline_policy_evaluation_runner import (
-            OfflinePolicyEvaluationTypes,
-        )
+        if self.offline_evaluation_interval:
+            if self.offline_evaluation_interval <= 0:
+                self._value_error(
+                    "`offline_evaluation_interval` must be > 0 "
+                    "if offline evaluation should be performed!"
+                )
 
-        offline_eval_types = list(OfflinePolicyEvaluationTypes)
-        if (
-            self.offline_evaluation_type
-            and self.offline_evaluation_type != "eval_loss"
-            and self.offline_evaluation_type not in OfflinePolicyEvaluationTypes
-        ):
-            self._value_error(
-                f"Unknown offline evaluation type: {self.offline_evaluation_type}."
-                "Available types of offline evaluation are either `'eval_loss' to evaluate "
-                f"the training loss on a validation dataset or {offline_eval_types}."
+            if self.offline_evaluation_type is None:
+                self._value_error(
+                    "If `offline_evaluation_interval > 0`, `offline_evaluation_type` must be set to "
+                    "specify the type of offline evaluation to be performed."
+                )
+
+            from ray.rllib.offline.offline_policy_evaluation_runner import (
+                OfflinePolicyEvaluationTypes,
             )
 
-        from ray.rllib.offline.offline_evaluation_runner import OfflineEvaluationRunner
+            if (
+                self.offline_evaluation_type
+                and self.offline_evaluation_type
+                not in OfflinePolicyEvaluationTypes._value2member_map_
+            ):
+                offline_eval_types = list(OfflinePolicyEvaluationTypes)
+                self._value_error(
+                    f"Unknown offline evaluation type: {self.offline_evaluation_type}."
+                    f"Available types of offline evaluation are {offline_eval_types}."
+                )
 
-        if self.offline_eval_runner_class and not issubclass(
-            self.offline_eval_runner_class, OfflineEvaluationRunner
-        ):
-            self._value_error(
-                "Unknown `offline_eval_runner_class`. OfflineEvaluationRunner class needs to inherit "
-                "from `OfflineEvaluationRunner` class."
+            from ray.rllib.offline.offline_evaluation_runner import (
+                OfflineEvaluationRunner,
             )
+
+            if self.offline_eval_runner_class and not issubclass(
+                self.offline_eval_runner_class, OfflineEvaluationRunner
+            ):
+                self._value_error(
+                    "Unknown `offline_eval_runner_class`. OfflineEvaluationRunner class needs to inherit "
+                    "from `OfflineEvaluationRunner` class."
+                )
 
     @property
     def is_online(self) -> bool:

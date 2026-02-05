@@ -2,16 +2,24 @@ import json
 import logging
 import os
 import time
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 from urllib.parse import urljoin
 
 import numpy as np
 import pyarrow
 import requests
 
+from ray.data._internal.datasource.databricks_credentials import (
+    DatabricksCredentialProvider,
+    build_headers,
+    request_with_401_retry,
+)
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -23,22 +31,23 @@ _STATEMENT_EXEC_POLL_TIME_S = 1
 class DatabricksUCDatasource(Datasource):
     def __init__(
         self,
-        host: str,
-        token: str,
         warehouse_id: str,
         catalog: str,
         schema: str,
         query: str,
+        credential_provider: DatabricksCredentialProvider,
     ):
-        self.host = host
-        self.token = token
+        self._credential_provider = credential_provider
+
+        # Get host from provider (token is fetched fresh for each request)
+        self.host = self._credential_provider.get_host()
         self.warehouse_id = warehouse_id
         self.catalog = catalog
         self.schema = schema
         self.query = query
 
-        if not host.startswith(("http://", "https://")):
-            self.host = f"https://{host}"
+        if not self.host.startswith(("http://", "https://")):
+            self.host = f"https://{self.host}"
 
         url_base = f"{self.host}/api/2.0/sql/statements/"
 
@@ -54,17 +63,12 @@ class DatabricksUCDatasource(Datasource):
             }
         )
 
-        req_headers = {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + self.token,
-        }
-
-        response = requests.post(
+        response = request_with_401_retry(
+            requests.post,
             url_base,
-            headers=req_headers,
+            self._credential_provider,
             data=payload,
         )
-        response.raise_for_status()
         statement_id = response.json()["statement_id"]
 
         state = response.json()["status"]["state"]
@@ -73,17 +77,17 @@ class DatabricksUCDatasource(Datasource):
         try:
             while state in ["PENDING", "RUNNING"]:
                 time.sleep(_STATEMENT_EXEC_POLL_TIME_S)
-                response = requests.get(
+                response = request_with_401_retry(
+                    requests.get,
                     urljoin(url_base, statement_id) + "/",
-                    headers=req_headers,
+                    self._credential_provider,
                 )
-                response.raise_for_status()
                 state = response.json()["status"]["state"]
         except KeyboardInterrupt:
             # User cancel the command, so we cancel query execution.
             requests.post(
                 urljoin(url_base, f"{statement_id}/cancel"),
-                headers=req_headers,
+                headers=build_headers(self._credential_provider),
             )
             try:
                 response.raise_for_status()
@@ -114,6 +118,9 @@ class DatabricksUCDatasource(Datasource):
         num_chunks = len(chunks)
         self.num_chunks = num_chunks
         self._estimate_inmemory_data_size = sum(chunk["byte_count"] for chunk in chunks)
+
+        # Capture credential provider (not self) to avoid serializing entire datasource
+        credential_provider_for_tasks = self._credential_provider
 
         def get_read_task(
             task_index: int, parallelism: int, per_task_row_limit: Optional[int] = None
@@ -159,10 +166,11 @@ class DatabricksUCDatasource(Datasource):
                         url_base, f"{statement_id}/result/chunks/{chunk_index}"
                     )
 
-                    resolve_response = requests.get(
-                        resolve_external_link_url, headers=req_headers
+                    resolve_response = request_with_401_retry(
+                        requests.get,
+                        resolve_external_link_url,
+                        credential_provider_for_tasks,
                     )
-                    resolve_response.raise_for_status()
                     external_url = resolve_response.json()["external_links"][0][
                         "external_link"
                     ]
@@ -201,7 +209,10 @@ class DatabricksUCDatasource(Datasource):
         return self._estimate_inmemory_data_size
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         # Handle empty dataset case
         if self.num_chunks == 0:

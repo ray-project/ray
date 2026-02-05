@@ -128,27 +128,35 @@
           <div class="tab-pane fade no-copybutton" id="v-pills-tuning">
           {{ pygments_highlight_python('''
   from ray import tune
-  from ray.train import ScalingConfig
-  from ray.train.lightgbm import LightGBMTrainer
 
-  train_dataset, eval_dataset = ...
+  # Step 1: Define an objective function to optimize.
+  def objective(config):
+      # Train model with config hyperparameters
+      model = train_model(
+          lr=config["lr"],
+          batch_size=config["batch_size"],
+          num_layers=config["num_layers"],
+      )
+      accuracy = evaluate_model(model)
+      # Report metrics back to Tune
+      tune.report(accuracy=accuracy)
 
-  # Step 1: Set up Ray\'s LightGBM Trainer to train on 64 CPUs.
-  trainer = LightGBMTrainer(
-      ...
-      scaling_config=ScalingConfig(num_workers=64),
-      datasets={"train": train_dataset, "eval": eval_dataset},
-  )
+  # Step 2: Define hyperparameter search space.
+  search_space = {
+      "lr": tune.loguniform(1e-4, 1e-1),
+      "batch_size": tune.choice([32, 64, 128]),
+      "num_layers": tune.randint(1, 10),
+  }
 
-  # Step 2: Set up Ray Tuner to run 1000 trials.
+  # Step 3: Configure and run 1000 trials with Ray Tune.
   tuner = tune.Tuner(
-      trainer=trainer,
-      param_space=hyper_param_space,
+      objective,
+      param_space=search_space,
       tune_config=tune.TuneConfig(num_samples=1000),
   )
 
-  # Step 3: Run distributed HPO with 1000 trials; each trial runs on 64 CPUs.
   result_grid = tuner.fit()
+  best_result = result_grid.get_best_result(metric="accuracy", mode="max")
           ''') }}
             <div class="tab-pane-links">
               <a href="{{ pathto('tune/index') }}" target="_blank">Learn more about Ray Tune</a>

@@ -1,4 +1,4 @@
-from ray.air.util.tensor_extensions.arrow import (
+from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     get_arrow_extension_tensor_types,
 )

@@ -1,5 +1,3 @@
-import asyncio
-import concurrent.futures
 import http
 import json
 import os
@@ -7,7 +5,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import grpc
 import httpx
@@ -26,15 +24,21 @@ from ray._private.test_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,
 )
-from ray.serve._private.long_poll import LongPollHost, UpdatedObject
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+)
 from ray.serve._private.test_utils import (
+    TEST_METRICS_EXPORT_PORT,
+    check_metric_float_eq,
     get_application_url,
+    get_metric_dictionaries,
+    get_metric_float,
     ping_grpc_call_method,
     ping_grpc_list_applications,
 )
 from ray.serve._private.utils import block_until_http_ready
+from ray.serve.config import RequestRouterConfig
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.util.state import list_actors
 
 
 def extract_tags(line: str) -> Dict[str, str]:
@@ -55,39 +59,6 @@ def extract_tags(line: str) -> Dict[str, str]:
     return detected_tags
 
 
-def get_metric_float(
-    metric: str,
-    expected_tags: Optional[Dict[str, str]],
-    timeseries: Optional[PrometheusTimeseries] = None,
-) -> float:
-    """Gets the float value of metric.
-
-    If tags is specified, searched for metric with matching tags.
-
-    Returns -1 if the metric isn't available.
-    """
-    if timeseries is None:
-        timeseries = PrometheusTimeseries()
-    samples = fetch_prometheus_metric_timeseries(["localhost:9999"], timeseries).get(
-        metric, []
-    )
-    for sample in samples:
-        if expected_tags.items() <= sample.labels.items():
-            return sample.value
-    return -1
-
-
-def check_metric_float_eq(
-    metric: str,
-    expected: float,
-    expected_tags: Optional[Dict[str, str]],
-    timeseries: Optional[PrometheusTimeseries] = None,
-) -> bool:
-    metric_value = get_metric_float(metric, expected_tags, timeseries)
-    assert float(metric_value) == expected
-    return True
-
-
 def check_sum_metric_eq(
     metric_name: str,
     expected: float,
@@ -99,7 +70,9 @@ def check_sum_metric_eq(
     if timeseries is None:
         timeseries = PrometheusTimeseries()
 
-    metrics = fetch_prometheus_metric_timeseries(["localhost:9999"], timeseries)
+    metrics = fetch_prometheus_metric_timeseries(
+        [f"localhost:{TEST_METRICS_EXPORT_PORT}"], timeseries
+    )
     metrics = {k: v for k, v in metrics.items() if "ray_serve_" in k}
     metric_samples = metrics.get(metric_name, None)
     if metric_samples is None:
@@ -124,59 +97,6 @@ def check_sum_metric_eq(
             print(sample)
 
     return True
-
-
-def get_metric_dictionaries(
-    name: str, timeout: float = 20, timeseries: Optional[PrometheusTimeseries] = None
-) -> List[Dict]:
-    """Gets a list of metric's tags from metrics' text output.
-
-    Return:
-        Example:
-
-        >>> get_metric_dictionaries("ray_serve_num_http_requests")
-        [
-            {
-                'Component': 'core_worker',
-                'JobId': '01000000',
-                ...
-                'method': 'GET',
-                'route': '/hello'
-            },
-            {
-                'Component': 'core_worker',
-                ...
-                'method': 'GET',
-                'route': '/hello/'
-            }
-        ]
-    """
-    if timeseries is None:
-        timeseries = PrometheusTimeseries()
-
-    def metric_available() -> bool:
-        assert name in fetch_prometheus_metric_timeseries(
-            ["localhost:9999"], timeseries
-        )
-        return True
-
-    wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout)
-    serve_samples = [
-        sample
-        for sample in timeseries.metric_samples.values()
-        if "ray_serve_" in sample.name
-    ]
-    print(
-        "metrics", "\n".join([f"Labels: {sample.labels}\n" for sample in serve_samples])
-    )
-
-    metric_dicts = []
-    for sample in timeseries.metric_samples.values():
-        if sample.name == name:
-            metric_dicts.append(sample.labels)
-
-    print(metric_dicts)
-    return metric_dicts
 
 
 def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
@@ -468,7 +388,6 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
 def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for not found."""
-
     # Should generate 404 responses
     broken_url = "http://127.0.0.1:8000/fake_route"
     _ = httpx.get(broken_url).text
@@ -561,7 +480,6 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
     """Test that HTTP disconnect metrics are reported correctly."""
-
     signal = SignalActor.remote()
 
     @serve.deployment
@@ -598,7 +516,6 @@ def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
 
 def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     """Test that gRPC disconnect metrics are reported correctly."""
-
     signal = SignalActor.remote()
 
     @serve.deployment
@@ -711,6 +628,9 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
     """Verify that 2xx and 3xx status codes aren't errors, others are."""
+    # TODO(eicherseiji): Remove skip when HAProxy is open-sourced.
+    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
 
     def check_request_count_metrics(
         expected_error_count: int,
@@ -1293,462 +1213,139 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
     ), f"Latency metrics should use route patterns. Found: {latency_routes}"
 
 
-def test_batching_metrics(metrics_start_shutdown):
+def test_routing_stats_delay_metric(metrics_start_shutdown):
+    """Test that routing stats delay metric is reported correctly."""
+
     @serve.deployment
-    class BatchedDeployment:
-        @serve.batch(max_batch_size=4, batch_wait_timeout_s=0.5)
-        async def batch_handler(self, requests: List[str]) -> List[str]:
-            # Simulate some processing time
-            await asyncio.sleep(0.05)
-            return [f"processed:{r}" for r in requests]
+    class Model:
+        def __call__(self):
+            return "hello"
 
-        async def __call__(self, request: Request):
-            data = await request.body()
-            return await self.batch_handler(data.decode())
-
-    app_name = "batched_app"
-    serve.run(BatchedDeployment.bind(), name=app_name, route_prefix="/batch")
-
-    http_url = "http://localhost:8000/batch"
-
-    # Send multiple concurrent requests to trigger batching
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-        futures = [
-            executor.submit(lambda i=i: httpx.post(http_url, content=f"req{i}"))
-            for i in range(8)
-        ]
-        results = [f.result() for f in futures]
-
-    # Verify all requests succeeded
-    assert all(r.status_code == 200 for r in results)
-
-    # Verify specific metric values and tags
+    serve.run(Model.bind(), name="app")
     timeseries = PrometheusTimeseries()
-    expected_tags = {
-        "deployment": "BatchedDeployment",
-        "application": app_name,
-        "function_name": "batch_handler",
-    }
 
-    # Check batches_processed_total counter exists and has correct tags
-    wait_for_condition(
-        lambda: check_metric_float_eq(
-            "ray_serve_batches_processed_total",
-            expected=2,
-            expected_tags=expected_tags,
+    # Wait for routing stats delay metric to be reported
+    # This metric is recorded when the controller polls routing stats from replicas
+    def check_routing_stats_delay_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_routing_stats_delay_ms_count", timeseries=timeseries
+        )
+        if not metrics:
+            return False
+        # Check that at least one metric has expected tags
+        for metric in metrics:
+            assert metric["deployment"] == "Model"
+            assert metric["application"] == "app"
+            assert "replica" in metric
+            return True
+        return False
+
+    wait_for_condition(check_routing_stats_delay_metric, timeout=60)
+
+    # Verify the metric value is greater than 0
+    def check_routing_stats_delay_metric_value():
+        value = get_metric_float(
+            "ray_serve_routing_stats_delay_ms_count",
             timeseries=timeseries,
-        ),
-        timeout=10,
-    )
+            expected_tags={
+                "deployment": "Model",
+                "application": "app",
+            },
+        )
+        return value > 0
 
-    # Check batch_wait_time_ms histogram was recorded for 2 batches
-    wait_for_condition(
-        lambda: check_metric_float_eq(
-            "ray_serve_batch_wait_time_ms_count",
-            expected=2,
-            expected_tags=expected_tags,
-            timeseries=timeseries,
-        ),
-        timeout=10,
-    )
-
-    # Check batch_execution_time_ms histogram was recorded for 2 batches
-    wait_for_condition(
-        lambda: check_metric_float_eq(
-            "ray_serve_batch_execution_time_ms_count",
-            expected=2,
-            expected_tags=expected_tags,
-            timeseries=timeseries,
-        ),
-        timeout=10,
-    )
-
-    # Check batch_utilization_percent histogram: 2 batches at 100% each = 200 sum
-    wait_for_condition(
-        lambda: check_metric_float_eq(
-            "ray_serve_batch_utilization_percent_count",
-            expected=2,
-            expected_tags=expected_tags,
-            timeseries=timeseries,
-        ),
-        timeout=10,
-    )
-
-    # Check actual_batch_size histogram: 2 batches of 4 requests each = 8 sum
-    wait_for_condition(
-        lambda: check_metric_float_eq(
-            "ray_serve_actual_batch_size_count",
-            expected=2,
-            expected_tags=expected_tags,
-            timeseries=timeseries,
-        ),
-        timeout=10,
-    )
-
-    # Check batch_queue_length gauge exists (should be 0 after processing)
-    wait_for_condition(
-        lambda: check_metric_float_eq(
-            "ray_serve_batch_queue_length",
-            expected=0,
-            expected_tags=expected_tags,
-            timeseries=timeseries,
-        ),
-        timeout=10,
-    )
+    wait_for_condition(check_routing_stats_delay_metric_value, timeout=60)
 
 
-def test_autoscaling_metrics(metrics_start_shutdown):
-    """Test that autoscaling metrics are emitted correctly.
-
-    This tests the following metrics:
-    - ray_serve_autoscaling_target_replicas: Target number of replicas
-        Tags: deployment, application
-    - ray_serve_autoscaling_desired_replicas: Raw decision before bounds
-        Tags: deployment, application
-    - ray_serve_autoscaling_total_requests: Total requests seen by autoscaler
-        Tags: deployment, application
-    - ray_serve_autoscaling_policy_execution_time_ms: Policy execution time
-        Tags: deployment, application, policy_scope
-    - ray_serve_autoscaling_replica_metrics_delay_ms: Replica metrics delay
-        Tags: deployment, application, replica
-    - ray_serve_autoscaling_handle_metrics_delay_ms: Handle metrics delay
-        Tags: deployment, application, handle
-    """
+def test_routing_stats_error_metric(metrics_start_shutdown):
+    """Test that routing stats error metric is reported on exception and timeout."""
     signal = SignalActor.remote()
 
     @serve.deployment(
-        autoscaling_config={
-            "metrics_interval_s": 0.1,
-            "min_replicas": 1,
-            "max_replicas": 5,
-            "target_ongoing_requests": 2,
-            "upscale_delay_s": 0,
-            "downscale_delay_s": 5,
-            "look_back_period_s": 1,
-        },
-        max_ongoing_requests=10,
-        graceful_shutdown_timeout_s=0.1,
-    )
-    class AutoscalingDeployment:
-        async def __call__(self):
-            await signal.wait.remote()
-
-    serve.run(AutoscalingDeployment.bind(), name="autoscaling_app")
-
-    # Send requests to trigger autoscaling
-    handle = serve.get_deployment_handle("AutoscalingDeployment", "autoscaling_app")
-    [handle.remote() for _ in range(10)]
-
-    timeseries = PrometheusTimeseries()
-    base_tags = {
-        "deployment": "AutoscalingDeployment",
-        "application": "autoscaling_app",
-    }
-
-    # Test 1: Check that target_replicas metric is 5 (10 requests / target_ongoing_requests=2)
-    wait_for_condition(
-        check_metric_float_eq,
-        timeout=15,
-        metric="ray_serve_autoscaling_target_replicas",
-        expected=5,
-        expected_tags=base_tags,
-        timeseries=timeseries,
-    )
-    print("Target replicas metric verified.")
-
-    # Test 2: Check that autoscaling decision metric is 5 (10 requests / target_ongoing_requests=2)
-    wait_for_condition(
-        check_metric_float_eq,
-        timeout=15,
-        metric="ray_serve_autoscaling_desired_replicas",
-        expected=5,
-        expected_tags=base_tags,
-        timeseries=timeseries,
-    )
-    print("Autoscaling decision metric verified.")
-
-    # Test 3: Check that total requests metric is 10
-    wait_for_condition(
-        check_metric_float_eq,
-        timeout=15,
-        metric="ray_serve_autoscaling_total_requests",
-        expected=10,
-        expected_tags=base_tags,
-        timeseries=timeseries,
-    )
-    print("Total requests metric verified.")
-
-    # Test 4: Check that policy execution time metric is emitted with policy_scope=deployment
-    def check_policy_execution_time_metric():
-        value = get_metric_float(
-            "ray_serve_autoscaling_policy_execution_time_ms",
-            expected_tags={**base_tags, "policy_scope": "deployment"},
-            timeseries=timeseries,
+        request_router_config=RequestRouterConfig(
+            request_routing_stats_period_s=0.1, request_routing_stats_timeout_s=0.5
         )
-        assert value >= 0
-        return True
-
-    wait_for_condition(check_policy_execution_time_metric, timeout=15)
-    print("Policy execution time metric verified.")
-
-    # Test 5: Check that metrics delay gauges are emitted with proper tags
-    def check_metrics_delay_metrics():
-        # Check for handle metrics delay (depends on where metrics are collected)
-        value = get_metric_float(
-            "ray_serve_autoscaling_handle_metrics_delay_ms",
-            expected_tags=base_tags,
-            timeseries=timeseries,
-        )
-        if value >= 0:
-            # Verify handle tag exists by checking metric dictionaries
-            metrics_dicts = get_metric_dictionaries(
-                "ray_serve_autoscaling_handle_metrics_delay_ms",
-                timeout=5,
-                timeseries=timeseries,
-            )
-            for m in metrics_dicts:
-                if (
-                    m.get("deployment") == "AutoscalingDeployment"
-                    and m.get("application") == "autoscaling_app"
-                ):
-                    assert m.get("handle") is not None
-                    print(
-                        f"Handle delay metric verified with handle tag: {m.get('handle')}"
-                    )
-                    return True
-
-        # Fallback: Check for replica metrics delay
-        value = get_metric_float(
-            "ray_serve_autoscaling_replica_metrics_delay_ms",
-            expected_tags=base_tags,
-            timeseries=timeseries,
-        )
-        if value >= 0:
-            metrics_dicts = get_metric_dictionaries(
-                "ray_serve_autoscaling_replica_metrics_delay_ms",
-                timeout=5,
-                timeseries=timeseries,
-            )
-            for m in metrics_dicts:
-                if (
-                    m.get("deployment") == "AutoscalingDeployment"
-                    and m.get("application") == "autoscaling_app"
-                ):
-                    assert m.get("replica") is not None
-                    print(
-                        f"Replica delay metric verified with replica tag: {m.get('replica')}"
-                    )
-                    return True
-
-        return False
-
-    wait_for_condition(check_metrics_delay_metrics, timeout=15)
-    print("Metrics delay metrics verified.")
-
-    # Release signal to complete requests
-    ray.get(signal.send.remote())
-
-
-def test_user_autoscaling_stats_metrics(metrics_start_shutdown):
-    """Test that user-defined autoscaling stats metrics are emitted correctly.
-
-    This tests the following metrics:
-    - ray_serve_user_autoscaling_stats_latency_ms: Time to execute user stats function
-        Tags: application, deployment, replica
-    - ray_serve_record_autoscaling_stats_failed_total: Failed stats collection
-        Tags: application, deployment, replica, exception_name
-    """
-
-    @serve.deployment(
-        autoscaling_config={
-            "metrics_interval_s": 0.1,
-            "min_replicas": 1,
-            "max_replicas": 5,
-            "target_ongoing_requests": 2,
-        },
     )
-    class DeploymentWithCustomStats:
-        def __init__(self):
-            self.call_count = 0
+    class FailingModel:
+        def __init__(self, signal_actor):
+            self.should_fail = False
+            self.should_hang = False
+            self.signal = signal_actor
 
-        async def record_autoscaling_stats(self):
-            """Custom autoscaling stats function."""
-            self.call_count += 1
-            return {"custom_metric": self.call_count}
+        async def record_routing_stats(self):
+            if self.should_hang:
+                await self.signal.wait.remote()
+            if self.should_fail:
+                raise Exception("Intentional failure for testing")
+            return {}
 
         def __call__(self):
-            return "ok"
+            return "hello"
 
-    serve.run(DeploymentWithCustomStats.bind(), name="custom_stats_app")
+        def set_should_fail(self, value: bool):
+            self.should_fail = value
 
-    # Make a request to ensure the deployment is running
-    handle = serve.get_deployment_handle(
-        "DeploymentWithCustomStats", "custom_stats_app"
-    )
-    handle.remote().result()
+        def set_should_hang(self, value: bool):
+            self.should_hang = value
 
-    timeseries = PrometheusTimeseries()
-    base_tags = {
-        "deployment": "DeploymentWithCustomStats",
-        "application": "custom_stats_app",
-    }
-
-    # Test: Check that user autoscaling stats latency metric is emitted
-    def check_user_stats_latency_metric():
-        value = get_metric_float(
-            "ray_serve_user_autoscaling_stats_latency_ms_sum",
-            expected_tags=base_tags,
-            timeseries=timeseries,
-        )
-        if value >= 0:
-            # Verify replica tag exists
-            metrics_dicts = get_metric_dictionaries(
-                "ray_serve_user_autoscaling_stats_latency_ms_sum",
-                timeout=5,
-                timeseries=timeseries,
-            )
-            for m in metrics_dicts:
-                if (
-                    m.get("deployment") == "DeploymentWithCustomStats"
-                    and m.get("application") == "custom_stats_app"
-                ):
-                    assert m.get("replica") is not None
-                    print(
-                        f"User stats latency metric verified with replica tag: {m.get('replica')}"
-                    )
-                    return True
-        return False
-
-    wait_for_condition(check_user_stats_latency_metric, timeout=15)
-    print("User autoscaling stats latency metric verified.")
-
-
-def test_user_autoscaling_stats_failure_metrics(metrics_start_shutdown):
-    """Test that user autoscaling stats failure metrics are emitted on error."""
-
-    @serve.deployment(
-        autoscaling_config={
-            "metrics_interval_s": 0.1,
-            "min_replicas": 1,
-            "max_replicas": 5,
-            "target_ongoing_requests": 2,
-        },
-    )
-    class DeploymentWithFailingStats:
-        async def record_autoscaling_stats(self):
-            """Custom autoscaling stats function that raises an error."""
-            raise ValueError("Intentional error for testing")
-
-        def __call__(self):
-            return "ok"
-
-    serve.run(DeploymentWithFailingStats.bind(), name="failing_stats_app")
-
-    # Make a request to ensure the deployment is running
-    handle = serve.get_deployment_handle(
-        "DeploymentWithFailingStats", "failing_stats_app"
-    )
-    handle.remote().result()
-
+    handle = serve.run(FailingModel.bind(signal), name="error_app")
     timeseries = PrometheusTimeseries()
 
-    # Test: Check that failure counter is incremented
-    def check_stats_failure_metric():
-        metrics_dicts = get_metric_dictionaries(
-            "ray_serve_record_autoscaling_stats_failed_total",
-            timeout=5,
-            timeseries=timeseries,
+    # Make a request to ensure deployment is running
+    handle.remote().result()
+
+    # Trigger exception in record_routing_stats
+    handle.set_should_fail.remote(True).result()
+
+    # Make requests to trigger routing stats collection
+    for _ in range(5):
+        handle.remote().result()
+
+    # Check that error metric with error_type="exception" is reported
+    def check_exception_error_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_routing_stats_error_total", timeseries=timeseries
         )
-        for m in metrics_dicts:
+        for metric in metrics:
             if (
-                m.get("deployment") == "DeploymentWithFailingStats"
-                and m.get("application") == "failing_stats_app"
+                metric.get("deployment") == "FailingModel"
+                and metric.get("application") == "error_app"
+                and metric.get("error_type") == "exception"
             ):
-                assert m.get("replica") is not None
-                assert m.get("exception_name") == "ValueError"
-                print(
-                    f"Stats failure metric verified with exception_name: {m.get('exception_name')}"
-                )
+                assert "replica" in metric
                 return True
         return False
 
-    wait_for_condition(check_stats_failure_metric, timeout=15)
-    print("User autoscaling stats failure metric verified.")
+    wait_for_condition(check_exception_error_metric, timeout=30)
+    print("Exception error metric verified.")
 
+    # Now test timeout case
+    handle.set_should_fail.remote(False).result()
+    handle.set_should_hang.remote(True).result()
 
-def test_long_poll_host_sends_counted(serve_instance):
-    """Check that the transmissions by the long_poll are counted."""
+    # Make requests to trigger routing stats timeout
+    for _ in range(5):
+        handle.remote().result()
 
-    timeseries = PrometheusTimeseries()
-    host = ray.remote(LongPollHost).remote(
-        listen_for_change_request_timeout_s=(0.01, 0.01)
-    )
+    # Check that error metric with error_type="timeout" is reported
+    def check_timeout_error_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_routing_stats_error_total", timeseries=timeseries
+        )
+        for metric in metrics:
+            if (
+                metric.get("deployment") == "FailingModel"
+                and metric.get("application") == "error_app"
+                and metric.get("error_type") == "timeout"
+            ):
+                assert "replica" in metric
+                return True
+        return False
 
-    # Write a value.
-    ray.get(host.notify_changed.remote({"key_1": 999}))
-    object_ref = host.listen_for_change.remote({"key_1": -1})
+    wait_for_condition(check_timeout_error_metric, timeout=30)
+    print("Timeout error metric verified.")
 
-    # Check that the result's size is reported.
-    result_1: Dict[str, UpdatedObject] = ray.get(object_ref)
-    wait_for_condition(
-        check_metric_float_eq,
-        timeout=15,
-        metric="ray_serve_long_poll_host_transmission_counter_total",
-        expected=1,
-        expected_tags={"namespace_or_state": "key_1"},
-        timeseries=timeseries,
-    )
-
-    # Write two new values.
-    ray.get(host.notify_changed.remote({"key_1": 1000}))
-    ray.get(host.notify_changed.remote({"key_2": 1000}))
-    object_ref = host.listen_for_change.remote(
-        {"key_1": result_1["key_1"].snapshot_id, "key_2": -1}
-    )
-
-    # Check that the new objects are transmitted.
-    result_2: Dict[str, UpdatedObject] = ray.get(object_ref)
-    wait_for_condition(
-        check_metric_float_eq,
-        timeout=15,
-        metric="ray_serve_long_poll_host_transmission_counter_total",
-        expected=1,
-        expected_tags={"namespace_or_state": "key_2"},
-        timeseries=timeseries,
-    )
-    wait_for_condition(
-        check_metric_float_eq,
-        timeout=15,
-        metric="ray_serve_long_poll_host_transmission_counter_total",
-        expected=2,
-        expected_tags={"namespace_or_state": "key_1"},
-        timeseries=timeseries,
-    )
-
-    # Check that a timeout result is counted.
-    object_ref = host.listen_for_change.remote({"key_2": result_2["key_2"].snapshot_id})
-    _ = ray.get(object_ref)
-    wait_for_condition(
-        check_metric_float_eq,
-        timeout=15,
-        metric="ray_serve_long_poll_host_transmission_counter_total",
-        expected=1,
-        expected_tags={"namespace_or_state": "TIMEOUT"},
-        timeseries=timeseries,
-    )
-
-
-def test_actor_summary(serve_instance):
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind(), name="app")
-    actors = list_actors(filters=[("state", "=", "ALIVE")])
-    class_names = {actor.class_name for actor in actors}
-    assert class_names.issuperset(
-        {"ServeController", "ProxyActor", "ServeReplica:app:f"}
-    )
+    ray.get(signal.send.remote(clear=True))
 
 
 if __name__ == "__main__":

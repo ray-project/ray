@@ -101,7 +101,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   /// \param callback Will be invoked after the placement group is created successfully or
   /// be invoked if the placement group is deleted before create successfully.
   void WaitPlacementGroup(const PlacementGroupID &placement_group_id,
-                          StatusCallback callback);
+                          rpc::StatusCallback callback);
 
   /// Register placement_group asynchronously.
   ///
@@ -111,7 +111,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   /// `registered_placement_groups_` and its state is `CREATED`. The callback will not be
   /// called in this case.
   void RegisterPlacementGroup(const std::shared_ptr<GcsPlacementGroup> &placement_group,
-                              StatusCallback callback);
+                              rpc::StatusCallback callback);
 
   /// Schedule placement_groups in the `pending_placement_groups_` queue.
   /// The method handles all states of placement groups
@@ -144,7 +144,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
 
   /// Remove the placement group of a given id.
   void RemovePlacementGroup(const PlacementGroupID &placement_group_id,
-                            StatusCallback on_placement_group_removed);
+                            rpc::StatusCallback on_placement_group_removed);
 
   /// Handle a node death. This will reschedule all bundles associated with the
   /// specified node id.
@@ -287,11 +287,11 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   /// Callbacks of pending `RegisterPlacementGroup` requests.
   /// Maps placement group ID to placement group registration callbacks, which is used to
   /// filter duplicated messages from a driver/worker caused by some network problems.
-  absl::flat_hash_map<PlacementGroupID, std::vector<StatusCallback>>
+  absl::flat_hash_map<PlacementGroupID, std::vector<rpc::StatusCallback>>
       placement_group_to_register_callbacks_;
 
   /// Callback of `WaitPlacementGroupUntilReady` requests.
-  absl::flat_hash_map<PlacementGroupID, std::vector<StatusCallback>>
+  absl::flat_hash_map<PlacementGroupID, std::vector<rpc::StatusCallback>>
       placement_group_to_create_callbacks_;
 
   /// All registered placement_groups (pending placement_groups are also included).

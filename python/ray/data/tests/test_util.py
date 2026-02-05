@@ -10,7 +10,7 @@ import ray
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
-from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators import Read
 from ray.data._internal.logical.util import (
     _op_name_white_list,
     _recorded_operators,
@@ -416,7 +416,11 @@ def test_merge_resources_to_ray_remote_args():
     ],
 )
 def test_rows_same(actual: pd.DataFrame, expected: pd.DataFrame, expected_equal: bool):
-    assert rows_same(actual, expected) == expected_equal
+    if expected_equal:
+        assert rows_same(actual, expected)
+    else:
+        with pytest.raises(AssertionError):
+            assert rows_same(actual, expected)
 
 
 if __name__ == "__main__":

@@ -1,26 +1,27 @@
 import sys
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import numpy as np
 import pandas as pd
 import pytest
 
 import ray
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.from_operators import (
+from ray.data._internal.logical.operators import (
+    Filter,
+    FlatMap,
     FromArrow,
     FromItems,
     FromNumpy,
     FromPandas,
-)
-from ray.data._internal.logical.operators.map_operator import (
-    Filter,
-    FlatMap,
     MapBatches,
     MapRows,
     Project,
@@ -60,7 +61,10 @@ def test_read_operator_emits_warning_for_large_read_tasks():
             return None
 
         def get_read_tasks(
-            self, parallelism: int, per_task_row_limit: Optional[int] = None
+            self,
+            parallelism: int,
+            per_task_row_limit: Optional[int] = None,
+            data_context: Optional["DataContext"] = None,
         ) -> List[ReadTask]:
             large_object = np.zeros((128, 1024, 1024), dtype=np.uint8)  # 128 MiB
 

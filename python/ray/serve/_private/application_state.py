@@ -68,6 +68,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
 )
 from ray.types import ObjectRef
+from ray.util import metrics as ray_metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -1141,6 +1142,18 @@ class ApplicationStateManager:
         self._shutting_down = False
 
         self._application_states: Dict[str, ApplicationState] = {}
+
+        # Metric for tracking application status
+        self._application_status_gauge = ray_metrics.Gauge(
+            "serve_application_status",
+            description=(
+                "Numeric status of application. "
+                "0=UNKNOWN, 1=DEPLOY_FAILED, 2=UNHEALTHY, 3=NOT_STARTED, "
+                "4=DELETING, 5=DEPLOYING, 6=RUNNING."
+            ),
+            tag_keys=("application",),
+        )
+
         self._recover_from_checkpoint()
 
     def _recover_from_checkpoint(self):
@@ -1417,6 +1430,13 @@ class ApplicationStateManager:
                 apps_to_be_deleted.append(name)
                 logger.debug(f"Application '{name}' deleted successfully.")
 
+        # Record application status metrics
+        for name, app in self._application_states.items():
+            self._application_status_gauge.set(
+                app.status.to_numeric(),
+                tags={"application": name},
+            )
+
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:
                 self._autoscaling_state_manager.deregister_application(app_name)
@@ -1687,6 +1707,14 @@ def override_deployment_info(
         override_max_replicas_per_node = options.pop(
             "max_replicas_per_node", replica_config.max_replicas_per_node
         )
+        override_bundle_label_selector = options.pop(
+            "placement_group_bundle_label_selector",
+            replica_config.placement_group_bundle_label_selector,
+        )
+        override_fallback_strategy = options.pop(
+            "placement_group_fallback_strategy",
+            replica_config.placement_group_fallback_strategy,
+        )
 
         # Record telemetry for container runtime env feature at deployment level
         if override_actor_options.get("runtime_env") and (
@@ -1705,6 +1733,8 @@ def override_deployment_info(
             placement_group_bundles=override_placement_group_bundles,
             placement_group_strategy=override_placement_group_strategy,
             max_replicas_per_node=override_max_replicas_per_node,
+            placement_group_bundle_label_selector=override_bundle_label_selector,
+            placement_group_fallback_strategy=override_fallback_strategy,
         )
         override_options["replica_config"] = replica_config
 

@@ -5,7 +5,6 @@ from typing import Optional, Tuple
 
 import click
 
-from ray_release.anyscale_util import LAST_LOGS_LENGTH
 from ray_release.aws import maybe_fetch_api_token
 from ray_release.config import (
     RELEASE_TEST_CONFIG_FILES,
@@ -48,18 +47,6 @@ from ray_release.result import Result
     help="Report results to database",
 )
 @click.option(
-    "--cluster-id",
-    default=None,
-    type=str,
-    help="Cluster ID of existing cluster to be re-used.",
-)
-@click.option(
-    "--cluster-env-id",
-    default=None,
-    type=str,
-    help="Cluster env ID of existing cluster env to be re-used.",
-)
-@click.option(
     "--env",
     default=None,
     # Get the names without suffixes of all files in "../environments"
@@ -77,26 +64,10 @@ from ray_release.result import Result
     help="Global config to use for test execution.",
 )
 @click.option(
-    "--no-terminate",
-    default=False,
-    type=bool,
-    is_flag=True,
-    help=(
-        "Do not terminate cluster after test. "
-        "Will switch `anyscale_job` run type to `job` (Ray Job)."
-    ),
-)
-@click.option(
     "--test-definition-root",
     default=None,
     type=str,
     help="Root of the test definition files. Default is the root of the repo.",
-)
-@click.option(
-    "--log-streaming-limit",
-    default=LAST_LOGS_LENGTH,
-    type=int,
-    help="Limit of log streaming in number of lines. Set to -1 to stream all logs.",
 )
 @click.option(
     "--image",
@@ -109,13 +80,9 @@ def main(
     test_collection_file: Tuple[str],
     smoke_test: bool = False,
     report: bool = False,
-    cluster_id: Optional[str] = None,
-    cluster_env_id: Optional[str] = None,
     env: Optional[str] = None,
     global_config: str = "oss_config.yaml",
-    no_terminate: bool = False,
     test_definition_root: Optional[str] = None,
-    log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
 ):
     global_config_file = os.path.join(
@@ -170,11 +137,7 @@ def main(
             result=result,
             reporters=reporters,
             smoke_test=smoke_test,
-            cluster_id=cluster_id,
-            cluster_env_id=cluster_env_id,
-            no_terminate=no_terminate,
             test_definition_root=test_definition_root,
-            log_streaming_limit=log_streaming_limit,
             image=image,
         )
         return_code = result.return_code

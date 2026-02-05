@@ -24,15 +24,15 @@
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
-// Maps from resource name to its allocation.
-using ResourceMappingType =
-    std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
-
 namespace grpc {
 class Channel;
 }
 
 namespace ray {
+
+// Maps from resource name to its allocation.
+using ResourceMappingType =
+    std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 
 // Forward declarations.
 class Status;

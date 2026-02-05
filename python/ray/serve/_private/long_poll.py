@@ -3,6 +3,7 @@ import contextvars
 import logging
 import os
 import random
+import time
 from asyncio import sleep
 from asyncio.events import AbstractEventLoop
 from collections import defaultdict
@@ -13,7 +14,7 @@ from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union
 
 import ray
 from ray._common.utils import get_or_create_event_loop
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS, SERVE_LOGGER_NAME
 from ray.serve.generated.serve_pb2 import (
     DeploymentTargetInfo,
     EndpointInfo as EndpointInfoProto,
@@ -55,6 +56,9 @@ class UpdatedObject:
     # The identifier for the object's version. There is not sequential relation
     # among different object's snapshot_ids.
     snapshot_id: int
+    # Timestamp (in seconds since epoch) when notify_changed was called.
+    # Used by clients to measure end-to-end propagation latency.
+    notify_timestamp: float
 
 
 # Type signature for the update state callbacks. E.g.
@@ -101,6 +105,17 @@ class LongPollClient:
             for key in self.key_listeners.keys()
         }
         self.is_running = True
+
+        # Metric to track end-to-end latency from controller to client
+        self.long_poll_latency_histogram = metrics.Histogram(
+            "serve_long_poll_latency_ms",
+            description=(
+                "The time in milliseconds for updates to propagate from "
+                "controller to clients."
+            ),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("namespace",),
+        )
 
         # NOTE(edoakes): we schedule the initial _poll_next call with an empty context
         # so that Ray will not recursively cancel the underlying `listen_for_change`
@@ -212,7 +227,16 @@ class LongPollClient:
         )
         if not updates:  # no updates, no callbacks to run, just poll again
             self._schedule_to_event_loop(self._poll_next)
+
+        # Record latency metrics for received updates
+        receive_time = time.time()
         for key, update in updates.items():
+            # Record end-to-end latency from controller to client
+            latency_ms = (receive_time - update.notify_timestamp) * 1000
+            self.long_poll_latency_histogram.observe(
+                latency_ms, tags={"namespace": str(key)}
+            )
+
             self.snapshot_ids[key] = update.snapshot_id
             callback = self.key_listeners[key]
 
@@ -253,12 +277,20 @@ class LongPollHost:
         self.notifier_events: DefaultDict[KeyType, Set[asyncio.Event]] = defaultdict(
             set
         )
+        # Map object_key -> timestamp when notify_changed was called
+        # Used to track latency for propagating updates to clients
+        self._notify_timestamps: Dict[KeyType, float] = {}
 
         self._listen_for_change_request_timeout_s = listen_for_change_request_timeout_s
         self.transmission_counter = metrics.Counter(
             "serve_long_poll_host_transmission_counter",
             description="The number of times the long poll host transmits data.",
             tag_keys=("namespace_or_state",),
+        )
+        self.pending_clients_gauge = metrics.Gauge(
+            "serve_long_poll_pending_clients",
+            description=("The number of clients waiting for updates per namespace."),
+            tag_keys=("namespace",),
         )
 
     def _get_num_notifier_events(self, key: Optional[KeyType] = None):
@@ -326,7 +358,9 @@ class LongPollHost:
 
             if existing_id != client_snapshot_id:
                 updated_objects[key] = UpdatedObject(
-                    self.object_snapshots[key], existing_id
+                    self.object_snapshots[key],
+                    existing_id,
+                    self._notify_timestamps[key],
                 )
         if len(updated_objects) > 0:
             self._count_send(updated_objects)
@@ -343,6 +377,11 @@ class LongPollHost:
             # asyncio Event.
             self.notifier_events[key].add(event)
 
+            # Update pending clients gauge for this key
+            self.pending_clients_gauge.set(
+                len(self.notifier_events[key]), tags={"namespace": str(key)}
+            )
+
             task = get_or_create_event_loop().create_task(event.wait())
             async_task_to_events[task] = event
             async_task_to_watched_keys[task] = key
@@ -357,7 +396,12 @@ class LongPollHost:
             task.cancel()
             try:
                 event = async_task_to_events[task]
-                self.notifier_events[async_task_to_watched_keys[task]].remove(event)
+                key = async_task_to_watched_keys[task]
+                self.notifier_events[key].remove(event)
+                # Update pending clients gauge after removing
+                self.pending_clients_gauge.set(
+                    len(self.notifier_events[key]), tags={"namespace": str(key)}
+                )
             except KeyError:
                 # Because we use `FIRST_COMPLETED` above, a task in `not_done` may
                 # actually have had its event removed in `notify_changed`.
@@ -373,6 +417,7 @@ class LongPollHost:
                 updated_objects[updated_object_key] = UpdatedObject(
                     self.object_snapshots[updated_object_key],
                     self.snapshot_ids[updated_object_key],
+                    self._notify_timestamps[updated_object_key],
                 )
             self._count_send(updated_objects)
             return updated_objects
@@ -472,6 +517,7 @@ class LongPollHost:
         Update the current snapshot of some objects
         and notify any long poll clients.
         """
+        notify_time = time.time()
         for object_key, updated_object in updates.items():
             try:
                 self.snapshot_ids[object_key] += 1
@@ -482,7 +528,13 @@ class LongPollHost:
                 # https://github.com/ray-project/ray/pull/45881#discussion_r1645243485
                 self.snapshot_ids[object_key] = random.randint(0, 1_000_000)
             self.object_snapshots[object_key] = updated_object
+            # Record timestamp for latency tracking
+            self._notify_timestamps[object_key] = notify_time
             logger.debug(f"LongPollHost: Notify change for key {object_key}.")
 
-            for event in self.notifier_events.pop(object_key, set()):
+            events_to_notify = self.notifier_events.pop(object_key, set())
+            if events_to_notify:
+                # Update pending clients gauge (now 0 for this key since we popped all)
+                self.pending_clients_gauge.set(0, tags={"namespace": str(object_key)})
+            for event in events_to_notify:
                 event.set()

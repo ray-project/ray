@@ -2,13 +2,24 @@ import functools
 import os
 import tempfile
 from contextlib import contextmanager
+from typing import Any, Callable, Iterable, List, Optional
+
+import pandas as pd
 
 import ray
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     PhysicalOperator,
+    RefBundle,
 )
+from ray.data._internal.execution.operators.map_transformer import (
+    BlockMapTransformFn,
+    MapTransformCallable,
+    MapTransformer,
+)
+from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data.block import Block
 
 
 @ray.remote
@@ -112,3 +123,44 @@ def run_one_op_task(op):
     else:
         assert isinstance(task, MetadataOpTask)
         task.on_task_finished()
+
+
+def _get_blocks(bundle: RefBundle, output_list: List[Block]):
+    for block_ref in bundle.block_refs:
+        output_list.append(list(ray.get(block_ref)["id"]))
+
+
+def _mul2_transform(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+    for block in block_iter:
+        yield pd.DataFrame({"id": [b * 2 for b in block["id"]]})
+
+
+def create_map_transformer_from_block_fn(
+    block_fn: MapTransformCallable[Block, Block],
+    init_fn: Optional[Callable[[], None]] = None,
+    output_block_size_option: Optional[OutputBlockSizeOption] = None,
+    disable_block_shaping: bool = False,
+):
+    """Create a MapTransformer from a single block-based transform function.
+
+    This method should only be used for testing and legacy compatibility.
+    """
+    return MapTransformer(
+        [
+            BlockMapTransformFn(
+                block_fn,
+                output_block_size_option=output_block_size_option,
+                disable_block_shaping=disable_block_shaping,
+            ),
+        ],
+        init_fn=init_fn,
+    )
+
+
+def _take_outputs(op: PhysicalOperator) -> List[Any]:
+    output = []
+    while op.has_next():
+        ref = op.get_next()
+        assert ref.owns_blocks, ref
+        _get_blocks(ref, output)
+    return output

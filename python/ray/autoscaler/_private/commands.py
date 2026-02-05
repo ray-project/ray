@@ -223,17 +223,23 @@ def request_resources(
             selector = bundle_label_selectors[i] if bundle_label_selectors else {}
             to_request.append({"resources": bundle, "label_selector": selector})
 
-    _internal_kv_put(
-        AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request), overwrite=True
-    )
-
     from ray.autoscaler.v2.utils import is_autoscaler_v2
 
     if is_autoscaler_v2():
+        # For v2 autoscaler: use new format with label_selectors via GCS RPC
         from ray.autoscaler.v2.sdk import request_cluster_resources
 
         gcs_address = internal_kv_get_gcs_client().address
         request_cluster_resources(gcs_address, to_request)
+    else:
+        # For v1 autoscaler: write old format (ResourceDict) to KV
+        # Extract resources field for backward compatibility
+        to_request_v1 = [req["resources"] for req in to_request]
+        _internal_kv_put(
+            AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+            json.dumps(to_request_v1),
+            overwrite=True,
+        )
 
 
 def create_or_update_cluster(
@@ -353,7 +359,7 @@ def _bootstrap_config(
     config = prepare_config(config)
     # NOTE: multi-node-type autoscaler is guaranteed to be in use after this.
 
-    hasher = hashlib.sha1()
+    hasher = hashlib.sha256()
     hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
     cache_key = os.path.join(
         tempfile.gettempdir(), "ray-config-{}".format(hasher.hexdigest())
@@ -1111,6 +1117,7 @@ def attach_cluster(
     no_config_cache: bool = False,
     new: bool = False,
     port_forward: Optional[Port_forward] = None,
+    node_ip: Optional[str] = None,
 ) -> None:
     """Attaches to a screen for the specified cluster.
 
@@ -1120,8 +1127,10 @@ def attach_cluster(
         use_screen: whether to use screen as multiplexer
         use_tmux: whether to use tmux as multiplexer
         override_cluster_name: set the name of the cluster
+        no_config_cache: whether to skip the config cache
         new: whether to force a new screen
         port_forward ( (int,int) or list[(int,int)] ): port(s) to forward
+        node_ip: IP address of the node to attach to
     """
 
     if use_tmux:
@@ -1151,6 +1160,7 @@ def attach_cluster(
         no_config_cache=no_config_cache,
         port_forward=port_forward,
         _allow_uninitialized_state=True,
+        node_ip=node_ip,
     )
 
 
@@ -1169,6 +1179,7 @@ def exec_cluster(
     with_output: bool = False,
     _allow_uninitialized_state: bool = False,
     extra_screen_args: Optional[str] = None,
+    node_ip: Optional[str] = None,
 ) -> str:
     """Runs a command on the specified cluster.
 
@@ -1178,14 +1189,17 @@ def exec_cluster(
         run_env: whether to run the command on the host or in a container.
             Select between "auto", "host" and "docker"
         screen: whether to run in a screen
-        extra_screen_args: optional custom additional args to screen command
         tmux: whether to run in a tmux session
         stop: whether to stop the cluster after command run
         start: whether to start the cluster if it isn't up
         override_cluster_name: set the name of the cluster
-        port_forward ( (int, int) or list[(int, int)] ): port(s) to forward
+        no_config_cache: whether to skip the config cache
+        port_forward: port(s) to forward
+        with_output: whether to return the command output
         _allow_uninitialized_state: whether to execute on an uninitialized head
             node.
+        extra_screen_args: optional custom additional args to screen command
+        node_ip: IP address of the node to execute on
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert run_env in RUN_ENV_TYPES, "--run_env must be in {}".format(RUN_ENV_TYPES)
@@ -1199,17 +1213,48 @@ def exec_cluster(
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
-    head_node = _get_running_head_node(
-        config,
-        config_file,
-        override_cluster_name,
-        create_if_needed=start,
-        _allow_uninitialized_state=_allow_uninitialized_state,
-    )
-
     provider = _get_node_provider(config["provider"], config["cluster_name"])
+
+    if node_ip:
+        # IP specified by user, find the node with the IP
+        if start:
+            cli_logger.warning(
+                "The {} flag is ignored when {} is specified, "
+                "as the node IP can be either head or worker node. "
+                "If you need to start the cluster, run {} first, "
+                "or use {} without {}.",
+                cf.bold("--start"),
+                cf.bold("--node-ip"),
+                cf.bold(f"ray up {config_file}"),
+                cf.bold("ray attach"),
+                cf.bold("--node-ip"),
+            )
+        use_internal_ip = config.get("provider", {}).get("use_internal_ips", False)
+        try:
+            target_node = provider.get_node_id(node_ip, use_internal_ip=use_internal_ip)
+            cli_logger.print("Attaching to node with IP: {}", cf.bold(node_ip))
+        except ValueError as e:
+            cli_logger.abort(
+                "Could not find node with IP {}. {}", cf.bold(node_ip), str(e)
+            )
+
+        is_head_node = (
+            provider.node_tags(target_node)[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
+        )
+    else:
+        # Default attaching to head node
+        target_node = _get_running_head_node(
+            config,
+            config_file,
+            override_cluster_name,
+            create_if_needed=start,
+            _provider=provider,
+            _allow_uninitialized_state=_allow_uninitialized_state,
+        )
+        is_head_node = True
+
     updater = NodeUpdaterThread(
-        node_id=head_node,
+        node_id=target_node,
         provider_config=config["provider"],
         provider=provider,
         auth_config=config["auth"],
@@ -1220,7 +1265,7 @@ def exec_cluster(
         ray_start_commands=[],
         runtime_hash="",
         file_mounts_contents_hash="",
-        is_head_node=True,
+        is_head_node=is_head_node,
         rsync_options={
             "rsync_exclude": config.get("rsync_exclude"),
             "rsync_filter": config.get("rsync_filter"),
@@ -1254,6 +1299,8 @@ def exec_cluster(
             attach_command_parts.append(
                 "--cluster-name={}".format(override_cluster_name)
             )
+        if node_ip is not None:
+            attach_command_parts.append("--node-ip={}".format(node_ip))
         if tmux:
             attach_command_parts.append("--tmux")
         elif screen:
