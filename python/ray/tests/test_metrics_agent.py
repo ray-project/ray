@@ -1238,7 +1238,9 @@ def test_metrics_export_with_tls(use_tls, ray_start_cluster):
 
         node_info = ray.nodes()[0]
         metrics_export_port = node_info["MetricsExportPort"]
-        assert metrics_export_port > 0, f"Expected valid metrics port, got {metrics_export_port}"
+        assert (
+            metrics_export_port > 0
+        ), f"Expected valid metrics port, got {metrics_export_port}"
 
         addr = node_info["NodeManagerAddress"]
         prom_addresses = [build_address(addr, metrics_export_port)]
@@ -1259,7 +1261,9 @@ def test_metrics_export_with_tls(use_tls, ray_start_cluster):
             return has_cpp_metrics
 
         # Wait for C++ metrics to be available (proves TLS is working)
-        wait_for_condition(check_cpp_metrics_available, timeout=30, retry_interval_ms=1000)
+        wait_for_condition(
+            check_cpp_metrics_available, timeout=30, retry_interval_ms=1000
+        )
 
     finally:
         if "RAY_enable_open_telemetry" in os.environ:

@@ -117,8 +117,8 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
     std::string ca_cert_file = std::string(RayConfig::instance().TLS_CA_CERT());
     if (!ca_cert_file.empty()) {
       std::string ca_cert = rpc::ReadCert(ca_cert_file);
-      RAY_CHECK(!ca_cert.empty()) << "Failed to read CA certificate file: "
-                                  << ca_cert_file;
+      RAY_CHECK(!ca_cert.empty())
+          << "Failed to read CA certificate file: " << ca_cert_file;
       exporter_options.ssl_credentials_cacert_as_string = std::move(ca_cert);
     }
 
@@ -151,10 +151,11 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
     // Ray's gRPC server requires client certificates (mTLS) when TLS is enabled.
     // Without mTLS support, the OpenTelemetry exporter will fail to connect.
     // This is a fatal error because metric export will silently fail otherwise.
-    RAY_LOG(FATAL) << "OpenTelemetry metric exporter cannot be configured: TLS is enabled "
-                   << "but mTLS support is not available (SDK built without "
-                   << "ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW). Ray's gRPC servers require "
-                   << "client certificates when TLS is enabled.";
+    RAY_LOG(FATAL)
+        << "OpenTelemetry metric exporter cannot be configured: TLS is enabled "
+        << "but mTLS support is not available (SDK built without "
+        << "ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW). Ray's gRPC servers require "
+        << "client certificates when TLS is enabled.";
 #endif
   }
   auto exporter = std::make_unique<OpenTelemetryMetricExporter>(exporter_options);
