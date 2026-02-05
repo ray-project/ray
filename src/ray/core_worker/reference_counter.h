@@ -40,8 +40,6 @@
 namespace ray {
 namespace core {
 
-using json = nlohmann::json;
-
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
 class ReferenceCounter : public ReferenceCounterInterface,
@@ -285,7 +283,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     ///     discover that it contains these IDs.
     absl::flat_hash_set<ObjectID> contains;
 
-    json ToJson() const;
+    nlohmann::json ToJson() const;
   };
 
   /// Contains information related to borrowing only.
@@ -310,7 +308,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     ///     that it is no longer using the reference.
     absl::flat_hash_set<rpc::Address> borrowers;
 
-    json ToJson() const;
+    nlohmann::json ToJson() const;
   };
 
   struct Reference {
@@ -431,7 +429,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     }
 
     std::string DebugString() const;
-    json ToJson() const;
+    nlohmann::json ToJson() const;
 
     /// Description of the call site where the reference was created.
     std::string call_site_ = "<unknown>";
