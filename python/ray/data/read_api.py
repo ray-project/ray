@@ -4344,6 +4344,13 @@ def read_delta(
     dt_kwargs = {}
     if storage_options:
         dt_kwargs["storage_options"] = storage_options
+    # Validate version type
+    if version is not None and not isinstance(version, (int, str)):
+        raise TypeError(
+            f"version must be int or str, got {type(version).__name__}. "
+            f"Use int for version number or ISO 8601 timestamp string."
+        )
+
     if version is not None and isinstance(version, int):
         dt_kwargs["version"] = version
 

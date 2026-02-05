@@ -519,11 +519,13 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             and existing is None
             and self.mode in (SaveMode.APPEND, SaveMode.UPSERT, SaveMode.OVERWRITE)
         ):
-            self._cleanup_files_driver(written_files)
             if self.mode == SaveMode.OVERWRITE:
                 # For OVERWRITE, table deletion is expected - create new table
+                # Don't cleanup files - they're needed to create the new table
                 self._table_existed_at_start = False
                 return None
+            # For APPEND/UPSERT, table deletion is unexpected - cleanup and raise error
+            self._cleanup_files_driver(written_files)
             raise ValueError(
                 f"Delta table was deleted at {self.table_uri} after write started. Use OVERWRITE."
             )
