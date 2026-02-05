@@ -104,8 +104,43 @@ def build_delete_predicate(
         [pa.field(c, keys_table.schema.field(c).type) for c in upsert_cols]
     )
     struct_arr = pa.StructArray.from_arrays(struct_arrays, fields=struct_type)
-    encoded = pc.dictionary_encode(struct_arr)
-    unique_indices = pc.unique(encoded.indices)
+
+    try:
+        encoded = pc.dictionary_encode(struct_arr)
+        unique_indices = pc.unique(encoded.indices)
+    except pa.ArrowNotImplementedError:
+        # Some PyArrow builds don't support dictionary_encode on struct types.
+        # Fallback: manually extract unique key tuples by iterating through rows.
+
+        # Extract columns as arrays for efficient access
+        col_arrays = [keys_table[c] for c in upsert_cols]
+        col_arrays = [
+            arr.combine_chunks() if isinstance(arr, pa.ChunkedArray) else arr
+            for arr in col_arrays
+        ]
+
+        # Build set of unique key tuples
+        unique_keys: set = set()
+        for i in range(len(keys_table)):
+            key = tuple(
+                arr[i].as_py() if arr[i].is_valid else None for arr in col_arrays
+            )
+            unique_keys.add(key)
+
+        if len(unique_keys) > _MAX_COMPOUND_KEYS:
+            raise ValueError(
+                f"Upsert has {len(unique_keys)} unique compound keys; limit is {_MAX_COMPOUND_KEYS}. Batch your upserts."
+            )
+
+        # Build SQL predicate from unique keys
+        ors = []
+        for key_tuple in unique_keys:
+            ands = [
+                f"{quote_identifier(c)} = {format_sql_value(key_tuple[i])}"
+                for i, c in enumerate(upsert_cols)
+            ]
+            ors.append(f"({' AND '.join(ands)})")
+        return " OR ".join(ors)
 
     if len(unique_indices) > _MAX_COMPOUND_KEYS:
         raise ValueError(
@@ -161,9 +196,7 @@ def commit_upsert(
                 m = pc.and_(m, pc.invert(pc.is_nan(arr)))
             masks.append(m)
         keys = upsert_keys.filter(functools.reduce(pc.and_, masks))
-        pred = (
-            build_delete_predicate(keys, upsert_cols) if len(keys) > 0 else None
-        )
+        pred = build_delete_predicate(keys, upsert_cols) if len(keys) > 0 else None
         if pred:
             table.delete(pred)
 
@@ -175,9 +208,7 @@ def commit_upsert(
             schema=table.schema(),
             partition_by=partition_cols or None,
             commit_properties=props,
-            post_commithook_properties=write_kwargs.get(
-                "post_commithook_properties"
-            ),
+            post_commithook_properties=write_kwargs.get("post_commithook_properties"),
         )
     except Exception as e:
         raise RuntimeError(
