@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data.checkpoint.checkpoint_filter import BatchBasedCheckpointFilter
@@ -26,13 +26,13 @@ def get_checkpoint_loader(
 class LoadCheckpointCallback(ExecutionCallback):
     """ExecutionCallback that handles checkpoints."""
 
-    # Registry to track which checkpoint configs were actually used by the Planner.
-    _enabled_configs: Set[int] = set()
+    # Maps config_id -> The specific Class Type that claimed it.
+    # This prevents multiple callback instances (base + subclass) from
+    # attempting to delete the same checkpoint.
+    _assigned_owners: Dict[int, Type["LoadCheckpointCallback"]] = {}
 
     def __init__(self, config: Optional["CheckpointConfig"]):
         self._config = config
-        # We create the filter here exclusively for DELETION logic.
-        # We do NOT use this filter for loading data.
         self._ckpt_filter = None
 
         if self._config:
@@ -53,7 +53,9 @@ class LoadCheckpointCallback(ExecutionCallback):
         if not config:
             return None
 
-        cls._enabled_configs.add(id(config))
+        # Explicitly mark that ONLY this class type (cls)
+        # is authorized to handle cleanup for this specific config.
+        LoadCheckpointCallback._assigned_owners[id(config)] = cls
 
         ckpt_filter = cls._create_checkpoint_filter(config)
         checkpoint_ref: Dict[str, Any] = {}
@@ -61,6 +63,7 @@ class LoadCheckpointCallback(ExecutionCallback):
         def load_fn() -> "ObjectRef[Block]":
             if "ref" in checkpoint_ref:
                 return checkpoint_ref["ref"]
+
             ref = ckpt_filter.load_checkpoint()
             checkpoint_ref["ref"] = ref
             return ref
@@ -84,8 +87,11 @@ class LoadCheckpointCallback(ExecutionCallback):
         if self._config is None or self._ckpt_filter is None:
             return
 
-        # Only delete if this config was explicitly ENABLED by the Planner.
-        if id(self._config) not in self._enabled_configs:
+        owner_cls = LoadCheckpointCallback._assigned_owners.get(id(self._config))
+
+        # If I am not the specific class type that the Planner selected,
+        # I must NOT touch the data.
+        if owner_cls is not type(self):
             return
 
         try:
@@ -94,9 +100,10 @@ class LoadCheckpointCallback(ExecutionCallback):
         except Exception:
             logger.warning("Failed to delete checkpoint data.", exc_info=True)
         finally:
-            self._enabled_configs.discard(id(self._config))
+            # Cleanup registry (only the owner cleans up the entry)
+            LoadCheckpointCallback._assigned_owners.pop(id(self._config), None)
 
     def after_execution_fails(self, executor: "StreamingExecutor", error: Exception):
         # Cleanup registry on failure
         if self._config:
-            self._enabled_configs.discard(id(self._config))
+            LoadCheckpointCallback._assigned_owners.pop(id(self._config), None)
