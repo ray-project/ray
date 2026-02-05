@@ -329,8 +329,8 @@ def ray_deps_setup():
     # protobuf library that Ray supports.
     auto_http_archive(
         name = "com_google_protobuf_rules_proto_grpc",
-        url = "https://github.com/protocolbuffers/protobuf/archive/v3.19.4.tar.gz",
-        sha256 = "3bd7828aa5af4b13b99c191e8b1e884ebfa9ad371b0ce264605d347f135d2568",
+        url = "https://github.com/protocolbuffers/protobuf/archive/v3.20.3.tar.gz",
+        sha256 = "9c0fd39c7a08dff543c643f0f4baf081988129a411b977a07c46221793605638",
     )
     auto_http_archive(
         name = "rules_proto_grpc",
