@@ -1,10 +1,6 @@
 import logging
 from typing import Dict, Optional, Tuple
 
-import jax
-import orbax.checkpoint as ocp
-from orbax.checkpoint import args as ocp_args, type_handlers
-
 from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _TrainingResult
@@ -34,7 +30,21 @@ class JaxCheckpointManager(_CheckpointManager):
         checkpoint_config: Optional[CheckpointConfig] = None,
         enable_async_checkpointing: bool = True,
     ):
-        super().__init__(checkpoint_config=checkpoint_config)
+        import orbax.checkpoint as ocp
+
+        # We process the user's checkpoint_config for Orbax, but we pass a modified
+        # config to Ray's _CheckpointManager to disable Ray's internal deletion logic
+        # (by setting num_to_keep=None) to prevent it from conflicting with Orbax's deletion.
+        ray_manager_config = None
+        if checkpoint_config:
+            # Create a copy but clear num_to_keep so Ray doesn't delete files
+            ray_manager_config = CheckpointConfig(
+                num_to_keep=None,
+                checkpoint_score_attribute=checkpoint_config.checkpoint_score_attribute,
+                checkpoint_score_order=checkpoint_config.checkpoint_score_order,
+            )
+
+        super().__init__(checkpoint_config=ray_manager_config)
         self._storage_context = storage_context
 
         checkpoint_config = checkpoint_config or CheckpointConfig()
@@ -93,6 +103,9 @@ class JaxCheckpointManager(_CheckpointManager):
         Returns:
             The path to the saved checkpoint, or an empty string if the save operation was not performed.
         """
+        import jax
+        import orbax.checkpoint as ocp
+        from orbax.checkpoint import args as ocp_args
 
         # Prepare save arguments
         # ocdbt_target_data_file_size controls the chunk size (1GB here)
@@ -131,7 +144,7 @@ class JaxCheckpointManager(_CheckpointManager):
         self,
         target: dict,
         step: Optional[int] = None,
-    ) -> Tuple[dict, int]:
+    ) -> Tuple[Optional[dict], Optional[int]]:
         """
         Restores a distributed model checkpoint given the target abstract state with sharding.
         This method should be called by all hosts.
@@ -140,7 +153,11 @@ class JaxCheckpointManager(_CheckpointManager):
             step: The step to restore. If None, restores the latest checkpoint.
         Returns:
             A tuple of (dict containing the restored PyTrees, step).
+            Returns (None, None) if no checkpoint is found.
         """
+        import jax
+        from orbax.checkpoint import args as ocp_args, type_handlers
+
         # 1. Create RestoreArgs with Sharding info
         # This maps every leaf in the tree to an ArrayRestoreArgs object containing its sharding
         # This is CRITICAL for restoring into a distributed mesh correctly
@@ -157,16 +174,18 @@ class JaxCheckpointManager(_CheckpointManager):
         checkpoint_args = ocp_args.PyTreeRestore(
             item=target, restore_args=restore_args_structure
         )
-
+        if step is None:
+            step = self._orbax_manager.latest_step()
+        if step is None:
+            return None, None
         # 3. Restore
         # This returns a dictionary because of the item options
         restored = self._orbax_manager.restore(
             step, args=ocp_args.Composite(items=checkpoint_args)
         )
         # Extract the actual state
-        restored_step = step or self._orbax_manager.latest_step()
-        logger.info(f"Restored checkpoint for step {restored_step}")
-        return restored["items"], restored_step
+        logger.info(f"Restored checkpoint for step {step}")
+        return restored["items"], step
 
     def latest_step(self) -> Optional[int]:
         """Returns the latest step saved.
@@ -190,5 +209,5 @@ class JaxCheckpointManager(_CheckpointManager):
         return self._orbax_manager.best_step()
 
     @property
-    def orbax_manager(self) -> ocp.CheckpointManager:
+    def orbax_manager(self) -> "orbax.checkpoint.CheckpointManager":  # noqa: F821
         return self._orbax_manager

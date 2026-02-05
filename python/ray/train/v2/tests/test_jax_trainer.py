@@ -473,15 +473,19 @@ def test_scaling_config_validation():
 
 def _generate_array_with_sharding(mesh, sharding, shape, value=None):
     """Helper function to generate a sharded array."""
-    with mesh:
-        # Create a deterministic array
-        if value is None:
-            w = jnp.arange(np.prod(shape)).reshape(shape)
-        else:
-            w = jnp.full(shape, value)
-        # shard it for saving (rows distributed)
-        w_save = jax.device_put(w, sharding)
-    return w_save
+    if value is None:
+        data = np.arange(np.prod(shape)).reshape(shape)
+    else:
+        data = np.full(shape, value)
+
+    indices_map = sharding.addressable_devices_indices_map(shape)
+    local_devices = jax.local_devices()
+    local_arrays = []
+    for d in local_devices:
+        idx = indices_map[d]
+        local_arrays.append(jax.device_put(data[idx], d))
+
+    return jax.make_array_from_single_device_arrays(shape, sharding, local_arrays)
 
 
 @pytest.mark.skipif(
@@ -587,6 +591,50 @@ def test_tpu_checkpointing_single_host(ray_tpu_single_host, tmp_path):
     assert reports[0]["is_equal"] is True
 
 
+def _mock_multi_host_sync(tmp_path):
+    """
+    Mock multi-host sync for CPU multi-process simulation.
+    """
+    import pickle
+    import time
+
+    import jax.experimental.multihost_utils as mhu
+
+    barrier_dir = os.path.join(tmp_path, "barriers")
+    os.makedirs(barrier_dir, exist_ok=True)
+
+    def mock_sync(name, **kwargs):
+        token = name.replace("/", "_").replace(":", "_")
+        worker_token = f"{token}_{jax.process_index()}"
+        with open(os.path.join(barrier_dir, worker_token), "w") as f:
+            f.write("1")
+
+        while True:
+            files = os.listdir(barrier_dir)
+            relevant = [f for f in files if f.startswith(token + "_")]
+            if len(relevant) >= 2:  # num_workers
+                break
+            time.sleep(0.1)
+
+    def mock_broadcast(x, **kwargs):
+        mock_broadcast.counter = getattr(mock_broadcast, "counter", 0) + 1
+        token = f"broadcast_{mock_broadcast.counter}"
+
+        if jax.process_index() == 0:
+            with open(os.path.join(barrier_dir, token), "wb") as f:
+                pickle.dump(x, f)
+            mock_sync(token)
+            return x
+        else:
+            mock_sync(token)
+            with open(os.path.join(barrier_dir, token), "rb") as f:
+                return pickle.load(f)
+
+    mhu.sync_global_devices = mock_sync
+    mhu.broadcast_one_to_all = mock_broadcast
+    mhu.assert_equal = lambda x, **kwargs: None
+
+
 @pytest.mark.skipif(
     sys.version_info >= (3, 12),
     reason="Current jax version (0.4.13) is not supported in python 3.12+",
@@ -603,6 +651,11 @@ def test_tpu_checkpointing_multi_host(ray_tpu_multi_host, tmp_path):
 
         # Setup mesh
         devices = jax.devices()
+
+        if devices[0].platform == "cpu":
+            # JAX's CPU backend does not support multiprocess collective operations in jax 0.4.*
+            _mock_multi_host_sync(tmp_path)
+
         devices = np.array(devices).reshape((4, 2))
         mesh = Mesh(devices, axis_names=("x", "y"))
         shape = (8, 8)
@@ -633,7 +686,17 @@ def test_tpu_checkpointing_multi_host(ray_tpu_multi_host, tmp_path):
         restored, _ = manager.restore(restore_target)
 
         # Verify values are correct
-        is_equal = bool(jnp.array_equal(restored["w"], w_save))
+        # Use a manual check for equality to avoid JAX collectives on the CPU backend
+        def check_equal(jax_arr, expected_np_arr):
+            for shard in jax_arr.addressable_shards:
+                local_data = np.array(shard.data)
+                if not np.array_equal(local_data, expected_np_arr[shard.index]):
+                    return False
+            return True
+
+        expected_data = np.arange(np.prod(shape)).reshape(shape)
+        is_equal = check_equal(restored["w"], expected_data)
+
         # Verify sharding is correct (should match sharding_restore)
         is_resharded = restored["w"].sharding == sharding_restore
 
