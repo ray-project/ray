@@ -1079,19 +1079,23 @@ def compute_unique_value_indices(
         return result
 
     value_counts_ds = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
-    unique_values_by_col: Dict[str, Set] = {key_gen(col): set() for col in columns}
+    # Aggregate counters globally per column before applying max_categories,
+    # so that top-k is computed over the full dataset rather than per-partition.
+    global_counters: Dict[str, Counter] = {col: Counter() for col in columns}
     for batch in value_counts_ds.iter_batches(batch_size=None):
         for col, counters in batch.items():
             for counter in counters:
-                counter: Dict[Any, int] = {
+                filtered: Dict[Any, int] = {
                     k: v for k, v in counter.items() if v is not None
                 }
-                if col in max_categories:
-                    counter: Dict[Any, int] = dict(
-                        Counter(counter).most_common(max_categories[col])
-                    )
-                # add only column values since frequencies are needed beyond this point
-                unique_values_by_col[key_gen(col)].update(counter.keys())
+                global_counters[col].update(filtered)
+
+    unique_values_by_col: Dict[str, Set] = {key_gen(col): set() for col in columns}
+    for col in columns:
+        counter = global_counters[col]
+        if col in max_categories:
+            counter = dict(counter.most_common(max_categories[col]))
+        unique_values_by_col[key_gen(col)].update(counter.keys())
 
     return unique_values_by_col
 
