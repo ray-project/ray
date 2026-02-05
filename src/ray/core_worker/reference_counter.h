@@ -37,10 +37,10 @@
 #include "ray/rpc/utils.h"
 #include "src/ray/protobuf/common.pb.h"
 
-using json = nlohmann::json;
-
 namespace ray {
 namespace core {
+
+using json = nlohmann::json;
 
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
