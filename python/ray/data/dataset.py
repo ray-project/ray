@@ -5320,16 +5320,13 @@ class Dataset:
         value_serializer: str = "json",
         producer_config: dict[str, Any] | None = None,
         delivery_callback: Callable | None = None,
-    ) -> Any:
+    ) -> None:
         """
         Convenience method to write Ray Dataset to Kafka.
 
         Example:
             >>> ds = ray.data.range(100)
             >>> ds.write_kafka("my-topic", "localhost:9092")
-
-        Returns:
-            Write statistics
 
         Args:
             topic: Kafka topic name
