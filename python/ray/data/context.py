@@ -15,8 +15,7 @@ from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
 if TYPE_CHECKING:
-    from python.ray.data.checkpoint.load_checkpoint_callback import ExecutionCallback
-
+    from ray.data._internal.execution.execution_callback import ExecutionCallback
     from ray.data._internal.execution.interfaces import ExecutionOptions
     from ray.data._internal.issue_detection.issue_detector_configuration import (
         IssueDetectorsConfiguration,
