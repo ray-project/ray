@@ -768,10 +768,7 @@ class ActorReplicaWrapper:
             ingress: Whether this replica is an ingress replica.
 
         Returns:
-            True if the replica actor is alive and recovered successfully.
-            False if the replica actor is no longer alive.
-
-        Returns: False if the replica actor is no longer alive; the
+            False if the replica actor is no longer alive; the
             actor could have been killed in the time between when the
             controller fetching all Serve actors in the cluster and when
             the controller tries to recover it. Otherwise, return True.
