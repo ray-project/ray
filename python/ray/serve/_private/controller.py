@@ -23,6 +23,7 @@ from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
+    AsyncInferenceTaskQueueMetricReport,
     DeploymentID,
     DeploymentSnapshot,
     HandleMetricReport,
@@ -375,6 +376,31 @@ class ServeController:
             handle_metric_report
         )
 
+    def record_autoscaling_metrics_from_async_inference_task_queue(
+        self, report: AsyncInferenceTaskQueueMetricReport
+    ):
+        """Record async inference task queue metrics pushed from QueueMonitor."""
+        latency = time.time() - report.timestamp_s
+        latency_ms = latency * 1000
+        # Record the metrics delay for observability
+        self.async_inference_task_queue_metrics_delay_gauge.set(
+            latency_ms,
+            tags={
+                "deployment": report.deployment_id.name,
+                "application": report.deployment_id.app_name,
+            },
+        )
+        if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
+            logger.warning(
+                f"Received async inference task queue metrics for deployment "
+                f"{report.deployment_id} with timestamp {report.timestamp_s} "
+                f"which is {latency_ms}ms ago. "
+                f"This is greater than the warning threshold RPC latency of "
+                f"{RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS}ms. "
+                "This may indicate a performance issue with the controller."
+            )
+        self.autoscaling_state_manager.record_async_inference_task_queue_metrics(report)
+
     def _get_total_num_requests_for_deployment_for_testing(
         self, deployment_id: DeploymentID
     ):
@@ -715,6 +741,14 @@ class ServeController:
                 "High values may indicate a busy controller."
             ),
             tag_keys=("deployment", "application", "handle"),
+        )
+        self.async_inference_task_queue_metrics_delay_gauge = metrics.Gauge(
+            "serve_autoscaling_async_inference_task_queue_metrics_delay_ms",
+            description=(
+                "Time taken for the async inference task queue metrics to be reported "
+                "to the controller. High values may indicate a busy controller."
+            ),
+            tag_keys=("deployment", "application"),
         )
 
     def _recover_state_from_checkpoint(self):
