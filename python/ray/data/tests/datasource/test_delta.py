@@ -647,7 +647,9 @@ def test_build_partition_delete_predicate_unit():
     pred = _build_partition_delete_predicate([action5], ["year", "month"])
     assert pred is not None
     assert "year" in pred
-    # NULL values should be excluded from predicate (handled separately by Delta)
+    assert "month" in pred
+    # NULL values must be explicitly checked with IS NULL to avoid over-deletion
+    assert "IS NULL" in pred or "is null" in pred.lower()
 
     # Test with empty file actions
     pred = _build_partition_delete_predicate([], ["year"])

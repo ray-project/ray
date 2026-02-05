@@ -224,6 +224,7 @@ def _build_partition_delete_predicate(
 
     # Build OR predicate: (col1 = 'val1' AND col2 = 'val2') OR ...
     # Note: partition_values are strings, format_sql_value will quote them appropriately
+    # CRITICAL: Must include NULL checks for NULL partition values to avoid over-deletion
     ors = []
     for combo in partition_combinations:
         ands = []
@@ -237,6 +238,10 @@ def _build_partition_delete_predicate(
                 else:
                     # format_sql_value handles string conversion and quoting
                     ands.append(f"{quote_identifier(col)} = {format_sql_value(val)}")
+            else:
+                # NULL partition values must be explicitly checked with IS NULL
+                # Skipping them would cause over-deletion (matching all non-NULL values)
+                ands.append(f"{quote_identifier(col)} IS NULL")
         if ands:
             ors.append(f"({' AND '.join(ands)})")
 
