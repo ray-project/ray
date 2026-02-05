@@ -1,5 +1,4 @@
-pyarrow==20.0.0
-
+pyarrow
 torch
 tensorflow
 jax
