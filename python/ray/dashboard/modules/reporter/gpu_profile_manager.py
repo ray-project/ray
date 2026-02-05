@@ -168,14 +168,22 @@ class GpuProfilingManager:
         return f"gputrace_{self._ip_address}_{timestamp}.json"
 
     async def gpu_profile(
-        self, pid: int, num_iterations: int, _timeout_s: int = _DEFAULT_TIMEOUT_S
+        self,
+        pid: int,
+        num_iterations: Optional[int] = None,
+        duration_ms: Optional[int] = None,
+        _timeout_s: int = _DEFAULT_TIMEOUT_S,
     ) -> Tuple[bool, str]:
         """
         Perform GPU profiling on a specified process.
 
         Args:
             pid: The process ID (PID) of the target process to be profiled.
-            num_iterations: The number of iterations to profile.
+            num_iterations: The number of iterations to profile (mutually exclusive
+                with duration_ms). Uses optimizer.step() calls as iteration markers.
+            duration_ms: The duration in milliseconds to profile (mutually exclusive
+                with num_iterations). Useful for data loader processes without
+                gradient computation.
             _timeout_s: Maximum time in seconds to wait for profiling to complete.
                 This is an advanced parameter that catches edge cases where the
                 profiling request never completes and hangs indefinitely.
@@ -186,15 +194,26 @@ class GpuProfilingManager:
                 filepath of the trace file relative to the root log directory,
                 or an error message.
         """
+        # Validate that exactly one of num_iterations or duration_ms is provided
+        if num_iterations is None and duration_ms is None:
+            return False, "Either num_iterations or duration_ms must be provided."
+        if num_iterations is not None and duration_ms is not None:
+            return False, "Only one of num_iterations or duration_ms can be provided."
         if not self.enabled:
             return False, self._DISABLED_ERROR_MESSAGE.format(
                 ip_address=self._ip_address
             )
 
-        if not (1 <= num_iterations <= 100):
+        if num_iterations is not None and not (1 <= num_iterations <= 100):
             return False, (
                 f"Invalid num_iterations={num_iterations}. "
                 "Must be between 1 and 100."
+            )
+
+        if duration_ms is not None and not (1 <= duration_ms <= 300_000):
+            return False, (
+                f"Invalid duration_ms={duration_ms}. "
+                "Must be between 1 and 300000 (5 minutes)."
             )
 
         if not self._dynolog_daemon_process:
@@ -230,9 +249,13 @@ class GpuProfilingManager:
             str(trace_file_path),
             "--process-limit",
             str(1),
-            "--iterations",
-            str(num_iterations),
         ]
+
+        # Add either iterations or duration based on which was provided
+        if num_iterations is not None:
+            cmd.extend(["--iterations", str(num_iterations)])
+        else:
+            cmd.extend(["--duration-ms", str(duration_ms)])
 
         process = await asyncio.create_subprocess_exec(
             *cmd,

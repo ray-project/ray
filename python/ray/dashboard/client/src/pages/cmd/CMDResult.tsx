@@ -2,8 +2,12 @@ import {
   Box,
   Button,
   CircularProgress,
+  FormControl,
+  FormControlLabel,
   Grid,
   MenuItem,
+  Radio,
+  RadioGroup,
   Select,
   TextField,
   Typography,
@@ -27,6 +31,10 @@ const CMDResult = () => {
   const [option, setOption] = useState("gcutil");
   const { themeMode } = useContext(GlobalContext);
   const [numIterations, setNumIterations] = useState(4);
+  const [profilingMode, setProfilingMode] = useState<"iterations" | "duration">(
+    "iterations",
+  );
+  const [durationSeconds, setDurationSeconds] = useState(30);
   const [traceLoading, setTraceLoading] = useState(false);
   const [traceSuccess, setTraceSuccess] = useState(false);
   const executeJstat = useCallback(
@@ -46,14 +54,22 @@ const CMDResult = () => {
   const executeTorchTrace = useCallback(async () => {
     setTraceLoading(true);
     setTraceSuccess(false);
+    const modeDescription =
+      profilingMode === "iterations"
+        ? `${numIterations} training iterations`
+        : `${durationSeconds} seconds`;
     setResult(
-      "Starting Torch trace... This may take a few minutes depending on the number of iterations.\n" +
-        "Server timeout is 5 minutes.",
+      `Starting Torch trace for ${modeDescription}...\n` +
+        "This may take a few minutes. Server timeout is 5 minutes.",
     );
     try {
-      const url = `/worker/gpu_profile?ip=${encodeURIComponent(
+      const baseUrl = `/worker/gpu_profile?ip=${encodeURIComponent(
         ip,
-      )}&pid=${encodeURIComponent(pid)}&num_iterations=${numIterations}`;
+      )}&pid=${encodeURIComponent(pid)}`;
+      const url =
+        profilingMode === "iterations"
+          ? `${baseUrl}&num_iterations=${numIterations}`
+          : `${baseUrl}&duration_ms=${durationSeconds * 1000}`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -88,10 +104,14 @@ const CMDResult = () => {
       a.remove();
 
       const timestamp = new Date().toLocaleString();
+      const captureInfo =
+        profilingMode === "iterations"
+          ? `${numIterations} training iterations`
+          : `${durationSeconds} seconds`;
       setResult(
         `Torch trace downloaded successfully!\n\n` +
           `Captured at: ${timestamp}\n` +
-          `The trace was captured for ${numIterations} training iterations.\n` +
+          `The trace was captured for ${captureInfo}.\n` +
           `Drag and drop the downloaded file into Perfetto UI to view it.`,
       );
       setTraceSuccess(true);
@@ -107,7 +127,7 @@ const CMDResult = () => {
     } finally {
       setTraceLoading(false);
     }
-  }, [ip, pid, numIterations]);
+  }, [ip, pid, numIterations, profilingMode, durationSeconds]);
 
   useEffect(() => {
     switch (cmd) {
@@ -139,7 +159,7 @@ const CMDResult = () => {
       case "torchtrace":
         setResult(
           `Click "Start Trace" to capture a Torch GPU profiling trace.\n\n` +
-            `Configure the number of training iterations (calls to optimizer.step()) to profile, then click Start Trace.`,
+            `Choose iterations or duration mode, configure the value, then click Start Trace.`,
         );
         break;
       default:
@@ -189,21 +209,57 @@ const CMDResult = () => {
             <Typography variant="body2" sx={{ marginBottom: 2 }}>
               Capture a PyTorch/Kineto GPU profiling trace using Dynolog.
             </Typography>
+            <FormControl sx={{ marginBottom: 2 }}>
+              <RadioGroup
+                row
+                value={profilingMode}
+                onChange={(e) =>
+                  setProfilingMode(e.target.value as "iterations" | "duration")
+                }
+              >
+                <FormControlLabel
+                  value="iterations"
+                  control={<Radio size="small" />}
+                  label="Iterations"
+                />
+                <FormControlLabel
+                  value="duration"
+                  control={<Radio size="small" />}
+                  label="Duration"
+                />
+              </RadioGroup>
+            </FormControl>
             <Grid container spacing={2} alignItems="center">
               <Grid item>
-                <TextField
-                  label="Iterations"
-                  type="number"
-                  size="small"
-                  value={numIterations}
-                  onChange={(e) =>
-                    setNumIterations(
-                      Math.min(100, Math.max(1, parseInt(e.target.value) || 1)),
-                    )
-                  }
-                  inputProps={{ min: 1, max: 100 }}
-                  helperText="Number of optimizer.step() calls to profile"
-                />
+                {profilingMode === "iterations" ? (
+                  <TextField
+                    label="Iterations"
+                    type="number"
+                    size="small"
+                    value={numIterations}
+                    onChange={(e) =>
+                      setNumIterations(
+                        Math.min(100, Math.max(1, parseInt(e.target.value) || 1)),
+                      )
+                    }
+                    inputProps={{ min: 1, max: 100 }}
+                    helperText="Number of optimizer.step() calls to profile"
+                  />
+                ) : (
+                  <TextField
+                    label="Duration (seconds)"
+                    type="number"
+                    size="small"
+                    value={durationSeconds}
+                    onChange={(e) =>
+                      setDurationSeconds(
+                        Math.min(300, Math.max(1, parseInt(e.target.value) || 1)),
+                      )
+                    }
+                    inputProps={{ min: 1, max: 300 }}
+                    helperText="Time in seconds to profile (for data loaders)"
+                  />
+                )}
               </Grid>
               <Grid item>
                 <Button
