@@ -121,7 +121,7 @@ class KafkaDatasink(Datasink):
         if self.key_field and isinstance(row_dict, dict):
             key_value = row_dict.get(self.key_field)
             if key_value is not None:
-                key = str(key_value).encode("utf-8")
+                key = self._serialize_key(key_value)
         return key
 
     def write(

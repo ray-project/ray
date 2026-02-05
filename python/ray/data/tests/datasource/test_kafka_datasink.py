@@ -212,6 +212,37 @@ def test_kafka_datasink_extract_key():
     assert key is None
 
 
+def test_kafka_datasink_extract_key_uses_serializer():
+    """Test that _extract_key properly uses the configured key_serializer."""
+    # JSON serializer should produce valid JSON
+    sink_json = KafkaDatasink(
+        topic="test",
+        bootstrap_servers="localhost:9092",
+        key_field="key",
+        key_serializer="json",
+    )
+    # Test with dict key value - JSON uses double quotes, str() uses single quotes
+    row_dict = {"key": {"nested": "value"}, "data": "test"}
+    key = sink_json._extract_key(row_dict)
+    assert key == b'{"nested": "value"}'  # JSON format with double quotes
+
+    # Test with string that needs JSON escaping
+    row_str = {"key": 'hello "world"', "data": "test"}
+    key = sink_json._extract_key(row_str)
+    assert key == b'"hello \\"world\\""'  # Properly JSON-escaped
+
+    # Bytes serializer should preserve bytes
+    sink_bytes = KafkaDatasink(
+        topic="test",
+        bootstrap_servers="localhost:9092",
+        key_field="key",
+        key_serializer="bytes",
+    )
+    row_bytes = {"key": b"raw-bytes", "data": "test"}
+    key = sink_bytes._extract_key(row_bytes)
+    assert key == b"raw-bytes"
+
+
 # Integration Tests (require Kafka container)
 
 
