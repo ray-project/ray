@@ -104,6 +104,9 @@ class LoadCheckpointCallback(ExecutionCallback):
             LoadCheckpointCallback._assigned_owners.pop(id(self._config), None)
 
     def after_execution_fails(self, executor: "StreamingExecutor", error: Exception):
-        # Cleanup registry on failure
+        # Cleanup registry on failure (only the owner cleans up the entry)
         if self._config:
-            LoadCheckpointCallback._assigned_owners.pop(id(self._config), None)
+            owner_cls = LoadCheckpointCallback._assigned_owners.get(id(self._config))
+
+            if owner_cls is type(self):
+                LoadCheckpointCallback._assigned_owners.pop(id(self._config), None)
