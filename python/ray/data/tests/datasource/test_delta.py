@@ -340,6 +340,26 @@ def test_write_delta_nested_type_unsupported(ray_start_regular_shared, temp_delt
         ds.write_delta(temp_delta_path, partition_cols=["nested"])
 
 
+def test_write_delta_invalid_schema_mode(ray_start_regular_shared, temp_delta_path):
+    """Test that invalid schema_mode values raise errors."""
+    # Create initial table
+    data1 = [{"id": 1, "value": 100}]
+    ray.data.from_items(data1).write_delta(temp_delta_path)
+
+    # Try to write with new column and invalid schema_mode
+    data2 = [{"id": 1, "value": 100, "new_col": 200}]
+    with pytest.raises(ValueError, match=r"Invalid schema_mode"):
+        ray.data.from_items(data2).write_delta(
+            temp_delta_path, schema_mode="invalid_mode"
+        )
+
+    # Test typo in schema_mode
+    with pytest.raises(ValueError, match=r"Invalid schema_mode"):
+        ray.data.from_items(data2).write_delta(
+            temp_delta_path, schema_mode="errror"  # typo
+        )
+
+
 # =============================================================================
 # Partition Overwrite Mode Tests
 # =============================================================================
@@ -612,6 +632,42 @@ def test_write_delta_overwrite_dynamic_empty_file_actions(
     assert len(result) == 0
 
 
+def test_write_delta_overwrite_dynamic_all_null_partitions(
+    ray_start_regular_shared, temp_delta_path
+):
+    """Test dynamic mode correctly handles all-NULL partitions."""
+    # Create table with NULL and non-NULL partitions
+    data1 = [
+        {"year": 2023, "month": 1, "value": 100},
+        {"year": 2023, "month": None, "value": 200},
+        {"year": None, "month": None, "value": 300},  # All-NULL partition
+    ]
+    ray.data.from_items(data1).write_delta(
+        temp_delta_path, partition_cols=["year", "month"]
+    )
+    assert ray.data.read_delta(temp_delta_path).count() == 3
+
+    # Overwrite only the all-NULL partition
+    data2 = [{"year": None, "month": None, "value": 999}]
+    ray.data.from_items(data2).write_delta(
+        temp_delta_path,
+        mode="overwrite",
+        partition_cols=["year", "month"],
+        partition_overwrite_mode="dynamic",
+    )
+    result = ray.data.read_delta(temp_delta_path).take_all()
+    assert len(result) == 3
+    # Check all-NULL partition was updated
+    all_null = [
+        r for r in result if r["year"] is None and r["month"] is None
+    ]
+    assert len(all_null) == 1
+    assert all_null[0]["value"] == 999
+    # Check other partitions unchanged
+    assert any(r["year"] == 2023 and r["month"] == 1 and r["value"] == 100 for r in result)
+    assert any(r["year"] == 2023 and r["month"] is None and r["value"] == 200 for r in result)
+
+
 def test_build_partition_delete_predicate_unit():
     """Unit test for _build_partition_delete_predicate function."""
     from ray.data._internal.datasource.delta.committer import (
@@ -670,6 +726,17 @@ def test_build_partition_delete_predicate_unit():
     action7.partition_values = None
     pred = _build_partition_delete_predicate([action7], ["year"])
     assert pred is None
+
+    # Test with all-NULL partition (critical: must not be filtered out)
+    action8 = Mock()
+    action8.partition_values = {"year": None, "month": None}
+    pred = _build_partition_delete_predicate([action8], ["year", "month"])
+    assert pred is not None
+    assert "year" in pred
+    assert "month" in pred
+    assert "IS NULL" in pred or "is null" in pred.lower()
+    # Should have both columns with IS NULL
+    assert pred.count("IS NULL") == 2 or pred.lower().count("is null") == 2
 
 
 if __name__ == "__main__":

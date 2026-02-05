@@ -214,10 +214,10 @@ def _build_partition_delete_predicate(
             # but format_sql_value handles string conversion correctly
             # Use get() with None default - missing keys indicate bug but we handle gracefully
             combo = tuple(pv.get(col) for col in partition_cols)
-            # Only add if combo has at least one non-None value
-            # This handles cases where partition_values dict is incomplete (defensive)
-            if any(v is not None for v in combo):
-                partition_combinations.add(combo)
+            # Add all combinations, including all-NULL partitions
+            # All-NULL partitions are valid and must be handled with IS NULL predicates
+            # Filtering them out would cause fallback to delete all (incorrect behavior)
+            partition_combinations.add(combo)
 
     if not partition_combinations:
         return None

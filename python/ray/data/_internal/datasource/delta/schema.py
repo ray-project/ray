@@ -97,6 +97,11 @@ def validate_and_plan_evolution(
             "Schema evolution is disabled by default. Set schema_mode='merge' to allow."
         )
 
+    if policy.mode != "merge":
+        raise ValueError(
+            f"Invalid schema_mode '{policy.mode}'. Must be 'error' or 'merge'."
+        )
+
     # merge mode
     return [(c, incoming_cols[c][0], incoming_cols[c][1]) for c in new_cols]
 
