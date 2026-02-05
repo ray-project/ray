@@ -296,7 +296,8 @@ class FuseOperators(Rule):
             # docstring for details.
             return (
                 up_logical_op.batch_size is not None
-                and up_logical_op.batch_size % down_logical_op.target_num_rows_per_block == 0
+                and up_logical_op.batch_size % down_logical_op.target_num_rows_per_block
+                == 0
             )
         # Other operators cannot fuse with StreamingRepartition.
         if isinstance(up_logical_op, StreamingRepartition):
