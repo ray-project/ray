@@ -256,7 +256,7 @@ class TestResourceManager:
             op.current_logical_usage = MagicMock(
                 return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0, memory=0)
             )
-            op.running_processor_usage = MagicMock(
+            op.running_logical_usage = MagicMock(
                 return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0, memory=0)
             )
             op.pending_logical_usage = MagicMock(
