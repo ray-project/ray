@@ -2311,7 +2311,11 @@ class Replica(ReplicaBase):
                 raise asyncio.CancelledError
 
     async def perform_graceful_shutdown(self):
-        if RAY_SERVE_ENABLE_DIRECT_INGRESS and self._ingress:
+        if (
+            RAY_SERVE_ENABLE_DIRECT_INGRESS
+            and self._ingress
+            and self._user_callable_initialized
+        ):
             # In direct ingress mode, we need to wait at least
             # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give external load
             # balancers (e.g., ALB) time to deregister the replica, in addition to
