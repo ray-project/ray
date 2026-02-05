@@ -718,18 +718,15 @@ def _find_schemas_mismatch(
         if name in old_fields and new_fields[name] != old_fields[name]
     ]
 
-    new_excl_fields_info = list(
-        map(lambda field: f"{field}: {new_fields[field]}", new_exclusive_fields)
-    )
-    old_excl_fields_info = list(
-        map(lambda field: f"{field}: {old_fields[field]}", old_exclusive_fields)
-    )
-    changed_fields_info = list(
-        map(
-            lambda field: f"{field}: {old_fields[field]} => {new_fields[field]}",
-            changed_fields,
-        )
-    )
+    new_excl_fields_info = [
+        f"{field}: {new_fields[field]}" for field in new_exclusive_fields
+    ]
+    old_excl_fields_info = [
+        f"{field}: {old_fields[field]}" for field in old_exclusive_fields
+    ]
+    changed_fields_info = [
+        f"{old_fields[field]} => {new_fields[field]}" for field in changed_fields
+    ]
 
     new_excl_fields_message = _format_info_message(
         "Fields exclusive to the incoming schema",

@@ -6,6 +6,7 @@ import pytest
 
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.execution.streaming_executor_state import (
+    _find_schemas_mismatch,
     dedupe_schemas_with_validation,
 )
 from ray.data._internal.pandas_block import PandasBlockSchema
@@ -277,6 +278,56 @@ This may lead to unexpected behavior."""
         )
     else:
         assert not caplog.records
+
+
+def test_find_schemas_mismatch_duplicate_field_names():
+    """Duplicate field names must not be collapsed to dict keys.
+
+    PyArrow allows duplicate field names. Converting to dict loses later
+    fields, so two schemas with different field counts (one with duplicates)
+    can appear identical and trigger a wrong "ordered differently" message.
+    """
+    # Old: 3 fields with duplicate name "a"
+    old_schema = pa.schema(
+        [
+            pa.field("a", pa.int32()),
+            pa.field("a", pa.string()),
+            pa.field("b", pa.int64()),
+        ]
+    )
+    # New: 2 fields, no duplicate
+    new_schema = pa.schema(
+        [
+            pa.field("a", pa.int32()),
+            pa.field("b", pa.int64()),
+        ]
+    )
+    msg = _find_schemas_mismatch(old_schema, new_schema)
+    # Should report different field count, not "ordered differently"
+    assert "different numbers of fields" in msg, msg
+    assert "old: 3" in msg and "new: 2" in msg, msg
+    assert "ordered differently" not in msg, msg
+
+
+def test_find_schemas_mismatch_duplicate_field_names_reverse():
+    """Same as above but old has fewer fields than new (new has duplicates)."""
+    old_schema = pa.schema(
+        [
+            pa.field("a", pa.int32()),
+            pa.field("b", pa.int64()),
+        ]
+    )
+    new_schema = pa.schema(
+        [
+            pa.field("a", pa.int32()),
+            pa.field("a", pa.string()),
+            pa.field("b", pa.int64()),
+        ]
+    )
+    msg = _find_schemas_mismatch(old_schema, new_schema)
+    assert "different numbers of fields" in msg, msg
+    assert "old: 2" in msg and "new: 3" in msg, msg
+    assert "ordered differently" not in msg, msg
 
 
 if __name__ == "__main__":
