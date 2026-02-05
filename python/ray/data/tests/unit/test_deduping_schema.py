@@ -127,12 +127,18 @@ def test_dedupe_schema_divergence(
 
 
 @pytest.mark.parametrize("enforce_schemas", [False, True])
-def test_dedupe_schema_mismatch_warning(enforce_schemas: bool, caplog, propagate_logs):
+@pytest.mark.parametrize("truncation_length", [20, 3, 2])
+def test_dedupe_schema_mismatch_warning(
+    enforce_schemas: bool, truncation_length: int, caplog, propagate_logs
+):
     old_schema = pa.schema(
         [
             pa.field("foo", pa.int32()),
             pa.field("bar", pa.string()),
             pa.field("baz", pa.bool8()),
+            pa.field("quux", pa.uint16()),
+            pa.field("corge", pa.int64()),
+            pa.field("grault", pa.int32()),
         ]
     )
     incoming_schema = pa.schema(
@@ -140,6 +146,9 @@ def test_dedupe_schema_mismatch_warning(enforce_schemas: bool, caplog, propagate
             pa.field("foo", pa.int64()),
             pa.field("baz", pa.bool8()),
             pa.field("qux", pa.float64()),
+            pa.field("quux", pa.uint32()),
+            pa.field("corge", pa.int32()),
+            pa.field("grault", pa.int64()),
         ]
     )
 
@@ -150,7 +159,11 @@ def test_dedupe_schema_mismatch_warning(enforce_schemas: bool, caplog, propagate
         logging.WARNING,
     ):
         out_bundle, diverged = dedupe_schemas_with_validation(
-            old_schema, incoming_bundle, enforce_schemas=enforce_schemas, warn=True
+            old_schema,
+            incoming_bundle,
+            enforce_schemas=enforce_schemas,
+            warn=True,
+            truncation_length=truncation_length,
         )
 
     assert diverged
@@ -161,80 +174,61 @@ def test_dedupe_schema_mismatch_warning(enforce_schemas: bool, caplog, propagate
                 pa.field("foo", pa.int64()),
                 pa.field("bar", pa.string()),
                 pa.field("baz", pa.bool8()),
+                pa.field("quux", pa.uint32()),
+                pa.field("corge", pa.int64()),
+                pa.field("grault", pa.int64()),
                 pa.field("qux", pa.float64()),
             ]
         )
 
         msg = "\n".join(caplog.messages)
-        assert (
-            """Operator produced a RefBundle with a different schema than the previous one.
+        if truncation_length >= 4:
+            assert (
+                """Operator produced a RefBundle with a different schema than the previous one.
 Fields exclusive to the incoming schema (1 total):
     qux: double
 Fields exclusive to the old schema (1 total):
     bar: string
-Fields that have different types across the old and the incoming schemas (1 total):
+Fields that have different types across the old and the incoming schemas (4 total):
     foo: int32 => int64
+    quux: uint16 => uint32
+    corge: int64 => int32
+    grault: int32 => int64
 This may lead to unexpected behavior."""
-            == msg
-        )
+                == msg
+            )
+        elif truncation_length == 3:
+            assert (
+                """Operator produced a RefBundle with a different schema than the previous one.
+Fields exclusive to the incoming schema (1 total):
+    qux: double
+Fields exclusive to the old schema (1 total):
+    bar: string
+Fields that have different types across the old and the incoming schemas (4 total):
+    foo: int32 => int64
+    quux: uint16 => uint32
+    corge: int64 => int32
+    ... and 1 more
+This may lead to unexpected behavior."""
+                == msg
+            )
+        else:
+            assert (
+                """Operator produced a RefBundle with a different schema than the previous one.
+Fields exclusive to the incoming schema (1 total):
+    qux: double
+Fields exclusive to the old schema (1 total):
+    bar: string
+Fields that have different types across the old and the incoming schemas (4 total):
+    foo: int32 => int64
+    quux: uint16 => uint32
+    ... and 2 more
+This may lead to unexpected behavior."""
+                == msg
+            )
     else:
         assert out_bundle.schema == old_schema
         assert not caplog.records
-
-
-def test_dedupe_schema_many_fields_warning(caplog, propagate_logs):
-    old_schema = pa.schema([pa.field(f"foo{i}", pa.int64()) for i in range(30)])
-    incoming_schema = pa.schema(
-        [
-            pa.field("foo0", pa.int64()),
-        ]
-    )
-
-    incoming_bundle = RefBundle([], owns_blocks=False, schema=incoming_schema)
-
-    # Capture warnings
-    with caplog.at_level(
-        logging.WARNING,
-    ):
-        out_bundle, diverged = dedupe_schemas_with_validation(
-            old_schema, incoming_bundle, enforce_schemas=True, warn=True
-        )
-
-    assert diverged
-
-    assert out_bundle.schema == pa.schema(
-        [pa.field(f"foo{i}", pa.int64()) for i in range(30)]
-    )
-
-    # Warning message should have truncated 9 schema fields
-    msg = "\n".join(caplog.messages)
-    assert (
-        """Operator produced a RefBundle with a different schema than the previous one.
-Fields exclusive to the old schema (29 total):
-    foo1: int64
-    foo2: int64
-    foo3: int64
-    foo4: int64
-    foo5: int64
-    foo6: int64
-    foo7: int64
-    foo8: int64
-    foo9: int64
-    foo10: int64
-    foo11: int64
-    foo12: int64
-    foo13: int64
-    foo14: int64
-    foo15: int64
-    foo16: int64
-    foo17: int64
-    foo18: int64
-    foo19: int64
-    foo20: int64
-    ... and 9 more
-This may lead to unexpected behavior."""
-        == msg
-    )
 
 
 @pytest.mark.parametrize("enforce_schemas", [False, True])

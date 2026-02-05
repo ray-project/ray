@@ -676,7 +676,7 @@ def _actor_info_summary_str(info: _ActorPoolInfo) -> str:
 
 
 def _format_info_message(
-    title: str, entries: List[str], truncate_num_mismatched_fields_to: int = 20
+    title: str, entries: List[str], truncate_num_mismatched_fields_to: int
 ) -> str:
     if not entries:
         return ""
@@ -690,7 +690,9 @@ def _format_info_message(
     return f"{title} ({len(entries)} total):\n{body}{suffix}\n"
 
 
-def _find_schemas_mismatch(old_schema: "Schema", new_schema: Optional["Schema"]) -> str:
+def _find_schemas_mismatch(
+    old_schema: "Schema", new_schema: Optional["Schema"], truncation_length: int = 20
+) -> str:
     from ray.data.block import _is_empty_schema
 
     if _is_empty_schema(new_schema):
@@ -700,6 +702,7 @@ def _find_schemas_mismatch(old_schema: "Schema", new_schema: Optional["Schema"])
         return _format_info_message(
             "Operator produced a RefBundle with an empty/unknown schema.",
             old_fields_info,
+            truncate_num_mismatched_fields_to=truncation_length,
         )
 
     # We assume old_schema and new_schema have the same underlying type
@@ -729,14 +732,19 @@ def _find_schemas_mismatch(old_schema: "Schema", new_schema: Optional["Schema"])
     )
 
     new_excl_fields_message = _format_info_message(
-        "Fields exclusive to the incoming schema", new_excl_fields_info
+        "Fields exclusive to the incoming schema",
+        new_excl_fields_info,
+        truncate_num_mismatched_fields_to=truncation_length,
     )
     old_excl_fields_message = _format_info_message(
-        "Fields exclusive to the old schema", old_excl_fields_info
+        "Fields exclusive to the old schema",
+        old_excl_fields_info,
+        truncate_num_mismatched_fields_to=truncation_length,
     )
     changed_fields_message = _format_info_message(
         "Fields that have different types across the old and the incoming schemas",
         changed_fields_info,
+        truncate_num_mismatched_fields_to=truncation_length,
     )
 
     disordered_message = ""
@@ -759,6 +767,7 @@ def dedupe_schemas_with_validation(
     bundle: "RefBundle",
     warn: bool = True,
     enforce_schemas: bool = False,
+    truncation_length: int = 20,
 ) -> Tuple["RefBundle", bool]:
     """Unify/Dedupe two schemas, warning if warn=True
 
@@ -769,6 +778,8 @@ def dedupe_schemas_with_validation(
         warn: Raise a warning if the schemas diverge.
         enforce_schemas: If `True`, allow the schemas to diverge and return unified schema.
             If `False`, but keep the old schema.
+        truncation_length: When warning is active, limits the number of mismatched fields
+            between the old schema and the incoming schema of the new `RefBundle`.
 
     Returns:
         A ref bundle with the unified schema of the two input schemas.
@@ -789,7 +800,9 @@ def dedupe_schemas_with_validation(
 
     diverged = True
     if warn and enforce_schemas:
-        warning_message = _find_schemas_mismatch(old_schema, bundle.schema)
+        warning_message = _find_schemas_mismatch(
+            old_schema, bundle.schema, truncation_length=truncation_length
+        )
         logger.warning(f"{warning_message}This may lead to unexpected behavior.")
     if enforce_schemas:
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
