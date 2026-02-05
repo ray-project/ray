@@ -515,12 +515,13 @@ class ActorPoolMapOperator(MapOperator):
 
         return min_resource_usage, max_resource_usage
 
-    def current_processor_usage(self) -> ExecutionResources:
+    def current_logical_usage(self) -> ExecutionResources:
         # Both pending and running actors count towards our current resource usage.
         num_active_workers = self._actor_pool.current_size()
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
+            memory=self._ray_remote_args.get("memory", 0) * num_active_workers,
         )
 
     def pending_processor_usage(self) -> ExecutionResources:

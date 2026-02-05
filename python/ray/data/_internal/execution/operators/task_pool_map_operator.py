@@ -137,11 +137,12 @@ class TaskPoolMapOperator(MapOperator):
     def progress_str(self) -> str:
         return ""
 
-    def current_processor_usage(self) -> ExecutionResources:
+    def current_logical_usage(self) -> ExecutionResources:
         num_active_workers = self.num_active_tasks()
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
+            memory=self._ray_remote_args.get("memory", 0) * num_active_workers,
         )
 
     def pending_processor_usage(self) -> ExecutionResources:

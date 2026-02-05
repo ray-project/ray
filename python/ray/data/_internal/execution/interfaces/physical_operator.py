@@ -679,14 +679,14 @@ class PhysicalOperator(Operator):
         # Default implementation simply cancels any outstanding active task
         self._cancel_active_tasks(force=force)
 
-    def current_processor_usage(self) -> ExecutionResources:
-        """Returns the current estimated CPU and GPU usage of this operator, excluding
-        object store memory.
+    def current_logical_usage(self) -> ExecutionResources:
+        """Returns the current estimated CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
 
         This method is called by the executor to decide how to allocate processors
         between different operators.
         """
-        return ExecutionResources(0, 0, 0)
+        return ExecutionResources(0, 0, 0, 0)
 
     def running_processor_usage(self) -> ExecutionResources:
         """Returns the estimated running CPU and GPU usage of this operator, excluding
@@ -696,11 +696,11 @@ class PhysicalOperator(Operator):
         executor to display the number of currently running CPUs and GPUs in the
         progress bar.
 
-        Note, this method returns `current_processor_usage() -
+        Note, this method returns `current_logical_usage() -
         pending_processor_usage()` by default. Subclasses should only override
         `pending_processor_usage()` if needed.
         """
-        usage = self.current_processor_usage()
+        usage = self.current_logical_usage()
         usage = usage.subtract(self.pending_processor_usage())
         return usage
 
