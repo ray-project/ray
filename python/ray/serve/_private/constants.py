@@ -363,6 +363,11 @@ RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     10.0,
 )
 
+# Async inference task queue metrics push interval.
+RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S = get_env_float(
+    "RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S", 10.0
+)
+
 # Serve multiplexed matching timeout.
 # This is the timeout for the matching process of multiplexed requests. To avoid
 # thundering herd problem, the timeout value will be randomized between this value
@@ -590,6 +595,8 @@ RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT", "100")
 )
 # The minimum drain period for a HTTP proxy.
+# If RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS is set to 1,
+# then the minimum draining period is 0.
 RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S = float(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S", "30")
 )
