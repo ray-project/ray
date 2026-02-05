@@ -7,17 +7,17 @@ from ray.util.collective import (
     init_collective_group,
 )
 from ray.util.collective.backend_registry import get_backend_registry
-from ray.util.collective.types import Backend, ReduceOp
+from ray.util.collective.types import ReduceOp
 
 
-def test_gloo_via_registry():
-    ray.init()
+def test_nccl_via_registry():
+    ray.init(num_gpus=8)
 
     registry = get_backend_registry()
-    assert "GLOO" in registry.list_backends()
-    assert registry.check("GLOO")
+    assert "NCCL" in registry.list_backends()
+    assert registry.check("NCCL")
 
-    @ray.remote
+    @ray.remote(num_gpus=1)
     class Worker:
         def __init__(self, rank):
             self.rank = rank
@@ -27,24 +27,23 @@ def test_gloo_via_registry():
             init_collective_group(
                 world_size=world_size,
                 rank=self.rank,
-                backend=Backend.GLOO,
+                backend="NCCL",
                 group_name="default",
-                gloo_timeout=30000,
             )
 
         def compute(self):
-            self.tensor = torch.tensor([self.rank + 1], dtype=torch.float32)
-            allreduce(self.tensor, op=ReduceOp.SUM)
-            return self.tensor.item()
+            device = torch.cuda.current_device()
+            self.tensor = torch.tensor([float(self.rank + 1)], device=device)
+            allreduce(self.tensor, op=ReduceOp.SUM, group_name="default")
+            return self.tensor.cpu().item()
 
     actors = [Worker.remote(rank=i) for i in range(2)]
     create_collective_group(
         actors=actors,
         world_size=2,
         ranks=[0, 1],
-        backend=Backend.GLOO,
+        backend="NCCL",
         group_name="default",
-        gloo_timeout=30000,
     )
 
     ray.get([a.setup.remote(2) for a in actors])

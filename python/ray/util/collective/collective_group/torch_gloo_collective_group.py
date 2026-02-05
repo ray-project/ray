@@ -9,7 +9,6 @@ from ray.util.collective.collective_group.base_collective_group import BaseGroup
 from ray.util.collective.types import (
     AllGatherOptions,
     AllReduceOptions,
-    Backend,
     BarrierOptions,
     BroadcastOptions,
     RecvOptions,
@@ -26,15 +25,15 @@ try:
     import torch.distributed as dist
 
     _TORCH_DISTRIBUTED_AVAILABLE = True
+    TORCH_REDUCE_OP_MAP = {
+        ReduceOp.SUM: dist.ReduceOp.SUM,
+        ReduceOp.PRODUCT: dist.ReduceOp.PRODUCT,
+        ReduceOp.MIN: dist.ReduceOp.MIN,
+        ReduceOp.MAX: dist.ReduceOp.MAX,
+    }
 except ImportError:
     _TORCH_DISTRIBUTED_AVAILABLE = False
-
-TORCH_REDUCE_OP_MAP = {
-    ReduceOp.SUM: dist.ReduceOp.SUM,
-    ReduceOp.PRODUCT: dist.ReduceOp.PRODUCT,
-    ReduceOp.MIN: dist.ReduceOp.MIN,
-    ReduceOp.MAX: dist.ReduceOp.MAX,
-}
+    TORCH_REDUCE_OP_MAP = None
 
 
 def get_master_address_metadata_key(group_name: str):
@@ -111,7 +110,7 @@ class TorchGLOOGroup(BaseGroup):
     @classmethod
     def backend(cls):
         """The backend of this collective group."""
-        return Backend.GLOO
+        return "GLOO"
 
     @classmethod
     def check_backend_availability(cls) -> bool:

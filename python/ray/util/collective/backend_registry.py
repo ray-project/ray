@@ -5,11 +5,12 @@ from .collective_group.base_collective_group import BaseGroup
 
 class BackendRegistry:
     _instance = None
-    _map: Dict[str, Type[BaseGroup]] = {}
+    _map: Dict[str, Type[BaseGroup]]
 
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(BackendRegistry, cls).__new__(cls)
+            cls._instance._map = {}
         return cls._instance
 
     def put(self, name: str, group_cls: Type[BaseGroup]) -> None:

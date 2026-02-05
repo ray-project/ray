@@ -179,7 +179,7 @@ def is_group_initialized(group_name):
 def init_collective_group(
     world_size: int,
     rank: int,
-    backend=types.Backend.NCCL,
+    backend: str = "NCCL",
     group_name: str = "default",
     gloo_timeout: int = 30000,
 ):
@@ -195,14 +195,11 @@ def init_collective_group(
         None
     """
     _check_inside_actor()
-    backend = types.Backend(backend)
 
     global _group_mgr
     global _group_mgr_lock
 
     backend_cls = _group_mgr._registry.get(backend)
-    if backend_cls is None:
-        raise ValueError("Backend '{}' is not supported.".format(backend))
     if not backend_cls.check_backend_availability():
         raise RuntimeError("Backend '{}' is not available.".format(backend))
     # TODO(Hao): implement a group auto-counter.
@@ -225,7 +222,7 @@ def create_collective_group(
     actors,
     world_size: int,
     ranks: List[int],
-    backend=types.Backend.NCCL,
+    backend: str = "NCCL",
     group_name: str = "default",
     gloo_timeout: int = 30000,
 ):
@@ -243,10 +240,7 @@ def create_collective_group(
     Returns:
         None
     """
-    backend = types.Backend(backend)
     backend_cls = _group_mgr._registry.get(backend)
-    if backend_cls is None:
-        raise ValueError("Backend '{}' is not supported.".format(backend))
     if not backend_cls.check_backend_availability():
         raise RuntimeError("Backend '{}' is not available.".format(backend))
 
