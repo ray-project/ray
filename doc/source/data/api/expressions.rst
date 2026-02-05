@@ -167,6 +167,7 @@ The following example shows how to use the datetime namespace to extract compone
 
 .. testcode::
 
+    import datetime
     import pandas as pd
     import ray
     from ray.data.expressions import col
