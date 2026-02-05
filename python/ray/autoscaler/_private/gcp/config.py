@@ -829,14 +829,46 @@ def _create_project_ssh_key_pair(project, public_key, ssh_user, compute):
 
     common_instance_metadata["items"] = items
 
-    operation = (
-        compute.projects()
-        .setCommonInstanceMetadata(
-            project=project["name"], body=common_instance_metadata
+    try:
+        operation = (
+            compute.projects()
+            .setCommonInstanceMetadata(
+                project=project["name"], body=common_instance_metadata
+            )
+            .execute()
         )
-        .execute()
-    )
-
-    response = wait_for_compute_global_operation(project["name"], operation, compute)
+        response = wait_for_compute_global_operation(
+            project["name"], operation, compute
+        )
+    except errors.HttpError as e:  # Only trim when explicitly opted in.
+        if (
+            e.resp.status != 413
+            or ssh_keys_i is None
+            or os.environ.get("RAY_TRIM_AUTOSCALER_SSH_KEYS") != "1"
+        ):
+            raise
+        logger.warning(
+            "GCP project metadata size limit reached for %s (%s); "
+            "removing half of ssh keys and retrying",
+            project["name"],
+            e,
+        )
+        ssh_keys_value = items[ssh_keys_i].get("value", "")
+        ssh_keys = [key for key in ssh_keys_value.splitlines() if key.strip()]
+        trim_start = (  # If our new key is the only one, this preserves it.
+            len(ssh_keys) // 2
+        )
+        items[ssh_keys_i]["value"] = "\n".join(ssh_keys[trim_start:])
+        common_instance_metadata["items"] = items
+        operation = (
+            compute.projects()
+            .setCommonInstanceMetadata(
+                project=project["name"], body=common_instance_metadata
+            )
+            .execute()
+        )
+        response = wait_for_compute_global_operation(
+            project["name"], operation, compute
+        )
 
     return response
