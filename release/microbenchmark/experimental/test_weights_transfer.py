@@ -10,11 +10,6 @@ import torch
 import ray
 from ray.actor import ActorHandle
 
-# TODOs:
-# - test failover
-# - add performance metrics
-# - test with NIXL
-
 
 class Model(torch.nn.Module):
     def __init__(self, num_indices: int):
@@ -49,7 +44,6 @@ class Generator:
         self._model_version = 0
         # Wait for the first weight sync before starting generation.
         self._generation_event = asyncio.Event()
-        self._weights_refs = None
         self._timings_ms = {"ray_get": []}
         self._timings_ms["Generator.__init__"] = [
             (time.perf_counter() - init_start) * 1000.0
