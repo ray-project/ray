@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import json
 import time
 from statistics import mean
 from typing import List
@@ -22,7 +23,7 @@ class Model(torch.nn.Module):
         TOTAL_SIZE_BYTES = 2 * 1024 * 1024 * 1024
         NUM_ROWS = 10_000
         self.layer = torch.nn.Linear(
-            NUM_ROWS, TOTAL_SIZE_BYTES // NUM_ROWS // 2, dtype=torch.float16
+            TOTAL_SIZE_BYTES // NUM_ROWS // 2, NUM_ROWS, dtype=torch.float16
         )
         self.layer.requires_grad_(False)
         self.layer.weight.zero_()
@@ -42,6 +43,7 @@ class Model(torch.nn.Module):
 @ray.remote(enable_tensor_transport=True)
 class Generator:
     def __init__(self, num_indices: int, device_str: str):
+        init_start = time.perf_counter()
         self._device = torch.device(device_str)
         self._model = Model(num_indices).to(self._device)
         self._model_version = 0
@@ -49,6 +51,9 @@ class Generator:
         self._generation_event = asyncio.Event()
         self._weights_refs = None
         self._timings_ms = {"ray_get": []}
+        self._timings_ms["Generator.__init__"] = [
+            (time.perf_counter() - init_start) * 1000.0
+        ]
 
     async def sync_weights(self, model_version, refs: List[ray.ObjectRef]):
         print("start syncing weights", model_version)
@@ -104,12 +109,16 @@ class Generator:
 @ray.remote(enable_tensor_transport=True)
 class Trainer:
     def __init__(self, use_nixl: bool, num_indices: int, device_str: str):
+        init_start = time.perf_counter()
         self._device = torch.device(device_str)
         self._model = Model(num_indices).to(self._device)
         self._model_version = 0
         self._generators = []
         self._tensor_transport = "nixl" if use_nixl else None
         self._timings_ms = {"ray_put": [], "ray_get": []}
+        self._timings_ms["Trainer.__init__"] = [
+            (time.perf_counter() - init_start) * 1000.0
+        ]
 
     async def reset_generators(self, generators: List[ActorHandle[Generator]]):
         self._generators = generators
@@ -173,6 +182,10 @@ class Trainer:
     def get_timing_metrics(self):
         return _summarize_timings(self._timings_ms)
 
+    def get_bytes_per_iteration(self) -> int:
+        views = self._model.get_views()
+        return sum(view.numel() * view.element_size() for view in views)
+
 
 def _summarize_timings(timings_ms):
     summary = {}
@@ -203,38 +216,69 @@ if __name__ == "__main__":
     parser.add_argument("--use-nixl", action="store_true")
     parser.add_argument("--num-iters", type=int, default=10)
     parser.add_argument("--device", choices=["cpu", "gpu"], default="cpu")
-    parser.add_argument("--max-failures", type=int, default=1)
+    parser.add_argument("--max-trainer-failures", type=int, default=0)
+    parser.add_argument("--max-generator-failures", type=int, default=0)
+    parser.add_argument("--kill-interval-s", type=int, default=30)
+    parser.add_argument("--output-file", required=True)
     args = parser.parse_args()
 
     num_indices = args.num_indices
     use_nixl = args.use_nixl
     num_iters = args.num_iters
     device_str = "cuda" if args.device == "gpu" else "cpu"
-    max_failures = args.max_failures
+    max_trainer_failures = args.max_trainer_failures
+    max_generator_failures = args.max_generator_failures
     if num_indices > 5 and not use_nixl:
         raise SystemExit(
             "--num-indices > 5 requires --use-nixl. Using Ray object store will OOM."
         )
 
     ray.init()
+    run_start = time.perf_counter()
     actor_opts = {"num_gpus": 1} if device_str == "cuda" else {}
     trainer = Trainer.options(**actor_opts).remote(use_nixl, num_indices, device_str)
     generator = Generator.options(**actor_opts).remote(num_indices, device_str)
 
+    bytes_per_iteration = ray.get(trainer.get_bytes_per_iteration.remote())
     trainer_ref = trainer.loop.remote([generator], num_iters=num_iters)
     generator_ref = generator.loop.remote(num_iters=num_iters)
 
-    failures = 0
-    while failures < max_failures:
+    trainer_failures = 0
+    generator_failures = 0
+    time_since_last_kill = time.time()
+    num_trainer_kills = 0
+    num_generator_kills = 0
+
+    while (
+        trainer_failures < max_trainer_failures
+        and generator_failures < max_generator_failures
+    ):
         # A ref will be ready if its actor process fails or if the loop exits (due to exception).
-        failed, _ = ray.wait([trainer_ref, generator_ref], num_returns=1)
+        # Kill every 30s.
+        failed, _ = ray.wait(
+            [trainer_ref, generator_ref], num_returns=1, timeout=args.kill_interval_s
+        )
+
+        if time.time() - time_since_last_kill > 30:
+            if num_trainer_kills < max_trainer_failures:
+                print("killing trainer")
+                ray.kill(trainer, force=True)
+                num_trainer_kills += 1
+            if num_generator_kills < max_generator_failures:
+                print("killing generator")
+                ray.kill(generator, force=True)
+                num_generator_kills += 1
+            time_since_last_kill = time.time()
+
         if failed[0] is trainer_ref:
             try:
                 ray.get(trainer_ref)
+                break
             except Exception as e:
                 print("trainer failed", e)
-                failures += 1
+                trainer_failures += 1
             # Start a new trainer.
+            print("starting new trainer")
             trainer = Trainer.options(**actor_opts).remote(
                 use_nixl, num_indices, device_str
             )
@@ -242,15 +286,36 @@ if __name__ == "__main__":
         else:
             try:
                 ray.get(generator_ref)
+                break
             except Exception as e:
                 print("generator failed", e)
-                failures += 1
+                generator_failures += 1
             # Start a new generator.
+            print("starting new generator")
             generator = Generator.options(**actor_opts).remote(num_indices, device_str)
             trainer.reset_generators.remote([generator])
             generator_ref = generator.loop.remote(num_iters=num_iters)
 
-        trainer_metrics = ray.get(trainer.get_timing_metrics.remote())
-        generator_metrics = ray.get(generator.get_timing_metrics.remote())
-        print("trainer timing metrics", trainer_metrics)
-        print("generator timing metrics", generator_metrics)
+    ray.get([trainer_ref, generator_ref])
+    run_time_ms = (time.perf_counter() - run_start) * 1000.0
+    print("job complete")
+    trainer_metrics = ray.get(trainer.get_timing_metrics.remote())
+    generator_metrics = ray.get(generator.get_timing_metrics.remote())
+
+    output = {
+        "num_indices": num_indices,
+        "num_iters": num_iters,
+        "num_bytes_per_iter": bytes_per_iteration,
+        "device": args.device,
+        "use_nixl": use_nixl,
+        "max_trainer_failures": max_trainer_failures,
+        "max_generator_failures": max_generator_failures,
+        "num_trainer_kills": num_trainer_kills,
+        "num_generator_kills": num_generator_kills,
+        "total_run_time_ms": run_time_ms,
+        "trainer_metrics": trainer_metrics,
+        "generator_metrics": generator_metrics,
+    }
+    print(output)
+    with open(args.output_file, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(output) + "\n")
