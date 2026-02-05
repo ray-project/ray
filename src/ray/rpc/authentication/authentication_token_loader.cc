@@ -44,7 +44,7 @@ constexpr const char *kNoTokenErrorMessage =
     "or store the token in any file and set RAY_AUTH_TOKEN_PATH to point to it, "
     "or set the RAY_AUTH_TOKEN environment variable.";
 
-const int32_t kRaySATokenTTLSeconds = 300;
+constexpr int kRaySATokenTTLSeconds = 300;
 
 AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
   static AuthenticationTokenLoader instance;
