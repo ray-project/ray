@@ -432,7 +432,7 @@ class ActorPoolMapOperator(MapOperator):
         if self._inputs_complete and self._bundle_queue.num_blocks() > 0:
             # NOTE: That no more than 1 bundle is expected to be in the queue
             #       upon inputs completion (the one that was pending in the bundler)
-            if self._bundle_queue.num_bundles() >= 1:
+            if self._bundle_queue.num_bundles() > 1:
                 logger.warning(
                     f"Expected 1 bundle to remain in the input queue of {self} "
                     f"(found {self._bundle_queue.num_bundles()} bundles, with {self._bundle_queue.num_blocks()} blocks)"
