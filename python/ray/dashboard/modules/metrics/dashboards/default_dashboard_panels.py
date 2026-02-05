@@ -19,7 +19,9 @@ PENDING_CPUS = 'sum(autoscaler_pending_resources{{resource="CPU",{global_filters
 MAX_GPUS = 'sum(autoscaler_cluster_resources{{resource="GPU",{global_filters}}})'
 PENDING_GPUS = 'sum(autoscaler_pending_resources{{resource="GPU",{global_filters}}})'
 MAX_MEMORY = 'sum(autoscaler_cluster_resources{{resource="memory",{global_filters}}})'
-PENDING_MEMORY = 'sum(autoscaler_pending_resources{{resource="memory",{global_filters}}})'
+PENDING_MEMORY = (
+    'sum(autoscaler_pending_resources{{resource="memory",{global_filters}}})'
+)
 
 
 def max_plus_pending(max_resource, pending_resource):
@@ -702,9 +704,9 @@ for row in DEFAULT_GRAFANA_ROWS:
 
 ids.sort()
 
-assert len(ids) == len(set(ids)), (
-    f"Duplicated id found. Use unique id for each panel. {ids}"
-)
+assert len(ids) == len(
+    set(ids)
+), f"Duplicated id found. Use unique id for each panel. {ids}"
 
 default_dashboard_config = DashboardConfig(
     name="DEFAULT",
