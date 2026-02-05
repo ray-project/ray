@@ -35,6 +35,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     OpState,
     Topology,
     build_streaming_topology,
+    format_op_state_summary,
     process_completed_tasks,
     select_operator_to_run,
     update_operator_states,
@@ -45,6 +46,10 @@ from ray.data._internal.logging import (
     unregister_dataset_logger,
 )
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
+from ray.data._internal.operator_schema_exporter import (
+    OperatorSchema,
+    get_operator_schema_exporter,
+)
 from ray.data._internal.progress import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
@@ -52,6 +57,7 @@ from ray.util.metrics import Gauge
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
+    from ray.data.block import Schema
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +101,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._topology: Optional[Topology] = None
         self._output_node: Optional[Tuple[PhysicalOperator, OpState]] = None
         self._backpressure_policies: List[BackpressurePolicy] = []
+        self._op_schema: Dict[PhysicalOperator, Schema] = {}
 
         self._dataset_id = dataset_id
         # Stores if an operator is completed,
@@ -204,6 +211,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._cluster_autoscaler = create_cluster_autoscaler(
             self._topology,
             self._resource_manager,
+            self._data_context,
             execution_id=self._dataset_id,
         )
         self._actor_autoscaler = create_actor_autoscaler(
@@ -502,8 +510,13 @@ class StreamingExecutor(Executor, threading.Thread):
             _debug_dump_topology(topology, self._resource_manager)
             self._last_debug_log_time = time.time()
 
-        # Log metrics of newly completed operators.
         for op, state in topology.items():
+            # Export operator schema if it's updated
+            if state._schema is not None and self._op_schema.get(op) != state._schema:
+                self._op_schema[op] = state._schema
+                self._export_operator_schema(op)
+
+            # Log metrics of newly completed operators.
             if op.has_completed() and not self._has_op_completed[op]:
                 metrics_dict = op._metrics.as_dict(skip_internal_metrics=True)
                 metrics_table = _format_metrics_table(metrics_dict)
@@ -529,6 +542,22 @@ class StreamingExecutor(Executor, threading.Thread):
         """Returns whether the user thread is blocked on topology execution."""
         _, state = self._output_node
         return len(state.output_queue) == 0
+
+    def _export_operator_schema(self, op: PhysicalOperator) -> None:
+        schema = self._op_schema.get(op)
+        operator_schema_exporter = get_operator_schema_exporter()
+        if (
+            operator_schema_exporter is not None
+            and hasattr(schema, "names")
+            and hasattr(schema, "types")
+        ):
+            names = [str(n) for n in schema.names]
+            types = [str(t) for t in schema.types]
+            operator_schema = OperatorSchema(
+                operator_uuid=op.id,
+                schema_fields=dict(zip(names, types)),
+            )
+            operator_schema_exporter.export_operator_schema(operator_schema)
 
     def _validate_operator_queues_empty(
         self, op: PhysicalOperator, state: OpState
@@ -703,8 +732,9 @@ def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) 
     """
     logger.debug("Execution Progress:")
     for i, (op, state) in enumerate(topology.items()):
+        summary_str = format_op_state_summary(state, resource_manager, verbose=True)
         logger.debug(
-            f"{i}: {state.summary_str(resource_manager, verbose=True)}, "
+            f"{i}: {op.name} - {summary_str}, "
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
 

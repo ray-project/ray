@@ -770,15 +770,15 @@ class AsyncioRouter:
         result: Optional[ReplicaResult] = None
         replica: Optional[RunningReplica] = None
         try:
+            # Resolve request arguments BEFORE incrementing queued requests.
+            # This ensures that queue metrics reflect actual pending work,
+            # not time spent waiting for upstream DeploymentResponse arguments.
+            # See: https://github.com/ray-project/ray/issues/60624
+            if not pr.resolved:
+                await self._resolve_request_arguments(pr)
+
             num_curr_replicas = len(self.request_router.curr_replicas)
             with self._metrics_manager.wrap_queued_request(is_retry, num_curr_replicas):
-                # If the pending request is uninitialized, we do so by resolving the
-                # request arguments. This should only be done once per request, and
-                # should happen after incrementing `num_queued_requests`, so that Serve
-                # can upscale the downstream deployment while arguments are resolving.
-                if not pr.resolved:
-                    await self._resolve_request_arguments(pr)
-
                 replica = await self.request_router._choose_replica_for_request(
                     pr, is_retry=is_retry
                 )

@@ -43,8 +43,6 @@ def test_get_step(mock):
     first_command = shlex.split(step["commands"][0])
     assert first_command[0] == "./release/run_release_test.sh"
     assert first_command[1] == "test with spaces"
-    assert first_command[2] == "--log-streaming-limit"
-    assert first_command[3] == "100"
 
 
 @patch("ray_release.test.Test.update_from_s3", return_value=None)

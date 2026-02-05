@@ -594,13 +594,22 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Stats counter map.
   CounterMapThreadSafe<TaskEventBufferCounter> stats_counter_;
 
-  /// True if there's a pending gRPC call. It's a simple way to prevent overloading
+  /// Number of in-flight gRPC calls to GCS. It's a simple way to prevent overloading
   /// GCS with too many calls. There is no point sending more events if GCS could not
   /// process them quick enough.
-  std::atomic<bool> gcs_grpc_in_progress_ = false;
+  std::atomic<int> gcs_grpc_in_progress_ = 0;
 
-  /// True if there's a pending gRPC call to the event aggregator.
-  std::atomic<bool> event_aggregator_grpc_in_progress_ = false;
+  /// Number of in-flight gRPC calls to the event aggregator.
+  std::atomic<int> event_aggregator_grpc_in_progress_ = 0;
+
+  /// Mutex and condition variable for waiting on gRPC completion during shutdown.
+  absl::Mutex grpc_completion_mutex_;
+  absl::CondVar grpc_completion_cv_;
+
+  /// True during shutdown to allow final flush without re-enabling event ingestion.
+  /// This prevents the race where new events could be added during the brief window
+  /// when enabled_ would otherwise be set back to true for flushing.
+  std::atomic<bool> stopping_ = false;
 
   /// If true, task events are exported for Export API
   bool export_event_write_enabled_ = false;
@@ -632,6 +641,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   FRIEND_TEST(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents);
   FRIEND_TEST(TaskEventBufferTestDifferentDestination,
               TestMixedStatusAndProfileEventsToRayEvents);
+  FRIEND_TEST(TaskEventBufferTestDifferentDestination, TestStopFlushesEvents);
+  FRIEND_TEST(TaskEventBufferTestDifferentDestination,
+              TestStopWaitsForInflightThenFlushes);
+  FRIEND_TEST(TaskEventBufferTestDroppedAttemptsOnly,
+              TestFlushSendsDroppedAttemptsWithoutEvents);
 };
 
 }  // namespace worker
