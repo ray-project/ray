@@ -17,7 +17,7 @@ steps:
 
   - name: datalbuild-multipy
     label: "wanda: datalbuild-py{{matrix}}"
-    wanda: ci/docker/data.lp.build.wanda.yaml
+    wanda: ci/docker/datal.build.wanda.yaml
     matrix: ["3.10", "3.12"]
     env:
       PYTHON: "{{matrix}}"
