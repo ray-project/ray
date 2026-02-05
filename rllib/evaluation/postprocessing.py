@@ -326,4 +326,5 @@ def discount_cumsum(x: np.ndarray, gamma: float) -> np.ndarray:
     """
     # Import scipy here to avoid import error when framework is tensorflow.
     import scipy
+
     return scipy.signal.lfilter([1], [1, float(-gamma)], x[::-1], axis=0)[::-1]

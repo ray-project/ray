@@ -115,7 +115,9 @@ class MiniBatchEpisodeRayDataIterator(MiniBatchRayDataIterator):
         """Converts a batch of episodes to torch tensors."""
         # Avoid torch import error when framework is tensorflow.
         # Note (artur): This can be removed when we remove tf support.
-        from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
+        from ray.air._internal.torch_utils import (
+            convert_ndarray_batch_to_torch_tensor_batch,
+        )
 
         return [
             convert_ndarray_batch_to_torch_tensor_batch(

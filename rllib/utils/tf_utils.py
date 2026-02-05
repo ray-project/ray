@@ -908,9 +908,7 @@ class TensorFlowVariables:
 
             # Create new placeholders to put in custom weights.
             for k, var in self.variables.items():
-                dtype = (
-                    var.value().dtype if hasattr(var, "op") else var.dtype
-                )
+                dtype = var.value().dtype if hasattr(var, "op") else var.dtype
                 shape = (
                     var.get_shape().as_list()
                     if hasattr(var, "get_shape")
