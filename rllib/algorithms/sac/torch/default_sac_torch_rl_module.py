@@ -259,7 +259,6 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
         """
         # Encoder forward pass.
         qf_encoder_outs = encoder(batch)
-        # qf_encoder_outs = encoder(qf_batch)
 
         # Q head forward pass.
         # (B,latent_size) -> (B, 1|action_dim)

@@ -127,7 +127,7 @@ class SACCatalog(Catalog):
         """
         # Configure the action encoder for the Q-function.
         self.qf_action_encoder_config = MLPEncoderConfig(
-            input_dims=(self.action_space.shape[0],),
+            input_dims=self.action_space.shape,
             hidden_layer_dims=self._model_config_dict["fcnet_hiddens"][:-1],
             hidden_layer_activation=self._model_config_dict["fcnet_activation"],
             output_layer_dim=self.latent_dims[0],
