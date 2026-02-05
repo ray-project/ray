@@ -18,6 +18,10 @@ MAX_CPUS = 'sum(autoscaler_cluster_resources{{resource="CPU",{global_filters}}})
 PENDING_CPUS = 'sum(autoscaler_pending_resources{{resource="CPU",{global_filters}}})'
 MAX_GPUS = 'sum(autoscaler_cluster_resources{{resource="GPU",{global_filters}}})'
 PENDING_GPUS = 'sum(autoscaler_pending_resources{{resource="GPU",{global_filters}}})'
+MAX_MEMORY = 'sum(autoscaler_cluster_resources{{resource="memory",{global_filters}}})'
+PENDING_MEMORY = (
+    'sum(autoscaler_pending_resources{{resource="memory",{global_filters}}})'
+)
 
 
 def max_plus_pending(max_resource, pending_resource):
@@ -26,6 +30,7 @@ def max_plus_pending(max_resource, pending_resource):
 
 MAX_PLUS_PENDING_CPUS = max_plus_pending(MAX_CPUS, PENDING_CPUS)
 MAX_PLUS_PENDING_GPUS = max_plus_pending(MAX_GPUS, PENDING_GPUS)
+MAX_PLUS_PENDING_MEMORY = max_plus_pending(MAX_MEMORY, PENDING_MEMORY)
 
 MAX_PERCENTAGE_EXPRESSION = (
     "100"  # To help draw the max limit line on percentage panels
@@ -278,7 +283,7 @@ RAY_RESOURCES_PANELS = [
     Panel(
         id=61,
         title="Logical Memory Usage",
-        description="Logical memory usage of Ray by node. The dotted line indicates the total amount of memory available. Logical memory refers to Ray's view of memory resources allocated to tasks and actors.",
+        description="Logical memory usage of Ray by node. The dotted line indicates the total amount of memory available. Logical memory refers to Ray's view of memory resources allocated to tasks and actors. PENDING means the amount of memory that will be available when new nodes are up after the autoscaler scales up.",
         unit="bytes",
         targets=[
             Target(
@@ -288,6 +293,10 @@ RAY_RESOURCES_PANELS = [
             Target(
                 expr='sum(ray_resources{{Name="memory",instance=~"$Instance",{global_filters}}})',
                 legend="MAX",
+            ),
+            Target(
+                expr=f"({MAX_PLUS_PENDING_MEMORY} and {MAX_PLUS_PENDING_MEMORY} > ({MAX_MEMORY} or vector(0)))",
+                legend="MAX + PENDING",
             ),
         ],
     ),
@@ -695,9 +704,9 @@ for row in DEFAULT_GRAFANA_ROWS:
 
 ids.sort()
 
-assert len(ids) == len(
-    set(ids)
-), f"Duplicated id found. Use unique id for each panel. {ids}"
+assert len(ids) == len(set(ids)), (
+    f"Duplicated id found. Use unique id for each panel. {ids}"
+)
 
 default_dashboard_config = DashboardConfig(
     name="DEFAULT",
