@@ -46,7 +46,7 @@ Expression namespaces
 ------------------------------------
 
 These namespace classes provide specialized operations for list, string, struct, array, and
-datetime columns. You access them through properties on expressions: ``.list``, ``.str``,
+`datetime` columns. You access them through properties on expressions: ``.list``, ``.str``,
 ``.struct``, ``.arr``, and ``.dt``.
 
 The following example shows how to use the string namespace to transform text columns:
@@ -168,7 +168,7 @@ list columns to variable-length lists:
     {'features': [1, 2], 'features_list': [1, 2]}
     {'features': [3, 4], 'features_list': [3, 4]}
 
-The following example shows how to use the datetime namespace to extract components:
+The following example shows how to use the `datetime` namespace to extract components:
 
 .. testcode::
 
