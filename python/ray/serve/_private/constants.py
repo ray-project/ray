@@ -363,6 +363,11 @@ RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     10.0,
 )
 
+# Async inference task queue metrics push interval.
+RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S = get_env_float(
+    "RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S", 10.0
+)
+
 # Serve multiplexed matching timeout.
 # This is the timeout for the matching process of multiplexed requests. To avoid
 # thundering herd problem, the timeout value will be randomized between this value
