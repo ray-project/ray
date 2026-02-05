@@ -998,6 +998,42 @@ def test_one_hot_encoder_with_max_categories():
     pd.testing.assert_frame_equal(df_out, expected_df, check_like=True)
 
 
+def test_one_hot_encoder_max_categories_global_across_partitions():
+    """Tests that max_categories selects top-k globally, not per-partition.
+
+    Regression test: previously, top-k was applied per-partition and then
+    unioned, which could yield more than k categories or pick the wrong ones.
+
+    Setup: 3 partitions with column "B" having these value counts:
+      Partition 1: {A: 3, B: 1}       → per-partition top-2: {A, B}
+      Partition 2: {B: 3, C: 1}       → per-partition top-2: {B, C}
+      Partition 3: {C: 3, D: 1}       → per-partition top-2: {C, D}
+    Global counts: {A: 3, B: 4, C: 4, D: 1}
+    Global top-2:  {B, C}
+
+    Per-partition top-2 union would incorrectly give {A, B, C, D} (4 values).
+    """
+    part1 = pd.DataFrame({"B": ["A", "A", "A", "B"]})
+    part2 = pd.DataFrame({"B": ["B", "B", "B", "C"]})
+    part3 = pd.DataFrame({"B": ["C", "C", "C", "D"]})
+    ds = ray.data.from_pandas([part1, part2, part3])
+
+    encoder = OneHotEncoder(["B"], max_categories={"B": 2})
+    encoder.fit(ds)
+
+    # Only the globally top-2 categories (B and C) should be encoded.
+    stats = encoder.stats_
+    encoded_categories = set(stats["unique_values(B)"].keys())
+    assert len(encoded_categories) == 2, (
+        f"Expected 2 categories from global top-k, got {len(encoded_categories)}: "
+        f"{encoded_categories}"
+    )
+    assert encoded_categories == {
+        "B",
+        "C",
+    }, f"Expected {{B, C}} as global top-2, got {encoded_categories}"
+
+
 def test_multi_hot_encoder():
     """Tests basic MultiHotEncoder functionality."""
     col_a = ["red", "green", "blue", "red"]
