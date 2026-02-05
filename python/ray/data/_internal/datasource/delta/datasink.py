@@ -236,6 +236,12 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         existing = try_get_deltatable(self.table_uri, self.storage_options)
         self._table_existed_at_start = existing is not None
 
+        # Check ERROR mode BEFORE any table modifications
+        if self.mode == SaveMode.ERROR and existing:
+            raise ValueError(
+                f"Delta table already exists at {self.table_uri}. Use APPEND or OVERWRITE."
+            )
+
         if existing:
             if not self.partition_cols:
                 self.partition_cols = existing.metadata().partition_columns or []
@@ -249,11 +255,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 )
                 if new_fields:
                     evolve_schema(existing, new_fields)
-
-        if self.mode == SaveMode.ERROR and existing:
-            raise ValueError(
-                f"Delta table already exists at {self.table_uri}. Use APPEND or OVERWRITE."
-            )
 
         self._skip_write = self.mode == SaveMode.IGNORE and existing is not None
 
