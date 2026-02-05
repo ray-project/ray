@@ -2039,18 +2039,16 @@ class Algorithm(Checkpointable, Trainable):
                     for i in range(1, num_workers + 1)
                 ]
 
-                results = (
-                    self.eval_env_runner_group.foreach_env_runner(
-                        func=_env_runner_remote,
-                        kwargs={
-                            "num": _num,
-                            "round": _round,
-                            "iter": algo_iteration,
-                            "_force_reset": force_reset,
-                        },
-                        timeout_seconds=time_out,
-                        local_env_runner=False
-                    )
+                results = self.eval_env_runner_group.foreach_env_runner(
+                    func=_env_runner_remote,
+                    kwargs={
+                        "num": _num,
+                        "round": _round,
+                        "iter": algo_iteration,
+                        "_force_reset": force_reset,
+                    },
+                    timeout_seconds=time_out,
+                    local_env_runner=False,
                 )
 
                 # Make sure we properly time out if we have not received any results

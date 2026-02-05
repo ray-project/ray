@@ -1,6 +1,5 @@
-
-import time
 import os
+import time
 import unittest
 from pathlib import Path
 from random import choice
@@ -23,16 +22,13 @@ from ray.rllib.examples.evaluation.evaluation_parallel_to_training import (
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import convert_to_tensor
 from ray.rllib.utils.metrics import (
-    TIMERS,
-    TRAINING_ITERATION_TIMER,
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
     LEARNER_RESULTS,
-    EVALUATION_ITERATION_TIMER,
-    TRAINING_STEP_TIMER,
+    TIMERS,
+    TRAINING_ITERATION_TIMER,
 )
-from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.tune import register_env
 
@@ -621,9 +617,9 @@ class TestAlgorithm(unittest.TestCase):
         self.assertTrue(all(f"p{i}" in mapped_pols for i in mapped))
         self.assertTrue(not any(f"p{i}" in mapped_pols for i in not_mapped))
 
-    
     def test_evaluation_in_parallel_to_training(self):
         SECONDS_TO_SLEEP = 2
+
         class SluggishEnv(gym.Env):
             def __init__(self, config):
                 self.action_space = gym.spaces.Discrete(2)
@@ -633,10 +629,10 @@ class TestAlgorithm(unittest.TestCase):
                 time.sleep(SECONDS_TO_SLEEP)
                 return self.observation_space.sample(), 1, True, False, {}
 
-            def reset(self, *, seed = None, options = None):
+            def reset(self, *, seed=None, options=None):
                 super().reset(seed=seed)
                 return self.observation_space.sample(), {}
-                
+
         config = (
             ppo.PPOConfig()
             .environment(env=SluggishEnv)
@@ -647,7 +643,7 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_duration=1,
                 evaluation_duration_unit="timesteps",
             )
-            .training(train_batch_size=1, minibatch_size=1) # Speed things up
+            .training(train_batch_size=1, minibatch_size=1)  # Speed things up
         )
         algo = config.build()
         metrics = algo.train()
