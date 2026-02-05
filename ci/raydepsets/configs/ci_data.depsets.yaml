@@ -62,3 +62,17 @@ depsets:
     build_arg_sets:
       - py310
       - py312
+
+# needs to use constraints file once relax operation is supported (conflict on pyarrow version)
+  - name: data_v9_pyarrow_depset${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - data_ci_depset_${PYTHON_SHORT}
+    output: python/deplocks/ci/data-v9-pyarrow-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+      - --override python/requirements/data/pyarrow-v9.txt
+    build_arg_sets:
+      - py310

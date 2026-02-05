@@ -1,0 +1,2 @@
+pyarrow==9.0.0
+pylance
