@@ -255,7 +255,7 @@ def test_inherit_batch_format_rule():
 
     rule = InheritBatchFormatRule()
     optimized_plan = rule.apply(original_plan)
-    assert optimized_plan.dag._batch_format == "pandas"
+    assert optimized_plan.dag.batch_format == "pandas"
 
 
 def test_batch_format_on_sort(ray_start_regular_shared_2_cpus):
