@@ -210,20 +210,33 @@ def _build_partition_delete_predicate(
         pv = getattr(action, "partition_values", None) or {}
         if pv:
             # Build tuple of partition values in order
+            # Note: partition_values are stored as strings (from build_partition_path)
+            # but format_sql_value handles string conversion correctly
+            # Use get() with None default - missing keys indicate bug but we handle gracefully
             combo = tuple(pv.get(col) for col in partition_cols)
-            partition_combinations.add(combo)
+            # Only add if combo has at least one non-None value
+            # This handles cases where partition_values dict is incomplete (defensive)
+            if any(v is not None for v in combo):
+                partition_combinations.add(combo)
 
     if not partition_combinations:
         return None
 
     # Build OR predicate: (col1 = 'val1' AND col2 = 'val2') OR ...
+    # Note: partition_values are strings, format_sql_value will quote them appropriately
     ors = []
     for combo in partition_combinations:
-        ands = [
-            f"{quote_identifier(col)} = {format_sql_value(combo[i])}"
-            for i, col in enumerate(partition_cols)
-            if combo[i] is not None
-        ]
+        ands = []
+        for i, col in enumerate(partition_cols):
+            val = combo[i]
+            if val is not None:
+                # Handle "NaN" string for NaN float partitions
+                if val == "NaN":
+                    # Delta Lake stores NaN as string "NaN" in partition metadata
+                    ands.append(f"{quote_identifier(col)} = 'NaN'")
+                else:
+                    # format_sql_value handles string conversion and quoting
+                    ands.append(f"{quote_identifier(col)} = {format_sql_value(val)}")
         if ands:
             ors.append(f"({' AND '.join(ands)})")
 
@@ -249,13 +262,19 @@ def commit_to_existing_table(
     # For OVERWRITE mode, delete existing data
     if inputs.mode == "overwrite":
         partition_overwrite_mode = inputs.write_kwargs.get("partition_overwrite_mode", "static")
+        if partition_overwrite_mode not in ("static", "dynamic"):
+            raise ValueError(
+                f"Invalid partition_overwrite_mode '{partition_overwrite_mode}'. "
+                "Must be 'static' or 'dynamic'."
+            )
         if partition_overwrite_mode == "dynamic" and inputs.partition_cols:
             # Dynamic partition overwrite: only delete partitions being written
             pred = _build_partition_delete_predicate(file_actions, inputs.partition_cols)
             if pred:
                 table.delete(pred)
             else:
-                # No partitions in file actions, delete all
+                # No partitions in file actions (shouldn't happen for partitioned table,
+                # but fallback to delete all for safety)
                 table.delete()
         else:
             # Static partition overwrite: delete all data
