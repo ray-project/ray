@@ -1,3 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
 WORKDIR=$(pwd)
 apt-get update
 apt-get install -y libopenblas-dev liblapack-dev gcc g++ gfortran pkg-config git \
@@ -12,7 +15,7 @@ git clone https://github.com/scipy/scipy
 cd scipy
 git checkout v1.11.4
 git submodule update --init
-pip install -e . --no-build-isolation
+pip install -e .
 cd $WORKDIR
 
 
@@ -46,5 +49,5 @@ make -j"$(nproc)"
 sudo make install
 cd ../../python
 export BUILD_TYPE=release
-python${PYTHON_VER} setup.py build_ext --build-type=$BUILD_TYPE --bundle-arrow-cpp bdist_wheel
+python setup.py build_ext --build-type=$BUILD_TYPE --bundle-arrow-cpp bdist_wheel
 pip install dist/*.whl
