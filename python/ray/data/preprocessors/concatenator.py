@@ -13,12 +13,12 @@ logger = logging.getLogger(__name__)
 @PublicAPI(stability="alpha")
 class Concatenator(Preprocessor):
     """Combine numeric columns into a column of type
-    :class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`. Only columns
+    :class:`~ray.data._internal.tensor_extensions.pandas.TensorDtype`. Only columns
     specified in ``columns`` will be concatenated.
 
     This preprocessor concatenates numeric columns and stores the result in a new
     column. The new column contains
-    :class:`~ray.air.util.tensor_extensions.pandas.TensorArrayElement` objects of
+    :class:`~ray.data._internal.tensor_extensions.pandas.TensorArrayElement` objects of
     shape :math:`(m,)`, where :math:`m` is the number of columns concatenated.
     The :math:`m` concatenated columns are dropped after concatenation.
     The preprocessor preserves the order of the columns provided in the ``colummns``
@@ -31,7 +31,7 @@ class Concatenator(Preprocessor):
         >>> from ray.data.preprocessors import Concatenator
 
         :py:class:`Concatenator` combines numeric columns into a column of
-        :py:class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`.
+        :py:class:`~ray.data._internal.tensor_extensions.pandas.TensorDtype`.
 
         >>> df = pd.DataFrame({"X0": [0, 3, 1], "X1": [0.5, 0.2, 0.9]})
         >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
