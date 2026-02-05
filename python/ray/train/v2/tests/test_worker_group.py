@@ -147,14 +147,16 @@ def test_callback_start_failure():
 
 
 def test_start_timeout(monkeypatch):
-    from ray.util.placement_group import PlacementGroup
-
-    @ray.remote(num_cpus=0)
-    def hanging_task(*args, **kwargs):
-        time.sleep(60)
+    from ray.train.v2._internal.execution.worker_group.placement_group_handle import (
+        DefaultPlacementGroupHandle,
+    )
 
     monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0.1")
-    monkeypatch.setattr(PlacementGroup, "ready", hanging_task.remote)
+    monkeypatch.setattr(
+        DefaultPlacementGroupHandle,
+        "wait",
+        lambda self, timeout_seconds=None: False,
+    )
 
     wg = _default_inactive_worker_group()
 

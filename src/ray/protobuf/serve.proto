@@ -244,6 +244,8 @@ message DeploymentVersion {
   string placement_group_bundles = 4;
   string placement_group_strategy = 5;
   int32 max_replicas_per_node = 6;
+  string placement_group_bundle_label_selector = 7;
+  string placement_group_fallback_strategy = 8;
 }
 
 message ReplicaConfig {
@@ -255,6 +257,8 @@ message ReplicaConfig {
   string placement_group_bundles = 6;
   string placement_group_strategy = 7;
   int32 max_replicas_per_node = 8;
+  string placement_group_bundle_label_selector = 9;
+  string placement_group_fallback_strategy = 10;
 }
 
 enum TargetCapacityDirection {
