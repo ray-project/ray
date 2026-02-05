@@ -42,7 +42,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     RowMapTransformFn,
 )
 from ray.data._internal.execution.util import make_callable_class_single_threaded
-from ray.data._internal.logical.operators.map_operator import (
+from ray.data._internal.logical.operators import (
     AbstractUDFMap,
     Filter,
     FlatMap,
@@ -140,7 +140,7 @@ def plan_project_op(
     # datasources with weak references, e.g., PyIceberg tables)
     projection_exprs = op.exprs
 
-    compute = get_compute(op._compute)
+    compute = get_compute(op.compute)
 
     # Create init_fn to initialize all callable class UDFs at actor startup
     from ray.data.util.expression_utils import (
@@ -174,8 +174,8 @@ def plan_project_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
-        ray_remote_args=op._ray_remote_args,
-        ray_remote_args_fn=op._ray_remote_args_fn,
+        ray_remote_args=op.ray_remote_args,
+        ray_remote_args_fn=op.ray_remote_args_fn,
     )
 
 
@@ -186,7 +186,7 @@ def plan_streaming_repartition_op(
 ) -> MapOperator:
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
-    compute = get_compute(op._compute)
+    compute = get_compute(op.compute)
     transform_fn = BlockMapTransformFn(
         lambda blocks, ctx: blocks,
         output_block_size_option=OutputBlockSizeOption.of(
@@ -207,8 +207,8 @@ def plan_streaming_repartition_op(
         name=op.name,
         compute_strategy=compute,
         ref_bundler=ref_bundler,
-        ray_remote_args=op._ray_remote_args,
-        ray_remote_args_fn=op._ray_remote_args_fn,
+        ray_remote_args=op.ray_remote_args,
+        ray_remote_args_fn=op.ray_remote_args_fn,
     )
 
     return operator
@@ -226,8 +226,8 @@ def plan_filter_op(
         target_max_block_size=data_context.target_max_block_size,
     )
 
-    predicate_expr = op._predicate_expr
-    compute = get_compute(op._compute)
+    predicate_expr = op.predicate_expr
+    compute = get_compute(op.compute)
     if predicate_expr is not None:
 
         def filter_block_fn(
@@ -245,13 +245,13 @@ def plan_filter_op(
             output_block_size_option=output_block_size_option,
         )
     else:
-        udf_is_callable_class = isinstance(op._fn, CallableClass)
+        udf_is_callable_class = isinstance(op.fn, CallableClass)
         filter_fn, init_fn = _get_udf(
-            op._fn,
-            op._fn_args,
-            op._fn_kwargs,
-            op._fn_constructor_args if udf_is_callable_class else None,
-            op._fn_constructor_kwargs if udf_is_callable_class else None,
+            op.fn,
+            op.fn_args,
+            op.fn_kwargs,
+            op.fn_constructor_args if udf_is_callable_class else None,
+            op.fn_constructor_kwargs if udf_is_callable_class else None,
             compute=compute,
         )
 
@@ -269,8 +269,8 @@ def plan_filter_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
-        ray_remote_args=op._ray_remote_args,
-        ray_remote_args_fn=op._ray_remote_args_fn,
+        ray_remote_args=op.ray_remote_args,
+        ray_remote_args_fn=op.ray_remote_args_fn,
     )
 
 
@@ -291,23 +291,23 @@ def plan_udf_map_op(
         target_max_block_size=data_context.target_max_block_size,
     )
 
-    compute = get_compute(op._compute)
-    udf_is_callable_class = isinstance(op._fn, CallableClass)
+    compute = get_compute(op.compute)
+    udf_is_callable_class = isinstance(op.fn, CallableClass)
     fn, init_fn = _get_udf(
-        op._fn,
-        op._fn_args,
-        op._fn_kwargs,
-        op._fn_constructor_args if udf_is_callable_class else None,
-        op._fn_constructor_kwargs if udf_is_callable_class else None,
+        op.fn,
+        op.fn_args,
+        op.fn_kwargs,
+        op.fn_constructor_args if udf_is_callable_class else None,
+        op.fn_constructor_kwargs if udf_is_callable_class else None,
         compute=compute,
     )
 
     if isinstance(op, MapBatches):
         transform_fn = BatchMapTransformFn(
             _generate_transform_fn_for_map_batches(fn),
-            batch_size=op._batch_size,
-            batch_format=op._batch_format,
-            zero_copy_batch=op._zero_copy_batch,
+            batch_size=op.batch_size,
+            batch_format=op.batch_format,
+            zero_copy_batch=op.zero_copy_batch,
             is_udf=True,
             output_block_size_option=output_block_size_option,
         )
@@ -334,10 +334,10 @@ def plan_udf_map_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
-        min_rows_per_bundle=op._min_rows_per_bundled_input,
-        ray_remote_args_fn=op._ray_remote_args_fn,
-        ray_remote_args=op._ray_remote_args,
-        per_block_limit=op._per_block_limit,
+        min_rows_per_bundle=op.min_rows_per_bundled_input,
+        ray_remote_args_fn=op.ray_remote_args_fn,
+        ray_remote_args=op.ray_remote_args,
+        per_block_limit=op.per_block_limit,
     )
 
 

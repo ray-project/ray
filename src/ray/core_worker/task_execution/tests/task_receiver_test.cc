@@ -140,8 +140,7 @@ class TaskReceiverTest : public ::testing::Test {
         task_event_buffer_,
         execute_task,
         *actor_task_execution_arg_waiter_,
-        /* initialize_thread_callback= */ []() { return []() { return; }; },
-        /* actor_creation_task_done= */ []() { return Status::OK(); });
+        /* initialize_thread_callback= */ []() { return []() { return; }; });
   }
 
   Status MockExecuteTask(
