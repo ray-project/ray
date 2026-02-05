@@ -117,9 +117,8 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
     std::string ca_cert_file = std::string(RayConfig::instance().TLS_CA_CERT());
     if (!ca_cert_file.empty()) {
       std::string ca_cert = rpc::ReadCert(ca_cert_file);
-      if (ca_cert.empty()) {
-        RAY_LOG(WARNING) << "Failed to read CA certificate file: " << ca_cert_file;
-      }
+      RAY_CHECK(!ca_cert.empty()) << "Failed to read CA certificate file: "
+                                  << ca_cert_file;
       exporter_options.ssl_credentials_cacert_as_string = std::move(ca_cert);
     }
 
@@ -137,17 +136,14 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
     std::string client_key_file = std::string(RayConfig::instance().TLS_SERVER_KEY());
     if (!client_cert_file.empty()) {
       std::string client_cert = rpc::ReadCert(client_cert_file);
-      if (client_cert.empty()) {
-        RAY_LOG(WARNING) << "Failed to read client certificate file: "
-                         << client_cert_file;
-      }
+      RAY_CHECK(!client_cert.empty())
+          << "Failed to read client certificate file: " << client_cert_file;
       exporter_options.ssl_client_cert_string = std::move(client_cert);
     }
     if (!client_key_file.empty()) {
       std::string client_key = rpc::ReadCert(client_key_file);
-      if (client_key.empty()) {
-        RAY_LOG(WARNING) << "Failed to read client key file: " << client_key_file;
-      }
+      RAY_CHECK(!client_key.empty())
+          << "Failed to read client key file: " << client_key_file;
       exporter_options.ssl_client_key_string = std::move(client_key);
     }
     RAY_LOG(INFO) << "OpenTelemetry metric exporter configured with TLS and mTLS enabled";
