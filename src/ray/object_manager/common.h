@@ -16,6 +16,7 @@
 
 #if defined(__APPLE__) || defined(__linux__)
 #include <semaphore.h>
+#include <pthread.h>
 #endif
 
 #include <atomic>
@@ -62,6 +63,10 @@ struct PlasmaObjectHeader {
     sem_t *object_sem;
     // Synchronizes accesses to the object header.
     sem_t *header_sem;
+    // Condition variable and mutex for efficient waiting on version/sealed changes
+    // These point to the shared memory locations in the PlasmaObjectHeader
+    pthread_cond_t *version_cond;
+    pthread_mutex_t *version_mutex;
   };
 
   enum class SemaphoresCreationLevel {
@@ -122,6 +127,13 @@ struct PlasmaObjectHeader {
   // different data/metadata size.
   uint64_t data_size = 0;
   uint64_t metadata_size = 0;
+
+#if defined(__APPLE__) || defined(__linux__)
+  // Cross-process condition variable and mutex for efficient waiting
+  // These are in shared memory and accessible across all processes
+  pthread_mutex_t version_mutex_storage;
+  pthread_cond_t version_cond_storage;
+#endif
 
   /// Blocks until all readers for the previous write have ReadRelease'd the
   /// value. Protects against concurrent writers.
