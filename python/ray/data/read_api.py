@@ -1928,6 +1928,11 @@ def read_zarr(
     ``storage_options`` for different cloud providers, see
     https://docs.dask.org/en/stable/how-to/connect-to-remote-data.html
 
+    .. note::
+        The ``storage_options`` parameter may change to a ``filesystem`` parameter
+        in a future release to align with other Ray Data readers like
+        :func:`~ray.data.read_parquet`.
+
     Examples:
         Read a single Zarr array.
 
