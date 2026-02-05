@@ -193,6 +193,7 @@ def _summarize_timings(timings_ms):
         if not values:
             summary[name] = {
                 "mean_ms": None,
+                "p50_ms": None,
                 "p90_ms": None,
                 "p100_ms": None,
                 "count": 0,
@@ -200,9 +201,11 @@ def _summarize_timings(timings_ms):
             continue
         sorted_vals = sorted(values)
         count = len(sorted_vals)
+        p50_idx = max(0, int(0.5 * count) - 1)
         p90_idx = max(0, int(0.9 * count) - 1)
         summary[name] = {
             "mean_ms": mean(sorted_vals),
+            "p50_ms": sorted_vals[p50_idx],
             "p90_ms": sorted_vals[p90_idx],
             "p100_ms": sorted_vals[-1],
             "count": count,
