@@ -561,6 +561,39 @@ class TestResourceManager:
         assert resource_manager2._is_blocking_materializing_op(o5) is False
         assert resource_manager2._is_blocking_materializing_op(o7) is False
 
+    def test_memory_limit_blocks_task_submission(self, restore_data_context):
+        """Test that tasks are blocked when memory limit is exceeded."""
+        # Cluster has 10GB memory available
+        cluster_resources = ExecutionResources(cpu=10, gpu=0, memory=10 * 1024**3)
+
+        def get_total_resources():
+            return cluster_resources
+
+        # Create operator that requests 15GB memory
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(
+            o1,
+            ray_remote_args={"num_cpus": 1, "memory": 15 * 1024**3},
+            name="HighMemoryTask",
+        )
+
+        topo = build_streaming_topology(o2, ExecutionOptions())
+        options = ExecutionOptions()
+        options.resource_limits = cluster_resources
+
+        resource_manager = ResourceManager(
+            topo, options, get_total_resources, DataContext.get_current()
+        )
+        resource_manager.update_usages()
+
+        # Task cannot be submitted because it exceeds memory limit
+        allocator = resource_manager._op_resource_allocator
+        if allocator is not None:
+            can_submit = allocator.can_submit_new_task(o2)
+            assert not can_submit, (
+                "Task should be blocked: requires 15GB but only 10GB available"
+            )
+
 
 class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
     """Tests for OpResourceAllocator._should_unblock_streaming_output_backpressure."""
