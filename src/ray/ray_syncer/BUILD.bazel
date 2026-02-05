@@ -22,6 +22,7 @@ ray_cc_library(
         "//src/ray/common:constants",
         "//src/ray/common:id",
         "//src/ray/protobuf:ray_syncer_cc_grpc",
+        "//src/ray/rpc/authentication:authentication_mode",
         "//src/ray/rpc/authentication:authentication_token",
         "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/rpc/authentication:authentication_token_validator",

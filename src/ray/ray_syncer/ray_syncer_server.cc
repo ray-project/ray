@@ -18,6 +18,7 @@
 #include <utility>
 
 #include "ray/common/constants.h"
+#include "ray/rpc/authentication/authentication_mode.h"
 
 namespace ray::syncer {
 
@@ -52,7 +53,14 @@ RayServerBidiReactor::RayServerBidiReactor(
       server_context_(server_context),
       auth_token_(std::move(auth_token)),
       auth_token_validator_(auth_token_validator) {
-  if (auth_token_ && !auth_token_->empty()) {
+  if (ray::rpc::GetAuthenticationMode() == ray::rpc::AuthenticationMode::TOKEN) {
+    if (!auth_token_ || auth_token->empty()) {
+      RAY_LOG(WARNING) << "Missing bearer token in syncer "
+                       << NodeID::FromBinary(GetRemoteNodeID());
+      Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "Missing bearer token"));
+      return;
+    }
+
     // Validate authentication token
     const auto &metadata = server_context->client_metadata();
     auto it = metadata.find(kAuthTokenKey);
