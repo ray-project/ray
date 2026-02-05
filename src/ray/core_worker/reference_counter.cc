@@ -1874,6 +1874,7 @@ json ReferenceCounter::Reference::ToJson() const {
       {"num_object_ref_deleted_callbacks", object_ref_deleted_callbacks.size()},
       {"publish_ref_removed", publish_ref_removed},
       {"spilled_url", spilled_url},
+      {"spilled_node_id", spilled_node_id.Hex()},
       {"spilled", spilled},
       {"foreign_owner_already_monitoring", foreign_owner_already_monitoring},
       {"has_nested_refs_report", has_nested_refs_to_report},
