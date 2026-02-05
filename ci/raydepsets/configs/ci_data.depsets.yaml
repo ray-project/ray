@@ -47,21 +47,18 @@ depsets:
     build_arg_sets:
       - py310
 
+# needs to use constraints file once relax operation is supported (conflict on pyarrow version)
   - name: data_latest_pyarrow_depset${PYTHON_SHORT}
     operation: expand
     depsets:
       - data_ci_depset_${PYTHON_SHORT}
-    constraints:
-      - /tmp/ray-deps/requirements_compiled_py3.13.txt
+    requirements:
+      - python/requirements/data/pyarrow-latest.txt
     output: python/deplocks/ci/data-latest-pyarrow-ci_depset_py${PYTHON_VERSION}.lock
-    override_flags:
-      - --extra-index-url https://download.pytorch.org/whl/cu128
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
-      - --excludes python/requirements/data/pyarrow-exclude.txt
-      - --overrides python/requirements/data/pyarrow-latest.txt
     build_arg_sets:
       - py310
       - py312
