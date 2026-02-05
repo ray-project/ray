@@ -725,7 +725,8 @@ def _find_schemas_mismatch(
         f"{field}: {old_fields[field]}" for field in old_exclusive_fields
     ]
     changed_fields_info = [
-        f"{old_fields[field]} => {new_fields[field]}" for field in changed_fields
+        f"{field}: {old_fields[field]} => {new_fields[field]}"
+        for field in changed_fields
     ]
 
     new_excl_fields_message = _format_info_message(
