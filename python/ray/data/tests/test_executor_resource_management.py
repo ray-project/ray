@@ -483,7 +483,7 @@ def test_actor_pool_scheduling_with_bundling(
         # While bundling, no tasks are scheduled
         assert op.num_active_tasks() == 0
         assert op.metrics.obj_store_mem_pending_task_inputs == 0
-        #assert op.metrics.obj_store_mem_pending_task_outputs == 0
+        # assert op.metrics.obj_store_mem_pending_task_outputs == 0
 
         assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(
             (i + 1) * 800, rel=0.5
@@ -501,7 +501,7 @@ def test_actor_pool_scheduling_with_bundling(
     single_task_pending_inputs = op.metrics.obj_store_mem_pending_task_inputs
     single_task_pending_outputs = op.metrics.obj_store_mem_pending_task_outputs
     assert single_task_pending_inputs > 0
-    #assert single_task_pending_outputs > 0
+    # assert single_task_pending_outputs > 0
 
     # Add more inputs, but less than necessary to launch another task
     for i in range(MIN_ROWS_PER_BUNDLE - 1):
@@ -523,8 +523,12 @@ def test_actor_pool_scheduling_with_bundling(
             (i + 1) * 800, rel=0.5
         )
         assert op.metrics.obj_store_mem_internal_outqueue == 0
-        assert op.metrics.obj_store_mem_pending_task_inputs == single_task_pending_inputs
-        assert op.metrics.obj_store_mem_pending_task_outputs == single_task_pending_outputs
+        assert (
+            op.metrics.obj_store_mem_pending_task_inputs == single_task_pending_inputs
+        )
+        assert (
+            op.metrics.obj_store_mem_pending_task_outputs == single_task_pending_outputs
+        )
 
     # Mark inputs as completed
     op.all_inputs_done()
@@ -536,7 +540,7 @@ def test_actor_pool_scheduling_with_bundling(
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs > 0
-    #assert op.metrics.obj_store_mem_pending_task_outputs > 0
+    # assert op.metrics.obj_store_mem_pending_task_outputs > 0
 
     # Wait until tasks are done.
     run_op_tasks_sync(op)
