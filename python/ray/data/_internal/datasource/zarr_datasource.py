@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Un
 import numpy as np
 import pyarrow as pa
 
-from ray.data._internal.util import _check_import
+import ray
+from ray.data._internal.util import _check_import, _is_local_scheme
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 
@@ -32,6 +33,18 @@ class ZarrDatasource(Datasource):
         _check_import(self, module="zarr", package="zarr")
         self._paths = [paths] if isinstance(paths, str) else list(paths)
         self._storage_options = storage_options
+
+        self._supports_distributed_reads = not _is_local_scheme(self._paths)
+        if not self._supports_distributed_reads and ray.util.client.ray.is_connected():
+            raise ValueError(
+                "Because you're using Ray Client, read tasks scheduled on the Ray "
+                "cluster can't access your local files. To fix this issue, store "
+                "files in cloud storage or a distributed filesystem like NFS."
+            )
+
+    @property
+    def supports_distributed_reads(self) -> bool:
+        return self._supports_distributed_reads
 
     def get_read_tasks(
         self,
