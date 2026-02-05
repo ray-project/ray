@@ -282,11 +282,11 @@ RAY_RESOURCES_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr='sum(ray_node_mem_used{{instance=~"$Instance",{global_filters}}}) by (instance)',
-                legend="Memory Used: {{instance}}",
+                expr='sum(ray_resources{{Name="memory",State="USED",instance=~"$Instance",{global_filters}}}) by (instance)',
+                legend="Memory Usage: {{instance}}",
             ),
             Target(
-                expr='sum(ray_node_mem_total{{instance=~"$Instance",{global_filters}}})',
+                expr='sum(ray_resources{{Name="memory",instance=~"$Instance",{global_filters}}})',
                 legend="MAX",
             ),
         ],
