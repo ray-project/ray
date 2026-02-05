@@ -752,6 +752,8 @@ class _ActorTaskSelector(abc.ABC):
         Args:
             input_queue: The input queue to select actors for.
             actor_locality_enabled: Whether actor locality is enabled.
+            strict: Controls whether strict input handling protocol is enforced,
+                requiring at least 1 bundle to be matched with an actor
 
         Returns:
             Iterator of tuples of the bundle and the selected actor for that bundle.
@@ -775,8 +777,6 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
         actor_locality_enabled: bool,
         strict: bool,
     ) -> Iterator[Tuple[RefBundle, ActorHandle]]:
-        """Picks actors for task submission based on busyness and locality."""
-
         assert (
             not strict or self.can_schedule_task()
         ), "select_actors(...) might not be invoked unless can_schedule_task(...) returns true"
