@@ -119,7 +119,7 @@ class QueueMonitorActor:
             logger.warning(
                 f"[{self._deployment_id}] Failed to get queue length for metrics push: {e}"
             )
-            return
+            raise e
 
         report = AsyncInferenceTaskQueueMetricReport(
             deployment_id=self._deployment_id,
