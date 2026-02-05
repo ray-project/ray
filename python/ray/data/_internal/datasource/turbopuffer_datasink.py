@@ -16,7 +16,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray._common.retry import call_with_retry
-from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockColumnAccessor
+from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 # Reserved column names for Turbopuffer
 _ID_COLUMN = "id"
 _VECTOR_COLUMN = "vector"
+TURBOPUFFER_API_KEY_ENV_VAR = "TURBOPUFFER_API_KEY"
 
 
 class TurbopufferDatasink(Datasink):
@@ -46,6 +47,8 @@ class TurbopufferDatasink(Datasink):
       separate namespaces derived from that column.
 
     Args:
+        region: Turbopuffer region identifier (for example,
+            ``"gcp-us-central1"``).
         namespace: Name of a single Turbopuffer namespace to write into.
             Mutually exclusive with ``namespace_column``.
         namespace_column: Name of the column whose values determine the target
@@ -54,22 +57,24 @@ class TurbopufferDatasink(Datasink):
             ``vector_column``.
         namespace_format: Python format string used to construct namespace
             names in multi-namespace mode. It must contain the
-            ``\"{namespace}\"`` placeholder, which is replaced with the raw
+            ``"{namespace}"`` placeholder, which is replaced with the raw
             column value (or its UUID/hex string representation).
         api_key: Turbopuffer API key. If omitted, the value is read from the
             ``TURBOPUFFER_API_KEY`` environment variable.
-        region: Turbopuffer region identifier (for example, ``\"gcp-us-central1\"``).
         schema: Optional Turbopuffer schema definition to pass along with
             writes. If provided, it is forwarded as the ``schema`` argument
             to ``namespace.write``.
         id_column: Name of the column to treat as the document identifier.
-            Rows with null IDs are dropped before writing. Defaults to ``\"id\"``.
+            Rows with null IDs are dropped before writing. Defaults to ``"id"``.
         vector_column: Name of the column containing embedding vectors.
-            If this differs from ``\"vector\"``, it is renamed to ``\"vector\"``
-            before writing. Defaults to ``\"vector\"``.
+            If this differs from ``"vector"``, it is renamed to ``"vector"``
+            before writing. Defaults to ``"vector"``.
         batch_size: Maximum number of rows to include in a single Turbopuffer
             write call (logical row batching; subject to Turbopuffer's
             256MiB request-size limit). Defaults to ``10000``.
+        distance_metric: Distance metric for the namespace. Passed to
+            ``namespace.write`` as the ``distance_metric`` argument.
+            Defaults to ``"cosine_distance"``.
         concurrency: Unused; Ray Data controls write parallelism via
             :meth:`~ray.data.Dataset.write_datasink` ``concurrency``.
 
@@ -134,10 +139,6 @@ class TurbopufferDatasink(Datasink):
 
         _check_import(self, module="turbopuffer", package="turbopuffer")
 
-        import turbopuffer
-
-        self._turbopuffer = turbopuffer
-
         # Validate namespace configuration
         if namespace and namespace_column:
             raise ValueError(
@@ -173,7 +174,7 @@ class TurbopufferDatasink(Datasink):
         self.namespace = namespace
         self.namespace_column = namespace_column
         self.namespace_format = namespace_format
-        self.api_key = api_key or os.getenv("TURBOPUFFER_API_KEY")
+        self.api_key = api_key or os.getenv(TURBOPUFFER_API_KEY_ENV_VAR)
         self.region = region
         self.schema = schema
         self.id_column = id_column
@@ -202,20 +203,18 @@ class TurbopufferDatasink(Datasink):
         """Exclude `_client` and `_turbopuffer` during pickling."""
         state = self.__dict__.copy()
         state.pop("_client", None)
-        state.pop("_turbopuffer", None)
         return state
 
     def __setstate__(self, state: dict) -> None:
         self.__dict__.update(state)
         self._client = None
-        # Re-import turbopuffer module
-        import turbopuffer
-        self._turbopuffer = turbopuffer
 
     def _get_client(self):
         """Lazy initialize Turbopuffer client."""
         if self._client is None:
-            self._client = self._turbopuffer.Turbopuffer(
+            import turbopuffer
+
+            self._client = turbopuffer.Turbopuffer(
                 api_key=self.api_key, region=self.region
             )
         return self._client
@@ -275,9 +274,7 @@ class TurbopufferDatasink(Datasink):
         elif total_rows_written == 0:
             logger.debug("No rows written after filtering")
         else:
-            logger.debug(
-                f"Wrote {total_rows_written} rows from {block_count} blocks"
-            )
+            logger.debug(f"Wrote {total_rows_written} rows from {block_count} blocks")
 
     def _rename_column_if_needed(
         self,
@@ -314,7 +311,9 @@ class TurbopufferDatasink(Datasink):
                 f"'{source_column}' to '{target_column}'. Please disambiguate your schema."
             )
 
-        return BlockAccessor.for_block(table).rename_columns({source_column: target_column})
+        return BlockAccessor.for_block(table).rename_columns(
+            {source_column: target_column}
+        )
 
     def _prepare_arrow_table(self, table: pa.Table) -> pa.Table:
         """
@@ -324,9 +323,7 @@ class TurbopufferDatasink(Datasink):
         2. Rename vector column to "vector" if needed
         3. Filter out rows with null IDs
         """
-        table = self._rename_column_if_needed(
-            table, self.id_column, _ID_COLUMN, "ID"
-        )
+        table = self._rename_column_if_needed(table, self.id_column, _ID_COLUMN, "ID")
         table = self._rename_column_if_needed(
             table, self.vector_column, _VECTOR_COLUMN, "Vector"
         )
@@ -340,7 +337,7 @@ class TurbopufferDatasink(Datasink):
     def _write_multi_namespace(self, client, table: pa.Table):
         """
         Write table to multiple namespaces grouped by namespace_column.
-        Uses PyArrow's group_by() for efficient grouping in a single pass.
+        Uses _iter_groups_sorted for efficient zero-copy slicing by group.
         """
         # Validation in __init__ ensures namespace_column doesn't overlap with
         # id_column or vector_column, so no column name resolution is needed.
@@ -355,48 +352,30 @@ class TurbopufferDatasink(Datasink):
         # Disallow null namespace values before grouping.
         namespace_col = table.column(group_col_name)
         null_mask = pc.is_null(namespace_col)
-        if pc.any(null_mask).as_py():
+        if pc.any(null_mask):
             raise ValueError(
                 f"Namespace column '{self.namespace_column}' contains null values; "
                 "fill or drop them before writing with namespace_column."
             )
 
-        # Sort the table by the grouping column. This groups all rows with the
-        # same namespace value together, enabling efficient slicing.
+        # Sort the table by the grouping column and iterate over groups.
+        # _iter_groups_sorted yields zero-copy slices for each unique key value.
         sort_key = SortKey(key=group_col_name, descending=False)
         sorted_table = transform_pyarrow.sort(table, sort_key)
+        block_accessor = ArrowBlockAccessor.for_block(sorted_table)
 
-        block_accessor = ArrowBlockAccessor(sorted_table)
-        group_col = sorted_table.column(group_col_name)
-        col_accessor = ArrowBlockColumnAccessor(group_col)
-        counts_dict = col_accessor.value_counts()
-
-        if not counts_dict:
-            logger.debug("No groups found in table")
-            return
-
-        groups = sorted(
-            zip(counts_dict["values"], counts_dict["counts"]),
-            key=lambda x: x[0],
-        )
-
-        num_groups = len(groups)
-        logger.debug(f"Writing to {num_groups} namespaces")
-
-        start_idx = 0
-        for namespace_value, count in groups:
-            group_table = block_accessor.slice(start_idx, start_idx + count)
-            start_idx += count
-
-            # Format namespace name
-            # Convert bytes to appropriate string format
+        for (namespace_value,), group_table in block_accessor._iter_groups_sorted(
+            sort_key
+        ):
+            # Format namespace name - must match [A-Za-z0-9-\_.]{1,128}
+            # Raw bytes must be converted to valid string format.
+            # See: https://turbopuffer.com/docs/write
             if isinstance(namespace_value, bytes):
                 if len(namespace_value) == 16:
-                    # This is a UUID in binary format
+                    # UUID format: "550e8400-e29b-41d4-a716-446655440000"
                     namespace_str = str(uuid.UUID(bytes=namespace_value))
                 else:
-                    # Non-UUID bytes: convert to hex string for consistency
-                    # with _transform_to_turbopuffer_format
+                    # Hex format: "010203"
                     namespace_str = namespace_value.hex()
             else:
                 namespace_str = str(namespace_value)
@@ -426,24 +405,22 @@ class TurbopufferDatasink(Datasink):
     def _transform_to_turbopuffer_format(
         self, table: Union[pa.Table, pa.RecordBatch]
     ) -> dict:
-        """Transform Arrow table to Turbopuffer column-based format.
-
-        Uses upsert_columns format per Turbopuffer docs:
-        "Bulk document operations should use a column-oriented layout for best performance."
-        """
         if _ID_COLUMN not in table.column_names:
             raise ValueError(f"Table must have '{_ID_COLUMN}' column")
 
-        columns = table.to_pydict()
+        # Cast 16-byte binary ID column to native UUID type for Turbopuffer performance.
+        # Native UUIDs are 16 bytes vs 36 bytes for string-encoded UUIDs.
+        # See: https://turbopuffer.com/docs/performance
+        id_col = table.column(_ID_COLUMN)
+        if pa.types.is_fixed_size_binary(id_col.type) and id_col.type.byte_width == 16:
+            # Cast fixed_size_binary(16) to uuid type
+            uuid_col = id_col.cast(pa.uuid())
+            table = table.set_column(
+                table.schema.get_field_index(_ID_COLUMN), _ID_COLUMN, uuid_col
+            )
 
-        # Convert ID column bytes to native UUID per Turbopuffer performance docs
-        id_col = columns[_ID_COLUMN]
-        columns[_ID_COLUMN] = [
-            uuid.UUID(bytes=v) if isinstance(v, bytes) and len(v) == 16 else v
-            for v in id_col
-        ]
-
-        return columns
+        # to_pydict() on UuidArray automatically returns uuid.UUID objects
+        return table.to_pydict()
 
     def _write_batch_with_retry(
         self,
@@ -477,5 +454,3 @@ class TurbopufferDatasink(Datasink):
                 f"Write failed for namespace '{namespace_name}' after retries: {e}"
             )
             raise
-
-
