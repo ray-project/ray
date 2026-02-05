@@ -117,6 +117,11 @@ You can also perform list-specific transformations like sorting and flattening:
     )
     ds.show()
 
+.. testoutput::
+
+    {'values': [3, 1, 2], 'nested': [[1, 2], [3]], 'sorted_values': [3, 2, 1], 'flattened_nested': [1, 2, 3]}
+    {'values': [2, None, 5], 'nested': [[4], []], 'sorted_values': [5, 2, None], 'flattened_nested': [4]}
+
 The following example shows how to use the struct namespace to access nested fields:
 
 .. testcode::
