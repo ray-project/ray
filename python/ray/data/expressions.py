@@ -821,14 +821,39 @@ class _CallableClassSpec:
         cls: The original callable class type
         args: Positional arguments for the constructor
         kwargs: Keyword arguments for the constructor
+        _cached_key: Pre-computed key that survives serialization
     """
 
     cls: type
     args: Tuple[Any, ...] = ()
     kwargs: Dict[str, Any] = field(default_factory=dict)
+    _cached_key: Optional[Tuple] = field(default=None, compare=False, repr=False)
+
+    def __post_init__(self):
+        """Pre-compute and cache the key at construction time.
+
+        This ensures the same key survives serialization, since the cached
+        key tuple (containing the already-computed repr strings) gets pickled
+        and unpickled as-is.
+        """
+        if self._cached_key is None:
+            class_id = f"{self.cls.__module__}.{self.cls.__qualname__}"
+            try:
+                key = (
+                    class_id,
+                    self.args,
+                    tuple(sorted(self.kwargs.items())),
+                )
+                # Verify the key is actually hashable (args may contain lists)
+                hash(key)
+            except TypeError:
+                # Fallback for unhashable args/kwargs - use repr for comparison
+                key = (class_id, repr(self.args), repr(self.kwargs))
+            # Use object.__setattr__ since dataclass is frozen
+            object.__setattr__(self, "_cached_key", key)
 
     def make_key(self) -> Tuple:
-        """Create a hashable key for UDF instance lookup.
+        """Return the pre-computed hashable key for UDF instance lookup.
 
         The key uniquely identifies a UDF by its class and constructor arguments.
         This ensures that the same class with different constructor args
@@ -837,18 +862,7 @@ class _CallableClassSpec:
         Returns:
             A hashable tuple that uniquely identifies this UDF configuration.
         """
-        try:
-            key = (
-                id(self.cls),
-                self.args,
-                tuple(sorted(self.kwargs.items())),
-            )
-            # Verify the key is actually hashable (args may contain lists)
-            hash(key)
-            return key
-        except TypeError:
-            # Fallback for unhashable args/kwargs - use repr for comparison
-            return (id(self.cls), repr(self.args), repr(self.kwargs))
+        return self._cached_key
 
 
 class _CallableClassUDF:
