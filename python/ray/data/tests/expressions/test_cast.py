@@ -1,3 +1,4 @@
+import pandas as pd
 import pyarrow as pa
 import pytest
 from packaging.version import parse as parse_version
@@ -17,30 +18,43 @@ from ray.tests.conftest import *  # noqa
     reason="with_column requires PyArrow >= 20.0.0",
 )
 @pytest.mark.parametrize(
-    "expr, target_type, expected_value, expected_type",
+    "expr, target_type, expected_rows",
     [
         # Basic type conversions using Ray Data's DataType
-        (col("id"), DataType.int64(), 0, int),  # int64 -> int64 (no change)
-        (col("id"), DataType.float64(), 0.0, float),  # int64 -> float64
-        (col("id"), DataType.string(), "0", str),  # int64 -> string
-        (col("id") / 2, DataType.int64(), 0, int),  # float -> int64
-        (col("id") / 2, DataType.float64(), 0.0, float),  # float -> float64 (no change)
+        (col("id"), DataType.int64(), [{"id": i, "result": i} for i in range(5)]),
+        (
+            col("id"),
+            DataType.float64(),
+            [{"id": i, "result": float(i)} for i in range(5)],
+        ),
+        (
+            col("id"),
+            DataType.string(),
+            [{"id": i, "result": str(i)} for i in range(5)],
+        ),
+        (
+            col("id") / 2,
+            DataType.int64(),
+            [{"id": i, "result": i // 2} for i in range(5)],
+        ),
+        (
+            col("id") / 2,
+            DataType.float64(),
+            [{"id": i, "result": i / 2.0} for i in range(5)],
+        ),
     ],
 )
 def test_cast_expression_basic(
     ray_start_regular_shared,
     expr,
     target_type,
-    expected_value,
-    expected_type,
+    expected_rows,
     target_max_block_size_infinite_or_default,
 ):
     """Test basic type casting with cast() method."""
     ds = ray.data.range(5).with_column("result", expr.cast(target_type))
-    result = ds.take(1)[0]
-    assert result["id"] == 0
-    assert result["result"] == expected_value
-    assert isinstance(result["result"], expected_type)
+    actual = ds.take_all()
+    assert rows_same(pd.DataFrame(actual), pd.DataFrame(expected_rows))
 
 
 @pytest.mark.skipif(
@@ -54,17 +68,13 @@ def test_cast_expression_usecase(
     ds = ray.data.range(10)
     # The modulo operation returns float, cast it to int64
     ds = ds.with_column("part", (col("id") % 2).cast(DataType.int64()))
-    results = ds.take_all()
-
-    # Verify all part values are integers
-    for row in results:
-        assert isinstance(row["part"], int)
-        assert row["part"] in [0, 1]
+    actual = ds.take_all()
+    expected_rows = [{"id": i, "part": i % 2} for i in range(10)]
+    assert rows_same(pd.DataFrame(actual), pd.DataFrame(expected_rows))
 
     # Verify the schema shows int64 type
     schema = ds.schema()
     assert "part" in schema.names
-    # The type should be int64
     part_type = schema.types[schema.names.index("part")]
     assert part_type == pa.int64()
 
@@ -80,17 +90,16 @@ def test_cast_expression_chained(
     ds = ray.data.range(5)
     # Cast to float64 then multiply
     ds = ds.with_column("result", col("id").cast(DataType.float64()) * 2.5)
-    result = ds.take(1)[0]
-    assert result["id"] == 0
-    assert result["result"] == 0.0
-    assert isinstance(result["result"], float)
+    actual = ds.take_all()
+    expected_rows = [{"id": i, "result": i * 2.5} for i in range(5)]
+    assert rows_same(pd.DataFrame(actual), pd.DataFrame(expected_rows))
 
     # Cast result of arithmetic operation
     ds = ray.data.range(5)
     ds = ds.with_column("result", (col("id") + 1).cast(DataType.string()))
-    result = ds.take(1)[0]
-    assert result["result"] == "1"
-    assert isinstance(result["result"], str)
+    actual = ds.take_all()
+    expected_rows = [{"id": i, "result": str(i + 1)} for i in range(5)]
+    assert rows_same(pd.DataFrame(actual), pd.DataFrame(expected_rows))
 
 
 @pytest.mark.skipif(
@@ -145,7 +154,7 @@ def test_cast_expression_multiple_types(
         "score_int", col("score").cast(DataType.int64(), safe=False)
     )
 
-    # Use rows_same to compare the full row content.
+    # Use rows_same to compare the full row content (expects DataFrames).
     results = ds.take_all()
     expected = [
         {
@@ -157,7 +166,7 @@ def test_cast_expression_multiple_types(
             "score_int": 3,
         }
     ]
-    assert rows_same(results, expected)
+    assert rows_same(pd.DataFrame(results), pd.DataFrame(expected))
 
 
 @pytest.mark.skipif(
