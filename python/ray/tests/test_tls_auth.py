@@ -150,5 +150,56 @@ assert ray.is_initialized()
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason=("Cryptography (TLS dependency) doesn't install in Mac build pipeline"),
+)
+@pytest.mark.parametrize("use_tls", [True], indirect=True)
+def test_metrics_export_with_tls(use_tls):
+    """Test that metrics can be exported when TLS is enabled.
+
+    This verifies that the OpenTelemetry metric exporter correctly configures
+    TLS/mTLS credentials to communicate with the dashboard agent's gRPC server.
+    See https://github.com/ray-project/ray/issues/59968
+    """
+    # Enable OpenTelemetry metrics along with TLS
+    env = build_env()
+    env["RAY_enable_open_telemetry"] = "true"
+
+    run_string_as_driver(
+        """
+import ray
+import time
+import requests
+
+ray.init()
+try:
+    # Wait for metrics to be available
+    node_info = ray.nodes()[0]
+    metrics_port = node_info["MetricsExportPort"]
+    assert metrics_port > 0, f"Expected valid metrics port, got {metrics_port}"
+
+    # Try to fetch metrics from the Prometheus endpoint
+    metrics_url = f"http://127.0.0.1:{metrics_port}"
+
+    # Give the metrics agent time to start
+    for _ in range(30):
+        try:
+            response = requests.get(metrics_url, timeout=1)
+            if response.status_code == 200:
+                # Successfully fetched metrics
+                assert "ray_" in response.text, "Expected ray metrics in response"
+                break
+        except requests.exceptions.RequestException:
+            time.sleep(1)
+    else:
+        raise AssertionError("Failed to fetch metrics within timeout")
+finally:
+    ray.shutdown()
+    """,
+        env=env,
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

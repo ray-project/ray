@@ -1213,5 +1213,52 @@ def test_invalid_system_metric_names(caplog):
         MetricsAgentGauge("name.cannot.have.dots", "", "", [])
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Cryptography (TLS dependency) doesn't install in Mac build pipeline",
+)
+@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+@pytest.mark.parametrize("use_tls", [True], indirect=True)
+def test_metrics_export_with_tls(use_tls, ray_start_cluster):
+    """Test that OpenTelemetry metrics can be exported when TLS is enabled.
+
+    This verifies that the OpenTelemetry metric exporter correctly configures
+    TLS/mTLS credentials to communicate with the dashboard agent's gRPC server.
+    See https://github.com/ray-project/ray/issues/59968
+    """
+    from ray._common.test_utils import wait_for_condition
+
+    # Enable OpenTelemetry metrics
+    os.environ["RAY_enable_open_telemetry"] = "true"
+
+    try:
+        cluster = ray_start_cluster
+        cluster.add_node()
+        ray.init(address=cluster.address)
+
+        node_info = ray.nodes()[0]
+        metrics_export_port = node_info["MetricsExportPort"]
+        assert metrics_export_port > 0, f"Expected valid metrics port, got {metrics_export_port}"
+
+        addr = node_info["NodeManagerAddress"]
+        prom_addresses = [build_address(addr, metrics_export_port)]
+        timeseries = PrometheusTimeseries()
+
+        def check_metrics_available():
+            fetch_prometheus_timeseries(prom_addresses, timeseries)
+            metric_names = timeseries.metric_descriptors.keys()
+            # Check for some basic Ray metrics
+            return any("ray_" in name for name in metric_names)
+
+        # Wait for metrics to be available
+        wait_for_condition(check_metrics_available, timeout=30, retry_interval_ms=1000)
+
+    finally:
+        if "RAY_enable_open_telemetry" in os.environ:
+            del os.environ["RAY_enable_open_telemetry"]
+        ray.shutdown()
+        cluster.shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
