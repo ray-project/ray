@@ -254,7 +254,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             if eps_evicted_ids[-1] in new_episode_ids:
                 # TODO (simon): Apply the same logic as in the MA-case.
                 len_to_subtract = len(
-                    episodes[new_episode_ids.index(eps_evicted_idxs[-1])]
+                    episodes[new_episode_ids.index(eps_evicted_ids[-1])]
                 )
                 self._num_timesteps -= len_to_subtract
                 self._num_timesteps_added -= len_to_subtract
