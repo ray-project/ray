@@ -276,6 +276,22 @@ RAY_RESOURCES_PANELS = [
         ],
     ),
     Panel(
+        id=61,
+        title="Logical Memory Usage",
+        description="Logical memory usage of Ray by node. The dotted line indicates the total amount of memory available. Logical memory refers to Ray's view of memory resources allocated to tasks and actors.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr='sum(ray_node_mem_used{{instance=~"$Instance",{global_filters}}}) by (instance)',
+                legend="Memory Used: {{instance}}",
+            ),
+            Target(
+                expr='sum(ray_node_mem_total{{instance=~"$Instance",{global_filters}}})',
+                legend="MAX",
+            ),
+        ],
+    ),
+    Panel(
         id=58,
         title="Object Store Memory Usage",
         description="Object store memory usage by instance, including memory that has been spilled to disk. The dotted line indicates the object store memory capacity. This metric can go over the max capacity in case of spillage to disk.",
