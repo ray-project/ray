@@ -8,10 +8,12 @@ ARG PYTHON_VERSION=3.10
 ARG BUILDKITE_BAZEL_CACHE_URL
 ARG BUILDKITE_CACHE_READONLY
 ARG HOSTTYPE
+ARG IS_LOCAL_BUILD=false
 ARG CACHE_DIR=/opt/cache
 
 ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
 ENV BUILDKITE_CACHE_READONLY=${BUILDKITE_CACHE_READONLY}
+ENV IS_LOCAL_BUILD=${IS_LOCAL_BUILD}
 ENV CACHE_DIR=${CACHE_DIR}
 ENV DOWNLOAD_CACHE=${CACHE_DIR}/downloads
 ENV BAZEL_CACHE=${CACHE_DIR}/bazel
@@ -46,9 +48,15 @@ elif [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
   BAZEL_CACHE_ARGS="--remote_upload_local_results=false"
 fi
 
+BAZEL_RESOURCE_FLAGS=""
+if [[ "$IS_LOCAL_BUILD" == "true" ]]; then
+  BAZEL_RESOURCE_FLAGS=$(python3 "$HOME/ray/ci/build/container_resource_utils.py")
+fi
+
 bazelisk --output_base=$BAZEL_CACHE build --config=ci \
     --repository_cache=$REPOSITORY_CACHE \
     $BAZEL_CACHE_ARGS \
+    $BAZEL_RESOURCE_FLAGS \
     //:ray_pkg_zip //:ray_py_proto_zip
 
 cp bazel-bin/ray_pkg.zip /home/forge/ray_pkg.zip

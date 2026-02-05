@@ -424,7 +424,6 @@ class PhysicalOperator(Operator):
         #       - All input blocks have been ingested
         #       - Internal queue is empty
         #       - There are no active or pending tasks
-
         return self._is_execution_marked_finished or (
             self._inputs_complete
             and self.num_active_tasks() == 0
@@ -450,8 +449,9 @@ class PhysicalOperator(Operator):
         # Draining the internal output queue is important to free object refs.
         return (
             self.has_execution_finished()
-            and not self.has_next()
             and internal_output_queue_num_blocks == 0
+            # TODO following check is redundant; remove
+            and not self.has_next()
         )
 
     def get_stats(self) -> StatsDict:
@@ -553,7 +553,7 @@ class PhysicalOperator(Operator):
         """
         self._started = True
 
-    def should_add_input(self) -> bool:
+    def can_add_input(self) -> bool:
         """Return whether it is desirable to add input to this operator right now.
 
         Operators can customize the implementation of this method to apply additional

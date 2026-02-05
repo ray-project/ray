@@ -434,6 +434,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     # `on_episode_created` callback (before the `env.reset()` call).
                     self._new_episode(env_index, self._ongoing_episodes)
 
+                    # Stop processing more envs if we've collected enough episodes.
+                    if num_episodes is not None and eps >= num_episodes:
+                        break
+
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
         # ... and all ongoing episode chunks.

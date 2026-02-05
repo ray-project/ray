@@ -1,8 +1,9 @@
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
 
+import ray
 from ray._common.pydantic_compat import BaseModel
 from ray.air.config import CheckpointConfig
 from ray.train._checkpoint import Checkpoint
@@ -22,6 +23,7 @@ from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2._internal.execution.worker_group import Worker
 from ray.train.v2.api.report_config import CheckpointConsistencyMode
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
+from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +36,13 @@ class _TrainingResultState(BaseModel):
 
 
 class _CheckpointManagerState(BaseModel):
-    # Increment version if the schema changes
-    version: int = 0
+    ray_version: str = ray.__version__
     checkpoint_results: List[_TrainingResultState]
+    checkpoint_report_indices: List[int]
     latest_checkpoint_result: Optional[_TrainingResultState]
+    pending_training_results: List[_TrainingResultState]
+    pending_validation_specs: List[Union[bool, ValidationTaskConfig]]
+    current_report_index: int
 
 
 def _get_training_result_from_state(
@@ -82,8 +87,10 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         # for the current worker group.
         self._current_report_index = 0
 
-        # Map from checkpoint to training result
-        self._pending_training_results = {}
+        # Map from pending checkpoint to validation.
+        self._pending_training_results: Dict[
+            Checkpoint, Tuple[_TrainingResult, Union[bool, ValidationTaskConfig]]
+        ] = {}
 
         # Map from checkpoint to report index. Used to order checkpoints.
         self._checkpoint_to_report_index = {}
@@ -97,8 +104,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
 
     def register_checkpoint(
         self,
-        checkpoint_result: _TrainingResult,
-        is_result_pending: bool,
+        training_report: _TrainingReport,
     ):
         """Register new checkpoint and add to bookkeeping.
 
@@ -108,9 +114,12 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         checkpoints should be deleted.
 
         Args:
-            checkpoint_result: Tracked checkpoint and associated metrics to add to bookkeeping.
-            is_result_pending: Whether the result is pending or fully ready.
+            training_report: Training report to register.
         """
+        checkpoint_result = _TrainingResult(
+            checkpoint=training_report.checkpoint,
+            metrics=training_report.metrics,
+        )
         self._latest_checkpoint_result = checkpoint_result
         self._checkpoint_to_report_index[
             checkpoint_result.checkpoint
@@ -129,14 +138,15 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             # If no metric is provided, just append (ordering by time of registration).
             self._checkpoint_results.append(checkpoint_result)
 
-        if is_result_pending:
-            self._pending_training_results[
-                checkpoint_result.checkpoint
-            ] = checkpoint_result
-
-        self._save_state_and_delete_old_checkpoints()
+        if training_report.validation:
+            self._pending_training_results[checkpoint_result.checkpoint] = (
+                checkpoint_result,
+                training_report.validation,
+            )
 
         self._current_report_index += 1
+
+        self._save_state_and_delete_old_checkpoints()
 
         self._notify()
 
@@ -150,7 +160,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                     f"Checkpoint {checkpoint} not found in pending training results. "
                 )
                 continue
-            checkpoint_result = self._pending_training_results[checkpoint]
+            checkpoint_result, _ = self._pending_training_results[checkpoint]
             checkpoint_result.metrics.update(metrics)
             if checkpoint_result not in self._checkpoint_results:
                 raise ValueError(
@@ -167,6 +177,12 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             self._pending_training_results.pop(checkpoint)
         self._save_state_and_delete_old_checkpoints()
         self._notify()
+
+    def get_pending_training_results(
+        self,
+    ) -> Dict[Checkpoint, Tuple[_TrainingResult, Union[bool, ValidationTaskConfig]]]:
+        """Get the pending training results which includes their validation specs."""
+        return self._pending_training_results
 
     def _notify(self):
         """Notify condition so all listeners know state has changed."""
@@ -188,9 +204,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             )
             # Except for the latest checkpoint and pending checkpoints
             results_to_delete = worst_results - {self._latest_checkpoint_result}
-            results_to_delete = results_to_delete - set(
-                self._pending_training_results.values()
-            )
+            results_to_delete = results_to_delete - {
+                v for v, _ in self._pending_training_results.values()
+            }
 
             # Update internal state before actually deleting them.
             self._checkpoint_results = [
@@ -198,6 +214,8 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 for checkpoint_result in self._checkpoint_results
                 if checkpoint_result not in results_to_delete
             ]
+            for checkpoint_result in results_to_delete:
+                del self._checkpoint_to_report_index[checkpoint_result.checkpoint]
 
         # Save the checkpoint manager state to storage.
         # Note: We save the state before deleting the old checkpoints.
@@ -224,6 +242,11 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             for checkpoint_result in self._checkpoint_results
         ]
 
+        checkpoint_report_indices = [
+            self._checkpoint_to_report_index[checkpoint_result.checkpoint]
+            for checkpoint_result in self._checkpoint_results
+        ]
+
         latest_checkpoint_result = (
             _get_state_from_training_result(
                 self._latest_checkpoint_result, self._storage_context
@@ -232,35 +255,98 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             else None
         )
 
+        pending_training_results = [
+            _get_state_from_training_result(v, self._storage_context)
+            for v, _ in self._pending_training_results.values()
+        ]
+        pending_validation_specs = [
+            v for _, v in self._pending_training_results.values()
+        ]
+
         manager_snapshot = _CheckpointManagerState(
             checkpoint_results=checkpoint_results,
+            checkpoint_report_indices=checkpoint_report_indices,
             latest_checkpoint_result=latest_checkpoint_result,
+            pending_training_results=pending_training_results,
+            pending_validation_specs=pending_validation_specs,
+            current_report_index=self._current_report_index,
         )
         return manager_snapshot.json()
 
     def _load_state(self, json_state: str):
         """Load the checkpoint manager state from a JSON str."""
+        json_dict = None
         try:
             json_dict = json.loads(json_state)
             manager_snapshot = _CheckpointManagerState.parse_obj(json_dict)
         except Exception as e:
-            raise CheckpointManagerInitializationError(repr(e)) from e
-        self._assert_checkpoints_exist()
+            if not json_dict:
+                error = e
+            elif "ray_version" not in json_dict:
+                error = (
+                    "You are loading a checkpoint manager snapshot saved with an unknown Ray version "
+                    f"but you are running Ray version {ray.__version__}. Please use the same Ray version "
+                    "the checkpoint manager snapshot was saved with."
+                )
+            elif json_dict["ray_version"] != ray.__version__:
+                error = (
+                    f"You are loading a checkpoint manager snapshot saved with Ray version "
+                    f"{json_dict['ray_version']} but you are running Ray version "
+                    f"{ray.__version__}. Please use the same Ray version the checkpoint "
+                    "manager snapshot was saved with."
+                )
+            else:
+                error = e
+            raise CheckpointManagerInitializationError(error) from e
 
-        self._checkpoint_results = [
-            _get_training_result_from_state(
+        # Do this so we are using the same checkpoint and trainingresult objects.
+        # TODO: consider asserting that every checkpoint has a unique dir name
+        checkpoint_dir_name_to_checkpoint_result = {}
+
+        for training_result_state in manager_snapshot.checkpoint_results:
+            training_result = _get_training_result_from_state(
                 training_result_state, self._storage_context
             )
-            for training_result_state in manager_snapshot.checkpoint_results
-        ]
+            checkpoint_dir_name_to_checkpoint_result[
+                training_result_state.checkpoint_dir_name
+            ] = training_result
+            self._checkpoint_results.append(training_result)
+        self._assert_checkpoints_exist()
+
+        assert len(self._checkpoint_results) == len(
+            manager_snapshot.checkpoint_report_indices
+        )
+        self._checkpoint_to_report_index = {
+            checkpoint_result.checkpoint: report_index
+            for checkpoint_result, report_index in zip(
+                self._checkpoint_results, manager_snapshot.checkpoint_report_indices
+            )
+        }
 
         self._latest_checkpoint_result = (
-            _get_training_result_from_state(
-                manager_snapshot.latest_checkpoint_result, self._storage_context
-            )
+            checkpoint_dir_name_to_checkpoint_result[
+                manager_snapshot.latest_checkpoint_result.checkpoint_dir_name
+            ]
             if manager_snapshot.latest_checkpoint_result is not None
             else None
         )
+
+        assert len(manager_snapshot.pending_training_results) == len(
+            manager_snapshot.pending_validation_specs
+        )
+        for training_result_state, validation_spec in zip(
+            manager_snapshot.pending_training_results,
+            manager_snapshot.pending_validation_specs,
+        ):
+            training_result = checkpoint_dir_name_to_checkpoint_result[
+                training_result_state.checkpoint_dir_name
+            ]
+            self._pending_training_results[training_result.checkpoint] = (
+                training_result,
+                validation_spec,
+            )
+
+        self._current_report_index = manager_snapshot.current_report_index
 
     def _maybe_load_state_from_storage(self):
         """Load the checkpoint manager state from storage.
@@ -345,19 +431,13 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             self._notify()
             return
 
-        self.register_checkpoint(
-            _TrainingResult(
-                checkpoint=training_report.checkpoint, metrics=training_report.metrics
-            ),
-            bool(training_report.validation),
-        )
+        self.register_checkpoint(training_report)
 
     # --------------------------
     # WorkerGroupCallback
     # --------------------------
 
     def before_init_train_context(self, workers: List[Worker]) -> Dict[str, List[Any]]:
-        self._current_report_index = 0
         latest_checkpoint = (
             self.latest_checkpoint_result.checkpoint
             if self.latest_checkpoint_result
@@ -365,6 +445,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         )
         train_context_args = {
             "checkpoint": [latest_checkpoint] * len(workers),
+            "current_report_index": [self._current_report_index] * len(workers),
         }
         return train_context_args
 
