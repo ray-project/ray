@@ -1232,22 +1232,20 @@ class ReporterAgent(
 
             memory_info = stat.get("memory_info")
             if memory_info:
-                mem = stat["memory_info"]
-                total_rss += float(mem.rss) / 1.0e6
-                if hasattr(mem, "shared"):
-                    total_shm += float(mem.shared)
+                total_rss += float(memory_info.rss) / 1.0e6
+                if hasattr(memory_info, "shared"):
+                    total_shm += float(memory_info.shared)
             mem_full_info = stat.get("memory_full_info")
             if mem_full_info is not None:
                 total_uss += float(mem_full_info.uss) / 1.0e6
             elif memory_info is not None:
-                mem = stat["memory_info"]
                 # If memory_full_info is not collected, approximated USS from memory_info
-                if hasattr(mem, "shared"):
+                if hasattr(memory_info, "shared"):
                     # Linux: USS ≈ RSS - shared
-                    total_uss += float(mem.rss - mem.shared) / 1.0e6
-                elif hasattr(mem, "private"):
+                    total_uss += float(memory_info.rss - memory_info.shared) / 1.0e6
+                elif hasattr(memory_info, "private"):
                     # Windows: private IS USS
-                    total_uss += float(mem.private) / 1.0e6
+                    total_uss += float(memory_info.private) / 1.0e6
             total_num_fds += int(stat.get("num_fds", 0))
 
         tags = {"ip": self._ip, "Component": component_name}
