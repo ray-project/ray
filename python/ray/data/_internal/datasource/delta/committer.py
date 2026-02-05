@@ -198,6 +198,10 @@ def commit_to_existing_table(
         schema: PyArrow schema (or None to infer from files).
         filesystem: PyArrow filesystem for reading files.
     """
+    # For OVERWRITE mode, delete all existing data first
+    if inputs.mode == "overwrite":
+        table.delete()
+
     # Validate schema compatibility (allows missing cols; new cols must be evolved prior).
     existing_schema = to_pyarrow_schema(table.schema())
     if file_actions:
@@ -212,7 +216,7 @@ def commit_to_existing_table(
 
     table.create_write_transaction(
         actions=file_actions,
-        mode=inputs.mode,
+        mode="append",  # Always append after delete for OVERWRITE
         schema=table.schema(),
         partition_by=inputs.partition_cols or None,
         commit_properties=normalize_commit_properties(
