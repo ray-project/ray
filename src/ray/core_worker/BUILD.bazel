@@ -14,8 +14,6 @@ ray_cc_library(
         "core_worker_shutdown_executor.h",
     ],
     deps = [
-        ":actor_handle",
-        ":actor_manager",
         ":common",
         ":core_worker_context",
         ":core_worker_options",
@@ -34,6 +32,8 @@ ray_cc_library(
         ":task_event_buffer",
         "//src/ray/common:metrics",
         "//src/ray/common:protobuf_utils",
+        "//src/ray/core_worker/actor_management:actor_handle",
+        "//src/ray/core_worker/actor_management:actor_manager",
         "//src/ray/core_worker/task_execution:task_receiver",
         "//src/ray/core_worker/task_submission:normal_task_submitter",
         "//src/ray/core_worker_rpc_client:core_worker_client",
@@ -139,62 +139,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "actor_handle",
-    srcs = ["actor_handle.cc"],
-    hdrs = ["actor_handle.h"],
-    deps = [
-        ":core_worker_context",
-        "//src/ray/common:id",
-        "//src/ray/common:task_common",
-        "//src/ray/protobuf:core_worker_cc_proto",
-        "//src/ray/protobuf:gcs_cc_proto",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_googletest//:gtest_prod",
-    ],
-)
-
-ray_cc_library(
-    name = "actor_creator",
-    srcs = ["actor_creator.cc"],
-    hdrs = ["actor_creator.h"],
-    visibility = [":__subpackages__"],
-    deps = [
-        "//src/ray/gcs_rpc_client:gcs_client",
-        "//src/ray/util:thread_utils",
-    ],
-)
-
-ray_cc_library(
-    name = "fake_actor_creator",
-    hdrs = ["fake_actor_creator.h"],
-    visibility = [":__subpackages__"],
-    deps = [
-        ":actor_creator",
-    ],
-)
-
-ray_cc_library(
-    name = "actor_manager",
-    srcs = ["actor_manager.cc"],
-    hdrs = ["actor_manager.h"],
-    deps = [
-        ":actor_creator",
-        ":actor_handle",
-        ":common",
-        ":core_worker_context",
-        ":reference_counter_interface",
-        "//src/ray/common:id",
-        "//src/ray/common:protobuf_utils",
-        "//src/ray/common:task_common",
-        "//src/ray/core_worker/task_submission:actor_task_submitter",
-        "//src/ray/gcs_rpc_client:gcs_client",
-        "//src/ray/protobuf:core_worker_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_googletest//:gtest_prod",
-    ],
-)
-
-ray_cc_library(
     name = "reference_counter_interface",
     hdrs = ["reference_counter_interface.h"],
     deps = [
@@ -258,6 +202,7 @@ ray_cc_library(
         "//src/ray/rpc:event_aggregator_client",
         "//src/ray/util:counter_map",
         "//src/ray/util:event",
+        "//src/ray/util:graceful_shutdown",
         "@boost//:circular_buffer",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
@@ -303,7 +248,6 @@ ray_cc_library(
     srcs = ["task_manager.cc"],
     hdrs = ["task_manager.h"],
     deps = [
-        ":actor_manager",
         ":core_worker_options",
         ":memory_store",
         ":task_event_buffer",
@@ -311,6 +255,7 @@ ray_cc_library(
         "//src/ray/common:buffer",
         "//src/ray/common:id",
         "//src/ray/common:protobuf_utils",
+        "//src/ray/core_worker/actor_management:actor_manager",
         "//src/ray/core_worker_rpc_client:core_worker_client_interface",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:core_worker_cc_proto",
