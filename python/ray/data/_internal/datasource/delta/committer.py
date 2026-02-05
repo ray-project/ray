@@ -182,6 +182,54 @@ def create_table_with_files(
     )
 
 
+def _build_partition_delete_predicate(
+    file_actions: List["AddAction"], partition_cols: List[str]
+) -> Optional[str]:
+    """Build SQL delete predicate for partitions being overwritten.
+
+    Args:
+        file_actions: List of AddAction objects with partition_values.
+        partition_cols: List of partition column names.
+
+    Returns:
+        SQL predicate string matching partitions to delete, or None if no partitions.
+    """
+    if not partition_cols or not file_actions:
+        return None
+
+    # Import here to avoid circular dependency
+    from ray.data._internal.datasource.delta.upsert import (
+        format_sql_value,
+        quote_identifier,
+    )
+
+
+    # Extract unique partition value combinations from file actions
+    partition_combinations = set()
+    for action in file_actions:
+        pv = getattr(action, "partition_values", None) or {}
+        if pv:
+            # Build tuple of partition values in order
+            combo = tuple(pv.get(col) for col in partition_cols)
+            partition_combinations.add(combo)
+
+    if not partition_combinations:
+        return None
+
+    # Build OR predicate: (col1 = 'val1' AND col2 = 'val2') OR ...
+    ors = []
+    for combo in partition_combinations:
+        ands = [
+            f"{quote_identifier(col)} = {format_sql_value(combo[i])}"
+            for i, col in enumerate(partition_cols)
+            if combo[i] is not None
+        ]
+        if ands:
+            ors.append(f"({' AND '.join(ands)})")
+
+    return " OR ".join(ors) if ors else None
+
+
 def commit_to_existing_table(
     inputs: CommitInputs,
     table: "DeltaTable",
@@ -198,9 +246,20 @@ def commit_to_existing_table(
         schema: PyArrow schema (or None to infer from files).
         filesystem: PyArrow filesystem for reading files.
     """
-    # For OVERWRITE mode, delete all existing data first
+    # For OVERWRITE mode, delete existing data
     if inputs.mode == "overwrite":
-        table.delete()
+        partition_overwrite_mode = inputs.write_kwargs.get("partition_overwrite_mode", "static")
+        if partition_overwrite_mode == "dynamic" and inputs.partition_cols:
+            # Dynamic partition overwrite: only delete partitions being written
+            pred = _build_partition_delete_predicate(file_actions, inputs.partition_cols)
+            if pred:
+                table.delete(pred)
+            else:
+                # No partitions in file actions, delete all
+                table.delete()
+        else:
+            # Static partition overwrite: delete all data
+            table.delete()
 
     # Validate schema compatibility (allows missing cols; new cols must be evolved prior).
     existing_schema = to_pyarrow_schema(table.schema())

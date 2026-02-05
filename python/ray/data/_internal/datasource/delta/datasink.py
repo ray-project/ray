@@ -143,6 +143,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 - max_commit_retries: Maximum retries for commit operations (optional).
                 - compression: Compression codec (default: "snappy").
                 - write_statistics: Whether to write Parquet statistics (default: True).
+                - partition_overwrite_mode: For OVERWRITE mode with partitioned tables:
+                  - "static": Delete all data before writing (default)
+                  - "dynamic": Only delete partitions being written (more efficient)
         """
         _check_import(self, module="deltalake", package="deltalake")
 

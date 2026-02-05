@@ -4434,6 +4434,9 @@ class Dataset:
                 * description: Table description for Delta metadata
                 * configuration: Delta table configuration options (dict)
                 * compression: Parquet compression codec ("snappy", "gzip", "zstd", etc.)
+                * partition_overwrite_mode: For OVERWRITE mode with partitioned tables:
+                  - "static": Delete all data before writing (default)
+                  - "dynamic": Only delete partitions being written (more efficient)
                 * upsert_kwargs: Options for UPSERT mode (dict). Required keys:
                   - join_cols: List of column names to match rows on (required)
                   Example: ``upsert_kwargs={'join_cols': ['id', 'timestamp']}``
