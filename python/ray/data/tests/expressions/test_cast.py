@@ -150,9 +150,7 @@ def test_cast_expression_multiple_types(
     ds = ds.with_column("id_str", col("id").cast(DataType.string()))
 
     # Cast score to int (use safe=False to allow float truncation to int)
-    ds = ds.with_column(
-        "score_int", col("score").cast(DataType.int64(), safe=False)
-    )
+    ds = ds.with_column("score_int", col("score").cast(DataType.int64(), safe=False))
 
     # Use rows_same to compare the full row content (expects DataFrames).
     results = ds.take_all()
@@ -183,4 +181,3 @@ def test_cast_expression_python_type_datatype_error(
         col("id").cast(DataType(int))
     with pytest.raises(TypeError, match=error_match):
         col("id").cast(DataType(str))
-
