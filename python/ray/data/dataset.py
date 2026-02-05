@@ -5264,11 +5264,11 @@ class Dataset:
     def write_turbopuffer(
         self,
         *,
+        region: str,
         namespace: Optional[str] = None,
         namespace_column: Optional[str] = None,
         namespace_format: str = "{namespace}",
         api_key: Optional[str] = None,
-        region: Optional[str] = None,
         schema: Optional[Dict[str, Any]] = None,
         id_column: str = "id",
         vector_column: str = "vector",
@@ -5330,6 +5330,8 @@ class Dataset:
                 )
 
         Args:
+            region: Turbopuffer region identifier (for example,
+                ``"gcp-us-central1"``).
             namespace: Name of a single Turbopuffer namespace to write into.
                 This argument is mutually exclusive with ``namespace_column``.
             namespace_column: Name of the column whose values determine the
@@ -5341,9 +5343,6 @@ class Dataset:
                 column value (or its UUID or hex string representation).
             api_key: Turbopuffer API key. If omitted, the value is read from
                 the ``TURBOPUFFER_API_KEY`` environment variable.
-            region: Turbopuffer region identifier (for example,
-                ``"gcp-us-central1"``). If omitted, defaults to
-                ``"gcp-us-central1"``.
             schema: Optional Turbopuffer schema definition to pass along with
                 writes. If provided, it is forwarded as the ``schema`` argument
                 to ``namespace.write``.
@@ -5367,11 +5366,11 @@ class Dataset:
                 resources.
         """
         datasink = TurbopufferDatasink(
+            region=region,
             namespace=namespace,
             namespace_column=namespace_column,
             namespace_format=namespace_format,
             api_key=api_key,
-            region=region,
             schema=schema,
             id_column=id_column,
             vector_column=vector_column,
