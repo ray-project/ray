@@ -182,3 +182,11 @@ def test_cast_expression_python_type_datatype_error(
         col("id").cast(DataType(int))
     with pytest.raises(TypeError, match=error_match):
         col("id").cast(DataType(str))
+
+
+if __name__ == "__main__":
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))
