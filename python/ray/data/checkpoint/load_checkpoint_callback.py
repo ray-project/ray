@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data.checkpoint.checkpoint_filter import BatchBasedCheckpointFilter
@@ -26,8 +26,13 @@ def get_checkpoint_loader(
 class LoadCheckpointCallback(ExecutionCallback):
     """ExecutionCallback that handles checkpoints."""
 
+    # Registry to track which checkpoint configs were actually used by the Planner.
+    _enabled_configs: Set[int] = set()
+
     def __init__(self, config: Optional["CheckpointConfig"]):
         self._config = config
+        # We create the filter here exclusively for DELETION logic.
+        # We do NOT use this filter for loading data.
         self._ckpt_filter = None
 
         if self._config:
@@ -48,15 +53,15 @@ class LoadCheckpointCallback(ExecutionCallback):
         if not config:
             return None
 
+        cls._enabled_configs.add(id(config))
+
         ckpt_filter = cls._create_checkpoint_filter(config)
         checkpoint_ref: Dict[str, Any] = {}
 
         def load_fn() -> "ObjectRef[Block]":
             if "ref" in checkpoint_ref:
                 return checkpoint_ref["ref"]
-
             ref = ckpt_filter.load_checkpoint()
-
             checkpoint_ref["ref"] = ref
             return ref
 
@@ -76,13 +81,22 @@ class LoadCheckpointCallback(ExecutionCallback):
         pass
 
     def after_execution_succeeds(self, executor: "StreamingExecutor"):
-        if self._config is None:
+        if self._config is None or self._ckpt_filter is None:
             return
+
+        # Only delete if this config was explicitly ENABLED by the Planner.
+        if id(self._config) not in self._enabled_configs:
+            return
+
         try:
             if self._config.delete_checkpoint_on_success:
                 self._ckpt_filter.delete_checkpoint()
         except Exception:
             logger.warning("Failed to delete checkpoint data.", exc_info=True)
+        finally:
+            self._enabled_configs.discard(id(self._config))
 
     def after_execution_fails(self, executor: "StreamingExecutor", error: Exception):
-        pass
+        # Cleanup registry on failure
+        if self._config:
+            self._enabled_configs.discard(id(self._config))
