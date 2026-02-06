@@ -267,9 +267,10 @@ void TaskCounter::SetMetricStatus(std::string_view func_name,  // Changed: read-
   }
 }
 
-void TaskCounter::UnsetMetricStatus(std::string_view func_name,  // Changed: read-only param
-                                    rpc::TaskStatus status,
-                                    bool is_retry) {
+void TaskCounter::UnsetMetricStatus(
+    std::string_view func_name,  // Changed: read-only param
+    rpc::TaskStatus status,
+    bool is_retry) {
   absl::MutexLock l(&mu_);
   auto func_name_str = std::string(func_name);  // Convert once for reuse
   // Add a no-op decrement to counter_ so that
@@ -687,9 +688,10 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
 
 const WorkerID &CoreWorker::GetWorkerID() const { return worker_context_->GetWorkerID(); }
 
-void CoreWorker::SetCurrentTaskId(const TaskID &task_id,
-                                  uint64_t attempt_number,
-                                  std::string_view task_name) {  // Changed: read-only param
+void CoreWorker::SetCurrentTaskId(
+    const TaskID &task_id,
+    uint64_t attempt_number,
+    std::string_view task_name) {  // Changed: read-only param
   worker_context_->SetCurrentTaskId(task_id, attempt_number);
   {
     absl::MutexLock lock(&mutex_);
@@ -952,7 +954,8 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
   reference_counter_->AddBorrowedObject(object_id, outer_object_id, owner_address);
 
   rpc::GetObjectStatusReply object_status;
-  object_status.ParseFromString(std::string(serialized_object_status));  // Convert for protobuf
+  object_status.ParseFromString(
+      std::string(serialized_object_status));  // Convert for protobuf
 
   if (object_status.has_object() && !reference_counter_->OwnedByUs(object_id)) {
     // We already have the inlined object status, process it immediately.
@@ -1752,7 +1755,7 @@ TaskID CoreWorker::GetCallerId() const {
 }
 
 Status CoreWorker::PushError(const JobID &job_id,
-                             std::string_view type,  // Changed: read-only param
+                             std::string_view type,           // Changed: read-only param
                              std::string_view error_message,  // Changed: read-only param
                              double timestamp) {
   return raylet_ipc_client_->PushError(job_id, type, error_message, timestamp);
@@ -1785,8 +1788,9 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
   auto factory = [this](const std::string &runtime_env_info_str) {
     return OverrideTaskOrActorRuntimeEnvInfoImpl(runtime_env_info_str);
   };
-  return runtime_env_json_serialization_cache_.GetOrCreate(std::string(serialized_runtime_env_info),  // Convert for cache key
-                                                           std::move(factory));
+  return runtime_env_json_serialization_cache_.GetOrCreate(
+      std::string(serialized_runtime_env_info),  // Convert for cache key
+      std::move(factory));
 }
 
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfoImpl(
@@ -1799,8 +1803,9 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
   runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>();
 
   if (!IsRuntimeEnvInfoEmpty(serialized_runtime_env_info)) {
-    RAY_CHECK(google::protobuf::util::JsonStringToMessage(std::string(serialized_runtime_env_info),  // Convert for protobuf
-                                                          runtime_env_info.get())
+    RAY_CHECK(google::protobuf::util::JsonStringToMessage(
+                  std::string(serialized_runtime_env_info),  // Convert for protobuf
+                  runtime_env_info.get())
                   .ok());
   }
 
@@ -1868,7 +1873,7 @@ void CoreWorker::BuildCommonTaskSpec(
     std::string_view debugger_breakpoint,  // Changed: read-only param
     int64_t depth,
     std::string_view serialized_runtime_env_info,  // Changed: read-only param
-    std::string_view call_site,  // Changed: read-only param
+    std::string_view call_site,                    // Changed: read-only param
     const TaskID &main_thread_current_task_id,
     std::string_view concurrency_group_name,  // Changed: read-only param
     bool include_job_config,
@@ -1933,9 +1938,10 @@ void CoreWorker::BuildCommonTaskSpec(
   }
 }
 
-void CoreWorker::PrestartWorkers(std::string_view serialized_runtime_env_info,  // Changed: read-only param
-                                 uint64_t keep_alive_duration_secs,
-                                 size_t num_workers) {
+void CoreWorker::PrestartWorkers(
+    std::string_view serialized_runtime_env_info,  // Changed: read-only param
+    uint64_t keep_alive_duration_secs,
+    size_t num_workers) {
   rpc::PrestartWorkersRequest request;
   request.set_language(GetLanguage());
   request.set_job_id(GetCurrentJobId().Binary());
@@ -1958,9 +1964,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     int max_retries,
     bool retry_exceptions,
     const rpc::SchedulingStrategy &scheduling_strategy,
-    std::string_view debugger_breakpoint,  // Changed: read-only param
+    std::string_view debugger_breakpoint,                   // Changed: read-only param
     std::string_view serialized_retry_exception_allowlist,  // Changed: read-only param
-    std::string_view call_site,  // Changed: read-only param
+    std::string_view call_site,                             // Changed: read-only param
     const TaskID current_task_id) {
   SubscribeToNodeChanges();
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
@@ -2031,12 +2037,13 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   return returned_refs;
 }
 
-Status CoreWorker::CreateActor(const RayFunction &function,
-                               const std::vector<std::unique_ptr<TaskArg>> &args,
-                               const ActorCreationOptions &actor_creation_options,
-                               std::string_view extension_data,  // Changed: read-only param
-                               std::string_view call_site,  // Changed: read-only param
-                               ActorID *return_actor_id) {
+Status CoreWorker::CreateActor(
+    const RayFunction &function,
+    const std::vector<std::unique_ptr<TaskArg>> &args,
+    const ActorCreationOptions &actor_creation_options,
+    std::string_view extension_data,  // Changed: read-only param
+    std::string_view call_site,       // Changed: read-only param
+    ActorID *return_actor_id) {
   SubscribeToNodeChanges();
   RAY_CHECK(actor_creation_options.scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
@@ -2317,7 +2324,7 @@ Status CoreWorker::SubmitActorTask(
     int max_retries,
     bool retry_exceptions,
     std::string_view serialized_retry_exception_allowlist,  // Changed: read-only param
-    std::string_view call_site,  // Changed: read-only param
+    std::string_view call_site,                             // Changed: read-only param
     std::vector<rpc::ObjectReference> &task_returns,
     const TaskID current_task_id) {
   SubscribeToNodeChanges();
@@ -2540,10 +2547,12 @@ std::optional<rpc::ActorTableData::ActorState> CoreWorker::GetLocalActorState(
   return actor_task_submitter_->GetLocalActorState(actor_id);
 }
 
-ActorID CoreWorker::DeserializeAndRegisterActorHandle(std::string_view serialized,  // Changed: read-only param
-                                                      const ObjectID &outer_object_id,
-                                                      bool add_local_ref) {
-  auto actor_handle = std::make_unique<ActorHandle>(std::string(serialized));  // Convert for constructor
+ActorID CoreWorker::DeserializeAndRegisterActorHandle(
+    std::string_view serialized,  // Changed: read-only param
+    const ObjectID &outer_object_id,
+    bool add_local_ref) {
+  auto actor_handle =
+      std::make_unique<ActorHandle>(std::string(serialized));  // Convert for constructor
   return actor_manager_->RegisterActorHandle(std::move(actor_handle),
                                              outer_object_id,
                                              CurrentCallSite(),
@@ -3550,7 +3559,8 @@ StatusSet<StatusT::InvalidArgument> CoreWorker::ProcessSubscribeMessage(
     std::string_view key_id,  // Changed: read-only param
     const NodeID &subscriber_id) {
   StatusSet<StatusT::InvalidArgument> result =
-      object_info_publisher_->RegisterSubscription(channel_type, subscriber_id, std::string(key_id));  // Convert for function
+      object_info_publisher_->RegisterSubscription(
+          channel_type, subscriber_id, std::string(key_id));  // Convert for function
   if (result.has_error()) {
     return result;
   }
@@ -4481,12 +4491,13 @@ std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
   return return_ids;
 }
 
-void CoreWorker::RecordTaskLogStart(const TaskID &task_id,
-                                    int32_t attempt_number,
-                                    std::string_view stdout_path,  // Changed: read-only param
-                                    std::string_view stderr_path,  // Changed: read-only param
-                                    int64_t stdout_start_offset,
-                                    int64_t stderr_start_offset) const {
+void CoreWorker::RecordTaskLogStart(
+    const TaskID &task_id,
+    int32_t attempt_number,
+    std::string_view stdout_path,  // Changed: read-only param
+    std::string_view stderr_path,  // Changed: read-only param
+    int64_t stdout_start_offset,
+    int64_t stderr_start_offset) const {
   rpc::TaskLogInfo task_log_info;
   task_log_info.set_stdout_file(std::string(stdout_path));  // Convert for protobuf
   task_log_info.set_stderr_file(std::string(stderr_path));  // Convert for protobuf
