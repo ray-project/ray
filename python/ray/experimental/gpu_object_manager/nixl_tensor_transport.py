@@ -182,15 +182,13 @@ class NixlTensorTransport(TensorTransportManager):
 
     def recv_multiple_tensors(
         self,
+        tensors: List["torch.Tensor"],
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
-    ) -> List["torch.Tensor"]:
-        from ray.experimental.gpu_object_manager.util import (
-            create_empty_tensors_from_metadata,
-        )
-
-        tensors = create_empty_tensors_from_metadata(tensor_transport_metadata)
+    ):
+        if not tensors:
+            return
 
         assert isinstance(tensor_transport_metadata, NixlTransportMetadata)
         assert isinstance(communicator_metadata, NixlCommunicatorMetadata)
@@ -202,9 +200,6 @@ class NixlTensorTransport(TensorTransportManager):
             if obj_id in self._aborted_transfer_obj_ids:
                 self._aborted_transfer_obj_ids.remove(obj_id)
                 raise RuntimeError(f"NIXL transfer aborted for object id: {obj_id}")
-
-        if not tensors:
-            return []
 
         local_descs = None
         remote_name = None
@@ -262,8 +257,6 @@ class NixlTensorTransport(TensorTransportManager):
                 nixl_agent.remove_remote_agent(remote_name)
             if local_descs:
                 nixl_agent.deregister_memory(local_descs)
-
-        return tensors
 
     def send_multiple_tensors(
         self,
