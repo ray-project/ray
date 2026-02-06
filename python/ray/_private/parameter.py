@@ -146,7 +146,6 @@ class RayParams:
         max_worker_port: Optional[int] = None,
         worker_port_list: Optional[List[int]] = None,
         ray_client_server_port: Optional[int] = None,
-        driver_mode=None,
         redirect_output: Optional[bool] = None,
         log_to_stderr: Optional[bool] = None,
         external_addresses: Optional[List[str]] = None,
@@ -205,7 +204,6 @@ class RayParams:
         self.max_worker_port = max_worker_port
         self.worker_port_list = worker_port_list
         self.ray_client_server_port = ray_client_server_port
-        self.driver_mode = driver_mode
         self.redirect_output = redirect_output
         self.log_to_stderr = log_to_stderr
         self.external_addresses = external_addresses
