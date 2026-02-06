@@ -73,6 +73,7 @@ from ray.serve._private.proxy_request_response import (
     ResponseHandlerInfo,
     ResponseStatus,
     gRPCProxyRequest,
+    gRPCStreamingType,
 )
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
@@ -585,7 +586,9 @@ class gRPCProxy(GenericProxy):
             is_error=not healthy,
         )
 
-    def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
+    def service_handler_factory(
+        self, service_method: str, streaming_type: gRPCStreamingType
+    ) -> Callable:
         async def unary_unary(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
         ) -> bytes:
@@ -640,7 +643,11 @@ class gRPCProxy(GenericProxy):
 
             set_grpc_code_and_details(context, status)
 
-        return unary_stream if stream else unary_unary
+        handler_map = {
+            gRPCStreamingType.UNARY_UNARY: unary_unary,
+            gRPCStreamingType.UNARY_STREAM: unary_stream,
+        }
+        return handler_map[streaming_type]
 
     def setup_request_context_and_handle(
         self,

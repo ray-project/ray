@@ -122,7 +122,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
-from ray.serve._private.proxy_request_response import ResponseStatus
+from ray.serve._private.proxy_request_response import ResponseStatus, gRPCStreamingType
 from ray.serve._private.replica_response_generator import ReplicaResponseGenerator
 from ray.serve._private.rolling_window_accumulator import RollingWindowAccumulator
 from ray.serve._private.serialization import RPCSerializer
@@ -2134,21 +2134,24 @@ class Replica(ReplicaBase):
         raise NotImplementedError("unary_stream not implemented.")
 
     def _direct_ingress_service_handler_factory(
-        self, service_method: str, stream: bool
+        self, service_method: str, streaming_type: gRPCStreamingType
     ) -> Callable:
-        if stream:
+        if streaming_type == gRPCStreamingType.UNARY_STREAM:
 
             async def handler(*args, **kwargs):
                 return await self._direct_ingress_unary_stream(
                     service_method, *args, **kwargs
                 )
 
-        else:
+        elif streaming_type == gRPCStreamingType.UNARY_UNARY:
 
             async def handler(*args, **kwargs):
                 return await self._direct_ingress_unary_unary(
                     service_method, *args, **kwargs
                 )
+
+        else:
+            raise ValueError(f"Unsupported streaming type: {streaming_type}")
 
         return handler
 
