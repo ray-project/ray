@@ -2377,6 +2377,11 @@ ObjectID CoreWorker::AsyncWaitPlacementGroupReady(
       std::move(request),
       [this, object_id, serialized_object_data, serialized_object_metadata](
           const Status &status, const rpc::WaitPlacementGroupUntilReadyReply &reply) {
+        // timeout_ms=-1 retries transient gRPC failures, so any other error
+        // here indicates an unexpected GCS server-side failure.
+        RAY_CHECK(status.ok() || status.IsNotFound())
+            << "Unexpected status from WaitPlacementGroupUntilReady: " << status;
+
         std::shared_ptr<RayObject> result;
         if (status.ok()) {
           auto data = std::make_shared<LocalMemoryBuffer>(serialized_object_data.size());
@@ -2389,14 +2394,7 @@ ObjectID CoreWorker::AsyncWaitPlacementGroupReady(
                  serialized_object_metadata.size());
           result = std::make_shared<RayObject>(
               data, metadata, std::vector<rpc::ObjectReference>());
-        } else if (status.IsNotFound()) {
-          result =
-              std::make_shared<RayObject>(rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED);
         } else {
-          // Defensive: With timeout_ms=-1, we should only get OK or NotFound.
-          // Handle unexpected errors gracefully.
-          RAY_LOG(ERROR) << "Unexpected error from WaitPlacementGroupUntilReady: "
-                         << status;
           result =
               std::make_shared<RayObject>(rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED);
         }
