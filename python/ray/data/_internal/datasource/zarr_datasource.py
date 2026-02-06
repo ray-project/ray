@@ -69,7 +69,7 @@ class ZarrDatasource(Datasource):
                 if fi.type != pafs.FileType.File:
                     continue
 
-                rel_path = fi.path[len(store_path):].lstrip("/")
+                rel_path = fi.path[len(store_path) :].lstrip("/")
                 filename = rel_path.split("/")[-1]
 
                 if filename in _METADATA_FILENAMES:
@@ -90,7 +90,9 @@ class ZarrDatasource(Datasource):
 
             for array_name, arr in _get_arrays(store):
                 for chunk_idx in _get_chunk_indices(arr):
-                    chunk_rel_path, chunk_abs_path = chunk_lookup[(array_name, chunk_idx)]
+                    chunk_rel_path, chunk_abs_path = chunk_lookup[
+                        (array_name, chunk_idx)
+                    ]
 
                     chunk_shape = tuple(
                         min(c, s - i * c)
@@ -134,7 +136,7 @@ class ZarrDatasource(Datasource):
             for fi in file_infos:
                 if fi.type != pafs.FileType.File:
                     continue
-                rel_path = fi.path[len(store_path):].lstrip("/")
+                rel_path = fi.path[len(store_path) :].lstrip("/")
                 filename = rel_path.split("/")[-1]
                 if filename in _METADATA_FILENAMES:
                     with self._filesystem.open_input_file(fi.path) as f:
@@ -160,7 +162,7 @@ def _parse_chunk_path(rel_path: str) -> Optional[Tuple[str, Tuple[int, ...]]]:
     if "c" in parts:
         c_idx = parts.index("c")
         array_parts = parts[:c_idx]
-        index_parts = parts[c_idx + 1:]
+        index_parts = parts[c_idx + 1 :]
     else:
         # Find where array name ends and chunk indices begin
         # Chunk indices are numeric, possibly with "." separator
@@ -226,8 +228,7 @@ def _create_read_fn(
 
         all_bytes = {**metadata_bytes, chunk_rel_path: chunk_bytes}
         store_dict = {
-            k: zarr.core.buffer.cpu.Buffer.from_bytes(v)
-            for k, v in all_bytes.items()
+            k: zarr.core.buffer.cpu.Buffer.from_bytes(v) for k, v in all_bytes.items()
         }
         store = zarr.open(zarr.storage.MemoryStore(store_dict=store_dict), mode="r")
 
@@ -238,12 +239,14 @@ def _create_read_fn(
         )
         chunk_data = arr[slices]
 
-        yield pa.table({
-            "array_name": [array_name],
-            "data": [chunk_data.tobytes()],
-            "shape": [list(chunk_data.shape)],
-            "dtype": [str(chunk_data.dtype)],
-            "chunk_index": [list(chunk_idx)],
-        })
+        yield pa.table(
+            {
+                "array_name": [array_name],
+                "data": [chunk_data.tobytes()],
+                "shape": [list(chunk_data.shape)],
+                "dtype": [str(chunk_data.dtype)],
+                "chunk_index": [list(chunk_idx)],
+            }
+        )
 
     return read_fn
