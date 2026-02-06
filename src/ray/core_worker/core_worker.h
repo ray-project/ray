@@ -865,7 +865,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       bool retry_exceptions,
       const rpc::SchedulingStrategy &scheduling_strategy,
       std::string_view debugger_breakpoint,  // Changed: read-only param
-      std::string_view serialized_retry_exception_allowlist = "",  // Changed: read-only param
+      std::string_view serialized_retry_exception_allowlist =
+          "",                           // Changed: read-only param
       std::string_view call_site = "",  // Changed: read-only param
       const TaskID current_task_id = TaskID::Nil());
 
@@ -888,7 +889,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                      const std::vector<std::unique_ptr<TaskArg>> &args,
                      const ActorCreationOptions &actor_creation_options,
                      std::string_view extension_data,  // Changed: read-only param
-                     std::string_view call_site,  // Changed: read-only param
+                     std::string_view call_site,       // Changed: read-only param
                      ActorID *actor_id);
 
   /// Create a placement group.
@@ -952,16 +953,17 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// i.e., Python async actors.
   ///
   /// \return Status of this submission
-  Status SubmitActorTask(const ActorID &actor_id,
-                         const RayFunction &function,
-                         const std::vector<std::unique_ptr<TaskArg>> &args,
-                         const TaskOptions &task_options,
-                         int max_retries,
-                         bool retry_exceptions,
-                         std::string_view serialized_retry_exception_allowlist,  // Changed: read-only param
-                         std::string_view call_site,  // Changed: read-only param
-                         std::vector<rpc::ObjectReference> &task_returns,
-                         const TaskID current_task_id = TaskID::Nil());
+  Status SubmitActorTask(
+      const ActorID &actor_id,
+      const RayFunction &function,
+      const std::vector<std::unique_ptr<TaskArg>> &args,
+      const TaskOptions &task_options,
+      int max_retries,
+      bool retry_exceptions,
+      std::string_view serialized_retry_exception_allowlist,  // Changed: read-only param
+      std::string_view call_site,                             // Changed: read-only param
+      std::vector<rpc::ObjectReference> &task_returns,
+      const TaskID current_task_id = TaskID::Nil());
 
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
@@ -1011,9 +1013,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// because the distributed reference counting protocol does not ensure that
   /// the owner will learn of this reference.
   /// \return The ActorID of the deserialized handle.
-  ActorID DeserializeAndRegisterActorHandle(std::string_view serialized,  // Changed: read-only param
-                                            const ObjectID &outer_object_id,
-                                            bool add_local_ref);
+  ActorID DeserializeAndRegisterActorHandle(
+      std::string_view serialized,  // Changed: read-only param
+      const ObjectID &outer_object_id,
+      bool add_local_ref);
 
   /// Serialize an actor handle.
   ///
@@ -1045,7 +1048,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ResourceMappingType GetResourceIDs() const;
 
   /// Create a profile event and push it the TaskEventBuffer when the event is destructed.
-  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(std::string_view event_name);  // Changed: read-only param
+  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(
+      std::string_view event_name);  // Changed: read-only param
 
  public:
   friend class CoreWorkerProcessImpl;
