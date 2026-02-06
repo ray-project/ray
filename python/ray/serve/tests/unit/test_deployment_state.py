@@ -55,6 +55,7 @@ from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_string,
 )
+from ray.serve.config import GangSchedulingConfig
 from ray.serve.schema import ReplicaRank
 from ray.util.placement_group import validate_placement_group
 
@@ -245,6 +246,9 @@ class MockReplicaActorWrapper:
         self,
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
+        gang_placement_group=None,
+        gang_replica_rank=None,
+        gang_context=None,
     ):
         self.started = True
         self._assign_rank_callback = assign_rank_callback
@@ -264,6 +268,8 @@ class MockReplicaActorWrapper:
                 deployment_info.replica_config.placement_group_bundles
             ),
             on_scheduled=_on_scheduled_stub,
+            gang_placement_group=gang_placement_group,
+            gang_replica_rank=gang_replica_rank,
         )
 
     @property
@@ -2493,6 +2499,55 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
     check_counts(ds1, total=0)
     assert ds1._replica_constructor_retry_counter == 9
     assert "The deployment failed to start" in ds1.curr_status_info.message
+
+
+def test_deploy_with_gang_placement_group_failure(
+    mock_deployment_state_manager, mock_max_per_replica_retry_count
+):
+    """
+    Test deploy with a gang placement group creation failure.
+
+    Follows the same pattern as test_deploy_with_placement_group_failure:
+    when all gang PG creations fail, the deployment retries up to the
+    threshold and then transitions to DEPLOY_FAILED.
+    """
+
+    def failing_create_placement_group_fn(request, *args, **kwargs):
+        """Always raises to simulate gang PG creation failure."""
+        raise RuntimeError("Simulated gang PG creation failure")
+
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm(
+        create_placement_group_fn_override=failing_create_placement_group_fn,
+    )
+
+    b_info, _ = deployment_info(
+        num_replicas=4,
+        gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    assert ds.curr_status_info.status == DeploymentStatus.UPDATING
+
+    # Each dsm.update() call attempts to create gang PGs, fails, and
+    # increments the retry counter by 1.  The threshold is
+    # min(max_constructor_retry_count, target_num_replicas * MAX_PER_REPLICA_RETRY_COUNT)
+    # = min(inf, 4 * 2) = 8.
+    threshold = ds._failed_to_start_threshold
+    for i in range(1, threshold + 1):
+        dsm.update()
+        assert ds._replica_constructor_retry_counter == i
+        assert "Gang scheduling failed" in ds.curr_status_info.message
+        if i < threshold:
+            assert ds.curr_status_info.status == DeploymentStatus.UPDATING
+            assert f"Retrying {threshold - i} more time(s)" in (
+                ds.curr_status_info.message
+            )
+
+    # After reaching the threshold, the next update should fail the deployment.
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+    assert "The deployment failed to start" in ds.curr_status_info.message
 
 
 def test_deploy_with_transient_constructor_failure(mock_deployment_state_manager):

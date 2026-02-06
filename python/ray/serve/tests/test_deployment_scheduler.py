@@ -828,7 +828,6 @@ class TestGangScheduling:
         wait_for_condition(
             check_apps_running,
             apps=["gang_app_success"],
-            timeout=60,
         )
 
         # Verify all replicas are running and responding
@@ -839,8 +838,10 @@ class TestGangScheduling:
         serve.delete("gang_app_success")
         serve.shutdown()
 
-    def test_insufficient_resources(self, ray_start_cluster):
-        """Verifies that gang scheduling fails when cluster lacks resources."""
+    def test_incomplete_deployment(self, ray_start_cluster):
+        """
+        Verifies that schedulable gangs serve traffic while unschedulable gangs wait for resources.
+        """
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=4)
         cluster.add_node(num_cpus=4)
@@ -849,29 +850,133 @@ class TestGangScheduling:
         serve.start()
 
         @serve.deployment
-        def GangDeployment():
-            return ray.get_runtime_context().get_node_id()
+        class IncompleteGangDeployment:
+            def __call__(self):
+                return ray.get_runtime_context().get_node_id()
 
-        app = GangDeployment.options(
+        app = IncompleteGangDeployment.options(
             num_replicas=12,
             ray_actor_options={"num_cpus": 1},
             gang_scheduling_config=GangSchedulingConfig(gang_size=4),
         ).bind()
 
-        serve._run(app, name="gang_app_fail", _blocking=False)
+        handle = serve._run(app, name="gang_partial_app", _blocking=False)
 
-        def check_deploy_failed():
+        # The deployment should NOT fail.  2 of 3 gangs should be scheduled,
+        # and those 8 replicas should serve traffic.  The deployment stays
+        # DEPLOYING because it hasn't reached 12 replicas.
+        def check_replicas_running(expected_count: int):
             try:
-                status = serve.status().applications["gang_app_fail"]
-                # Deployment should fail because gang PG can't be satisfied
-                return status.status == "DEPLOY_FAILED"
+                app_status = serve.status().applications["gang_partial_app"]
+                # Should be DEPLOYING
+                if app_status.status == "DEPLOY_FAILED":
+                    raise AssertionError(
+                        "Deployment should not fail with partial gang scheduling"
+                    )
+                # Check that some replicas are running
+                dep_status = list(app_status.deployments.values())[0]
+                running = dep_status.replica_states.get("RUNNING", 0)
+                return running == expected_count
             except KeyError:
                 return False
 
-        # Wait for the deployment to fail due to insufficient resources
-        wait_for_condition(check_deploy_failed, timeout=60)
+        wait_for_condition(check_replicas_running, expected_count=8, timeout=60)
 
-        serve.delete("gang_app_fail")
+        # Verify the running replicas can serve traffic.
+        results = set()
+        for _ in range(40):
+            results.add(handle.remote().result())
+        assert len(results) > 0
+
+        # Verify deployment is still DEPLOYING
+        app_status = serve.status().applications["gang_partial_app"]
+        assert app_status.status == "DEPLOYING"
+
+        # Now add a 3rd node so the remaining gang can be scheduled.
+        cluster.add_node(num_cpus=4)
+        cluster.wait_for_nodes()
+
+        # The deployment should become RUNNING with all 12 replicas.
+        wait_for_condition(
+            check_apps_running,
+            apps=["gang_partial_app"],
+            timeout=60,
+        )
+
+        # Verify all 12 replicas serve traffic.
+        results = set()
+        for _ in range(100):
+            results.add(handle.remote().result())
+        assert len(results) == 3
+
+        serve.delete("gang_partial_app")
+        serve.shutdown()
+
+    def test_no_partial_gang(self, ray_start_cluster):
+        """Verifies atomic gang scheduling: no partial gangs are created."""
+        cluster = ray_start_cluster
+        # 20 CPUs total: enough for 2 full gangs (16 CPUs) but not 3 (24 CPUs).
+        # The leftover 4 CPUs must NOT produce a partial gang.
+        cluster.add_node(num_cpus=10)
+        cluster.add_node(num_cpus=10)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment
+        class AtomicGangDeployment:
+            def __call__(self):
+                return ray.get_runtime_context().get_node_id()
+
+        app = AtomicGangDeployment.options(
+            num_replicas=12,
+            ray_actor_options={"num_cpus": 2},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+        ).bind()
+
+        handle = serve._run(app, name="atomic_gang_app", _blocking=False)
+
+        # Wait until exactly 8 replicas (2 gangs) are running.
+        def check_replicas_running(expected_count: int):
+            try:
+                app_status = serve.status().applications["atomic_gang_app"]
+                if app_status.status == "DEPLOY_FAILED":
+                    raise AssertionError(
+                        "Deployment should not fail — partial gangs should "
+                        "serve traffic while waiting for resources."
+                    )
+                dep_status = list(app_status.deployments.values())[0]
+                running = dep_status.replica_states.get("RUNNING", 0)
+                return running == expected_count
+            except KeyError:
+                return False
+
+        wait_for_condition(check_replicas_running, expected_count=8, timeout=60)
+
+        # Deployment should still be DEPLOYING (not RUNNING, not DEPLOY_FAILED).
+        app_status = serve.status().applications["atomic_gang_app"]
+        assert app_status.status == "DEPLOYING"
+
+        # Verify the 8 running replicas can serve traffic.
+        results = set()
+        for _ in range(80):
+            results.add(handle.remote().result())
+        assert len(results) > 0
+
+        # Add 4 more CPUs so the 3rd gang (8 CPUs) can be scheduled.
+        cluster.add_node(num_cpus=4)
+        cluster.wait_for_nodes()
+
+        # The deployment should become RUNNING with all 12 replicas.
+        wait_for_condition(check_apps_running, apps=["atomic_gang_app"], timeout=60)
+
+        # All 12 replicas should now serve traffic.
+        app_status = serve.status().applications["atomic_gang_app"]
+        dep_status = list(app_status.deployments.values())[0]
+        running = dep_status.replica_states.get("RUNNING", 0)
+        assert running == 12
+
+        serve.delete("atomic_gang_app")
         serve.shutdown()
 
     def test_pack_strategy(self, ray_start_cluster):
@@ -900,11 +1005,7 @@ class TestGangScheduling:
         ).bind()
 
         handle = serve.run(app, name="gang_pack_app")
-        wait_for_condition(
-            check_apps_running,
-            apps=["gang_pack_app"],
-            timeout=60,
-        )
+        wait_for_condition(check_apps_running, apps=["gang_pack_app"])
 
         # Query multiple times to hit all replicas and collect node IDs
         node_ids = set()
@@ -948,11 +1049,7 @@ class TestGangScheduling:
         ).bind()
 
         handle = serve.run(app, name="gang_spread_app")
-        wait_for_condition(
-            check_apps_running,
-            apps=["gang_spread_app"],
-            timeout=60,
-        )
+        wait_for_condition(check_apps_running, apps=["gang_spread_app"])
 
         # Query multiple times to hit all replicas and collect node IDs
         node_ids = set()
@@ -966,7 +1063,7 @@ class TestGangScheduling:
         serve.delete("gang_spread_app")
         serve.shutdown()
 
-    def test_gang_context_populated(self, ray_start_cluster):
+    def test_gang_context(self, ray_start_cluster):
         """Verifies GangContext is correctly populated in ReplicaContext."""
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=4)
@@ -996,11 +1093,7 @@ class TestGangScheduling:
         ).bind()
 
         handle = serve.run(app, name="gang_context_app")
-        wait_for_condition(
-            check_apps_running,
-            apps=["gang_context_app"],
-            timeout=60,
-        )
+        wait_for_condition(check_apps_running, apps=["gang_context_app"])
 
         # Collect gang contexts from all replicas
         # Query enough times to hit all 4 replicas

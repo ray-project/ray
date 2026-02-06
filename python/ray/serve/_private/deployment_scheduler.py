@@ -1071,7 +1071,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             request: Contains gang config and number of replicas to add.
 
         Returns:
-            GangReservationResult with success status and created PGs.
+            GangReservationResult with all created gang PGs.
         """
         gang_size = request.gang_size
 
@@ -1089,11 +1089,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             )
         num_gangs = request.num_replicas_to_add // gang_size
 
-        gang_pgs = {}
-        created_pgs = []  # Track for cleanup on failure
-
+        gang_pgs: Dict[int, Any] = {}
         for gang_index in range(num_gangs):
-            # Build bundles - each bundle is for one replica in the gang
             bundles = [request.replica_resource_dict.copy() for _ in range(gang_size)]
 
             pg_name = (
@@ -1111,40 +1108,29 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                         bundle_label_selector=None,
                     )
                 )
-                created_pgs.append(pg)
-
-                # TODO (jeffreywang): We should proceed with gangs that are created successfully
-                # instead of deleting all of them.
-                GANG_PG_TIMEOUT_S = 30
-                if pg.wait(timeout_seconds=GANG_PG_TIMEOUT_S):
-                    gang_pgs[gang_index] = pg
-                else:
-                    self._cleanup_gang_pgs(created_pgs)
-                    return GangReservationResult(
-                        success=False,
-                        error_message=(
-                            f"Gang placement group '{pg_name}' is infeasible. "
-                            f"Cluster may not have enough resources "
-                            f"to schedule {gang_size} replicas together."
-                        ),
-                    )
-
-            except Exception as e:
-                self._cleanup_gang_pgs(created_pgs)
-                logger.exception(
-                    f"Failed to create gang placement group for {deployment_id}."
-                )
-                return GangReservationResult(
-                    success=False,
-                    error_message=f"Failed to create gang placement group: {str(e)}",
-                )
-
-        return GangReservationResult(success=True, gang_pgs=gang_pgs)
-
-    def _cleanup_gang_pgs(self, pgs: List[Any]) -> None:
-        """Clean up placement groups on failure."""
-        for pg in pgs:
-            try:
-                ray.util.remove_placement_group(pg)
+                gang_pgs[gang_index] = pg
             except Exception:
-                logger.warning(f"Failed to remove placement group {pg.id}.")
+                # Follow the same pattern as single-replica PG creation
+                # failure: log and skip this gang so the controller can
+                # make progress with the other gangs.  The missing
+                # replicas will be retried on the next reconciliation loop.
+                logger.exception(
+                    f"Failed to create gang placement group "
+                    f"{gang_index} for {deployment_id}."
+                )
+                continue
+
+        if not gang_pgs:
+            return GangReservationResult(
+                success=False,
+                error_message=(
+                    f"Failed to create any gang placement groups "
+                    f"for {deployment_id}."
+                ),
+            )
+
+        logger.info(
+            f"Created {len(gang_pgs)} of {num_gangs} gang PG(s) for "
+            f"{deployment_id}. Actors will wait for resource allocation."
+        )
+        return GangReservationResult(success=True, gang_pgs=gang_pgs)
