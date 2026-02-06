@@ -38,6 +38,8 @@ if TYPE_CHECKING:
     from kafka import KafkaConsumer, TopicPartition
 
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
+from ray.data._internal.streaming.block_coalescer import BlockCoalescer
+from ray.data._internal.streaming.streaming_lag_metrics import LagMetrics
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
@@ -503,12 +505,158 @@ class KafkaStreamingDatasource(UnboundDatasource):
         self.group_id = group_id
         self.poll_timeout_ms = poll_timeout_ms
 
+        # Internal state for checkpointing
+        self._current_checkpoint: Optional[Dict[str, Any]] = None
+        self._pending_commit_token: Optional[Any] = None
+
+    def initial_checkpoint(self) -> Optional[Dict[str, Any]]:
+        """Return initial checkpoint state (Kafka offsets).
+
+        Returns:
+            Dictionary mapping topic-partition -> offset, or None if starting fresh.
+        """
+        if self.group_id:
+            # Try to read committed offsets from Kafka
+            try:
+                from kafka import KafkaConsumer
+
+                config = {
+                    "bootstrap_servers": self.bootstrap_servers,
+                    "group_id": self.group_id,
+                    "enable_auto_commit": False,
+                }
+                _add_authentication_to_config(config, self.kafka_auth_config)
+
+                checkpoint = {}
+                with KafkaConsumer(**config) as consumer:
+                    for topic in self.topics:
+                        partitions = consumer.partitions_for_topic(topic)
+                        if partitions:
+                            topic_partitions = [
+                                TopicPartition(topic, p) for p in partitions
+                            ]
+                            committed = consumer.committed(topic_partitions)
+                            for tp in topic_partitions:
+                                offset = committed.get(tp)
+                                if offset is not None and offset >= 0:
+                                    key = f"{topic}:{tp.partition}"
+                                    checkpoint[key] = offset
+
+                return checkpoint if checkpoint else None
+            except Exception as e:
+                logger.warning(f"Failed to read initial Kafka offsets: {e}")
+                return None
+        return None
+
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        *,
+        checkpoint: Optional[Dict[str, Any]] = None,
+        trigger: Optional[Any] = None,
+        batch_id: Optional[int] = None,
+        max_records_per_trigger: Optional[int] = None,
+        max_bytes_per_trigger: Optional[int] = None,
+        max_splits_per_trigger: Optional[int] = None,
+        **kwargs,
+    ) -> Union[List[ReadTask], Tuple[List[ReadTask], Optional[Dict[str, Any]]]]:
+        """Get read tasks with checkpointing and budget support.
+
+        Args:
+            parallelism: Desired parallelism level.
+            checkpoint: Optional checkpoint dict (topic:partition -> offset).
+            trigger: Optional StreamingTrigger (for budget hints).
+            batch_id: Optional microbatch ID.
+            max_records_per_trigger: Maximum records per microbatch.
+            max_bytes_per_trigger: Maximum bytes per microbatch.
+            max_splits_per_trigger: Maximum splits/partitions per microbatch.
+
+        Returns:
+            List of ReadTask objects, or tuple of (tasks, next_checkpoint).
+        """
+        # Store checkpoint for commit later
+        self._current_checkpoint = checkpoint
+
+        # Use budget from trigger if provided, otherwise use instance default
+        effective_max_records = (
+            max_records_per_trigger
+            if max_records_per_trigger is not None
+            else self.max_records_per_task
+        )
+
+        # Discover partitions and create read tasks
+        schema = KafkaBoundedDatasource._create_schema(binary_format=False)
+        tasks = []
+        # Initialize next_checkpoint with current checkpoint or empty dict
+        next_checkpoint = checkpoint.copy() if checkpoint else {}
+
+        # Get target block size for coalescing
+        ctx = DataContext.get_current()
+        target_max_block_size = ctx.target_max_block_size or (128 * 1024 * 1024)
+
+        # Discover partitions for all topics
+        from kafka import KafkaConsumer
+
+        config = {
+            "bootstrap_servers": self.bootstrap_servers,
+            "enable_auto_commit": False,
+            "consumer_timeout_ms": 1000,
+        }
+        _add_authentication_to_config(config, self.kafka_auth_config)
+
+        topic_partitions = []
+        with KafkaConsumer(**config) as consumer:
+            for topic in self.topics:
+                partitions = consumer.partitions_for_topic(topic)
+                if partitions:
+                    topic_partitions.extend(
+                        (topic, p) for p in partitions
+                    )
+
+        # Limit partitions if max_splits_per_trigger is set
+        if max_splits_per_trigger and len(topic_partitions) > max_splits_per_trigger:
+            topic_partitions = topic_partitions[:max_splits_per_trigger]
+            logger.debug(
+                f"Limited partitions to {max_splits_per_trigger} "
+                f"(from {len(topic_partitions)})"
+            )
+
+        # Create read task for each partition
+        # Use a shared dict to track last offsets (will be updated by read_fn closures)
+        last_offsets: Dict[str, int] = {}
+
+        for topic, partition in topic_partitions:
+            checkpoint_key = f"{topic}:{partition}"
+            task = self._create_partition_read_task(
+                topic=topic,
+                partition=partition,
+                schema=schema,
+                checkpoint=checkpoint,
+                max_records=effective_max_records,
+                max_bytes=max_bytes_per_trigger,
+                target_max_block_size=target_max_block_size,
+                last_offsets_dict=last_offsets,  # Shared dict to track offsets
+            )
+            tasks.append(task)
+            # Initialize checkpoint entry
+            next_checkpoint[checkpoint_key] = (
+                checkpoint.get(checkpoint_key) if checkpoint else None
+            )
+
+        # Return tuple for checkpoint tracking
+        # Note: last_offsets will be updated by read_fn closures as blocks are read
+        # The operator should extract final offsets from blocks or use a callback
+        return tasks, next_checkpoint
+
     def _get_read_tasks_for_partition(
         self,
         partition_info: Dict[str, Any],
         parallelism: int,
     ) -> List[ReadTask]:
-        """Create read tasks for Kafka topics.
+        """Create read tasks for Kafka topics (backward compatibility).
+
+        This method is kept for backward compatibility with UnboundDatasource interface.
+        New code should use get_read_tasks() directly.
 
         Args:
             partition_info: Unused (Kafka uses topics, not partitions).
@@ -517,35 +665,65 @@ class KafkaStreamingDatasource(UnboundDatasource):
         Returns:
             List of ReadTask objects for Kafka topics.
         """
-        # Process all topics - parallelism is handled by Ray's execution engine
-        # Each topic gets its own read task, allowing parallel processing
-        schema = KafkaBoundedDatasource._create_schema(binary_format=False)
-        return [
-            self._create_topic_read_task(topic, schema) for topic in self.topics
-        ]
+        # Fallback to new get_read_tasks() method
+        result = self.get_read_tasks(parallelism)
+        if isinstance(result, tuple):
+            return result[0]
+        return result
 
-    def _create_topic_read_task(self, topic: str, schema: pa.Schema) -> ReadTask:
-        """Create a read task for a single topic.
+    def _create_partition_read_task(
+        self,
+        topic: str,
+        partition: int,
+        schema: pa.Schema,
+        checkpoint: Optional[Dict[str, Any]],
+        max_records: int,
+        max_bytes: Optional[int],
+        target_max_block_size: int,
+        last_offsets_dict: Optional[Dict[str, int]] = None,
+    ) -> ReadTask:
+        """Create a read task for a single Kafka partition.
 
         Args:
             topic: Topic name.
+            partition: Partition ID.
             schema: PyArrow schema.
+            checkpoint: Optional checkpoint dict (topic:partition -> offset).
+            max_records: Maximum records to read in this batch.
+            max_bytes: Maximum bytes to read in this batch (optional).
+            target_max_block_size: Target block size for coalescing.
 
         Returns:
-            ReadTask for this topic.
+            ReadTask for this partition.
         """
         # Capture config to avoid serialization issues
         bootstrap_servers = self.bootstrap_servers
         auth_config = self.kafka_auth_config
-        max_records = self.max_records_per_task
         start_offset = self.start_offset
         end_offset = self.end_offset
         group_id = self.group_id
         poll_timeout_ms = self.poll_timeout_ms
 
-        def read_fn() -> Iterator[pa.Table]:
-            """Read function for Kafka topic (unbounded streaming)."""
-            from kafka import KafkaConsumer
+        # Get starting offset from checkpoint if available
+        checkpoint_key = f"{topic}:{partition}"
+        checkpoint_offset = (
+            checkpoint.get(checkpoint_key) if checkpoint else None
+        )
+
+        # Initialize block coalescer for well-sized blocks
+        coalescer = BlockCoalescer(target_max_bytes=target_max_block_size)
+
+        # Track last offset for checkpoint updates
+        if last_offsets_dict is not None:
+            last_offsets_dict[checkpoint_key] = checkpoint_offset or -1
+
+        def read_fn() -> Iterator[Tuple[Block, BlockMetadata]]:
+            """Read function for Kafka partition (unbounded streaming).
+
+            Yields (block, metadata) tuples for zero-copy metadata handling.
+            Uses BlockCoalescer to produce well-sized blocks.
+            """
+            from kafka import KafkaConsumer, TopicPartition
 
             # Determine auto_offset_reset
             auto_offset_reset = (
@@ -557,7 +735,7 @@ class KafkaStreamingDatasource(UnboundDatasource):
             config = {
                 "bootstrap_servers": bootstrap_servers,
                 "enable_auto_commit": False,
-                        "auto_offset_reset": auto_offset_reset,
+                "auto_offset_reset": auto_offset_reset,
                 "group_id": group_id,
                 "session_timeout_ms": 30000,
                 "max_poll_records": min(max_records, 500),
@@ -566,76 +744,277 @@ class KafkaStreamingDatasource(UnboundDatasource):
             }
             _add_authentication_to_config(config, auth_config)
 
-            with KafkaConsumer(topic, **config) as consumer:
-                # Seek to numeric offset if specified
-                if start_offset and start_offset.isdigit():
-                    partitions = consumer.assignment()
-                    if not partitions:
-                        consumer.poll(timeout_ms=1000)
-                        partitions = consumer.assignment()
+            with KafkaConsumer(**config) as consumer:
+                topic_partition = TopicPartition(topic, partition)
+                consumer.assign([topic_partition])
 
-                    offset_value = int(start_offset)
-                    for partition in partitions:
-                        consumer.seek(partition, offset_value)
+                # Seek to checkpoint offset if available, otherwise use start_offset
+                if checkpoint_offset is not None:
+                    consumer.seek(topic_partition, checkpoint_offset)
+                elif start_offset and start_offset.isdigit():
+                    consumer.seek(topic_partition, int(start_offset))
+                elif start_offset == "earliest":
+                    consumer.seek_to_beginning([topic_partition])
+                else:  # latest or None
+                    consumer.seek_to_end([topic_partition])
 
                 records = []
                 records_read = 0
+                bytes_read = 0
+                last_offset = None
+
+                # Small tables to coalesce
+                small_tables = []
 
                 while True:
                     msg_batch = consumer.poll(timeout_ms=poll_timeout_ms)
 
                     if not msg_batch:
-                        if records:
-                            yield pa.Table.from_pylist(records)
-                            records = []
+                        # Yield any pending coalesced blocks
+                        if small_tables:
+                            for coalesced_table in coalescer.coalesce_tables(small_tables):
+                                meta = BlockMetadata(
+                                    num_rows=coalesced_table.num_rows,
+                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
+                                    input_files=[f"kafka://{topic}/{partition}"],
+                                    exec_stats=None,
+                                )
+                                yield coalesced_table, meta
+                            small_tables = []
                         continue
 
-                    for partition_msgs in msg_batch.values():
-                        for msg in partition_msgs:
-                            # Check end offset
-                            if (
-                                end_offset
-                                and end_offset.isdigit()
-                                and msg.offset >= int(end_offset)
-                            ):
-                                if records:
-                                    yield pa.Table.from_pylist(records)
-                                return
-
-                            records.append(
-                                {
-                                    "offset": msg.offset,
-                                    "key": msg.key,
-                                    "value": msg.value,
-                                    "topic": msg.topic,
-                                    "partition": msg.partition,
-                                    "timestamp": msg.timestamp,
-                                    "timestamp_type": msg.timestamp_type,
-                                    "headers": dict(msg.headers) if msg.headers else {},
-                                }
-                            )
-
-                            records_read += 1
-
-                            # Yield batch
-                            if len(records) >= min(max_records, _KAFKA_BATCH_SIZE):
-                                yield pa.Table.from_pylist(records)
+                    partition_msgs = msg_batch.get(topic_partition, [])
+                    for msg in partition_msgs:
+                        # Check end offset
+                        if (
+                            end_offset
+                            and end_offset.isdigit()
+                            and msg.offset >= int(end_offset)
+                        ):
+                            # Flush remaining records
+                            if records:
+                                small_tables.append(pa.Table.from_pylist(records))
                                 records = []
+                            # Yield coalesced blocks
+                            for coalesced_table in coalescer.coalesce_tables(small_tables):
+                                meta = BlockMetadata(
+                                    num_rows=coalesced_table.num_rows,
+                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
+                                    input_files=[f"kafka://{topic}/{partition}"],
+                                    exec_stats=None,
+                                )
+                                yield coalesced_table, meta
+                            return
 
-                            # Check max records limit
-                            if records_read >= max_records:
-                                if records:
-                                    yield pa.Table.from_pylist(records)
-                                return
+                        records.append(
+                            {
+                                "offset": msg.offset,
+                                "key": msg.key,
+                                "value": msg.value,
+                                "topic": msg.topic,
+                                "partition": msg.partition,
+                                "timestamp": msg.timestamp,
+                                "timestamp_type": msg.timestamp_type,
+                                "headers": dict(msg.headers) if msg.headers else {},
+                            }
+                        )
+
+                        records_read += 1
+                        last_offset = msg.offset
+                        # Update last offset in shared dict for checkpoint tracking
+                        if last_offsets_dict is not None:
+                            last_offsets_dict[checkpoint_key] = msg.offset
+                        # Estimate bytes (rough approximation)
+                        if msg.value:
+                            bytes_read += len(msg.value) if isinstance(msg.value, bytes) else len(str(msg.value).encode())
+
+                        # Check max_bytes limit
+                        if max_bytes and bytes_read >= max_bytes:
+                            if records:
+                                small_tables.append(pa.Table.from_pylist(records))
+                                records = []
+                            # Yield coalesced blocks
+                            for coalesced_table in coalescer.coalesce_tables(small_tables):
+                                meta = BlockMetadata(
+                                    num_rows=coalesced_table.num_rows,
+                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
+                                    input_files=[f"kafka://{topic}/{partition}"],
+                                    exec_stats=None,
+                                )
+                                yield coalesced_table, meta
+                            # Update checkpoint with last offset + 1 (next offset to read)
+                            if last_offsets_dict is not None and last_offset is not None:
+                                last_offsets_dict[checkpoint_key] = last_offset + 1
+                            return
+
+                        # Yield small table for coalescing when batch size reached
+                        if len(records) >= min(max_records, _KAFKA_BATCH_SIZE):
+                            small_tables.append(pa.Table.from_pylist(records))
+                            records = []
+
+                        # Check max records limit
+                        if records_read >= max_records:
+                            if records:
+                                small_tables.append(pa.Table.from_pylist(records))
+                            # Yield coalesced blocks
+                            for coalesced_table in coalescer.coalesce_tables(small_tables):
+                                meta = BlockMetadata(
+                                    num_rows=coalesced_table.num_rows,
+                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
+                                    input_files=[f"kafka://{topic}/{partition}"],
+                                    exec_stats=None,
+                                )
+                                yield coalesced_table, meta
+                            return
+
+                # Flush remaining records
+                if records:
+                    small_tables.append(pa.Table.from_pylist(records))
+                for coalesced_table in coalescer.coalesce_tables(small_tables):
+                    meta = BlockMetadata(
+                        num_rows=coalesced_table.num_rows,
+                        size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
+                        input_files=[f"kafka://{topic}/{partition}"],
+                        exec_stats=None,
+                    )
+                    yield coalesced_table, meta
 
         metadata = BlockMetadata(
-            num_rows=self.max_records_per_task,
+            num_rows=max_records,  # Estimated
             size_bytes=None,
-            input_files=[f"kafka://{topic}"],
+            input_files=[f"kafka://{topic}/{partition}"],
             exec_stats=None,
         )
 
         return create_unbound_read_task(read_fn=read_fn, metadata=metadata, schema=schema)
+
+    def commit_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        """Commit Kafka offsets to consumer group.
+
+        Args:
+            checkpoint: Dictionary mapping topic:partition -> offset.
+        """
+        if not self.group_id:
+            logger.debug("No group_id set, skipping Kafka offset commit")
+            return
+
+        try:
+            from kafka import KafkaConsumer, TopicPartition
+
+            config = {
+                "bootstrap_servers": self.bootstrap_servers,
+                "group_id": self.group_id,
+                "enable_auto_commit": False,
+            }
+            _add_authentication_to_config(config, self.kafka_auth_config)
+
+            with KafkaConsumer(**config) as consumer:
+                # Convert checkpoint dict to TopicPartition -> offset mapping
+                offsets_to_commit = {}
+                for key, offset in checkpoint.items():
+                    if ":" in key:
+                        topic, partition_str = key.rsplit(":", 1)
+                        try:
+                            partition = int(partition_str)
+                            tp = TopicPartition(topic, partition)
+                            offsets_to_commit[tp] = offset
+                        except ValueError:
+                            logger.warning(f"Invalid partition in checkpoint key: {key}")
+                            continue
+
+                if offsets_to_commit:
+                    consumer.commit(offsets_to_commit)
+                    logger.debug(f"Committed Kafka offsets: {len(offsets_to_commit)} partitions")
+        except Exception as e:
+            logger.error(f"Failed to commit Kafka offsets: {e}", exc_info=e)
+            raise
+
+    def prepare_commit(self, checkpoint: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare commit token for two-phase commit.
+
+        Args:
+            checkpoint: Checkpoint dict to prepare.
+
+        Returns:
+            Commit token (same as checkpoint for Kafka).
+        """
+        self._pending_commit_token = checkpoint
+        return checkpoint
+
+    def commit(self, commit_token: Dict[str, Any]) -> None:
+        """Commit prepared token (two-phase commit).
+
+        Args:
+            commit_token: Commit token from prepare_commit().
+        """
+        self.commit_checkpoint(commit_token)
+        self._pending_commit_token = None
+
+    def abort_commit(self, commit_token: Dict[str, Any]) -> None:
+        """Abort prepared commit (best-effort).
+
+        Args:
+            commit_token: Commit token to abort.
+        """
+        # Kafka doesn't support aborting commits, but we can clear the pending token
+        self._pending_commit_token = None
+        logger.debug("Aborted Kafka commit (no-op, offsets not committed)")
+
+    def get_lag_metrics(self) -> Optional[LagMetrics]:
+        """Get Kafka consumer lag metrics for lag-aware autoscaling.
+
+        Returns:
+            LagMetrics object with total lag, fetch rate, and partition count.
+        """
+        if not self.group_id:
+            return None
+
+        try:
+            from kafka import KafkaConsumer, TopicPartition
+
+            config = {
+                "bootstrap_servers": self.bootstrap_servers,
+                "group_id": self.group_id,
+                "enable_auto_commit": False,
+            }
+            _add_authentication_to_config(config, self.kafka_auth_config)
+
+            total_lag = 0
+            per_partition_lag = {}
+            partition_count = 0
+
+            with KafkaConsumer(**config) as consumer:
+                for topic in self.topics:
+                    partitions = consumer.partitions_for_topic(topic)
+                    if partitions:
+                        topic_partitions = [
+                            TopicPartition(topic, p) for p in partitions
+                        ]
+                        consumer.assign(topic_partitions)
+
+                        # Get end offsets (high watermarks)
+                        end_offsets = consumer.end_offsets(topic_partitions)
+
+                        # Get committed offsets
+                        committed_offsets = consumer.committed(topic_partitions)
+
+                        for tp in topic_partitions:
+                            end_offset = end_offsets.get(tp, 0)
+                            committed_offset = committed_offsets.get(tp)
+                            if committed_offset is not None and committed_offset >= 0:
+                                lag = max(0, end_offset - committed_offset)
+                                total_lag += lag
+                                per_partition_lag[f"{topic}:{tp.partition}"] = lag
+                                partition_count += 1
+
+            return LagMetrics(
+                total_lag=total_lag,
+                partitions=partition_count,
+                per_partition_lag=per_partition_lag if per_partition_lag else None,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to get Kafka lag metrics: {e}")
+            return None
 
 
 # Backward compatibility alias - keep for existing code

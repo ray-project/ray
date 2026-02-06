@@ -9,7 +9,7 @@ Requires:
 
 import logging
 import time
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import pyarrow as pa
 
@@ -17,8 +17,11 @@ from ray.data._internal.datasource.streaming_utils import (
     AWSCredentials,
     create_standard_schema,
 )
+from ray.data._internal.streaming.block_coalescer import BlockCoalescer
+from ray.data._internal.streaming.streaming_lag_metrics import LagMetrics
 from ray.data._internal.util import _check_import
-from ray.data.block import BlockMetadata
+from ray.data.block import Block, BlockMetadata
+from ray.data.context import DataContext
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.unbound_datasource import (
     UnboundDatasource,
@@ -86,10 +89,129 @@ class KinesisDatasource(UnboundDatasource):
         self.consumer_name = consumer_name
         self.poll_interval_seconds = poll_interval_seconds
 
+        # Internal state for checkpointing
+        self._current_checkpoint: Optional[Dict[str, Any]] = None
+        self._pending_commit_token: Optional[Any] = None
+
+    def initial_checkpoint(self) -> Optional[Dict[str, Any]]:
+        """Return initial checkpoint state (Kinesis sequence numbers).
+
+        Returns:
+            Dictionary mapping shard_id -> sequence_number, or None if starting fresh.
+        """
+        # Kinesis doesn't have a built-in way to read committed sequence numbers
+        # without a consumer, so return None for now
+        # In production, this could query DynamoDB or another checkpoint store
+        return None
+
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        *,
+        checkpoint: Optional[Dict[str, Any]] = None,
+        trigger: Optional[Any] = None,
+        batch_id: Optional[int] = None,
+        max_records_per_trigger: Optional[int] = None,
+        max_bytes_per_trigger: Optional[int] = None,
+        max_splits_per_trigger: Optional[int] = None,
+        **kwargs,
+    ) -> Union[List[ReadTask], Tuple[List[ReadTask], Optional[Dict[str, Any]]]]:
+        """Get read tasks with checkpointing and budget support.
+
+        Args:
+            parallelism: Desired parallelism level.
+            checkpoint: Optional checkpoint dict (shard_id -> sequence_number).
+            trigger: Optional StreamingTrigger (for budget hints).
+            batch_id: Optional microbatch ID.
+            max_records_per_trigger: Maximum records per microbatch.
+            max_bytes_per_trigger: Maximum bytes per microbatch.
+            max_splits_per_trigger: Maximum splits/shards per microbatch.
+
+        Returns:
+            List of ReadTask objects, or tuple of (tasks, next_checkpoint).
+        """
+        # Store checkpoint for commit later
+        self._current_checkpoint = checkpoint
+
+        # Use budget from trigger if provided, otherwise use instance default
+        effective_max_records = (
+            max_records_per_trigger
+            if max_records_per_trigger is not None
+            else self.max_records_per_task
+        )
+
+        # Discover shards
+        import boto3
+
+        session = boto3.Session(**self.credentials.to_session_kwargs())
+        client = session.client("kinesis", **self.credentials.to_client_kwargs())
+        shard_ids = []
+        next_token = None
+
+        while True:
+            if next_token:
+                response = client.list_shards(
+                    StreamName=self.stream_name, NextToken=next_token
+                )
+            else:
+                response = client.list_shards(StreamName=self.stream_name)
+
+            shard_ids.extend([shard["ShardId"] for shard in response.get("Shards", [])])
+
+            next_token = response.get("NextToken")
+            if not next_token:
+                break
+
+        # Limit shards if max_splits_per_trigger is set
+        if max_splits_per_trigger and len(shard_ids) > max_splits_per_trigger:
+            shard_ids = shard_ids[:max_splits_per_trigger]
+            logger.debug(
+                f"Limited shards to {max_splits_per_trigger} "
+                f"(from {len(shard_ids)})"
+            )
+
+        # Create schema
+        schema = create_standard_schema(include_binary_data=False)
+        schema = schema.append(pa.field("sequence_number", pa.string()))
+        schema = schema.append(pa.field("partition_key", pa.string()))
+        schema = schema.append(pa.field("shard_id", pa.string()))
+
+        # Get target block size for coalescing
+        ctx = DataContext.get_current()
+        target_max_block_size = ctx.target_max_block_size or (128 * 1024 * 1024)
+
+        # Create read task for each shard
+        tasks = []
+        next_checkpoint = checkpoint.copy() if checkpoint else {}
+        last_sequence_numbers: Dict[str, str] = {}
+
+        for shard_id in shard_ids:
+            task = self._create_shard_read_task(
+                shard_id=shard_id,
+                schema=schema,
+                checkpoint=checkpoint,
+                max_records=effective_max_records,
+                max_bytes=max_bytes_per_trigger,
+                target_max_block_size=target_max_block_size,
+                last_sequence_numbers_dict=last_sequence_numbers,
+            )
+            tasks.append(task)
+            next_checkpoint[shard_id] = (
+                checkpoint.get(shard_id) if checkpoint else None
+            )
+            last_sequence_numbers[shard_id] = (
+                checkpoint.get(shard_id) if checkpoint else None
+            )
+
+        return tasks, next_checkpoint
+
     def _get_read_tasks_for_partition(
         self, partition_info: Dict[str, Any], parallelism: int
     ) -> List[ReadTask]:
-        """Create read tasks for Kinesis shards.
+        """Create read tasks for Kinesis shards (backward compatibility).
+
+        This method is kept for backward compatibility with UnboundDatasource interface.
+        New code should use get_read_tasks() directly.
 
         Args:
             partition_info: Unused (we discover shards dynamically).
@@ -98,34 +220,32 @@ class KinesisDatasource(UnboundDatasource):
         Returns:
             List of ReadTask objects, one per shard.
         """
-        import boto3
+        # Fallback to new get_read_tasks() method
+        result = self.get_read_tasks(parallelism)
+        if isinstance(result, tuple):
+            return result[0]
+        return result
 
-        # Discover shards
-        session = boto3.Session(**self.credentials.to_session_kwargs())
-        client = session.client("kinesis", **self.credentials.to_client_kwargs())
-        response = client.list_shards(StreamName=self.stream_name)
-        shard_ids = [shard["ShardId"] for shard in response["Shards"]]
-
-        # Note: parallelism controls concurrent tasks, not shard limit
-        # All shards should be read - parallelism is handled by Ray's execution engine
-
-        # Create schema
-        schema = create_standard_schema(include_binary_data=False)
-        schema = schema.append(pa.field("sequence_number", pa.string()))
-        schema = schema.append(pa.field("partition_key", pa.string()))
-        schema = schema.append(pa.field("shard_id", pa.string()))
-
-        # Create read task for each shard
-        return [
-            self._create_shard_read_task(shard_id, schema) for shard_id in shard_ids
-        ]
-
-    def _create_shard_read_task(self, shard_id: str, schema: pa.Schema) -> ReadTask:
-        """Create read task for a single shard.
+    def _create_shard_read_task(
+        self,
+        shard_id: str,
+        schema: pa.Schema,
+        checkpoint: Optional[Dict[str, Any]],
+        max_records: int,
+        max_bytes: Optional[int],
+        target_max_block_size: int,
+        last_sequence_numbers_dict: Optional[Dict[str, str]] = None,
+    ) -> ReadTask:
+        """Create read task for a single Kinesis shard.
 
         Args:
             shard_id: Kinesis shard ID.
             schema: PyArrow schema.
+            checkpoint: Optional checkpoint dict (shard_id -> sequence_number).
+            max_records: Maximum records to read in this batch.
+            max_bytes: Maximum bytes to read in this batch (optional).
+            target_max_block_size: Target block size for coalescing.
+            last_sequence_numbers_dict: Optional shared dict to track last sequence numbers.
 
         Returns:
             ReadTask for this shard.
@@ -133,14 +253,25 @@ class KinesisDatasource(UnboundDatasource):
         # Capture config
         stream_name = self.stream_name
         credentials = self.credentials
-        max_records = self.max_records_per_task
         start_sequence = self.start_sequence
         end_sequence = self.end_sequence
         enhanced_fan_out = self.enhanced_fan_out
         consumer_name = self.consumer_name
         poll_interval = self.poll_interval_seconds
 
-        def read_fn() -> Iterator[pa.Table]:
+        # Get starting sequence from checkpoint if available
+        checkpoint_sequence = (
+            checkpoint.get(shard_id) if checkpoint else None
+        )
+
+        # Initialize block coalescer for well-sized blocks
+        coalescer = BlockCoalescer(target_max_bytes=target_max_block_size)
+
+        # Track last sequence number for checkpoint updates
+        if last_sequence_numbers_dict is not None:
+            last_sequence_numbers_dict[shard_id] = checkpoint_sequence or ""
+
+        def read_fn() -> Iterator[Tuple[Block, BlockMetadata]]:
             """Read from Kinesis shard."""
             import boto3
 
@@ -148,7 +279,9 @@ class KinesisDatasource(UnboundDatasource):
             client = session.client("kinesis", **credentials.to_client_kwargs())
 
             records_read = 0
+            bytes_read = 0
             records_buffer = []
+            small_tables = []
 
             if enhanced_fan_out and consumer_name:
                 # Enhanced Fan-Out mode
@@ -185,27 +318,81 @@ class KinesisDatasource(UnboundDatasource):
                                 and record["SequenceNumber"] >= end_sequence
                             ):
                                 if records_buffer:
-                                    yield pa.Table.from_pylist(records_buffer)
+                                    small_tables.append(pa.Table.from_pylist(records_buffer))
+                                    records_buffer = []
+                                # Yield coalesced blocks
+                                for coalesced_table in coalescer.coalesce_tables(small_tables):
+                                    meta = BlockMetadata(
+                                        num_rows=coalesced_table.num_rows,
+                                        size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
+                                        input_files=[f"kinesis://{stream_name}/{shard_id}"],
+                                        exec_stats=None,
+                                    )
+                                    yield coalesced_table, meta
                                 return
 
                             records_buffer.append(_kinesis_record_to_dict(record, shard_id))
                             records_read += 1
+                            last_sequence = record["SequenceNumber"]
+                            # Update last sequence in shared dict
+                            if last_sequence_numbers_dict is not None:
+                                last_sequence_numbers_dict[shard_id] = last_sequence
 
-                            if len(records_buffer) >= _KINESIS_BATCH_SIZE:
-                                yield pa.Table.from_pylist(records_buffer)
+                            # Estimate bytes
+                            if record.get("Data"):
+                                data = record["Data"]
+                                bytes_read += len(data) if isinstance(data, bytes) else len(str(data).encode())
+
+                            # Check max_bytes limit
+                            if max_bytes and bytes_read >= max_bytes:
+                                if records_buffer:
+                                    small_tables.append(pa.Table.from_pylist(records_buffer))
+                                    records_buffer = []
+                                # Yield coalesced blocks
+                                for coalesced_table in coalescer.coalesce_tables(small_tables):
+                                    meta = BlockMetadata(
+                                        num_rows=coalesced_table.num_rows,
+                                        size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
+                                        input_files=[f"kinesis://{stream_name}/{shard_id}"],
+                                        exec_stats=None,
+                                    )
+                                    yield coalesced_table, meta
+                                return
+
+                            # Yield small table for coalescing when batch size reached
+                            if len(records_buffer) >= min(max_records or _KINESIS_BATCH_SIZE, _KINESIS_BATCH_SIZE):
+                                small_tables.append(pa.Table.from_pylist(records_buffer))
                                 records_buffer = []
 
                             if records_read >= max_records:
                                 if records_buffer:
-                                    yield pa.Table.from_pylist(records_buffer)
+                                    small_tables.append(pa.Table.from_pylist(records_buffer))
+                                    records_buffer = []
+                                # Yield coalesced blocks
+                                for coalesced_table in coalescer.coalesce_tables(small_tables):
+                                    meta = BlockMetadata(
+                                        num_rows=coalesced_table.num_rows,
+                                        size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
+                                        input_files=[f"kinesis://{stream_name}/{shard_id}"],
+                                        exec_stats=None,
+                                    )
+                                    yield coalesced_table, meta
                                 return
             else:
                 # Standard polling mode
-                iterator_response = client.get_shard_iterator(
-                    StreamName=stream_name,
-                    ShardId=shard_id,
-                    ShardIteratorType=start_sequence,
+                # Use checkpoint sequence if available
+                shard_iterator_type = (
+                    "AFTER_SEQUENCE_NUMBER" if checkpoint_sequence else start_sequence
                 )
+                iterator_kwargs = {
+                    "StreamName": stream_name,
+                    "ShardId": shard_id,
+                    "ShardIteratorType": shard_iterator_type,
+                }
+                if checkpoint_sequence:
+                    iterator_kwargs["StartingSequenceNumber"] = checkpoint_sequence
+
+                iterator_response = client.get_shard_iterator(**iterator_kwargs)
                 shard_iterator = iterator_response["ShardIterator"]
 
                 while shard_iterator:
@@ -216,36 +403,170 @@ class KinesisDatasource(UnboundDatasource):
                     for record in records:
                         if end_sequence and record["SequenceNumber"] >= end_sequence:
                             if records_buffer:
-                                yield pa.Table.from_pylist(records_buffer)
+                                small_tables.append(pa.Table.from_pylist(records_buffer))
+                            # Yield coalesced blocks
+                            for coalesced_table in coalescer.coalesce_tables(small_tables):
+                                meta = BlockMetadata(
+                                    num_rows=coalesced_table.num_rows,
+                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
+                                    input_files=[f"kinesis://{stream_name}/{shard_id}"],
+                                    exec_stats=None,
+                                )
+                                yield coalesced_table, meta
                             return
 
                         records_buffer.append(_kinesis_record_to_dict(record, shard_id))
                         records_read += 1
+                        last_sequence = record["SequenceNumber"]
+                        # Update last sequence in shared dict
+                        if last_sequence_numbers_dict is not None:
+                            last_sequence_numbers_dict[shard_id] = last_sequence
 
-                        if len(records_buffer) >= _KINESIS_BATCH_SIZE:
-                            yield pa.Table.from_pylist(records_buffer)
+                        # Estimate bytes
+                        if record.get("Data"):
+                            data = record["Data"]
+                            bytes_read += len(data) if isinstance(data, bytes) else len(str(data).encode())
+
+                        # Check max_bytes limit
+                        if max_bytes and bytes_read >= max_bytes:
+                            if records_buffer:
+                                small_tables.append(pa.Table.from_pylist(records_buffer))
+                                records_buffer = []
+                            # Yield coalesced blocks
+                            for coalesced_table in coalescer.coalesce_tables(small_tables):
+                                meta = BlockMetadata(
+                                    num_rows=coalesced_table.num_rows,
+                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
+                                    input_files=[f"kinesis://{stream_name}/{shard_id}"],
+                                    exec_stats=None,
+                                )
+                                yield coalesced_table, meta
+                            return
+
+                        # Yield small table for coalescing when batch size reached
+                        if len(records_buffer) >= min(max_records, _KINESIS_BATCH_SIZE):
+                            small_tables.append(pa.Table.from_pylist(records_buffer))
                             records_buffer = []
 
                         if records_read >= max_records:
                             if records_buffer:
-                                yield pa.Table.from_pylist(records_buffer)
+                                small_tables.append(pa.Table.from_pylist(records_buffer))
+                            # Yield coalesced blocks
+                            for coalesced_table in coalescer.coalesce_tables(small_tables):
+                                meta = BlockMetadata(
+                                    num_rows=coalesced_table.num_rows,
+                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
+                                    input_files=[f"kinesis://{stream_name}/{shard_id}"],
+                                    exec_stats=None,
+                                )
+                                yield coalesced_table, meta
                             return
 
                     if not records:
+                        # Yield any pending coalesced blocks before sleeping
+                        if small_tables:
+                            for coalesced_table in coalescer.coalesce_tables(small_tables):
+                                meta = BlockMetadata(
+                                    num_rows=coalesced_table.num_rows,
+                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
+                                    input_files=[f"kinesis://{stream_name}/{shard_id}"],
+                                    exec_stats=None,
+                                )
+                                yield coalesced_table, meta
+                            small_tables = []
                         time.sleep(poll_interval)
 
             # Yield remaining records
             if records_buffer:
-                yield pa.Table.from_pylist(records_buffer)
+                small_tables.append(pa.Table.from_pylist(records_buffer))
+            for coalesced_table in coalescer.coalesce_tables(small_tables):
+                meta = BlockMetadata(
+                    num_rows=coalesced_table.num_rows,
+                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
+                    input_files=[f"kinesis://{stream_name}/{shard_id}"],
+                    exec_stats=None,
+                )
+                yield coalesced_table, meta
 
         metadata = BlockMetadata(
-            num_rows=self.max_records_per_task,
+            num_rows=max_records,  # Estimated
             size_bytes=None,
             input_files=[f"kinesis://{self.stream_name}/{shard_id}"],
             exec_stats=None,
         )
 
         return create_unbound_read_task(read_fn=read_fn, metadata=metadata, schema=schema)
+
+    def commit_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        """Commit Kinesis sequence numbers (no-op for now).
+
+        Kinesis doesn't have built-in checkpointing like Kafka consumer groups.
+        In production, this would write to DynamoDB or another checkpoint store.
+
+        Args:
+            checkpoint: Dictionary mapping shard_id -> sequence_number.
+        """
+        # No-op for now - in production would write to DynamoDB checkpoint table
+        logger.debug(f"Kinesis checkpoint commit (no-op): {len(checkpoint)} shards")
+
+    def prepare_commit(self, checkpoint: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare commit token for two-phase commit.
+
+        Args:
+            checkpoint: Checkpoint dict to prepare.
+
+        Returns:
+            Commit token (same as checkpoint for Kinesis).
+        """
+        self._pending_commit_token = checkpoint
+        return checkpoint
+
+    def commit(self, commit_token: Dict[str, Any]) -> None:
+        """Commit prepared token (two-phase commit).
+
+        Args:
+            commit_token: Commit token from prepare_commit().
+        """
+        self.commit_checkpoint(commit_token)
+        self._pending_commit_token = None
+
+    def abort_commit(self, commit_token: Dict[str, Any]) -> None:
+        """Abort prepared commit (best-effort).
+
+        Args:
+            commit_token: Commit token to abort.
+        """
+        # Kinesis doesn't support aborting commits, but we can clear the pending token
+        self._pending_commit_token = None
+        logger.debug("Aborted Kinesis commit (no-op, sequence numbers not committed)")
+
+    def get_lag_metrics(self) -> Optional[LagMetrics]:
+        """Get Kinesis consumer lag metrics for lag-aware autoscaling.
+
+        Returns:
+            LagMetrics object with total lag, fetch rate, and shard count.
+        """
+        try:
+            import boto3
+
+            session = boto3.Session(**self.credentials.to_session_kwargs())
+            client = session.client("kinesis", **self.credentials.to_client_kwargs())
+
+            # Get stream description to count shards
+            stream_desc = client.describe_stream(StreamName=self.stream_name)
+            shards = stream_desc["StreamDescription"]["Shards"]
+            shard_count = len(shards)
+
+            # Kinesis doesn't expose consumer lag directly like Kafka
+            # In production, this would query CloudWatch metrics or a checkpoint store
+            # For now, return basic metrics
+            return LagMetrics(
+                total_lag=0,  # Unknown without checkpoint store
+                partitions=shard_count,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to get Kinesis lag metrics: {e}")
+            return None
 
 
 def _kinesis_record_to_dict(record: Dict[str, Any], shard_id: str) -> Dict[str, Any]:

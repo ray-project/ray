@@ -224,6 +224,103 @@ DEFAULT_STREAMING_BACKPRESSURE_THRESHOLD = (
     0.8  # 80% memory usage threshold for backpressure
 )
 
+# Output bundling configuration for streaming operators
+# These control how many blocks are bundled together before emitting to downstream operators
+DEFAULT_STREAMING_MAX_BUNDLED_BLOCKS = env_integer(
+    "RAY_DATA_STREAMING_MAX_BUNDLED_BLOCKS", 10
+)
+DEFAULT_STREAMING_MAX_BUNDLED_BYTES = env_integer(
+    "RAY_DATA_STREAMING_MAX_BUNDLED_BYTES", 100 * 1024 * 1024
+)  # 100MB default
+
+# Byte-level accounting for memory safety in streaming operators
+# Prevents object store memory overruns by tracking in-flight bytes
+DEFAULT_STREAMING_MAX_BYTES_IN_FLIGHT = env_integer(
+    "RAY_DATA_STREAMING_MAX_BYTES_IN_FLIGHT", 500 * 1024 * 1024
+)  # 500MB default
+
+# Adaptive backoff configuration for streaming operators
+# Controls exponential backoff when no data is available
+DEFAULT_STREAMING_MIN_BACKOFF_SECONDS = env_float(
+    "RAY_DATA_STREAMING_MIN_BACKOFF_SECONDS", 0.1
+)  # 100ms minimum backoff
+DEFAULT_STREAMING_MAX_BACKOFF_SECONDS = env_float(
+    "RAY_DATA_STREAMING_MAX_BACKOFF_SECONDS", 5.0
+)  # 5 seconds maximum backoff
+
+# Adaptive batching configuration
+# Controls dynamic batch size adjustment based on performance metrics
+DEFAULT_STREAMING_BATCH_DURATION_WINDOW = env_integer(
+    "RAY_DATA_STREAMING_BATCH_DURATION_WINDOW", 10
+)  # Keep last N batch durations for averaging
+DEFAULT_STREAMING_DEFAULT_MAX_RECORDS_PER_TRIGGER = env_integer(
+    "RAY_DATA_STREAMING_DEFAULT_MAX_RECORDS_PER_TRIGGER", 10000
+)  # Default batch size in records
+DEFAULT_STREAMING_MIN_MAX_RECORDS_PER_TRIGGER = env_integer(
+    "RAY_DATA_STREAMING_MIN_MAX_RECORDS_PER_TRIGGER", 1000
+)  # Minimum batch size in records
+DEFAULT_STREAMING_MAX_MAX_RECORDS_PER_TRIGGER = env_integer(
+    "RAY_DATA_STREAMING_MAX_MAX_RECORDS_PER_TRIGGER", 1000000
+)  # Maximum batch size in records
+
+# Prefetching configuration
+# Controls pipelining of microbatches for better throughput
+DEFAULT_STREAMING_PREFETCH_MAX_SIZE = env_integer(
+    "RAY_DATA_STREAMING_PREFETCH_MAX_SIZE", 2
+)  # Maximum number of prefetched microbatches
+
+# Reader actor configuration
+# Controls long-lived actor pool for reducing ray.remote overhead
+DEFAULT_STREAMING_MAX_READER_ACTORS = env_integer(
+    "RAY_DATA_STREAMING_MAX_READER_ACTORS", 10
+)  # Maximum number of reader actors
+
+# Task resource optimization thresholds
+# Used to allocate appropriate resources based on task size
+DEFAULT_STREAMING_LARGE_TASK_SIZE_BYTES = env_integer(
+    "RAY_DATA_STREAMING_LARGE_TASK_SIZE_BYTES", 100 * 1024 * 1024
+)  # 100MB threshold for large tasks
+DEFAULT_STREAMING_LARGE_TASK_MEMORY_BYTES = env_integer(
+    "RAY_DATA_STREAMING_LARGE_TASK_MEMORY_BYTES", 2 * 1024 * 1024 * 1024
+)  # 2GB memory allocation for large tasks
+DEFAULT_STREAMING_LARGE_TASK_CPUS = env_integer(
+    "RAY_DATA_STREAMING_LARGE_TASK_CPUS", 2
+)  # CPU allocation for large tasks
+DEFAULT_STREAMING_LARGE_TASK_ROW_THRESHOLD = env_integer(
+    "RAY_DATA_STREAMING_LARGE_TASK_ROW_THRESHOLD", 100000
+)  # Row threshold for CPU allocation
+
+# Lag-aware autoscaling configuration
+DEFAULT_STREAMING_DEFAULT_TARGET_BATCH_DURATION_SECONDS = env_float(
+    "RAY_DATA_STREAMING_DEFAULT_TARGET_BATCH_DURATION_SECONDS", 5.0
+)  # Default target batch duration
+DEFAULT_STREAMING_LAG_THRESHOLD = env_integer(
+    "RAY_DATA_STREAMING_LAG_THRESHOLD", 10000
+)  # Lag threshold for autoscaling decisions
+DEFAULT_STREAMING_LAG_CONVERSION_FACTOR = env_float(
+    "RAY_DATA_STREAMING_LAG_CONVERSION_FACTOR", 1000.0
+)  # Conversion factor for lag metrics
+DEFAULT_STREAMING_PARALLELISM_DECREASE_FACTOR = env_float(
+    "RAY_DATA_STREAMING_PARALLELISM_DECREASE_FACTOR", 0.7
+)  # 30% decrease factor for parallelism scaling
+DEFAULT_STREAMING_PARTITION_COUNT_MULTIPLIER = env_integer(
+    "RAY_DATA_STREAMING_PARTITION_COUNT_MULTIPLIER", 2
+)  # Multiplier for partition count estimation
+
+# Performance metrics and logging
+DEFAULT_STREAMING_BATCH_LOGGING_INTERVAL = env_integer(
+    "RAY_DATA_STREAMING_BATCH_LOGGING_INTERVAL", 10
+)  # Log metrics every N batches
+DEFAULT_STREAMING_ESTIMATED_BYTES_PER_RECORD = env_integer(
+    "RAY_DATA_STREAMING_ESTIMATED_BYTES_PER_RECORD", 1024
+)  # 1KB per record estimate
+DEFAULT_STREAMING_ESTIMATED_ROWS_PER_BLOCK = env_integer(
+    "RAY_DATA_STREAMING_ESTIMATED_ROWS_PER_BLOCK", 100
+)  # Estimated rows per block
+DEFAULT_STREAMING_DEFAULT_BLOCK_SIZE_BYTES = env_integer(
+    "RAY_DATA_STREAMING_DEFAULT_BLOCK_SIZE_BYTES", 1024 * 1024
+)  # 1MB default block size estimate
+
 # Default value for whether or not to try to create directories for write
 # calls if the URI is an S3 URI.
 DEFAULT_S3_TRY_CREATE_DIR = False
@@ -662,6 +759,72 @@ class DataContext:
             DEFAULT_STREAMING_BACKPRESSURE_THRESHOLD
         )
 
+        # Output bundling configuration
+        self._streaming_max_bundled_blocks = DEFAULT_STREAMING_MAX_BUNDLED_BLOCKS
+        self._streaming_max_bundled_bytes = DEFAULT_STREAMING_MAX_BUNDLED_BYTES
+
+        # Byte-level accounting for memory safety
+        self._streaming_max_bytes_in_flight = DEFAULT_STREAMING_MAX_BYTES_IN_FLIGHT
+
+        # Adaptive backoff configuration
+        self._streaming_min_backoff_seconds = DEFAULT_STREAMING_MIN_BACKOFF_SECONDS
+        self._streaming_max_backoff_seconds = DEFAULT_STREAMING_MAX_BACKOFF_SECONDS
+
+        # Adaptive batching configuration
+        self._streaming_batch_duration_window = DEFAULT_STREAMING_BATCH_DURATION_WINDOW
+        self._streaming_default_max_records_per_trigger = (
+            DEFAULT_STREAMING_DEFAULT_MAX_RECORDS_PER_TRIGGER
+        )
+        self._streaming_min_max_records_per_trigger = (
+            DEFAULT_STREAMING_MIN_MAX_RECORDS_PER_TRIGGER
+        )
+        self._streaming_max_max_records_per_trigger = (
+            DEFAULT_STREAMING_MAX_MAX_RECORDS_PER_TRIGGER
+        )
+
+        # Prefetching configuration
+        self._streaming_prefetch_max_size = DEFAULT_STREAMING_PREFETCH_MAX_SIZE
+
+        # Reader actor configuration
+        self._streaming_max_reader_actors = DEFAULT_STREAMING_MAX_READER_ACTORS
+
+        # Task resource optimization thresholds
+        self._streaming_large_task_size_bytes = DEFAULT_STREAMING_LARGE_TASK_SIZE_BYTES
+        self._streaming_large_task_memory_bytes = (
+            DEFAULT_STREAMING_LARGE_TASK_MEMORY_BYTES
+        )
+        self._streaming_large_task_cpus = DEFAULT_STREAMING_LARGE_TASK_CPUS
+        self._streaming_large_task_row_threshold = (
+            DEFAULT_STREAMING_LARGE_TASK_ROW_THRESHOLD
+        )
+
+        # Lag-aware autoscaling configuration
+        self._streaming_default_target_batch_duration_seconds = (
+            DEFAULT_STREAMING_DEFAULT_TARGET_BATCH_DURATION_SECONDS
+        )
+        self._streaming_lag_threshold = DEFAULT_STREAMING_LAG_THRESHOLD
+        self._streaming_lag_conversion_factor = DEFAULT_STREAMING_LAG_CONVERSION_FACTOR
+        self._streaming_parallelism_decrease_factor = (
+            DEFAULT_STREAMING_PARALLELISM_DECREASE_FACTOR
+        )
+        self._streaming_partition_count_multiplier = (
+            DEFAULT_STREAMING_PARTITION_COUNT_MULTIPLIER
+        )
+
+        # Performance metrics and logging
+        self._streaming_batch_logging_interval = (
+            DEFAULT_STREAMING_BATCH_LOGGING_INTERVAL
+        )
+        self._streaming_estimated_bytes_per_record = (
+            DEFAULT_STREAMING_ESTIMATED_BYTES_PER_RECORD
+        )
+        self._streaming_estimated_rows_per_block = (
+            DEFAULT_STREAMING_ESTIMATED_ROWS_PER_BLOCK
+        )
+        self._streaming_default_block_size_bytes = (
+            DEFAULT_STREAMING_DEFAULT_BLOCK_SIZE_BYTES
+        )
+
         is_ray_job = os.environ.get("RAY_JOB_ID") is not None
         if is_ray_job:
             is_driver = ray.get_runtime_context().worker.mode != WORKER_MODE
@@ -859,6 +1022,42 @@ class DataContext:
     @streaming_backpressure_threshold.setter
     def streaming_backpressure_threshold(self, value: float) -> None:
         self._streaming_backpressure_threshold = value
+
+    @property
+    def streaming_max_bundled_blocks(self) -> int:
+        """Maximum number of blocks to bundle together before emitting to downstream operators.
+
+        Higher values reduce per-call overhead but increase latency. Default: 10.
+        """
+        return self._streaming_max_bundled_blocks
+
+    @streaming_max_bundled_blocks.setter
+    def streaming_max_bundled_blocks(self, value: int) -> None:
+        self._streaming_max_bundled_blocks = value
+
+    @property
+    def streaming_max_bundled_bytes(self) -> int:
+        """Maximum bytes to bundle together before emitting to downstream operators.
+
+        Prevents creating bundles that are too large. Default: 100MB.
+        """
+        return self._streaming_max_bundled_bytes
+
+    @streaming_max_bundled_bytes.setter
+    def streaming_max_bundled_bytes(self, value: int) -> None:
+        self._streaming_max_bundled_bytes = value
+
+    @property
+    def streaming_max_bytes_in_flight(self) -> int:
+        """Maximum bytes in-flight (pending blocks) before pausing generator priming.
+
+        Prevents object store memory overruns. Default: 500MB.
+        """
+        return self._streaming_max_bytes_in_flight
+
+    @streaming_max_bytes_in_flight.setter
+    def streaming_max_bytes_in_flight(self, value: int) -> None:
+        self._streaming_max_bytes_in_flight = value
 
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get the value for a key-value style config.

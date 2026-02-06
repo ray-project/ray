@@ -40,6 +40,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
+from ray.data.datasource.streaming_sink import StreamingSink
 from ray.data.datasource.unbound_datasource import (
     UnboundDatasource,
     UnboundMetrics,
@@ -72,6 +73,7 @@ __all__ = [
     "ReadTask",
     "Reader",
     "RowBasedFileDatasink",
+    "StreamingSink",
     "UnboundDatasource",
     "UnboundMetrics",
     "UnboundPosition",

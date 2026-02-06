@@ -66,6 +66,11 @@ class StreamingTrigger:
     max_records_per_second: Optional[int] = None  # Global throughput limit
     max_bytes_per_second: Optional[int] = None  # Bandwidth limit
 
+    # Per-trigger budget (Spark "maxOffsetsPerTrigger" style)
+    max_records_per_trigger: Optional[int] = None
+    max_bytes_per_trigger: Optional[int] = None
+    max_splits_per_trigger: Optional[int] = None
+
     def __post_init__(self):
         if self.trigger_type == "fixed_interval" and self.interval is None:
             raise ValueError("Fixed interval trigger requires an interval")
@@ -446,7 +451,7 @@ class UnboundedData(LogicalOperator, SourceOperator):
         # Use context defaults for trigger if not specified
         # Create a copy to avoid mutating the caller's trigger object
         if trigger.trigger_type == "fixed_interval" and trigger.interval is None:
-            from datetime import timedelta
+            from dataclasses import fields
 
             default_interval = self._data_context.streaming_trigger_interval
             if isinstance(default_interval, str):
@@ -454,11 +459,13 @@ class UnboundedData(LogicalOperator, SourceOperator):
             else:
                 interval = timedelta(seconds=30)  # Fallback default
 
-            # Create a new trigger with the computed interval
-            self.trigger = StreamingTrigger(
-                trigger_type="fixed_interval",
-                interval=interval,
-            )
+            # Create a copy of the trigger with all fields preserved, only updating interval
+            trigger_dict = {}
+            for field in fields(trigger):
+                value = getattr(trigger, field.name)
+                trigger_dict[field.name] = value
+            trigger_dict["interval"] = interval
+            self.trigger = StreamingTrigger(**trigger_dict)
         else:
             # Use the trigger as-is
             self.trigger = trigger
@@ -469,11 +476,19 @@ class UnboundedData(LogicalOperator, SourceOperator):
 
     def infer_metadata(self) -> BlockMetadata:
         """Return metadata for streaming operator."""
-        return self._cached_output_metadata.metadata
+        try:
+            return self._cached_output_metadata.metadata
+        except Exception as e:
+            logger.warning(f"Failed to infer metadata for streaming datasource: {e}")
+            return BlockMetadata(None, None, None, None)
 
     def infer_schema(self):
         """Infer schema from the datasource."""
-        return self._cached_output_metadata.schema
+        try:
+            return self._cached_output_metadata.schema
+        except Exception as e:
+            logger.warning(f"Failed to infer schema for streaming datasource: {e}")
+            return None
 
     @functools.cached_property
     def _cached_output_metadata(self) -> "BlockMetadataWithSchema":

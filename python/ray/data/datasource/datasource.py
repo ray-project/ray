@@ -284,6 +284,48 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
         """
         raise NotImplementedError
 
+    # ---- Optional streaming checkpoint APIs ----
+    # These are no-ops by default and are only used by unbounded sources.
+
+    def initial_checkpoint(self) -> Any:
+        """Return initial checkpoint state for streaming sources (e.g., Kafka offsets).
+
+        Default: None (no checkpointing).
+        """
+        return None
+
+    def commit_checkpoint(self, checkpoint: Any) -> None:
+        """Commit checkpoint for streaming sources once a microbatch finishes.
+
+        Default: no-op.
+        """
+        return None
+
+    # Optional two-phase commit hooks for streaming sources (Kafka EOS-style)
+    def prepare_commit(self, checkpoint: Any) -> Any:
+        """Return a commit token (can equal checkpoint) that can be committed/aborted.
+
+        Default: returns checkpoint as-is.
+        """
+        return checkpoint
+
+    def abort_commit(self, commit_token: Any) -> None:
+        """Abort a prepared commit token (best-effort).
+
+        Default: no-op.
+        """
+        return None
+
+    def commit(self, commit_token: Any) -> None:
+        """Commit a prepared token. Default calls commit_checkpoint for compatibility.
+
+        Default: calls commit_checkpoint(commit_token) for backward compatibility.
+        """
+        try:
+            return self.commit_checkpoint(commit_token)
+        except Exception:
+            return None
+
     @property
     def should_create_reader(self) -> bool:
         has_implemented_get_read_tasks = (
