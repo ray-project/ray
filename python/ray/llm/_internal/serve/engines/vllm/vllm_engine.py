@@ -353,9 +353,7 @@ class VLLMEngine(LLMEngine):
     @staticmethod
     def _make_error(message: str) -> ErrorResponse:
         return ErrorResponse(
-            error=ErrorInfo(
-                message=message, type="invalid_request_error", code=400
-            )
+            error=ErrorInfo(message=message, type="invalid_request_error", code=400)
         )
 
     def _validate_openai_serving_chat(self) -> Optional[ErrorResponse]:
