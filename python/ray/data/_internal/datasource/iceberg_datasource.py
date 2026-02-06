@@ -24,6 +24,7 @@ from ray.data.expressions import (
     MonotonicallyIncreasingIdExpr,
     Operation,
     RandomExpr,
+    RenameExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
@@ -183,22 +184,6 @@ class _IcebergExpressionVisitor(
         """Monotonically increasing ID expressions cannot be converted to Iceberg expressions."""
         raise TypeError(
             "monotonically_increasing_id expressions cannot be converted to Iceberg filter expressions."
-        )
-
-    def visit_random(
-        self, expr: "RandomExpr"
-    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
-        """Random expressions cannot be converted to Iceberg expressions."""
-        raise TypeError(
-            "Random expressions cannot be converted to Iceberg filter expressions."
-        )
-
-    def visit_uuid(
-        self, expr: "UUIDExpr"
-    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
-        """UUID expressions cannot be converted to Iceberg expressions."""
-        raise TypeError(
-            "UUID expressions cannot be converted to Iceberg filter expressions."
         )
 
 

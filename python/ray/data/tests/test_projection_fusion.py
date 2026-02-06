@@ -408,6 +408,28 @@ class TestProjectionFusion:
         expected_df = expected_df[sorted(expected_df.columns)]
         assert rows_same(result_df, expected_df)
 
+    def test_with_column_alias_keeps_source_column(self, ray_start_regular_shared):
+        """Ensure aliasing a column via with_column doesn't drop the source column."""
+        input_data = [{"a": 1}, {"a": 2}, {"a": 3}]
+
+        ds = ray.data.from_items(input_data)
+        ds = ds.with_column("b", col("a"))
+        ds = ds.select_columns(["a", "b"])
+
+        rule = ProjectionPushdown()
+        optimized_plan = rule.apply(ds._logical_plan)
+
+        # Should fuse without raising and preserve both columns.
+        from ray.data.dataset import Dataset
+
+        optimized_ds = Dataset(ds._plan, optimized_plan)
+        result_df = optimized_ds.to_pandas()
+
+        expected_df = pd.DataFrame({"a": [1, 2, 3], "b": [1, 2, 3]})
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
+        assert rows_same(result_df, expected_df)
+
     def test_dependency_prevents_fusion(self, ray_start_regular_shared):
         """Test that dependencies are handled in single operator with OrderedDict."""
         input_data = [{"id": i} for i in range(5)]
