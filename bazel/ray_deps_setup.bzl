@@ -230,6 +230,13 @@ def ray_deps_setup():
         name = "io_opentelemetry_cpp",
         url = "https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.19.0.zip",
         sha256 = "8ef0a63f4959d5dfc3d8190d62229ef018ce41eef36e1f3198312d47ab2de05a",
+        # Enable mTLS support for OTLP gRPC exporter.
+        # This is required because Ray's gRPC servers require client certificates when TLS is enabled.
+        # See https://github.com/ray-project/ray/issues/59968
+        patches = [
+            "@io_ray//thirdparty/patches:opentelemetry-cpp-enable-mtls.patch",
+        ],
+        patch_args = ["-p1"],
     )
 
     auto_http_archive(
