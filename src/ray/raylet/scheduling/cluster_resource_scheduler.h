@@ -155,6 +155,11 @@ class ClusterResourceScheduler {
     }
     ~SchedulingRoundGuard() { scheduler_.EndSchedulingRound(); }
 
+    SchedulingRoundGuard(const SchedulingRoundGuard &) = delete;
+    SchedulingRoundGuard &operator=(const SchedulingRoundGuard &) = delete;
+    SchedulingRoundGuard(SchedulingRoundGuard &&) = delete;
+    SchedulingRoundGuard &operator=(SchedulingRoundGuard &&) = delete;
+
    private:
     ClusterResourceScheduler &scheduler_;
   };
