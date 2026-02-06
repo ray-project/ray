@@ -254,6 +254,7 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
         syncer_.node_state_->RemoveNode(node_id);
       },
       /*auth_token=*/auth_token_,
+      /*auth_token_validator=*/auth_token_validator_,
       /*max_batch_size=*/syncer_.max_batch_size_,
       /*max_batch_delay_ms=*/syncer_.max_batch_delay_ms_);
   RAY_LOG(DEBUG).WithField(NodeID::FromBinary(reactor->GetRemoteNodeID()))
