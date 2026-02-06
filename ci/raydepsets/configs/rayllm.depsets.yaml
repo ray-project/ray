@@ -12,7 +12,7 @@ build_arg_sets:
     - --python-version=3.11
     - --unsafe-package ray
     - --python-platform=x86_64-manylinux_2_31
-    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+    - --index https://download.pytorch.org/whl/${CUDA_CODE}
   build_arg_sets:
     - cpu
     - cu128
