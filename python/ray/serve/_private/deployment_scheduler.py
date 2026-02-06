@@ -1085,10 +1085,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
         for gang_index in range(num_gangs_needed):
             # Build bundles - each bundle is for one replica in the gang
-            bundles = [
-                request.replica_resource_dict.copy()
-                for _ in range(gang_size)
-            ]
+            bundles = [request.replica_resource_dict.copy() for _ in range(gang_size)]
 
             pg_name = (
                 f"gang_{deployment_id.app_name}_{deployment_id.name}"

@@ -361,7 +361,9 @@ def test_gang_health_check_restarts_gang(serve_instance):
     # Wait for deployment to become UNHEALTHY.
     def check_unhealthy():
         app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
-        assert app_status.deployments["GangPatient"].status == DeploymentStatus.UNHEALTHY
+        assert (
+            app_status.deployments["GangPatient"].status == DeploymentStatus.UNHEALTHY
+        )
         return True
 
     wait_for_condition(check_unhealthy, timeout=30)
