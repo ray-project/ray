@@ -2779,14 +2779,12 @@ cdef class CoreWorker:
     def __cinit__(self, worker_type, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port,
-                  local_mode, driver_name,
+                  driver_name,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
                   WorkerID worker_id, session_name, cluster_id, entrypoint,
                   worker_launch_time_ms, worker_launched_time_ms, debug_source):
-        self.is_local_mode = local_mode
-
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
-        if worker_type in (ray.LOCAL_MODE, ray.SCRIPT_MODE):
+        if worker_type == ray.SCRIPT_MODE:
             self.is_driver = True
             options.worker_type = WORKER_TYPE_DRIVER
         elif worker_type == ray.WORKER_MODE:
@@ -2827,7 +2825,6 @@ cdef class CoreWorker:
         options.unhandled_exception_handler = unhandled_exception_handler
         options.cancel_async_actor_task = cancel_async_actor_task
         options.get_lang_stack = get_py_stack
-        options.is_local_mode = local_mode
         options.kill_main = kill_main_task
         options.actor_shutdown_callback = call_actor_shutdown
         options.serialized_job_config = serialized_job_config
@@ -3234,7 +3231,6 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
-            c_vector[CObjectReference] contained_object_refs
             shared_ptr[CBuffer] metadata = string_to_buffer(
                 serialized_object.metadata)
             unique_ptr[CAddress] c_owner_address = self._convert_python_address(
@@ -3266,24 +3262,14 @@ cdef class CoreWorker:
         if total_bytes > 0:
             (<SerializedObject>serialized_object).write_to(
                 Buffer.make(data))
-        if self.is_local_mode:
-            contained_object_refs = (
-                    CCoreWorkerProcess.GetCoreWorker().
-                    GetObjectRefs(contained_object_ids))
-            if owner_address is not None:
-                raise Exception(
-                    "cannot put data into memory store directly"
-                    " and assign owner at the same time")
-            check_status(CCoreWorkerProcess.GetCoreWorker().Put(
-                    CRayObject(data, metadata, contained_object_refs),
-                    contained_object_ids, c_object_id))
-        else:
-            with nogil:
-                check_status(
-                    CCoreWorkerProcess.GetCoreWorker().SealOwned(
-                                c_object_id,
-                                pin_object,
-                                move(c_owner_address)))
+
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().SealOwned(
+                            c_object_id,
+                            pin_object,
+                            move(c_owner_address)))
+
         return c_object_id.Binary()
 
     def wait(self,
@@ -4184,18 +4170,10 @@ cdef class CoreWorker:
             if return_ptr.get().HasData():
                 (<SerializedObject>serialized_object).write_to(
                     Buffer.make(return_ptr.get().GetData()))
-            if self.is_local_mode:
+            with nogil:
                 check_status(
-                    CCoreWorkerProcess.GetCoreWorker().Put(
-                        CRayObject(return_ptr.get().GetData(),
-                                   return_ptr.get().GetMetadata(),
-                                   c_vector[CObjectReference]()),
-                        c_vector[CObjectID](), return_id))
-            else:
-                with nogil:
-                    check_status(
-                        CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
-                            return_id, return_ptr[0], generator_id, caller_address))
+                    CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
+                        return_id, return_ptr[0], generator_id, caller_address))
             return True
         else:
             with nogil:
