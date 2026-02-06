@@ -52,6 +52,17 @@ def test_scaling_config_accelerator_type():
     }
 
 
+def test_scaling_config_tpu_min_workers_multiple():
+    with pytest.raises(ValueError, match="min_workers"):
+        ScalingConfig(
+            num_workers=(1, 2),
+            use_tpu=True,
+            topology="2x2x2",
+            accelerator_type="TPU-V4",
+            resources_per_worker={"TPU": 4},
+        )
+
+
 def test_storage_filesystem_repr():
     """Test for https://github.com/ray-project/ray/pull/40851"""
     config = RunConfig(storage_filesystem=pyarrow.fs.S3FileSystem())

@@ -103,6 +103,11 @@ class ScalingConfig(ScalingConfigV1):
             raise ValueError(
                 "ScalingConfig(elastic_resize_monitor_interval_s) must be non-negative."
             )
+        if self.min_workers < 0:
+            raise ValueError(
+                f"Invalid ScalingConfig(num_workers={self.num_workers}): "
+                "Number of workers cannot be negative."
+            )
         if self.min_workers > self.max_workers:
             raise ValueError(
                 f"Invalid ScalingConfig(num_workers={self.num_workers}): "
@@ -210,6 +215,13 @@ class ScalingConfig(ScalingConfigV1):
             if workers_per_slice > 0 and max_workers % workers_per_slice != 0:
                 raise ValueError(
                     f"The configured `num_workers` ({self.num_workers}) must be a "
+                    f"multiple of {workers_per_slice} for the specified topology ({self.topology}). "
+                    "TPU workloads typically require symmetric resource distribution "
+                    "across all slices to function correctly."
+                )
+            if workers_per_slice > 0 and self.min_workers % workers_per_slice != 0:
+                raise ValueError(
+                    f"The configured `min_workers` ({self.min_workers}) must be a "
                     f"multiple of {workers_per_slice} for the specified topology ({self.topology}). "
                     "TPU workloads typically require symmetric resource distribution "
                     "across all slices to function correctly."
