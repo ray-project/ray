@@ -31,6 +31,27 @@ def torch_available():
     return _TORCH_AVAILABLE
 
 
+class Backend(object):
+    """A class to represent different backends."""
+
+    NCCL = "NCCL"
+    GLOO = "GLOO"
+    UNRECOGNIZED = "unrecognized"
+
+    def __new__(cls, name: str):
+        upper_name = name.upper()
+        backend = getattr(Backend, upper_name, Backend.UNRECOGNIZED)
+        if backend == Backend.UNRECOGNIZED:
+            if upper_name == "TORCH_GLOO":
+                return Backend.GLOO
+            raise ValueError(
+                "Unrecognized backend: '{}'. Only NCCL and GLOO are supported".format(
+                    name
+                )
+            )
+        return backend
+
+
 class ReduceOp(Enum):
     SUM = 0
     PRODUCT = 1
