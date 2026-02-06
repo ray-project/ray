@@ -251,30 +251,25 @@ class RequestRouterConfig(BaseModel):
         ),
     )
 
-    initial_backoff_s: float = Field(
-        default=RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
+    initial_backoff_s: Optional[float] = Field(
+        default=None,
         description=(
             "Initial backoff time (in seconds) before retrying to route a request "
-            "to a replica. Defaults to RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S "
-            "environment variable, or 0.025 if not set."
+            "to a replica. Defaults to 0.025."
         ),
     )
 
-    backoff_multiplier: float = Field(
-        default=RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
+    backoff_multiplier: Optional[float] = Field(
+        default=None,
         description=(
-            "Multiplier applied to the backoff time after each retry. "
-            "Defaults to RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER "
-            "environment variable, or 2 if not set."
+            "Multiplier applied to the backoff time after each retry. " "Defaults to 2."
         ),
     )
 
-    max_backoff_s: float = Field(
-        default=RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
+    max_backoff_s: Optional[float] = Field(
+        default=None,
         description=(
-            "Maximum backoff time (in seconds) between retries. "
-            "Defaults to RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S "
-            "environment variable, or 0.5 if not set."
+            "Maximum backoff time (in seconds) between retries. " "Defaults to 0.5."
         ),
     )
 
@@ -291,6 +286,18 @@ class RequestRouterConfig(BaseModel):
                 )
 
         return v
+
+    @validator("initial_backoff_s", always=True)
+    def set_initial_backoff_s_default(cls, v):
+        return v if v is not None else RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S
+
+    @validator("backoff_multiplier", always=True)
+    def set_backoff_multiplier_default(cls, v):
+        return v if v is not None else RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER
+
+    @validator("max_backoff_s", always=True)
+    def set_max_backoff_s_default(cls, v):
+        return v if v is not None else RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S
 
     def __init__(self, **kwargs: dict[str, Any]):
         """Initialize RequestRouterConfig with the given parameters.
