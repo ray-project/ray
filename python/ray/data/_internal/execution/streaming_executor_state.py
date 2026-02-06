@@ -597,7 +597,7 @@ def get_eligible_operators(
         #   - Its input queue has a valid bundle
         if (
             not op.has_completed()
-            and op.should_add_input()
+            and op.can_add_input()
             and state.has_pending_bundles()
         ):
             if not in_backpressure:
