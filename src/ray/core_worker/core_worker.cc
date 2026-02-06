@@ -596,7 +596,9 @@ void CoreWorker::Disconnect(
   if (connected_.exchange(false)) {
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
     Status status = raylet_ipc_client_->Disconnect(
-        exit_type, std::string(exit_detail), creation_task_exception_pb_bytes);  // Convert for function
+        exit_type,
+        std::string(exit_detail),
+        creation_task_exception_pb_bytes);  // Convert for function
     if (status.ok()) {
       RAY_LOG(INFO) << "Disconnected from the local raylet.";
     } else {
@@ -681,7 +683,11 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
 
   ShutdownReason reason = ConvertExitTypeToShutdownReason(exit_type, true);
   shutdown_coordinator_->RequestShutdown(
-      /*force_shutdown=*/true, reason, std::string(detail), std::chrono::milliseconds{0}, nullptr);  // Convert for function
+      /*force_shutdown=*/true,
+      reason,
+      std::string(detail),
+      std::chrono::milliseconds{0},
+      nullptr);  // Convert for function
 
   RAY_LOG(DEBUG) << "ForceExit: shutdown request completed";
 }
@@ -1758,7 +1764,10 @@ Status CoreWorker::PushError(const JobID &job_id,
                              std::string_view type,           // Changed: read-only param
                              std::string_view error_message,  // Changed: read-only param
                              double timestamp) {
-  return raylet_ipc_client_->PushError(job_id, std::string(type), std::string(error_message), timestamp);  // Convert for function
+  return raylet_ipc_client_->PushError(job_id,
+                                       std::string(type),
+                                       std::string(error_message),
+                                       timestamp);  // Convert for function
 }
 
 json CoreWorker::OverrideRuntimeEnv(const json &child,
@@ -1802,7 +1811,8 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr;
   runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>();
 
-  if (!IsRuntimeEnvInfoEmpty(std::string(serialized_runtime_env_info))) {  // Convert for function
+  if (!IsRuntimeEnvInfoEmpty(
+          std::string(serialized_runtime_env_info))) {  // Convert for function
     RAY_CHECK(google::protobuf::util::JsonStringToMessage(
                   std::string(serialized_runtime_env_info),  // Convert for protobuf
                   runtime_env_info.get())
@@ -1851,8 +1861,9 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
     }
   }
 
-  runtime_env_json_serialization_cache_.Put(std::string(serialized_runtime_env_info),  // Convert for cache key
-                                            runtime_env_info);
+  runtime_env_json_serialization_cache_.Put(
+      std::string(serialized_runtime_env_info),  // Convert for cache key
+      runtime_env_info);
   return runtime_env_info;
 }
 
@@ -2018,11 +2029,12 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   if (!worker_context_->GetRootDetachedActorID().IsNil()) {
     root_detached_actor_id = worker_context_->GetRootDetachedActorID();
   }
-  builder.SetNormalTaskSpec(max_retries,
-                            retry_exceptions,
-                            std::string(serialized_retry_exception_allowlist),  // Convert for function
-                            scheduling_strategy,
-                            root_detached_actor_id);
+  builder.SetNormalTaskSpec(
+      max_retries,
+      retry_exceptions,
+      std::string(serialized_retry_exception_allowlist),  // Convert for function
+      scheduling_strategy,
+      root_detached_actor_id);
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
@@ -2399,12 +2411,13 @@ Status CoreWorker::SubmitActorTask(
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
-  actor_handle->SetActorTaskSpec(builder,
-                                 ObjectID::Nil(),
-                                 max_retries,
-                                 retry_exceptions,
-                                 std::string(serialized_retry_exception_allowlist),  // Convert for function
-                                 task_options.tensor_transport);
+  actor_handle->SetActorTaskSpec(
+      builder,
+      ObjectID::Nil(),
+      max_retries,
+      retry_exceptions,
+      std::string(serialized_retry_exception_allowlist),  // Convert for function
+      task_options.tensor_transport);
   // Submit task.
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
@@ -2616,7 +2629,10 @@ ResourceMappingType CoreWorker::GetResourceIDs() const {
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     std::string_view event_name) {  // Changed: read-only param
   return std::make_unique<worker::ProfileEvent>(
-      *task_event_buffer_, *worker_context_, options_.node_ip_address, std::string(event_name));  // Convert for constructor
+      *task_event_buffer_,
+      *worker_context_,
+      options_.node_ip_address,
+      std::string(event_name));  // Convert for constructor
 }
 
 void CoreWorker::RunTaskExecutionLoop() {
