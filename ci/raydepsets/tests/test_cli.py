@@ -98,7 +98,7 @@ class TestCli(unittest.TestCase):
             stderr=subprocess.PIPE,
         )
         assert result.returncode == 0
-        assert "uv 0.8.17" in result.stdout.decode("utf-8")
+        assert "uv 0.9.26" in result.stdout.decode("utf-8")
         assert result.stderr.decode("utf-8") == ""
 
     def test_compile(self):
@@ -156,18 +156,14 @@ class TestCli(unittest.TestCase):
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
                 append_flags=["--no-annotate", "--python-version 3.10"],
-                override_flags=[
-                    "--extra-index-url https://download.pytorch.org/whl/cu124"
-                ],
+                override_flags=["--index-strategy first-index"],
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
             stdout = mock_stdout.getvalue()
             assert "--python-version 3.10" in stdout
-            assert "--extra-index-url https://download.pytorch.org/whl/cu124" in stdout
-            assert (
-                "--extra-index-url https://download.pytorch.org/whl/cu128" not in stdout
-            )
+            assert "--index-strategy first-index" in stdout
+            assert "--index-strategy unsafe-best-match" not in stdout
 
     def test_compile_by_depset_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:
