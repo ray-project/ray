@@ -237,6 +237,7 @@ class TestArithmeticIntegration:
         ],
     )
     def test_with_column_null_handling_operations(
+        self,
         ray_start_regular_shared,
         test_data,
         expr_factory,
