@@ -1,14 +1,9 @@
 import logging
 import uuid
 from functools import cached_property
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import ray
-from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
-    ResourceDict,
-    ResourceRequestPriority,
-    get_or_create_autoscaling_coordinator,
-)
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
@@ -24,6 +19,11 @@ from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import ScalingConfig
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
+        ResourceDict,
+    )
 
 
 class ElasticScalingPolicy(ScalingPolicy):
@@ -49,7 +49,7 @@ class ElasticScalingPolicy(ScalingPolicy):
         self._latest_autoscaling_request_time = float("-inf")
         self._latest_insufficient_workers_warning_time = float("-inf")
         self._latest_allocated_resources_query_time = float("-inf")
-        self._latest_allocated_resources: Optional[List[ResourceDict]] = None
+        self._latest_allocated_resources: Optional[List["ResourceDict"]] = None
 
     def _count_possible_workers(
         self, allocated_resources: List[Dict[str, float]]
@@ -182,6 +182,10 @@ class ElasticScalingPolicy(ScalingPolicy):
 
     @cached_property
     def _autoscaling_coordinator(self):
+        from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
+            get_or_create_autoscaling_coordinator,
+        )
+
         return get_or_create_autoscaling_coordinator()
 
     def _maybe_send_resource_request(self):
@@ -197,6 +201,10 @@ class ElasticScalingPolicy(ScalingPolicy):
         resources_per_worker = self.scaling_config._resources_per_worker_not_none
         max_workers = self.scaling_config.max_workers
         try:
+            from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
+                ResourceRequestPriority,
+            )
+
             ray.get(
                 self._autoscaling_coordinator.request_resources.remote(
                     requester_id=self._requester_id,
@@ -215,7 +223,7 @@ class ElasticScalingPolicy(ScalingPolicy):
             )
             logger.warning(msg, exc_info=True)
 
-    def _get_allocated_resources(self) -> Optional[List[ResourceDict]]:
+    def _get_allocated_resources(self) -> Optional[List["ResourceDict"]]:
         """Get allocated resources from AutoscalingCoordinator.
         Return None if there is an error."""
         now = time_monotonic()
