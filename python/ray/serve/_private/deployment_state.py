@@ -38,6 +38,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.config import DeploymentConfig
+from ray.serve.config import GangRuntimeFailurePolicy
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     MAX_PER_REPLICA_RETRY_COUNT,
@@ -1005,7 +1006,13 @@ class ActorReplicaWrapper:
             # Remove the placement group both if the actor has already been deleted or
             # it was just killed above.
             if stopped and self._placement_group is not None:
-                ray.util.remove_placement_group(self._placement_group)
+                try:
+                    ray.util.remove_placement_group(self._placement_group)
+                except Exception:
+                    # Gang PGs are shared across multiple replicas.
+                    # Another replica in the same gang may have already
+                    # removed this PG.
+                    pass
 
         return stopped
 
@@ -3108,13 +3115,18 @@ class DeploymentState:
         """
         upscale = []
 
-        # Check if gang PG preparation failed
-        if gang_prep_result is None or not gang_prep_result.success:
-            error_msg = (
-                gang_prep_result.error_message
-                if gang_prep_result
-                else "Gang placement groups were not prepared"
+        # PG prep was not attempted (e.g. replicas still stopping).
+        # Skip replica creation and retry in the next reconciliation loop.
+        if gang_prep_result is None:
+            logger.info(
+                f"Gang PG preparation was skipped for {self._id}. "
+                "Will retry in the next reconciliation loop."
             )
+            return upscale
+
+        # PG prep was attempted but failed (resources insufficient).
+        if not gang_prep_result.success:
+            error_msg = gang_prep_result.error_message or "Unknown error"
             logger.error(
                 f"Gang scheduling failed for {self._id}: {error_msg}. "
                 "Skipping replica creation."
@@ -3439,7 +3451,22 @@ class DeploymentState:
         transition happened.
         """
 
-        # TODO (jeffreywang): Implement gang health check and runtime failure policy here.
+        gang_config = self.get_gang_config()
+        restart_gang = (
+            gang_config is not None
+            and gang_config.runtime_failure_policy
+            == GangRuntimeFailurePolicy.RESTART_GANG
+        )
+
+        # --- Gang health check: two-pass approach ---
+        # Pass 1: Check health of all replicas. Collect which gang_ids
+        #         have at least one unhealthy member.
+        # Pass 2: Process results. Healthy replicas whose gang has an
+        #         unhealthy member are forcefully stopped too.
+        healthy_replicas: List[DeploymentReplica] = []
+        unhealthy_replicas: List[DeploymentReplica] = []
+        gang_ids_to_restart: Set[str] = set()
+
         for replica in self._replicas.pop(
             states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
         ):
@@ -3457,28 +3484,64 @@ class DeploymentState:
                 self.health_check_failures_counter.inc(tags=metric_tags)
 
             if is_healthy:
+                healthy_replicas.append(replica)
+            else:
+                unhealthy_replicas.append(replica)
+                if restart_gang and replica.gang_context is not None:
+                    gang_ids_to_restart.add(replica.gang_context.gang_id)
+
+        # Pass 2: process healthy replicas.
+        for replica in healthy_replicas:
+            if (
+                restart_gang
+                and replica.gang_context is not None
+                and replica.gang_context.gang_id in gang_ids_to_restart
+            ):
+                # Healthy replica whose gang has an unhealthy member.
+                # Forcefully stop it so the entire gang is rescheduled.
+                logger.warning(
+                    f"Replica {replica.replica_id} is healthy but its gang "
+                    f"(gang_id={replica.gang_context.gang_id}) has an "
+                    "unhealthy replica. Forcefully stopping it because  "
+                    "RESTART_GANG runtime failure policy is enabled."
+                )
+                self._stop_replica(replica, graceful_stop=False)
+                if replica.version == self._target_state.version:
+                    self._curr_status_info = (
+                        self._curr_status_info.handle_transition(
+                            trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
+                            message="A replica's health check failed. This "
+                            "deployment will be UNHEALTHY until the replica "
+                            "recovers or a new deploy happens.",
+                        )
+                    )
+            else:
                 self._replicas.add(replica.actor_details.state, replica)
                 self._set_health_gauge(replica.replica_id.unique_id, 1)
                 routing_stats = replica.pull_routing_stats()
                 replica.record_routing_stats(routing_stats)
-            else:
-                logger.warning(
-                    f"Replica {replica.replica_id} failed health check, stopping it."
+
+        # Process unhealthy replicas with force-stop for gang replicas under
+        # RESTART_GANG policy.
+        for replica in unhealthy_replicas:
+            logger.warning(
+                f"Replica {replica.replica_id} failed health check, stopping it."
+            )
+            self._set_health_gauge(replica.replica_id.unique_id, 0)
+            graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
+            if restart_gang and replica.gang_context is not None:
+                graceful = False
+            self._stop_replica(replica, graceful_stop=graceful)
+            # If this is a replica of the target version, the deployment
+            # enters the "UNHEALTHY" status until the replica is
+            # recovered or a new deploy happens.
+            if replica.version == self._target_state.version:
+                self._curr_status_info = self._curr_status_info.handle_transition(
+                    trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
+                    message="A replica's health check failed. This "
+                    "deployment will be UNHEALTHY until the replica "
+                    "recovers or a new deploy happens.",
                 )
-                self._set_health_gauge(replica.replica_id.unique_id, 0)
-                self._stop_replica(
-                    replica, graceful_stop=not self.FORCE_STOP_UNHEALTHY_REPLICAS
-                )
-                # If this is a replica of the target version, the deployment
-                # enters the "UNHEALTHY" status until the replica is
-                # recovered or a new deploy happens.
-                if replica.version == self._target_state.version:
-                    self._curr_status_info = self._curr_status_info.handle_transition(
-                        trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
-                        message="A replica's health check failed. This "
-                        "deployment will be UNHEALTHY until the replica "
-                        "recovers or a new deploy happens.",
-                    )
 
         slow_start_replicas = []
         slow_start = self._check_startup_replicas(ReplicaState.STARTING)
@@ -4391,6 +4454,14 @@ class DeploymentStateManager:
 
             # Skip if deployment is terminally failed
             if deployment_state._terminally_failed():
+                continue
+
+            # Skip if deployment has replicas still stopping. Their resources
+            # haven't been released yet, so PG creation would likely fail or
+            # block waiting for resources. We'll retry next reconciliation loop.
+            if deployment_state._replicas.count(
+                states=[ReplicaState.STOPPING]
+            ) > 0:
                 continue
 
             gang_requests[deployment_id] = GangPlacementGroupRequest(

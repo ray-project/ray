@@ -1,6 +1,7 @@
 import copy
 import logging
 import sys
+import uuid
 import warnings
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -1090,7 +1091,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             ]
 
             pg_name = (
-                f"gang_{deployment_id.app_name}_{deployment_id.name}_{gang_index}"
+                f"gang_{deployment_id.app_name}_{deployment_id.name}"
+                f"_{gang_index}_{uuid.uuid4().hex[:8]}"
             )
             strategy = request.gang_placement_strategy
 
