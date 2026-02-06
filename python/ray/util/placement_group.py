@@ -83,10 +83,11 @@ class PlacementGroup:
 
         _export_bundle_reservation_check_method_if_needed()
 
-        assert len(self.bundle_cache) != 0, (
-            "ready() cannot be called on placement group object with a "
-            "bundle length == 0, current bundle length: "
-            f"{len(self.bundle_cache)}"
+        # We check _all_bundle_specs to ensure the placement group has at least
+        # one defined bundle strategy to wait on.
+        assert len(self._all_bundle_specs) != 0, (
+            "ready() cannot be called on a placement group with no bundles defined. "
+            "Ensure the placement group was created with a non-empty list of bundles."
         )
 
         return bundle_reservation_check.options(
@@ -255,7 +256,7 @@ def placement_group(
         fallback_strategy,
     )
 
-    return PlacementGroup(placement_group_id)
+    return PlacementGroup(placement_group_id, bundle_cache=bundles)
 
 
 @PublicAPI

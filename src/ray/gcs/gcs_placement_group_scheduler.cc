@@ -79,27 +79,16 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   const auto &scheduling_strategies = placement_group->GetSchedulingStrategy();
 
-  bool is_initial_pending_schedule =
-      (placement_group->GetState() == rpc::PlacementGroupTableData::PENDING &&
-       placement_group->GetBundles().empty());
-
   bool is_scheduling_all_bundles =
       (bundles.size() == placement_group->GetBundles().size());
 
-  if ((is_initial_pending_schedule || is_scheduling_all_bundles) &&
-      !scheduling_strategies.empty()) {
+  if (is_scheduling_all_bundles && !scheduling_strategies.empty()) {
     RAY_LOG(INFO) << "Scheduling whole Placement Group "
                   << placement_group->GetPlacementGroupID() << " using primary strategy.";
 
     const auto &primary_option = scheduling_strategies.Get(0);
     placement_group->UpdateActiveBundles(primary_option);
     bundles = placement_group->GetUnplacedBundles();
-  }
-
-  if (bundles.empty()) {
-    RAY_LOG(DEBUG) << "No bundles to schedule for PG "
-                   << placement_group->GetPlacementGroupID();
-    return;
   }
 
   auto scheduling_result =
@@ -152,7 +141,6 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
         << ", because current resources can't satisfy the required resource. IsFailed: "
         << result_status.IsFailed() << " IsInfeasible: " << result_status.IsInfeasible()
         << " IsPartialSuccess: " << result_status.IsPartialSuccess();
-
     // If the placement group creation has failed,
     // but if it is not infeasible, it is retryable to create.
     failure_callback(placement_group, /*is_feasible*/ any_strategy_feasible);

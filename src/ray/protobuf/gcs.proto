@@ -684,7 +684,7 @@ message PlacementGroupTableData {
   // The full list of scheduling options for this placement group.
   // Index 0: The original, primary request.
   // Index 1..N: The options defined in each fallback strategy.
-  repeated PlacementGroupSchedulingOption scheduling_strategy = 17;
+  repeated PlacementGroupSchedulingOption scheduling_options = 17;
 }
 
 message JobTableData {

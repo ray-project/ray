@@ -127,7 +127,7 @@ class PlacementGroupSpecBuilder {
         if (current->second == 0) {
           resources.erase(current);
         } else {
-          (*mutable_unit_resources)[current->first] = current->second;
+          mutable_unit_resources->insert({current->first, current->second});
         }
       }
       // Set the label selector for this bundle if provided in bundle_label_selector.
@@ -159,7 +159,6 @@ class PlacementGroupSpecBuilder {
         }
       }
     }
-
     return *this;
   }
 

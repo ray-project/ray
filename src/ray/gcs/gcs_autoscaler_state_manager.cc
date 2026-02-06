@@ -226,8 +226,8 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     // trying to recover.
     auto *bundles_source = pg_data.mutable_bundles();
     if (pg_state == rpc::PlacementGroupTableData::PENDING && bundles_source->empty() &&
-        pg_data.scheduling_strategy_size() > 0) {
-      bundles_source = pg_data.mutable_scheduling_strategy(0)->mutable_bundles();
+        pg_data.scheduling_options_size() > 0) {
+      bundles_source = pg_data.mutable_scheduling_options(0)->mutable_bundles();
     }
 
     for (auto &&bundle : std::move(*bundles_source)) {

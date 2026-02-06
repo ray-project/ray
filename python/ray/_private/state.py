@@ -345,6 +345,24 @@ class GlobalState:
 
         stats = placement_group_info.stats
         assert placement_group_info is not None
+
+        scheduling_strategy = []
+        for strategy_proto in placement_group_info.scheduling_strategy:
+            bundles_list = []
+            label_selectors_list = []
+            for bundle in strategy_proto.bundles:
+                # Extract unit resources
+                bundle_dict = message_to_dict(bundle)
+                bundles_list.append(bundle_dict.get("unitResources", {}))
+                # Extract label selector from the bundle
+                label_selectors_list.append(message_to_dict(bundle.label_selector))
+
+            strategy_dict = {
+                "bundles": bundles_list,
+                "bundle_label_selector": label_selectors_list,
+            }
+            scheduling_strategy.append(strategy_dict)
+
         return {
             "placement_group_id": binary_to_hex(
                 placement_group_info.placement_group_id

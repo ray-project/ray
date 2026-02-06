@@ -146,14 +146,14 @@ rpc::PlacementGroupStats *GcsPlacementGroup::GetMutableStats() {
 
 const google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
     &GcsPlacementGroup::GetSchedulingStrategy() const {
-  return placement_group_table_data_.scheduling_strategy();
+  return placement_group_table_data_.scheduling_options();
 }
 
 google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
     *GcsPlacementGroup::GetMutableSchedulingStrategy() {
   // Invalidate the cache because mutating the strategy.
   cached_bundle_specs_.clear();
-  return placement_group_table_data_.mutable_scheduling_strategy();
+  return placement_group_table_data_.mutable_scheduling_options();
 }
 
 void GcsPlacementGroup::UpdateActiveBundles(
