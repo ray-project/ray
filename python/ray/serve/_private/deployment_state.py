@@ -29,6 +29,7 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     DeploymentTargetInfo,
     Duration,
+    GangContext,
     GangPlacementGroupRequest,
     GangPreparationResult,
     ReplicaID,
@@ -401,6 +402,10 @@ class ActorReplicaWrapper:
         return self._rank
 
     @property
+    def gang_context(self) -> Optional[GangContext]:
+        return self._gang_context
+
+    @property
     def app_name(self) -> str:
         return self._deployment_id.app_name
 
@@ -578,6 +583,7 @@ class ActorReplicaWrapper:
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
         gang_placement_group: Optional[PlacementGroup] = None,
         gang_bundle_index: Optional[int] = None,
+        gang_context: Optional[GangContext] = None,
     ) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
 
@@ -589,12 +595,14 @@ class ActorReplicaWrapper:
             assign_rank_callback: Callback to assign rank to the replica.
             gang_placement_group: Pre-created gang PG to schedule this replica on.
             gang_bundle_index: Bundle index within the gang PG for this replica.
+            gang_context: Gang context for this replica (if part of a gang).
         """
         self._assign_rank_callback = assign_rank_callback
         self._actor_resources = deployment_info.replica_config.resource_dict
         self._ingress = deployment_info.ingress
         self._gang_placement_group = gang_placement_group
         self._gang_bundle_index = gang_bundle_index
+        self._gang_context = gang_context
         # it is currently not possible to create a placement group
         # with no resources (https://github.com/ray-project/ray/issues/20401)
         self._deployment_is_cross_language = (
@@ -899,7 +907,7 @@ class ActorReplicaWrapper:
                     self._replica_id.unique_id, self._node_id
                 )
                 self._ready_obj_ref = replica_ready_check_func.remote(
-                    deployment_config, self._rank
+                    deployment_config, self._rank, self._gang_context
                 )
 
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
@@ -1377,6 +1385,7 @@ class DeploymentReplica:
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
         gang_placement_group: Optional[PlacementGroup] = None,
         gang_bundle_index: Optional[int] = None,
+        gang_context: Optional[GangContext] = None,
     ) -> ReplicaSchedulingRequest:
         """
         Start a new actor for current DeploymentReplica instance.
@@ -1386,12 +1395,14 @@ class DeploymentReplica:
             assign_rank_callback: Callback to assign rank to the replica.
             gang_placement_group: Pre-created gang PG to schedule this replica on.
             gang_bundle_index: Bundle index within the gang PG for this replica.
+            gang_context: Gang context for this replica (if part of a gang).
         """
         replica_scheduling_request = self._actor.start(
             deployment_info,
             assign_rank_callback=assign_rank_callback,
             gang_placement_group=gang_placement_group,
             gang_bundle_index=gang_bundle_index,
+            gang_context=gang_context,
         )
         self._start_time = time.time()
         self.update_actor_details(start_time_s=self._start_time)
@@ -1434,6 +1445,11 @@ class DeploymentReplica:
     def rank(self) -> Optional[ReplicaRank]:
         """Get the rank assigned to the replica."""
         return self._actor.rank
+
+    @property
+    def gang_context(self) -> Optional[GangContext]:
+        """Get the gang context for this replica (if part of a gang)."""
+        return self._actor.gang_context
 
     def check_started(
         self,
@@ -3125,20 +3141,35 @@ class DeploymentState:
                     "This should not happen."
                 )
 
-            for bundle_index in range(gang_size):
-                replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
+            # Pre-generate replica IDs for all members of this gang
+            gang_id = get_random_string()
+            member_replica_ids = [
+                ReplicaID(get_random_string(), deployment_id=self._id)
+                for _ in range(gang_size)
+            ]
+
+            for bundle_index, replica_id in enumerate(member_replica_ids):
+                gang_context = GangContext(
+                    gang_id=gang_id,
+                    rank=bundle_index,
+                    world_size=gang_size,
+                    member_replica_ids=[
+                        r.unique_id for r in member_replica_ids
+                    ],
+                )
 
                 new_deployment_replica = DeploymentReplica(
                     replica_id,
                     self._target_state.version,
                 )
 
-                # Start the replica with gang PG information
+                # Start the replica with gang PG and gang context
                 scheduling_request = new_deployment_replica.start(
                     self._target_state.info,
                     assign_rank_callback=self._rank_manager.assign_rank,
                     gang_placement_group=gang_pg,
                     gang_bundle_index=bundle_index,
+                    gang_context=gang_context,
                 )
 
                 upscale.append(scheduling_request)
