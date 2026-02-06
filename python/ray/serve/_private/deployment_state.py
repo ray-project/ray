@@ -31,13 +31,13 @@ from ray.serve._private.common import (
     Duration,
     GangContext,
     GangPlacementGroupRequest,
-    GangPreparationResult,
+    GangReservationResult,
     ReplicaID,
     ReplicaState,
     RequestRoutingInfo,
     RunningReplicaInfo,
 )
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     MAX_PER_REPLICA_RETRY_COUNT,
@@ -583,7 +583,7 @@ class ActorReplicaWrapper:
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
         gang_placement_group: Optional[PlacementGroup] = None,
-        gang_bundle_index: Optional[int] = None,
+        gang_replica_rank: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
     ) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
@@ -595,14 +595,17 @@ class ActorReplicaWrapper:
             deployment_info: Configuration info for the deployment.
             assign_rank_callback: Callback to assign rank to the replica.
             gang_placement_group: Pre-created gang PG to schedule this replica on.
-            gang_bundle_index: Bundle index within the gang PG for this replica.
-            gang_context: Gang context for this replica (if part of a gang).
+            gang_replica_rank: Bundle index within the gang PG for this replica.
+            gang_context: Gang context for this replica.
+
+        Returns:
+            ReplicaSchedulingRequest: The scheduling request for the replica.
         """
         self._assign_rank_callback = assign_rank_callback
         self._actor_resources = deployment_info.replica_config.resource_dict
         self._ingress = deployment_info.ingress
         self._gang_placement_group = gang_placement_group
-        self._gang_bundle_index = gang_bundle_index
+        self._gang_replica_rank = gang_replica_rank
         self._gang_context = gang_context
         # it is currently not possible to create a placement group
         # with no resources (https://github.com/ray-project/ray/issues/20401)
@@ -722,7 +725,7 @@ class ActorReplicaWrapper:
             ),
             on_scheduled=self.on_scheduled,
             gang_placement_group=self._gang_placement_group,
-            gang_bundle_index=self._gang_bundle_index,
+            gang_replica_rank=self._gang_replica_rank,
         )
 
     def on_scheduled(
@@ -1391,7 +1394,7 @@ class DeploymentReplica:
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
         gang_placement_group: Optional[PlacementGroup] = None,
-        gang_bundle_index: Optional[int] = None,
+        gang_replica_rank: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
     ) -> ReplicaSchedulingRequest:
         """
@@ -1401,14 +1404,17 @@ class DeploymentReplica:
             deployment_info: Configuration info for the deployment.
             assign_rank_callback: Callback to assign rank to the replica.
             gang_placement_group: Pre-created gang PG to schedule this replica on.
-            gang_bundle_index: Bundle index within the gang PG for this replica.
-            gang_context: Gang context for this replica (if part of a gang).
+            gang_replica_rank: Bundle index within the gang PG for this replica.
+            gang_context: Gang context for this replica.
+
+        Returns:
+            ReplicaSchedulingRequest: The scheduling request for the replica.
         """
         replica_scheduling_request = self._actor.start(
             deployment_info,
             assign_rank_callback=assign_rank_callback,
             gang_placement_group=gang_placement_group,
-            gang_bundle_index=gang_bundle_index,
+            gang_replica_rank=gang_replica_rank,
             gang_context=gang_context,
         )
         self._start_time = time.time()
@@ -1455,7 +1461,7 @@ class DeploymentReplica:
 
     @property
     def gang_context(self) -> Optional[GangContext]:
-        """Get the gang context for this replica (if part of a gang)."""
+        """Get the gang context for this replica."""
         return self._actor.gang_context
 
     def check_started(
@@ -3031,20 +3037,26 @@ class DeploymentState:
     def scale_deployment_replicas(
         self,
         gang_placement_groups: Optional[
-            Dict[DeploymentID, GangPreparationResult]
+            Dict[DeploymentID, GangReservationResult]
         ] = None,
     ) -> Tuple[List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
         """Scale the given deployment to the number of replicas.
 
         Args:
-            gang_placement_groups: Pre-created gang placement groups from Step 3.5.
-                If this deployment uses gang scheduling and PGs were prepared,
+            gang_placement_groups: Reserved gang placement groups.
+                If this deployment uses gang scheduling and PGs were reserved,
                 replicas will be scheduled onto these PGs.
+
+        Returns:
+            Tuple[List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
+                The scheduling requests for the new replicas and the downscale request.
         """
 
-        assert (
-            self._target_state.target_num_replicas >= 0
-        ), "Target number of replicas must be greater than or equal to 0."
+        if self._target_state.target_num_replicas < 0:
+            raise ValueError(
+                f"Target number of replicas for {self._id} is {self._target_state.target_num_replicas}. "
+                "Target number of replicas must be greater than or equal to 0."
+            )
 
         upscale = []
         downscale = None
@@ -3112,33 +3124,32 @@ class DeploymentState:
     def _add_replicas_with_gang_scheduling(
         self,
         to_add: int,
-        gang_config,
-        gang_prep_result: Optional[GangPreparationResult],
+        gang_config: GangSchedulingConfig,
+        gang_reservation_result: Optional[GangReservationResult],
     ) -> List[ReplicaSchedulingRequest]:
-        """Add replicas using gang scheduling with pre-created placement groups.
+        """Add replicas using gang scheduling with reserved placement groups.
 
         Args:
             to_add: Number of replicas to add.
             gang_config: Gang scheduling configuration.
-            gang_prep_result: Result from Step 3.5 containing pre-created PGs.
+            gang_reservation_result: Gang reservation result with reserved PGs.
 
         Returns:
             List of ReplicaSchedulingRequests for the new replicas.
         """
         upscale = []
 
-        # PG prep was not attempted (e.g. replicas still stopping).
-        # Skip replica creation and retry in the next reconciliation loop.
-        if gang_prep_result is None:
+        if gang_reservation_result is None:
             logger.info(
-                f"Gang PG preparation was skipped for {self._id}. "
+                f"Gang placement group reservation was skipped for {self._id}. "
                 "Will retry in the next reconciliation loop."
             )
             return upscale
 
+        # TODO (jeffreywang): We should proceed with gangs that are created successfully.
         # PG prep was attempted but failed (resources insufficient).
-        if not gang_prep_result.success:
-            error_msg = gang_prep_result.error_message or "Unknown error"
+        if not gang_reservation_result.success:
+            error_msg = gang_reservation_result.error_message or "Unknown error"
             logger.error(
                 f"Gang scheduling failed for {self._id}: {error_msg}. "
                 "Skipping replica creation."
@@ -3156,9 +3167,9 @@ class DeploymentState:
             f"using gang scheduling (gang_size={gang_size}, num_gangs={num_gangs})."
         )
 
-        # Iterate through each gang and its bundles
+        # Iterate through each gang and its placement group
         for gang_index in range(num_gangs):
-            gang_pg = gang_prep_result.gang_pgs.get(gang_index)
+            gang_pg = gang_reservation_result.gang_pgs.get(gang_index)
             if gang_pg is None:
                 raise RuntimeError(
                     f"Gang PG not found for gang_index={gang_index}. "
@@ -3190,7 +3201,7 @@ class DeploymentState:
                     self._target_state.info,
                     assign_rank_callback=self._rank_manager.assign_rank,
                     gang_placement_group=gang_pg,
-                    gang_bundle_index=bundle_index,
+                    gang_replica_rank=bundle_index,
                     gang_context=gang_context,
                 )
 
@@ -4439,14 +4450,14 @@ class DeploymentStateManager:
 
     def _prepare_gang_placement_groups(
         self,
-    ) -> Dict[DeploymentID, GangPreparationResult]:
+    ) -> Dict[DeploymentID, GangReservationResult]:
         """Prepare gang placement groups for deployments that need them.
 
         Called in Step 3.5 before scale_deployment_replicas() to pre-create
         placement groups for gang-scheduled deployments.
 
         Returns:
-            Map of deployment_id to GangPreparationResult containing the
+            Map of deployment_id to GangReservationResult containing the
             created placement groups or error information.
         """
         gang_requests: Dict[DeploymentID, GangPlacementGroupRequest] = {}
