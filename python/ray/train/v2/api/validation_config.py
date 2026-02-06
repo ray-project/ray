@@ -44,15 +44,25 @@ class ValidationConfig:
         task_config: Default configuration for validation tasks.
             The fn_kwargs in this config can be overridden by
             ValidationTaskConfig passed to report().
+        ray_remote_kwargs: Keyword arguments to pass to `ray.remote()` for the validation task.
+            This can be used to specify resource requirements, number of retries, etc.
     """
 
     def __init__(
         self,
         fn: ValidationFn,
         task_config: Optional[ValidationTaskConfig] = None,
+        ray_remote_kwargs: Optional[Dict[str, Any]] = None,
     ):
         self.fn = fn
         if task_config is None:
             self.task_config = ValidationTaskConfig()
         else:
             self.task_config = task_config
+        # TODO: ray_remote_kwargs is not json-serializable because retry_exceptions
+        # can be a list of exception types. If ray core makes ray_remote_kwargs json-serializable
+        # we can move this to ValidationTaskConfig.
+        if ray_remote_kwargs is None:
+            self.ray_remote_kwargs = {}
+        else:
+            self.ray_remote_kwargs = ray_remote_kwargs

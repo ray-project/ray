@@ -53,8 +53,7 @@ apt-get update
 apt-get install -y \
   awscli nodejs build-essential python-is-python3 \
   python3-pip openjdk-8-jre wget jq \
-  "docker-ce-cli=5:28.5.2-1~ubuntu.22.04~jammy" \
-  azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
+  docker-ce-cli azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
 
 # Install uv
 curl -fsSL https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
@@ -135,6 +134,8 @@ set -euo pipefail
 } > ~/.bazelrc
 
 EOF
+
+ENV DOCKER_API_VERSION=1.43
 
 CMD ["echo", "ray forge"]
 

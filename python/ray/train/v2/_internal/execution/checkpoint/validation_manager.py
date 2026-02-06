@@ -54,7 +54,7 @@ def run_validation_fn(
     )
     if not isinstance(metrics_dict, dict):
         raise ValueError(
-            "The validate function must return a dictionary of metrics. "
+            "The validation function must return a dictionary of metrics. "
             f"Got {type(metrics_dict)} instead."
         )
     return metrics_dict
@@ -79,7 +79,22 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         # Finished validations that have yet to be processed
         self._finished_validations = OrderedDict()
 
-        # TODO: checkpoint/restore validation manager state
+        self._requeue_incomplete_validations()
+
+    def _requeue_incomplete_validations(self):
+        """Add _TrainingReports for incomplete validations to the queue."""
+        for checkpoint, (
+            training_result,
+            validation,
+        ) in self._checkpoint_manager.get_pending_training_results().items():
+            if validation:
+                self._training_report_queue.append(
+                    _TrainingReport(
+                        metrics=training_result.metrics,
+                        checkpoint=checkpoint,
+                        validation=validation,
+                    )
+                )
 
     def after_report(
         self,
@@ -131,7 +146,11 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         )
         for _ in range(num_validations_to_start):
             training_report = self._training_report_queue.popleft()
-            validate_task = run_validation_fn.remote(
+            # TODO: handle timeouts - ray.remote() does not have them
+            run_validation_fn_with_options = run_validation_fn.options(
+                **self._validation_config.ray_remote_kwargs,
+            )
+            validate_task = run_validation_fn_with_options.remote(
                 self._validation_config,
                 training_report.validation,
                 training_report.checkpoint,
@@ -152,7 +171,6 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         except (ray.exceptions.RayTaskError, ray.exceptions.TaskCancelledError):
             checkpoint_to_metrics[checkpoint] = {}
             logger.exception(f"Validation failed for checkpoint {checkpoint}")
-            # TODO: retry validations and time out appropriately.
             # TODO: track failed validations - see ed45912bb6ed435de06ac1cd58e9918e6825b4fe
         return checkpoint_to_metrics
 
