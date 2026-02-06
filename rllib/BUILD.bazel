@@ -665,7 +665,7 @@ py_test(
         "--num-env-runners=8",
         "--num-gpus-per-learner=1",
         "--num-learners=2",
-        "--stop-reward=-2.0",
+        "--stop-reward=-1",
     ],
     main = "examples/algorithms/impala/tictactoe_impala.py",
     tags = [

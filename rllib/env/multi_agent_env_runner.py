@@ -32,10 +32,13 @@ from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
     ENV_TO_MODULE_CONNECTOR,
+    EPISODE_AGENT_RETURN_MEAN,
+    EPISODE_AGENT_STEPS,
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
     EPISODE_LEN_MEAN,
     EPISODE_LEN_MIN,
+    EPISODE_MODULE_RETURN_MEAN,
     EPISODE_RETURN_MAX,
     EPISODE_RETURN_MEAN,
     EPISODE_RETURN_MIN,
@@ -1020,10 +1023,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 **(
                     {
                         # Per-agent returns.
-                        "agent_episode_returns_mean": agents,
+                        EPISODE_AGENT_RETURN_MEAN: agents,
+                        # Per-agent steps.
+                        EPISODE_AGENT_STEPS: agent_steps,
                         # Per-RLModule returns.
-                        "module_episode_returns_mean": modules,
-                        "agent_steps": agent_steps,
+                        EPISODE_MODULE_RETURN_MEAN: modules,
                     }
                     if agents is not None
                     else {}

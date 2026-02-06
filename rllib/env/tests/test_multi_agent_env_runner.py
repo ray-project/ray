@@ -4,6 +4,10 @@ import ray
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.utils.metrics import (
+    EPISODE_AGENT_RETURN_MEAN,
+    EPISODE_MODULE_RETURN_MEAN,
+)
 from ray.rllib.utils.test_utils import check
 
 
@@ -142,14 +146,12 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
         # Collect metrics from that episode
         metrics = env_runner.get_metrics()
         # Expected singular policy name when setting num_agents != num_policies and num_policies = 1
-        assert "p0" in metrics["module_episode_returns_mean"].keys()
+        assert "p0" in metrics[EPISODE_MODULE_RETURN_MEAN].keys()
         # Collect episode return, module return, and sum of agent returns
         episode_return_mean = metrics["episode_return_mean"].reduce()
-        module_episode_returns_mean = metrics["module_episode_returns_mean"][
-            "p0"
-        ].reduce()
+        module_episode_returns_mean = metrics[EPISODE_MODULE_RETURN_MEAN]["p0"].reduce()
         sum_agent_episode_returns_mean = sum(
-            value.reduce() for value in metrics["agent_episode_returns_mean"].values()
+            value.reduce() for value in metrics[EPISODE_AGENT_RETURN_MEAN].values()
         )
         # Expect episode_return_mean == module_return_mean == sum_agent_returns_mean
         assert (

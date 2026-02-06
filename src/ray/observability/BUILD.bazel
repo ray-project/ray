@@ -8,9 +8,14 @@ ray_cc_library(
     hdrs = [
         "open_telemetry_metric_recorder.h",
     ],
+    # Enable mTLS support for OpenTelemetry OTLP gRPC exporter.
+    # This must match the define used when building io_opentelemetry_cpp.
+    # See https://github.com/ray-project/ray/issues/59968
+    copts = ["-DENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW"],
     deps = [
         "//src/ray/common:constants",
         "//src/ray/common:ray_config",
+        "//src/ray/rpc:common",
         "//src/ray/rpc/authentication:authentication_mode",
         "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:logging",
