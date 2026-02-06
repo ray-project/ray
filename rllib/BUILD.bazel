@@ -665,7 +665,7 @@ py_test(
         "--num-env-runners=8",
         "--num-gpus-per-learner=1",
         "--num-learners=2",
-        "--stop-reward=-2.0",
+        "--stop-reward=-1",
     ],
     main = "examples/algorithms/impala/tictactoe_impala.py",
     tags = [
@@ -1861,17 +1861,6 @@ py_test(
     name = "algorithms/tests/test_dependency_torch",
     size = "small",
     srcs = ["algorithms/tests/test_dependency_torch.py"],
-    tags = [
-        "algorithms",
-        "team:rllib",
-    ],
-    deps = [":conftest"],
-)
-
-py_test(
-    name = "algorithms/tests/test_local",
-    size = "small",
-    srcs = ["algorithms/tests/test_local.py"],
     tags = [
         "algorithms",
         "team:rllib",

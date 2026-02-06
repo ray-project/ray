@@ -109,6 +109,7 @@ class MockReplicaActorWrapper:
         self._docs_path = None
         self._rank = replica_rank_context.get(replica_id.unique_id, None)
         self._assign_rank_callback = None
+        self._ingress = False
 
     @property
     def is_cross_language(self) -> bool:
@@ -280,10 +281,11 @@ class MockReplicaActorWrapper:
         replica_rank_context[self._replica_id.unique_id] = rank
         return updating
 
-    def recover(self):
+    def recover(self, ingress: bool = False):
         if self.replica_id in dead_replicas_context:
             return False
 
+        self._ingress = ingress
         self.recovering = True
         self.started = False
         self._rank = replica_rank_context.get(self._replica_id.unique_id, None)
