@@ -5,8 +5,9 @@ avoiding dependency resolution issues with vLLM and torch.
 """
 
 import re
-import pytest
 from pathlib import Path
+
+import pytest
 
 
 class TestIngressSourceCode:
