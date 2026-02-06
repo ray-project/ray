@@ -1560,18 +1560,225 @@ def get_total_obj_store_mem_on_node() -> int:
     return total_resources_per_node[node_id]["object_store_memory"]
 
 
+class _MemrayProfiler:
+    """Memory profiler using memray for accurate allocation tracking.
+
+    Memray hooks into the memory allocator to track every allocation and
+    deallocation, providing accurate peak memory measurements.
+
+    Requires memray to be installed (part of ray[observability]).
+    Only works on Linux and macOS.
+    """
+
+    def __init__(self, poll_interval_s: float):
+        self._poll_interval_s = poll_interval_s
+        self._tracker = None
+        self._temp_file_path: Optional[str] = None
+        self._peak: Optional[int] = None
+
+    def __repr__(self):
+        return f"_MemrayProfiler(poll_interval_s={self._poll_interval_s})"
+
+    def __enter__(self):
+        self._start_tracking()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._stop_tracking()
+
+    def estimate_max_uss(self) -> Optional[int]:
+        """Get peak memory, stopping tracking to read the capture file."""
+        self._stop_tracking()
+        return self._peak
+
+    def reset(self):
+        """Reset and start fresh tracking for the next period."""
+        self._stop_tracking()
+        self._peak = None
+        self._start_tracking()
+
+    def _start_tracking(self):
+        """Start memray tracking to a temporary file."""
+        import tempfile
+
+        try:
+            import memray
+        except ImportError:
+            logger.debug("memray not available")
+            return
+
+        try:
+            # Use uuid for unique filename - memray creates the file itself
+            temp_dir = tempfile.gettempdir()
+            self._temp_file_path = os.path.join(
+                temp_dir, f"ray_memray_{uuid.uuid4().hex}.bin"
+            )
+
+            memory_interval_ms = int(self._poll_interval_s * 1000)
+
+            # AGGREGATED_ALLOCATIONS has lower overhead while tracking peak
+            self._tracker = memray.Tracker(
+                self._temp_file_path,
+                file_format=memray.FileFormat.AGGREGATED_ALLOCATIONS,
+                memory_interval_ms=memory_interval_ms,
+            )
+            self._tracker.__enter__()
+        except Exception as e:
+            logger.debug(f"Failed to start memray tracking: {e}")
+            self._cleanup()
+
+    def _stop_tracking(self):
+        """Stop tracking and read peak memory from the capture file."""
+        if self._tracker is None:
+            return
+
+        self._tracker.__exit__(None, None, None)
+        self._tracker = None
+
+        # Read peak from capture file
+        if self._temp_file_path and os.path.exists(self._temp_file_path):
+            try:
+                from memray import FileReader
+
+                reader = FileReader(self._temp_file_path)
+                peak = reader.metadata.peak_memory
+                # Track max across multiple stop/start cycles
+                if self._peak is None:
+                    self._peak = peak
+                elif peak is not None:
+                    self._peak = max(self._peak, peak)
+            except Exception as e:
+                logger.debug(f"Failed to read memray peak: {e}")
+
+        self._cleanup()
+
+    def _cleanup(self):
+        """Clean up temporary file."""
+        if self._temp_file_path and os.path.exists(self._temp_file_path):
+            try:
+                os.unlink(self._temp_file_path)
+            except OSError:
+                pass
+        self._temp_file_path = None
+        self._tracker = None
+
+    @staticmethod
+    @functools.cache
+    def is_available() -> bool:
+        """Check if memray is available on this platform."""
+        try:
+            import memray  # noqa: F401
+
+            return platform.system() in ("Linux", "Darwin")
+        except ImportError:
+            return False
+
+
+class _PsutilProfiler:
+    """Memory profiler using psutil for USS polling.
+
+    Polls memory_full_info().uss at regular intervals to track peak memory.
+    Uses /proc/pid/smaps for accurate USS on Linux.
+
+    Fallback when memray is unavailable. Only works on Linux.
+    """
+
+    def __init__(self, poll_interval_s: float):
+        self._poll_interval_s = poll_interval_s
+        self._process = psutil.Process(os.getpid())
+        self._peak: Optional[int] = None
+        self._lock = threading.Lock()
+        self._thread: Optional[threading.Thread] = None
+        self._stop_event: Optional[threading.Event] = None
+
+    def __repr__(self):
+        return f"_PsutilProfiler(poll_interval_s={self._poll_interval_s})"
+
+    def __enter__(self):
+        self._start_polling()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._stop_polling()
+
+    def estimate_max_uss(self) -> Optional[int]:
+        """Get peak USS, taking a fresh sample."""
+        self._sample()
+        with self._lock:
+            return self._peak
+
+    def reset(self):
+        """Reset peak for the next measurement period."""
+        with self._lock:
+            self._peak = None
+
+    def _sample(self):
+        """Take a memory sample and update peak."""
+        try:
+            uss = self._process.memory_full_info().uss
+            with self._lock:
+                if self._peak is None:
+                    self._peak = uss
+                else:
+                    self._peak = max(self._peak, uss)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
+    def _start_polling(self):
+        """Start background polling thread."""
+        self._stop_event = threading.Event()
+
+        def poll():
+            while not self._stop_event.is_set():
+                self._sample()
+                self._stop_event.wait(self._poll_interval_s)
+
+        self._thread = threading.Thread(target=poll, daemon=True)
+        self._thread.start()
+
+    def _stop_polling(self):
+        """Stop the polling thread."""
+        if self._stop_event:
+            self._stop_event.set()
+        if self._thread:
+            self._thread.join()
+        self._stop_event = None
+        self._thread = None
+
+    @staticmethod
+    @functools.cache
+    def is_available() -> bool:
+        """Check if psutil USS tracking is available (Linux only)."""
+        return platform.system() == "Linux"
+
+
+class _NoOpProfiler:
+    """No-op profiler when tracking is disabled or unavailable."""
+
+    def __init__(self, poll_interval_s: Optional[float]):
+        self._poll_interval_s = poll_interval_s
+
+    def __repr__(self):
+        return f"_NoOpProfiler(poll_interval_s={self._poll_interval_s})"
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def estimate_max_uss(self) -> Optional[int]:
+        return None
+
+    def reset(self):
+        pass
+
+
 class MemoryProfiler:
-    """A context manager that polls the USS of the current process.
+    """A context manager that tracks peak memory usage.
 
-    This class approximates the max USS by polling memory and subtracting the amount
-    of shared memory from the resident set size (RSS). It's not a
-    perfect estimate (it can underestimate, e.g., if you use Torch tensors), but
-    estimating the USS is much cheaper than computing the actual USS.
-
-    .. warning::
-
-        This class only works with Linux. If you use it on another platform,
-        `estimate_max_uss` always returns ``None``.
+    Uses memray (if available) for accurate allocation tracking, otherwise
+    falls back to psutil USS polling on Linux.
 
     Example:
 
@@ -1582,102 +1789,55 @@ class MemoryProfiler:
                     ...  # Your code here
                     print(f"Max USS: {profiler.estimate_max_uss()}")
                     profiler.reset()
+
+    To get accurate tracking, install memray::
+
+        pip install ray[observability]
+        # or: pip install memray
     """
 
     def __init__(self, poll_interval_s: Optional[float]):
         """
-
         Args:
-            poll_interval_s: The interval to poll the USS of the process. If `None`,
-                this class won't poll the USS.
+            poll_interval_s: Polling/tracking interval in seconds.
+                If ``None``, memory tracking is disabled.
         """
         self._poll_interval_s = poll_interval_s
+        self._profiler = self._create_profiler()
 
-        self._process = psutil.Process(os.getpid())
-        self._max_uss = None
-        self._max_uss_lock = threading.Lock()
+    def _create_profiler(self):
+        """Select the best available profiler implementation."""
+        if self._poll_interval_s is None:
+            return _NoOpProfiler(None)
 
-        self._uss_poll_thread = None
-        self._stop_uss_poll_event = None
+        if _MemrayProfiler.is_available():
+            return _MemrayProfiler(self._poll_interval_s)
+        elif _PsutilProfiler.is_available():
+            return _PsutilProfiler(self._poll_interval_s)
+        else:
+            return _NoOpProfiler(self._poll_interval_s)
 
     def __repr__(self):
-        return f"MemoryProfiler(poll_interval_s={self._poll_interval_s})"
+        return f"MemoryProfiler(backend={self._profiler.__class__.__name__})"
 
     def __enter__(self):
-        if self._can_estimate_uss() and self._poll_interval_s is not None:
-            (
-                self._uss_poll_thread,
-                self._stop_uss_poll_event,
-            ) = self._start_uss_poll_thread()
-
+        self._profiler.__enter__()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._uss_poll_thread is not None:
-            self._stop_uss_poll_thread()
+        self._profiler.__exit__(exc_type, exc_val, exc_tb)
 
     def estimate_max_uss(self) -> Optional[int]:
-        """Get an estimate of the max USS of the current process.
+        """Get peak memory usage since the last reset.
 
         Returns:
-            An estimate of the max USS of the process in bytes, or ``None`` if an
-            estimate isn't available.
+            Peak memory in bytes, or ``None`` if tracking is disabled.
         """
-        if not self._can_estimate_uss():
-            assert self._max_uss is None
-            return None
-
-        with self._max_uss_lock:
-            if self._max_uss is None:
-                self._max_uss = self._estimate_uss()
-            else:
-                self._max_uss = max(self._max_uss, self._estimate_uss())
-
-        assert self._max_uss is not None
-        return self._max_uss
+        return self._profiler.estimate_max_uss()
 
     def reset(self):
-        with self._max_uss_lock:
-            self._max_uss = None
-
-    def _start_uss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
-        assert self._poll_interval_s is not None
-        assert self._can_estimate_uss()
-
-        stop_event = threading.Event()
-
-        def poll_uss():
-            while not stop_event.is_set():
-                with self._max_uss_lock:
-                    if self._max_uss is None:
-                        self._max_uss = self._estimate_uss()
-                    else:
-                        self._max_uss = max(self._max_uss, self._estimate_uss())
-                stop_event.wait(self._poll_interval_s)
-
-        thread = threading.Thread(target=poll_uss, daemon=True)
-        thread.start()
-
-        return thread, stop_event
-
-    def _stop_uss_poll_thread(self):
-        if self._stop_uss_poll_event is not None:
-            self._stop_uss_poll_event.set()
-            self._uss_poll_thread.join()
-
-    def _estimate_uss(self) -> int:
-        assert self._can_estimate_uss()
-        memory_info = self._process.memory_info()
-        # Estimate the USS (the amount of memory that'd be free if we killed the
-        # process right now) as the difference between the RSS (total physical memory)
-        # and amount of shared physical memory.
-        return memory_info.rss - memory_info.shared
-
-    @staticmethod
-    @functools.cache
-    def _can_estimate_uss() -> bool:
-        # MacOS and Windows don't have the 'shared' attribute of `memory_info()`.
-        return platform.system() == "Linux"
+        """Reset the peak tracker for the next measurement period."""
+        self._profiler.reset()
 
 
 def unzip(data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
