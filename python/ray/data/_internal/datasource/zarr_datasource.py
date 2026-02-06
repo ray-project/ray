@@ -1,7 +1,7 @@
 """Zarr datasource for Ray Data."""
 
 import itertools
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
@@ -168,7 +168,9 @@ def _get_chunk_path(
     return chunk_part
 
 
-def _get_arrays(store) -> List[Tuple[str, "zarr.Array"]]:
+def _get_arrays(
+    store: Union["zarr.Array", "zarr.Group"]
+) -> List[Tuple[str, "zarr.Array"]]:
     """Recursively get all arrays from a zarr store."""
     import zarr
 
@@ -185,7 +187,7 @@ def _get_arrays(store) -> List[Tuple[str, "zarr.Array"]]:
     return arrays
 
 
-def _get_chunk_indices(arr) -> List[Tuple[int, ...]]:
+def _get_chunk_indices(arr: "zarr.Array") -> List[Tuple[int, ...]]:
     """Get all chunk indices for an array."""
     chunks_per_dim = [(s + c - 1) // c for s, c in zip(arr.shape, arr.chunks)]
     return list(itertools.product(*[range(n) for n in chunks_per_dim]))
@@ -200,7 +202,7 @@ def _create_read_fn(
     shape: Tuple[int, ...],
     metadata_bytes: Dict[str, bytes],
     filesystem: "pafs.FileSystem",
-):
+) -> Callable[[], Iterable[Block]]:
     def read_fn() -> Iterable[Block]:
         import zarr
 
