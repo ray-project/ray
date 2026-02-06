@@ -886,8 +886,8 @@ class AutoscalingStatus(str, Enum):
 class DeploymentSnapshot(BaseModel):
     snapshot_type: str = "deployment"
     timestamp_str: str
-    app: str
-    deployment: str
+    app_name: str
+    deployment_name: str
     current_replicas: int
     target_replicas: int
     min_replicas: Optional[int]
@@ -926,8 +926,8 @@ class DeploymentSnapshot(BaseModel):
         if not isinstance(other, DeploymentSnapshot):
             return False
         return (
-            self.app == other.app
-            and self.deployment == other.deployment
+            self.app_name == other.app_name
+            and self.deployment_name == other.deployment_name
             and self.target_replicas == other.target_replicas
             and self.min_replicas == other.min_replicas
             and self.max_replicas == other.max_replicas
@@ -940,7 +940,7 @@ class ApplicationSnapshot(BaseModel):
 
     snapshot_type: str = "application"
     timestamp_str: str
-    app: str
+    app_name: str
     num_deployments: int
     total_current_replicas: int
     total_target_replicas: int
@@ -957,10 +957,12 @@ class ApplicationSnapshot(BaseModel):
         if not isinstance(other, ApplicationSnapshot):
             return False
         return (
-            self.app == other.app
+            self.app_name == other.app_name
             and self.total_target_replicas == other.total_target_replicas
             and self.scaling_status == other.scaling_status
             and self.num_deployments == other.num_deployments
+            and self.errors == other.errors
+            and self.policy_name == other.policy_name
         )
 
 
