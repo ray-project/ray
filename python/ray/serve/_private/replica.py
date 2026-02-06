@@ -2150,6 +2150,16 @@ class Replica(ReplicaBase):
                     service_method, *args, **kwargs
                 )
 
+        elif streaming_type == gRPCStreamingType.STREAM_UNARY:
+
+            async def handler(*args, **kwargs):
+                raise NotImplementedError("stream_unary not implemented.")
+
+        elif streaming_type == gRPCStreamingType.STREAM_STREAM:
+
+            async def handler(*args, **kwargs):
+                raise NotImplementedError("stream_stream not implemented.")
+
         else:
             raise ValueError(f"Unsupported streaming type: {streaming_type}")
 

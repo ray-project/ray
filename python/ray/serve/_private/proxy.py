@@ -643,9 +643,23 @@ class gRPCProxy(GenericProxy):
 
             set_grpc_code_and_details(context, status)
 
+        async def stream_unary(
+            request_proto_iterator: Any,
+            context: grpc._cython.cygrpc._ServicerContext,
+        ) -> bytes:
+            raise NotImplementedError("stream_unary not implemented.")
+
+        async def stream_stream(
+            request_proto_iterator: Any,
+            context: grpc._cython.cygrpc._ServicerContext,
+        ) -> Generator[bytes, None, None]:
+            raise NotImplementedError("stream_stream not implemented.")
+
         handler_map = {
             gRPCStreamingType.UNARY_UNARY: unary_unary,
             gRPCStreamingType.UNARY_STREAM: unary_stream,
+            gRPCStreamingType.STREAM_UNARY: stream_unary,
+            gRPCStreamingType.STREAM_STREAM: stream_stream,
         }
         return handler_map[streaming_type]
 
