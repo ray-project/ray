@@ -233,7 +233,9 @@ def _build_partition_delete_predicate(
                 # Handle "NaN" string for NaN float partitions
                 if val == "NaN":
                     # Delta Lake stores NaN as string "NaN" in partition metadata
-                    ands.append(f"{quote_identifier(col)} = 'NaN'")
+                    # SQL NaN comparison: NaN != NaN is true (IEEE 754), so use col != col
+                    # This correctly matches NaN values in float columns
+                    ands.append(f"{quote_identifier(col)} != {quote_identifier(col)}")
                 else:
                     # format_sql_value handles string conversion and quoting
                     ands.append(f"{quote_identifier(col)} = {format_sql_value(val)}")

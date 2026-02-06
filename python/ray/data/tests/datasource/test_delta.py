@@ -748,6 +748,16 @@ def test_build_partition_delete_predicate_unit():
     # Should have both columns with IS NULL
     assert pred.count("IS NULL") == 2 or pred.lower().count("is null") == 2
 
+    # Test with NaN partition value (critical: must use != comparison, not = 'NaN')
+    action9 = Mock()
+    action9.partition_values = {"value": "NaN"}
+    pred = _build_partition_delete_predicate([action9], ["value"])
+    assert pred is not None
+    assert "value" in pred
+    # Should use != comparison for NaN (col != col), not string comparison
+    assert "!=" in pred
+    assert "'NaN'" not in pred  # Should not use string literal
+
 
 if __name__ == "__main__":
     import sys
