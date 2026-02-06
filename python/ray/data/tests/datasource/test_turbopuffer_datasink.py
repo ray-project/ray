@@ -22,8 +22,16 @@ from unittest.mock import MagicMock, patch
 
 import pyarrow as pa
 import pytest
+from packaging.version import parse as parse_version
 
 from ray.data._internal.datasource.turbopuffer_datasink import TurbopufferDatasink
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+
+# Skip all tests if PyArrow version is less than 19.0
+pytestmark = pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("19.0.0"),
+    reason="TurbopufferDatasink tests require PyArrow >= 19.0",
+)
 
 # =============================================================================
 # Fixtures
