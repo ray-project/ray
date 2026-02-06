@@ -23,6 +23,7 @@ from ray.data.expressions import (
     Expr,
     LiteralExpr,
     Operation,
+    RenameExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
@@ -659,6 +660,17 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
             A Block with the data from the inner expression.
         """
         # Evaluate the inner expression
+        return self.visit(expr.expr)
+
+    def visit_rename(self, expr: RenameExpr) -> Union[BlockColumn, ScalarType]:
+        """Visit a rename expression and return the renamed result.
+
+        Args:
+            expr: The rename expression.
+
+        Returns:
+            A Block with the data from the inner expression.
+        """
         return self.visit(expr.expr)
 
     def visit_star(self, expr: StarExpr) -> Union[BlockColumn, ScalarType]:
