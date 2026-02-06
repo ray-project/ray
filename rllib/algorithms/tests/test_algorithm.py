@@ -26,8 +26,6 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
     LEARNER_RESULTS,
-    TIMERS,
-    TRAINING_ITERATION_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.tune import register_env
@@ -648,8 +646,16 @@ class TestAlgorithm(unittest.TestCase):
         algo = config.build()
         metrics = algo.train()
         # This can only be true if we do not execute training and evaluation in sequence
-        assert metrics[TIMERS][TRAINING_ITERATION_TIMER] < SECONDS_TO_SLEEP * 2
+        assert metrics["time_this_iter_s"] < SECONDS_TO_SLEEP * 2
+        assert metrics["time_this_iter_s"] > SECONDS_TO_SLEEP
         algo.stop()
+
+        config.evaluation(evaluation_parallel_to_training=False)
+        algo_2 = config.build()
+        metrics_2 = algo_2.train()
+        # This must be true if we execute training and evaluation in sequence
+        assert metrics_2["time_this_iter_s"] > SECONDS_TO_SLEEP * 2
+        algo_2.stop()
 
 
 if __name__ == "__main__":
