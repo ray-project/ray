@@ -165,6 +165,20 @@ BATCH_UTILIZATION_BUCKETS_PERCENT = parse_latency_buckets(
     DEFAULT_BATCH_UTILIZATION_BUCKETS_PERCENT,
 )
 
+#: Replica utilization metric configuration.
+#: Rolling window duration for calculating replica utilization (in seconds).
+RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S = float(
+    get_env_str("RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S", "600")
+)
+#: Interval for reporting replica utilization metric (in seconds).
+RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S = float(
+    get_env_str("RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S", "10")
+)
+#: Number of buckets for the rolling window (determines granularity).
+RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS = int(
+    get_env_str("RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS", "60")
+)
+
 #: Histogram buckets for actual batch size.
 DEFAULT_BATCH_SIZE_BUCKETS = [
     1,
