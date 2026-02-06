@@ -2577,37 +2577,30 @@ TEST_F(ClusterResourceSchedulerTest, NodeAvailableSnapshotReentrantTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, NodeAvailableSnapshotDrainingTest) {
-  // Test that draining status is still checked even with snapshot
-  
+  // Snapshot includes draining; Raylet is single-threaded so draining cannot
+  // change mid-round. Test that a node marked draining before the round is
+  // snapshotted as unavailable.
   instrumented_io_context io_context;
   auto local_node_id = scheduling::NodeID(0);
-  
-  // Node is alive according to is_node_available_fn_
-  auto is_node_available_fn = [](scheduling::NodeID node_id) {
-    return true;
-  };
-  
+
+  auto is_node_available_fn = [](scheduling::NodeID node_id) { return true; };
+
   ClusterResourceScheduler resource_scheduler(
       io_context, local_node_id, {{"CPU", 8}}, is_node_available_fn, fake_gauge_);
-  
-  // Add a remote node
+
   scheduling::NodeID remote_node(1);
   NodeResources node_resources = CreateNodeResources({{ResourceID::CPU(), 8.0}});
   AddOrUpdateNode(resource_scheduler, remote_node, node_resources);
-  
-  // Begin scheduling round - node should be available in snapshot
+
+  // Mark node as draining before the scheduling round
+  resource_scheduler.GetClusterResourceManager().SetNodeDraining(
+      remote_node, true, 0);
+
   {
     ClusterResourceScheduler::SchedulingRoundGuard guard(resource_scheduler);
-    ASSERT_TRUE(NodeAvailable(resource_scheduler, remote_node)) 
-        << "Node should be available initially";
-    
-    // Mark node as draining
-    resource_scheduler.GetClusterResourceManager().SetNodeDraining(
-        remote_node, true, 0);
-    
-    // Even though snapshot says node is alive, draining check should make it unavailable
-    ASSERT_FALSE(NodeAvailable(resource_scheduler, remote_node)) 
-        << "Node should be unavailable when draining, even with snapshot";
+    // Snapshot was taken with draining=true, so node is unavailable for the round
+    ASSERT_FALSE(NodeAvailable(resource_scheduler, remote_node))
+        << "Node should be snapshotted as unavailable when draining";
   }
 }
 

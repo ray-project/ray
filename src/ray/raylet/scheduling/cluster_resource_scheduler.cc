@@ -107,11 +107,6 @@ bool ClusterResourceScheduler::NodeAvailable(scheduling::NodeID node_id) const {
     return false;
   }
 
-  // Draining status is never cached and always checked live
-  if (cluster_resource_manager_->IsNodeDraining(node_id)) {
-    return false;
-  }
-
   if (!node_available_snapshot_.empty()) {
     auto it = node_available_snapshot_.find(node_id);
     if (it != node_available_snapshot_.end()) {
@@ -119,7 +114,13 @@ bool ClusterResourceScheduler::NodeAvailable(scheduling::NodeID node_id) const {
     }
   }
 
-  return NodeAvailableImpl(node_id);
+  // Not in a round or node not in snapshot (e.g. newly added): full live check.
+  return IsRemoteNodeAvailable(node_id);
+}
+
+bool ClusterResourceScheduler::IsRemoteNodeAvailable(scheduling::NodeID node_id) const {
+  return !cluster_resource_manager_->IsNodeDraining(node_id) &&
+         NodeAvailableImpl(node_id);
 }
 
 bool ClusterResourceScheduler::NodeAvailableImpl(scheduling::NodeID node_id) const {
@@ -140,7 +141,7 @@ void ClusterResourceScheduler::BeginSchedulingRound() {
     if (node_id == local_node_id_) {
       continue;
     }
-    node_available_snapshot_[node_id] = NodeAvailableImpl(node_id);
+    node_available_snapshot_[node_id] = IsRemoteNodeAvailable(node_id);
   }
 }
 

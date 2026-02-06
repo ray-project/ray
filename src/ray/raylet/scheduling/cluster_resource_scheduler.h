@@ -174,6 +174,10 @@ class ClusterResourceScheduler {
 
   bool NodeAvailable(scheduling::NodeID node_id) const;
 
+  /// Full availability for a remote node (liveness + not draining), no snapshot.
+  /// Used when building the snapshot and in NodeAvailable() fallback.
+  bool IsRemoteNodeAvailable(scheduling::NodeID node_id) const;
+
   /// Check if a node is available without using the snapshot.
   /// This is the actual implementation that queries is_node_available_fn_.
   bool NodeAvailableImpl(scheduling::NodeID node_id) const;
