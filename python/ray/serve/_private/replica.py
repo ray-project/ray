@@ -2034,6 +2034,8 @@ class Replica(ReplicaBase):
                     except StopAsyncIteration:
                         pass
                 except BaseException as e:
+                    # For gRPC requests, wrap exception with user-set status code
+                    e = self._maybe_wrap_grpc_exception(e, request_metadata)
                     status = get_grpc_response_status(
                         e,
                         self._grpc_options.request_timeout_s,
@@ -2309,38 +2311,23 @@ class Replica(ReplicaBase):
                 raise asyncio.CancelledError
 
     async def perform_graceful_shutdown(self):
-        if not RAY_SERVE_ENABLE_DIRECT_INGRESS or not self._ingress:
-            # if direct ingress is not enabled or the replica is not an ingress replica,
-            # we can just call the super method to perform the graceful shutdown.
-            await super().perform_graceful_shutdown()
-            return
-
-        # set the shutting down flag to True to signal ALBs with failing health checks
-        # to stop sending traffic to this replica.
-        self._shutting_down = True
-
-        # If the replica was never initialized it never served traffic, so we
-        # can skip the wait period.
-        if self._user_callable_initialized:
-            # in order to gracefully shutdown the replica, we need to wait for the
-            # requests to drain and for PROXY_MIN_DRAINING_PERIOD_S to pass.
-            # this is necessary because we want to give ALB time to update its
-            # target group to remove the replica from it and to mark this replica
-            # as unhealthy.
-            # TODO(abrar): the code below assumes that once ALB marks a replica target
-            # as unhealthy, it will not send traffic to it. This is not true because
-            # ALB can send traffic to a replica if all targets are unhealthy.
-            # The correct way to handle is this we start the cooldown period since
-            # the last request finished and wait for the cooldown period to pass.
+        if (
+            RAY_SERVE_ENABLE_DIRECT_INGRESS
+            and self._ingress
+            and self._user_callable_initialized
+        ):
+            # In direct ingress mode, we need to wait at least
+            # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give external load
+            # balancers (e.g., ALB) time to deregister the replica, in addition to
+            # waiting for requests to drain.
             await asyncio.gather(
                 asyncio.sleep(RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S),
-                self._drain_ongoing_requests(),
+                super().perform_graceful_shutdown(),
             )
-            logger.info(
-                f"Replica {self._replica_id} successfully drained ongoing requests."
-            )
+        else:
+            await super().perform_graceful_shutdown()
 
-        await self.shutdown()
+        # Cancel direct ingress HTTP/gRPC server tasks if they exist.
         if self._direct_ingress_http_server_task:
             self._direct_ingress_http_server_task.cancel()
         if self._direct_ingress_grpc_server_task:

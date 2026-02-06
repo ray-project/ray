@@ -84,15 +84,15 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
 
         super().__init__(left_input_op, right_input_op, num_outputs=num_partitions)
 
-        self._left_key_columns = left_key_columns
-        self._right_key_columns = right_key_columns
-        self._join_type = join_type_enum
+        self.left_key_columns = left_key_columns
+        self.right_key_columns = right_key_columns
+        self.join_type = join_type_enum
 
-        self._left_columns_suffix = left_columns_suffix
-        self._right_columns_suffix = right_columns_suffix
+        self.left_columns_suffix = left_columns_suffix
+        self.right_columns_suffix = right_columns_suffix
 
-        self._partition_size_hint = partition_size_hint
-        self._aggregator_ray_remote_args = aggregator_ray_remote_args
+        self.partition_size_hint = partition_size_hint
+        self.aggregator_ray_remote_args = aggregator_ray_remote_args
 
     @staticmethod
     def _validate_schemas(
@@ -171,8 +171,8 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         # Get column sets for each side
         left_columns = set(left_schema.names)
         right_columns = set(right_schema.names)
-        left_join_keys = set(self._left_key_columns)
-        right_join_keys = set(self._right_key_columns)
+        left_join_keys = set(self.left_key_columns)
+        right_join_keys = set(self.right_key_columns)
 
         # Get pushdown rules for this join type
         can_push_left, can_push_right = self._get_pushdown_rules()
@@ -212,7 +212,7 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             JoinType.RIGHT_ANTI: (False, True),
             JoinType.FULL_OUTER: (False, False),
         }
-        return pushdown_rules.get(self._join_type, (False, False))
+        return pushdown_rules.get(self.join_type, (False, False))
 
     def _get_referenced_columns(self, expr: "Expr") -> set[str]:
         """Extract all column names referenced in an expression."""

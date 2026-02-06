@@ -37,6 +37,7 @@ import contextvars
 import concurrent.futures
 import collections
 
+from dataclasses import dataclass
 from libc.stdint cimport (
     int32_t,
     int64_t,
@@ -432,8 +433,12 @@ cdef increase_recursion_limit():
     This results in the Python interpreter thinking there's a lot of recursion depth,
     so we need to increase the limit when we start getting close.
 
-    0x30C0000 is Python 3.12
-        On 3.12, when recursion depth increases, c_recursion_remaining will decrease,
+    0x30E0000 is Python 3.14+
+        On 3.14+, when recursion depth increases, py_recursion_remaining will decrease
+        (renamed from c_recursion_remaining in 3.12-3.13).
+        Increasing it by 1000 when it drops below 1000 will keep us from raising the RecursionError.
+    0x30C0000 is Python 3.12-3.13
+        On 3.12-3.13, when recursion depth increases, c_recursion_remaining will decrease,
         and that's what's actually compared to raise a RecursionError. So increasing
         it by 1000 when it drops below 1000 will keep us from raising the RecursionError.
         https://github.com/python/cpython/blob/bfb9e2f4a4e690099ec2ec53c08b90f4d64fde36/Python/pystate.c#L1353
@@ -448,7 +453,17 @@ cdef increase_recursion_limit():
     cdef:
         cdef extern from *:
             """
-#if PY_VERSION_HEX >= 0x30C0000
+#if PY_VERSION_HEX >= 0x30E0000
+    // Python 3.14+ renamed c_recursion_remaining to py_recursion_remaining
+    bool IncreaseRecursionLimitIfNeeded(PyThreadState *x) {
+        if (x->py_recursion_remaining < 1000) {
+            x->py_recursion_remaining += 1000;
+            return true;
+        }
+        return false;
+    }
+#elif PY_VERSION_HEX >= 0x30C0000
+    // Python 3.12-3.13 use c_recursion_remaining
     bool IncreaseRecursionLimitIfNeeded(PyThreadState *x) {
         if (x->c_recursion_remaining < 1000) {
             x->c_recursion_remaining += 1000;
@@ -1121,6 +1136,12 @@ cdef class StreamingGeneratorExecutionContext:
 
         return self
 
+
+@dataclass(frozen=True)
+class StreamingGeneratorStats:
+    object_creation_dur_s: float
+
+
 cdef report_streaming_generator_output(
     StreamingGeneratorExecutionContext context,
     output: object,
@@ -1141,6 +1162,8 @@ cdef report_streaming_generator_output(
     cdef:
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
+
+    start = time.perf_counter()
 
     # Report the intermediate result if there was no error.
     create_generator_return_obj(
@@ -1168,6 +1191,8 @@ cdef report_streaming_generator_output(
             return_obj.first,
             is_plasma_object(return_obj.second)))
 
+    serialization_dur_s = time.perf_counter() - start
+
     with nogil:
         check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
             return_obj,
@@ -1176,6 +1201,11 @@ cdef report_streaming_generator_output(
             generator_index,
             context.attempt_number,
             context.waiter))
+
+
+    return StreamingGeneratorStats(
+        object_creation_dur_s=serialization_dur_s,
+    )
 
 
 cdef report_streaming_generator_exception(
@@ -1270,9 +1300,20 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     gen = context.generator
 
     try:
-        for output in gen:
-            report_streaming_generator_output(context, output, gen_index, None)
-            gen_index += 1
+        stats = None
+
+        while True:
+            try:
+                # Send object serialization duration to the generator and retrieve
+                # next output
+                output = gen.send(stats)
+                # Track serialization duration of the next output
+                stats = report_streaming_generator_output(context, output, gen_index, None)
+
+                gen_index += 1
+
+            except StopIteration:
+                break
     except Exception as e:
         report_streaming_generator_exception(context, e, gen_index, None)
 
@@ -1326,8 +1367,11 @@ async def execute_streaming_generator_async(
     interrupt_signal_event = threading.Event()
 
     try:
-        try:
-            async for output in gen:
+        stats = None
+
+        while True:
+            try:
+                output = await gen.asend(stats)
                 # NOTE: Report of streaming generator output is done in a
                 # standalone thread-pool to avoid blocking the event loop,
                 # since serializing and actual RPC I/O is done with "nogil". We
@@ -1340,7 +1384,7 @@ async def execute_streaming_generator_async(
                 # are currently under backpressure. Then we need to wait for an
                 # ack from the caller (the reply for a possibly previous report
                 # RPC) that they have consumed more ObjectRefs.
-                await loop.run_in_executor(
+                stats = await loop.run_in_executor(
                     executor,
                     report_streaming_generator_output,
                     context,
@@ -1349,9 +1393,13 @@ async def execute_streaming_generator_async(
                     interrupt_signal_event,
                 )
                 cur_generator_index += 1
-        except Exception as e:
-            # Report the exception to the owner of the task.
-            report_streaming_generator_exception(context, e, cur_generator_index, None)
+
+            except StopAsyncIteration:
+                break
+
+    except Exception as e:
+        # Report the exception to the owner of the task.
+        report_streaming_generator_exception(context, e, cur_generator_index, None)
 
     except BaseException as be:
         # NOTE: PLEASE READ CAREFULLY BEFORE CHANGING

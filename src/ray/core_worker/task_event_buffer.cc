@@ -22,6 +22,7 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/scheduling/label_selector.h"
+#include "ray/util/graceful_shutdown.h"
 
 namespace ray {
 namespace core {
@@ -525,7 +526,45 @@ void TaskEventBufferImpl::Stop() {
   if (!enabled_) {
     return;
   }
+  // Set enabled_ to false early to prevent double-stop and disable new events
+  enabled_ = false;
   RAY_LOG(INFO) << "Shutting down TaskEventBuffer.";
+
+  auto flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
+
+  // Local handler implementing GracefulShutdownHandler interface.
+  class ShutdownHandler : public GracefulShutdownHandler {
+   public:
+    explicit ShutdownHandler(TaskEventBufferImpl *buffer) : buffer_(buffer) {}
+
+    bool WaitUntilIdle(absl::Duration timeout) override {
+      absl::MutexLock lock(&buffer_->grpc_completion_mutex_);
+      auto deadline = absl::Now() + timeout;
+      while (buffer_->gcs_grpc_in_progress_.load() > 0 ||
+             buffer_->event_aggregator_grpc_in_progress_.load() > 0) {
+        if (buffer_->grpc_completion_cv_.WaitWithDeadline(
+                &buffer_->grpc_completion_mutex_, deadline)) {
+          return false;  // Timeout
+        }
+      }
+      return true;
+    }
+
+    void Flush() override {
+      // Use stopping_ flag to allow flush without re-enabling event ingestion.
+      // This prevents the race where new events could be added during shutdown.
+      buffer_->stopping_ = true;
+      buffer_->FlushEvents(/*forced=*/true);
+      buffer_->stopping_ = false;
+    }
+
+   private:
+    TaskEventBufferImpl *buffer_;
+  };
+
+  ShutdownHandler handler(this);
+  GracefulShutdownWithFlush(
+      handler, absl::Milliseconds(flush_timeout_ms), "TaskEventBuffer");
 
   // Shutting down the io service to exit the io_thread. This should prevent
   // any other callbacks to be run on the io thread.
@@ -788,11 +827,11 @@ void TaskEventBufferImpl::SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData
   {
     // Sending the protobuf to GCS.
     absl::MutexLock lock(&mutex_);
-    // The flag should be unset when on_complete is invoked.
+    // The in-flight counter will be decremented when on_complete is invoked.
     task_accessor = &gcs_client_->Tasks();
   }
 
-  gcs_grpc_in_progress_ = true;
+  gcs_grpc_in_progress_.fetch_add(1);
   auto num_task_attempts_to_send = data->events_by_task_size();
   auto num_dropped_task_attempts_to_send = data->dropped_task_attempts_size();
   auto num_bytes_to_send = data->ByteSizeLong();
@@ -816,14 +855,20 @@ void TaskEventBufferImpl::SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData
                                      num_dropped_task_attempts_to_send);
       this->stats_counter_.Increment(kTotalTaskEventsBytesReported, num_bytes_to_send);
     }
-    gcs_grpc_in_progress_ = false;
+    // Signal under mutex to avoid lost wakeup race condition.
+    {
+      absl::MutexLock lock(&grpc_completion_mutex_);
+      auto previous = gcs_grpc_in_progress_.fetch_sub(1);
+      RAY_CHECK_GT(previous, 0);
+      grpc_completion_cv_.Signal();
+    }
   };
   task_accessor->AsyncAddTaskEventData(std::move(data), on_complete);
 }
 
 void TaskEventBufferImpl::SendRayEventsToAggregator(
     std::unique_ptr<rpc::events::RayEventsData> data) {
-  event_aggregator_grpc_in_progress_ = true;
+  event_aggregator_grpc_in_progress_.fetch_add(1);
   auto num_task_events_to_send = data->events_size();
   auto num_dropped_task_attempts_to_send =
       data->task_events_metadata().dropped_task_attempts_size();
@@ -850,20 +895,24 @@ void TaskEventBufferImpl::SendRayEventsToAggregator(
               TaskEventBufferCounter::kTotalNumLostTaskAttemptsReportedToAggregator,
               num_dropped_task_attempts_to_send);
         }
-        event_aggregator_grpc_in_progress_ = false;
+        // Signal under mutex to avoid lost wakeup race condition.
+        {
+          absl::MutexLock lock(&grpc_completion_mutex_);
+          auto previous = event_aggregator_grpc_in_progress_.fetch_sub(1);
+          RAY_CHECK_GT(previous, 0);
+          grpc_completion_cv_.Signal();
+        }
       };
 
-  if (num_task_events_to_send == 0 && num_dropped_task_attempts_to_send == 0) {
-    event_aggregator_grpc_in_progress_ = false;
-  } else {
-    rpc::events::AddEventsRequest request;
-    *request.mutable_events_data() = std::move(*data);
-    event_aggregator_client_->AddEvents(request, on_complete);
-  }
+  rpc::events::AddEventsRequest request;
+  *request.mutable_events_data() = std::move(*data);
+  event_aggregator_client_->AddEvents(request, on_complete);
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {
-  if (!enabled_) {
+  // Allow flush during shutdown (stopping_) even if enabled_ is false.
+  // This ensures the final flush happens without re-enabling event ingestion.
+  if (!enabled_ && !stopping_) {
     return;
   }
 
@@ -871,14 +920,16 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   // message. Here we don't keep different cursors for GCS and the event aggregator
   // because in most cases, the GCS and the event aggregator will not be enabled at the
   // same time.
-  if ((gcs_grpc_in_progress_ || event_aggregator_grpc_in_progress_) && !forced) {
+  if ((gcs_grpc_in_progress_.load() > 0 ||
+       event_aggregator_grpc_in_progress_.load() > 0) &&
+      !forced) {
     RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
         << "GCS or the event aggregator hasn't replied to the previous flush events "
            "call (likely overloaded). "
            "Skipping reporting task state events and retry later."
-        << "[gcs_grpc_in_progress=" << gcs_grpc_in_progress_ << "]"
-        << "[event_aggregator_grpc_in_progress=" << event_aggregator_grpc_in_progress_
-        << "]"
+        << "[gcs_grpc_in_progress=" << gcs_grpc_in_progress_.load() << "]"
+        << "[event_aggregator_grpc_in_progress="
+        << event_aggregator_grpc_in_progress_.load() << "]"
         << "[cur_status_events_size="
         << stats_counter_.Get(TaskEventBufferCounter::kNumTaskStatusEventsStored)
         << "][cur_profile_events_size="
@@ -909,10 +960,20 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   if (export_event_write_enabled_) {
     WriteExportData(status_events_to_write_for_export, profile_events_to_send);
   }
-  if (send_task_events_to_gcs_enabled_) {
+  // Only send to GCS if there's actual data or metadata to send.
+  const bool has_gcs_payload =
+      data.task_event_data && (data.task_event_data->events_by_task_size() > 0 ||
+                               data.task_event_data->dropped_task_attempts_size() > 0 ||
+                               data.task_event_data->num_profile_events_dropped() > 0);
+  if (send_task_events_to_gcs_enabled_ && has_gcs_payload) {
     SendTaskEventsToGCS(std::move(data.task_event_data));
   }
-  if (send_ray_events_to_aggregator_enabled_) {
+  // Only send to event aggregator if there's actual data or metadata to send.
+  const bool has_aggregator_payload =
+      data.ray_events_data &&
+      (data.ray_events_data->events_size() > 0 ||
+       data.ray_events_data->task_events_metadata().dropped_task_attempts_size() > 0);
+  if (send_ray_events_to_aggregator_enabled_ && has_aggregator_payload) {
     SendRayEventsToAggregator(std::move(data.ray_events_data));
   }
 }
@@ -1051,8 +1112,9 @@ std::string TaskEventBufferImpl::DebugString() {
   ss << "\nIO Service Stats:\n";
   ss << io_service_.stats()->StatsString();
   ss << "\nOther Stats:"
-     << "\n\tgcs_grpc_in_progress:" << gcs_grpc_in_progress_
-     << "\n\tevent_aggregator_grpc_in_progress:" << event_aggregator_grpc_in_progress_
+     << "\n\tgcs_grpc_in_progress:" << gcs_grpc_in_progress_.load()
+     << "\n\tevent_aggregator_grpc_in_progress:"
+     << event_aggregator_grpc_in_progress_.load()
      << "\n\tcurrent number of task status events in buffer: "
      << stats[TaskEventBufferCounter::kNumTaskStatusEventsStored]
      << "\n\tcurrent number of profile events in buffer: "

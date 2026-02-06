@@ -191,6 +191,15 @@ def test_is_jailed_with_open_issue(mock_repo, mock_issue) -> None:
     )
 
 
+@patch("github.Repository")
+def test_is_jailed_with_open_issue_github_exception(mock_repo) -> None:
+    from github import GithubException
+
+    mock_repo.get_issue.side_effect = GithubException(404, {"message": "Not Found"}, {})
+    test = Test(name="test", state="jailed", github_issue_number="1")
+    assert not test.is_jailed_with_open_issue(mock_repo)
+
+
 def test_is_stable() -> None:
     assert Test().is_stable()
     assert Test(stable=True).is_stable()

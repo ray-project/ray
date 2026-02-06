@@ -360,8 +360,12 @@ RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S = get_env_float(
 # Handle autoscaling metrics push interval. (This interval will affect the cold start time period)
 RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S",
-    # Legacy env var for RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S
-    get_env_float("RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S", 10.0),
+    10.0,
+)
+
+# Async inference task queue metrics push interval.
+RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S = get_env_float(
+    "RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S", 10.0
 )
 
 # Serve multiplexed matching timeout.
@@ -591,6 +595,8 @@ RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT", "100")
 )
 # The minimum drain period for a HTTP proxy.
+# If RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS is set to 1,
+# then the minimum draining period is 0.
 RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S = float(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S", "30")
 )
@@ -615,6 +621,10 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
         "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP", "0"
     )
     RAY_SERVE_LOG_TO_STDERR = get_env_bool("RAY_SERVE_LOG_TO_STDERR", "0")
+    RAY_SERVE_USE_GRPC_BY_DEFAULT = get_env_bool("RAY_SERVE_USE_GRPC_BY_DEFAULT", "1")
+    RAY_SERVE_ENABLE_DIRECT_INGRESS = get_env_bool(
+        "RAY_SERVE_ENABLE_DIRECT_INGRESS", "1"
+    )
 
 # The maximum allowed RPC latency in milliseconds.
 # This is used to detect and warn about long RPC latencies

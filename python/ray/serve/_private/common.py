@@ -1055,5 +1055,20 @@ class ReplicaMetricReport:
     timestamp: float
 
 
+@dataclass
+class AsyncInferenceTaskQueueMetricReport:
+    """Metric report from QueueMonitor to controller for async inference.
+
+    Args:
+        deployment_id: The deployment ID this queue belongs to.
+        queue_length: The number of pending tasks in the broker queue.
+        timestamp_s: The time at which this report was created.
+    """
+
+    deployment_id: DeploymentID
+    queue_length: int
+    timestamp_s: float
+
+
 class AutoscalingSnapshotError(str, Enum):
     METRICS_UNAVAILABLE = "METRICS_UNAVAILABLE"
