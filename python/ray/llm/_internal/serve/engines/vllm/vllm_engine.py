@@ -350,72 +350,54 @@ class VLLMEngine(LLMEngine):
             self._oai_models, "load_lora_adapter"
         ), "oai_models must have a load_lora_adapter attribute"
 
-    def _validate_openai_serving_chat(self):
+    @staticmethod
+    def _make_error(message: str) -> ErrorResponse:
+        return ErrorResponse(
+            error=ErrorInfo(
+                message=message, type="invalid_request_error", code=400
+            )
+        )
+
+    def _validate_openai_serving_chat(self) -> Optional[ErrorResponse]:
         if self._oai_serving_chat is None:
-            raise ValueError(
+            return self._make_error(
                 "This model does not support the 'generate' task. "
                 "The chat completion endpoint is not available for this model."
             )
-        if not hasattr(self._oai_serving_chat, "create_chat_completion"):
-            raise ValueError(
-                "oai_serving_chat must have a create_chat_completion attribute"
-            )
 
-    def _validate_openai_serving_completion(self):
+    def _validate_openai_serving_completion(self) -> Optional[ErrorResponse]:
         if self._oai_serving_completion is None:
-            raise ValueError(
+            return self._make_error(
                 "This model does not support the 'generate' task. "
                 "The completion endpoint is not available for this model."
             )
-        if not hasattr(self._oai_serving_completion, "create_completion"):
-            raise ValueError(
-                "oai_serving_completion must have a create_completion attribute"
-            )
 
-    def _validate_openai_serving_embedding(self):
+    def _validate_openai_serving_embedding(self) -> Optional[ErrorResponse]:
         if self._oai_serving_embedding is None:
-            raise ValueError(
+            return self._make_error(
                 "This model does not support the 'embed' task. "
                 "The embedding endpoint is not available for this model."
             )
-        if not hasattr(self._oai_serving_embedding, "create_embedding"):
-            raise ValueError(
-                "oai_serving_embedding must have a create_embedding attribute"
-            )
 
-    def _validate_openai_serving_transcription(self):
+    def _validate_openai_serving_transcription(self) -> Optional[ErrorResponse]:
         if self._oai_serving_transcription is None:
-            raise ValueError(
+            return self._make_error(
                 "This model does not support the 'transcription' task. "
                 "The transcription endpoint is not available for this model."
             )
-        if not hasattr(self._oai_serving_transcription, "create_transcription"):
-            raise ValueError(
-                "oai_serving_transcription must have a create_transcription attribute"
-            )
 
-    def _validate_openai_serving_scores(self):
+    def _validate_openai_serving_scores(self) -> Optional[ErrorResponse]:
         if self._oai_serving_scores is None:
-            raise ValueError(
+            return self._make_error(
                 "This model does not support the 'score' task. "
                 "The score endpoint is not available for this model."
             )
-        if not hasattr(self._oai_serving_scores, "create_score"):
-            raise ValueError("oai_serving_scores must have a create_score attribute")
 
-    def _validate_openai_serving_tokenization(self):
+    def _validate_openai_serving_tokenization(self) -> Optional[ErrorResponse]:
         if self._oai_serving_tokenization is None:
-            raise ValueError(
+            return self._make_error(
                 "This model does not support the 'tokenization' task. "
                 "The tokenization endpoint is not available for this model."
-            )
-        if not hasattr(self._oai_serving_tokenization, "create_tokenize"):
-            raise ValueError(
-                "oai_serving_tokenization must have a create_tokenize attribute"
-            )
-        if not hasattr(self._oai_serving_tokenization, "create_detokenize"):
-            raise ValueError(
-                "oai_serving_tokenization must have a create_detokenize attribute"
             )
 
     def _validate_engine_client(self):
