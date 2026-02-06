@@ -30,7 +30,15 @@ def _set_future_helper(
         return
 
     if isinstance(result, RayTaskError):
-        py_future.set_exception(result.as_instanceof_cause())
+        exc = result.as_instanceof_cause()
+        # Convert StopIteration to RuntimeError to prevent segfaults due to
+        # Cpython's behavior w.r.t. PEP479
+        if isinstance(exc, StopIteration) or isinstance(exc, StopAsyncIteration):
+            runtime_error = RuntimeError(f"generator raised {type(exc).__name__}")
+            runtime_error.__cause__ = exc
+            py_future.set_exception(runtime_error)
+        else:
+            py_future.set_exception(exc)
     elif isinstance(result, RayError):
         # Directly raise exception for RayActorError
         py_future.set_exception(result)
