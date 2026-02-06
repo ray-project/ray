@@ -5530,8 +5530,7 @@ class Dataset:
                 buffer in order to yield a batch. When there are no more rows to add to
                 the buffer, the remaining rows in the buffer are drained.
             local_shuffle_seed: The seed to use for the local random shuffle.
-            _collate_fn: A custom function to combine a list of rows into a single
-                batch.
+            _collate_fn: A custom function to collate each batch of data.
 
         Returns:
             An iterable over batches of data.
