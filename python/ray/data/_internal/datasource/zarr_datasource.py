@@ -1,46 +1,47 @@
 """Zarr datasource for Ray Data."""
 
 import itertools
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.fs as pafs
 
 import ray
 from ray.data._internal.util import _check_import, _is_local_scheme
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
+from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
 if TYPE_CHECKING:
-    import zarr
-
     from ray.data.context import DataContext
+
+_METADATA_FILENAMES = {".zarray", ".zgroup", ".zattrs", "zarr.json"}
 
 
 class ZarrDatasource(Datasource):
-    """Datasource for reading Zarr arrays.
-
-    Each Zarr chunk becomes one block in the Dataset. Supports both single
-    arrays and groups containing multiple arrays.
-    """
+    """Datasource for reading Zarr arrays."""
 
     def __init__(
         self,
         paths: Union[str, List[str]],
-        storage_options: Optional[Dict[str, Any]] = None,
+        filesystem: Optional["pafs.FileSystem"] = None,
     ):
         super().__init__()
         _check_import(self, module="zarr", package="zarr")
-        self._paths = [paths] if isinstance(paths, str) else list(paths)
-        self._storage_options = storage_options
 
-        self._supports_distributed_reads = not _is_local_scheme(self._paths)
+        if isinstance(paths, str):
+            paths = [paths]
+
+        self._supports_distributed_reads = not _is_local_scheme(paths)
         if not self._supports_distributed_reads and ray.util.client.ray.is_connected():
             raise ValueError(
                 "Because you're using Ray Client, read tasks scheduled on the Ray "
                 "cluster can't access your local files. To fix this issue, store "
                 "files in cloud storage or a distributed filesystem like NFS."
             )
+
+        self._paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
 
     @property
     def supports_distributed_reads(self) -> bool:
@@ -55,92 +56,194 @@ class ZarrDatasource(Datasource):
         import zarr
 
         read_tasks = []
-        for path in self._paths:
-            store = zarr.open(path, mode="r", storage_options=self._storage_options)
+        for store_path in self._paths:
+            file_infos = self._filesystem.get_file_info(
+                pafs.FileSelector(store_path, recursive=True)
+            )
+
+            # Separate metadata from chunks, build chunk lookup
+            metadata_bytes: Dict[str, bytes] = {}
+            chunk_lookup: Dict[Tuple[str, Tuple[int, ...]], Tuple[str, str]] = {}
+
+            for fi in file_infos:
+                if fi.type != pafs.FileType.File:
+                    continue
+
+                rel_path = fi.path[len(store_path):].lstrip("/")
+                filename = rel_path.split("/")[-1]
+
+                if filename in _METADATA_FILENAMES:
+                    with self._filesystem.open_input_file(fi.path) as f:
+                        metadata_bytes[rel_path] = bytes(f.read())
+                else:
+                    # Parse chunk path into (array_name, chunk_idx)
+                    key = _parse_chunk_path(rel_path)
+                    if key:
+                        chunk_lookup[key] = (rel_path, fi.path)
+
+            # Open zarr with metadata to discover structure
+            store_dict = {
+                k: zarr.core.buffer.cpu.Buffer.from_bytes(v)
+                for k, v in metadata_bytes.items()
+            }
+            store = zarr.open(zarr.storage.MemoryStore(store_dict=store_dict), mode="r")
+
             for array_name, arr in _get_arrays(store):
                 for chunk_idx in _get_chunk_indices(arr):
-                    # Estimate size of this chunk
+                    chunk_rel_path, chunk_abs_path = chunk_lookup[(array_name, chunk_idx)]
+
                     chunk_shape = tuple(
                         min(c, s - i * c)
                         for i, c, s in zip(chunk_idx, arr.chunks, arr.shape)
                     )
                     chunk_size = int(np.prod(chunk_shape) * arr.dtype.itemsize)
-                    metadata = BlockMetadata(
-                        num_rows=1,
-                        size_bytes=chunk_size,
-                        input_files=[path],
-                        exec_stats=None,
-                    )
+
                     read_tasks.append(
                         ReadTask(
                             _create_read_fn(
-                                path, array_name, chunk_idx, self._storage_options
+                                chunk_abs_path,
+                                chunk_rel_path,
+                                array_name,
+                                chunk_idx,
+                                arr.chunks,
+                                arr.shape,
+                                metadata_bytes,
+                                self._filesystem,
                             ),
-                            metadata,
+                            BlockMetadata(
+                                num_rows=1,
+                                size_bytes=chunk_size,
+                                input_files=[store_path],
+                                exec_stats=None,
+                            ),
                         )
                     )
+
         return read_tasks
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         import zarr
 
         total = 0
-        for path in self._paths:
-            store = zarr.open(path, mode="r", storage_options=self._storage_options)
+        for store_path in self._paths:
+            file_infos = self._filesystem.get_file_info(
+                pafs.FileSelector(store_path, recursive=True)
+            )
+
+            metadata_bytes = {}
+            for fi in file_infos:
+                if fi.type != pafs.FileType.File:
+                    continue
+                rel_path = fi.path[len(store_path):].lstrip("/")
+                filename = rel_path.split("/")[-1]
+                if filename in _METADATA_FILENAMES:
+                    with self._filesystem.open_input_file(fi.path) as f:
+                        metadata_bytes[rel_path] = bytes(f.read())
+
+            store_dict = {
+                k: zarr.core.buffer.cpu.Buffer.from_bytes(v)
+                for k, v in metadata_bytes.items()
+            }
+            store = zarr.open(zarr.storage.MemoryStore(store_dict=store_dict), mode="r")
+
             for _, arr in _get_arrays(store):
                 total += arr.nbytes
+
         return total
 
 
-def _get_arrays(
-    store: Union["zarr.Array", "zarr.Group"],
-) -> List[Tuple[str, "zarr.Array"]]:
-    """Recursively get all arrays from a Zarr store."""
+def _parse_chunk_path(rel_path: str) -> Optional[Tuple[str, Tuple[int, ...]]]:
+    """Parse a chunk file path into (array_name, chunk_indices)."""
+    parts = rel_path.split("/")
+
+    # Handle zarr v3 "c/" prefix
+    if "c" in parts:
+        c_idx = parts.index("c")
+        array_parts = parts[:c_idx]
+        index_parts = parts[c_idx + 1:]
+    else:
+        # Find where array name ends and chunk indices begin
+        # Chunk indices are numeric, possibly with "." separator
+        for i, part in enumerate(parts):
+            # Check if this part looks like chunk indices
+            test_parts = part.split(".")
+            if all(p.isdigit() for p in test_parts):
+                array_parts = parts[:i]
+                # Handle "." separator in chunk indices
+                index_parts = []
+                for p in parts[i:]:
+                    index_parts.extend(p.split("."))
+                break
+        else:
+            return None
+
+    try:
+        array_name = "/".join(array_parts)
+        chunk_idx = tuple(int(p) for p in index_parts)
+        return (array_name, chunk_idx)
+    except ValueError:
+        return None
+
+
+def _get_arrays(store) -> List[Tuple[str, "zarr.Array"]]:
+    """Recursively get all arrays from a zarr store."""
     import zarr
 
     if isinstance(store, zarr.Array):
         return [("", store)]
+
     arrays = []
-    for name, arr in store.arrays():
-        arrays.append((name, arr))
-    for name, group in store.groups():
-        for sub_name, arr in _get_arrays(group):
-            arrays.append((f"{name}/{sub_name}" if sub_name else name, arr))
+    for name, item in store.members():
+        if isinstance(item, zarr.Array):
+            arrays.append((name, item))
+        else:
+            for sub_name, arr in _get_arrays(item):
+                arrays.append((f"{name}/{sub_name}" if sub_name else name, arr))
     return arrays
 
 
-def _get_chunk_indices(arr: "zarr.Array") -> List[Tuple[int, ...]]:
+def _get_chunk_indices(arr) -> List[Tuple[int, ...]]:
     """Get all chunk indices for an array."""
     chunks_per_dim = [(s + c - 1) // c for s, c in zip(arr.shape, arr.chunks)]
     return list(itertools.product(*[range(n) for n in chunks_per_dim]))
 
 
 def _create_read_fn(
-    path: str,
+    chunk_abs_path: str,
+    chunk_rel_path: str,
     array_name: str,
     chunk_idx: Tuple[int, ...],
-    storage_options: Optional[Dict[str, Any]],
+    chunks: Tuple[int, ...],
+    shape: Tuple[int, ...],
+    metadata_bytes: Dict[str, bytes],
+    filesystem: "pafs.FileSystem",
 ):
-    """Create a read function for a specific chunk."""
-
     def read_fn() -> Iterable[Block]:
         import zarr
 
-        store = zarr.open(path, mode="r", storage_options=storage_options)
+        with filesystem.open_input_file(chunk_abs_path) as f:
+            chunk_bytes = bytes(f.read())
+
+        all_bytes = {**metadata_bytes, chunk_rel_path: chunk_bytes}
+        store_dict = {
+            k: zarr.core.buffer.cpu.Buffer.from_bytes(v)
+            for k, v in all_bytes.items()
+        }
+        store = zarr.open(zarr.storage.MemoryStore(store_dict=store_dict), mode="r")
+
         arr = store[array_name] if array_name else store
         slices = tuple(
             slice(i * c, min((i + 1) * c, s))
-            for i, c, s in zip(chunk_idx, arr.chunks, arr.shape)
+            for i, c, s in zip(chunk_idx, chunks, shape)
         )
         chunk_data = arr[slices]
-        yield pa.table(
-            {
-                "array_name": [array_name],
-                "data": [chunk_data.tobytes()],
-                "shape": [list(chunk_data.shape)],
-                "dtype": [str(chunk_data.dtype)],
-                "chunk_index": [list(chunk_idx)],
-            }
-        )
+
+        yield pa.table({
+            "array_name": [array_name],
+            "data": [chunk_data.tobytes()],
+            "shape": [list(chunk_data.shape)],
+            "dtype": [str(chunk_data.dtype)],
+            "chunk_index": [list(chunk_idx)],
+        })
 
     return read_fn

@@ -1909,7 +1909,7 @@ def read_numpy(
 def read_zarr(
     paths: Union[str, List[str]],
     *,
-    storage_options: Optional[Dict[str, Any]] = None,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
@@ -1921,17 +1921,6 @@ def read_zarr(
 
     Each Zarr chunk becomes one block in the Dataset. Supports both single
     arrays and groups containing multiple arrays.
-
-    This function uses ``storage_options`` for filesystem configuration rather than
-    a ``filesystem`` parameter. This aligns with the zarr/dask/xarray ecosystem,
-    which uses fsspec for storage backends. For details on configuring
-    ``storage_options`` for different cloud providers, see
-    https://docs.dask.org/en/stable/how-to/connect-to-remote-data.html
-
-    .. note::
-        The ``storage_options`` parameter may change to a ``filesystem`` parameter
-        in a future release to align with other Ray Data readers like
-        :func:`~ray.data.read_parquet`.
 
     Examples:
         Read a single Zarr array.
@@ -1948,28 +1937,23 @@ def read_zarr(
         >>> ds = ray.data.read_zarr(  # doctest: +SKIP
         ...     ["store1.zarr", "store2.zarr"])
 
-        Read from S3 with anonymous access.
+        Read from S3 with a custom filesystem.
 
+        >>> import pyarrow.fs as pafs  # doctest: +SKIP
+        >>> s3 = pafs.S3FileSystem(anonymous=True)  # doctest: +SKIP
         >>> ds = ray.data.read_zarr(  # doctest: +SKIP
         ...     "s3://bucket/path.zarr",
-        ...     storage_options={"anon": True})
-
-        Read from S3 with a specific AWS profile.
-
-        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
-        ...     "s3://bucket/path.zarr",
-        ...     storage_options={"profile": "my-profile"})
+        ...     filesystem=s3)
 
     Args:
         paths: A single file/directory path or a list of paths.
             Supports local paths and URIs for remote storage (``s3://``, ``gs://``,
-            ``abfs://``, etc.). The filesystem is inferred from the URI scheme.
-        storage_options: Extra options for the storage backend (e.g., credentials,
-            endpoint URL). These are passed directly to fsspec. Common options
-            include ``anon`` (bool) for anonymous access, ``profile`` (str) for
-            AWS profile, ``account_name``/``account_key`` for Azure, and
-            ``project``/``token`` for GCS. See
-            https://docs.dask.org/en/stable/how-to/connect-to-remote-data.html
+            ``abfs://``, etc.). The filesystem is inferred from the URI scheme
+            if not provided.
+        filesystem: The PyArrow filesystem implementation to read from. If not
+            specified, the filesystem is inferred from the path scheme.
+            See `PyArrow FileSystem <https://arrow.apache.org/docs/python/filesystems.html>`_
+            for available options.
         num_cpus: The number of CPUs to reserve for each parallel read task.
         num_gpus: The number of GPUs to reserve for each parallel read task.
         memory: The heap memory in bytes to reserve for each parallel read task.
@@ -1984,10 +1968,19 @@ def read_zarr(
             value in most cases.
 
     Returns:
-        :class:`~ray.data.Dataset` with columns: ``array_name``, ``data``, ``shape``,
-        ``dtype``, ``chunk_index``.
+        :class:`~ray.data.Dataset` with one row per chunk and columns:
+
+        - ``array_name`` (str): Path to the array within the store
+          (e.g., ``"group/arr"``), or empty string for single-array stores.
+        - ``data`` (bytes): Raw chunk data. Reconstruct with
+          ``np.frombuffer(row["data"], dtype=row["dtype"]).reshape(row["shape"])``.
+        - ``shape`` (list[int]): Shape of this chunk (may be smaller than the
+          array's chunk size for edge chunks).
+        - ``dtype`` (str): NumPy dtype string (e.g., ``"float64"``).
+        - ``chunk_index`` (list[int]): Position of this chunk in the chunk grid
+          (e.g., ``[0, 2]`` for row 0, column 2).
     """
-    datasource = ZarrDatasource(paths, storage_options=storage_options)
+    datasource = ZarrDatasource(paths, filesystem=filesystem)
     return read_datasource(
         datasource,
         num_cpus=num_cpus,
