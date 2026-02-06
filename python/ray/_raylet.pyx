@@ -765,7 +765,7 @@ cdef prepare_args_internal(
         Language language, args,
         c_vector[unique_ptr[CTaskArg]] *args_vector, function_descriptor,
         c_vector[CObjectID] *incremented_put_arg_ids):
-    """Serializes, reference count, and optionaly stores arguments in the Object Store.
+    """Serializes, reference count, and optionally stores arguments in the Object Store.
 
     Args:
         language: used to inspect the serialized metadata of arguments that are not ObjectRefs.
