@@ -1143,7 +1143,7 @@ class Dataset:
                 :func:`ray.remote` for details.
 
         Returns:
-            A new :class:`Dataset` is composed of specified columns.
+            A new :class:`Dataset` composed with the specified columns.
         """  # noqa: E501
         from ray.data.expressions import col
 
