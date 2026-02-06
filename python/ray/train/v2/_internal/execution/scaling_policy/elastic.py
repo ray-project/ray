@@ -44,7 +44,7 @@ class ElasticScalingPolicy(ScalingPolicy):
 
         self._latest_monitor_time = float("-inf")
         # Requester ID for AutoscalingCoordinator.
-        # TODO: define the UUID in TrainController.
+        # Prefer the Train run_id when available (set in after_controller_start).
         self._requester_id = "train-" + uuid.uuid4().hex
         self._latest_autoscaling_request_time = float("-inf")
         self._latest_insufficient_workers_warning_time = float("-inf")
@@ -232,7 +232,7 @@ class ElasticScalingPolicy(ScalingPolicy):
                 ),
                 timeout=self.AUTOSCALING_REQUESTS_GET_TIMEOUT_S,
             )
-        except Exception:
+        except (ray.exceptions.GetTimeoutError, ray.exceptions.RayError):
             msg = (
                 f"Failed to get allocated resources for {self._requester_id}."
                 " Will not resize the worker group."
@@ -244,7 +244,8 @@ class ElasticScalingPolicy(ScalingPolicy):
         finally:
             self._latest_allocated_resources_query_time = time_monotonic()
             self._latest_allocated_resources = allocated_resources
-            return self._latest_allocated_resources
+
+        return self._latest_allocated_resources
 
     def _cancel_resource_request(self):
         """Cancel the resource request to AutoscalingCoordinator."""
@@ -269,6 +270,7 @@ class ElasticScalingPolicy(ScalingPolicy):
 
     def after_controller_start(self, train_run_context: TrainRunContext):
         """Send cluster autoscaling requests when the control loop starts."""
+        self._requester_id = f"train-{train_run_context.run_id}"
         resources_per_worker = self.scaling_config._resources_per_worker_not_none
         max_workers = self.scaling_config.max_workers
         logger.info(
