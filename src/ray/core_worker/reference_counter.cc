@@ -1517,9 +1517,10 @@ std::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
   return it->second.locations;
 }
 
-bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
-                                           std::string_view spilled_url,  // Changed: read-only param
-                                           const NodeID &spilled_node_id) {
+bool ReferenceCounter::HandleObjectSpilled(
+    const ObjectID &object_id,
+    std::string_view spilled_url,  // Changed: read-only param
+    const NodeID &spilled_node_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {

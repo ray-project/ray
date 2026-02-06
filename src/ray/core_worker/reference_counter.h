@@ -70,7 +70,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   bool OwnedByUs(const ObjectID &object_id) const override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void AddLocalReference(const ObjectID &object_id, std::string_view call_site) override  // Changed: read-only param
+  void AddLocalReference(const ObjectID &object_id,
+                         std::string_view call_site) override  // Changed: read-only param
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void RemoveLocalReference(const ObjectID &object_id,

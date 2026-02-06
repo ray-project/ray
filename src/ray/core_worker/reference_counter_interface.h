@@ -99,8 +99,9 @@ class ReferenceCounterInterface {
   /// any owner information, since we don't know how it was created.
   ///
   /// \param[in] object_id The object to to increment the count for.
-  virtual void AddLocalReference(const ObjectID &object_id,
-                                 std::string_view call_site) = 0;  // Changed: read-only param
+  virtual void AddLocalReference(
+      const ObjectID &object_id,
+      std::string_view call_site) = 0;  // Changed: read-only param
 
   /// Decrease the local reference count for the ObjectID by one.
   ///
@@ -532,9 +533,10 @@ class ReferenceCounterInterface {
   /// \param[in] spilled_url The URL to which the object has been spilled.
   /// \param[in] spilled_node_id The ID of the node on which the object was spilled.
   /// \return True if the reference exists and is in scope, false otherwise.
-  virtual bool HandleObjectSpilled(const ObjectID &object_id,
-                                   std::string_view spilled_url,  // Changed: read-only param
-                                   const NodeID &spilled_node_id) = 0;
+  virtual bool HandleObjectSpilled(
+      const ObjectID &object_id,
+      std::string_view spilled_url,  // Changed: read-only param
+      const NodeID &spilled_node_id) = 0;
 
   /// Get locality data for object. This is used by the leasing policy to implement
   /// locality-aware leasing.
