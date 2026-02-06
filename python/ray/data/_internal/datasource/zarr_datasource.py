@@ -99,8 +99,12 @@ class ZarrDatasource(Datasource):
             store = zarr.open(zarr.storage.MemoryStore(store_dict=store_dict), mode="r")
 
             for array_name, arr in _get_arrays(store):
+                # Get dimension separator for zarr v2 (default ".")
+                dim_sep = getattr(arr.metadata, "dimension_separator", ".")
                 for chunk_idx in _get_chunk_indices(arr):
-                    chunk_rel_path = _get_chunk_path(array_name, chunk_idx, is_zarr_v3)
+                    chunk_rel_path = _get_chunk_path(
+                        array_name, chunk_idx, is_zarr_v3, dim_sep
+                    )
                     chunk_abs_path = path_lookup.get(chunk_rel_path)
 
                     if chunk_abs_path is None:
@@ -153,15 +157,18 @@ class ZarrDatasource(Datasource):
 
 
 def _get_chunk_path(
-    array_name: str, chunk_idx: Tuple[int, ...], is_zarr_v3: bool
+    array_name: str,
+    chunk_idx: Tuple[int, ...],
+    is_zarr_v3: bool,
+    dimension_separator: str = ".",
 ) -> str:
     """Compute the chunk file path for a given array and chunk index."""
     if is_zarr_v3:
         # zarr v3: {array_name}/c/{dim0}/{dim1}/...
         chunk_part = "c/" + "/".join(str(i) for i in chunk_idx)
     else:
-        # zarr v2: {array_name}/{dim0}.{dim1}...
-        chunk_part = ".".join(str(i) for i in chunk_idx)
+        # zarr v2: {array_name}/{dim0}{sep}{dim1}... (separator from .zarray metadata)
+        chunk_part = dimension_separator.join(str(i) for i in chunk_idx)
 
     if array_name:
         return f"{array_name}/{chunk_part}"
