@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import ray
@@ -24,6 +25,7 @@ from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_executi
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
+from ray.data._internal.util import rows_same
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data.expressions import star
@@ -337,9 +339,9 @@ def test_map_batches_batch_size_fusion(
         LogicalPlan(input_op, context),
     )
 
-    mapped_ds = ds.map_batches(
-        lambda x: x, batch_size=2, udf_modifying_row_count=False
-    ).map_batches(lambda x: x, batch_size=5, udf_modifying_row_count=False)
+    mapped_ds = ds.map_batches(lambda x: x, batch_size=2).map_batches(
+        lambda x: x, batch_size=5
+    )
 
     physical_plan = get_execution_plan(mapped_ds._logical_plan)
 
@@ -382,11 +384,9 @@ def test_map_batches_with_batch_size_specified_fusion(
     mapped_ds = ds.map_batches(
         lambda x: x,
         batch_size=upstream_batch_size,
-        udf_modifying_row_count=False,
     ).map_batches(
         lambda x: x,
         batch_size=downstream_batch_size,
-        udf_modifying_row_count=False,
     )
 
     physical_plan = get_execution_plan(mapped_ds._logical_plan)
@@ -681,7 +681,9 @@ def test_map_fusion_with_concurrency_arg(
         ds = ds.map(Map, num_cpus=0, concurrency=down_concurrency)
         down_name = "Map(Map)"
 
-    assert extract_values("id", ds.take_all()) == list(range(10))
+    actual_data = ds.to_pandas()
+    expected_data = pd.DataFrame({"id": list(range(10))})
+    assert rows_same(actual_data, expected_data)
 
     name = f"{up_name}->{down_name}"
     stats = ds.stats()
@@ -804,19 +806,11 @@ def test_streaming_repartition_no_further_fuse(
     # Case 1: map_batches -> map_batches -> streaming_repartition -> map_batches -> map_batches
     # Result: map -> (map -> s_r)-> (map -> map)
     ds1 = ray.data.range(n, override_num_blocks=2)
-    ds1 = ds1.map_batches(
-        lambda x: x, batch_size=target_rows, udf_modifying_row_count=False
-    )
-    ds1 = ds1.map_batches(
-        lambda x: x, batch_size=target_rows, udf_modifying_row_count=False
-    )
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
     ds1 = ds1.repartition(target_num_rows_per_block=target_rows)
-    ds1 = ds1.map_batches(
-        lambda x: x, batch_size=target_rows, udf_modifying_row_count=False
-    )
-    ds1 = ds1.map_batches(
-        lambda x: x, batch_size=target_rows, udf_modifying_row_count=False
-    )
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
 
     assert len(ds1.take_all()) == n
     stats1 = ds1.stats()

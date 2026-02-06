@@ -104,7 +104,6 @@ from ray.data.aggregate import (
     Unique,
 )
 from ray.data.block import (
-    VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
     DataBatch,
@@ -789,11 +788,6 @@ class Dataset:
             ray_remote_args["memory"] = memory
 
         batch_format = _apply_batch_format(batch_format)
-        if batch_format not in VALID_BATCH_FORMATS:
-            raise ValueError(
-                f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "
-                f"{batch_format}"
-            )
 
         plan = self._plan.copy()
         map_batches_op = MapBatches(
@@ -902,6 +896,7 @@ class Dataset:
                 uri_column_names=[expr.uri_column_name],
                 output_bytes_column_names=[column_name],
                 ray_remote_args=ray_remote_args,
+                filesystem=expr.filesystem,
             )
             logical_plan = LogicalPlan(download_op, self.context)
         else:
@@ -2696,7 +2691,7 @@ class Dataset:
         return ds_train, ds_test
 
     @PublicAPI(api_group=SMJ_API_GROUP)
-    def union(self, *other: List["Dataset"]) -> "Dataset":
+    def union(self, *other: "Dataset") -> "Dataset":
         """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
 
         The order of the blocks in the datasets is preserved, as is the
@@ -2715,7 +2710,7 @@ class Dataset:
             [{'id': 0}, {'id': 1}, {'id': 0}, {'id': 1}, {'id': 2}]
 
         Args:
-            other: List of datasets to combine with this one. The datasets
+            *other: The datasets to combine with this one. The datasets
                 must have the same schema as this dataset, otherwise the
                 behavior is undefined.
 
@@ -3510,7 +3505,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=SMJ_API_GROUP)
-    def zip(self, *other: List["Dataset"]) -> "Dataset":
+    def zip(self, *other: "Dataset") -> "Dataset":
         """Zip the columns of this dataset with the columns of another.
 
         The datasets must have the same number of rows. Their column sets are
@@ -3534,7 +3529,7 @@ class Dataset:
             {'id': array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4]), 'id_2': array([0, 1, 2, 3, 4])}
 
         Args:
-            *other: List of datasets to combine with this one. The datasets
+            *other: The datasets to combine with this one. The datasets
                 must have the same row count as this dataset, otherwise the
                 ValueError is raised.
 
@@ -6919,7 +6914,7 @@ class Schema:
         from ray.data.extensions import ArrowTensorType, TensorDtype
 
         def _convert_to_pa_type(
-            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
+            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype],
         ) -> pa.DataType:
             if isinstance(dtype, pd.ArrowDtype):
                 return dtype.pyarrow_dtype

@@ -59,6 +59,10 @@ APT_PKGS=(
     ssh
     curl
     gdb
+
+    # For HAProxy
+    socat
+    liblua5.3-0
 )
 
 sudo apt-get update -y

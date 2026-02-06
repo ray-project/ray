@@ -348,7 +348,7 @@ async def test_vllm_wrapper_embed(model_opt_125m):
     [
         ({}, True),
         ({"truncate_prompt_tokens": 3}, False),
-        ({"normalize": True}, False),
+        ({"use_activation": True}, False),
     ],
 )
 async def test_vllm_wrapper_embed_pooling_params(

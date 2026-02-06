@@ -16,6 +16,7 @@
 
 #include <list>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -182,6 +183,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   std::string DebugString() const override ABSL_LOCKS_EXCLUDED(mutex_);
 
+  std::string ToJsonString() const override ABSL_LOCKS_EXCLUDED(mutex_);
+
   void PopAndClearLocalBorrowers(const std::vector<ObjectID> &borrowed_ids,
                                  ReferenceTableProto *proto,
                                  std::vector<ObjectID> *deleted) override
@@ -279,6 +282,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     ///  2. We call ray.get() on an ID whose contents we do not know and we
     ///     discover that it contains these IDs.
     absl::flat_hash_set<ObjectID> contains;
+
+    nlohmann::json ToJson() const;
   };
 
   /// Contains information related to borrowing only.
@@ -302,6 +307,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     ///     borrowers. A borrower is removed from the list when it responds
     ///     that it is no longer using the reference.
     absl::flat_hash_set<rpc::Address> borrowers;
+
+    nlohmann::json ToJson() const;
   };
 
   struct Reference {
@@ -328,10 +335,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
     static Reference FromProto(const rpc::ObjectReferenceCount &ref_count);
-    /// Serialize to a protobuf.
-    /// When `deduct_local_ref` is true, one local ref should be removed
-    /// when determining if the object has actual local references.
-    void ToProto(rpc::ObjectReferenceCount *ref, bool deduct_local_ref = false) const;
+
+    /// Serialize to a protobuf object.
+    ///
+    /// \param[in] ref The protobuf object to populate.
+    /// \param[in] object_id The ObjectID corresponding to this reference.
+    /// \param[in] has_local_ref Whether this worker is still using the ObjectID locally.
+    void ToProto(rpc::ObjectReferenceCount *ref,
+                 const ObjectID &object_id,
+                 bool has_local_ref) const;
 
     /// The reference count. This number includes:
     /// - Python references to the ObjectID.
@@ -417,6 +429,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     }
 
     std::string DebugString() const;
+    nlohmann::json ToJson() const;
 
     /// Description of the call site where the reference was created.
     std::string call_site_ = "<unknown>";
@@ -511,7 +524,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
-  using ReferenceProtoTable = absl::flat_hash_map<ObjectID, rpc::ObjectReferenceCount>;
 
   bool AddOwnedObjectInternal(const ObjectID &object_id,
                               const std::vector<ObjectID> &contained_ids,
@@ -546,11 +558,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Deserialize a ReferenceTable.
   static ReferenceTable ReferenceTableFromProto(const ReferenceTableProto &proto);
-
-  /// Packs an object ID to ObjectReferenceCount map, into an array of
-  /// ObjectReferenceCount. Consumes the input proto table.
-  static void ReferenceTableToProto(ReferenceProtoTable &table,
-                                    ReferenceTableProto *proto);
 
   /// Remove references for the provided object IDs that correspond to them
   /// being dependencies to a submitted task. This should be called when
@@ -598,7 +605,19 @@ class ReferenceCounter : public ReferenceCounterInterface,
   bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
                                          bool for_ref_removed,
                                          bool deduct_local_ref,
-                                         ReferenceProtoTable *borrowed_refs)
+                                         ReferenceTableProto *borrowed_refs)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Recursive implementation of `GetAndClearLocalBorrowersInternal`, used to traverse
+  /// the graph of children IDs contained within the specified object ID.
+  ///
+  /// `encountered_ids` is used to memoize object IDs that have already been added to
+  /// `borrowed_refs` to avoid processing and mutating the same entry twice.
+  bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
+                                         bool for_ref_removed,
+                                         bool deduct_local_ref,
+                                         ReferenceTableProto *borrowed_refs,
+                                         absl::flat_hash_set<ObjectID> &encountered_ids)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Merge remote borrowers into our local ref count. This will add any

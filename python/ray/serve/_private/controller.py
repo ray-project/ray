@@ -23,6 +23,7 @@ from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
+    AsyncInferenceTaskQueueMetricReport,
     DeploymentID,
     DeploymentSnapshot,
     HandleMetricReport,
@@ -262,6 +263,9 @@ class ServeController:
         self._shutdown_event = asyncio.Event()
         self._shutdown_start_time = None
 
+        # Actors registered for cleanup on serve.shutdown(), keyed by actor ID
+        self._registered_cleanup_actors: Dict[str, ActorHandle] = {}
+
         # Initialize health metrics tracker
         self._health_metrics_tracker = ControllerHealthMetricsTracker(
             controller_start_time=time.time()
@@ -384,6 +388,31 @@ class ServeController:
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report
         )
+
+    def record_autoscaling_metrics_from_async_inference_task_queue(
+        self, report: AsyncInferenceTaskQueueMetricReport
+    ):
+        """Record async inference task queue metrics pushed from QueueMonitor."""
+        latency = time.time() - report.timestamp_s
+        latency_ms = latency * 1000
+        # Record the metrics delay for observability
+        self.async_inference_task_queue_metrics_delay_gauge.set(
+            latency_ms,
+            tags={
+                "deployment": report.deployment_id.name,
+                "application": report.deployment_id.app_name,
+            },
+        )
+        if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
+            logger.warning(
+                f"Received async inference task queue metrics for deployment "
+                f"{report.deployment_id} with timestamp {report.timestamp_s} "
+                f"which is {latency_ms}ms ago. "
+                f"This is greater than the warning threshold RPC latency of "
+                f"{RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS}ms. "
+                "This may indicate a performance issue with the controller."
+            )
+        self.autoscaling_state_manager.record_async_inference_task_queue_metrics(report)
 
     def _get_total_num_requests_for_deployment_for_testing(
         self, deployment_id: DeploymentID
@@ -749,6 +778,14 @@ class ServeController:
             ),
             tag_keys=("deployment", "application", "handle"),
         )
+        self.async_inference_task_queue_metrics_delay_gauge = metrics.Gauge(
+            "serve_autoscaling_async_inference_task_queue_metrics_delay_ms",
+            description=(
+                "Time taken for the async inference task queue metrics to be reported "
+                "to the controller. High values may indicate a busy controller."
+            ),
+            tag_keys=("deployment", "application"),
+        )
 
     def _recover_state_from_checkpoint(self):
         (
@@ -909,6 +946,36 @@ class ServeController:
         """
         return self.kv_store.get(CONFIG_CHECKPOINT_KEY) is None
 
+    def _register_shutdown_cleanup_actor(self, actor_handle: ActorHandle) -> None:
+        """Register an actor to be killed on serve.shutdown().
+
+        This allows deployments to register auxiliary actors (like caches,
+        coordinators, etc.) that should be cleaned up when Serve shuts down.
+        The actors must use lifetime="detached" to survive replica restarts,
+        but will be explicitly killed during serve.shutdown().
+
+        Note: Registered actors are NOT persisted across controller restarts.
+        For full persistence, use controller-managed deployment-scoped actors
+        (see https://github.com/ray-project/ray/issues/60359).
+
+        If the same actor is registered multiple times (e.g., from multiple
+        router instances sharing a tree actor via get_if_exists=True), it will
+        only be stored once.
+
+        Args:
+            actor_handle: The actor handle to register for cleanup.
+        """
+        actor_id = actor_handle._actor_id.hex()
+        self._registered_cleanup_actors[actor_id] = actor_handle
+
+    def _kill_registered_cleanup_actors(self) -> None:
+        """Kill all actors registered for shutdown cleanup."""
+        for actor in self._registered_cleanup_actors.values():
+            try:
+                ray.kill(actor, no_restart=True)
+            except Exception:
+                pass  # Actor may already be dead
+
     def shutdown(self):
         """Shuts down the serve instance completely.
 
@@ -947,6 +1014,7 @@ class ServeController:
             and endpoint_is_shutdown
             and proxy_state_is_shutdown
         ):
+            self._kill_registered_cleanup_actors()
             logger.warning(
                 "All resources have shut down, controller exiting.",
                 extra={"log_to_stderr": False},
