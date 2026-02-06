@@ -99,9 +99,13 @@ def _to_pa_string_input(x: Any) -> Any:
         return pa.scalar(x)
     if isinstance(x, (pa.Array, pa.ChunkedArray)) and _is_pa_string_like(x):
         return _pa_decode_dict_string_array(x)
+    if isinstance(x, (pa.Array, pa.ChunkedArray)):
+        actual_type = str(x.type)
+    else:
+        actual_type = type(x).__name__
     raise TypeError(
         "Expected string or string-like pyarrow Array/ChunkedArray for string "
-        f"concatenation, got {type(x).__name__}."
+        f"concatenation, got {actual_type}."
     )
 
 

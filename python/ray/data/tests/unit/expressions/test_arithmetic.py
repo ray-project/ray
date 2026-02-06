@@ -81,7 +81,7 @@ class TestBasicArithmetic:
         """Reject non-string-like inputs in string concatenation."""
         table = pa.table({"name": ["a", "b"], "age": [1, 2]})
         expr = col("name") + col("age")
-        with pytest.raises(TypeError, match="string-like pyarrow"):
+        with pytest.raises(TypeError, match="string-like pyarrow.*int64"):
             eval_expr(expr, table)
 
     # ── Subtraction ──
