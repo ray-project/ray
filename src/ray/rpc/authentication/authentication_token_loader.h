@@ -63,7 +63,6 @@ class AuthenticationTokenLoader {
   void ResetCache() {
     absl::MutexLock lock(&token_mutex_);
     cached_token_ = nullptr;
-    last_load_time_ = std::chrono::steady_clock::time_point();
     cached_token_expiration_time_ = std::chrono::system_clock::time_point();
   }
 
@@ -94,7 +93,6 @@ class AuthenticationTokenLoader {
 
   absl::Mutex token_mutex_;
   std::shared_ptr<const AuthenticationToken> cached_token_;
-  std::chrono::steady_clock::time_point last_load_time_;
   std::chrono::system_clock::time_point cached_token_expiration_time_;
 };
 

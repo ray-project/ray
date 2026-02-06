@@ -48,7 +48,8 @@ constexpr const char *kNoTokenErrorMessage =
     "or store the token in any file and set RAY_AUTH_TOKEN_PATH to point to it, "
     "or set the RAY_AUTH_TOKEN environment variable.";
 
-constexpr int kRaySATokenDefaultTTLSeconds = 300;
+constexpr int kRaySATokenDefaultTTLSeconds = 600;
+constexpr int kRaySATokenExpirationBufferSeconds = 300;
 
 std::optional<std::chrono::system_clock::time_point>
 AuthenticationTokenLoader::GetTokenExpiration(const std::string &token) {
@@ -133,7 +134,8 @@ std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
     cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
     auto exp = GetTokenExpiration(cached_token_->GetRawValue());
     if (exp) {
-      cached_token_expiration_time_ = *exp;
+      cached_token_expiration_time_ =
+          *exp - std::chrono::seconds(kRaySATokenExpirationBufferSeconds);
     } else {
       cached_token_expiration_time_ = std::chrono::system_clock::now() +
                                       std::chrono::seconds(kRaySATokenDefaultTTLSeconds);
@@ -186,7 +188,8 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
   cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
   auto exp = GetTokenExpiration(cached_token_->GetRawValue());
   if (exp) {
-    cached_token_expiration_time_ = *exp;
+    cached_token_expiration_time_ =
+        *exp - std::chrono::seconds(kRaySATokenExpirationBufferSeconds);
   } else {
     cached_token_expiration_time_ = std::chrono::system_clock::now() +
                                     std::chrono::seconds(kRaySATokenDefaultTTLSeconds);
