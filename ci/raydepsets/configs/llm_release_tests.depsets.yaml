@@ -8,8 +8,8 @@ build_arg_sets:
   append_flags:
     - --python-version=3.11
     - --unsafe-package ray
-    - --python-platform=linux
-    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+    - --python-platform=x86_64-manylinux_2_31
+    - --index https://download.pytorch.org/whl/${CUDA_CODE}
   build_arg_sets:
     - cu128
 

@@ -1,4 +1,4 @@
-// Copyright 2022 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,16 +37,28 @@ class ThresholdMemoryMonitor : public MemoryMonitor {
   /// exceeded.
   /// \param usage_threshold a value in [0-1] to indicate the max usage.
   /// \param min_memory_free_bytes to indicate the minimum amount of free space before it
-  /// becomes over the threshold. \param monitor_interval_ms the frequency to update the
+  /// becomes over the threshold.
+  /// \param monitor_interval_ms the frequency to update the
   /// usage. 0 disables the monitor and callbacks won't fire.
+  /// \param root_cgroup_path the path to the root cgroup that the threshold monitor will
+  /// use to calculate the system memory usage.
   ThresholdMemoryMonitor(KillWorkersCallback kill_workers_callback,
                          float usage_threshold,
                          int64_t min_memory_free_bytes,
-                         uint64_t monitor_interval_ms);
+                         uint64_t monitor_interval_ms,
+                         const std::string root_cgroup_path = kDefaultCgroupPath);
 
   ~ThresholdMemoryMonitor() override;
 
  private:
+  /**
+   * @brief Checks if the memory usage is above the threshold.
+   *
+   * @param system_memory The snapshot of system memory usage.
+   * @return True if the memory usage is above the threshold.
+   */
+  bool IsUsageAboveThreshold(const SystemMemorySnapshot &system_memory);
+
   /// The computed threshold in bytes based on usage_threshold_ and
   /// min_memory_free_bytes_.
   int64_t computed_threshold_bytes_;
