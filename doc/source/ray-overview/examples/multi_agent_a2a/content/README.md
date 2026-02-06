@@ -7,6 +7,11 @@ Or use this script: bash convert_to_md.sh
 
 # Build a multi-agent system with A2A protocol
 
+<div align="left">
+  <a target="_blank" href="https://console.anyscale.com/template-preview/multi_agent_a2a"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+  <a href="https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content" role="button"><img src="https://img.shields.io/static/v1?label=&message=View%20On%20GitHub&color=586069&logo=github&labelColor=2f363d"></a>&nbsp;
+</div>
+
 This tutorial guides you through building and deploying a **multi-agent system** where agents communicate using the **A2A (Agent-to-Agent) protocol**. The system is built on Ray Serve for scalable deployment, LangGraph for agent orchestration, and MCP for tool integration.
 
 If you're new to Ray Serve and LangChain integration, we recommend checking out this **single-agent template** first:
@@ -52,7 +57,7 @@ Each agent runs as an independent, autoscaling service with two interfaces: **SS
 ### Endpoint map
 
 | Use case | Endpoint |
-|------------------------------------|------------------------------------||
+|------------------------------------|------------------------------------|
 | LLM (OpenAI-compatible) | `POST /llm/v1/chat/completions` |
 | Weather agent (human chat, SSE) | `POST /weather-agent/chat` |
 | Research agent (human chat, SSE) | `POST /research-agent/chat` |
@@ -134,7 +139,7 @@ For more information, see the [Anyscale Services documentation](https://docs.any
 
 ## 2. Project structure
 
-    multi-agent-a2a/
+    multi_agent_a2a/
     ├── agents/                      # Agent implementations
     │   ├── weather_agent_with_mcp.py
     │   ├── research_agent_with_web_search_mcp.py
@@ -171,13 +176,12 @@ Let's get the system running first, then explore how it works.
 - 1x L4 GPU (g6.2xlarge, 24 GB GPU memory) for the LLM service
 - 1x m5d.xlarge (4 vCPU) for MCP servers and agents
 
-
-
 **Install Dependencies:**
-```bash
-pip install -r requirements.txt
-```
 
+
+```python
+!pip install -r requirements.txt
+```
 
 ### Obtain the Google search API keys
 First, to get Google Search API keys, visit the [Google Cloud Console](https://console.cloud.google.com/) to create an API key, then set up a [Custom Search Engine](https://programmablesearchengine.google.com/) to get your CSE ID.
@@ -192,8 +196,10 @@ GOOGLE_CSE_ID=<your-custom-search-engine-id>
 ### Deploy all services locally
 Start Ray Serve and deploy all services with a single command in the terminal:
 
-```bash
-serve run serve_multi_config.yaml 
+
+
+```python
+!serve run serve_multi_config.yaml
 ```
 
 This command deploys all the following services:
@@ -211,46 +217,61 @@ After all services have started, verify each layer as follows:
 **Test services individually (with curl):**  
 Run each of the following curl commands separately and check their responses:
 
-```bash
+
+
+```python
 # 1) LLM (OpenAI-compatible)
-curl -X POST http://127.0.0.1:8000/llm/v1/chat/completions \
+!curl -X POST http://127.0.0.1:8000/llm/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model": "Qwen/Qwen3-4B-Instruct-2507-FP8", "messages": [{"role": "user", "content": "Hello!"}]}'
-
-# 2) Weather Agent (SSE interface)
-curl -X POST http://127.0.0.1:8000/weather-agent/chat \
-  -H "Content-Type: application/json" \
-  -d '{"user_request": "What is the weather in San Francisco?"}'
-
-# 3) Research Agent (SSE interface)
-curl -X POST http://127.0.0.1:8000/research-agent/chat \
-  -H "Content-Type: application/json" \
-  -d '{"user_request": "What are the top attractions in Seattle? Reply with sources."}'
-
-# 4) Travel Agent (SSE interface, orchestrates other agents via A2A)
-curl -X POST http://127.0.0.1:8000/travel-agent/chat \
-  -H "Content-Type: application/json" \
-  -d '{"user_request": "Plan a 2-day trip to Seattle next week. Include weather details and considerations."}'
-
-# 5) A2A discovery (AgentCards)
-curl http://127.0.0.1:8000/a2a-weather/.well-known/agent-card.json
-curl http://127.0.0.1:8000/a2a-research/.well-known/agent-card.json
-curl http://127.0.0.1:8000/a2a-travel/.well-known/agent-card.json
 ```
 
 
+```python
+# 2) Weather Agent (SSE interface)
+!curl -X POST http://127.0.0.1:8000/weather-agent/chat \
+  -H "Content-Type: application/json" \
+  -d '{"user_request": "What is the weather in San Francisco?"}'
+```
+
+
+```python
+# 3) Research Agent (SSE interface)
+!curl -X POST http://127.0.0.1:8000/research-agent/chat \
+  -H "Content-Type: application/json" \
+  -d '{"user_request": "What are the top attractions in Seattle? Reply with sources."}'
+```
+
+
+```python
+# 4) Travel Agent (SSE interface, orchestrates other agents via A2A)
+!curl -X POST http://127.0.0.1:8000/travel-agent/chat \
+  -H "Content-Type: application/json" \
+  -d '{"user_request": "Plan a 2-day trip to Seattle next week. Include weather details and considerations."}'
+```
+
+
+```python
+# 5) A2A discovery (AgentCards)
+!curl http://127.0.0.1:8000/a2a-weather/.well-known/agent-card.json
+!curl http://127.0.0.1:8000/a2a-research/.well-known/agent-card.json
+!curl http://127.0.0.1:8000/a2a-travel/.well-known/agent-card.json
+```
+
 ### Run the full test suite
 
-```bash
-# Run all tests
-python tests/run_all.py
+
+```python
+!python tests/run_all.py
 ```
 
 ## 4. Production deployment to Anyscale
 
 To deploy to production on Anyscale:
-```bash
-anyscale service deploy -f anyscale_service_multi_config.yaml
+
+
+```python
+!anyscale service deploy -f anyscale_service_multi_config.yaml
 ```
 
 > Note: An Anyscale service config is a superset of a Ray Serve config. For more details, see [the Anyscale service config docs](https://docs.anyscale.com/services/deploy#service-config).
@@ -267,9 +288,11 @@ To follow the same structure as the local `serve run ...` deployment, verify pro
 
 **Set up environment variables (once):**
 
-```bash
-export BASE_URL="https://<service-name>-<id>.cld-<cluster-id>.s.anyscaleuserdata.com"
-export ANYSCALE_API_TOKEN="<your-anyscale-api-token>"
+
+```python
+import os
+os.environ["BASE_URL"] = "https://<service-name>-<id>.cld-<cluster-id>.s.anyscaleuserdata.com"  # Replace with your URL
+os.environ["ANYSCALE_API_TOKEN"] = "<your-anyscale-api-token>"  # Replace with your token
 ```
 
 > Note: Do **not** include a trailing `/` at the end of `BASE_URL` (after `.anyscaleuserdata.com`).
@@ -277,37 +300,50 @@ export ANYSCALE_API_TOKEN="<your-anyscale-api-token>"
 **Test services individually (with curl):**  
 Run each of the following curl commands separately and check their responses:
 
-```bash
+
+```python
 # 1) LLM (OpenAI-compatible)
-curl -X POST "${BASE_URL}/llm/v1/chat/completions" \
+!curl -X POST "${BASE_URL}/llm/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${ANYSCALE_API_TOKEN}" \
   -d '{"model": "Qwen/Qwen3-4B-Instruct-2507-FP8", "messages": [{"role": "user", "content": "Hello!"}]}'
+```
 
+
+```python
 # 2) Weather Agent (SSE interface)
-curl -X POST "${BASE_URL}/weather-agent/chat" \
+!curl -X POST "${BASE_URL}/weather-agent/chat" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${ANYSCALE_API_TOKEN}" \
   -d '{"user_request": "What is the weather in San Francisco?"}'
+```
 
+
+```python
 # 3) Research Agent (SSE interface)
-curl -X POST "${BASE_URL}/research-agent/chat" \
+!curl -X POST "${BASE_URL}/research-agent/chat" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${ANYSCALE_API_TOKEN}" \
   -d '{"user_request": "What are the top attractions in Seattle? Reply with sources."}'
+```
 
+
+```python
 # 4) Travel Agent (SSE interface, orchestrates other agents via A2A)
-curl -X POST "${BASE_URL}/travel-agent/chat" \
+!curl -X POST "${BASE_URL}/travel-agent/chat" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${ANYSCALE_API_TOKEN}" \
   -d '{"user_request": "Plan a 2-day trip to Seattle next week. Include weather details and considerations."}'
+```
 
+
+```python
 # 5) A2A discovery (AgentCards)
-curl "${BASE_URL}/a2a-weather/.well-known/agent-card.json" \
+!curl "${BASE_URL}/a2a-weather/.well-known/agent-card.json" \
   -H "Authorization: Bearer ${ANYSCALE_API_TOKEN}"
-curl "${BASE_URL}/a2a-research/.well-known/agent-card.json" \
+!curl "${BASE_URL}/a2a-research/.well-known/agent-card.json" \
   -H "Authorization: Bearer ${ANYSCALE_API_TOKEN}"
-curl "${BASE_URL}/a2a-travel/.well-known/agent-card.json" \
+!curl "${BASE_URL}/a2a-travel/.well-known/agent-card.json" \
   -H "Authorization: Bearer ${ANYSCALE_API_TOKEN}"
 ```
 
@@ -315,12 +351,14 @@ curl "${BASE_URL}/a2a-travel/.well-known/agent-card.json" \
 
 You can run the full test suite against your production deployment:
 
-```bash
-export BASE_URL="https://<service-name>-<id>.cld-<cluster-id>.s.anyscaleuserdata.com"
-export ANYSCALE_API_TOKEN="<your-anyscale-api-token>"
-export TEST_TIMEOUT_SECONDS="2000"
 
-python tests/run_all.py
+```python
+import os
+os.environ["BASE_URL"] = "https://<service-name>-<id>.cld-<cluster-id>.s.anyscaleuserdata.com"  # Replace with your URL
+os.environ["ANYSCALE_API_TOKEN"] = "<your-anyscale-api-token>"  # Replace with your token
+os.environ["TEST_TIMEOUT_SECONDS"] = "2000"
+
+!python tests/run_all.py
 ```
 
 ## 5. Deep dive: Understanding each component
@@ -501,6 +539,8 @@ This agent demonstrates agent-to-agent communication via the A2A protocol. Inste
 
 **A2A tool implementation:**
 
+
+
 ```python
 from langchain_core.tools import tool
 from protocols.a2a_client import a2a_execute_text
@@ -539,6 +579,7 @@ Provides utilities for creating A2A AgentCards using the official `a2a-sdk` type
 - `build_agent_card()` - Creates an `a2a.types.AgentCard` for HTTP+JSON (REST) agents
 
 **Usage:**
+
 
 ```python
 from protocols.a2a_card import build_agent_card
@@ -599,6 +640,8 @@ Provides a simplified interface for agent-to-agent communication using the offic
 
 **Usage:**
 
+
+
 ```python
 from protocols.a2a_client import a2a_execute_text
 
@@ -624,12 +667,20 @@ print(result)
 
 **Testing A2A endpoints:**
 
-```bash
-# Test A2A discovery
-curl http://127.0.0.1:8000/a2a-weather/.well-known/agent-card.json
 
-# For execution, prefer the Python helper:
-# python -c 'import asyncio; from protocols.a2a_client import a2a_execute_text; print(asyncio.run(a2a_execute_text("http://127.0.0.1:8000/a2a-weather","Weather in NYC?")))'
+```python
+# Test A2A discovery
+!curl http://127.0.0.1:8000/a2a-weather/.well-known/agent-card.json
+```
+
+
+```python
+# For execution, use the Python helper:
+import asyncio
+from protocols.a2a_client import a2a_execute_text
+
+result = asyncio.run(a2a_execute_text("http://127.0.0.1:8000/a2a-weather", "Weather in NYC?"))
+print(result)
 ```
 
         "stateTransitionHistory": false,
@@ -675,6 +726,7 @@ curl http://127.0.0.1:8000/a2a-weather/.well-known/agent-card.json
 
 Use the `a2a_execute_text` helper for simple text-based calls:
 
+
 ```python
 from protocols.a2a_client import a2a_execute_text
 
@@ -689,8 +741,9 @@ print(result)
 
 You can also test discovery directly:
 
-```bash
-curl http://127.0.0.1:8000/a2a-weather/.well-known/agent-card.json
+
+```python
+!curl http://127.0.0.1:8000/a2a-weather/.well-known/agent-card.json
 ```
 
 ---
@@ -726,3 +779,4 @@ The system uses Ray Serve's built-in autoscaling to handle variable load. See th
 - [Deploy LLM Template](https://console.anyscale.com/template-preview/deployment-serve-llm) - Template for deploying LLM services on Anyscale
 - [Anyscale MCP Documentation](https://docs.anyscale.com/mcp) - Guide for deploying and configuring MCP servers with Ray Serve
 - [MCP Ray Serve Template](https://console.anyscale.com/template-preview/mcp-ray-serve) - Template for deploying MCP servers on Anyscale
+
