@@ -280,6 +280,11 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 /// 0 means it will use the default (number of CPUs).
 RAY_CONFIG(int64_t, worker_maximum_startup_concurrency, 0)
 
+/// Maximum number of retries for pop worker before the task is
+/// cancelled. 0 means no retry (fail immediately), default is 5.
+/// Retries indefinitely if the value is -1.
+RAY_CONFIG(int32_t, pop_worker_max_retries, 5)
+
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128)
 

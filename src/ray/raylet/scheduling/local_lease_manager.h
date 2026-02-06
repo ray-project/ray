@@ -362,6 +362,9 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   /// the lease is granted to ensure that the arguments are not evicted.
   absl::flat_hash_map<LeaseID, std::vector<ObjectID>> granted_lease_args_;
 
+  /// A map of pop worker retry counts per lease.
+  absl::flat_hash_map<LeaseID, int> pop_worker_retries_;
+
   /// All arguments of granted leases, which are also pinned in the object store.
   /// The value is a pair: (the pointer to the object store that should be deleted
   /// once the object is no longer needed, number of leases that depend on the
