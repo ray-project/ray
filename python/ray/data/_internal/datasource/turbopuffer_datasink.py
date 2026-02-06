@@ -139,36 +139,38 @@ class TurbopufferDatasink(Datasink):
 
         _check_import(self, module="turbopuffer", package="turbopuffer")
 
-        # Validate namespace configuration
+        # Validate exactly one of namespace/namespace_column is specified
         if namespace and namespace_column:
             raise ValueError(
                 "Specify either 'namespace' OR 'namespace_column', not both"
             )
-
         if not namespace and not namespace_column:
             raise ValueError("Must specify either 'namespace' or 'namespace_column'")
 
-        # Validate namespace format has placeholder if using namespace_column
-        if namespace_column and "{namespace}" not in namespace_format:
-            raise ValueError(
-                "namespace_format must contain '{namespace}' placeholder "
-                "when using namespace_column"
-            )
+        # Validate namespace_column configuration
+        if namespace_column:
+            if "{namespace}" not in namespace_format:
+                raise ValueError(
+                    "namespace_format must contain '{namespace}' placeholder "
+                    "when using namespace_column"
+                )
 
-        # Validate namespace_column doesn't overlap with id_column or vector_column
-        if namespace_column and namespace_column == id_column:
-            raise ValueError(
-                f"namespace_column ('{namespace_column}') cannot be the same as "
-                f"id_column ('{id_column}'). The namespace column identifies the "
-                "target namespace, while id_column identifies documents within a namespace."
-            )
-
-        if namespace_column and namespace_column == vector_column:
-            raise ValueError(
-                f"namespace_column ('{namespace_column}') cannot be the same as "
-                f"vector_column ('{vector_column}'). The namespace column must be a "
-                "separate column from the embedding vector."
-            )
+            # namespace_column cannot overlap with id/vector columns (source names)
+            # or reserved target names that would be created by column renames
+            reserved_conflicts = {
+                id_column: "id_column",
+                vector_column: "vector_column",
+                _ID_COLUMN if id_column != _ID_COLUMN else None: "reserved 'id'",
+                _VECTOR_COLUMN
+                if vector_column != _VECTOR_COLUMN
+                else None: "reserved 'vector'",
+            }
+            for conflict, description in reserved_conflicts.items():
+                if conflict and namespace_column == conflict:
+                    raise ValueError(
+                        f"namespace_column ('{namespace_column}') cannot be the same "
+                        f"as {description}. This would cause incorrect namespace grouping."
+                    )
 
         # Store configuration
         self.namespace = namespace
