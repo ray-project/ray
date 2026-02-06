@@ -230,7 +230,7 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       bundles_source = pg_data.mutable_scheduling_strategy(0)->mutable_bundles();
     }
 
-    for (auto &&bundle : std::move(*pg_data.mutable_bundles())) {
+    for (auto &&bundle : std::move(*bundles_source)) {
       if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
         // We will be skipping **placed** bundle (which has node id associated with it).
         // This is to avoid double counting the bundles that are already placed when
