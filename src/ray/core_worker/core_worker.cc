@@ -597,7 +597,7 @@ void CoreWorker::Disconnect(
   if (connected_.exchange(false)) {
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
     Status status = raylet_ipc_client_->Disconnect(
-        exit_type, exit_detail, creation_task_exception_pb_bytes);
+        exit_type, std::string(exit_detail), creation_task_exception_pb_bytes);  // Convert for function
     if (status.ok()) {
       RAY_LOG(INFO) << "Disconnected from the local raylet.";
     } else {
@@ -682,7 +682,7 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
 
   ShutdownReason reason = ConvertExitTypeToShutdownReason(exit_type, true);
   shutdown_coordinator_->RequestShutdown(
-      /*force_shutdown=*/true, reason, detail, std::chrono::milliseconds{0}, nullptr);
+      /*force_shutdown=*/true, reason, std::string(detail), std::chrono::milliseconds{0}, nullptr);  // Convert for function
 
   RAY_LOG(DEBUG) << "ForceExit: shutdown request completed";
 }
@@ -1759,7 +1759,7 @@ Status CoreWorker::PushError(const JobID &job_id,
                              std::string_view type,           // Changed: read-only param
                              std::string_view error_message,  // Changed: read-only param
                              double timestamp) {
-  return raylet_ipc_client_->PushError(job_id, type, error_message, timestamp);
+  return raylet_ipc_client_->PushError(job_id, std::string(type), std::string(error_message), timestamp);  // Convert for function
 }
 
 json CoreWorker::OverrideRuntimeEnv(const json &child,
@@ -1803,7 +1803,7 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr;
   runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>();
 
-  if (!IsRuntimeEnvInfoEmpty(serialized_runtime_env_info)) {
+  if (!IsRuntimeEnvInfoEmpty(std::string(serialized_runtime_env_info))) {  // Convert for function
     RAY_CHECK(google::protobuf::util::JsonStringToMessage(
                   std::string(serialized_runtime_env_info),  // Convert for protobuf
                   runtime_env_info.get())
@@ -1852,7 +1852,7 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
     }
   }
 
-  runtime_env_json_serialization_cache_.Put(serialized_runtime_env_info,
+  runtime_env_json_serialization_cache_.Put(std::string(serialized_runtime_env_info),  // Convert for cache key
                                             runtime_env_info);
   return runtime_env_info;
 }
@@ -1906,7 +1906,7 @@ void CoreWorker::BuildCommonTaskSpec(
   RAY_CHECK(num_returns >= 0);
   builder.SetCommonTaskSpec(
       task_id,
-      name,
+      std::string(name),  // Convert for function
       function.GetLanguage(),
       function.GetFunctionDescriptor(),
       job_id,
@@ -2021,7 +2021,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   }
   builder.SetNormalTaskSpec(max_retries,
                             retry_exceptions,
-                            serialized_retry_exception_allowlist,
+                            std::string(serialized_retry_exception_allowlist),  // Convert for function
                             scheduling_strategy,
                             root_detached_actor_id);
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
@@ -2117,7 +2117,7 @@ Status CoreWorker::CreateActor(
       /*actor_cursor=*/ObjectID::FromIndex(actor_creation_task_id, 1),
       function.GetLanguage(),
       function.GetFunctionDescriptor(),
-      extension_data,
+      std::string(extension_data),  // Convert for constructor
       actor_creation_options.max_task_retries,
       actor_name,
       ray_namespace,
@@ -2147,7 +2147,7 @@ Status CoreWorker::CreateActor(
                                    ray_namespace,
                                    actor_creation_options.is_asyncio,
                                    actor_creation_options.concurrency_groups,
-                                   extension_data,
+                                   std::string(extension_data),  // Convert for function
                                    actor_creation_options.allow_out_of_order_execution,
                                    root_detached_actor_id);
   // Add the actor handle before we submit the actor creation task, since the
@@ -2461,7 +2461,7 @@ Status CoreWorker::SubmitActorTask(
                                  ObjectID::Nil(),
                                  max_retries,
                                  retry_exceptions,
-                                 serialized_retry_exception_allowlist,
+                                 std::string(serialized_retry_exception_allowlist),  // Convert for function
                                  task_options.tensor_transport);
   // Submit task.
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
@@ -2674,7 +2674,7 @@ ResourceMappingType CoreWorker::GetResourceIDs() const {
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     std::string_view event_name) {  // Changed: read-only param
   return std::make_unique<worker::ProfileEvent>(
-      *task_event_buffer_, *worker_context_, options_.node_ip_address, event_name);
+      *task_event_buffer_, *worker_context_, options_.node_ip_address, std::string(event_name));  // Convert for constructor
 }
 
 void CoreWorker::RunTaskExecutionLoop() {
