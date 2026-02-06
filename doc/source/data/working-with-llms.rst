@@ -23,7 +23,7 @@ The :ref:`ray.data.llm <llm-ref>` module enables scalable batch inference on Ray
 **Operations:**
 
 * :ref:`Troubleshooting <troubleshooting>` - GPU memory, model loading issues
-* :ref:`Advanced configuration <advanced_configuration>` - Parallelism, per-stage tuning, LoRA
+* :ref:`Advanced configuration <advanced_configuration>` - Parallelism, per-stage tuning, LoRA, batch concurrency
 
 .. _vllm_quickstart:
 
@@ -480,6 +480,37 @@ Use `RunAI Model Streamer <https://github.com/run-ai/runai-model-streamer>`_ for
     :language: python
     :start-after: __runai_config_example_start__
     :end-before: __runai_config_example_end__
+
+.. _tuning_concurrent_batches:
+
+Tuning concurrent batch processing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Two parameters control concurrent batch processing: ``max_concurrent_batches`` and ``max_tasks_in_flight_per_actor``. Understanding their interaction helps achieve optimal throughput.
+
+Understanding the parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``max_concurrent_batches``, default: 8
+    The number of batches that can execute concurrently within a single vLLM engine actor. This overlaps batch processing to hide tail latency. The optimal batch size depends on the workload.
+
+``max_tasks_in_flight_per_actor``, experimental, default: 16
+    The number of tasks Ray Data can queue per actor before waiting for results. This enables task prefetching so tasks are ready when the actor finishes processing.
+
+How they work together
+^^^^^^^^^^^^^^^^^^^^^^
+
+These parameters control different parts of the pipeline:
+
+- ``max_tasks_in_flight_per_actor`` controls how many tasks Ray Data sends to the actor queue
+- ``max_concurrent_batches`` controls how many batches can execute simultaneously
+
+With ``max_tasks_in_flight_per_actor`` < ``max_concurrent_batches``, Ray Data actors are undersaturated. To maximize throughput, increase ``max_tasks_in_flight_per_actor`` to keep the actor task queue saturated.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __concurrent_batches_tuning_example_start__
+    :end-before: __concurrent_batches_tuning_example_end__
 
 .. _serve_deployments:
 
