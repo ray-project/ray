@@ -14,6 +14,8 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
 if TYPE_CHECKING:
+    import zarr
+
     from ray.data.context import DataContext
 
 _METADATA_FILENAMES = {".zarray", ".zgroup", ".zattrs", "zarr.json"}
@@ -43,27 +45,15 @@ class ZarrDatasource(Datasource):
 
         self._paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
 
-    @property
-    def supports_distributed_reads(self) -> bool:
-        return self._supports_distributed_reads
-
-    def get_read_tasks(
-        self,
-        parallelism: int,
-        per_task_row_limit: Optional[int] = None,
-        data_context: Optional["DataContext"] = None,
-    ) -> List[ReadTask]:
-        import zarr
-
-        read_tasks = []
+        # Read and cache metadata for all stores (similar to ParquetDatasource listing files in __init__)
+        self._store_metadata = {}  # {store_path: (metadata_bytes, path_lookup, is_v3)}
         for store_path in self._paths:
             file_infos = self._filesystem.get_file_info(
                 pafs.FileSelector(store_path, recursive=True)
             )
 
-            # Collect metadata and build path lookup for all files
             metadata_bytes: Dict[str, bytes] = {}
-            path_lookup: Dict[str, str] = {}  # rel_path -> abs_path
+            path_lookup: Dict[str, str] = {}
 
             for fi in file_infos:
                 if fi.type != pafs.FileType.File:
@@ -78,12 +68,30 @@ class ZarrDatasource(Datasource):
                 else:
                     path_lookup[rel_path] = fi.path
 
-            # Detect zarr version from metadata files
             is_zarr_v3 = "zarr.json" in metadata_bytes or any(
                 k.endswith("/zarr.json") for k in metadata_bytes
             )
 
-            # Open zarr with metadata to discover structure
+            self._store_metadata[store_path] = (metadata_bytes, path_lookup, is_zarr_v3)
+
+    @property
+    def supports_distributed_reads(self) -> bool:
+        return self._supports_distributed_reads
+
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
+    ) -> List[ReadTask]:
+        import zarr
+
+        read_tasks = []
+        for store_path, (
+            metadata_bytes,
+            path_lookup,
+            is_zarr_v3,
+        ) in self._store_metadata.items():
             store_dict = {
                 k: zarr.core.buffer.cpu.Buffer.from_bytes(v)
                 for k, v in metadata_bytes.items()
@@ -92,7 +100,6 @@ class ZarrDatasource(Datasource):
 
             for array_name, arr in _get_arrays(store):
                 for chunk_idx in _get_chunk_indices(arr):
-                    # Compute expected chunk path based on zarr version
                     chunk_rel_path = _get_chunk_path(array_name, chunk_idx, is_zarr_v3)
                     chunk_abs_path = path_lookup.get(chunk_rel_path)
 
@@ -132,21 +139,7 @@ class ZarrDatasource(Datasource):
         import zarr
 
         total = 0
-        for store_path in self._paths:
-            file_infos = self._filesystem.get_file_info(
-                pafs.FileSelector(store_path, recursive=True)
-            )
-
-            metadata_bytes = {}
-            for fi in file_infos:
-                if fi.type != pafs.FileType.File:
-                    continue
-                rel_path = fi.path[len(store_path) :].lstrip("/")
-                filename = rel_path.split("/")[-1]
-                if filename in _METADATA_FILENAMES:
-                    with self._filesystem.open_input_file(fi.path) as f:
-                        metadata_bytes[rel_path] = bytes(f.read())
-
+        for metadata_bytes, _, _ in self._store_metadata.values():
             store_dict = {
                 k: zarr.core.buffer.cpu.Buffer.from_bytes(v)
                 for k, v in metadata_bytes.items()
