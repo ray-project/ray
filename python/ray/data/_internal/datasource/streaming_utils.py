@@ -5,9 +5,13 @@ streaming datasources to reduce code duplication.
 """
 
 from dataclasses import dataclass, fields
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import pyarrow as pa
+
+from ray.data._internal.streaming.block_coalescer import BlockCoalescer
+from ray.data.block import Block, BlockMetadata
+from ray.data.context import DataContext
 
 
 @dataclass
@@ -219,9 +223,68 @@ def apply_dataclass_to_dict(
             target[field.name] = value
 
 
+def create_block_coalescer(target_max_block_size: Optional[int] = None) -> BlockCoalescer:
+    """Create a BlockCoalescer with appropriate target size.
+
+    Args:
+        target_max_block_size: Target block size in bytes. If None, uses DataContext default.
+
+    Returns:
+        BlockCoalescer instance configured with target block size.
+    """
+    if target_max_block_size is None:
+        ctx = DataContext.get_current()
+        target_max_block_size = ctx.target_max_block_size or (128 * 1024 * 1024)
+    return BlockCoalescer(target_max_bytes=target_max_block_size)
+
+
+def create_block_metadata(
+    table: pa.Table,
+    input_file: str,
+) -> BlockMetadata:
+    """Create BlockMetadata from a PyArrow table.
+
+    Args:
+        table: PyArrow table to create metadata for.
+        input_file: Input file identifier (e.g., "kafka://topic/partition").
+
+    Returns:
+        BlockMetadata instance.
+    """
+    return BlockMetadata(
+        num_rows=table.num_rows,
+        size_bytes=table.nbytes if hasattr(table, "nbytes") else None,
+        input_files=[input_file],
+        exec_stats=None,
+    )
+
+
+def yield_coalesced_blocks(
+    coalescer: BlockCoalescer,
+    small_tables: List[pa.Table],
+    input_file: str,
+) -> Iterator[Tuple[Block, BlockMetadata]]:
+    """Yield coalesced blocks with metadata.
+
+    Args:
+        coalescer: BlockCoalescer instance.
+        small_tables: List of small PyArrow tables to coalesce.
+        input_file: Input file identifier for metadata.
+
+    Yields:
+        Tuples of (coalesced_block, metadata).
+    """
+    for coalesced_table in coalescer.coalesce_tables(small_tables):
+        meta = create_block_metadata(coalesced_table, input_file)
+        yield coalesced_table, meta
+
+
 __all__ = [
     "AWSCredentials",
     "HTTPClientConfig",
     "create_standard_schema",
     "apply_dataclass_to_dict",
+    "create_block_coalescer",
+    "create_block_metadata",
+    "yield_coalesced_blocks",
 ]

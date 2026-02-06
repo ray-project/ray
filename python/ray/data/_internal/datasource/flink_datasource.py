@@ -15,12 +15,12 @@ import pyarrow as pa
 from ray.data._internal.datasource.streaming_lag_metrics import LagMetrics
 from ray.data._internal.datasource.streaming_utils import (
     HTTPClientConfig,
+    create_block_coalescer,
     create_standard_schema,
+    yield_coalesced_blocks,
 )
-from ray.data._internal.streaming.block_coalescer import BlockCoalescer
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
-from ray.data.context import DataContext
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.unbound_datasource import (
     UnboundDatasource,
@@ -217,9 +217,7 @@ class FlinkDatasource(UnboundDatasource):
         start_timestamp = checkpoint if checkpoint else None
 
         # Initialize block coalescer for well-sized blocks
-        ctx = DataContext.get_current()
-        target_max_block_size = ctx.target_max_block_size or (128 * 1024 * 1024)
-        coalescer = BlockCoalescer(target_max_bytes=target_max_block_size)
+        coalescer = create_block_coalescer()
 
         def read_fn() -> Iterator[Tuple[Block, BlockMetadata]]:
             """Read from Flink job via REST API."""
@@ -280,14 +278,7 @@ class FlinkDatasource(UnboundDatasource):
                                 small_tables.append(pa.Table.from_pylist(records_buffer))
                                 records_buffer = []
                             # Yield coalesced blocks
-                            for coalesced_table in coalescer.coalesce_tables(small_tables):
-                                meta = BlockMetadata(
-                                    num_rows=coalesced_table.num_rows,
-                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
-                                    input_files=[f"flink://{job_id}/task-{task_id}"],
-                                    exec_stats=None,
-                                )
-                                yield coalesced_table, meta
+                            yield from yield_coalesced_blocks(coalescer, small_tables, f"flink://{job_id}/task-{task_id}")
                             return
 
                         # Yield small table for coalescing when batch size reached
@@ -300,14 +291,7 @@ class FlinkDatasource(UnboundDatasource):
                                 small_tables.append(pa.Table.from_pylist(records_buffer))
                                 records_buffer = []
                             # Yield coalesced blocks
-                            for coalesced_table in coalescer.coalesce_tables(small_tables):
-                                meta = BlockMetadata(
-                                    num_rows=coalesced_table.num_rows,
-                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
-                                    input_files=[f"flink://{job_id}/task-{task_id}"],
-                                    exec_stats=None,
-                                )
-                                yield coalesced_table, meta
+                            yield from yield_coalesced_blocks(coalescer, small_tables, f"flink://{job_id}/task-{task_id}")
                             return
 
                 except Exception as e:
@@ -319,14 +303,7 @@ class FlinkDatasource(UnboundDatasource):
             # Yield remaining records
             if records_buffer:
                 small_tables.append(pa.Table.from_pylist(records_buffer))
-            for coalesced_table in coalescer.coalesce_tables(small_tables):
-                meta = BlockMetadata(
-                    num_rows=coalesced_table.num_rows,
-                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
-                    input_files=[f"flink://{job_id}/task-{task_id}"],
-                    exec_stats=None,
-                )
-                yield coalesced_table, meta
+            yield from yield_coalesced_blocks(coalescer, small_tables, f"flink://{job_id}/task-{task_id}")
 
         metadata = BlockMetadata(
             num_rows=max_records,

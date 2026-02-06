@@ -37,8 +37,11 @@ import pyarrow as pa
 if TYPE_CHECKING:
     from kafka import KafkaConsumer, TopicPartition
 
+from ray.data._internal.datasource.streaming_utils import (
+    create_block_coalescer,
+    yield_coalesced_blocks,
+)
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
-from ray.data._internal.streaming.block_coalescer import BlockCoalescer
 from ray.data._internal.streaming.streaming_lag_metrics import LagMetrics
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
@@ -711,7 +714,7 @@ class KafkaStreamingDatasource(UnboundDatasource):
         )
 
         # Initialize block coalescer for well-sized blocks
-        coalescer = BlockCoalescer(target_max_bytes=target_max_block_size)
+        coalescer = create_block_coalescer(target_max_block_size)
 
         # Track last offset for checkpoint updates
         if last_offsets_dict is not None:
@@ -772,15 +775,8 @@ class KafkaStreamingDatasource(UnboundDatasource):
                     if not msg_batch:
                         # Yield any pending coalesced blocks
                         if small_tables:
-                            for coalesced_table in coalescer.coalesce_tables(small_tables):
-                                meta = BlockMetadata(
-                                    num_rows=coalesced_table.num_rows,
-                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
-                                    input_files=[f"kafka://{topic}/{partition}"],
-                                    exec_stats=None,
-                                )
-                                yield coalesced_table, meta
-                            small_tables = []
+                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
+                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
                         continue
 
                     partition_msgs = msg_batch.get(topic_partition, [])
@@ -796,15 +792,8 @@ class KafkaStreamingDatasource(UnboundDatasource):
                                 small_tables.append(pa.Table.from_pylist(records))
                                 records = []
                             # Yield coalesced blocks
-                            for coalesced_table in coalescer.coalesce_tables(small_tables):
-                                meta = BlockMetadata(
-                                    num_rows=coalesced_table.num_rows,
-                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
-                                    input_files=[f"kafka://{topic}/{partition}"],
-                                    exec_stats=None,
-                                )
-                                yield coalesced_table, meta
-                            return
+                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
+                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
 
                         records.append(
                             {
@@ -834,15 +823,8 @@ class KafkaStreamingDatasource(UnboundDatasource):
                                 small_tables.append(pa.Table.from_pylist(records))
                                 records = []
                             # Yield coalesced blocks
-                            for coalesced_table in coalescer.coalesce_tables(small_tables):
-                                meta = BlockMetadata(
-                                    num_rows=coalesced_table.num_rows,
-                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
-                                    input_files=[f"kafka://{topic}/{partition}"],
-                                    exec_stats=None,
-                                )
-                                yield coalesced_table, meta
-                            # Update checkpoint with last offset + 1 (next offset to read)
+                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
+                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
                             if last_offsets_dict is not None and last_offset is not None:
                                 last_offsets_dict[checkpoint_key] = last_offset + 1
                             return
@@ -857,28 +839,14 @@ class KafkaStreamingDatasource(UnboundDatasource):
                             if records:
                                 small_tables.append(pa.Table.from_pylist(records))
                             # Yield coalesced blocks
-                            for coalesced_table in coalescer.coalesce_tables(small_tables):
-                                meta = BlockMetadata(
-                                    num_rows=coalesced_table.num_rows,
-                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
-                                    input_files=[f"kafka://{topic}/{partition}"],
-                                    exec_stats=None,
-                                )
-                                yield coalesced_table, meta
-                            return
+                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
+                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
 
                 # Flush remaining records
                 if records:
                     small_tables.append(pa.Table.from_pylist(records))
-                for coalesced_table in coalescer.coalesce_tables(small_tables):
-                    meta = BlockMetadata(
-                        num_rows=coalesced_table.num_rows,
-                        size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
-                        input_files=[f"kafka://{topic}/{partition}"],
-                        exec_stats=None,
-                    )
-                    yield coalesced_table, meta
-
+                yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
+                yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
         metadata = BlockMetadata(
             num_rows=max_records,  # Estimated
             size_bytes=None,

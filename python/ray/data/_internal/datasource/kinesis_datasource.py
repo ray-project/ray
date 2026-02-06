@@ -15,13 +15,13 @@ import pyarrow as pa
 
 from ray.data._internal.datasource.streaming_utils import (
     AWSCredentials,
+    create_block_coalescer,
     create_standard_schema,
+    yield_coalesced_blocks,
 )
-from ray.data._internal.streaming.block_coalescer import BlockCoalescer
 from ray.data._internal.streaming.streaming_lag_metrics import LagMetrics
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
-from ray.data.context import DataContext
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.unbound_datasource import (
     UnboundDatasource,
@@ -265,7 +265,7 @@ class KinesisDatasource(UnboundDatasource):
         )
 
         # Initialize block coalescer for well-sized blocks
-        coalescer = BlockCoalescer(target_max_bytes=target_max_block_size)
+        coalescer = create_block_coalescer(target_max_block_size)
 
         # Track last sequence number for checkpoint updates
         if last_sequence_numbers_dict is not None:
@@ -321,15 +321,7 @@ class KinesisDatasource(UnboundDatasource):
                                     small_tables.append(pa.Table.from_pylist(records_buffer))
                                     records_buffer = []
                                 # Yield coalesced blocks
-                                for coalesced_table in coalescer.coalesce_tables(small_tables):
-                                    meta = BlockMetadata(
-                                        num_rows=coalesced_table.num_rows,
-                                        size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
-                                        input_files=[f"kinesis://{stream_name}/{shard_id}"],
-                                        exec_stats=None,
-                                    )
-                                    yield coalesced_table, meta
-                                return
+                                yield from yield_coalesced_blocks(coalescer, small_tables, f"kinesis://{stream_name}/{shard_id}")
 
                             records_buffer.append(_kinesis_record_to_dict(record, shard_id))
                             records_read += 1
@@ -349,15 +341,7 @@ class KinesisDatasource(UnboundDatasource):
                                     small_tables.append(pa.Table.from_pylist(records_buffer))
                                     records_buffer = []
                                 # Yield coalesced blocks
-                                for coalesced_table in coalescer.coalesce_tables(small_tables):
-                                    meta = BlockMetadata(
-                                        num_rows=coalesced_table.num_rows,
-                                        size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
-                                        input_files=[f"kinesis://{stream_name}/{shard_id}"],
-                                        exec_stats=None,
-                                    )
-                                    yield coalesced_table, meta
-                                return
+                                yield from yield_coalesced_blocks(coalescer, small_tables, f"kinesis://{stream_name}/{shard_id}")
 
                             # Yield small table for coalescing when batch size reached
                             if len(records_buffer) >= min(max_records or _KINESIS_BATCH_SIZE, _KINESIS_BATCH_SIZE):
@@ -369,15 +353,7 @@ class KinesisDatasource(UnboundDatasource):
                                     small_tables.append(pa.Table.from_pylist(records_buffer))
                                     records_buffer = []
                                 # Yield coalesced blocks
-                                for coalesced_table in coalescer.coalesce_tables(small_tables):
-                                    meta = BlockMetadata(
-                                        num_rows=coalesced_table.num_rows,
-                                        size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
-                                        input_files=[f"kinesis://{stream_name}/{shard_id}"],
-                                        exec_stats=None,
-                                    )
-                                    yield coalesced_table, meta
-                                return
+                                yield from yield_coalesced_blocks(coalescer, small_tables, f"kinesis://{stream_name}/{shard_id}")
             else:
                 # Standard polling mode
                 # Use checkpoint sequence if available
@@ -405,15 +381,7 @@ class KinesisDatasource(UnboundDatasource):
                             if records_buffer:
                                 small_tables.append(pa.Table.from_pylist(records_buffer))
                             # Yield coalesced blocks
-                            for coalesced_table in coalescer.coalesce_tables(small_tables):
-                                meta = BlockMetadata(
-                                    num_rows=coalesced_table.num_rows,
-                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
-                                    input_files=[f"kinesis://{stream_name}/{shard_id}"],
-                                    exec_stats=None,
-                                )
-                                yield coalesced_table, meta
-                            return
+                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kinesis://{stream_name}/{shard_id}")
 
                         records_buffer.append(_kinesis_record_to_dict(record, shard_id))
                         records_read += 1
@@ -433,15 +401,7 @@ class KinesisDatasource(UnboundDatasource):
                                 small_tables.append(pa.Table.from_pylist(records_buffer))
                                 records_buffer = []
                             # Yield coalesced blocks
-                            for coalesced_table in coalescer.coalesce_tables(small_tables):
-                                meta = BlockMetadata(
-                                    num_rows=coalesced_table.num_rows,
-                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
-                                    input_files=[f"kinesis://{stream_name}/{shard_id}"],
-                                    exec_stats=None,
-                                )
-                                yield coalesced_table, meta
-                            return
+                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kinesis://{stream_name}/{shard_id}")
 
                         # Yield small table for coalescing when batch size reached
                         if len(records_buffer) >= min(max_records, _KINESIS_BATCH_SIZE):
@@ -452,42 +412,18 @@ class KinesisDatasource(UnboundDatasource):
                             if records_buffer:
                                 small_tables.append(pa.Table.from_pylist(records_buffer))
                             # Yield coalesced blocks
-                            for coalesced_table in coalescer.coalesce_tables(small_tables):
-                                meta = BlockMetadata(
-                                    num_rows=coalesced_table.num_rows,
-                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
-                                    input_files=[f"kinesis://{stream_name}/{shard_id}"],
-                                    exec_stats=None,
-                                )
-                                yield coalesced_table, meta
-                            return
+                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kinesis://{stream_name}/{shard_id}")
 
                     if not records:
                         # Yield any pending coalesced blocks before sleeping
                         if small_tables:
-                            for coalesced_table in coalescer.coalesce_tables(small_tables):
-                                meta = BlockMetadata(
-                                    num_rows=coalesced_table.num_rows,
-                                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
-                                    input_files=[f"kinesis://{stream_name}/{shard_id}"],
-                                    exec_stats=None,
-                                )
-                                yield coalesced_table, meta
-                            small_tables = []
+                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kinesis://{stream_name}/{shard_id}")
                         time.sleep(poll_interval)
 
             # Yield remaining records
             if records_buffer:
                 small_tables.append(pa.Table.from_pylist(records_buffer))
-            for coalesced_table in coalescer.coalesce_tables(small_tables):
-                meta = BlockMetadata(
-                    num_rows=coalesced_table.num_rows,
-                    size_bytes=coalesced_table.nbytes if hasattr(coalesced_table, "nbytes") else None,
-                    input_files=[f"kinesis://{stream_name}/{shard_id}"],
-                    exec_stats=None,
-                )
-                yield coalesced_table, meta
-
+            yield from yield_coalesced_blocks(coalescer, small_tables, f"kinesis://{stream_name}/{shard_id}")
         metadata = BlockMetadata(
             num_rows=max_records,  # Estimated
             size_bytes=None,
