@@ -1022,25 +1022,18 @@ class TestGangScheduling:
         assert len(gangs) == 2
 
         for gang_id, members in gangs.items():
-            # Each gang should have exactly 2 replicas
             assert len(members) == 2
-
-            # All members should have the same world_size
             assert all(member["world_size"] == 2 for member in members)
-
-            # All members should have the same member_replica_ids
             assert members[0]["member_replica_ids"] == members[1]["member_replica_ids"]
 
-            # member_replica_ids should contain exactly the 2 replica IDs in this gang
             expected_ids = sorted([m["replica_id"] for m in members])
             actual_ids = sorted(members[0]["member_replica_ids"])
             assert actual_ids == expected_ids
 
-            # Ranks within the gang should be {0, 1}
             ranks = sorted([m["rank"] for m in members])
             assert ranks == [0, 1]
 
-        # Across gangs: gang_ids should be different (already guaranteed by dict keys)
+        # Across gangs: gang_ids should be different
         gang_ids = list(gangs.keys())
         assert gang_ids[0] != gang_ids[1]
 
