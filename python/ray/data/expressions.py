@@ -102,6 +102,8 @@ class _ExprVisitor(ABC, Generic[T]):
             return self.visit_binary(expr)
         elif isinstance(expr, UnaryExpr):
             return self.visit_unary(expr)
+        elif isinstance(expr, RenameExpr):
+            return self.visit_rename(expr)
         elif isinstance(expr, AliasExpr):
             return self.visit_alias(expr)
         elif isinstance(expr, UDFExpr):
@@ -129,6 +131,10 @@ class _ExprVisitor(ABC, Generic[T]):
 
     @abstractmethod
     def visit_unary(self, expr: "UnaryExpr") -> T:
+        pass
+
+    @abstractmethod
+    def visit_rename(self, expr: "RenameExpr") -> T:
         pass
 
     @abstractmethod
@@ -203,6 +209,9 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
             return _ARROW_EXPR_OPS_MAP[expr.op](operand)
         raise ValueError(f"Unsupported unary operation for PyArrow: {expr.op}")
 
+    def visit_rename(self, expr: "RenameExpr") -> "pyarrow.compute.Expression":
+        return self.visit(expr.expr)
+
     def visit_alias(self, expr: "AliasExpr") -> "pyarrow.compute.Expression":
         return self.visit(expr.expr)
 
@@ -257,7 +266,7 @@ class Expr(ABC):
         """Get the name associated with this expression.
 
         Returns:
-            The name for expressions that have one (ColumnExpr, AliasExpr),
+            The name for expressions that have one (ColumnExpr, AliasExpr, RenameExpr),
             None otherwise.
         """
         return None
@@ -449,9 +458,7 @@ class Expr(ABC):
             >>> expr = (col("price") * col("quantity")).alias("total")
             >>> # Can be used with Dataset operations that support named expressions
         """
-        return AliasExpr(
-            data_type=self.data_type, expr=self, _name=name, _is_rename=False
-        )
+        return AliasExpr(data_type=self.data_type, expr=self, _name=name)
 
     # rounding helpers
     def ceil(self) -> "UDFExpr":
@@ -781,7 +788,7 @@ class ColumnExpr(Expr):
         return self._name
 
     def _rename(self, name: str):
-        return AliasExpr(self.data_type, self, name, _is_rename=True)
+        return RenameExpr(self.data_type, self, name)
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, ColumnExpr) and self.name == other.name
@@ -1423,7 +1430,6 @@ class AliasExpr(Expr):
 
     expr: Expr
     _name: str
-    _is_rename: bool
 
     @property
     def name(self) -> str:
@@ -1432,9 +1438,7 @@ class AliasExpr(Expr):
 
     def alias(self, name: str) -> "Expr":
         # Always unalias before creating new one
-        return AliasExpr(
-            self.expr.data_type, self.expr, _name=name, _is_rename=self._is_rename
-        )
+        return AliasExpr(self.expr.data_type, self.expr, _name=name)
 
     def _unalias(self) -> "Expr":
         return self.expr
@@ -1444,7 +1448,30 @@ class AliasExpr(Expr):
             isinstance(other, AliasExpr)
             and self.expr.structurally_equals(other.expr)
             and self.name == other.name
-            and self._is_rename == other._is_rename
+        )
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False, repr=False)
+class RenameExpr(Expr):
+    """Expression that represents renaming a column."""
+
+    expr: Expr
+    _name: str
+
+    @property
+    def name(self) -> str:
+        """Get the renamed column name."""
+        return self._name
+
+    def _unalias(self) -> "Expr":
+        return self.expr
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, RenameExpr)
+            and self.expr.structurally_equals(other.expr)
+            and self.name == other.name
         )
 
 
@@ -1647,6 +1674,7 @@ __all__ = [
     "UDFExpr",
     "DownloadExpr",
     "AliasExpr",
+    "RenameExpr",
     "StarExpr",
     "MonotonicallyIncreasingIdExpr",
     "pyarrow_udf",

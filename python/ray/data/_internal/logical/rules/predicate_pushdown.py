@@ -84,13 +84,10 @@ class PredicatePushdown(Rule):
         - Rename chains with name reuse: rename({'a': 'b', 'b': 'c'}).filter(col('b'))
           (where 'b' is valid output created by a->b)
         """
-        from ray.data._internal.logical.rules.projection_pushdown import (
-            _is_renaming_expr,
-        )
         from ray.data._internal.planner.plan_expression.expression_visitors import (
             _ColumnReferenceCollector,
         )
-        from ray.data.expressions import AliasExpr
+        from ray.data.expressions import AliasExpr, RenameExpr
 
         collector = _ColumnReferenceCollector()
         collector.visit(filter_op.predicate_expr)
@@ -105,17 +102,16 @@ class PredicatePushdown(Rule):
                 # Collect output column names
                 output_columns.add(expr.name)
 
-            # Process AliasExpr (computed columns or renames)
-            if isinstance(expr, AliasExpr):
+            # Process RenameExpr and AliasExpr (computed columns)
+            if isinstance(expr, RenameExpr):
+                new_names.add(expr.name)
+                original_columns_being_renamed.add(expr.expr.name)
+            elif isinstance(expr, AliasExpr):
                 new_names.add(expr.name)
 
                 # Check computed column: with_column('d', 4) creates AliasExpr(lit(4), 'd')
-                if expr.name in predicate_columns and not _is_renaming_expr(expr):
+                if expr.name in predicate_columns:
                     return False  # Computed column
-
-                # Track old names being renamed for later check
-                if _is_renaming_expr(expr):
-                    original_columns_being_renamed.add(expr.expr.name)
 
         # Check if filter references columns removed by explicit select
         # Valid if: projection includes all columns (star) OR predicate columns exist in output
