@@ -202,6 +202,58 @@ class TestArithmeticIntegration:
         expected = pd.DataFrame({"age": [25, 17, 30], "age_group": [20, 10, 30]})
         assert rows_same(result, expected)
 
+    @pytest.mark.parametrize(
+        "test_data, expr_factory, expected_results, test_id",
+        [
+            # Test is_nan
+            pytest.param(
+                [
+                    {"x": float("nan")},
+                    {"x": -3.0},
+                    {"x": 0.0},
+                    {"x": 3.14},
+                    {"x": float("inf")},
+                    {"x": float("-inf")},
+                    {"x": None},
+                ],
+                lambda: col("x").is_nan(),
+                [True, False, False, False, False, False, None],
+                "is_nan",
+            ),
+            # Test is_finite
+            pytest.param(
+                [{"x": float("Inf")}, {"x": -3}, {"x": 0}],
+                lambda: col("x").is_finite(),
+                [False, True, True],
+                "is_finite",
+            ),
+            # Test is_inf
+            pytest.param(
+                [{"x": float("Inf")}, {"x": -3}, {"x": 0}],
+                lambda: col("x").is_inf(),
+                [True, False, False],
+                "is_infinite",
+            ),
+        ],
+    )
+    def test_with_column_null_handling_operations(
+        ray_start_regular_shared,
+        test_data,
+        expr_factory,
+        expected_results,
+        test_id,
+    ):
+        """Test null handling helper expressions."""
+        ds = ray.data.from_items(test_data)
+        expr = expr_factory()
+        result_df = ds.with_column("result", expr).to_pandas()
+
+        # Create expected dataframe
+        expected_df = pd.DataFrame(test_data)
+        expected_df["result"] = expected_results
+
+        assert rows_same(result_df, expected_df)
+
 
 if __name__ == "__main__":
     import sys
