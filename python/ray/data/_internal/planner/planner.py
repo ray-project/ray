@@ -54,7 +54,6 @@ from ray.data._internal.planner.plan_udf_map_op import (
 from ray.data._internal.planner.plan_write_op import plan_write_op
 from ray.data.checkpoint.load_checkpoint_callback import (
     LoadCheckpointCallback,
-    get_checkpoint_loader,
 )
 from ray.data.context import DataContext
 
@@ -197,7 +196,7 @@ class Planner:
                     checkpoint_cls = cls
                     break
 
-            load_checkpoint = get_checkpoint_loader(checkpoint_cls, checkpoint_config)
+            load_checkpoint = checkpoint_cls.get_loader(checkpoint_config)
 
             # Dynamically set the plan functions for checkpointing because they
             # need to a reference to the checkpoint ref.
