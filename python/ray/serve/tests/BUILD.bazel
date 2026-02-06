@@ -244,6 +244,10 @@ py_test_module_list(
     timeout = "long",
     env = {
         "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S": "0",
+        "RAY_SERVE_RUN_SYNC_IN_THREADPOOL": "1",
+        "RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S": "1",
+        "RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S": "1",
+        "RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS": "10",
     },
     files = [
         "test_deploy_app.py",

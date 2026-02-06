@@ -1869,17 +1869,6 @@ py_test(
 )
 
 py_test(
-    name = "algorithms/tests/test_local",
-    size = "small",
-    srcs = ["algorithms/tests/test_local.py"],
-    tags = [
-        "algorithms",
-        "team:rllib",
-    ],
-    deps = [":conftest"],
-)
-
-py_test(
     name = "algorithms/tests/test_ray_client",
     size = "medium",
     srcs = ["algorithms/tests/test_ray_client.py"],
