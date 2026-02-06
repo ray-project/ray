@@ -93,7 +93,7 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
   RAY_LOG(INFO) << absl::StrFormat(
       "Sorted list of leases based on the policy: %s, Lease should be retried? %s",
       PolicyDebugString(sorted, process_memory_snapshot),
-      should_retry);
+      should_retry ? "true" : "false");
 
   return std::make_pair(worker_to_kill, should_retry);
 }

@@ -3209,11 +3209,6 @@ std::string NodeManager::CreateOomKillMessageSuggestions(
     not_retriable_recommendation_ss
         << " to enable retry when the task crashes due to OOM. ";
   }
-  std::stringstream deadlock_recommendation;
-  if (!should_retry) {
-    deadlock_recommendation
-        << "The node has insufficient memory to execute this workload. ";
-  }
   return absl::StrFormat(
       "Refer to the documentation on how to address the out of memory issue: "
       "https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. "
