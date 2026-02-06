@@ -1343,5 +1343,118 @@ class TestSingletonThreadRouter:
             assign_request_future.exception()
 
 
+@pytest.mark.asyncio
+class TestAsyncioRouterBackoffConfig:
+    """Test that backoff config flows from DeploymentConfig to RequestRouter."""
+
+    async def test_update_deployment_config_sets_backoff_params(self):
+        """Test that update_deployment_config extracts backoff params from config."""
+        from ray.serve.config import RequestRouterConfig
+
+        fake_request_router = FakeRequestRouter(use_queue_len_cache=False)
+        router = AsyncioRouter(
+            controller_handle=Mock(),
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_id="test-handle-id",
+            self_actor_id="test-node-id",
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            event_loop=get_or_create_event_loop(),
+            enable_strict_max_ongoing_requests=False,
+            request_router=fake_request_router,
+            node_id="test-node-id",
+            availability_zone="test-az",
+            prefer_local_node_routing=False,
+            _request_router_initialized_event=asyncio.Event(),
+        )
+
+        # Create a DeploymentConfig with custom backoff params
+        custom_initial_backoff = 0.15
+        custom_multiplier = 4
+        custom_max_backoff = 2.5
+
+        deployment_config = DeploymentConfig.from_default(
+            request_router_config=RequestRouterConfig(
+                initial_backoff_s=custom_initial_backoff,
+                backoff_multiplier=custom_multiplier,
+                max_backoff_s=custom_max_backoff,
+            )
+        )
+
+        # Update the router with the config
+        router.update_deployment_config(deployment_config)
+
+        # Verify the backoff params were stored on the router
+        assert router._initial_backoff_s == custom_initial_backoff
+        assert router._backoff_multiplier == custom_multiplier
+        assert router._max_backoff_s == custom_max_backoff
+
+    async def test_deprecated_env_vars_emit_warning(self):
+        """Test that deprecated backoff env vars emit deprecation warnings."""
+        import os
+        import warnings
+
+        from ray.serve.config import RequestRouterConfig
+
+        fake_request_router = FakeRequestRouter(use_queue_len_cache=False)
+        router = AsyncioRouter(
+            controller_handle=Mock(),
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_id="test-handle-id",
+            self_actor_id="test-node-id",
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            event_loop=get_or_create_event_loop(),
+            enable_strict_max_ongoing_requests=False,
+            request_router=fake_request_router,
+            node_id="test-node-id",
+            availability_zone="test-az",
+            prefer_local_node_routing=False,
+            _request_router_initialized_event=asyncio.Event(),
+        )
+
+        deployment_config = DeploymentConfig.from_default(
+            request_router_config=RequestRouterConfig()
+        )
+
+        # Set deprecated env vars
+        env_vars_to_test = [
+            "RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S",
+            "RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER",
+            "RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S",
+        ]
+
+        original_values = {}
+        for env_var in env_vars_to_test:
+            original_values[env_var] = os.environ.get(env_var)
+            os.environ[env_var] = "1"
+
+        try:
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                router.update_deployment_config(deployment_config)
+
+                # Check that deprecation warnings were emitted for each env var
+                deprecation_warnings = [
+                    warning
+                    for warning in w
+                    if issubclass(warning.category, DeprecationWarning)
+                ]
+                assert len(deprecation_warnings) == 3
+
+                warning_messages = [
+                    str(warning.message) for warning in deprecation_warnings
+                ]
+                for env_var in env_vars_to_test:
+                    assert any(
+                        env_var in msg for msg in warning_messages
+                    ), f"Expected deprecation warning for {env_var}"
+        finally:
+            # Restore original env var values
+            for env_var in env_vars_to_test:
+                if original_values[env_var] is None:
+                    os.environ.pop(env_var, None)
+                else:
+                    os.environ[env_var] = original_values[env_var]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

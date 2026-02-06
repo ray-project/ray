@@ -445,11 +445,6 @@ class FIFOMixin:
 class RequestRouter(ABC):
     """Abstract interface for a request router (how the router calls it)."""
 
-    """Backoff parameters for request router."""
-    initial_backoff_s = RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S
-    backoff_multiplier = RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER
-    max_backoff_s = RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S
-
     # Deadline for replicas to respond with their queue length. If the response isn't
     # received within this deadline, the replica will not be considered.
     # If this deadline is repeatedly missed, it will be exponentially increased up to
@@ -478,6 +473,9 @@ class RequestRouter(ABC):
         create_replica_wrapper_func: Optional[
             Callable[[RunningReplicaInfo], RunningReplica]
         ] = None,
+        initial_backoff_s: float = RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
+        backoff_multiplier: float = RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
+        max_backoff_s: float = RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
         *args,
         **kwargs,
     ):
@@ -487,6 +485,11 @@ class RequestRouter(ABC):
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
         self._create_replica_wrapper_func = create_replica_wrapper_func
         self._get_curr_time_s = get_curr_time_s if get_curr_time_s else time.time
+
+        # Backoff parameters for request routing, from RequestRouterConfig.
+        self.initial_backoff_s = initial_backoff_s
+        self.backoff_multiplier = backoff_multiplier
+        self.max_backoff_s = max_backoff_s
 
         # Current replicas available to be routed.
         # Updated via `update_replicas`.

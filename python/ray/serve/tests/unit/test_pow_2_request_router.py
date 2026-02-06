@@ -19,7 +19,12 @@ from ray.serve._private.common import (
     ReplicaID,
     RequestMetadata,
 )
-from ray.serve._private.constants import RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
+from ray.serve._private.constants import (
+    RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S,
+    RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
+    RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
+    RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
+)
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import (
     PendingRequest,
@@ -2032,6 +2037,45 @@ async def test_rank_replicas_via_multiplex(
         [replica_with_no_model],  # replica with fewer cached models ranked 1
         [replica_with_other_models],  # replica with more cached models ranked 2
     ]
+
+
+def test_request_router_backoff_params_default():
+    """Test that backoff params use env var defaults when not specified."""
+    router = PowerOfTwoChoicesRequestRouter(
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        self_node_id=ROUTER_NODE_ID,
+        self_actor_id="fake-actor-id",
+        self_actor_handle=None,
+        get_curr_time_s=TIMER.time,
+    )
+
+    assert router.initial_backoff_s == RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S
+    assert router.backoff_multiplier == RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER
+    assert router.max_backoff_s == RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S
+
+
+def test_request_router_backoff_params_custom():
+    """Test that custom backoff params are properly set on the RequestRouter."""
+    custom_initial_backoff = 0.1
+    custom_multiplier = 5
+    custom_max_backoff = 3.0
+
+    router = PowerOfTwoChoicesRequestRouter(
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        self_node_id=ROUTER_NODE_ID,
+        self_actor_id="fake-actor-id",
+        self_actor_handle=None,
+        get_curr_time_s=TIMER.time,
+        initial_backoff_s=custom_initial_backoff,
+        backoff_multiplier=custom_multiplier,
+        max_backoff_s=custom_max_backoff,
+    )
+
+    assert router.initial_backoff_s == custom_initial_backoff
+    assert router.backoff_multiplier == custom_multiplier
+    assert router.max_backoff_s == custom_max_backoff
 
 
 if __name__ == "__main__":

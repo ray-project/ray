@@ -30,6 +30,9 @@ from ray.serve._private.constants import (
     DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S,
     DEFAULT_TARGET_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
+    RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
+    RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.utils import validate_ssl_config
@@ -245,6 +248,33 @@ class RequestRouterConfig(BaseModel):
         description=(
             "Duration in seconds, that replicas wait for a request scheduling "
             "stats method to return before considering it as failed. Defaults to 30s."
+        ),
+    )
+
+    initial_backoff_s: float = Field(
+        default=RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
+        description=(
+            "Initial backoff time (in seconds) before retrying to route a request "
+            "to a replica. Defaults to RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S "
+            "environment variable, or 0.025 if not set."
+        ),
+    )
+
+    backoff_multiplier: float = Field(
+        default=RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
+        description=(
+            "Multiplier applied to the backoff time after each retry. "
+            "Defaults to RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER "
+            "environment variable, or 2 if not set."
+        ),
+    )
+
+    max_backoff_s: float = Field(
+        default=RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
+        description=(
+            "Maximum backoff time (in seconds) between retries. "
+            "Defaults to RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S "
+            "environment variable, or 0.5 if not set."
         ),
     )
 
