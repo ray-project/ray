@@ -107,6 +107,8 @@ class _ExprVisitor(ABC, Generic[T]):
             return self.visit_download(expr)
         elif isinstance(expr, StarExpr):
             return self.visit_star(expr)
+        elif isinstance(expr, UnresolvedExpr):
+            return self.visit_unresolved(expr)
         else:
             raise TypeError(f"Unsupported expression type for conversion: {type(expr)}")
 
@@ -140,6 +142,10 @@ class _ExprVisitor(ABC, Generic[T]):
 
     @abstractmethod
     def visit_download(self, expr: "DownloadExpr") -> T:
+        pass
+
+    @abstractmethod
+    def visit_unresolved(self, expr: "UnresolvedExpr") -> T:
         pass
 
 
@@ -206,6 +212,11 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
     def visit_star(self, expr: "StarExpr") -> "pyarrow.compute.Expression":
         raise TypeError("Star expressions cannot be converted to PyArrow expressions")
 
+    def visit_unresolved(self, expr: "UnresolvedExpr") -> "pyarrow.compute.Expression":
+        raise TypeError(
+            "Unresolved expressions cannot be converted to PyArrow expressions"
+        )
+
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True)
@@ -232,7 +243,7 @@ class Expr(ABC):
         subclasses like ColumnExpr, LiteralExpr, etc.
     """
 
-    data_type: DataType
+    data_type: DataType | None
 
     @property
     def name(self) -> str | None:
@@ -1362,6 +1373,28 @@ class AliasExpr(Expr):
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
+class UnresolvedExpr(Expr):
+    """Expression that represents an unresolved column reference.
+
+    This expression is a placeholder used when a column reference has not yet
+    been resolved against a concrete schema. It must be resolved before
+    evaluation or conversion to another expression system.
+    """
+
+    _name: str
+    data_type: DataType | None = field(default=None, init=False)
+
+    @property
+    def name(self) -> str:
+        """Get the unresolved column name."""
+        return self._name
+
+    def structurally_equals(self, other: Any) -> bool:
+        return isinstance(other, UnresolvedExpr) and self.name == other.name
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False, repr=False)
 class StarExpr(Expr):
     """Expression that represents all columns from the input.
 
@@ -1377,8 +1410,7 @@ class StarExpr(Expr):
         This means: keep all existing columns, then add/overwrite "new_col"
     """
 
-    # TODO: Add UnresolvedExpr. Both StarExpr and UnresolvedExpr won't have a defined data_type.
-    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+    data_type: DataType | None = field(default=None, init=False)
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, StarExpr)
@@ -1513,6 +1545,7 @@ __all__ = [
     "UDFExpr",
     "DownloadExpr",
     "AliasExpr",
+    "UnresolvedExpr",
     "StarExpr",
     "pyarrow_udf",
     "udf",

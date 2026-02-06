@@ -1,7 +1,7 @@
 """Tests for core expression types and basic functionality.
 
 This module tests:
-- ColumnExpr, LiteralExpr, BinaryExpr, UnaryExpr, AliasExpr, StarExpr
+- ColumnExpr, LiteralExpr, BinaryExpr, UnaryExpr, AliasExpr, StarExpr, UnresolvedExpr
 - Structural equality for all expression types
 - Expression tree repr (string representation)
 - UDFExpr structural equality
@@ -24,6 +24,7 @@ from ray.data.expressions import (
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UnresolvedExpr,
     col,
     download,
     lit,
@@ -297,6 +298,37 @@ class TestStarExpr:
 
 
 # ──────────────────────────────────────
+# Unresolved Expression Tests
+# ──────────────────────────────────────
+
+
+class TestUnresolvedExpr:
+    """Tests for UnresolvedExpr functionality."""
+
+    def test_unresolved_creation(self):
+        """Test that UnresolvedExpr creates with correct name."""
+        expr = UnresolvedExpr("pending")
+        assert isinstance(expr, UnresolvedExpr)
+        assert expr.name == "pending"
+
+    @pytest.mark.parametrize(
+        "name1,name2,expected",
+        [
+            ("a", "a", True),
+            ("a", "b", False),
+            ("column_name", "column_name", True),
+            ("COL", "col", False),
+        ],
+        ids=["same_name", "different_name", "long_name", "case_sensitive"],
+    )
+    def test_unresolved_structural_equality(self, name1, name2, expected):
+        """Test structural equality for unresolved expressions."""
+        assert (
+            UnresolvedExpr(name1).structurally_equals(UnresolvedExpr(name2)) is expected
+        )
+
+
+# ──────────────────────────────────────
 # UDF Expression Tests
 # ──────────────────────────────────────
 
@@ -393,6 +425,7 @@ class TestCrossTypeEquality:
             (lit(1), lit(1) + 0),
             (col("a"), col("a").alias("a")),
             (col("a"), star()),
+            (col("a"), UnresolvedExpr("a")),
         ],
         ids=[
             "col_vs_lit",
@@ -400,6 +433,7 @@ class TestCrossTypeEquality:
             "lit_vs_binary",
             "col_vs_alias",
             "col_vs_star",
+            "col_vs_unresolved",
         ],
     )
     def test_different_types_not_equal(self, expr1, expr2):

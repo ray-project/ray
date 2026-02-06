@@ -41,6 +41,7 @@ instantiate them directly, but you may encounter them when working with expressi
     UnaryExpr
     UDFExpr
     StarExpr
+    UnresolvedExpr
 
 Expression namespaces
 ------------------------------------
