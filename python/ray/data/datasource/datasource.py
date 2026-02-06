@@ -1,5 +1,14 @@
 import copy
-from typing import TYPE_CHECKING, Callable, Dict, Generator, Iterable, List, Optional
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    Iterable,
+    List,
+    Optional,
+)
 
 import numpy as np
 import pyarrow as pa

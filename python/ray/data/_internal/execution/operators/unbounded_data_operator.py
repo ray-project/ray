@@ -138,11 +138,7 @@ class UnboundedDataOperator(PhysicalOperator):
         # Optional datasource checkpointing (Kafka offsets etc.)
         self._checkpoint = None
         if hasattr(self.datasource, "initial_checkpoint"):
-            try:
-                self._checkpoint = self.datasource.initial_checkpoint()
-            except Exception as e:
-                logger.warning(f"Datasource initial_checkpoint() failed: {e}")
-                self._checkpoint = None
+            self._checkpoint = self.datasource.initial_checkpoint()
         self._checkpoint_pending_commit = None
         self._commit_token_pending: Any = None
 
@@ -474,11 +470,8 @@ class UnboundedDataOperator(PhysicalOperator):
 
         # Get lag metrics if available
         lag_metrics = None
-        try:
-            if hasattr(self.datasource, "get_lag_metrics"):
-                lag_metrics = self.datasource.get_lag_metrics()
-        except Exception:
-            pass
+        if hasattr(self.datasource, "get_lag_metrics"):
+            lag_metrics = self.datasource.get_lag_metrics()
 
         # Check memory pressure
         memory_pressure = (
@@ -544,11 +537,8 @@ class UnboundedDataOperator(PhysicalOperator):
 
         # Get lag metrics from datasource
         lag_metrics = None
-        try:
-            if hasattr(self.datasource, "get_lag_metrics"):
-                lag_metrics = self.datasource.get_lag_metrics()
-        except Exception as e:
-            logger.warning(f"Failed to get lag metrics for autoscaling: {e}")
+        if hasattr(self.datasource, "get_lag_metrics"):
+            lag_metrics = self.datasource.get_lag_metrics()
 
         current_parallelism = self.parallelism
         target_lag_seconds = getattr(
@@ -562,18 +552,8 @@ class UnboundedDataOperator(PhysicalOperator):
 
         # Calculate lag-based metrics
         lag_seconds = None
-        if lag_metrics:
-            # Estimate lag in seconds based on fetch rate
-            if lag_metrics.fetch_rate > 0:
-                lag_seconds = lag_metrics.total_lag / lag_metrics.fetch_rate
-        else:
-            # Fallback: use total lag as proxy
-            lag_seconds = (
-                lag_metrics.total_lag
-                / self.data_context.streaming_lag_conversion_factor
-                if lag_metrics.total_lag > 0
-                else 0.0
-            )
+        if lag_metrics and lag_metrics.fetch_rate and lag_metrics.fetch_rate > 0:
+            lag_seconds = lag_metrics.total_lag / lag_metrics.fetch_rate
 
         # Get average batch duration
         avg_batch_duration = None
@@ -770,37 +750,30 @@ class UnboundedDataOperator(PhysicalOperator):
         if len(self._prefetch_queue) >= self._prefetch_max_size:
             return  # Prefetch queue is full
 
-        try:
-            # Get read tasks for next batch (increment batch ID for prefetch)
-            # Note: This is a simplified version - real implementation would
-            # need to handle checkpoint updates more carefully
-            if hasattr(self.datasource, "get_read_tasks"):
-                out = self.datasource.get_read_tasks(
-                    self.parallelism,
-                    checkpoint=self._checkpoint,
-                    trigger=self.trigger,
-                    batch_id=self._current_batch_id + 1,
-                    max_records_per_trigger=self.trigger.max_records_per_trigger,
-                    max_bytes_per_trigger=self.trigger.max_bytes_per_trigger,
-                    max_splits_per_trigger=self.trigger.max_splits_per_trigger,
-                )
+        # Get read tasks for next batch (increment batch ID for prefetch)
+        out = self.datasource.get_read_tasks(
+            self.parallelism,
+            checkpoint=self._checkpoint,
+            trigger=self.trigger,
+            batch_id=self._current_batch_id + 1,
+            max_records_per_trigger=self.trigger.max_records_per_trigger,
+            max_bytes_per_trigger=self.trigger.max_bytes_per_trigger,
+            max_splits_per_trigger=self.trigger.max_splits_per_trigger,
+        )
 
-                if isinstance(out, tuple) and len(out) == 2:
-                    tasks, next_ckpt = out
-                else:
-                    tasks, next_ckpt = out, self._checkpoint
+        if isinstance(out, tuple) and len(out) == 2:
+            tasks, next_ckpt = out
+        else:
+            tasks, next_ckpt = out, self._checkpoint
 
-                if tasks:
-                    self._prefetch_queue.append((list(tasks), next_ckpt))
-                logger.debug(
-                        f"Prefetched {len(tasks)} read tasks for batch {self._current_batch_id + 1}"
-                    )
-        except Exception as e:
-            # Prefetch failures are non-critical - just log and continue
-            logger.debug(f"Prefetch failed (non-critical): {e}")
+        if tasks:
+            self._prefetch_queue.append((list(tasks), next_ckpt))
+        logger.debug(
+            f"Prefetched {len(tasks)} read tasks for batch {self._current_batch_id + 1}"
+        )
 
     def _get_read_tasks_with_checkpoint(self) -> Tuple[List[ReadTask], Any]:
-        """Backward-compatible read task retrieval with optional checkpointing.
+        """Get read tasks with checkpoint from datasource.
 
         Supports both task-based reads and reader actor-based reads.
         Also checks prefetch queue for pipelined microbatches.
@@ -813,140 +786,111 @@ class UnboundedDataOperator(PhysicalOperator):
                 self._prefetch_next_batch()
             return tasks, checkpoint
 
-        try:
-            # New signature preferred:
-            #   get_read_tasks(parallelism, *, checkpoint=..., trigger=..., batch_id=...)
-            try:
-                out = self.datasource.get_read_tasks(
-                    self.parallelism,
-                    checkpoint=self._checkpoint,
-                    trigger=self.trigger,
-                    batch_id=self._current_batch_id,
-                    # budget hints; datasource may ignore
-                    max_records_per_trigger=getattr(
-                        self.trigger, "max_records_per_trigger", None
-                    ),
-                    max_bytes_per_trigger=getattr(
-                        self.trigger, "max_bytes_per_trigger", None
-                    ),
-                    max_splits_per_trigger=getattr(
-                        self.trigger, "max_splits_per_trigger", None
-                    ),
-                )
-            except TypeError:
-                out = self.datasource.get_read_tasks(self.parallelism)
+        # Call datasource.get_read_tasks() with checkpoint and trigger info
+        out = self.datasource.get_read_tasks(
+            self.parallelism,
+            checkpoint=self._checkpoint,
+            trigger=self.trigger,
+            batch_id=self._current_batch_id,
+            max_records_per_trigger=getattr(
+                self.trigger, "max_records_per_trigger", None
+            ),
+            max_bytes_per_trigger=getattr(
+                self.trigger, "max_bytes_per_trigger", None
+            ),
+            max_splits_per_trigger=getattr(
+                self.trigger, "max_splits_per_trigger", None
+            ),
+        )
 
-            if isinstance(out, tuple) and len(out) == 2:
-                tasks, next_ckpt = out
-            else:
-                tasks, next_ckpt = out, self._checkpoint
+        if isinstance(out, tuple) and len(out) == 2:
+            tasks, next_ckpt = out
+        else:
+            tasks, next_ckpt = out, self._checkpoint
 
-            tasks_list = list(tasks or [])
-            # Start prefetching next batch if enabled
-            if self._prefetch_enabled and len(self._prefetch_queue) < self._prefetch_max_size:
-                self._prefetch_next_batch()
-            return tasks_list, next_ckpt
-        except Exception as e:
-            logger.error(f"get_read_tasks failed: {e}")
-            self._exception = e
-            return [], self._checkpoint
+        tasks_list = list(tasks or [])
+        # Start prefetching next batch if enabled
+        if self._prefetch_enabled and len(self._prefetch_queue) < self._prefetch_max_size:
+            self._prefetch_next_batch()
+        return tasks_list, next_ckpt
 
     def _start_new_microbatch(self) -> None:
         """Start a new microbatch by creating streaming generator tasks."""
         # Track batch start time for adaptive batching
         self._batch_start_time = datetime.now()
 
-        try:
-            read_tasks, next_checkpoint = self._get_read_tasks_with_checkpoint()
+        read_tasks, next_checkpoint = self._get_read_tasks_with_checkpoint()
 
-            if not read_tasks:
-                # Empty microbatch
-                if self.trigger.trigger_type == "once":
-                    self._completed = True
-                if self.trigger.trigger_type == "available_now":
-                    # available_now stops after N consecutive empty batches (drain until stable)
-                    limit = self.trigger.max_consecutive_empty_batches or 1
-                    if self._consecutive_empty_batches >= limit:
-                        self._completed = True
-                logger.info("No read tasks available from datasource")
-                self._total_batches_processed += 1
-                self._consecutive_empty_batches += 1
-                return
-
-            self._gens.clear()
-            self._checkpoint_pending_commit = next_checkpoint
-            # Prepare commit early (like Spark epoch start); commit later once batch drains.
-            if hasattr(self.datasource, "prepare_commit"):
-                try:
-                    self._commit_token_pending = self.datasource.prepare_commit(
-                        next_checkpoint
-                    )
-                except Exception as e:
-                    logger.warning(
-                        f"prepare_commit failed; will fallback to commit_checkpoint: {e}"
-                    )
-                    self._commit_token_pending = next_checkpoint
-            else:
-                self._commit_token_pending = next_checkpoint
-
-            validated_args = self._validate_ray_remote_args(self.ray_remote_args)
-
-            # Use reader actors if enabled and available, otherwise use regular tasks
-            if self._use_reader_actors and self._reader_actors:
-                # Use long-lived reader actors to reduce ray.remote overhead
-                for i, actor in enumerate(self._reader_actors):
-                    try:
-                        # Call poll_batch() on the actor to get an ObjectRefGenerator
-                        gen = actor.poll_batch.remote(
-                            max_records=self.trigger.max_records_per_trigger,
-                            max_bytes=self.trigger.max_bytes_per_trigger,
-                            max_splits=self.trigger.max_splits_per_trigger,
-                            batch_id=self._current_batch_id,
-                        )
-                        self._gens.append(_GenState(gen=gen))
-                    except Exception as e:
-                        logger.error(f"Failed to poll batch from reader actor {i+1}: {e}")
-                        continue
-            else:
-                # Fallback to regular task-based reads
-                for i, task in enumerate(read_tasks):
-                    try:
-                        # Optimize resource allocation based on task metadata
-                        task_args = self._optimize_task_resources(task, validated_args)
-                        remote_fn = ray.remote(**task_args)(task.read_fn)
-                        gen = remote_fn.remote()  # ObjectRefGenerator
-                        self._gens.append(_GenState(gen=gen))
-                    except Exception as e:
-                        logger.error(f"Failed to start generator task {i+1}: {e}")
-                        continue
-
-            self._last_trigger_time = datetime.now()
-            self._current_batch_id += 1
+        if not read_tasks:
+            # Empty microbatch
             if self.trigger.trigger_type == "once":
-                self._batch_produced = True
+                self._completed = True
+            if self.trigger.trigger_type == "available_now":
+                # available_now stops after N consecutive empty batches (drain until stable)
+                limit = self.trigger.max_consecutive_empty_batches or 1
+                if self._consecutive_empty_batches >= limit:
+                    self._completed = True
+            logger.info("No read tasks available from datasource")
+            self._total_batches_processed += 1
+            self._consecutive_empty_batches += 1
+            return
 
-            # Prime next refs so has_next() can quickly find work.
-            self._prime_generators()
-
-            # Check if all generators failed immediately
-            if self._gens and self._all_generators_exhausted():
-                if self._any_generator_failed():
-                    logger.error(
-                        f"All generators failed immediately for microbatch {self._current_batch_id}"
-                    )
-                    self._finish_microbatch_if_done()
-                else:
-                    # All exhausted normally (empty generators)
-                    self._finish_microbatch_if_done()
-
-            logger.info(
-                f"Started microbatch {self._current_batch_id} with "
-                f"{len([g for g in self._gens if not g.exhausted and not g.failed])} active generator tasks"
+        self._gens.clear()
+        self._checkpoint_pending_commit = next_checkpoint
+        # Prepare commit early (like Spark epoch start); commit later once batch drains.
+        if hasattr(self.datasource, "prepare_commit"):
+            self._commit_token_pending = self.datasource.prepare_commit(
+                next_checkpoint
             )
+        else:
+            self._commit_token_pending = next_checkpoint
 
-        except Exception as e:
-            logger.error(f"Error starting microbatch: {e}")
-            self._gens.clear()
+        validated_args = self._validate_ray_remote_args(self.ray_remote_args)
+
+        # Use reader actors if enabled and available, otherwise use regular tasks
+        if self._use_reader_actors and self._reader_actors:
+            # Use long-lived reader actors to reduce ray.remote overhead
+            for actor in self._reader_actors:
+                # Call poll_batch() on the actor to get an ObjectRefGenerator
+                gen = actor.poll_batch.remote(
+                    max_records=self.trigger.max_records_per_trigger,
+                    max_bytes=self.trigger.max_bytes_per_trigger,
+                    max_splits=self.trigger.max_splits_per_trigger,
+                    batch_id=self._current_batch_id,
+                )
+                self._gens.append(_GenState(gen=gen))
+        else:
+            # Use regular task-based reads
+            for task in read_tasks:
+                    # Optimize resource allocation based on task metadata
+                task_args = self._optimize_task_resources(task, validated_args)
+                remote_fn = ray.remote(**task_args)(task.read_fn)
+                gen = remote_fn.remote()  # ObjectRefGenerator
+                self._gens.append(_GenState(gen=gen))
+
+        self._last_trigger_time = datetime.now()
+        self._current_batch_id += 1
+        if self.trigger.trigger_type == "once":
+            self._batch_produced = True
+
+        # Prime next refs so has_next() can quickly find work.
+        self._prime_generators()
+
+        # Check if all generators failed immediately
+        if self._gens and self._all_generators_exhausted():
+            if self._any_generator_failed():
+                logger.error(
+                    f"All generators failed immediately for microbatch {self._current_batch_id}"
+                )
+                self._finish_microbatch_if_done()
+            else:
+                # All exhausted normally (empty generators)
+                self._finish_microbatch_if_done()
+
+        logger.info(
+            f"Started microbatch {self._current_batch_id} with "
+            f"{len([g for g in self._gens if not g.exhausted and not g.failed])} active generator tasks"
+        )
 
     def _prime_generators(self) -> None:
         """Ensure each generator has a pending next_ref (unless exhausted or failed).
@@ -1098,33 +1042,17 @@ class UnboundedDataOperator(PhysicalOperator):
         else:
             # All generators completed successfully - safe to commit checkpoint
             if self._commit_token_pending is not None:
-                try:
-                    if hasattr(self.datasource, "commit"):
-                        self.datasource.commit(self._commit_token_pending)
-                    elif hasattr(self.datasource, "commit_checkpoint"):
-                        self.datasource.commit_checkpoint(self._checkpoint_pending_commit)
-                except Exception as e:
-                    logger.warning(
-                        f"Commit failed for microbatch {self._current_batch_id}: {e}"
-                    )
-                    # Best-effort abort
-                    if hasattr(self.datasource, "abort_commit"):
-                        try:
-                            self.datasource.abort_commit(self._commit_token_pending)
-                        except Exception:
-                            pass
-                    # Don't update checkpoint if commit failed
-                    return
+                if hasattr(self.datasource, "commit"):
+                    self.datasource.commit(self._commit_token_pending)
+                elif hasattr(self.datasource, "commit_checkpoint"):
+                    self.datasource.commit_checkpoint(self._checkpoint_pending_commit)
 
             self._checkpoint = self._checkpoint_pending_commit
 
             # Update reader actor checkpoints if using reader actors
             if self._use_reader_actors and self._reader_actors:
                 for actor in self._reader_actors:
-                    try:
-                        actor.update_checkpoint.remote(self._checkpoint)
-                    except Exception as e:
-                        logger.debug(f"Failed to update checkpoint on reader actor: {e}")
+                    actor.update_checkpoint.remote(self._checkpoint)
 
         self._checkpoint_pending_commit = None
         self._commit_token_pending = None
@@ -1326,26 +1254,20 @@ class UnboundedDataOperator(PhysicalOperator):
         Returns:
             Tuple of (block_ref, metadata, block_size)
         """
-        # Get the yielded item - could be block or (block, metadata) tuple
+        # Get the yielded item - datasource yields (block, metadata) tuple
         item = ray.get(ready_ref)
-        if isinstance(item, tuple) and len(item) == 2:
-            # Datasource yielded (block, metadata) tuple - use it directly
-            block, meta = item
-            # Put the *block* itself so downstream sees a block ref, not the tuple ref
-            block_ref = ray.put(block)
-            block_size = (
-                meta.size_bytes if meta and hasattr(meta, "size_bytes") else 0
+        if not (isinstance(item, tuple) and len(item) == 2):
+            raise ValueError(
+                f"Datasource read_fn must yield (block, metadata) tuples, "
+                f"got {type(item)}"
             )
-        else:
-            # Fallback: compute metadata from block (less efficient)
-            block = item
-            from ray.data.block import BlockAccessor
 
-            meta = BlockAccessor.for_block(block).get_metadata()
-            block_ref = ready_ref  # Already in object store
-            block_size = (
-                meta.size_bytes if meta and hasattr(meta, "size_bytes") else 0
-            )
+        block, meta = item
+        # Put the *block* itself so downstream sees a block ref, not the tuple ref
+        block_ref = ray.put(block)
+        block_size = (
+            meta.size_bytes if meta and hasattr(meta, "size_bytes") else 0
+        )
 
         return block_ref, meta, block_size
 
@@ -1358,10 +1280,7 @@ class UnboundedDataOperator(PhysicalOperator):
         # Cancel all active generators
         for gs in self._gens:
             if not gs.exhausted and not gs.failed:
-                try:
-                    ray.cancel(gs.gen, force=force)
-                except Exception as e:
-                    logger.debug(f"Error cancelling generator: {e}")
+                ray.cancel(gs.gen, force=force)
 
         # Clear generator state
         self._gens.clear()
@@ -1369,10 +1288,7 @@ class UnboundedDataOperator(PhysicalOperator):
         # Shutdown reader actors if used
         if self._reader_actors:
             for actor in self._reader_actors:
-                try:
-                    actor.shutdown.remote()
-                except Exception as e:
-                    logger.debug(f"Error shutting down reader actor: {e}")
+                actor.shutdown.remote()
             self._reader_actors.clear()
 
         # Clear prefetch queue
@@ -1384,14 +1300,11 @@ class UnboundedDataOperator(PhysicalOperator):
                 "Shutting down with pending checkpoint. "
                 "Checkpoint not committed to allow recovery."
             )
-            # Best-effort abort if two-phase commit is supported
+            # Abort if two-phase commit is supported
             if self._commit_token_pending is not None and hasattr(
                 self.datasource, "abort_commit"
             ):
-                try:
-                    self.datasource.abort_commit(self._commit_token_pending)
-                except Exception:
-                    pass
+                self.datasource.abort_commit(self._commit_token_pending)
             self._checkpoint_pending_commit = None
             self._commit_token_pending = None
 
@@ -1835,25 +1748,16 @@ class _StreamingTaskWrapper(OpTask):
         This is used for resource management and backpressure decisions.
         We estimate based on max_records_per_task from the datasource.
         """
-        try:
-            if self._operator:
-                # Try to get max_records_per_task from datasource config
-                ctx = self._operator.data_context
-                if hasattr(self._operator.datasource, "streaming_config"):
-                    max_records = self._operator.datasource.streaming_config.get(
-                        "max_records_per_task",
-                        ctx.streaming_default_max_records_per_trigger,
-                    )
-                else:
-                    max_records = ctx.streaming_default_max_records_per_trigger
+        if not self._operator:
+            return 1024 * 1024  # 1MB default
 
-                return max_records * ctx.streaming_estimated_bytes_per_record
+        ctx = self._operator.data_context
+        if hasattr(self._operator.datasource, "streaming_config"):
+            max_records = self._operator.datasource.streaming_config.get(
+                "max_records_per_task",
+                ctx.streaming_default_max_records_per_trigger,
+            )
+        else:
+            max_records = ctx.streaming_default_max_records_per_trigger
 
-        except Exception:
-            # Fallback to conservative estimate
-            pass
-
-        # Use config default if available, otherwise fallback
-        if self._operator:
-            return self._operator.data_context.streaming_default_block_size_bytes
-        return 1024 * 1024  # 1MB default fallback
+        return max_records * ctx.streaming_estimated_bytes_per_record

@@ -465,28 +465,24 @@ class KinesisDatasource(UnboundDatasource, TwoPhaseCommitMixin):
         Returns:
             LagMetrics object with total lag, fetch rate, and shard count.
         """
-        try:
-            # boto3: https://boto3.amazonaws.com/v1/documentation/api/latest/index.html
-            import boto3
+        # boto3: https://boto3.amazonaws.com/v1/documentation/api/latest/index.html
+        import boto3
 
-            session = boto3.Session(**self.credentials.to_session_kwargs())
-            client = session.client("kinesis", **self.credentials.to_client_kwargs())
+        session = boto3.Session(**self.credentials.to_session_kwargs())
+        client = session.client("kinesis", **self.credentials.to_client_kwargs())
 
-            # Get stream description to count shards
-            stream_desc = client.describe_stream(StreamName=self.stream_name)
-            shards = stream_desc["StreamDescription"]["Shards"]
-            shard_count = len(shards)
+        # Get stream description to count shards
+        stream_desc = client.describe_stream(StreamName=self.stream_name)
+        shards = stream_desc["StreamDescription"]["Shards"]
+        shard_count = len(shards)
 
-            # Kinesis doesn't expose consumer lag directly like Kafka
-            # In production, this would query CloudWatch metrics or a checkpoint store
-            # For now, return basic metrics
-            return LagMetrics(
-                total_lag=0,  # Unknown without checkpoint store
-                partitions=shard_count,
-            )
-        except Exception as e:
-            logger.warning(f"Failed to get Kinesis lag metrics: {e}")
-            return None
+        # Kinesis doesn't expose consumer lag directly like Kafka
+        # In production, this would query CloudWatch metrics or a checkpoint store
+        # For now, return basic metrics
+        return LagMetrics(
+            total_lag=0,  # Unknown without checkpoint store
+            partitions=shard_count,
+        )
 
 
 def _kinesis_record_to_dict(record: Dict[str, Any], shard_id: str) -> Dict[str, Any]:

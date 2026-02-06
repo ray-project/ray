@@ -10,10 +10,9 @@ method that can be called repeatedly, maintaining connection state between calls
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional
 
 import ray
-from ray.data.block import Block, BlockMetadata
 from ray.data.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
 
@@ -93,12 +92,7 @@ class StreamingReaderActor:
         # Initialize datasource connection if supported
         # Some datasources may need to set up connections here
         if hasattr(datasource, "initialize_reader_actor"):
-            try:
-                datasource.initialize_reader_actor(self, partition_ids)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to initialize reader actor for datasource: {e}"
-                )
+            datasource.initialize_reader_actor(self, partition_ids)
 
         logger.info(
             f"StreamingReaderActor initialized for partitions: {partition_ids}"
@@ -170,33 +164,22 @@ class StreamingReaderActor:
         This method calls the datasource's get_read_tasks() with the actor's
         partition assignment and checkpoint state.
         """
-        # Check if datasource supports reader actor pattern
-        if hasattr(self.datasource, "get_read_tasks_for_reader_actor"):
-            return self.datasource.get_read_tasks_for_reader_actor(
-                partition_ids=self.partition_ids,
-                checkpoint=self.checkpoint,
-                max_records_per_trigger=max_records,
-                max_bytes_per_trigger=max_bytes,
-                max_splits_per_trigger=max_splits,
-                batch_id=batch_id,
+        # Datasource must support reader actor pattern
+        if not hasattr(self.datasource, "get_read_tasks_for_reader_actor"):
+            raise RuntimeError(
+                f"Datasource {type(self.datasource).__name__} does not support "
+                "reader actors. Implement get_read_tasks_for_reader_actor() or "
+                "disable reader actors."
             )
 
-        # Fallback: use standard get_read_tasks() if available
-        # This may not work optimally for all datasources
-        if hasattr(self.datasource, "get_read_tasks"):
-            # Filter read tasks to only those for our partitions
-            all_tasks = self.datasource.get_read_tasks(
-                parallelism=len(self.partition_ids),
-                per_task_row_limit=max_records,
-            )
-            # Filter by partition (this is datasource-specific)
-            return [
-                task
-                for task in all_tasks
-                if self._task_matches_partitions(task, self.partition_ids)
-            ]
-
-        return []
+        return self.datasource.get_read_tasks_for_reader_actor(
+            partition_ids=self.partition_ids,
+            checkpoint=self.checkpoint,
+            max_records_per_trigger=max_records,
+            max_bytes_per_trigger=max_bytes,
+            max_splits_per_trigger=max_splits,
+            batch_id=batch_id,
+        )
 
     def _task_matches_partitions(
         self, task: ReadTask, partition_ids: List[str]

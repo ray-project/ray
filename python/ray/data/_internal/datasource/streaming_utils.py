@@ -2,12 +2,17 @@
 
 This module provides common utilities for Kafka, Kinesis, Flink, and other
 streaming datasources to reduce code duplication.
+
+Uses:
+    - PyArrow: https://arrow.apache.org/docs/python/
+    - boto3: https://boto3.amazonaws.com/v1/documentation/api/latest/index.html
+    - requests: https://requests.readthedocs.io/
 """
 
 from dataclasses import dataclass, fields
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-import pyarrow as pa
+import pyarrow as pa  # https://arrow.apache.org/docs/python/
 
 from ray.data._internal.streaming.block_coalescer import BlockCoalescer
 from ray.data.block import Block, BlockMetadata
@@ -37,6 +42,8 @@ class AWSCredentials:
 
         Returns:
             Dictionary of session kwargs for boto3.Session().
+
+        See: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/core/session.html
         """
         kwargs = {"region_name": self.region_name}
         if self.aws_access_key_id:
@@ -117,6 +124,8 @@ class HTTPClientConfig:
 
         Returns:
             Dictionary of kwargs for requests.get/post/etc.
+
+        See: https://requests.readthedocs.io/en/latest/api/
         """
         kwargs = {
             "verify": self.verify_ssl,

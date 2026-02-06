@@ -519,38 +519,35 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
         Returns:
             Dictionary mapping topic-partition -> offset, or None if starting fresh.
         """
-        if self.group_id:
-            # Try to read committed offsets from Kafka
-            try:
-                from kafka import KafkaConsumer
+        if not self.group_id:
+            return None
 
-                config = {
-                    "bootstrap_servers": self.bootstrap_servers,
-                    "group_id": self.group_id,
-                    "enable_auto_commit": False,
-                }
-                _add_authentication_to_config(config, self.kafka_auth_config)
+        # Read committed offsets from Kafka
+        from kafka import KafkaConsumer
 
-                checkpoint = {}
-                with KafkaConsumer(**config) as consumer:
-                    for topic in self.topics:
-                        partitions = consumer.partitions_for_topic(topic)
-                        if partitions:
-                            topic_partitions = [
-                                TopicPartition(topic, p) for p in partitions
-                            ]
-                            committed = consumer.committed(topic_partitions)
-                            for tp in topic_partitions:
-                                offset = committed.get(tp)
-                                if offset is not None and offset >= 0:
-                                    key = f"{topic}:{tp.partition}"
-                                    checkpoint[key] = offset
+        config = {
+            "bootstrap_servers": self.bootstrap_servers,
+            "group_id": self.group_id,
+            "enable_auto_commit": False,
+        }
+        _add_authentication_to_config(config, self.kafka_auth_config)
 
-                return checkpoint if checkpoint else None
-            except Exception as e:
-                logger.warning(f"Failed to read initial Kafka offsets: {e}")
-                return None
-        return None
+        checkpoint = {}
+        with KafkaConsumer(**config) as consumer:
+            for topic in self.topics:
+                partitions = consumer.partitions_for_topic(topic)
+                if partitions:
+                    topic_partitions = [
+                        TopicPartition(topic, p) for p in partitions
+                    ]
+                    committed = consumer.committed(topic_partitions)
+                    for tp in topic_partitions:
+                        offset = committed.get(tp)
+                        if offset is not None and offset >= 0:
+                            key = f"{topic}:{tp.partition}"
+                            checkpoint[key] = offset
+
+        return checkpoint if checkpoint else None
 
     def get_read_tasks(
         self,
@@ -777,7 +774,6 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
                         # Yield any pending coalesced blocks
                         if small_tables:
                             yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
-                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
                         continue
 
                     partition_msgs = msg_batch.get(topic_partition, [])
@@ -793,7 +789,6 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
                                 small_tables.append(pa.Table.from_pylist(records))
                                 records = []
                             # Yield coalesced blocks
-                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
                             yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
 
                         records.append(
@@ -825,7 +820,6 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
                                 records = []
                             # Yield coalesced blocks
                             yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
-                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
                             if last_offsets_dict is not None and last_offset is not None:
                                 last_offsets_dict[checkpoint_key] = last_offset + 1
                             return
@@ -841,12 +835,10 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
                                 small_tables.append(pa.Table.from_pylist(records))
                             # Yield coalesced blocks
                             yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
-                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
 
                 # Flush remaining records
                 if records:
                     small_tables.append(pa.Table.from_pylist(records))
-                yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
                 yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
         metadata = BlockMetadata(
             num_rows=max_records,  # Estimated
@@ -917,52 +909,48 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
         if not self.group_id:
             return None
 
-        try:
-            from kafka import KafkaConsumer, TopicPartition
+        from kafka import KafkaConsumer, TopicPartition
 
-            config = {
-                "bootstrap_servers": self.bootstrap_servers,
-                "group_id": self.group_id,
-                "enable_auto_commit": False,
-            }
-            _add_authentication_to_config(config, self.kafka_auth_config)
+        config = {
+            "bootstrap_servers": self.bootstrap_servers,
+            "group_id": self.group_id,
+            "enable_auto_commit": False,
+        }
+        _add_authentication_to_config(config, self.kafka_auth_config)
 
-            total_lag = 0
-            per_partition_lag = {}
-            partition_count = 0
+        total_lag = 0
+        per_partition_lag = {}
+        partition_count = 0
 
-            with KafkaConsumer(**config) as consumer:
-                for topic in self.topics:
-                    partitions = consumer.partitions_for_topic(topic)
-                    if partitions:
-                        topic_partitions = [
-                            TopicPartition(topic, p) for p in partitions
-                        ]
-                        consumer.assign(topic_partitions)
+        with KafkaConsumer(**config) as consumer:
+            for topic in self.topics:
+                partitions = consumer.partitions_for_topic(topic)
+                if partitions:
+                    topic_partitions = [
+                        TopicPartition(topic, p) for p in partitions
+                    ]
+                    consumer.assign(topic_partitions)
 
-                        # Get end offsets (high watermarks)
-                        end_offsets = consumer.end_offsets(topic_partitions)
+                    # Get end offsets (high watermarks)
+                    end_offsets = consumer.end_offsets(topic_partitions)
 
-                        # Get committed offsets
-                        committed_offsets = consumer.committed(topic_partitions)
+                    # Get committed offsets
+                    committed_offsets = consumer.committed(topic_partitions)
 
-                        for tp in topic_partitions:
-                            end_offset = end_offsets.get(tp, 0)
-                            committed_offset = committed_offsets.get(tp)
-                            if committed_offset is not None and committed_offset >= 0:
-                                lag = max(0, end_offset - committed_offset)
-                                total_lag += lag
-                                per_partition_lag[f"{topic}:{tp.partition}"] = lag
-                                partition_count += 1
+                    for tp in topic_partitions:
+                        end_offset = end_offsets.get(tp, 0)
+                        committed_offset = committed_offsets.get(tp)
+                        if committed_offset is not None and committed_offset >= 0:
+                            lag = max(0, end_offset - committed_offset)
+                            total_lag += lag
+                            per_partition_lag[f"{topic}:{tp.partition}"] = lag
+                            partition_count += 1
 
-            return LagMetrics(
-                total_lag=total_lag,
-                partitions=partition_count,
-                per_partition_lag=per_partition_lag if per_partition_lag else None,
-            )
-        except Exception as e:
-            logger.warning(f"Failed to get Kafka lag metrics: {e}")
-            return None
+        return LagMetrics(
+            total_lag=total_lag,
+            partitions=partition_count,
+            per_partition_lag=per_partition_lag if per_partition_lag else None,
+        )
 
 
 # Backward compatibility alias - keep for existing code

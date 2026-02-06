@@ -14,11 +14,14 @@ The pattern follows Spark Structured Streaming's epoch-based commit model:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Generic, Iterable, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, Iterable, TypeVar
 
 from ray.data.block import Block
 from ray.data.datasource.datasink import Datasink
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces import TaskContext
 
 WriteReturnType = TypeVar("WriteReturnType")
 

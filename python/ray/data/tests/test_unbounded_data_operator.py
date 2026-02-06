@@ -1,11 +1,12 @@
-import time
-import ray
 import pyarrow as pa
 
-from ray.data.datasource import Datasource, ReadTask
-from ray.data._internal.execution.operators.unbounded_data_operator import UnboundedDataOperator
-from ray.data.context import DataContext
+import ray
+from ray.data._internal.execution.operators.unbounded_data_operator import (
+    UnboundedDataOperator,
+)
 from ray.data._internal.logical.operators.unbound_data_operator import StreamingTrigger
+from ray.data.context import DataContext
+from ray.data.datasource import Datasource, ReadTask
 
 
 class FakeStreamingDatasource(Datasource):
