@@ -3146,36 +3146,28 @@ class DeploymentState:
             )
             return upscale
 
-        # TODO (jeffreywang): We should proceed with gangs that are created successfully.
-        # PG prep was attempted but failed (resources insufficient).
         if not gang_reservation_result.success:
-            error_msg = gang_reservation_result.error_message or "Unknown error"
             logger.error(
-                f"Gang scheduling failed for {self._id}: {error_msg}. "
+                f"Gang scheduling failed for {self._id}: {gang_reservation_result.error_message}. "
                 "Skipping replica creation."
             )
-            # For gang scheduling, infeasible PGs should cause immediate failure.
-            # Set the retry counter to exceed the threshold to trigger DEPLOY_FAILED.
-            self._replica_constructor_error_msg = error_msg
-            self._replica_constructor_retry_counter = self._failed_to_start_threshold
+            self.record_replica_startup_failure(
+                f"Gang scheduling failed: {gang_reservation_result.error_message} "
+                "See Serve controller logs for more details."
+            )
             return upscale
 
+        gang_pgs = gang_reservation_result.gang_pgs
         gang_size = gang_config.gang_size
-        num_gangs = to_add // gang_size
+        num_gangs = len(gang_pgs)
+        replicas_to_add = num_gangs * gang_size
         logger.info(
-            f"Adding {to_add} replica{'s' * (to_add > 1)} to {self._id} "
-            f"using gang scheduling (gang_size={gang_size}, num_gangs={num_gangs})."
+            f"Adding {replicas_to_add} replica{'s' * (replicas_to_add > 1)} "
+            f"to {self._id} using gang scheduling "
+            f"(gang_size={gang_size}, {num_gangs} gang(s))."
         )
 
-        # Iterate through each gang and its placement group
-        for gang_index in range(num_gangs):
-            gang_pg = gang_reservation_result.gang_pgs.get(gang_index)
-            if gang_pg is None:
-                raise RuntimeError(
-                    f"Gang PG not found for gang_index={gang_index}. "
-                    "This should not happen."
-                )
-
+        for gang_pg in gang_pgs.values():
             # Pre-generate replica IDs for all members of this gang
             gang_id = get_random_string()
             member_replica_ids = [
@@ -3196,7 +3188,6 @@ class DeploymentState:
                     self._target_state.version,
                 )
 
-                # Start the replica with gang PG and gang context
                 scheduling_request = new_deployment_replica.start(
                     self._target_state.info,
                     assign_rank_callback=self._rank_manager.assign_rank,
