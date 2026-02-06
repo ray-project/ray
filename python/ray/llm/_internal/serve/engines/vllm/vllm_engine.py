@@ -505,12 +505,8 @@ class VLLMEngine(LLMEngine):
         request: ChatCompletionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
-        try:
-            self._validate_openai_serving_chat()
-        except ValueError as e:
-            yield ErrorResponse(
-                error=ErrorInfo(message=str(e), type="invalid_request_error", code=400)
-            )
+        if error := self._validate_openai_serving_chat():
+            yield error
             return
 
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
@@ -539,12 +535,8 @@ class VLLMEngine(LLMEngine):
         request: CompletionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
-        try:
-            self._validate_openai_serving_completion()
-        except ValueError as e:
-            yield ErrorResponse(
-                error=ErrorInfo(message=str(e), type="invalid_request_error", code=400)
-            )
+        if error := self._validate_openai_serving_completion():
+            yield error
             return
 
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
@@ -575,12 +567,8 @@ class VLLMEngine(LLMEngine):
         request: EmbeddingRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None]:
-        try:
-            self._validate_openai_serving_embedding()
-        except ValueError as e:
-            yield ErrorResponse(
-                error=ErrorInfo(message=str(e), type="invalid_request_error", code=400)
-            )
+        if error := self._validate_openai_serving_embedding():
+            yield error
             return
 
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
@@ -603,12 +591,8 @@ class VLLMEngine(LLMEngine):
         request: TranscriptionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, TranscriptionResponse, ErrorResponse], None]:
-        try:
-            self._validate_openai_serving_transcription()
-        except ValueError as e:
-            yield ErrorResponse(
-                error=ErrorInfo(message=str(e), type="invalid_request_error", code=400)
-            )
+        if error := self._validate_openai_serving_transcription():
+            yield error
             return
 
         # Extract audio data from the request file
@@ -643,12 +627,8 @@ class VLLMEngine(LLMEngine):
         request: ScoreRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[ScoreResponse, ErrorResponse], None]:
-        try:
-            self._validate_openai_serving_scores()
-        except ValueError as e:
-            yield ErrorResponse(
-                error=ErrorInfo(message=str(e), type="invalid_request_error", code=400)
-            )
+        if error := self._validate_openai_serving_scores():
+            yield error
             return
 
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
@@ -669,12 +649,8 @@ class VLLMEngine(LLMEngine):
         request: TokenizeRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[TokenizeResponse, ErrorResponse], None]:
-        try:
-            self._validate_openai_serving_tokenization()
-        except ValueError as e:
-            yield ErrorResponse(
-                error=ErrorInfo(message=str(e), type="invalid_request_error", code=400)
-            )
+        if error := self._validate_openai_serving_tokenization():
+            yield error
             return
 
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
@@ -695,12 +671,8 @@ class VLLMEngine(LLMEngine):
         request: DetokenizeRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[DetokenizeResponse, ErrorResponse], None]:
-        try:
-            self._validate_openai_serving_tokenization()
-        except ValueError as e:
-            yield ErrorResponse(
-                error=ErrorInfo(message=str(e), type="invalid_request_error", code=400)
-            )
+        if error := self._validate_openai_serving_tokenization():
+            yield error
             return
 
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
