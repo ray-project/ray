@@ -346,8 +346,8 @@ class GlobalState:
         stats = placement_group_info.stats
         assert placement_group_info is not None
 
-        scheduling_strategy = []
-        for strategy_proto in placement_group_info.scheduling_strategy:
+        scheduling_options = []
+        for strategy_proto in placement_group_info.scheduling_options:
             bundles_list = []
             label_selectors_list = []
             for bundle in strategy_proto.bundles:
@@ -361,7 +361,7 @@ class GlobalState:
                 "bundles": bundles_list,
                 "bundle_label_selector": label_selectors_list,
             }
-            scheduling_strategy.append(strategy_dict)
+            scheduling_options.append(strategy_dict)
 
         return {
             "placement_group_id": binary_to_hex(
@@ -391,6 +391,7 @@ class GlobalState:
                     stats.scheduling_state
                 ].name,
             },
+            "scheduling_options": scheduling_options,
         }
 
     def _nanoseconds_to_microseconds(self, time_in_nanoseconds):

@@ -52,10 +52,11 @@ class PlacementGroup:
         self,
         id: "ray._raylet.PlacementGroupID",
         bundle_cache: Optional[List[Dict]] = None,
+        all_bundle_cache: Optional[List[Dict]] = None,
     ):
         self.id = id
         self.bundle_cache = bundle_cache
-        self._all_bundle_cache = None
+        self._all_bundle_cache = all_bundle_cache
 
     @property
     def is_empty(self):
@@ -130,6 +131,9 @@ class PlacementGroup:
         return self._all_bundle_cache or self.bundle_cache
 
     def _fill_bundle_cache_if_needed(self) -> None:
+        if self.bundle_cache is not None:
+            return
+
         if not self.bundle_cache or not self._all_bundle_cache:
             cache_data = _get_bundle_cache(self.id)
 
@@ -164,9 +168,9 @@ def _get_bundle_cache(pg_id: PlacementGroupID) -> Dict[str, List[Dict]]:
     active_bundles = list(table["bundles"].values())
 
     # The list of bundles from all scheduling options.
-    if "scheduling_strategy" in table and table["scheduling_strategy"]:
+    if "scheduling_options" in table and table["scheduling_options"]:
         all_bundles = []
-        for strategy in table["scheduling_strategy"]:
+        for strategy in table["scheduling_options"]:
             all_bundles.extend(strategy.get("bundles", []))
     else:
         all_bundles = active_bundles
@@ -256,7 +260,7 @@ def placement_group(
         fallback_strategy,
     )
 
-    return PlacementGroup(placement_group_id, bundle_cache=bundles)
+    return PlacementGroup(placement_group_id)
 
 
 @PublicAPI
