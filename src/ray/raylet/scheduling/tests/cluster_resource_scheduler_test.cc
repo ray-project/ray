@@ -2495,35 +2495,34 @@ TEST_F(ClusterResourceSchedulerTest, NodeAvailableSnapshotTest) {
   // Reset counter
   call_count = 0;
   
-  // With snapshot: BeginSchedulingRound should call is_node_available_fn_ once per node
-  resource_scheduler.BeginSchedulingRound();
-  ASSERT_EQ(call_count, 5) << "BeginSchedulingRound should snapshot all 5 nodes";
-  
-  // Reset counter to verify subsequent calls don't invoke is_node_available_fn_
-  call_count = 0;
-  
-  // Call NodeAvailable multiple times for each node
-  for (int check = 0; check < 10; check++) {
-    for (int i = 1; i <= 5; i++) {
-      ASSERT_TRUE(NodeAvailable(resource_scheduler, scheduling::NodeID(i)));
+  // With snapshot: SchedulingRoundGuard should call is_node_available_fn_ once per node
+  {
+    ClusterResourceScheduler::SchedulingRoundGuard guard(resource_scheduler);
+    ASSERT_EQ(call_count, 5) << "SchedulingRoundGuard should snapshot all 5 nodes";
+    
+    // Reset counter to verify subsequent calls don't invoke is_node_available_fn_
+    call_count = 0;
+    
+    // Call NodeAvailable multiple times for each node
+    for (int check = 0; check < 10; check++) {
+      for (int i = 1; i <= 5; i++) {
+        ASSERT_TRUE(NodeAvailable(resource_scheduler, scheduling::NodeID(i)));
+      }
     }
+    
+    // Should have made 50 NodeAvailable calls (10 checks * 5 nodes)
+    // but is_node_available_fn_ should not be called at all (using snapshot)
+    ASSERT_EQ(call_count, 0) 
+        << "With snapshot active, should not call is_node_available_fn_";
   }
-  
-  // Should have made 50 NodeAvailable calls (10 checks * 5 nodes)
-  // but is_node_available_fn_ should not be called at all (using snapshot)
-  ASSERT_EQ(call_count, 0) 
-      << "With snapshot active, should not call is_node_available_fn_";
-  
-  // End the scheduling round
-  resource_scheduler.EndSchedulingRound();
   
   // Reset counter
   call_count = 0;
   
-  // After EndSchedulingRound, should go back to calling is_node_available_fn_
+  // After guard is destroyed, should go back to calling is_node_available_fn_
   ASSERT_TRUE(NodeAvailable(resource_scheduler, scheduling::NodeID(1)));
   ASSERT_EQ(call_count, 1) 
-      << "After EndSchedulingRound, should call is_node_available_fn_ again";
+      << "After SchedulingRoundGuard destroyed, should call is_node_available_fn_ again";
 }
 
 TEST_F(ClusterResourceSchedulerTest, NodeAvailableSnapshotReentrantTest) {
@@ -2597,19 +2596,19 @@ TEST_F(ClusterResourceSchedulerTest, NodeAvailableSnapshotDrainingTest) {
   AddOrUpdateNode(resource_scheduler, remote_node, node_resources);
   
   // Begin scheduling round - node should be available in snapshot
-  resource_scheduler.BeginSchedulingRound();
-  ASSERT_TRUE(NodeAvailable(resource_scheduler, remote_node)) 
-      << "Node should be available initially";
-  
-  // Mark node as draining
-  resource_scheduler.GetClusterResourceManager().SetNodeDraining(
-      remote_node, true, 0);
-  
-  // Even though snapshot says node is alive, draining check should make it unavailable
-  ASSERT_FALSE(NodeAvailable(resource_scheduler, remote_node)) 
-      << "Node should be unavailable when draining, even with snapshot";
-  
-  resource_scheduler.EndSchedulingRound();
+  {
+    ClusterResourceScheduler::SchedulingRoundGuard guard(resource_scheduler);
+    ASSERT_TRUE(NodeAvailable(resource_scheduler, remote_node)) 
+        << "Node should be available initially";
+    
+    // Mark node as draining
+    resource_scheduler.GetClusterResourceManager().SetNodeDraining(
+        remote_node, true, 0);
+    
+    // Even though snapshot says node is alive, draining check should make it unavailable
+    ASSERT_FALSE(NodeAvailable(resource_scheduler, remote_node)) 
+        << "Node should be unavailable when draining, even with snapshot";
+  }
 }
 
 }  // namespace ray

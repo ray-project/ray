@@ -124,8 +124,7 @@ void LocalLeaseManager::WaitForLeaseArgsRequests(std::shared_ptr<internal::Work>
 }
 
 void LocalLeaseManager::ScheduleAndGrantLeases() {
-  // This is reentrant-safe if called from ClusterLeaseManager.
-  cluster_resource_scheduler_.BeginSchedulingRound();
+  ClusterResourceScheduler::SchedulingRoundGuard guard(cluster_resource_scheduler_);
   
   GrantScheduledLeasesToWorkers();
   // TODO(swang): Spill from waiting queue first? Otherwise, we may end up
@@ -134,8 +133,6 @@ void LocalLeaseManager::ScheduleAndGrantLeases() {
   // in the PullManager or periodically, to make sure that we spill waiting
   // leases that are blocked.
   SpillWaitingLeases();
-  
-  cluster_resource_scheduler_.EndSchedulingRound();
 }
 
 void LocalLeaseManager::GrantScheduledLeasesToWorkers() {

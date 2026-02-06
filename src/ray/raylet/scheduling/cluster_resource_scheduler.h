@@ -146,6 +146,19 @@ class ClusterResourceScheduler {
   /// Clear the node availability snapshot. Must be called after BeginSchedulingRound().
   void EndSchedulingRound();
 
+  /// RAII guard for managing a scheduling round.
+  class SchedulingRoundGuard {
+   public:
+    explicit SchedulingRoundGuard(ClusterResourceScheduler &scheduler)
+        : scheduler_(scheduler) {
+      scheduler_.BeginSchedulingRound();
+    }
+    ~SchedulingRoundGuard() { scheduler_.EndSchedulingRound(); }
+
+   private:
+    ClusterResourceScheduler &scheduler_;
+  };
+
  private:
   void Init(instrumented_io_context &io_service,
             const NodeResources &local_node_resources,
@@ -242,9 +255,9 @@ class ClusterResourceScheduler {
 
   /// Pre-computed node availability for the current scheduling round.
   /// Empty when not in a scheduling round.
-  mutable absl::flat_hash_map<scheduling::NodeID, bool> node_available_snapshot_;
+  absl::flat_hash_map<scheduling::NodeID, bool> node_available_snapshot_;
   /// Depth counter for reentrant BeginSchedulingRound/EndSchedulingRound calls.
-  mutable int scheduling_round_depth_ = 0;
+  int scheduling_round_depth_ = 0;
 
   friend class ClusterResourceSchedulerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, PopulatePredefinedResources);
