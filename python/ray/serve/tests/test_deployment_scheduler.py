@@ -5,7 +5,6 @@ import pytest
 
 import ray
 from ray import serve
-from ray.serve.config import GangSchedulingConfig, GangPlacementStrategy
 from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 from ray.serve._private import default_impl
@@ -886,7 +885,9 @@ class TestGangScheduling:
 
         @serve.deployment
         def PackDeployment():
-            return os.environ.get("RAY_NODE_ID", ray.get_runtime_context().get_node_id())
+            return os.environ.get(
+                "RAY_NODE_ID", ray.get_runtime_context().get_node_id()
+            )
 
         # 1 gang with PACK strategy - all replicas should be on same node
         app = PackDeployment.options(
@@ -931,7 +932,10 @@ class TestGangScheduling:
         @serve.deployment
         def SpreadDeployment():
             import os
-            return os.environ.get("RAY_NODE_ID", ray.get_runtime_context().get_node_id())
+
+            return os.environ.get(
+                "RAY_NODE_ID", ray.get_runtime_context().get_node_id()
+            )
 
         # 1 gang with SPREAD strategy - replicas should be on different nodes
         app = SpreadDeployment.options(
@@ -961,7 +965,6 @@ class TestGangScheduling:
 
         serve.delete("gang_spread_app")
         serve.shutdown()
-
 
     def test_gang_context_populated(self, ray_start_cluster):
         """Verifies GangContext is correctly populated in ReplicaContext."""
@@ -1039,9 +1042,8 @@ class TestGangScheduling:
 
         # Across gangs: member_replica_ids should be different
         gang_members_list = list(gangs.values())
-        assert (
-            sorted(gang_members_list[0][0]["member_replica_ids"])
-            != sorted(gang_members_list[1][0]["member_replica_ids"])
+        assert sorted(gang_members_list[0][0]["member_replica_ids"]) != sorted(
+            gang_members_list[1][0]["member_replica_ids"]
         )
 
         serve.delete("gang_context_app")

@@ -38,7 +38,6 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.config import DeploymentConfig
-from ray.serve.config import GangRuntimeFailurePolicy
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     MAX_PER_REPLICA_RETRY_COUNT,
@@ -76,6 +75,7 @@ from ray.serve._private.utils import (
     msgpack_serialize,
 )
 from ray.serve._private.version import DeploymentVersion
+from ray.serve.config import GangRuntimeFailurePolicy
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import (
     DeploymentDetails,
@@ -2551,7 +2551,11 @@ class DeploymentState:
         return self._replicas.count(states=[ReplicaState.RUNNING], version=version)
 
     def get_gang_config(self):
-        return self._target_state.info.deployment_config.gang_scheduling_config if self._target_state is not None else None
+        return (
+            self._target_state.info.deployment_config.gang_scheduling_config
+            if self._target_state is not None
+            else None
+        )
 
     def get_num_replicas_to_add(self) -> int:
         """Calculate the number of replicas to be added to reach the target state."""
@@ -2567,7 +2571,11 @@ class DeploymentState:
         return max(0, delta)
 
     def get_replica_resource_dict(self) -> Dict[str, float]:
-        return self._target_state.info.replica_config.resource_dict.copy() if self._target_state is not None else {}
+        return (
+            self._target_state.info.replica_config.resource_dict.copy()
+            if self._target_state is not None
+            else {}
+        )
 
     def get_active_node_ids(self) -> Set[str]:
         """Get the node ids of all running replicas in this deployment.
@@ -3022,7 +3030,9 @@ class DeploymentState:
 
     def scale_deployment_replicas(
         self,
-        gang_placement_groups: Optional[Dict[DeploymentID, GangPreparationResult]] = None,
+        gang_placement_groups: Optional[
+            Dict[DeploymentID, GangPreparationResult]
+        ] = None,
     ) -> Tuple[List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
         """Scale the given deployment to the number of replicas.
 
@@ -3085,7 +3095,9 @@ class DeploymentState:
                             assign_rank_callback=self._rank_manager.assign_rank,
                         )
                         upscale.append(scheduling_request)
-                        self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
+                        self._replicas.add(
+                            ReplicaState.STARTING, new_deployment_replica
+                        )
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
@@ -3165,9 +3177,7 @@ class DeploymentState:
                     gang_id=gang_id,
                     rank=bundle_index,
                     world_size=gang_size,
-                    member_replica_ids=[
-                        r.unique_id for r in member_replica_ids
-                    ],
+                    member_replica_ids=[r.unique_id for r in member_replica_ids],
                 )
 
                 new_deployment_replica = DeploymentReplica(
@@ -3507,13 +3517,11 @@ class DeploymentState:
                 )
                 self._stop_replica(replica, graceful_stop=False)
                 if replica.version == self._target_state.version:
-                    self._curr_status_info = (
-                        self._curr_status_info.handle_transition(
-                            trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
-                            message="A replica's health check failed. This "
-                            "deployment will be UNHEALTHY until the replica "
-                            "recovers or a new deploy happens.",
-                        )
+                    self._curr_status_info = self._curr_status_info.handle_transition(
+                        trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
+                        message="A replica's health check failed. This "
+                        "deployment will be UNHEALTHY until the replica "
+                        "recovers or a new deploy happens.",
                     )
             else:
                 self._replicas.add(replica.actor_details.state, replica)
@@ -4459,9 +4467,7 @@ class DeploymentStateManager:
             # Skip if deployment has replicas still stopping. Their resources
             # haven't been released yet, so PG creation would likely fail or
             # block waiting for resources. We'll retry next reconciliation loop.
-            if deployment_state._replicas.count(
-                states=[ReplicaState.STOPPING]
-            ) > 0:
+            if deployment_state._replicas.count(states=[ReplicaState.STOPPING]) > 0:
                 continue
 
             gang_requests[deployment_id] = GangPlacementGroupRequest(
@@ -4478,7 +4484,6 @@ class DeploymentStateManager:
             return {}
 
         return self._deployment_scheduler.schedule_gang_placement_groups(gang_requests)
-
 
     def record_request_routing_info(self, info: RequestRoutingInfo) -> None:
         """
