@@ -11,6 +11,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
+from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.logical.rules.projection_pushdown import (
     _extract_input_columns_renaming_mapping,
 )
@@ -747,15 +748,19 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
 
     names, output_cols = zip(*[(e.name, eval_expr(e, block)) for e in projection_exprs])
 
-    # This clumsy workaround is necessary to be able to fill in Pyarrow tables
-    # that has to be "seeded" from existing table with N rows, and couldn't be
-    # started from a truly empty table.
-    #
-    # TODO fix
-    new_block = BlockAccessor.for_block(block).fill_column("__stub__", None)
-    new_block = BlockAccessor.for_block(new_block).drop(input_column_names)
+    # Build an empty block that preserves row count across block types. Arrow tables
+    # cannot be created truly empty (0 columns) while retaining row count, so
+    # BlockAccessor.select([]) injects a stub column internally for Arrow blocks.
+    new_block = block_accessor.select([])
 
     for name, output_col in zip(names, output_cols):
         new_block = BlockAccessor.for_block(new_block).fill_column(name, output_col)
 
-    return BlockAccessor.for_block(new_block).drop(["__stub__"])
+    final_accessor = BlockAccessor.for_block(new_block)
+    if (
+        _BATCH_SIZE_PRESERVING_STUB_COL_NAME not in names
+        and _BATCH_SIZE_PRESERVING_STUB_COL_NAME in final_accessor.column_names()
+    ):
+        new_block = final_accessor.drop([_BATCH_SIZE_PRESERVING_STUB_COL_NAME])
+
+    return new_block
