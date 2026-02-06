@@ -692,12 +692,14 @@ class OpResourceAllocator(ABC):
     def _should_unblock_streaming_output_backpressure(
         self, op: PhysicalOperator
     ) -> bool:
+        downstream_eligible_ops = list(self._get_downstream_eligible_ops(op))
+
         # NOTE: If this operator is a terminal one, extracting outputs from it
         #       should not be throttled
-        if not op.output_dependencies:
+        if not downstream_eligible_ops:
             return True
 
-        for downstream_op in self._get_downstream_eligible_ops(op):
+        for downstream_op in downstream_eligible_ops:
             # To maintain liveness of the pipeline, we relax output backpressure
             # in one of the following cases
             if downstream_op.num_active_tasks() == 0:
