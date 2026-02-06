@@ -730,8 +730,8 @@ class DeploymentAutoscalingState:
             timestamp_str=time.strftime(
                 AUTOSCALING_LOG_TIMESTAMP_FORMAT, time.gmtime()
             ),
-            app=self._deployment_id.app_name,
-            deployment=self._deployment_id.name,
+            app_name=self._deployment_id.app_name,
+            deployment_name=self._deployment_id.name,
             current_replicas=current_replicas,
             target_replicas=target_replicas,
             min_replicas=min_replicas,
@@ -917,7 +917,7 @@ class ApplicationAutoscalingState:
             timestamp_str=time.strftime(
                 AUTOSCALING_LOG_TIMESTAMP_FORMAT, time.gmtime()
             ),
-            app=self._app_name,
+            app_name=self._app_name,
             num_deployments=len(decisions),
             total_current_replicas=total_current,
             total_target_replicas=total_target,

@@ -379,10 +379,10 @@ def _parse_batched_snapshots_from_log(
                         # Filter by name based on snapshot type
                         if target_name is not None:
                             if snapshot_type == "deployment":
-                                if snap.get("deployment") != target_name:
+                                if snap.get("deployment_name") != target_name:
                                     continue
                             elif snapshot_type == "application":
-                                if snap.get("app") != target_name:
+                                if snap.get("app_name") != target_name:
                                     continue
 
                         snaps.append(snap)
@@ -659,8 +659,11 @@ def test_autoscaling_snapshot_batched_single_write_per_loop(serve_instance):
                             continue
                         if snap.get("snapshot_type") != "deployment":
                             continue
-                        dep_name = snap.get("deployment")
-                        if snap.get("app") == APP_NAME and dep_name in deployment_names:
+                        dep_name = snap.get("deployment_name")
+                        if (
+                            snap.get("app_name") == APP_NAME
+                            and dep_name in deployment_names
+                        ):
                             names_in_batch.add(dep_name)
                             target_snaps.append(snap)
 
