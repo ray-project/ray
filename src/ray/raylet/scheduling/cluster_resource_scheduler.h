@@ -138,6 +138,14 @@ class ClusterResourceScheduler {
 
   bool IsLocalNodeWithRaylet() { return is_local_node_with_raylet_; }
 
+  /// Call at the start of a scheduling round to snapshot node availability.
+  /// All subsequent NodeAvailable() calls will use this snapshot until
+  /// EndSchedulingRound() is called. This method is reentrant-safe.
+  void BeginSchedulingRound();
+
+  /// Clear the node availability snapshot. Must be called after BeginSchedulingRound().
+  void EndSchedulingRound();
+
  private:
   void Init(instrumented_io_context &io_service,
             const NodeResources &local_node_resources,
@@ -147,6 +155,10 @@ class ClusterResourceScheduler {
             ray::observability::MetricInterface &resource_usage_gauge);
 
   bool NodeAvailable(scheduling::NodeID node_id) const;
+
+  /// Check if a node is available without using the snapshot.
+  /// This is the actual implementation that queries is_node_available_fn_.
+  bool NodeAvailableImpl(scheduling::NodeID node_id) const;
 
   /// Decrease the available resources of a node when a resource request is
   /// scheduled on the given node.
@@ -227,6 +239,12 @@ class ClusterResourceScheduler {
       bundle_scheduling_policy_;
   /// Whether there is a raylet on the local node.
   bool is_local_node_with_raylet_ = true;
+
+  /// Pre-computed node availability for the current scheduling round.
+  /// Empty when not in a scheduling round.
+  mutable absl::flat_hash_map<scheduling::NodeID, bool> node_available_snapshot_;
+  /// Depth counter for reentrant BeginSchedulingRound/EndSchedulingRound calls.
+  mutable int scheduling_round_depth_ = 0;
 
   friend class ClusterResourceSchedulerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, PopulatePredefinedResources);
