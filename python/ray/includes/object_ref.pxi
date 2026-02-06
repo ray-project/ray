@@ -11,6 +11,7 @@ import logging
 import threading
 from typing import Callable, Any, Union, Optional
 from _collections_abc import GenericAlias
+from builtins import StopAsyncIteration
 
 import ray
 import cython
