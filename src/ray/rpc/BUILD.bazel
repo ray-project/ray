@@ -4,7 +4,10 @@ ray_cc_library(
     name = "common",
     srcs = ["common.cc"],
     hdrs = ["common.h"],
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//src/ray/observability:__pkg__",
+        "//src/ray/rpc:__pkg__",
+    ],
 )
 
 ray_cc_library(
