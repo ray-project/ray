@@ -807,8 +807,7 @@ class TestGangScheduling:
     """Tests for gang scheduling with placement groups."""
 
     def test_sufficient_resources(self, ray_start_cluster):
-        """Verifies that gang scheduling succeeds when cluster has sufficient resources.
-        """
+        """Verifies that gang scheduling succeeds when cluster has sufficient resources."""
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=4)
         cluster.add_node(num_cpus=4)
@@ -842,8 +841,7 @@ class TestGangScheduling:
         serve.shutdown()
 
     def test_insufficient_resources(self, ray_start_cluster):
-        """Verifies that gang scheduling fails when cluster lacks resources.
-        """
+        """Verifies that gang scheduling fails when cluster lacks resources."""
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=4)
         cluster.add_node(num_cpus=4)
@@ -878,8 +876,7 @@ class TestGangScheduling:
         serve.shutdown()
 
     def test_pack_strategy(self, ray_start_cluster):
-        """Verifies that PACK strategy places gang replicas on the same node.
-        """
+        """Verifies that PACK strategy places gang replicas on the same node."""
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=4)
         cluster.add_node(num_cpus=4)
@@ -963,6 +960,98 @@ class TestGangScheduling:
         assert len(node_ids) == 4
 
         serve.delete("gang_spread_app")
+        serve.shutdown()
+
+
+    def test_gang_context_populated(self, ray_start_cluster):
+        """Verifies GangContext is correctly populated in ReplicaContext."""
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=4)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment
+        class GangContextDeployment:
+            def __call__(self):
+                ctx = ray.serve.context._get_internal_replica_context()
+                gc = ctx.gang_context
+                if gc is None:
+                    return None
+                return {
+                    "gang_id": gc.gang_id,
+                    "rank": gc.rank,
+                    "world_size": gc.world_size,
+                    "member_replica_ids": gc.member_replica_ids,
+                    "replica_id": ctx.replica_id.unique_id,
+                }
+
+        app = GangContextDeployment.options(
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        ).bind()
+
+        handle = serve.run(app, name="gang_context_app")
+        wait_for_condition(
+            check_apps_running,
+            apps=["gang_context_app"],
+            timeout=60,
+        )
+
+        # Collect gang contexts from all replicas
+        # Query enough times to hit all 4 replicas
+        contexts_by_replica = {}
+        for _ in range(100):
+            result = handle.remote().result()
+            assert result is not None
+            replica_id = result["replica_id"]
+            if replica_id not in contexts_by_replica:
+                contexts_by_replica[replica_id] = result
+            if len(contexts_by_replica) == 4:
+                break
+        assert len(contexts_by_replica) == 4
+
+        # Group replicas by gang_id
+        gangs = {}
+        for replica_id, ctx in contexts_by_replica.items():
+            gang_id = ctx["gang_id"]
+            gangs.setdefault(gang_id, []).append(ctx)
+
+        # Should have exactly 2 gangs
+        assert len(gangs) == 2
+
+        for gang_id, members in gangs.items():
+            # Each gang should have exactly 2 replicas
+            assert len(members) == 2
+
+            # All members should have the same world_size
+            assert all(member["world_size"] == 2 for member in members)
+
+            # All members should have the same member_replica_ids
+            assert members[0]["member_replica_ids"] == members[1]["member_replica_ids"]
+
+            # member_replica_ids should contain exactly the 2 replica IDs in this gang
+            expected_ids = sorted([m["replica_id"] for m in members])
+            actual_ids = sorted(members[0]["member_replica_ids"])
+            assert actual_ids == expected_ids
+
+            # Ranks within the gang should be {0, 1}
+            ranks = sorted([m["rank"] for m in members])
+            assert ranks == [0, 1]
+
+        # Across gangs: gang_ids should be different (already guaranteed by dict keys)
+        gang_ids = list(gangs.keys())
+        assert gang_ids[0] != gang_ids[1]
+
+        # Across gangs: member_replica_ids should be different
+        gang_members_list = list(gangs.values())
+        assert (
+            sorted(gang_members_list[0][0]["member_replica_ids"])
+            != sorted(gang_members_list[1][0]["member_replica_ids"])
+        )
+
+        serve.delete("gang_context_app")
         serve.shutdown()
 
 
