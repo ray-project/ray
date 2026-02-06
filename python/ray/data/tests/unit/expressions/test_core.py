@@ -349,6 +349,16 @@ class TestRenameExpr:
         assert rewritten.name == "amount"
         assert not isinstance(rewritten, RenameExpr)
 
+    def test_rename_substitution_unalias(self):
+        """Renames should unalias substitutions and preserve rename semantics."""
+        visitor = _ColumnSubstitutionVisitor({"a": col("c").alias("d")})
+        expr = col("a")._rename("b")
+        rewritten = visitor.visit(expr)
+        assert isinstance(rewritten, RenameExpr)
+        assert rewritten.name == "b"
+        assert isinstance(rewritten.expr, ColumnExpr)
+        assert rewritten.expr.name == "c"
+
 
 # ──────────────────────────────────────
 # Star Expression Tests

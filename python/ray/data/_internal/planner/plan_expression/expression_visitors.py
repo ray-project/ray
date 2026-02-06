@@ -282,7 +282,8 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         Returns:
             A rename expression when it still targets a column, otherwise an alias.
         """
-        visited = self.visit(expr.expr)
+        # Unalias to avoid nested aliasing and preserve rename semantics when possible.
+        visited = self.visit(expr.expr)._unalias()
         if isinstance(visited, ColumnExpr):
             return RenameExpr(
                 data_type=visited.data_type, expr=visited, _name=expr.name
