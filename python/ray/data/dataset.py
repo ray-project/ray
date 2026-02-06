@@ -4752,6 +4752,11 @@ class Dataset:
                 might write more or fewer rows to each file.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             encoder: Controls how dataset rows are encoded into WebDataset samples.
+                If ``True`` (default), uses the default encoder that automatically
+                handles common data types. If ``False``, disables encoding and requires
+                all values to already be bytes or strings. A string specifies a format
+                hint for the default encoder, a callable provides a custom encoding
+                function, and a list applies multiple encoders in sequence.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
