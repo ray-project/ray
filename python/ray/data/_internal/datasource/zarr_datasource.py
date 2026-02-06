@@ -61,9 +61,9 @@ class ZarrDatasource(Datasource):
                 pafs.FileSelector(store_path, recursive=True)
             )
 
-            # Separate metadata from chunks, build chunk lookup
+            # Collect metadata and build path lookup for all files
             metadata_bytes: Dict[str, bytes] = {}
-            chunk_lookup: Dict[Tuple[str, Tuple[int, ...]], Tuple[str, str]] = {}
+            path_lookup: Dict[str, str] = {}  # rel_path -> abs_path
 
             for fi in file_infos:
                 if fi.type != pafs.FileType.File:
@@ -76,10 +76,12 @@ class ZarrDatasource(Datasource):
                     with self._filesystem.open_input_file(fi.path) as f:
                         metadata_bytes[rel_path] = bytes(f.read())
                 else:
-                    # Parse chunk path into (array_name, chunk_idx)
-                    key = _parse_chunk_path(rel_path)
-                    if key:
-                        chunk_lookup[key] = (rel_path, fi.path)
+                    path_lookup[rel_path] = fi.path
+
+            # Detect zarr version from metadata files
+            is_zarr_v3 = "zarr.json" in metadata_bytes or any(
+                k.endswith("/zarr.json") for k in metadata_bytes
+            )
 
             # Open zarr with metadata to discover structure
             store_dict = {
@@ -90,9 +92,12 @@ class ZarrDatasource(Datasource):
 
             for array_name, arr in _get_arrays(store):
                 for chunk_idx in _get_chunk_indices(arr):
-                    chunk_rel_path, chunk_abs_path = chunk_lookup[
-                        (array_name, chunk_idx)
-                    ]
+                    # Compute expected chunk path based on zarr version
+                    chunk_rel_path = _get_chunk_path(array_name, chunk_idx, is_zarr_v3)
+                    chunk_abs_path = path_lookup.get(chunk_rel_path)
+
+                    if chunk_abs_path is None:
+                        continue  # Chunk file missing (sparse array or empty chunk)
 
                     chunk_shape = tuple(
                         min(c, s - i * c)
@@ -154,37 +159,20 @@ class ZarrDatasource(Datasource):
         return total
 
 
-def _parse_chunk_path(rel_path: str) -> Optional[Tuple[str, Tuple[int, ...]]]:
-    """Parse a chunk file path into (array_name, chunk_indices)."""
-    parts = rel_path.split("/")
-
-    # Handle zarr v3 "c/" prefix
-    if "c" in parts:
-        c_idx = parts.index("c")
-        array_parts = parts[:c_idx]
-        index_parts = parts[c_idx + 1 :]
+def _get_chunk_path(
+    array_name: str, chunk_idx: Tuple[int, ...], is_zarr_v3: bool
+) -> str:
+    """Compute the chunk file path for a given array and chunk index."""
+    if is_zarr_v3:
+        # zarr v3: {array_name}/c/{dim0}/{dim1}/...
+        chunk_part = "c/" + "/".join(str(i) for i in chunk_idx)
     else:
-        # Find where array name ends and chunk indices begin
-        # Chunk indices are numeric, possibly with "." separator
-        for i, part in enumerate(parts):
-            # Check if this part looks like chunk indices
-            test_parts = part.split(".")
-            if all(p.isdigit() for p in test_parts):
-                array_parts = parts[:i]
-                # Handle "." separator in chunk indices
-                index_parts = []
-                for p in parts[i:]:
-                    index_parts.extend(p.split("."))
-                break
-        else:
-            return None
+        # zarr v2: {array_name}/{dim0}.{dim1}...
+        chunk_part = ".".join(str(i) for i in chunk_idx)
 
-    try:
-        array_name = "/".join(array_parts)
-        chunk_idx = tuple(int(p) for p in index_parts)
-        return (array_name, chunk_idx)
-    except ValueError:
-        return None
+    if array_name:
+        return f"{array_name}/{chunk_part}"
+    return chunk_part
 
 
 def _get_arrays(store) -> List[Tuple[str, "zarr.Array"]]:
