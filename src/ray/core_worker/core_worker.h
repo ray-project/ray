@@ -85,12 +85,14 @@ class TaskCounter {
 
   void RecordMetrics();
 
-  void IncPending(std::string_view func_name, bool is_retry) {  // Changed: read-only param
+  void IncPending(std::string_view func_name,
+                  bool is_retry) {  // Changed: read-only param
     absl::MutexLock l(&mu_);
     counter_.Increment({std::string(func_name), TaskStatusType::kPending, is_retry});
   }
 
-  void MovePendingToRunning(std::string_view func_name, bool is_retry) {  // Changed: read-only param
+  void MovePendingToRunning(std::string_view func_name,
+                            bool is_retry) {  // Changed: read-only param
     absl::MutexLock l(&mu_);
     auto func_name_str = std::string(func_name);  // Convert once for reuse
     counter_.Swap({func_name_str, TaskStatusType::kPending, is_retry},
@@ -98,7 +100,8 @@ class TaskCounter {
     num_tasks_running_++;
   }
 
-  void MoveRunningToFinished(std::string_view func_name, bool is_retry) {  // Changed: read-only param
+  void MoveRunningToFinished(std::string_view func_name,
+                             bool is_retry) {  // Changed: read-only param
     absl::MutexLock l(&mu_);
     auto func_name_str = std::string(func_name);  // Convert once for reuse
     counter_.Swap({func_name_str, TaskStatusType::kRunning, is_retry},
@@ -471,10 +474,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// byte string).
   /// \param[in] owner_address The address of the object's owner.
   /// \param[in] serialized_object_status The serialized object status protobuf.
-  void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
-                                             const ObjectID &outer_object_id,
-                                             const rpc::Address &owner_address,
-                                             std::string_view serialized_object_status);  // Changed: read-only param
+  void RegisterOwnershipInfoAndResolveFuture(
+      const ObjectID &object_id,
+      const ObjectID &outer_object_id,
+      const rpc::Address &owner_address,
+      std::string_view serialized_object_status);  // Changed: read-only param
 
   ///
   /// Public methods related to storing and retrieving objects.
@@ -819,7 +823,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] The timestamp of the error.
   /// \return Status.
   Status PushError(const JobID &job_id,
-                   std::string_view type,  // Changed: read-only param
+                   std::string_view type,           // Changed: read-only param
                    std::string_view error_message,  // Changed: read-only param
                    double timestamp);
 
@@ -831,9 +835,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // request.
   //
   // This API is async. It provides no guarantee that the workers are actually started.
-  void PrestartWorkers(std::string_view serialized_runtime_env_info,  // Changed: read-only param
-                       uint64_t keep_alive_duration_secs,
-                       size_t num_workers);
+  void PrestartWorkers(
+      std::string_view serialized_runtime_env_info,  // Changed: read-only param
+      uint64_t keep_alive_duration_secs,
+      size_t num_workers);
 
   /// Submit a normal task.
   ///
