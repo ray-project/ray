@@ -279,6 +279,66 @@ def yield_coalesced_blocks(
         yield coalesced_table, meta
 
 
+class TwoPhaseCommitMixin:
+    """Mixin providing default two-phase commit implementation for streaming datasources.
+
+    This mixin provides standard implementations of prepare_commit, commit, and
+    abort_commit methods that work with the commit_checkpoint pattern used by
+    streaming datasources.
+
+    Subclasses should:
+    1. Initialize `_pending_commit_token: Optional[Any] = None` in __init__
+    2. Implement `commit_checkpoint(checkpoint: Dict[str, Any]) -> None`
+    3. Optionally override `abort_commit` to customize logging messages
+
+    Example:
+        .. testcode::
+            :skipif: True
+
+            from ray.data._internal.datasource.streaming_utils import TwoPhaseCommitMixin
+            from ray.data.datasource.unbound_datasource import UnboundDatasource
+
+            class MyDatasource(UnboundDatasource, TwoPhaseCommitMixin):
+                def __init__(self):
+                    super().__init__("my_source")
+                    self._pending_commit_token = None
+
+                def commit_checkpoint(self, checkpoint):
+                    # Implement checkpoint commit logic
+                    pass
+    """
+
+    def prepare_commit(self, checkpoint: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare commit token for two-phase commit.
+
+        Args:
+            checkpoint: Checkpoint dict to prepare.
+
+        Returns:
+            Commit token (same as checkpoint by default).
+        """
+        self._pending_commit_token = checkpoint
+        return checkpoint
+
+    def commit(self, commit_token: Dict[str, Any]) -> None:
+        """Commit prepared token (two-phase commit).
+
+        Args:
+            commit_token: Commit token from prepare_commit().
+        """
+        self.commit_checkpoint(commit_token)
+        self._pending_commit_token = None
+
+    def abort_commit(self, commit_token: Dict[str, Any]) -> None:
+        """Abort prepared commit (best-effort).
+
+        Args:
+            commit_token: Commit token to abort.
+        """
+        # Clear pending token - actual abort behavior depends on datasource
+        self._pending_commit_token = None
+
+
 __all__ = [
     "AWSCredentials",
     "HTTPClientConfig",
@@ -287,4 +347,5 @@ __all__ = [
     "create_block_coalescer",
     "create_block_metadata",
     "yield_coalesced_blocks",
+    "TwoPhaseCommitMixin",
 ]

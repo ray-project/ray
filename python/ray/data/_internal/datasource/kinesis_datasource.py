@@ -15,6 +15,7 @@ import pyarrow as pa
 
 from ray.data._internal.datasource.streaming_utils import (
     AWSCredentials,
+    TwoPhaseCommitMixin,
     create_block_coalescer,
     create_standard_schema,
     yield_coalesced_blocks,
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 _KINESIS_BATCH_SIZE = 1000
 
 
-class KinesisDatasource(UnboundDatasource):
+class KinesisDatasource(UnboundDatasource, TwoPhaseCommitMixin):
     """Kinesis datasource for streaming reads from AWS Kinesis Data Streams.
 
     Supports both standard polling (GetRecords) and enhanced fan-out (EFO)
@@ -446,27 +447,6 @@ class KinesisDatasource(UnboundDatasource):
         # No-op for now - in production would write to DynamoDB checkpoint table
         logger.debug(f"Kinesis checkpoint commit (no-op): {len(checkpoint)} shards")
 
-    def prepare_commit(self, checkpoint: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepare commit token for two-phase commit.
-
-        Args:
-            checkpoint: Checkpoint dict to prepare.
-
-        Returns:
-            Commit token (same as checkpoint for Kinesis).
-        """
-        self._pending_commit_token = checkpoint
-        return checkpoint
-
-    def commit(self, commit_token: Dict[str, Any]) -> None:
-        """Commit prepared token (two-phase commit).
-
-        Args:
-            commit_token: Commit token from prepare_commit().
-        """
-        self.commit_checkpoint(commit_token)
-        self._pending_commit_token = None
-
     def abort_commit(self, commit_token: Dict[str, Any]) -> None:
         """Abort prepared commit (best-effort).
 
@@ -474,7 +454,7 @@ class KinesisDatasource(UnboundDatasource):
             commit_token: Commit token to abort.
         """
         # Kinesis doesn't support aborting commits, but we can clear the pending token
-        self._pending_commit_token = None
+        super().abort_commit(commit_token)
         logger.debug("Aborted Kinesis commit (no-op, sequence numbers not committed)")
 
     def get_lag_metrics(self) -> Optional[LagMetrics]:

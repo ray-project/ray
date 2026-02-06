@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from kafka import KafkaConsumer, TopicPartition
 
 from ray.data._internal.datasource.streaming_utils import (
+    TwoPhaseCommitMixin,
     create_block_coalescer,
     yield_coalesced_blocks,
 )
@@ -455,7 +456,7 @@ class KafkaBoundedDatasource(Datasource):
 # ============================================================================
 
 
-class KafkaStreamingDatasource(UnboundDatasource):
+class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
     """Kafka datasource for unbounded streaming reads.
 
     This datasource supports continuous, interval, and cron-based streaming reads
@@ -897,27 +898,6 @@ class KafkaStreamingDatasource(UnboundDatasource):
             logger.error(f"Failed to commit Kafka offsets: {e}", exc_info=e)
             raise
 
-    def prepare_commit(self, checkpoint: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepare commit token for two-phase commit.
-
-        Args:
-            checkpoint: Checkpoint dict to prepare.
-
-        Returns:
-            Commit token (same as checkpoint for Kafka).
-        """
-        self._pending_commit_token = checkpoint
-        return checkpoint
-
-    def commit(self, commit_token: Dict[str, Any]) -> None:
-        """Commit prepared token (two-phase commit).
-
-        Args:
-            commit_token: Commit token from prepare_commit().
-        """
-        self.commit_checkpoint(commit_token)
-        self._pending_commit_token = None
-
     def abort_commit(self, commit_token: Dict[str, Any]) -> None:
         """Abort prepared commit (best-effort).
 
@@ -925,7 +905,7 @@ class KafkaStreamingDatasource(UnboundDatasource):
             commit_token: Commit token to abort.
         """
         # Kafka doesn't support aborting commits, but we can clear the pending token
-        self._pending_commit_token = None
+        super().abort_commit(commit_token)
         logger.debug("Aborted Kafka commit (no-op, offsets not committed)")
 
     def get_lag_metrics(self) -> Optional[LagMetrics]:
