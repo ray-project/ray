@@ -17,7 +17,7 @@ from ray.serve._private.common import (
     CreatePlacementGroupRequest,
     DeploymentID,
     GangPlacementGroupRequest,
-    GangPreparationResult,
+    GangReservationResult,
     ReplicaID,
 )
 from ray.serve._private.config import ReplicaConfig
@@ -162,10 +162,10 @@ class ReplicaSchedulingRequest:
     placement_group_bundle_label_selector: Optional[List[Dict[str, str]]] = None
     placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None
     max_replicas_per_node: Optional[int] = None
-    # Gang scheduling fields - if set, replica should be scheduled on
-    # the pre-created gang placement group at the specified bundle index.
-    gang_placement_group: Optional[Any] = None  # PlacementGroup
-    gang_bundle_index: Optional[int] = None
+    # Gang scheduling fields -- if set, replica should be scheduled on
+    # the reserved gang placement group at the specified bundle index.
+    gang_placement_group: Optional["PlacementGroup"] = None
+    gang_replica_rank: Optional[int] = None
 
     @property
     def required_resources(self) -> Resources:
@@ -545,13 +545,15 @@ class DeploymentScheduler(ABC):
 
         The following special scheduling strategies will be used, in
         order of highest to lowest priority.
-        1. If a replica requires placement groups, we will choose to use
+        1. If a replica requires gang scheduling, we will use a reserved
+           gang placement group.
+        2. If a replica requires placement groups, we will choose to use
            a `PlacementGroupSchedulingStrategy`. This can also take a
            target node into consideration (soft target), if provided.
            However it cannot take into account target labels.
-        2. If a `target_node_id` is provided, we will choose to use a
+        3. If a `target_node_id` is provided, we will choose to use a
            `NodeAffinitySchedulingStrategy`.
-        3. If `target_labels` is provided, we will choose to use a
+        4. If `target_labels` is provided, we will choose to use a
            `NodeLabelSchedulingStrategy`.
 
         Args:
@@ -573,20 +575,17 @@ class DeploymentScheduler(ABC):
 
         scheduling_strategy = default_scheduling_strategy
 
-        # Gang scheduling path - use pre-created gang placement group
         if scheduling_request.gang_placement_group is not None:
+            # Gang scheduling -- use the reserved gang placement group
             placement_group = scheduling_request.gang_placement_group
             scheduling_strategy = PlacementGroupSchedulingStrategy(
                 placement_group=placement_group,
-                placement_group_bundle_index=scheduling_request.gang_bundle_index,
+                placement_group_bundle_index=scheduling_request.gang_replica_rank,
                 placement_group_capture_child_tasks=True,
             )
+            # TODO (jeffreywang): Add support for target labels and node affinity
             target_labels = None
             target_node_id = None
-            logger.debug(
-                f"Scheduling {replica_id} on gang PG "
-                f"(bundle_index={scheduling_request.gang_bundle_index})."
-            )
         elif scheduling_request.placement_group_bundles is not None:
             placement_group_strategy = (
                 scheduling_request.placement_group_strategy
@@ -679,7 +678,7 @@ class DeploymentScheduler(ABC):
     def schedule_gang_placement_groups(
         self,
         gang_requests: Dict[DeploymentID, GangPlacementGroupRequest],
-    ) -> Dict[DeploymentID, GangPreparationResult]:
+    ) -> Dict[DeploymentID, GangReservationResult]:
         """Reserve resources for gang scheduling."""
         raise NotImplementedError
 
@@ -1049,25 +1048,22 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
     def schedule_gang_placement_groups(
         self,
         gang_requests: Dict[DeploymentID, GangPlacementGroupRequest],
-    ) -> Dict[DeploymentID, GangPreparationResult]:
-        """Pre-create placement groups for gang scheduling.
+    ) -> Dict[DeploymentID, GangReservationResult]:
+        """Reserve gang placement groups for gang scheduling.
 
         Creates gang placement groups before replicas are created, allowing
         the scheduler to verify resource feasibility upfront.
         """
-        results = {}
-
-        for deployment_id, request in gang_requests.items():
-            result = self._prepare_gangs_for_deployment(deployment_id, request)
-            results[deployment_id] = result
-
-        return results
+        return {
+            deployment_id: self._prepare_gangs_for_deployment(deployment_id, request)
+            for deployment_id, request in gang_requests.items()
+        }
 
     def _prepare_gangs_for_deployment(
         self,
         deployment_id: DeploymentID,
         request: GangPlacementGroupRequest,
-    ) -> GangPreparationResult:
+    ) -> GangReservationResult:
         """Create gang placement groups for a single deployment.
 
         Args:
@@ -1075,15 +1071,28 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             request: Contains gang config and number of replicas to add.
 
         Returns:
-            GangPreparationResult with success status and created PGs.
+            GangReservationResult with success status and created PGs.
         """
         gang_size = request.gang_size
-        num_gangs_needed = request.num_replicas_to_add // gang_size
+
+        if request.num_replicas_to_add % gang_size != 0:
+            logger.error(
+                f"num_replicas_to_add {request.num_replicas_to_add} "
+                f"is not divisible by gang_size {gang_size}."
+            )
+            return GangReservationResult(
+                success=False,
+                error_message=(
+                    f"num_replicas_to_add {request.num_replicas_to_add} "
+                    f"is not divisible by gang_size {gang_size}. "
+                ),
+            )
+        num_gangs = request.num_replicas_to_add // gang_size
 
         gang_pgs = {}
         created_pgs = []  # Track for cleanup on failure
 
-        for gang_index in range(num_gangs_needed):
+        for gang_index in range(num_gangs):
             # Build bundles - each bundle is for one replica in the gang
             bundles = [request.replica_resource_dict.copy() for _ in range(gang_size)]
 
@@ -1091,13 +1100,12 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 f"gang_{deployment_id.app_name}_{deployment_id.name}"
                 f"_{gang_index}_{uuid.uuid4().hex[:8]}"
             )
-            strategy = request.gang_placement_strategy
 
             try:
                 pg = self._create_placement_group_fn(
                     CreatePlacementGroupRequest(
                         bundles=bundles,
-                        strategy=strategy,
+                        strategy=request.gang_placement_strategy,
                         target_node_id=None,
                         name=pg_name,
                         bundle_label_selector=None,
@@ -1105,22 +1113,18 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 )
                 created_pgs.append(pg)
 
-                # Wait for placement group to be created with a timeout
-                # to check feasibility
+                # TODO (jeffreywang): We should proceed with gangs that are created successfully
+                # instead of deleting all of them.
                 GANG_PG_TIMEOUT_S = 30
                 if pg.wait(timeout_seconds=GANG_PG_TIMEOUT_S):
-                    # PG is ready - store with bundle indices for replicas
                     gang_pgs[gang_index] = pg
                 else:
-                    # PG creation timed out - infeasible
                     self._cleanup_gang_pgs(created_pgs)
-                    pg_table = ray.util.placement_group_table(pg)
-                    state = pg_table.get("state", "UNKNOWN")
-                    return GangPreparationResult(
+                    return GangReservationResult(
                         success=False,
                         error_message=(
                             f"Gang placement group '{pg_name}' is infeasible. "
-                            f"State: {state}. Cluster may not have enough resources "
+                            f"Cluster may not have enough resources "
                             f"to schedule {gang_size} replicas together."
                         ),
                     )
@@ -1130,12 +1134,12 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 logger.exception(
                     f"Failed to create gang placement group for {deployment_id}."
                 )
-                return GangPreparationResult(
+                return GangReservationResult(
                     success=False,
                     error_message=f"Failed to create gang placement group: {str(e)}",
                 )
 
-        return GangPreparationResult(success=True, gang_pgs=gang_pgs)
+        return GangReservationResult(success=True, gang_pgs=gang_pgs)
 
     def _cleanup_gang_pgs(self, pgs: List[Any]) -> None:
         """Clean up placement groups on failure."""
@@ -1143,4 +1147,4 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             try:
                 ray.util.remove_placement_group(pg)
             except Exception:
-                pass
+                logger.warning(f"Failed to remove placement group {pg.id}.")
