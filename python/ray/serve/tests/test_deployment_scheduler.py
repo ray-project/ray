@@ -1,9 +1,11 @@
+import os
 import sys
 
 import pytest
 
 import ray
 from ray import serve
+from ray.serve.config import GangSchedulingConfig, GangPlacementStrategy
 from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 from ray.serve._private import default_impl
@@ -799,6 +801,169 @@ async def test_e2e_serve_fallback_strategy_unschedulable(
 
     serve.delete("unschedulable_fallback_app")
     cluster.remove_node(new_node)
+
+
+class TestGangScheduling:
+    """Tests for gang scheduling with placement groups."""
+
+    def test_sufficient_resources(self, ray_start_cluster):
+        """Verifies that gang scheduling succeeds when cluster has sufficient resources.
+        """
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=4)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment
+        def GangDeployment():
+            return ray.get_runtime_context().get_node_id()
+
+        app = GangDeployment.options(
+            num_replicas=8,
+            ray_actor_options={"num_cpus": 1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+        ).bind()
+
+        handle = serve.run(app, name="gang_app_success")
+        wait_for_condition(
+            check_apps_running,
+            apps=["gang_app_success"],
+            timeout=60,
+        )
+
+        # Verify all replicas are running and responding
+        refs = [handle.remote() for _ in range(8)]
+        results = [ref.result() for ref in refs]
+        assert len(results) == 8
+
+        serve.delete("gang_app_success")
+        serve.shutdown()
+
+    def test_insufficient_resources(self, ray_start_cluster):
+        """Verifies that gang scheduling fails when cluster lacks resources.
+        """
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=4)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment
+        def GangDeployment():
+            return ray.get_runtime_context().get_node_id()
+
+        app = GangDeployment.options(
+            num_replicas=12,
+            ray_actor_options={"num_cpus": 1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+        ).bind()
+
+        serve._run(app, name="gang_app_fail", _blocking=False)
+
+        def check_deploy_failed():
+            try:
+                status = serve.status().applications["gang_app_fail"]
+                # Deployment should fail because gang PG can't be satisfied
+                return status.status == "DEPLOY_FAILED"
+            except KeyError:
+                return False
+
+        # Wait for the deployment to fail due to insufficient resources
+        wait_for_condition(check_deploy_failed, timeout=60)
+
+        serve.delete("gang_app_fail")
+        serve.shutdown()
+
+    def test_pack_strategy(self, ray_start_cluster):
+        """Verifies that PACK strategy places gang replicas on the same node.
+        """
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=4)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment
+        def PackDeployment():
+            return os.environ.get("RAY_NODE_ID", ray.get_runtime_context().get_node_id())
+
+        # 1 gang with PACK strategy - all replicas should be on same node
+        app = PackDeployment.options(
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 1},
+            gang_scheduling_config=GangSchedulingConfig(
+                gang_size=4,
+                gang_placement_strategy=GangPlacementStrategy.PACK,
+            ),
+        ).bind()
+
+        handle = serve.run(app, name="gang_pack_app")
+        wait_for_condition(
+            check_apps_running,
+            apps=["gang_pack_app"],
+            timeout=60,
+        )
+
+        # Query multiple times to hit all replicas and collect node IDs
+        node_ids = set()
+        for _ in range(40):
+            result = handle.remote().result()
+            node_ids.add(result)
+
+        # With PACK strategy, all 4 replicas should be on the same node
+        assert len(node_ids) == 1
+
+        serve.delete("gang_pack_app")
+        serve.shutdown()
+
+    def test_gang_scheduling_spread_strategy(self, ray_start_cluster):
+        """Verifies that SPREAD strategy places gang replicas on different nodes."""
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=4)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment
+        def SpreadDeployment():
+            import os
+            return os.environ.get("RAY_NODE_ID", ray.get_runtime_context().get_node_id())
+
+        # 1 gang with SPREAD strategy - replicas should be on different nodes
+        app = SpreadDeployment.options(
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 1},
+            gang_scheduling_config=GangSchedulingConfig(
+                gang_size=4,
+                gang_placement_strategy=GangPlacementStrategy.SPREAD,
+            ),
+        ).bind()
+
+        handle = serve.run(app, name="gang_spread_app")
+        wait_for_condition(
+            check_apps_running,
+            apps=["gang_spread_app"],
+            timeout=60,
+        )
+
+        # Query multiple times to hit all replicas and collect node IDs
+        node_ids = set()
+        for _ in range(40):
+            result = handle.remote().result()
+            node_ids.add(result)
+
+        # With SPREAD strategy, 4 replicas should be on 4 different nodes
+        assert len(node_ids) == 4
+
+        serve.delete("gang_spread_app")
+        serve.shutdown()
 
 
 if __name__ == "__main__":
