@@ -533,7 +533,7 @@ class DeploymentScheduler(ABC):
         default_scheduling_strategy: str,
         target_node_id: Optional[str] = None,
         target_labels: Optional[LabelMatchExpressionsT] = None,
-    ):
+    ) -> bool:
         """Schedule a replica from a scheduling request.
 
         The following special scheduling strategies will be used, in
@@ -555,6 +555,9 @@ class DeploymentScheduler(ABC):
                 target node.
             target_labels: Attempt to schedule this replica onto nodes
                 with these target labels.
+
+        Returns:
+            True if the replica was successfully scheduled, False otherwise.
         """
 
         replica_id = scheduling_request.replica_id
@@ -588,7 +591,7 @@ class DeploymentScheduler(ABC):
                 scheduling_request.status = (
                     ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
                 )
-                return
+                return False
             scheduling_strategy = PlacementGroupSchedulingStrategy(
                 placement_group=pg,
                 placement_group_capture_child_tasks=True,
@@ -629,7 +632,7 @@ class DeploymentScheduler(ABC):
             scheduling_request.status = (
                 ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
             )
-            return
+            return False
 
         del self._pending_replicas[deployment_id][replica_id]
         self._on_replica_launching(
@@ -641,6 +644,7 @@ class DeploymentScheduler(ABC):
 
         scheduling_request.status = ReplicaSchedulingRequestStatus.SUCCEEDED
         scheduling_request.on_scheduled(actor_handle, placement_group=placement_group)
+        return True
 
     @abstractmethod
     def get_node_to_compact(
@@ -801,13 +805,13 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             if target_node:
                 break
 
-        self._schedule_replica(
+        succeeded = self._schedule_replica(
             scheduling_request,
             default_scheduling_strategy="DEFAULT",
             target_node_id=target_node,
         )
 
-        return target_node
+        return target_node if succeeded else None
 
     def _build_pack_placement_candidates(
         self, scheduling_request: ReplicaSchedulingRequest
