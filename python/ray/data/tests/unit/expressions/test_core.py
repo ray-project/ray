@@ -17,6 +17,7 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 )
 from ray.data.datatype import DataType
 from ray.data.expressions import (
+    AliasExpr,
     BinaryExpr,
     ColumnExpr,
     Expr,
@@ -287,6 +288,16 @@ class TestAliasExpr:
         aliased_result = eval_expr(aliased, test_data)
 
         assert original_result.equals(aliased_result)
+
+    def test_alias_substitution_unalias_rename(self):
+        """Alias substitution should unalias rename wrappers."""
+        visitor = _ColumnSubstitutionVisitor({"b": col("a")._rename("b")})
+        expr = col("b").alias("c")
+        rewritten = visitor.visit(expr)
+        assert isinstance(rewritten, AliasExpr)
+        assert rewritten.name == "c"
+        assert isinstance(rewritten.expr, ColumnExpr)
+        assert rewritten.expr.name == "a"
 
 
 # ──────────────────────────────────────

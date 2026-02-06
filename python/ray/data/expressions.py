@@ -1376,6 +1376,9 @@ class RenameExpr(Expr):
         """Get the renamed column name."""
         return self._name
 
+    def _unalias(self) -> "Expr":
+        return self.expr
+
     def structurally_equals(self, other: Any) -> bool:
         return (
             isinstance(other, RenameExpr)
