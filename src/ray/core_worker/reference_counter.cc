@@ -415,8 +415,9 @@ void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t objec
   }
 }
 
-void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
-                                         std::string_view call_site) {  // Changed: read-only param
+void ReferenceCounter::AddLocalReference(
+    const ObjectID &object_id,
+    std::string_view call_site) {  // Changed: read-only param
   if (object_id.IsNil()) {
     return;
   }
@@ -424,7 +425,8 @@ void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     // NOTE: ownership info for these objects must be added later via AddBorrowedObject.
-    it = object_id_refs_.emplace(object_id, Reference(std::string(call_site), -1)).first;  // Convert for constructor
+    it = object_id_refs_.emplace(object_id, Reference(std::string(call_site), -1))
+             .first;  // Convert for constructor
   }
   bool was_in_use = it->second.RefCount() > 0;
   it->second.local_ref_count++;

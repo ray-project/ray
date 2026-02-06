@@ -1152,7 +1152,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \return The shared_ptr to the actor handle if found, nullptr otherwise.
   /// The second pair contains the status of getting a named actor handle.
   std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandle(
-      std::string_view name, std::string_view ray_namespace);  // Changed: read-only params
+      std::string_view name,
+      std::string_view ray_namespace);  // Changed: read-only params
 
   /// Returns a list of the named actors currently in the system.
   ///
@@ -1411,7 +1412,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       std::string_view debugger_breakpoint,  // Changed: read-only param
       int64_t depth,
       std::string_view serialized_runtime_env_info,  // Changed: read-only param
-      std::string_view call_site,  // Changed: read-only param
+      std::string_view call_site,                    // Changed: read-only param
       const TaskID &main_thread_current_task_id,
       std::string_view concurrency_group_name = "",  // Changed: read-only param
       bool include_job_config = false,
@@ -1431,7 +1432,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// or cleaning any resources.
   /// \param exit_type The reason why this worker process is disconnected.
   /// \param exit_detail The detailed reason for a given exit.
-  void ForceExit(const rpc::WorkerExitType exit_type, std::string_view detail);  // Changed: read-only param
+  void ForceExit(const rpc::WorkerExitType exit_type,
+                 std::string_view detail);  // Changed: read-only param
 
   /// Forcefully kill child processes. User code running in actors or tasks
   /// can spawn processes that don't get terminated. If those processes
@@ -1469,7 +1471,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
   /// \param[in] call_site The call site from the language frontend.
-  void AddLocalReference(const ObjectID &object_id, std::string_view call_site) {  // Changed: read-only param
+  void AddLocalReference(const ObjectID &object_id,
+                         std::string_view call_site) {  // Changed: read-only param
     reference_counter_->AddLocalReference(object_id, call_site);
   }
 
@@ -1592,10 +1595,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       std::string_view key_id,  // Changed: read-only param
       const NodeID &subscriber_id);
 
-  void AddSpilledObjectLocationOwner(const ObjectID &object_id,
-                                     std::string_view spilled_url,  // Changed: read-only param
-                                     const NodeID &spilled_node_id,
-                                     const std::optional<ObjectID> &generator_id);
+  void AddSpilledObjectLocationOwner(
+      const ObjectID &object_id,
+      std::string_view spilled_url,  // Changed: read-only param
+      const NodeID &spilled_node_id,
+      const std::optional<ObjectID> &generator_id);
 
   void AddObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
 
