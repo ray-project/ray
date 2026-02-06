@@ -298,13 +298,15 @@ class TurbopufferDatasink(Datasink):
         Raises:
             ValueError: If source column is missing or target column already exists.
         """
-        if source_column == target_column:
-            return table
-
         if source_column not in table.column_names:
             raise ValueError(
                 f"{column_type} column '{source_column}' not found in table"
             )
+
+        # No rename needed if source and target are the same
+        if source_column == target_column:
+            return table
+
         if target_column in table.column_names:
             raise ValueError(
                 f"Table already has a '{target_column}' column; cannot also rename "
