@@ -5,6 +5,7 @@ from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from ray.serve._private.common import (
+    AUTOSCALING_LOG_TIMESTAMP_FORMAT,
     RUNNING_REQUESTS_KEY,
     ApplicationName,
     ApplicationSnapshot,
@@ -726,7 +727,9 @@ class DeploymentAutoscalingState:
         policy = ctx.config.policy.get_policy()
         policy_name_str = f"{policy.__module__}.{policy.__name__}"
         return DeploymentSnapshot(
-            timestamp_str=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            timestamp_str=time.strftime(
+                AUTOSCALING_LOG_TIMESTAMP_FORMAT, time.gmtime()
+            ),
             app=self._deployment_id.app_name,
             deployment=self._deployment_id.name,
             current_replicas=current_replicas,
@@ -911,7 +914,9 @@ class ApplicationAutoscalingState:
         policy_name_str = f"{self._policy.__module__}.{self._policy.__name__}"
 
         return ApplicationSnapshot(
-            timestamp_str=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            timestamp_str=time.strftime(
+                AUTOSCALING_LOG_TIMESTAMP_FORMAT, time.gmtime()
+            ),
             app=self._app_name,
             num_deployments=len(decisions),
             total_current_replicas=total_current,

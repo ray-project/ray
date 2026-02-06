@@ -19,6 +19,7 @@ from ray.serve.grpc_util import RayServegRPCContext
 from ray.util.annotations import PublicAPI
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
+AUTOSCALING_LOG_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 
 @dataclass(frozen=True)
