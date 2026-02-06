@@ -341,6 +341,7 @@ class ActorReplicaWrapper:
         self._routing_stats: Dict[str, Any] = {}
         self._record_routing_stats_ref: Optional[ObjectRef] = None
         self._last_record_routing_stats_time: float = 0.0
+        self._has_user_routing_stats_method: bool = False
         self._ingress: bool = False
 
         # Outbound deployments polling state
@@ -914,6 +915,7 @@ class ActorReplicaWrapper:
                         self._rank,
                         self._route_patterns,
                         self._outbound_deployments,
+                        self._has_user_routing_stats_method,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -1075,14 +1077,22 @@ class ActorReplicaWrapper:
         """Determines if a new record routing stats should be kicked off.
 
         A record routing stats will be started if:
-            1) There is not already an active record routing stats.
-            2) It has been more than request_routing_stats_period_s since
+            1) The user has defined a record_routing_stats method on their
+               deployment class. If not, skip entirely to avoid unnecessary
+               remote calls that would just return empty dicts.
+            2) There is not already an active record routing stats.
+            3) It has been more than request_routing_stats_period_s since
                the previous record routing stats was *started*.
 
         This assumes that self._record_routing_stats_ref is reset to `None`
         when an active record routing stats succeeds or fails (due to
         returning or timeout).
         """
+        if not self._has_user_routing_stats_method:
+            # The user hasn't defined a record_routing_stats method, so
+            # there's no point in making remote calls to collect stats.
+            return False
+
         if self._record_routing_stats_ref is not None:
             # There's already an active record routing stats.
             return False
