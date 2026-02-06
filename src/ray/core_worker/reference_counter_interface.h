@@ -387,6 +387,11 @@ class ReferenceCounterInterface {
 
   virtual std::string DebugString() const = 0;
 
+  /// Converts the entire private state into a JSON string.
+  /// NOTE: This is a very expensive method. It is only available for debugging.
+  /// Do not use it for production observability or testing.
+  virtual std::string ToJsonString() const = 0;
+
   /// Populate a table with ObjectIDs that we were or are still borrowing.
   /// This should be called when a task returns, and the argument should be any
   /// IDs that were passed by reference in the task spec or that were
