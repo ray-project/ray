@@ -683,6 +683,9 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         Args:
             expr: The unresolved expression.
 
+        Returns:
+            This method does not return; it always raises TypeError.
+
         Raises:
             TypeError: UnresolvedExpr cannot be evaluated.
         """
