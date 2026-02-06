@@ -4,7 +4,7 @@ Provides streaming reads from AWS Kinesis Data Streams with support for
 enhanced fan-out (EFO) and standard polling modes.
 
 Requires:
-    - boto3: AWS SDK for Python
+    - boto3: https://boto3.amazonaws.com/v1/documentation/api/latest/index.html
 """
 
 import logging
@@ -143,6 +143,7 @@ class KinesisDatasource(UnboundDatasource, TwoPhaseCommitMixin):
         )
 
         # Discover shards
+        # boto3: https://boto3.amazonaws.com/v1/documentation/api/latest/index.html
         import boto3
 
         session = boto3.Session(**self.credentials.to_session_kwargs())
@@ -275,6 +276,7 @@ class KinesisDatasource(UnboundDatasource, TwoPhaseCommitMixin):
 
         def read_fn() -> Iterator[Tuple[Block, BlockMetadata]]:
             """Read from Kinesis shard."""
+            # boto3: https://boto3.amazonaws.com/v1/documentation/api/latest/index.html
             import boto3
 
             session = boto3.Session(**credentials.to_session_kwargs())
@@ -464,6 +466,7 @@ class KinesisDatasource(UnboundDatasource, TwoPhaseCommitMixin):
             LagMetrics object with total lag, fetch rate, and shard count.
         """
         try:
+            # boto3: https://boto3.amazonaws.com/v1/documentation/api/latest/index.html
             import boto3
 
             session = boto3.Session(**self.credentials.to_session_kwargs())

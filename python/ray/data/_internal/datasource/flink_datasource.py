@@ -3,7 +3,7 @@
 Provides streaming reads from Apache Flink jobs via REST API.
 
 Requires:
-    - requests: HTTP library for REST API access
+    - requests: https://requests.readthedocs.io/
 """
 
 import logging
@@ -87,6 +87,7 @@ class FlinkDatasource(UnboundDatasource, TwoPhaseCommitMixin):
         Returns:
             Number of parallel tasks in the job.
         """
+        # requests: https://requests.readthedocs.io/
         import requests
 
         job_url = f"{self.http_config.base_url}/jobs/{self.job_id}"
@@ -222,6 +223,7 @@ class FlinkDatasource(UnboundDatasource, TwoPhaseCommitMixin):
 
         def read_fn() -> Iterator[Tuple[Block, BlockMetadata]]:
             """Read from Flink job via REST API."""
+            # requests: https://requests.readthedocs.io/
             import requests
 
             records_read = 0
