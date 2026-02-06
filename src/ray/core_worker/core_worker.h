@@ -388,7 +388,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ///
   /// \param[in] object_id The object ID to decrease the reference count for.
   void RemoveLocalReference(const ObjectID &object_id) {
-    std::vector<ObjectID> deleted;
+    absl::InlinedVector<ObjectID, 8> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
     // TODO(ilr): better way of keeping an object from being deleted
     // TODO(sang): This seems bad... We should delete the memory store

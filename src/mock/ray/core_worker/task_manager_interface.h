@@ -53,12 +53,12 @@ class MockTaskManagerInterface : public TaskManagerInterface {
               (override));
   MOCK_METHOD(std::optional<rpc::ErrorType>,
               ResubmitTask,
-              (const TaskID &task_id, std::vector<ObjectID> *task_deps),
+              (const TaskID &task_id, (absl::InlinedVector<ObjectID, 8> * task_deps)),
               (override));
   MOCK_METHOD(void,
               OnTaskDependenciesInlined,
-              (const std::vector<ObjectID> &inlined_dependency_ids,
-               const std::vector<ObjectID> &contained_ids),
+              ((const absl::InlinedVector<ObjectID, 8> &inlined_dependency_ids),
+               (const absl::InlinedVector<ObjectID, 8> &contained_ids)),
               (override));
   MOCK_METHOD(void, MarkTaskCanceled, (const TaskID &task_id), (override));
   MOCK_METHOD(void, MarkTaskNoRetry, (const TaskID &task_id), (override));

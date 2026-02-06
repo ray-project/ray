@@ -219,7 +219,7 @@ void ReferenceCounter::AddObjectRefStats(
 
 void ReferenceCounter::AddOwnedObject(
     const ObjectID &object_id,
-    const std::vector<ObjectID> &inner_ids,
+    const absl::InlinedVector<ObjectID, 8> &inner_ids,
     const rpc::Address &owner_address,
     const std::string &call_site,
     const int64_t object_size,
@@ -305,8 +305,9 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
                                     /*tensor_transport=*/std::nullopt));
 }
 
-void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,
-                                           std::vector<ObjectID> *deleted) {
+void ReferenceCounter::TryReleaseLocalRefs(
+    const absl::InlinedVector<ObjectID, 8> &object_ids,
+    absl::InlinedVector<ObjectID, 8> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const auto &object_id : object_ids) {
     auto it = object_id_refs_.find(object_id);
@@ -345,7 +346,7 @@ bool ReferenceCounter::CheckGeneratorRefsLineageOutOfScope(
 
 bool ReferenceCounter::AddOwnedObjectInternal(
     const ObjectID &object_id,
-    const std::vector<ObjectID> &inner_ids,
+    const absl::InlinedVector<ObjectID, 8> &inner_ids,
     const rpc::Address &owner_address,
     const std::string &call_site,
     const int64_t object_size,
@@ -461,7 +462,7 @@ void ReferenceCounter::ReleaseAllLocalReferences() {
 }
 
 void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
-                                            std::vector<ObjectID> *deleted) {
+                                            absl::InlinedVector<ObjectID, 8> *deleted) {
   if (object_id.IsNil()) {
     return;
   }
@@ -469,8 +470,8 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   RemoveLocalReferenceInternal(object_id, deleted);
 }
 
-void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
-                                                    std::vector<ObjectID> *deleted) {
+void ReferenceCounter::RemoveLocalReferenceInternal(
+    const ObjectID &object_id, absl::InlinedVector<ObjectID, 8> *deleted) {
   RAY_CHECK(!object_id.IsNil());
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -495,10 +496,10 @@ void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
 }
 
 void ReferenceCounter::UpdateSubmittedTaskReferences(
-    const std::vector<ObjectID> &return_ids,
-    const std::vector<ObjectID> &argument_ids_to_add,
-    const std::vector<ObjectID> &argument_ids_to_remove,
-    std::vector<ObjectID> *deleted) {
+    const absl::InlinedVector<ObjectID, 8> &return_ids,
+    const absl::InlinedVector<ObjectID, 8> &argument_ids_to_add,
+    const absl::InlinedVector<ObjectID, 8> &argument_ids_to_remove,
+    absl::InlinedVector<ObjectID, 8> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const auto &return_id : return_ids) {
     UpdateObjectPendingCreationInternal(return_id, true);
@@ -527,7 +528,7 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
 }
 
 void ReferenceCounter::UpdateResubmittedTaskReferences(
-    const std::vector<ObjectID> &argument_ids) {
+    const absl::InlinedVector<ObjectID, 8> &argument_ids) {
   absl::MutexLock lock(&mutex_);
   for (const ObjectID &argument_id : argument_ids) {
     auto it = object_id_refs_.find(argument_id);
@@ -541,12 +542,12 @@ void ReferenceCounter::UpdateResubmittedTaskReferences(
 }
 
 void ReferenceCounter::UpdateFinishedTaskReferences(
-    const std::vector<ObjectID> &return_ids,
-    const std::vector<ObjectID> &argument_ids,
+    const absl::InlinedVector<ObjectID, 8> &return_ids,
+    const absl::InlinedVector<ObjectID, 8> &argument_ids,
     bool release_lineage,
     const rpc::Address &worker_addr,
     const ReferenceTableProto &borrowed_refs,
-    std::vector<ObjectID> *deleted) {
+    absl::InlinedVector<ObjectID, 8> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const auto &return_id : return_ids) {
     UpdateObjectPendingCreationInternal(return_id, false);
@@ -568,7 +569,7 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
 
 int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref) {
   int64_t lineage_bytes_evicted = 0;
-  std::vector<ObjectID> argument_ids;
+  absl::InlinedVector<ObjectID, 8> argument_ids;
   if (on_lineage_released_ && ref->second.owned_by_us_) {
     RAY_LOG(DEBUG) << "Releasing lineage for object " << ref->first;
     lineage_bytes_evicted += on_lineage_released_(ref->first, &argument_ids);
@@ -607,9 +608,9 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
 }
 
 void ReferenceCounter::RemoveSubmittedTaskReferences(
-    const std::vector<ObjectID> &argument_ids,
+    const absl::InlinedVector<ObjectID, 8> &argument_ids,
     bool release_lineage,
-    std::vector<ObjectID> *deleted) {
+    absl::InlinedVector<ObjectID, 8> *deleted) {
   for (const ObjectID &argument_id : argument_ids) {
     RAY_LOG(DEBUG) << "Releasing ref for submitted task argument " << argument_id;
     auto it = object_id_refs_.find(argument_id);
@@ -637,7 +638,7 @@ bool ReferenceCounter::HasOwner(const ObjectID &object_id) const {
 }
 
 StatusSet<StatusT::NotFound> ReferenceCounter::HasOwner(
-    const std::vector<ObjectID> &object_ids) const {
+    const absl::InlinedVector<ObjectID, 8> &object_ids) const {
   absl::MutexLock lock(&mutex_);
   std::ostringstream objects_missing_owners;
   bool missing_owner = false;
@@ -676,7 +677,7 @@ bool ReferenceCounter::GetOwnerInternal(const ObjectID &object_id,
 }
 
 std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
-    const std::vector<ObjectID> &object_ids) const {
+    const absl::InlinedVector<ObjectID, 8> &object_ids) const {
   absl::MutexLock lock(&mutex_);
   std::vector<rpc::Address> owner_addresses;
   for (const auto &object_id : object_ids) {
@@ -713,7 +714,8 @@ bool ReferenceCounter::TryMarkFreedObjectInUseAgain(const ObjectID &object_id) {
   return freed_objects_.erase(object_id) != 0u;
 }
 
-void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids) {
+void ReferenceCounter::FreePlasmaObjects(
+    const absl::InlinedVector<ObjectID, 8> &object_ids) {
   absl::MutexLock lock(&mutex_);
   for (const ObjectID &object_id : object_ids) {
     auto it = object_id_refs_.find(object_id);
@@ -737,8 +739,8 @@ void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids
   }
 }
 
-void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
-                                               std::vector<ObjectID> *deleted) {
+void ReferenceCounter::DeleteReferenceInternal(
+    ReferenceTable::iterator it, absl::InlinedVector<ObjectID, 8> *deleted) {
   const ObjectID id = it->first;
   RAY_LOG(DEBUG) << "Attempting to delete object " << id;
   if (it->second.RefCount() == 0 && it->second.publish_ref_removed) {
@@ -907,9 +909,9 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &node_id) {
   }
 }
 
-std::vector<ObjectID> ReferenceCounter::FlushObjectsToRecover() {
+absl::InlinedVector<ObjectID, 8> ReferenceCounter::FlushObjectsToRecover() {
   absl::MutexLock lock(&mutex_);
-  std::vector<ObjectID> objects_to_recover = std::move(objects_to_recover_);
+  absl::InlinedVector<ObjectID, 8> objects_to_recover = std::move(objects_to_recover_);
   objects_to_recover_.clear();
   return objects_to_recover;
 }
@@ -1026,9 +1028,9 @@ ReferenceCounter::GetAllReferenceCounts() const {
 }
 
 void ReferenceCounter::PopAndClearLocalBorrowers(
-    const std::vector<ObjectID> &borrowed_ids,
+    const absl::InlinedVector<ObjectID, 8> &borrowed_ids,
     ReferenceTableProto *proto,
-    std::vector<ObjectID> *deleted) {
+    absl::InlinedVector<ObjectID, 8> *deleted) {
   absl::MutexLock lock(&mutex_);
   // Reuse the `encountered_ids` set to deduplicate object IDs across loop iterations.
   absl::flat_hash_set<ObjectID> encountered_ids;
@@ -1293,16 +1295,18 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
                                      publisher_failed_callback);
 }
 
-void ReferenceCounter::AddNestedObjectIds(const ObjectID &object_id,
-                                          const std::vector<ObjectID> &inner_ids,
-                                          const rpc::Address &owner_address) {
+void ReferenceCounter::AddNestedObjectIds(
+    const ObjectID &object_id,
+    const absl::InlinedVector<ObjectID, 8> &inner_ids,
+    const rpc::Address &owner_address) {
   absl::MutexLock lock(&mutex_);
   AddNestedObjectIdsInternal(object_id, inner_ids, owner_address);
 }
 
-void ReferenceCounter::AddNestedObjectIdsInternal(const ObjectID &object_id,
-                                                  const std::vector<ObjectID> &inner_ids,
-                                                  const rpc::Address &owner_address) {
+void ReferenceCounter::AddNestedObjectIdsInternal(
+    const ObjectID &object_id,
+    const absl::InlinedVector<ObjectID, 8> &inner_ids,
+    const rpc::Address &owner_address) {
   RAY_CHECK(!WorkerID::FromBinary(owner_address.worker_id()).IsNil());
   auto it = object_id_refs_.find(object_id);
   if (owner_address.worker_id() == rpc_address_.worker_id()) {

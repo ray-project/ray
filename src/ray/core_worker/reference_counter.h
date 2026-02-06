@@ -25,6 +25,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -73,29 +74,32 @@ class ReferenceCounter : public ReferenceCounterInterface,
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void RemoveLocalReference(const ObjectID &object_id,
-                            std::vector<ObjectID> *deleted) override
+                            absl::InlinedVector<ObjectID, 8> *deleted) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void UpdateSubmittedTaskReferences(
-      const std::vector<ObjectID> &return_ids,
-      const std::vector<ObjectID> &argument_ids_to_add,
-      const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
-      std::vector<ObjectID> *deleted = nullptr) override ABSL_LOCKS_EXCLUDED(mutex_);
-
-  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> &argument_ids) override
+      const absl::InlinedVector<ObjectID, 8> &return_ids,
+      const absl::InlinedVector<ObjectID, 8> &argument_ids_to_add,
+      const absl::InlinedVector<ObjectID, 8> &argument_ids_to_remove =
+          absl::InlinedVector<ObjectID, 8>(),
+      absl::InlinedVector<ObjectID, 8> *deleted = nullptr) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void UpdateFinishedTaskReferences(const std::vector<ObjectID> &return_ids,
-                                    const std::vector<ObjectID> &argument_ids,
+  void UpdateResubmittedTaskReferences(
+      const absl::InlinedVector<ObjectID, 8> &argument_ids) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  void UpdateFinishedTaskReferences(const absl::InlinedVector<ObjectID, 8> &return_ids,
+                                    const absl::InlinedVector<ObjectID, 8> &argument_ids,
                                     bool release_lineage,
                                     const rpc::Address &worker_addr,
                                     const ReferenceTableProto &borrowed_refs,
-                                    std::vector<ObjectID> *deleted) override
+                                    absl::InlinedVector<ObjectID, 8> *deleted) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void AddOwnedObject(
       const ObjectID &object_id,
-      const std::vector<ObjectID> &contained_ids,
+      const absl::InlinedVector<ObjectID, 8> &contained_ids,
       const rpc::Address &owner_address,
       const std::string &call_site,
       const int64_t object_size,
@@ -112,8 +116,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                         const ObjectID &generator_id) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,
-                           std::vector<ObjectID> *deleted) override
+  void TryReleaseLocalRefs(const absl::InlinedVector<ObjectID, 8> &object_ids,
+                           absl::InlinedVector<ObjectID, 8> *deleted) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool CheckGeneratorRefsLineageOutOfScope(const ObjectID &generator_id,
@@ -136,16 +140,17 @@ class ReferenceCounter : public ReferenceCounterInterface,
   bool HasOwner(const ObjectID &object_id) const override ABSL_LOCKS_EXCLUDED(mutex_);
 
   StatusSet<StatusT::NotFound> HasOwner(
-      const std::vector<ObjectID> &object_ids) const override ABSL_LOCKS_EXCLUDED(mutex_);
+      const absl::InlinedVector<ObjectID, 8> &object_ids) const override
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   std::vector<rpc::Address> GetOwnerAddresses(
-      const std::vector<ObjectID> &object_ids) const override;
+      const absl::InlinedVector<ObjectID, 8> &object_ids) const override;
 
   bool IsPlasmaObjectFreed(const ObjectID &object_id) const override;
 
   bool TryMarkFreedObjectInUseAgain(const ObjectID &object_id) override;
 
-  void FreePlasmaObjects(const std::vector<ObjectID> &object_ids) override
+  void FreePlasmaObjects(const absl::InlinedVector<ObjectID, 8> &object_ids) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool AddObjectOutOfScopeOrFreedCallback(
@@ -182,13 +187,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   std::string DebugString() const override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void PopAndClearLocalBorrowers(const std::vector<ObjectID> &borrowed_ids,
+  void PopAndClearLocalBorrowers(const absl::InlinedVector<ObjectID, 8> &borrowed_ids,
                                  ReferenceTableProto *proto,
-                                 std::vector<ObjectID> *deleted) override
+                                 absl::InlinedVector<ObjectID, 8> *deleted) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void AddNestedObjectIds(const ObjectID &object_id,
-                          const std::vector<ObjectID> &inner_ids,
+                          const absl::InlinedVector<ObjectID, 8> &inner_ids,
                           const rpc::Address &owner_address) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -204,7 +209,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   void ResetObjectsOnRemovedNode(const NodeID &node_id) override;
 
-  std::vector<ObjectID> FlushObjectsToRecover() override;
+  absl::InlinedVector<ObjectID, 8> FlushObjectsToRecover() override;
 
   bool HasReference(const ObjectID &object_id) const override ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -518,7 +523,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
 
   bool AddOwnedObjectInternal(const ObjectID &object_id,
-                              const std::vector<ObjectID> &contained_ids,
+                              const absl::InlinedVector<ObjectID, 8> &contained_ids,
                               const rpc::Address &owner_address,
                               const std::string &call_site,
                               const int64_t object_size,
@@ -555,9 +560,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// being dependencies to a submitted task. This should be called when
   /// inlined dependencies are inlined or when the task finishes for plasma
   /// dependencies.
-  void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &argument_ids,
+  void RemoveSubmittedTaskReferences(const absl::InlinedVector<ObjectID, 8> &argument_ids,
                                      bool release_lineage,
-                                     std::vector<ObjectID> *deleted)
+                                     absl::InlinedVector<ObjectID, 8> *deleted)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to mark that this ObjectID contains another ObjectID(s).
@@ -570,7 +575,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// outer object's owner, since it is considered a borrower for the inner
   /// IDs.
   void AddNestedObjectIdsInternal(const ObjectID &object_id,
-                                  const std::vector<ObjectID> &inner_ids,
+                                  const absl::InlinedVector<ObjectID, 8> &inner_ids,
                                   const rpc::Address &owner_address)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -660,7 +665,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// callbacks. Assumes that the entry is in object_id_refs_ and invalidates the
   /// iterator.
   void DeleteReferenceInternal(ReferenceTable::iterator entry,
-                               std::vector<ObjectID> *deleted)
+                               absl::InlinedVector<ObjectID, 8> *deleted)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// To respond to the object's owner once we are no longer borrowing it.  The
@@ -729,7 +734,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// This method is internal and not thread-safe. mutex_ lock must be held before
   /// calling this method.
   void RemoveLocalReferenceInternal(const ObjectID &object_id,
-                                    std::vector<ObjectID> *deleted)
+                                    absl::InlinedVector<ObjectID, 8> *deleted)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Address of our RPC server. This is used to determine whether we own a
@@ -793,7 +798,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// A buffer of the objects whose primary or spilled locations have been lost
   /// due to node failure. These objects are still in scope and need to be
   /// recovered.
-  std::vector<ObjectID> objects_to_recover_ ABSL_GUARDED_BY(mutex_);
+  absl::InlinedVector<ObjectID, 8> objects_to_recover_ ABSL_GUARDED_BY(mutex_);
 
   /// Keep track of objects owend by this worker.
   size_t num_objects_owned_by_us_ ABSL_GUARDED_BY(mutex_) = 0;

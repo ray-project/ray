@@ -18,6 +18,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+
 namespace ray {
 namespace core {
 
@@ -154,7 +156,7 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   // Notify the task manager that we are retrying the task that created this
   // object.
   const auto task_id = object_id.TaskId();
-  std::vector<ObjectID> task_deps;
+  absl::InlinedVector<ObjectID, 8> task_deps;
   // pending_creation needs to be set to true BEFORE calling ResubmitTask,
   // since it might be set back to false inside ResubmitTask if the task is
   // an actor task and the actor is dead. If we set pending_creation to true

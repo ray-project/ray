@@ -249,9 +249,9 @@ int64_t TaskSpecification::GeneratorBackpressureNumObjects() const {
   return result;
 }
 
-std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
+absl::InlinedVector<ObjectID, 8> TaskSpecification::DynamicReturnIds() const {
   RAY_CHECK(message_->returns_dynamic());
-  std::vector<ObjectID> dynamic_return_ids;
+  absl::InlinedVector<ObjectID, 8> dynamic_return_ids;
   for (const auto &dynamic_return_id : message_->dynamic_return_ids()) {
     dynamic_return_ids.push_back(ObjectID::FromBinary(dynamic_return_id));
   }
@@ -350,8 +350,8 @@ bool TaskSpecification::GetNodeAffinitySchedulingStrategySoft() const {
   return GetSchedulingStrategy().node_affinity_scheduling_strategy().soft();
 }
 
-std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
-  std::vector<ObjectID> dependencies;
+absl::InlinedVector<ObjectID, 8> TaskSpecification::GetDependencyIds() const {
+  absl::InlinedVector<ObjectID, 8> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
     if (ArgByRef(i)) {
       dependencies.push_back(ArgObjectId(i));
