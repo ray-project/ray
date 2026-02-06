@@ -1,5 +1,6 @@
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
+from weakref import WeakKeyDictionary
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data.checkpoint.checkpoint_filter import BatchBasedCheckpointFilter
@@ -26,10 +27,11 @@ def get_checkpoint_loader(
 class LoadCheckpointCallback(ExecutionCallback):
     """ExecutionCallback that handles checkpoints."""
 
-    # Maps config_id -> The specific Class Type that claimed it.
+    # Maps config object -> The specific Class Type that claimed it.
+    # WeakKeyDictionary automatically removes entries when config is garbage collected.
     # This prevents multiple callback instances (base + subclass) from
     # attempting to delete the same checkpoint.
-    _assigned_owners: Dict[int, Type["LoadCheckpointCallback"]] = {}
+    _assigned_owners: WeakKeyDictionary = WeakKeyDictionary()
 
     def __init__(self, config: Optional["CheckpointConfig"]):
         self._config = config
@@ -53,11 +55,12 @@ class LoadCheckpointCallback(ExecutionCallback):
         if not config:
             return None
 
+        ckpt_filter = cls._create_checkpoint_filter(config)
+
         # Explicitly mark that ONLY this class type (cls)
         # is authorized to handle cleanup for this specific config.
-        LoadCheckpointCallback._assigned_owners[id(config)] = cls
+        LoadCheckpointCallback._assigned_owners[config] = cls
 
-        ckpt_filter = cls._create_checkpoint_filter(config)
         checkpoint_ref: Dict[str, Any] = {}
 
         def load_fn() -> "ObjectRef[Block]":
@@ -87,7 +90,7 @@ class LoadCheckpointCallback(ExecutionCallback):
         if self._config is None or self._ckpt_filter is None:
             return
 
-        owner_cls = LoadCheckpointCallback._assigned_owners.get(id(self._config))
+        owner_cls = LoadCheckpointCallback._assigned_owners.get(self._config)
 
         # If I am not the specific class type that the Planner selected,
         # I must NOT touch the data.
@@ -101,12 +104,12 @@ class LoadCheckpointCallback(ExecutionCallback):
             logger.warning("Failed to delete checkpoint data.", exc_info=True)
         finally:
             # Cleanup registry (only the owner cleans up the entry)
-            LoadCheckpointCallback._assigned_owners.pop(id(self._config), None)
+            LoadCheckpointCallback._assigned_owners.pop(self._config, None)
 
     def after_execution_fails(self, executor: "StreamingExecutor", error: Exception):
         # Cleanup registry on failure (only the owner cleans up the entry)
         if self._config:
-            owner_cls = LoadCheckpointCallback._assigned_owners.get(id(self._config))
+            owner_cls = LoadCheckpointCallback._assigned_owners.get(self._config)
 
             if owner_cls is type(self):
-                LoadCheckpointCallback._assigned_owners.pop(id(self._config), None)
+                LoadCheckpointCallback._assigned_owners.pop(self._config, None)
