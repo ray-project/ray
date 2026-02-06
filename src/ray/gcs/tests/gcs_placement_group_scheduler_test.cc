@@ -1378,6 +1378,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource) {
       /*name=*/"", /*strategy=*/rpc::PlacementStrategy::SPREAD, /*bundles_count=*/1);
   auto placement_group =
       std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+  // PG has been scheduled and has active bundles set.
+  placement_group->UpdateActiveBundles(placement_group->GetSchedulingStrategy().Get(0));
   int wildcard_resource_count = 0;
   for (const auto &bundle_spec : placement_group->GetBundles()) {
     for (const auto &resource_entry : bundle_spec->GetFormattedResources()) {
@@ -1439,7 +1441,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestFallbackStrategyResources) {
   auto request = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK, 1, 20);
 
   // Create a fallback strategy with feasible bundles.
-  auto *fallback_option = request.mutable_placement_group_spec()->add_fallback_options();
+  auto *fallback_option = request.mutable_placement_group_spec()->add_fallback_strategy();
   auto *bundle = fallback_option->add_bundles();
   bundle->mutable_unit_resources()->insert({"CPU", 5.0});
   bundle->mutable_bundle_id()->set_bundle_index(0);
@@ -1486,16 +1488,25 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestFallbackStrategyLabels) {
   // Create a resource request with an infeasible label selector.
   auto request = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK, 1, 1);
   auto *primary_bundle = request.mutable_placement_group_spec()->mutable_bundles(0);
-  (*primary_bundle->mutable_label_selector())["cpu-family"] = "amd";
+
+  auto *constraint = primary_bundle->mutable_label_selector()->add_label_constraints();
+  constraint->set_label_key("cpu-family");
+  constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+  constraint->add_label_values("amd");
 
   // Create a fallback strategy with identical bundle resources but feasible label.
-  auto *fallback_option = request.mutable_placement_group_spec()->add_fallback_options();
+  auto *fallback_option = request.mutable_placement_group_spec()->add_fallback_strategy();
   auto *fallback_bundle = fallback_option->add_bundles();
   fallback_bundle->mutable_unit_resources()->insert({"CPU", 1.0});
   fallback_bundle->mutable_bundle_id()->set_bundle_index(0);
   fallback_bundle->mutable_bundle_id()->set_placement_group_id(
       request.placement_group_spec().placement_group_id());
-  (*fallback_bundle->mutable_label_selector())["cpu-family"] = "intel";
+
+  auto *fallback_constraint =
+      fallback_bundle->mutable_label_selector()->add_label_constraints();
+  fallback_constraint->set_label_key("cpu-family");
+  fallback_constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+  fallback_constraint->add_label_values("intel");
 
   auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
 
@@ -1547,16 +1558,25 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestFallbackStrategyInfeasible) {
   // Create a resource request with an infeasible label selector.
   auto request = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK, 1, 1);
   auto *primary_bundle = request.mutable_placement_group_spec()->mutable_bundles(0);
-  (*primary_bundle->mutable_label_selector())["cpu-family"] = "amd";
+
+  auto *constraint = primary_bundle->mutable_label_selector()->add_label_constraints();
+  constraint->set_label_key("cpu-family");
+  constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+  constraint->add_label_values("amd");
 
   // Create a fallback strategy with an infeasible fallback.
-  auto *fallback_option = request.mutable_placement_group_spec()->add_fallback_options();
+  auto *fallback_option = request.mutable_placement_group_spec()->add_fallback_strategy();
   auto *fallback_bundle = fallback_option->add_bundles();
   fallback_bundle->mutable_unit_resources()->insert({"CPU", 1.0});
   fallback_bundle->mutable_bundle_id()->set_bundle_index(0);
   fallback_bundle->mutable_bundle_id()->set_placement_group_id(
       request.placement_group_spec().placement_group_id());
-  (*fallback_bundle->mutable_label_selector())["cpu-family"] = "arm";
+
+  auto *fallback_constraint =
+      fallback_bundle->mutable_label_selector()->add_label_constraints();
+  fallback_constraint->set_label_key("cpu-family");
+  fallback_constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+  fallback_constraint->add_label_values("arm");
 
   auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
 
@@ -1566,9 +1586,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestFallbackStrategyInfeasible) {
                         [this](std::shared_ptr<GcsPlacementGroup> pg, bool is_feasible) {
                           absl::MutexLock lock(&placement_group_requests_mutex_);
                           failure_placement_groups_.emplace_back(std::move(pg));
-                          // It should be feasible (valid request), just not currently
-                          // schedulable.
-                          ASSERT_TRUE(is_feasible);
+                          ASSERT_FALSE(is_feasible);
                         },
                         [this](std::shared_ptr<GcsPlacementGroup> pg) {
                           absl::MutexLock lock(&placement_group_requests_mutex_);
@@ -1597,7 +1615,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGResetFallbackToPrimaryBundles) {
   primary_bundle->mutable_unit_resources()->erase("CPU");
 
   // Feasible fallback option.
-  auto *fallback_option = request.mutable_placement_group_spec()->add_fallback_options();
+  auto *fallback_option = request.mutable_placement_group_spec()->add_fallback_strategy();
   auto *fallback_bundle = fallback_option->add_bundles();
   (*fallback_bundle->mutable_unit_resources())["CPU"] = 1.0;
   fallback_bundle->mutable_bundle_id()->set_bundle_index(0);

@@ -78,10 +78,16 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                  << ", bundles size = " << bundles.size();
 
   const auto &scheduling_strategies = placement_group->GetSchedulingStrategy();
+
+  bool is_initial_pending_schedule =
+      (placement_group->GetState() == rpc::PlacementGroupTableData::PENDING &&
+       placement_group->GetBundles().empty());
+
   bool is_scheduling_all_bundles =
       (bundles.size() == placement_group->GetBundles().size());
 
-  if (is_scheduling_all_bundles && !scheduling_strategies.empty()) {
+  if ((is_initial_pending_schedule || is_scheduling_all_bundles) &&
+      !scheduling_strategies.empty()) {
     RAY_LOG(INFO) << "Scheduling whole Placement Group "
                   << placement_group->GetPlacementGroupID() << " using primary strategy.";
 
@@ -90,8 +96,15 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     bundles = placement_group->GetUnplacedBundles();
   }
 
+  if (bundles.empty()) {
+    RAY_LOG(DEBUG) << "No bundles to schedule for PG "
+                   << placement_group->GetPlacementGroupID();
+    return;
+  }
+
   auto scheduling_result =
       TrySchedule(placement_group, bundles, placement_group->GetStrategy());
+  bool any_strategy_feasible = !scheduling_result.status.IsInfeasible();
 
   const rpc::PlacementGroupSchedulingOption *applied_fallback_option = nullptr;
   std::vector<std::shared_ptr<const BundleSpecification>> fallback_bundles;
@@ -114,6 +127,10 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
       auto fallback_result =
           TrySchedule(placement_group, fallback_bundles, placement_group->GetStrategy());
 
+      if (!fallback_result.status.IsInfeasible()) {
+        any_strategy_feasible = true;
+      }
+
       if (fallback_result.status.IsSuccess()) {
         RAY_LOG(INFO) << "Placement Group " << placement_group->GetPlacementGroupID()
                       << " primary scheduling failed, but fallback strategy succeeded.";
@@ -135,10 +152,10 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
         << ", because current resources can't satisfy the required resource. IsFailed: "
         << result_status.IsFailed() << " IsInfeasible: " << result_status.IsInfeasible()
         << " IsPartialSuccess: " << result_status.IsPartialSuccess();
-    bool infeasible = result_status.IsInfeasible();
+
     // If the placement group creation has failed,
     // but if it is not infeasible, it is retryable to create.
-    failure_callback(placement_group, /*is_feasible*/ !infeasible);
+    failure_callback(placement_group, /*is_feasible*/ any_strategy_feasible);
     return;
   }
 

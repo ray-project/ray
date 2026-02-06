@@ -221,6 +221,15 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     auto *bundle_selector = gang_resource_req->add_bundle_selectors();
 
     // Copy the PG's bundles to the request.
+    // If PENDING and 'bundles' is empty, the demand comes from the primary strategy
+    // (index 0). If RESCHEDULING, 'bundles' is populated with the active strategy we are
+    // trying to recover.
+    auto *bundles_source = pg_data.mutable_bundles();
+    if (pg_state == rpc::PlacementGroupTableData::PENDING && bundles_source->empty() &&
+        pg_data.scheduling_strategy_size() > 0) {
+      bundles_source = pg_data.mutable_scheduling_strategy(0)->mutable_bundles();
+    }
+
     for (auto &&bundle : std::move(*pg_data.mutable_bundles())) {
       if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
         // We will be skipping **placed** bundle (which has node id associated with it).
@@ -243,10 +252,9 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       auto *bundle_resource_req = bundle_selector->add_resource_requests();
       *bundle_resource_req->mutable_resources_bundle() = unit_resources;
 
-      // Parse label selector map into LabelSelector proto in ResourceRequest
-      if (!bundle.label_selector().empty()) {
-        ray::LabelSelector selector(bundle.label_selector());
-        selector.ToProto(bundle_resource_req->add_label_selectors());
+      // Add label selector to ResourceRequest
+      if (bundle.label_selector().label_constraints_size() > 0) {
+        bundle_resource_req->add_label_selectors()->CopyFrom(bundle.label_selector());
       }
 
       // Add the placement constraint.

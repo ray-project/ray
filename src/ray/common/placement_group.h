@@ -18,6 +18,7 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/label_selector.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -33,6 +34,13 @@ using BundleLocations =
     absl::flat_hash_map<BundleID,
                         std::pair<NodeID, std::shared_ptr<const BundleSpecification>>,
                         pair_hash>;
+
+// Defines the structure of a scheduling option to try when scheduling the placement
+// group.
+struct PlacementGroupSchedulingOption {
+  std::vector<std::unordered_map<std::string, double>> bundles;
+  std::vector<LabelSelector> bundle_label_selector;
+};
 
 class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpec> {
  public:
@@ -87,8 +95,8 @@ class PlacementGroupSpecBuilder {
       const JobID &creator_job_id,
       const ActorID &creator_actor_id,
       bool is_creator_detached_actor,
-      const std::vector<std::unordered_map<std::string, std::string>>
-          &bundle_label_selector = {}) {
+      const std::vector<LabelSelector> &bundle_label_selector = {},
+      const std::vector<PlacementGroupSchedulingOption> &fallback_strategy = {}) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
     message_->set_strategy(strategy);
@@ -105,6 +113,7 @@ class PlacementGroupSpecBuilder {
     message_->set_is_detached(is_detached);
     message_->set_soft_target_node_id(soft_target_node_id.Binary());
 
+    // Populate primary strategy bundles.
     for (size_t i = 0; i < bundles.size(); i++) {
       auto resources = bundles[i];
       auto message_bundle = message_->add_bundles();
@@ -118,17 +127,39 @@ class PlacementGroupSpecBuilder {
         if (current->second == 0) {
           resources.erase(current);
         } else {
-          mutable_unit_resources->insert({current->first, current->second});
+          (*mutable_unit_resources)[current->first] = current->second;
         }
       }
       // Set the label selector for this bundle if provided in bundle_label_selector.
       if (bundle_label_selector.size() > i) {
-        auto *mutable_label_selector = message_bundle->mutable_label_selector();
-        for (const auto &pair : bundle_label_selector[i]) {
-          (*mutable_label_selector)[pair.first] = pair.second;
+        bundle_label_selector[i].ToProto(message_bundle->mutable_label_selector());
+      }
+    }
+
+    // Populate fallback strategy bundles.
+    for (const auto &option : fallback_strategy) {
+      auto *fallback_message = message_->add_fallback_strategy();
+      for (size_t i = 0; i < option.bundles.size(); i++) {
+        auto *bundle_message = fallback_message->add_bundles();
+        auto *mutable_bundle_id = bundle_message->mutable_bundle_id();
+
+        mutable_bundle_id->set_bundle_index(i);
+        mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
+
+        auto *mutable_resources = bundle_message->mutable_unit_resources();
+        for (const auto &resource : option.bundles[i]) {
+          if (resource.second > 0) {
+            mutable_resources->insert({resource.first, resource.second});
+          }
+        }
+
+        if (option.bundle_label_selector.size() > i) {
+          option.bundle_label_selector[i].ToProto(
+              bundle_message->mutable_label_selector());
         }
       }
     }
+
     return *this;
   }
 

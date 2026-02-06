@@ -1155,11 +1155,18 @@ TEST_F(GcsAutoscalerStateManagerTest,
   auto *bundle1 = pg_data->add_bundles();
   (*bundle1->mutable_unit_resources())["CPU"] = 2;
   (*bundle1->mutable_unit_resources())["GPU"] = 1;
-  (*bundle1->mutable_label_selector())["accelerator"] = "in(A100,B200)";
+  auto *constraint1 = bundle1->mutable_label_selector()->add_label_constraints();
+  constraint1->set_label_key("accelerator");
+  constraint1->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+  constraint1->add_label_values("A100");
+  constraint1->add_label_values("B200");
 
   auto *bundle2 = pg_data->add_bundles();
   (*bundle2->mutable_unit_resources())["CPU"] = 4;
-  (*bundle2->mutable_label_selector())["accelerator"] = "!in(TPU)";
+  auto *constraint2 = bundle2->mutable_label_selector()->add_label_constraints();
+  constraint2->set_label_key("accelerator");
+  constraint2->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_NOT_IN);
+  constraint2->add_label_values("TPU");
 
   EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
       .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));

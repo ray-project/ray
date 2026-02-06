@@ -83,7 +83,7 @@ class GcsPlacementGroup {
 
     // Index 1..N: fallback strategies.
     placement_group_table_data_.mutable_scheduling_strategy()->MergeFrom(
-        placement_group_spec.fallback_options());
+        placement_group_spec.fallback_strategy());
 
     SetupStates();
   }
@@ -165,6 +165,9 @@ class GcsPlacementGroup {
 
   const google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
       &GetSchedulingStrategy() const;
+
+  google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
+      *GetMutableSchedulingStrategy();
 
   void UpdateActiveBundles(const rpc::PlacementGroupSchedulingOption &selected_option);
 
