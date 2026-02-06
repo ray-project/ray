@@ -101,6 +101,9 @@ class ReferenceCounterInterface {
   /// \param[in] object_id The object to to increment the count for.
   virtual void AddLocalReference(const ObjectID &object_id,
                                  std::string_view call_site) = 0;  // Changed: read-only param
+
+  /// Decrease the local reference count for the ObjectID by one.
+  ///
   /// \param[in] object_id The object to decrement the count for.
   /// \param[out] deleted List to store objects that hit zero ref count.
   virtual void RemoveLocalReference(const ObjectID &object_id,
