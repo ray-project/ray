@@ -22,6 +22,7 @@ from ray.data._internal.datasource.streaming_utils import (
 from ray.data._internal.streaming.streaming_lag_metrics import LagMetrics
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
+from ray.data.context import DataContext
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.unbound_datasource import (
     UnboundDatasource,
