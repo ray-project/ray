@@ -18,7 +18,11 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/strings/escaping.h"
+#include "absl/strings/str_split.h"
+#include "nlohmann/json.hpp"
 #include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/k8s_constants.h"
 #include "ray/util/logging.h"
@@ -46,6 +50,45 @@ constexpr const char *kNoTokenErrorMessage =
 
 constexpr int kRaySATokenTTLSeconds = 300;
 
+std::optional<std::chrono::system_clock::time_point>
+AuthenticationTokenLoader::GetTokenExpiration(const std::string &token) {
+  std::vector<std::string> parts = absl::StrSplit(token, '.');
+  if (parts.size() != 3) {
+    return std::nullopt;
+  }
+
+  std::string payload_b64 = parts[1];
+  // Convert Base64URL to Base64
+  for (char &c : payload_b64) {
+    if (c == '-') {
+      c = '+';
+    } else if (c == '_') {
+      c = '/';
+    }
+  }
+  // Add padding if necessary
+  while (payload_b64.size() % 4 != 0) {
+    payload_b64 += '=';
+  }
+
+  std::string payload;
+  if (!absl::Base64Unescape(payload_b64, &payload)) {
+    return std::nullopt;
+  }
+
+  try {
+    auto json = nlohmann::json::parse(payload);
+    if (json.contains("exp") && json["exp"].is_number()) {
+      int64_t exp = json["exp"].get<int64_t>();
+      return std::chrono::system_clock::from_time_t(exp);
+    }
+  } catch (...) {
+    return std::nullopt;
+  }
+
+  return std::nullopt;
+}
+
 AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
   static AuthenticationTokenLoader instance;
   return instance;
@@ -59,8 +102,8 @@ std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
   // will expire and auto rotate new service account tokens every hour by default.
   // Use 5 minutes as a default as users can configure the expiration time.
   if (IsK8sTokenAuthEnabled()) {
-    if (cached_token_ && std::chrono::steady_clock::now() - last_load_time_ >
-                             std::chrono::seconds(kRaySATokenTTLSeconds)) {
+    if (cached_token_ &&
+        std::chrono::system_clock::now() >= cached_token_expiration_time_) {
       cached_token_ = nullptr;
     }
   }
@@ -89,6 +132,13 @@ std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
   if (has_token) {
     cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
     last_load_time_ = std::chrono::steady_clock::now();
+    auto exp = GetTokenExpiration(cached_token_->GetRawValue());
+    if (exp) {
+      cached_token_expiration_time_ = *exp;
+    } else {
+      cached_token_expiration_time_ =
+          std::chrono::system_clock::now() + std::chrono::seconds(kRaySATokenTTLSeconds);
+    }
   }
   return cached_token_;
 }
@@ -101,8 +151,8 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
   // will expire and auto rotate new service account tokens every hour by default.
   // Use 5 minutes as a default as users can configure the expiration time.
   if (IsK8sTokenAuthEnabled()) {
-    if (cached_token_ && std::chrono::steady_clock::now() - last_load_time_ >
-                             std::chrono::seconds(kRaySATokenTTLSeconds)) {
+    if (cached_token_ &&
+        std::chrono::system_clock::now() >= cached_token_expiration_time_) {
       cached_token_ = nullptr;
     }
   }
@@ -136,6 +186,13 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
   // Cache and return success
   cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
   last_load_time_ = std::chrono::steady_clock::now();
+  auto exp = GetTokenExpiration(cached_token_->GetRawValue());
+  if (exp) {
+    cached_token_expiration_time_ = *exp;
+  } else {
+    cached_token_expiration_time_ =
+        std::chrono::system_clock::now() + std::chrono::seconds(kRaySATokenTTLSeconds);
+  }
   result.token = *cached_token_;  // Copy back for return
   return result;
 }

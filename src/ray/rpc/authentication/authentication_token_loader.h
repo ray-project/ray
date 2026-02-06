@@ -64,6 +64,7 @@ class AuthenticationTokenLoader {
     absl::MutexLock lock(&token_mutex_);
     cached_token_ = nullptr;
     last_load_time_ = std::chrono::steady_clock::time_point();
+    cached_token_expiration_time_ = std::chrono::system_clock::time_point();
   }
 
   AuthenticationTokenLoader(const AuthenticationTokenLoader &) = delete;
@@ -85,9 +86,16 @@ class AuthenticationTokenLoader {
   /// Trim whitespace from the beginning and end of the string.
   std::string TrimWhitespace(const std::string &str);
 
+  /// Extract expiration time from a JWT token.
+  /// \param token The JWT token string.
+  /// \return The expiration time, or std::nullopt if not a valid JWT or no exp claim.
+  std::optional<std::chrono::system_clock::time_point> GetTokenExpiration(
+      const std::string &token);
+
   absl::Mutex token_mutex_;
   std::shared_ptr<const AuthenticationToken> cached_token_;
   std::chrono::steady_clock::time_point last_load_time_;
+  std::chrono::system_clock::time_point cached_token_expiration_time_;
 };
 
 }  // namespace rpc
