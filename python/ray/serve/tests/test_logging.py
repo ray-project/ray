@@ -944,6 +944,45 @@ class TestLoggingAPI:
             with pytest.raises(AssertionError):
                 check_log_file(resp["logs_path"], [".*model_not_show.*"])
 
+    def test_access_log_suppressed_in_stderr(self, serve_and_ray_shutdown):
+        """Test that enable_access_log=False suppresses access logs in stderr.
+
+        Regression test: the log_access_log_filter was previously only applied
+        to the file handler (memory_handler), not the stream handler (stderr).
+        Since RAY_SERVE_LOG_TO_STDERR defaults to True, access logs appeared in
+        stderr even when enable_access_log=False.
+        """
+        logger = logging.getLogger("ray.serve")
+
+        @serve.deployment(
+            logging_config={"enable_access_log": False},
+        )
+        class Model:
+            def __call__(self, req: starlette.requests.Request):
+                logger.info("user_log_should_appear")
+                return "ok"
+
+        serve.run(Model.bind())
+        url = get_application_url(use_localhost=True)
+
+        f = io.StringIO()
+        with redirect_stderr(f):
+            for _ in range(5):
+                resp = httpx.get(url)
+                assert resp.status_code == 200
+
+            # Give logs time to flush.
+            time.sleep(2)
+
+            stderr_output = f.getvalue()
+
+            # Normal user logs should still appear in stderr.
+            assert "user_log_should_appear" in stderr_output
+
+            # Access logs (replica-side "CALL" and proxy-side "GET /") should
+            # NOT appear in stderr when enable_access_log=False.
+            assert "CALL __call__ OK" not in stderr_output
+
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
     def test_additional_log_standard_attrs(self, serve_and_ray_shutdown, encoding_type):
         """Test additional log standard attrs"""
