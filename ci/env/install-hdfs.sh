@@ -53,7 +53,7 @@ chmod 640 ~/.ssh/authorized_keys
 sudo service ssh restart
 
 # without this `jps` won't show NameNode but only SecondaryNameNode
-yes | hadoop namenode -format
+echo "Y" | hadoop namenode -format
 $HADOOP_HOME/sbin/start-all.sh
 
 # Check that NameNode is up and running.
