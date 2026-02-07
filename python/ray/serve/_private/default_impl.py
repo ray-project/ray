@@ -259,6 +259,8 @@ def get_controller_impl():
 
 
 def get_proxy_actor_class():
+    # These imports are lazy to avoid circular imports
+
     if RAY_SERVE_ENABLE_HA_PROXY:
         from ray.serve._private.haproxy import HAProxyManager
 
