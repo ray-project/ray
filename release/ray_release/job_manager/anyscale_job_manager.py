@@ -98,9 +98,7 @@ class AnyscaleJobManager:
 
     def save_last_job_status(self, status):
         if status and hasattr(status, "id") and status.id != self._job_id:
-            logger.warning(
-                f"Job ID mismatch: expected {self._job_id}, got {status.id}"
-            )
+            logger.warning(f"Job ID mismatch: expected {self._job_id}, got {status.id}")
         self._last_job_result = status
 
     def job_id(self) -> Optional[str]:

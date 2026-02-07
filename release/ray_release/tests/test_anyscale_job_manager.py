@@ -1,7 +1,6 @@
 import sys
 
 import pytest
-
 from anyscale.job.models import JobState
 
 from ray_release.anyscale_util import Anyscale
