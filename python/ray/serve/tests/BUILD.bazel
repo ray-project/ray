@@ -248,6 +248,7 @@ py_test_module_list(
         "RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S": "1",
         "RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S": "1",
         "RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS": "10",
+        "RAY_SERVE_HEALTH_GAUGE_REPORT_INTERVAL_S": "0.1",
     },
     files = [
         "test_deploy_app.py",
