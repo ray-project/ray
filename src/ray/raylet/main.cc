@@ -255,7 +255,6 @@ int main(int argc, char *argv[]) {
   const std::string runtime_env_agent_command = FLAGS_runtime_env_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
   const std::string native_library_path = FLAGS_native_library_path;
-  const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
   const std::string log_dir = FLAGS_log_dir;
   const std::string resource_dir = FLAGS_resource_dir;
@@ -502,35 +501,6 @@ int main(int argc, char *argv[]) {
     RAY_CHECK_OK(status);
     RAY_CHECK(stored_raylet_config.has_value());
     RayConfig::instance().initialize(*stored_raylet_config);
-
-    // Each node should have its own object spilling directory individually
-    // specified. Overwrite head node's object spilling directory with the one
-    // specified on this node.
-    std::string object_spilling_config = RayConfig::instance().object_spilling_config();
-    if (!object_spilling_config.empty()) {
-      try {
-        nlohmann::json config = nlohmann::json::parse(object_spilling_config);
-        if (config.contains("type") && config["type"] == "filesystem") {
-          if (config.contains("params") && config["params"].contains("directory_path")) {
-            // Override with local fallback directory as it has been resolved to the
-            // correct spilling directory already.
-            config["params"]["directory_path"] = fallback_directory;
-            std::string modified_config = config.dump();
-
-            // Re-parse the entire stored config and update object_spilling_config
-            nlohmann::json full_config = nlohmann::json::parse(*stored_raylet_config);
-            full_config["object_spilling_config"] = modified_config;
-            std::string updated_raylet_config = full_config.dump();
-
-            // Re-initialize with the updated config
-            RayConfig::instance().initialize(updated_raylet_config);
-          }
-        }
-      } catch (const std::exception &e) {
-        RAY_LOG(WARNING) << "Failed to parse object_spilling_config: " << e.what();
-      }
-    }
-
     ray::asio::testing::Init();
     ray::rpc::testing::Init();
 
@@ -1103,8 +1073,6 @@ int main(int argc, char *argv[]) {
     self_node_info.set_node_manager_address(node_ip_address);
     self_node_info.set_node_name(node_name);
     self_node_info.set_raylet_socket_name(raylet_socket_name);
-    self_node_info.set_temp_dir(temp_dir);
-    self_node_info.set_session_dir(session_dir);
     self_node_info.set_object_store_socket_name(object_manager_config.store_socket_name);
     self_node_info.set_object_manager_port(object_manager->GetServerPort());
     self_node_info.set_node_manager_port(node_manager->GetServerPort());
@@ -1129,8 +1097,6 @@ int main(int argc, char *argv[]) {
     self_node_info.set_node_type_name(cloud_node_type_name ? cloud_node_type_name : "");
     auto instance_type_name = std::getenv(kNodeCloudInstanceTypeNameEnv);
     self_node_info.set_instance_type_name(instance_type_name ? instance_type_name : "");
-
-    RAY_LOG(INFO) << "Setting temp dir to: " << temp_dir;
 
     node_manager->Start(std::move(self_node_info));
   });

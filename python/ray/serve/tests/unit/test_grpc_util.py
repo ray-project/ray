@@ -9,11 +9,13 @@ from google.protobuf.any_pb2 import Any as AnyProto
 from ray import cloudpickle
 from ray.serve._private.default_impl import add_grpc_address
 from ray.serve._private.grpc_util import (
+    GRPC_MAX_STATUS_DETAILS_LENGTH,
+    _truncate_message,
     get_grpc_response_status,
     gRPCGenericServer,
 )
 from ray.serve._private.test_utils import FakeGrpcContext
-from ray.serve.exceptions import BackPressureError
+from ray.serve.exceptions import BackPressureError, gRPCStatusError
 from ray.serve.grpc_util import RayServegRPCContext
 
 
@@ -116,6 +118,88 @@ def test_get_grpc_response_status_backpressure_error():
     assert status.code == grpc.StatusCode.RESOURCE_EXHAUSTED
     assert status.is_error is True
     assert status.message == backpressure_error.message
+
+
+def test_get_grpc_response_status_grpc_status_error():
+    """Test that gRPCStatusError preserves user-set status code."""
+    original_error = RuntimeError("test error")
+    user_status_code = grpc.StatusCode.INVALID_ARGUMENT
+    user_details = "Invalid argument provided"
+
+    grpc_status_error = gRPCStatusError(
+        original_exception=original_error,
+        code=user_status_code,
+        details=user_details,
+    )
+
+    status = get_grpc_response_status(
+        exc=grpc_status_error, request_timeout_s=30.0, request_id="test_request_123"
+    )
+
+    assert status.code == user_status_code
+    assert status.is_error is True
+    assert status.message == user_details
+
+
+def test_get_grpc_response_status_grpc_status_error_no_details():
+    """Test that gRPCStatusError without details uses original exception message."""
+    original_error = RuntimeError("original error message")
+    user_status_code = grpc.StatusCode.RESOURCE_EXHAUSTED
+
+    grpc_status_error = gRPCStatusError(
+        original_exception=original_error,
+        code=user_status_code,
+        details=None,
+    )
+
+    status = get_grpc_response_status(
+        exc=grpc_status_error, request_timeout_s=30.0, request_id="test_request_123"
+    )
+
+    assert status.code == user_status_code
+    assert status.is_error is True
+    assert "original error message" in status.message
+
+
+def test_truncate_message_short():
+    """Test that short messages are not truncated."""
+    short_message = "short error message"
+    result = _truncate_message(short_message)
+    assert result == short_message
+
+
+def test_truncate_message_long():
+    """Test that long messages are truncated."""
+    # Create a message longer than the max length
+    long_message = "a" * (GRPC_MAX_STATUS_DETAILS_LENGTH + 1000)
+    result = _truncate_message(long_message)
+
+    assert len(result) <= GRPC_MAX_STATUS_DETAILS_LENGTH
+    assert result.endswith("... [truncated]")
+
+
+def test_truncate_message_at_boundary():
+    """Test truncation at the exact boundary."""
+    # Create a message exactly at the limit
+    exact_message = "a" * GRPC_MAX_STATUS_DETAILS_LENGTH
+    result = _truncate_message(exact_message)
+    assert result == exact_message
+    assert len(result) == GRPC_MAX_STATUS_DETAILS_LENGTH
+
+
+def test_get_grpc_response_status_truncates_long_message():
+    """Test that long error messages are truncated in INTERNAL errors."""
+    long_message = "a" * (GRPC_MAX_STATUS_DETAILS_LENGTH + 1000)
+    long_error = RuntimeError(long_message)
+
+    status = get_grpc_response_status(
+        exc=long_error, request_timeout_s=30.0, request_id="test_request_123"
+    )
+
+    assert status.code == grpc.StatusCode.INTERNAL
+    assert status.is_error is True
+    assert len(status.message) <= GRPC_MAX_STATUS_DETAILS_LENGTH
+    assert status.message.endswith("... [truncated]")
 
 
 if __name__ == "__main__":

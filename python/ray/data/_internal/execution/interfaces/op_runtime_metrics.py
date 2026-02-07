@@ -137,7 +137,8 @@ class RunningTaskInfo:
     bytes_outputs: int
     num_rows_produced: int
     start_time: float
-    cum_block_gen_time: float
+    cum_block_gen_time_s: float
+    cum_block_ser_time_s: float
     task_id: ray.TaskID
 
 
@@ -382,6 +383,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     block_generation_time: float = metric_field(
         default=0,
         description="Time spent generating blocks in tasks.",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    block_serialization_time_s: float = metric_field(
+        default=0,
+        description="Time spent serializing blocks produced.",
         metrics_group=MetricsGroup.TASKS,
     )
     task_submission_backpressure_time: float = metric_field(
@@ -648,7 +654,10 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     def obj_store_mem_pending_task_inputs(self) -> int:
         return self._pending_task_inputs.estimate_size_bytes()
 
-    @property
+    @metric_property(
+        description="Byte size of *pending* (not yielded yet) output blocks in running tasks.",
+        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
+    )
     def obj_store_mem_pending_task_outputs(self) -> Optional[float]:
         """Estimated size in bytes of output blocks in Ray generator buffers.
 
@@ -697,6 +706,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             num_pending_outputs = min(
                 num_pending_outputs, self.average_num_outputs_per_task
             )
+
         return bytes_per_output * num_pending_outputs
 
     @metric_property(
@@ -859,7 +869,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             bytes_outputs=0,
             num_rows_produced=0,
             start_time=time.perf_counter(),
-            cum_block_gen_time=0,
+            cum_block_gen_time_s=0,
+            cum_block_ser_time_s=0,
             task_id=ray.TaskID.nil() if task_id is None else task_id,
         )
 
@@ -887,18 +898,29 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_info.num_rows_produced += num_rows_produced
 
         for block_ref, meta in output.blocks:
+            exec_stats = meta.exec_stats
+
             assert (
-                meta.exec_stats is not None and meta.exec_stats.wall_time_s is not None
+                exec_stats is not None
+                and exec_stats.wall_time_s is not None
+                and exec_stats.block_ser_time_s is not None
             )
-            self.block_generation_time += meta.exec_stats.wall_time_s
-            task_info.cum_block_gen_time += meta.exec_stats.wall_time_s
+
+            self.block_generation_time += exec_stats.wall_time_s
+            self.block_serialization_time_s += exec_stats.block_ser_time_s
+
+            task_info.cum_block_gen_time_s += exec_stats.wall_time_s
+            task_info.cum_block_ser_time_s += exec_stats.block_ser_time_s
+
             assert meta.num_rows is not None
+
             trace_allocation(block_ref, "operator_output")
-            if meta.exec_stats.max_uss_bytes is not None:
+
+            if exec_stats.max_uss_bytes is not None:
                 if self._cum_max_uss_bytes is None:
-                    self._cum_max_uss_bytes = meta.exec_stats.max_uss_bytes
+                    self._cum_max_uss_bytes = exec_stats.max_uss_bytes
                 else:
-                    self._cum_max_uss_bytes += meta.exec_stats.max_uss_bytes
+                    self._cum_max_uss_bytes += exec_stats.max_uss_bytes
 
         # Update per node metrics
         if self._per_node_metrics_enabled:
@@ -926,10 +948,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.task_completion_time_total_s += task_time_delta
         self.task_completion_time.observe(task_time_delta)
 
-        assert task_info.cum_block_gen_time is not None
+        assert task_info.cum_block_gen_time_s is not None
         if task_info.num_outputs > 0:
             # Calculate the average block generation time per block
-            block_time_delta = task_info.cum_block_gen_time / task_info.num_outputs
+            block_time_delta = (
+                task_info.cum_block_gen_time_s + task_info.cum_block_ser_time_s
+            ) / task_info.num_outputs
+
             self.block_completion_time.observe(
                 block_time_delta, num_observations=task_info.num_outputs
             )
@@ -937,7 +962,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # NOTE: This is used for Issue Detection
         self._op_task_duration_stats.add_duration(task_time_delta)
 
-        self.task_completion_time_excl_backpressure_s += task_info.cum_block_gen_time
+        self.task_completion_time_excl_backpressure_s += (
+            task_info.cum_block_gen_time_s + task_info.cum_block_ser_time_s
+        )
         inputs = self._running_tasks[task_index].inputs
         self.num_task_inputs_processed += len(inputs)
         total_input_size = inputs.size_bytes()

@@ -179,7 +179,7 @@ def create_ragged_ndarray(values: Sequence[Any]) -> np.ndarray:
         .. testsetup::
 
             import numpy as np
-            from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
+            from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
 
         .. doctest::
 

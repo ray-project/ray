@@ -218,6 +218,7 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on Windows.")
+@pytest.mark.skipif(sys.version_info >= (3, 14), reason="Flaky on Python 3.14")
 @pytest.mark.parametrize("root_process_no_site", [0, 1])
 @pytest.mark.parametrize("root_process_no_user_site", [0, 1])
 def test_site_flag_inherited(

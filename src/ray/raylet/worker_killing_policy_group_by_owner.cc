@@ -38,7 +38,7 @@ GroupByOwnerIdWorkerKillingPolicy::GroupByOwnerIdWorkerKillingPolicy() {}
 std::pair<std::shared_ptr<WorkerInterface>, bool>
 GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-    const MemorySnapshot &system_memory) const {
+    const ProcessesMemorySnapshot &process_memory_snapshot) const {
   if (workers.empty()) {
     RAY_LOG_EVERY_MS(INFO, 5000) << "Worker list is empty. Nothing can be killed";
     return std::make_pair(nullptr, /*should retry*/ false);
@@ -90,39 +90,46 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
       selected_group.GetAllWorkers().size() > 1 && selected_group.IsRetriable();
   auto worker_to_kill = selected_group.SelectWorkerToKill();
 
-  RAY_LOG(INFO) << "Sorted list of leases based on the policy:\n"
-                << PolicyDebugString(sorted, system_memory)
-                << "\nLease should be retried? " << should_retry;
+  RAY_LOG(INFO) << absl::StrFormat(
+      "Sorted list of leases based on the policy: %s, Lease should be retried? %s",
+      PolicyDebugString(sorted, process_memory_snapshot),
+      should_retry ? "true" : "false");
 
   return std::make_pair(worker_to_kill, should_retry);
 }
 
 std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
-    const std::vector<Group> &groups, const MemorySnapshot &system_memory) {
+    const std::vector<Group> &groups,
+    const ProcessesMemorySnapshot &process_memory_snapshot) {
   std::stringstream result;
   int32_t group_index = 0;
   for (auto &group : groups) {
+    if (group_index > 0) {
+      result << ", ";
+    }
     result << "Leases (retriable: " << group.IsRetriable()
            << ") (parent task id: " << group.OwnerId() << ") (Earliest granted time: "
-           << absl::FormatTime(group.GetGrantedLeaseTime(), absl::UTCTimeZone())
-           << "):\n";
+           << absl::FormatTime(group.GetGrantedLeaseTime(), absl::UTCTimeZone()) << "): ";
 
     int64_t worker_index = 0;
     for (auto &worker : group.GetAllWorkers()) {
       auto pid = worker->GetProcess().GetId();
       int64_t used_memory = 0;
-      const auto pid_entry = system_memory.process_used_bytes.find(pid);
-      if (pid_entry != system_memory.process_used_bytes.end()) {
+      const auto pid_entry = process_memory_snapshot.find(pid);
+      if (pid_entry != process_memory_snapshot.end()) {
         used_memory = pid_entry->second;
       } else {
         RAY_LOG_EVERY_MS(INFO, 60000)
             << "Can't find memory usage for PID, reporting zero. PID: " << pid;
       }
+      if (worker_index > 0) {
+        result << ", ";
+      }
       result << "Lease granted time "
              << absl::FormatTime(worker->GetGrantedLeaseTime(), absl::UTCTimeZone())
              << " worker id " << worker->WorkerId() << " memory used " << used_memory
              << " lease spec "
-             << worker->GetGrantedLease().GetLeaseSpecification().DebugString() << "\n";
+             << worker->GetGrantedLease().GetLeaseSpecification().DebugString();
 
       worker_index += 1;
       if (worker_index > 10) {

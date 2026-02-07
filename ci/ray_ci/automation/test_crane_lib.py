@@ -8,6 +8,7 @@ import pytest
 import requests
 
 from ci.ray_ci.automation.crane_lib import (
+    CraneError,
     _crane_binary,
     call_crane_copy,
     call_crane_export,
@@ -53,9 +54,7 @@ class TestCraneCopyIntegration:
         source = TEST_IMAGE_AMD64
         destination = f"localhost:{port}/test-alpine:copied"
 
-        return_code, output = call_crane_copy(source=source, destination=destination)
-
-        assert return_code == 0
+        call_crane_copy(source=source, destination=destination)
 
         # Verify image exists in local registry
         response = requests.get(
@@ -64,14 +63,13 @@ class TestCraneCopyIntegration:
         assert response.status_code == 200
 
     def test_copy_nonexistent_image_fails(self, local_registry):  # noqa: F811
-        """Test that copying a non-existent image returns error."""
+        """Test that copying a non-existent image raises CraneError."""
         port = local_registry
         source = "localhost:9999/nonexistent/image:tag"
         destination = f"localhost:{port}/should-not-exist:tag"
 
-        return_code, output = call_crane_copy(source=source, destination=destination)
-
-        assert return_code != 0
+        with pytest.raises(CraneError):
+            call_crane_copy(source=source, destination=destination)
 
 
 class TestCraneManifestIntegration:
@@ -85,19 +83,17 @@ class TestCraneManifestIntegration:
         destination = f"localhost:{port}/manifest-test:v1"
         call_crane_copy(source=source, destination=destination)
 
-        return_code, output = call_crane_manifest(tag=destination)
+        output = call_crane_manifest(tag=destination)
 
-        assert return_code == 0
         assert "schemaVersion" in output or "config" in output
 
     def test_get_manifest_nonexistent_tag_fails(self, local_registry):  # noqa: F811
-        """Test that getting manifest for non-existent tag fails."""
+        """Test that getting manifest for non-existent tag raises CraneError."""
         port = local_registry
         tag = f"localhost:{port}/does-not-exist:missing"
 
-        return_code, output = call_crane_manifest(tag=tag)
-
-        assert return_code != 0
+        with pytest.raises(CraneError):
+            call_crane_manifest(tag=tag)
 
 
 class TestCraneIndexIntegration:
@@ -116,11 +112,7 @@ class TestCraneIndexIntegration:
 
         # Create index
         index_name = f"localhost:{port}/index-test:multiarch"
-        return_code, output = call_crane_index(
-            index_name=index_name, tags=[amd64_dest, arm64_dest]
-        )
-
-        assert return_code == 0
+        call_crane_index(index_name=index_name, tags=[amd64_dest, arm64_dest])
 
         # Verify index was created
         response = requests.get(
@@ -144,13 +136,11 @@ class TestCraneExportIntegration:
 
         source = TEST_IMAGE_AMD64
         image = f"localhost:{port}/export-test:alpine"
-        rc, _ = call_crane_copy(source=source, destination=image)
-        assert rc == 0
+        call_crane_copy(source=source, destination=image)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             out_dir = os.path.join(tmpdir, "nested", "wanda_fs")
-            rc, output = call_crane_export(tag=image, output_dir=out_dir)
-            assert rc == 0, output
+            call_crane_export(tag=image, output_dir=out_dir)
 
             assert os.path.isdir(out_dir)
             assert any(os.scandir(out_dir)), "export dir is empty"

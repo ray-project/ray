@@ -637,9 +637,39 @@ Policies are defined **per deployment**. If you don’t provide one, Ray Serve f
 
 The policy function is invoked by the Ray Serve controller every `RAY_SERVE_CONTROL_LOOP_INTERVAL_S` seconds (default **0.1s**), so your logic runs against near-real-time state.
 
+Your policy can return an `int` or a `float` for `target_replicas`. If it returns a float, Ray Serve converts it to an integer replica count by rounding up to the next greatest integer.
+
 :::{warning}
 Keep policy functions **fast and lightweight**. Slow logic can block the Serve controller and degrade cluster responsiveness.
 :::
+
+
+### Applying standard autoscaling parameters to custom policies  
+  
+Ray Serve automatically applies the following standard autoscaling parameters from your [`AutoscalingConfig`](../api/doc/ray.serve.config.AutoscalingConfig.rst) to custom policies:
+- `upscale_delay_s`, `downscale_delay_s`, `downscale_to_zero_delay_s`
+- `upscaling_factor`, `downscaling_factor`
+- `min_replicas`, `max_replicas`
+
+The following example shows a custom autoscaling policy with standard autoscaling parameters applied.
+
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin_apply_autoscaling_config_example__
+:end-before: __end_apply_autoscaling_config_example__
+```
+
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin_apply_autoscaling_config_usage__
+:end-before: __end_apply_autoscaling_config_usage__
+```
+
+::::{note}
+Your policy function should return the "raw" desired number of replicas. Ray Serve applies the `autoscaling_config` settings (delays, factors, and bounds) on top of your decision.
+
+Your policy can return an `int` or a `float` "raw desired" replica count. Ray Serve returns an integer decision number.
+::::
 
 
 ### Custom metrics
@@ -681,9 +711,10 @@ By default, each deployment in Ray Serve autoscales independently. When you have
 
 An application-level autoscaling policy is a function that takes a `dict[DeploymentID, AutoscalingContext]` objects (one per deployment) and returns a tuple of `(decisions, policy_state)`. Each context contains metrics and bounds for one deployment, and the policy returns target replica counts for all deployments.
 
-The `policy_state` returned from an application-level policy must be a `dict[DeploymentID, dict]`— a dictionary mapping each deployment ID to its own state dictionary. Serve stores this per-deployment state and on the next control-loop iteration, injects each deployment's state back into that deployment's `AutoscalingContext.policy_state`. 
+The `policy_state` returned from an application-level policy must be a `Dict[DeploymentID, Dict]`— a dictionary mapping each deployment ID to its own state dictionary. Serve stores this per-deployment state and on the next control-loop iteration, injects each deployment's state back into that deployment's `AutoscalingContext.policy_state`. 
+The per deployment number replicas returned from the policy can be an `int` or a `float`. If it returns a float, Ray Serve converts it to an integer replica count by rounding up to the next greatest integer.
 
-Serve itself does not interpret the contents of `policy_state`. All the keys in each deployment's state dictionary are user-controlled.
+Serve itself does not interpret the contents of `policy_state`. All the keys in each deployment's state dictionary are user-controlled except for internal keys that are used when default parameters are applied to custom autoscaling policies.
 The following example shows a policy that scales deployments based on their relative load, ensuring that downstream deployments have enough capacity for upstream traffic:
 
 `autoscaling_policy.py` file:
@@ -728,6 +759,19 @@ Programmatic configuration of application-level autoscaling policies through `se
 When you specify both a deployment-level policy and an application-level policy, the application-level policy takes precedence. Ray Serve logs a warning if you configure both.
 :::
 
+
+#### Applying standard autoscaling parameters to application-level policies
+Ray Serve automatically applies standard autoscaling parameters (delays, factors, and min/max bounds) to application-level policies on a per-deployment basis.
+These parameters include:
+- `upscale_delay_s`, `downscale_delay_s`, `downscale_to_zero_delay_s`
+- `upscaling_factor`, `downscaling_factor`
+- `min_replicas`, `max_replicas`
+
+The YAML configuration file shows the default parameters applied to the application level policy.
+```{literalinclude} ../doc_code/application_level_autoscaling_with_defaults.yaml
+:language: yaml
+```
+Your application level policy can return per deployment desired replicas as `int` or `float` values. Ray Serve applies the autoscaling config parameters per deployment and returns integer decisions.
 :::{warning}
 ### Gotchas and limitations
 

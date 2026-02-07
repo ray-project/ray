@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import json
 import os
 import pathlib
 import re
@@ -33,7 +34,9 @@ from ray.serve.config import (
     ProxyLocation,
     gRPCOptions,
 )
+from ray.serve.context import _get_global_client
 from ray.serve.deployment import Application, deployment_to_schema
+from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     LoggingConfig,
     ServeApplicationSchema,
@@ -789,6 +792,75 @@ def shutdown(address: str, yes: bool):
 
 
 @cli.command(
+    name="controller-health",
+    short_help="Display health metrics for the Serve controller.",
+    help=(
+        "Display health metrics for the Ray Serve controller.\n\n"
+        "Shows performance indicators that help diagnose controller issues, "
+        "especially as cluster size increases. Metrics include control loop "
+        "duration statistics, event loop health, component update times, and "
+        "autoscaling metrics latency."
+    ),
+)
+@click.option(
+    "--address",
+    "-a",
+    default=os.environ.get("RAY_ADDRESS", "auto"),
+    required=False,
+    type=str,
+    help=RAY_INIT_ADDRESS_HELP_STR,
+)
+@click.option(
+    "--json",
+    "output_json",
+    is_flag=True,
+    help="Output metrics as JSON instead of formatted YAML.",
+)
+def controller_health(address: str, output_json: bool):
+    if not ray.is_initialized():
+        # Connect to existing cluster only, don't start a new one
+        try:
+            ray.init(
+                address=address,
+                namespace=SERVE_NAMESPACE,
+            )
+        except ConnectionError:
+            cli_logger.error(
+                f"Could not connect to Ray cluster at address '{address}'. "
+                "Make sure a Ray cluster is running."
+            )
+            sys.exit(1)
+
+    try:
+        # Get the controller handle
+        controller = _get_global_client()._controller
+
+        # Fetch health metrics
+        metrics = ray.get(controller.get_health_metrics.remote())
+
+        if output_json:
+            print(json.dumps(metrics, indent=2))
+        else:
+            print(
+                yaml.dump(
+                    metrics,
+                    default_flow_style=False,
+                    sort_keys=False,
+                ),
+                end="",
+            )
+    except RayServeException as e:
+        cli_logger.error(str(e))
+        sys.exit(1)
+    except Exception:
+        cli_logger.error(
+            "Failed to get controller health metrics, "
+            "see the controller logs for more details."
+        )
+        sys.exit(1)
+
+
+@cli.command(
     short_help="Generate a config file for the specified applications.",
     help=(
         "Imports the applications at IMPORT_PATHS and generates a structured, multi-"
@@ -940,3 +1012,7 @@ def enum_representer(dumper: yaml.Dumper, data: Enum):
 # Since ServeDeploySchemaDumper extends SafeDumper, this also covers build command.
 ServeDeploySchemaDumper.add_multi_representer(Enum, enum_representer)
 ServeDeploySchemaDumper.add_representer(str, str_presenter)
+
+
+if __name__ == "__main__":
+    cli()

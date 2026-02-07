@@ -206,6 +206,9 @@ class OpState:
     def __repr__(self):
         return f"OpState({self.op.name})"
 
+    def has_pending_bundles(self) -> bool:
+        return any(len(q) > 0 for q in self.input_queues)
+
     def total_enqueued_input_blocks(self) -> int:
         """Total number of blocks currently enqueued among:
         1. Input queue(s) pending dispatching (``OpState.input_queues``)
@@ -219,9 +222,6 @@ class OpState:
         )
         return external_queue_size + internal_queue_size
 
-    def has_pending_bundles(self) -> bool:
-        return any(len(q) > 0 for q in self.input_queues)
-
     def total_enqueued_input_blocks_bytes(self) -> int:
         """Total number of bytes occupied by input bundles currently enqueued among:
         1. Input queue(s) pending dispatching (``OpState.input_queues``)
@@ -233,6 +233,38 @@ class OpState:
             else 0
         )
         return self.input_queue_bytes() + internal_queue_size_bytes
+
+    def total_enqueued_output_blocks(self) -> int:
+        """Total number of blocks currently enqueued among:
+
+        1. Output queue(s) pending dispatching (``OpState.output_queue``)
+        2. Operator's internal output queues (like ``MapOperator``s reordering
+        bundle-queue, when ``preserve_order=True`` etc)
+        """
+        external_queue_size = self.output_queue.num_blocks
+        internal_queue_size = (
+            self.op.internal_output_queue_num_blocks()
+            if isinstance(self.op, InternalQueueOperatorMixin)
+            else 0
+        )
+
+        return external_queue_size + internal_queue_size
+
+    def total_enqueued_output_blocks_bytes(self) -> int:
+        """Total number of bytes occupied by output bundles currently enqueued
+        among:
+
+        1. Output queue(s) pending dispatching (``OpState.output_queue``)
+        2. Operator's internal output queues (like ``MapOperator``s reordering
+        bundle-queue, when ``preserve_order=True`` etc)
+        """
+        internal_queue_size_bytes = (
+            self.op.internal_output_queue_num_bytes()
+            if isinstance(self.op, InternalQueueOperatorMixin)
+            else 0
+        )
+
+        return self.output_queue_bytes() + internal_queue_size_bytes
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
@@ -430,6 +462,7 @@ def process_completed_tasks(
             ready_tasks_by_op[state].append(task)
 
         for state, ready_tasks in ready_tasks_by_op.items():
+            # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
             for task in ready_tasks:
                 if isinstance(task, DataOpTask):
@@ -564,7 +597,7 @@ def get_eligible_operators(
         #   - Its input queue has a valid bundle
         if (
             not op.has_completed()
-            and op.should_add_input()
+            and op.can_add_input()
             and state.has_pending_bundles()
         ):
             if not in_backpressure:

@@ -439,8 +439,7 @@ def run(
         fail_fast: Whether to fail upon the first error.
             If fail_fast='raise' provided, Tune will automatically
             raise the exception received by the Trainable. fail_fast='raise'
-            can easily leak resources and should be used with caution (it
-            is best used with `ray.init(local_mode=True)`).
+            can easily leak resources and should be used with caution.
         restore: Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
         resume: One of [True, False, "AUTO"]. Can
@@ -781,32 +780,25 @@ def run(
     if isinstance(search_alg, str):
         search_alg = create_searcher(search_alg)
 
-    # if local_mode=True is set during ray.init().
-    is_local_mode = ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-
-    if is_local_mode:
-        max_concurrent_trials = 1
-
     if not search_alg:
         search_alg = BasicVariantGenerator(max_concurrent=max_concurrent_trials or 0)
-    elif max_concurrent_trials or is_local_mode:
+    elif max_concurrent_trials:
         if isinstance(search_alg, ConcurrencyLimiter):
-            if not is_local_mode:
-                if search_alg.max_concurrent != max_concurrent_trials:
-                    raise ValueError(
-                        "You have specified `max_concurrent_trials="
-                        f"{max_concurrent_trials}`, but the `search_alg` is "
-                        "already a `ConcurrencyLimiter` with `max_concurrent="
-                        f"{search_alg.max_concurrent}. FIX THIS by setting "
-                        "`max_concurrent_trials=None`."
-                    )
-                else:
-                    logger.warning(
-                        "You have specified `max_concurrent_trials="
-                        f"{max_concurrent_trials}`, but the `search_alg` is "
-                        "already a `ConcurrencyLimiter`. "
-                        "`max_concurrent_trials` will be ignored."
-                    )
+            if search_alg.max_concurrent != max_concurrent_trials:
+                raise ValueError(
+                    "You have specified `max_concurrent_trials="
+                    f"{max_concurrent_trials}`, but the `search_alg` is "
+                    "already a `ConcurrencyLimiter` with `max_concurrent="
+                    f"{search_alg.max_concurrent}. FIX THIS by setting "
+                    "`max_concurrent_trials=None`."
+                )
+            else:
+                logger.warning(
+                    "You have specified `max_concurrent_trials="
+                    f"{max_concurrent_trials}`, but the `search_alg` is "
+                    "already a `ConcurrencyLimiter`. "
+                    "`max_concurrent_trials` will be ignored."
+                )
         else:
             if max_concurrent_trials < 1:
                 raise ValueError(
@@ -817,7 +809,7 @@ def run(
                 search_alg = ConcurrencyLimiter(
                     search_alg, max_concurrent=max_concurrent_trials
                 )
-            elif not is_local_mode:
+            else:
                 logger.warning(
                     "You have passed a `SearchGenerator` instance as the "
                     "`search_alg`, but `max_concurrent_trials` requires a "

@@ -1459,6 +1459,7 @@ py_test(
     srcs = ["tests/test_push_based_shuffle.py"],
     tags = [
         "data_non_parallel",
+        "data_non_parallel_postmerge_only",
         "exclusive",
         "team:data",
     ],
@@ -1921,6 +1922,20 @@ py_test(
     name = "test_state_export",
     size = "medium",
     srcs = ["tests/test_state_export.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_operator_schema_export",
+    size = "small",
+    srcs = ["tests/test_operator_schema_export.py"],
     tags = [
         "exclusive",
         "team:data",

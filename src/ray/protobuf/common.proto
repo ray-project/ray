@@ -267,18 +267,15 @@ enum ErrorType {
   // The object cannot be reconstructed because it was borrowed from another
   // worker and we are not the owner.
   OBJECT_UNRECONSTRUCTABLE_BORROWED = 29;
-  // The object cannot be reconstructed because local mode does not support
-  // object reconstruction.
-  OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE = 30;
   // The object cannot be reconstructed because the reference has gone out of
   // scope (no longer tracked by the reference counter).
-  OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND = 31;
+  OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND = 30;
   // The object cannot be reconstructed because the task that would produce it
   // was cancelled.
-  OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED = 32;
+  OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED = 31;
   // The object cannot be reconstructed because lineage reconstruction is
   // disabled system-wide (lineage_pinning_enabled=false).
-  OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED = 33;
+  OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED = 32;
 }
 
 // The user error information.
