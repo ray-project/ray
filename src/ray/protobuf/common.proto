@@ -708,7 +708,8 @@ message PlacementGroupSpec {
   // Otherwise, the bundles can be placed elsewhere.
   // This only applies to STRICT_PACK pg.
   bytes soft_target_node_id = 11;
-  // The list of fallback options to try if the primary resource request cannot be satisfied.
+  // The list of fallback options to try if the primary resource request cannot be
+  // scheduled.
   repeated PlacementGroupSchedulingOption fallback_strategy = 12;
 }
 
