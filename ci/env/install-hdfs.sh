@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -eo pipefail
+
 apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openjdk-8-jdk net-tools curl netcat gnupg libsnappy-dev && rm -rf /var/lib/apt/lists/*
 
 export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64/

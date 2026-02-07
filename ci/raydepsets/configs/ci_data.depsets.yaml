@@ -31,16 +31,15 @@ depsets:
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
 # latest arrow version 20.*
 
-  - name: data_doc_depset${PYTHON_SHORT}
+  - name: data_doc_depset_${PYTHON_SHORT}
     operation: expand
     depsets:
       - data_ci_depset_${PYTHON_SHORT}
     constraints:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: python/deplocks/ci/data-docs-ci_depset_py${PYTHON_VERSION}.lock
-    override_flags:
-      - --extra-index-url https://download.pytorch.org/whl/cu128
     append_flags:
+      - --extra-index-url https://download.pytorch.org/whl/cu128
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
@@ -48,7 +47,7 @@ depsets:
       - py310
 
 # needs to use constraints file once relax operation is supported (conflict on pyarrow version)
-  - name: data_latest_pyarrow_depset${PYTHON_SHORT}
+  - name: data_latest_pyarrow_depset_${PYTHON_SHORT}
     operation: expand
     depsets:
       - data_ci_depset_${PYTHON_SHORT}
@@ -56,6 +55,7 @@ depsets:
       - python/requirements/data/pyarrow-latest.txt
     output: python/deplocks/ci/data-latest-pyarrow-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
+      - --extra-index-url https://download.pytorch.org/whl/cpu
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
@@ -64,12 +64,15 @@ depsets:
       - py312
 
 # needs to use constraints file once relax operation is supported (conflict on pyarrow version)
-  - name: data_v9_pyarrow_depset${PYTHON_SHORT}
+  - name: data_v9_pyarrow_depset_${PYTHON_SHORT}
     operation: expand
     depsets:
       - data_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/pyarrow-v9.txt
     output: python/deplocks/ci/data-v9-pyarrow-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
+      - --extra-index-url https://download.pytorch.org/whl/cpu
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
@@ -77,7 +80,7 @@ depsets:
     build_arg_sets:
       - py310
 
-  - name: data_mongo_depset${PYTHON_SHORT}
+  - name: data_mongo_depset_${PYTHON_SHORT}
     operation: expand
     depsets:
       - data_ci_depset_${PYTHON_SHORT}
@@ -85,6 +88,7 @@ depsets:
       - python/requirements/data/mongo.txt
     output: python/deplocks/ci/data-mongo-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
+      - --extra-index-url https://download.pytorch.org/whl/cpu
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
