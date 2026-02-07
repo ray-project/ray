@@ -41,11 +41,11 @@ CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS = ray_constants.env_float(
 )
 # Maximum size of the event buffer in the aggregator agent
 MAX_EVENT_BUFFER_SIZE = ray_constants.env_integer(
-    "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE", 1000000
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE", 100000
 )
 # Maximum number of events to send in a single batch to the destination
 MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
-    "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_SEND_BATCH_SIZE", 10000
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_SEND_BATCH_SIZE", 1000
 )
 # Address of the external service to send events with format of "http://<ip>:<port>"
 EVENTS_EXPORT_ADDR = os.environ.get(
