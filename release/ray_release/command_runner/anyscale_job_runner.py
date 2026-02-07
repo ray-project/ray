@@ -157,9 +157,7 @@ class AnyscaleJobRunner(CommandRunner):
             f"python wait_cluster.py {num_nodes} {timeout}", timeout=timeout + 30
         )
 
-    def _handle_command_output(
-        self, job_state: int, raise_on_timeout: bool = True
-    ):
+    def _handle_command_output(self, job_state: int, raise_on_timeout: bool = True):
         if job_state == -2:
             raise JobBrokenError("Job state is 'UNKNOWN'.")
 
@@ -343,9 +341,7 @@ class AnyscaleJobRunner(CommandRunner):
             upload_path=self.upload_path,
             timeout=int(timeout),
         )
-        self._handle_command_output(
-            job_state, raise_on_timeout=raise_on_timeout
-        )
+        self._handle_command_output(job_state, raise_on_timeout=raise_on_timeout)
 
         return time_taken
 
