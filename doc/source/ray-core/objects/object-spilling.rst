@@ -5,6 +5,28 @@ Object Spilling
 Ray spills objects to a directory in the local filesystem once the object store is full. By default, Ray 
 spills objects to the temporary directory (for example, ``/tmp/ray/session_2025-03-28_00-05-20_204810_2814690``). 
 
+Disable Spilling
+----------------
+
+Ray spills objects to the local file system by default. You can turn off spilling by 
+setting the ``object_spilling_enabled`` parameter to ``False`` in the 
+``ray.init`` function or the ``--object-spilling-enabled`` command line 
+option to ``false`` in the ``ray start`` command.
+
+.. tab-set::
+
+    .. tab-item:: Python
+
+        .. doctest::
+
+            ray.init(object_spilling_enabled=False)
+
+    .. tab-item:: CLI
+
+        .. doctest::
+
+            ray start --object-spilling-enabled=false
+
 Spilling to a custom directory
 -------------------------------
 

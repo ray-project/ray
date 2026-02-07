@@ -1516,6 +1516,9 @@ def init(
         namespace: A namespace is a logical grouping of jobs and named actors.
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
+        object_spilling_enabled: Whether to enable object spilling. It is enabled
+            by default. If enabled, then Ray will choose idle objects to spill
+            when the object store is out of memory.
         object_spilling_directory: The path to spill objects to. The same path will
             be used as the object store fallback directory as well.
         enable_resource_isolation: Enable resource isolation through cgroupv2 by reserving
@@ -1601,6 +1604,7 @@ def init(
         "_enable_object_reconstruction", False
     )
     _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
+    _object_spilling_enabled: bool = kwargs.pop("object_spilling_enabled", None)
     _object_spilling_directory: Optional[str] = kwargs.pop(
         "object_spilling_directory", None
     )
@@ -1852,6 +1856,7 @@ def init(
             redis_username=_redis_username,
             redis_password=_redis_password,
             plasma_directory=_plasma_directory,
+            object_spilling_enabled=_object_spilling_enabled,
             object_spilling_directory=_object_spilling_directory,
             huge_pages=None,
             include_dashboard=include_dashboard,
