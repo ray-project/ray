@@ -5,11 +5,14 @@ from typing import Any, Callable, Dict, Iterator, Optional
 
 import ray
 from ray._private.ray_constants import env_integer
+from ray.data._internal.batcher import (
+    BatchingFactoryProtocol,
+    create_batching_iterator,
+)
 from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
 from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
     WaitBlockPrefetcher,
-    blocks_to_batches,
     collate,
     finalize_batches,
     format_batches,
@@ -98,6 +101,10 @@ class BatchIterator:
             formatting to be overlapped with the UDF. Defaults to 1.
         prefetch_bytes_callback: A callback to report prefetched bytes to the executor's
             resource manager.
+        batching_factory: A factory function to create a ``BatchingIteratorInterface`` instance,
+            which is used to iterate over blocks and yield batches. Default is None which uses
+            default batching logic. An ``BatchingIteratorInterface`` subclass can be used to customize
+            how input blocks are iterated over and batches are yielded.
     """
 
     UPDATE_METRICS_INTERVAL_S: float = 5.0
@@ -119,6 +126,7 @@ class BatchIterator:
         ensure_copy: bool = False,
         prefetch_batches: int = 1,
         prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
+        batching_factory: Optional[BatchingFactoryProtocol] = None,
     ):
         self._ref_bundles = ref_bundles
         self._stats = stats
@@ -154,6 +162,16 @@ class BatchIterator:
         # by comparing it with the current timestamp.
         self._metrics_last_updated: float = 0.0
 
+        self._block_iterator = create_batching_iterator(
+            batch_size=self._batch_size,
+            shuffle_buffer_min_size=self._shuffle_buffer_min_size,
+            shuffle_seed=self._shuffle_seed,
+            ensure_copy=self._ensure_copy,
+            stats=self._stats,
+            drop_last=self._drop_last,
+            batcher_factory_fn=batching_factory,
+        )
+
     def _prefetch_blocks(
         self, ref_bundles: Iterator[RefBundle]
     ) -> Iterator[ObjectRef[Block]]:
@@ -172,15 +190,7 @@ class BatchIterator:
         return resolve_block_refs(block_ref_iter=block_refs, stats=self._stats)
 
     def _blocks_to_batches(self, blocks: Iterator[Block]) -> Iterator[Batch]:
-        return blocks_to_batches(
-            block_iter=blocks,
-            stats=self._stats,
-            batch_size=self._batch_size,
-            drop_last=self._drop_last,
-            shuffle_buffer_min_size=self._shuffle_buffer_min_size,
-            shuffle_seed=self._shuffle_seed,
-            ensure_copy=self._ensure_copy,
-        )
+        return self._block_iterator.iter_batches(blocks)
 
     def _format_batches(self, batches: Iterator[Batch]) -> Iterator[Batch]:
         num_threadpool_workers = min(
@@ -308,7 +318,7 @@ class BatchIterator:
 
 def _format_in_threadpool(
     batch_iter: Iterator[Batch],
-    stats: DatasetStats,
+    stats: Optional[DatasetStats],
     batch_format: Optional[str],
     collate_fn: Optional[Callable[[DataBatch], Any]],
     num_threadpool_workers: int,

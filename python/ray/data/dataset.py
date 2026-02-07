@@ -28,6 +28,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
+from ray.data._internal.batcher import BatchingFactoryProtocol
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.dataset_repr import _build_dataset_ascii_repr
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
@@ -5442,6 +5443,7 @@ class Dataset:
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], CollatedData]] = None,
+        _batching_factory: Optional[BatchingFactoryProtocol] = None,
     ) -> Iterable[DataBatch]:
         """Return an iterable over batches of data.
 
@@ -5486,6 +5488,11 @@ class Dataset:
                 buffer in order to yield a batch. When there are no more rows to add to
                 the buffer, the remaining rows in the buffer are drained.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            _collate_fn: [Alpha] A function to apply to each data batch before returning it.
+            _batching_factory: [Alpha] A factory function that creates a ``BatchingIteratorInterface`` instance,
+                which is used to iterate over blocks and yield batches. Default is None which uses
+                default batching logic. An ``BatchingIteratorInterface`` subclass can be used to customize
+                how input blocks are iterated over and batches are yielded.
 
         Returns:
             An iterable over batches of data.
@@ -5499,6 +5506,7 @@ class Dataset:
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=_collate_fn,
+            _batching_factory=_batching_factory,
         )
 
     @ConsumptionAPI

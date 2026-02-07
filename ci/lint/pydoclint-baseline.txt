@@ -1231,8 +1231,6 @@ python/ray/data/dataset.py
     DOC103: Method `Dataset.write_webdataset`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [encoder: Optional[Union[bool, str, callable, list]]].
     DOC101: Method `Dataset.write_lance`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `Dataset.write_lance`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [concurrency: Optional[int], ray_remote_args: Dict[str, Any]].
-    DOC101: Method `Dataset.iter_batches`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `Dataset.iter_batches`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [_collate_fn: Optional[Callable[[DataBatch], CollatedData]]].
     DOC201: Method `Dataset.to_random_access_dataset` does not have a return section in docstring
     DOC201: Method `Dataset.stats` does not have a return section in docstring
     DOC201: Method `Dataset.has_serializable_lineage` does not have a return section in docstring

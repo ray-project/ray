@@ -1,14 +1,19 @@
 import warnings
-from typing import Optional
+from abc import ABC, abstractmethod
+from contextlib import nullcontext
+from typing import Iterator, Optional, Protocol
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import try_combine_chunked_columns
+from ray.data._internal.block_batching.interfaces import Batch, BatchMetadata
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import get_total_obj_store_mem_on_node
 from ray.data.block import Block, BlockAccessor
-from ray.util import log_once
+from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
 
 # Delay compaction until the shuffle buffer has reached this ratio over the min
 # shuffle buffer size. Setting this to 1 minimizes memory usage, at the cost of
@@ -17,34 +22,42 @@ from ray.util import log_once
 SHUFFLE_BUFFER_COMPACTION_RATIO = 1.5
 
 
-class BatcherInterface:
+@DeveloperAPI
+class BatcherInterface(ABC):
+    """Interface for batcher implementations."""
+
+    @abstractmethod
     def add(self, block: Block):
         """Add a block to the block buffer.
 
         Args:
             block: Block to add to the block buffer.
         """
-        raise NotImplementedError()
+        pass
 
-    def done_adding(self) -> bool:
+    @abstractmethod
+    def done_adding(self) -> None:
         """Indicate to the batcher that no more blocks will be added to the buffer."""
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def has_batch(self) -> bool:
         """Whether this Batcher has any full batches."""
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def has_any(self) -> bool:
         """Whether this Batcher has any data."""
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def next_batch(self) -> Block:
         """Get the next batch from the block buffer.
 
         Returns:
             A batch represented as a Block.
         """
-        raise NotImplementedError()
+        pass
 
 
 class Batcher(BatcherInterface):
@@ -84,7 +97,7 @@ class Batcher(BatcherInterface):
             self._buffer.append(block)
             self._buffer_size += BlockAccessor.for_block(block).num_rows()
 
-    def done_adding(self) -> bool:
+    def done_adding(self) -> None:
         """Indicate to the batcher that no more blocks will be added to the batcher."""
         self._done_adding = True
 
@@ -269,7 +282,7 @@ class ShufflingBatcher(BatcherInterface):
 
         return self._average_row_nbytes * self._min_rows_to_trigger_compaction
 
-    def done_adding(self) -> bool:
+    def done_adding(self) -> None:
         """Indicate to the batcher that no more blocks will be added to the batcher.
 
         No more blocks should be added to the batcher after calling this.
@@ -366,4 +379,231 @@ class ShufflingBatcher(BatcherInterface):
         # Yield the shuffled batch.
         return BlockAccessor.for_block(self._shuffle_buffer).slice(
             slice_start, self._batch_head
+        )
+
+
+@DeveloperAPI
+class BatchingIteratorInterface(ABC):
+    """An iterator-based interface for iterating over blocks and yielding batches
+
+    This interface is used to customize blockes-to-batches logic in iter_batches
+    APIs. The caller calls `for batch in iterator.iter_batches(block_iter):` where
+    the default logic is roughly:
+    ```
+    def iter_batches(self, block_iter: Iterator[Block]) -> Iterator[Batch]:
+        for block in block_iter:
+            for batch in self.iter_from_block(block):
+                yield ...
+        else:
+            for batch in self.iter_leftovers():
+                yield ...
+    ```
+    The subclass should implement at least `iter_from_block`. By default,
+    `iter_leftovers` returns an empty iterator and does nothing. The subclass can
+    override `iter_leftovers` to yield any remaining batches.
+
+    Note:
+        For existing batcher-based implementations (e.g., one has has_batch() and
+        next_batch() methods), use BatcherBasedBatchingIterator to wrap it and
+        implement this interface.
+
+    """
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    @abstractmethod
+    def iter_from_block(self, block: Block) -> Iterator[Block]:
+        """Add a block to the batcher and yield any complete batches that are ready."""
+        pass
+
+    def iter_leftovers(self) -> Iterator[Block]:
+        """Signal completion and yield any remaining batches. Default implementation
+        returns an empty iterator.
+
+        Called after all blocks have been processed via iter_from_block().
+        Subclasses should override this to yield any buffered data that hasn't
+        been yielded yet. The default implementation returns an empty iterator.
+
+        Returns:
+            Iterator[Block]: An iterator over any remaining blocks. The default
+                implementation returns an empty iterator.
+        """
+        return iter([])
+
+    def iter_batches(self, block_iter: Iterator[Block]) -> Iterator[Batch]:
+        """Iterate over batches from a block iterator."""
+
+        global_counter = 0
+
+        # Process each block and yield complete batches
+        for block in block_iter:
+            for batch in self.iter_from_block(block):
+                yield Batch(
+                    metadata=BatchMetadata(batch_idx=global_counter), data=batch
+                )
+                global_counter += 1
+        else:
+            # After all blocks, get final batches
+            for batch in self.iter_leftovers():
+                yield Batch(
+                    metadata=BatchMetadata(batch_idx=global_counter), data=batch
+                )
+                global_counter += 1
+
+
+class BatchingFactoryProtocol(Protocol):
+    """A protocol of factory functions that create a BatchingIteratorInterface instance."""
+
+    def __call__(
+        self,
+        *,
+        batch_size: Optional[int],
+        shuffle_buffer_min_size: Optional[int] = None,
+        shuffle_seed: Optional[int] = None,
+        ensure_copy: bool = False,
+    ) -> BatchingIteratorInterface:
+        """Create a BatchingIteratorInterface instance."""
+        ...
+
+
+class BatcherAdapter(BatchingIteratorInterface):
+    """Adapts legacy Batcher implementations to the BatchingIteratorInterface.
+
+    This adapter wraps existing BatcherInterface implementations (Batcher,
+    ShufflingBatcher) and exposes them through the iterator-based interface.
+
+    Args:
+        batcher: A `BatcherInterface` implementation to adapt.
+        stats: Optional stats object for timing batch operations.
+        drop_last: Whether to drop the last incomplete batch.
+    """
+
+    def __init__(
+        self,
+        batcher: BatcherInterface,
+        stats: Optional[DatasetStats] = None,
+        drop_last: bool = False,
+    ):
+        self._batcher = batcher
+        self._stats = stats
+        self._drop_last = drop_last
+
+    def _get_timer(self):
+        return self._stats.iter_next_batch_s.timer() if self._stats else nullcontext()
+
+    def iter_from_block(self, block: Block) -> Iterator[Block]:
+        """Add a block to the batcher and yield any complete batches that are ready.
+
+        Note: This does NOT call done_adding() - use iter_leftovers() for that.
+
+        Args:
+            block: Block to add to the batcher.
+
+        Yields:
+            Block: a complete batch as it becomes available.
+        """
+        self._batcher.add(block)
+        while self._batcher.has_batch():
+            with self._get_timer():
+                yield self._batcher.next_batch()
+
+    def iter_leftovers(self) -> Iterator[Block]:
+        """Signal completion and yield any remaining batches.
+
+        This calls done_adding() on the batcher and drains all remaining batches.
+
+        Yields:
+            Block: Any remaining data in the buffer as blocks.
+        """
+        self._batcher.done_adding()
+
+        # Get any leftover batches
+        while self._batcher.has_batch():
+            with self._get_timer():
+                yield self._batcher.next_batch()
+
+        # Get any remaining data.
+        if not self._drop_last and self._batcher.has_any():
+            with self._get_timer():
+                yield self._batcher.next_batch()
+
+
+def default_batching_factory_fn(
+    *,
+    batch_size: Optional[int],
+    shuffle_buffer_min_size: Optional[int] = None,
+    shuffle_seed: Optional[int] = None,
+    ensure_copy: bool = False,
+    stats: Optional[DatasetStats] = None,
+    drop_last: bool = False,
+) -> BatcherAdapter:
+    """Create a default batching iterator that handles the batching of blocks."""
+
+    if shuffle_buffer_min_size is not None:
+        batcher = ShufflingBatcher(
+            batch_size=batch_size,
+            shuffle_buffer_min_size=shuffle_buffer_min_size,
+            shuffle_seed=shuffle_seed,
+        )
+    else:
+        batcher = Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
+
+    return BatcherAdapter(batcher, stats, drop_last)
+
+
+def create_batching_iterator(
+    *,
+    batch_size: Optional[int],
+    shuffle_buffer_min_size: Optional[int] = None,
+    shuffle_seed: Optional[int] = None,
+    ensure_copy: bool = False,
+    stats: Optional[DatasetStats] = None,
+    drop_last: bool = False,
+    batcher_factory_fn: Optional[BatchingFactoryProtocol] = None,
+) -> BatchingIteratorInterface:
+    """Create a default batching iterator that handles the batching of blocks.
+
+    This function first creates a batcher implementation
+    (e.g., Batcher or ShufflingBatcher) and then wraps it with
+    BatcherBasedBatchingIterator.
+
+    Args:
+        batch_size: The size of batches to yield.
+        shuffle_buffer_min_size: If non-None, the data will be randomly shuffled
+            using a local in-memory shuffle buffer, and this value will serve as the
+            minimum number of rows that must be in the local in-memory shuffle buffer in
+            order to yield a batch.
+        shuffle_seed: The seed to use for the local random shuffle.
+        ensure_copy: Whether batches are always copied from the underlying base
+            blocks (not zero-copy views).
+        stats: Optional stats object for timing batch operations.
+        drop_last: Whether to drop the last incomplete batch.
+        batcher_factory_fn: a factory function that creates a BatchingIteratorInterface instance.
+
+    Returns:
+        A BatchingIteratorInterface instance. If batcher_factory_fn is provided, returns
+        the instance directly. Otherwise, returns a BatcherBasedBatchingIterator wrapping
+        a default BatcherInterface implementation.
+    """
+    if batcher_factory_fn is None:
+        return default_batching_factory_fn(
+            batch_size=batch_size,
+            shuffle_buffer_min_size=shuffle_buffer_min_size,
+            shuffle_seed=shuffle_seed,
+            ensure_copy=ensure_copy,
+            stats=stats,
+            drop_last=drop_last,
+        )
+    else:
+        if not callable(batcher_factory_fn):
+            raise ValueError(
+                "batcher_factory_fn must be a callable (a function or class)"
+            )
+
+        return batcher_factory_fn(
+            batch_size=batch_size,
+            shuffle_buffer_min_size=shuffle_buffer_min_size,
+            shuffle_seed=shuffle_seed,
+            ensure_copy=ensure_copy,
         )

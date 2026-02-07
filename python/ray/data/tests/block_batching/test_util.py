@@ -10,10 +10,10 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.batcher import create_batching_iterator
 from ray.data._internal.block_batching.interfaces import Batch, BatchMetadata
 from ray.data._internal.block_batching.util import (
     _calculate_ref_hits,
-    blocks_to_batches,
     collate,
     finalize_batches,
     format_batches,
@@ -43,9 +43,14 @@ def test_blocks_to_batches(block_size, drop_last):
     block_iter = block_generator(num_rows=block_size, num_blocks=num_blocks)
 
     batch_size = 3
-    batch_iter = list(
-        blocks_to_batches(block_iter, batch_size=batch_size, drop_last=drop_last)
+
+    iterator = create_batching_iterator(
+        batch_size=batch_size,
+        drop_last=drop_last,
     )
+
+    # Previously, this was a function call to blocks_to_batches
+    batch_iter = list(iterator.iter_batches(block_iter))
 
     if drop_last:
         for batch in batch_iter:
