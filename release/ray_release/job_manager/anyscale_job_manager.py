@@ -27,6 +27,7 @@ from ray_release.util import (
 job_status_to_return_code = {
     JobState.SUCCEEDED: 0,
     JobState.FAILED: -1,
+    JobState.UNKNOWN: -2,
 }
 terminal_state = set(job_status_to_return_code.keys())
 
@@ -110,9 +111,6 @@ class AnyscaleJobManager:
         if not self._last_job_result:
             return None
         return self._last_job_result.state
-
-    def job_error_message(self) -> str:
-        return ""
 
     def _in_progress(self) -> bool:
         if not self._last_job_result:
@@ -203,7 +201,10 @@ class AnyscaleJobManager:
                 self.save_last_job_result(result)
                 status = self._last_job_status()
 
-                if not job_running and status == JobState.RUNNING:
+                if not job_running and status in {
+                    JobState.STARTING,
+                    JobState.RUNNING,
+                }:
                     logger.info(
                         f"... job started ...({int(now - start_time)} seconds) ..."
                     )
