@@ -66,9 +66,8 @@ class OpBufferQueue:
     def memory_usage(self) -> int:
         """The total memory usage of the queue in bytes."""
         with self._lock:
-            # The split queues contain bundles popped from the main queue. So, a bundle
-            # will either be in the main queue or in one of the split queues, and we
-            # don't need to worry about double counting.
+            # Bundles are either in the main queue (no output_split_idx) or in
+            # one of the split queues, so no double counting.
             return self._queue.estimate_size_bytes() + sum(
                 split_queue.estimate_size_bytes()
                 for split_queue in self._outputs_by_split.values()
@@ -101,10 +100,12 @@ class OpBufferQueue:
     def append(self, ref: RefBundle):
         """Append a RefBundle to the queue."""
         with self._lock:
-            self._queue.add(ref)
-            self._num_blocks += len(ref.blocks)
             if ref.output_split_idx is not None:
+                self._outputs_by_split[ref.output_split_idx].add(ref)
                 self._num_per_split[ref.output_split_idx] += 1
+            else:
+                self._queue.add(ref)
+            self._num_blocks += len(ref.blocks)
 
     def pop(self, output_split_idx: Optional[int] = None) -> Optional[RefBundle]:
         """Pop a RefBundle from the queue.
@@ -114,42 +115,25 @@ class OpBufferQueue:
         Returns:
             A RefBundle if available, otherwise None.
         """
-        ret = None
-        if output_split_idx is None:
-            try:
-                with self._lock:
-                    ret = self._queue.get_next()
-            except IndexError:
-                pass
-        else:
-            with self._lock:
-                split_queue = self._outputs_by_split[output_split_idx]
-            if len(split_queue) == 0:
-                # Move all ref bundles to their indexed queues
-                # Note, the reason why we do indexing here instead of in the append
-                # is because only the last `OpBufferQueue` in the DAG, which will call
-                # pop with output_split_idx, needs indexing.
-                # If we also index the `OpBufferQueue`s in the middle, we cannot
-                # preserve the order of ref bundles with different output splits.
-                with self._lock:
-                    while len(self._queue) > 0:
-                        ref = self._queue.get_next()
-                        self._outputs_by_split[ref.output_split_idx].add(ref)
-            try:
-                ret = split_queue.get_next()
-            except IndexError:
-                pass
-        if ret is None:
-            return None
         with self._lock:
+            try:
+                if output_split_idx is None:
+                    ret = self._queue.get_next()
+                else:
+                    ret = self._outputs_by_split[output_split_idx].get_next()
+            except IndexError:
+                return None
+
             self._num_blocks -= len(ret.blocks)
             if ret.output_split_idx is not None:
                 self._num_per_split[ret.output_split_idx] -= 1
-        return ret
+            return ret
 
     def clear(self):
         with self._lock:
             self._queue.clear()
+            for split_queue in self._outputs_by_split.values():
+                split_queue.clear()
             self._num_blocks = 0
             self._num_per_split.clear()
 
