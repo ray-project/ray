@@ -8,8 +8,8 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import Schema
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.datasource.path_util import _unwrap_protocol
 
 

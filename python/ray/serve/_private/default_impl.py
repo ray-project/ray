@@ -66,6 +66,7 @@ def _default_create_placement_group(
         _soft_target_node_id=request.target_node_id,
         name=request.name,
         lifetime="detached",
+        bundle_label_selector=request.bundle_label_selector,
     )
 
 

@@ -86,6 +86,8 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.config.AutoscalingConfig
    serve.config.AutoscalingPolicy
    serve.config.AutoscalingContext
+   serve.autoscaling_policy.replica_queue_length_autoscaling_policy
+   serve.autoscaling_policy.async_inference_autoscaling_policy
    serve.config.AggregationFunction
    serve.config.RequestRouterConfig
 ```
@@ -140,9 +142,11 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.get_app_handle
    serve.get_deployment_handle
    serve.grpc_util.RayServegRPCContext
+   serve.grpc_util.gRPCInputStream
    serve.exceptions.BackPressureError
    serve.exceptions.RayServeException
    serve.exceptions.RequestCancelledError
+   serve.exceptions.gRPCStatusError
    serve.exceptions.DeploymentUnavailableError
 ```
 

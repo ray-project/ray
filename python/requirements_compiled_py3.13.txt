@@ -90,7 +90,7 @@ antlr4-python3-runtime==4.11.1
     # via
     #   fugue-sql-antlr
     #   qpd
-anyio==3.7.1
+anyio==4.5.0
     # via
     #   gradio
     #   httpx
@@ -1005,7 +1005,7 @@ kafka-python==2.2.15
     # via -r python/requirements/ml/data-test-requirements.txt
 keras==3.12.0
     # via tensorflow
-kiwisolver==1.4.5
+kiwisolver==1.4.7
     # via matplotlib
 knack==0.11.0
     # via azure-cli-core
@@ -1666,7 +1666,7 @@ pybase64==1.4.2
     # via -r python/requirements/ml/data-test-requirements.txt
 pycparser==2.21
     # via cffi
-pycurl==7.45.3
+pycurl==7.45.4
     # via -r python/requirements/cloud-requirements.txt
 pydantic==2.12.3
     # via

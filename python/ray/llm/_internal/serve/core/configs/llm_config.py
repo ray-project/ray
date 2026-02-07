@@ -84,7 +84,7 @@ class LoraConfig(BaseModelExtended):
     )
     max_num_adapters_per_replica: PositiveInt = Field(
         default=16,
-        description="The maximum number of adapters load on each replica.",
+        description="The maximum number of adapters to load on each replica.",
     )
     download_timeout_s: Optional[float] = Field(
         DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
@@ -162,8 +162,7 @@ class LLMConfig(BaseModelExtended):
         description=(
             "Additional keyword arguments for the engine. In case of vLLM, "
             "this will include all the configuration knobs they provide out "
-            "of the box, except for tensor-parallelism which is set "
-            "automatically from Ray Serve configs."
+            "of the box"
         ),
     )
 

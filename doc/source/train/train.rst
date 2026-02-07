@@ -14,6 +14,7 @@ Ray Train: Scalable Model Training
     JAX Guide <getting-started-jax>
     more-frameworks
     User Guides <user-guides>
+    Tutorials <tutorials/content/README>
     Examples <examples>
     Benchmarks <benchmarks>
     api/api
@@ -181,6 +182,22 @@ Learn more
             :expand:
 
             Read how-to guides
+
+    .. grid-item-card::
+
+        **Tutorials**
+        ^^^
+
+        Hands-on tutorials covering ML workload patterns from vision to recommendation systems.
+
+        +++
+        .. button-ref:: tutorials/content/README
+            :color: primary
+            :outline:
+            :expand:
+            :ref-type: doc
+
+            Follow tutorials
 
     .. grid-item-card::
 

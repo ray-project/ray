@@ -123,7 +123,7 @@ class TestHangingExecutionIssueDetector:
         _ = ray.data.range(1).map(f1).materialize()
 
         log_output = log_capture.getvalue()
-        warn_msg = r"A task of operator .+ \(pid=.+, node_id=.+, attempt=.+\) has been running for [\d\.]+s"
+        warn_msg = r"A task \(task_id=.+\) .+ \(pid=.+, node_id=.+, attempt=.+\) has been running for [\d\.]+s"
         assert re.search(warn_msg, log_output) is None, log_output
 
         # # test hanging does log hanging warning

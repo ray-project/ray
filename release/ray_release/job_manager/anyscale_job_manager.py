@@ -90,18 +90,13 @@ class AnyscaleJobManager:
                 f"{e}"
             ) from e
 
-        self.last_job_result = job_response.result
+        self.save_last_job_result(job_response.result)
         self.start_time = time.time()
 
         logger.info(f"Link to job: " f"{format_link(self.job_url())}")
         return
 
-    @property
-    def last_job_result(self):
-        return self._last_job_result
-
-    @last_job_result.setter
-    def last_job_result(self, value):
+    def save_last_job_result(self, value):
         self._last_job_result = value
         self._job_id = value.id if value else None
 
@@ -113,15 +108,20 @@ class AnyscaleJobManager:
             return None
         return anyscale_job_url(self._job_id)
 
-    @property
-    def last_job_status(self) -> Optional[HaJobStates]:
-        if not self.last_job_result:
+    def _last_job_status(self) -> Optional[HaJobStates]:
+        if not self._last_job_result:
             return None
-        return self.last_job_result.state.current_state
+        return self._last_job_result.state.current_state
 
-    @property
-    def in_progress(self) -> bool:
-        return self.last_job_result and self.last_job_status not in terminal_state
+    def job_error_message(self) -> str:
+        if self._last_job_result is None:
+            return ""
+        return self._last_job_result.state.error
+
+    def _in_progress(self) -> bool:
+        if not self._last_job_result:
+            return False
+        return self._last_job_status() not in terminal_state
 
     def _get_job_status_with_retry(self):
         return exponential_backoff_retry(
@@ -132,7 +132,7 @@ class AnyscaleJobManager:
         ).result
 
     def _terminate_job(self, raise_exceptions: bool = False):
-        if not self.in_progress:
+        if not self._in_progress():
             return
         logger.info(f"Terminating job {self._job_id}...")
         try:
@@ -202,8 +202,8 @@ class AnyscaleJobManager:
                     next_status += 30
 
                 result = self._get_job_status_with_retry()
-                self.last_job_result = result
-                status = self.last_job_status
+                self.save_last_job_result(result)
+                status = self._last_job_status()
 
                 if not job_running and status in {
                     HaJobStates.RUNNING,
@@ -223,8 +223,8 @@ class AnyscaleJobManager:
                 time.sleep(1)
 
         result = self._get_job_status_with_retry()
-        self.last_job_result = result
-        status = self.last_job_status
+        self.save_last_job_result(result)
+        status = self._last_job_status()
         assert status in terminal_state
         if status == HaJobStates.TERMINATED and not job_running:
             # Soft infra error
@@ -273,6 +273,6 @@ class AnyscaleJobManager:
             initial_retry_delay_s=30,
             max_retries=3,
         )
-        if ret and not self.in_progress:
+        if ret and not self._in_progress():
             self._last_logs = ret
         return ret

@@ -399,6 +399,80 @@ class TestAutoscalingMetrics:
             check_num_requests_eq, client=client, id=dep_id, expected=0, timeout=20
         )
 
+    @pytest.mark.skipif(
+        not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+        reason="Needs metric collection at handle.",
+    )
+    def test_downstream_does_not_overscale_waiting_for_upstream_args(
+        self, serve_instance_with_signal
+    ):
+        client, signal = serve_instance_with_signal
+
+        @serve.deployment(max_ongoing_requests=100)
+        class SlowUpstream:
+            async def __call__(self):
+                await signal.wait.remote()
+                return "result"
+
+        @serve.deployment(
+            max_ongoing_requests=5,
+            autoscaling_config={
+                "target_ongoing_requests": 1,
+                "metrics_interval_s": 0.1,
+                "min_replicas": 1,
+                "max_replicas": 10,
+                "upscale_delay_s": 0.2,
+                "downscale_delay_s": 0.5,
+                "look_back_period_s": 0.5,
+            },
+        )
+        class FastDownstream:
+            async def __call__(self, data: str):
+                # Instant processing - just return
+                return f"processed: {data}"
+
+        @serve.deployment(max_ongoing_requests=100)
+        class Router:
+            def __init__(self, up: DeploymentHandle, down: DeploymentHandle):
+                self._up, self._down = up, down
+
+            async def __call__(self):
+                # Pass upstream response directly to downstream as an argument
+                return await self._down.remote(self._up.remote())
+
+        handle = serve.run(Router.bind(SlowUpstream.bind(), FastDownstream.bind()))
+        wait_for_condition(check_num_replicas_eq, name="FastDownstream", target=1)
+        wait_for_condition(check_num_replicas_eq, name="SlowUpstream", target=1)
+
+        # Send 5 requests - they will be blocked at SlowUpstream
+        responses = [handle.remote() for _ in range(5)]
+
+        # Wait for all 5 requests to be blocked at SlowUpstream (waiting on signal)
+        wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 5)
+
+        # Key assertion: FastDownstream should NOT scale up while waiting
+        # for upstream arguments. It should stay at 1 replica because
+        # num_queued_requests should only be incremented AFTER arguments
+        # are resolved.
+        num_downstream_replicas = get_num_alive_replicas("FastDownstream")
+        assert num_downstream_replicas == 1, (
+            f"FastDownstream over-provisioned to {num_downstream_replicas} replicas "
+            f"while waiting for upstream arguments. Expected 1 replica."
+        )
+
+        # Also verify the controller doesn't see inflated request count for downstream
+        downstream_dep_id = DeploymentID(name="FastDownstream")
+        downstream_requests = get_num_requests(client, downstream_dep_id)
+        assert downstream_requests == 0, (
+            f"Controller sees {downstream_requests} requests for FastDownstream "
+            f"while they're still blocked at SlowUpstream. Expected 0."
+        )
+
+        # Release the signal to complete requests
+        ray.get(signal.send.remote())
+        for r in responses:
+            assert r.result() == "processed: result"
+
 
 @pytest.mark.parametrize("min_replicas", [1, 2])
 @pytest.mark.parametrize("aggregation_function", ["mean", "max", "min"])
@@ -1531,6 +1605,7 @@ def test_autoscaling_status_changes(serve_instance):
     print("Statuses are as expected.")
 
 
+# Serve applies autoscaling config to custom policies at registration time.
 def custom_autoscaling_policy(ctx: AutoscalingContext):
     if ctx.total_num_requests > 50:
         return 3, {}
@@ -1542,7 +1617,7 @@ def custom_autoscaling_policy(ctx: AutoscalingContext):
     "policy",
     [
         {
-            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
+            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy",
         },
         AutoscalingPolicy(
             policy_function="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"

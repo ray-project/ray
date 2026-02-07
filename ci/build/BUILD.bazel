@@ -1,0 +1,18 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+
+py_library(
+    name = "container_resource_utils",
+    srcs = ["container_resource_utils.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "container_resource_utils_test",
+    size = "small",
+    srcs = ["container_resource_utils_test.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [":container_resource_utils"],
+)

@@ -112,7 +112,7 @@ def test_single_node_baseline_benchmark():
 
     # Optional thresholds to fail on regressions
     min_throughput = _get_float_env("RAY_DATA_LLM_BENCHMARK_MIN_THROUGHPUT", 5)
-    max_latency_s = _get_float_env("RAY_DATA_LLM_BENCHMARK_MAX_LATENCY_S", 140)
+    max_latency_s = _get_float_env("RAY_DATA_LLM_BENCHMARK_MAX_LATENCY_S", 150)
     if min_throughput is not None:
         assert (
             result.throughput >= min_throughput

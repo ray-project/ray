@@ -1,21 +1,26 @@
 import logging
 import time
 from collections import OrderedDict, deque
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 import ray
 from ray.train._checkpoint import Checkpoint
-from ray.train.v2._internal.execution.callback import ControllerCallback, ReportCallback
+from ray.train.v2._internal.execution.callback import (
+    ControllerCallback,
+    ReportCallback,
+    WorkerGroupCallback,
+)
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
-    _ValidationSpec,
 )
+from ray.train.v2.api.validation_config import ValidationConfig, ValidationTaskConfig
 
 if TYPE_CHECKING:
     from ray.train.v2._internal.execution.controller import TrainControllerState
+    from ray.train.v2._internal.execution.worker_group.worker import Worker
 
 logger = logging.getLogger(__name__)
 
@@ -25,26 +30,44 @@ MAX_IN_FLIGHT_VALIDATIONS = 1
 
 
 @ray.remote
-def run_validate_fn(validation_spec: _ValidationSpec, checkpoint: Checkpoint) -> Dict:
-    """Run the user-defined validation function."""
-    metrics_dict = validation_spec.validate_fn(
+def run_validation_fn(
+    validation_config: ValidationConfig,
+    validation_task_config: Union[bool, ValidationTaskConfig],
+    checkpoint: Checkpoint,
+) -> Dict:
+    """Run the user-defined validation function.
+
+    Merges fn_kwargs from validation_config.task_config (defaults) with
+    fn_kwargs from validation_task_config (per-report overrides).
+    """
+    # Merge kwargs: defaults from validation_config, overrides from validation_task_config
+    if validation_task_config is True:
+        merged_kwargs = validation_config.task_config.fn_kwargs
+    else:
+        merged_kwargs = {
+            **validation_config.task_config.fn_kwargs,
+            **validation_task_config.fn_kwargs,
+        }
+    metrics_dict = validation_config.fn(
         checkpoint,
-        validation_spec.validate_config,
+        **merged_kwargs,
     )
     if not isinstance(metrics_dict, dict):
         raise ValueError(
-            "The validate function must return a dictionary of metrics. "
+            "The validation function must return a dictionary of metrics. "
             f"Got {type(metrics_dict)} instead."
         )
     return metrics_dict
 
 
-class ValidationManager(ControllerCallback, ReportCallback):
+class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback):
     def __init__(
         self,
         checkpoint_manager: CheckpointManager,
+        validation_config: ValidationConfig,
     ):
         self._checkpoint_manager = checkpoint_manager
+        self._validation_config = validation_config
 
         # _TrainingReports that we will validate
         self._training_report_queue = deque()
@@ -56,17 +79,29 @@ class ValidationManager(ControllerCallback, ReportCallback):
         # Finished validations that have yet to be processed
         self._finished_validations = OrderedDict()
 
-        # TODO: checkpoint/restore validation manager state
+        self._requeue_incomplete_validations()
+
+    def _requeue_incomplete_validations(self):
+        """Add _TrainingReports for incomplete validations to the queue."""
+        for checkpoint, (
+            training_result,
+            validation,
+        ) in self._checkpoint_manager.get_pending_training_results().items():
+            if validation:
+                self._training_report_queue.append(
+                    _TrainingReport(
+                        metrics=training_result.metrics,
+                        checkpoint=checkpoint,
+                        validation=validation,
+                    )
+                )
 
     def after_report(
         self,
         training_report: _TrainingReport,
         metrics: List[Dict[str, Any]],
     ):
-        if (
-            training_report.validation_spec
-            and training_report.validation_spec.validate_fn
-        ):
+        if training_report.validation:
             self._training_report_queue.append(training_report)
 
     def _poll_validations(self) -> int:
@@ -101,7 +136,7 @@ class ValidationManager(ControllerCallback, ReportCallback):
 
     def _kick_off_validations(self) -> int:
         """Kick off validations and return the number of pending validations."""
-        # TODO: figure out where to place run_validate_fn task:
+        # TODO: figure out where to place run_validation_fn task:
         # TODO: provide option to run this on gpu?
         num_validations_to_start = max(
             MAX_IN_FLIGHT_VALIDATIONS - len(self._pending_validations), 0
@@ -111,8 +146,14 @@ class ValidationManager(ControllerCallback, ReportCallback):
         )
         for _ in range(num_validations_to_start):
             training_report = self._training_report_queue.popleft()
-            validate_task = run_validate_fn.remote(
-                training_report.validation_spec, training_report.checkpoint
+            # TODO: handle timeouts - ray.remote() does not have them
+            run_validation_fn_with_options = run_validation_fn.options(
+                **self._validation_config.ray_remote_kwargs,
+            )
+            validate_task = run_validation_fn_with_options.remote(
+                self._validation_config,
+                training_report.validation,
+                training_report.checkpoint,
             )
             self._pending_validations[validate_task] = training_report.checkpoint
             logger.info(
@@ -130,7 +171,6 @@ class ValidationManager(ControllerCallback, ReportCallback):
         except (ray.exceptions.RayTaskError, ray.exceptions.TaskCancelledError):
             checkpoint_to_metrics[checkpoint] = {}
             logger.exception(f"Validation failed for checkpoint {checkpoint}")
-            # TODO: retry validations and time out appropriately.
             # TODO: track failed validations - see ed45912bb6ed435de06ac1cd58e9918e6825b4fe
         return checkpoint_to_metrics
 
@@ -156,3 +196,10 @@ class ValidationManager(ControllerCallback, ReportCallback):
         # TODO: consider cleaning up validation tasks in before_controller_abort
         self._poll_validations()
         self._kick_off_validations()
+
+    def before_init_train_context(
+        self, workers: List["Worker"]
+    ) -> Dict[str, List[bool]]:
+        return {
+            "has_validation_fn": [True] * len(workers),
+        }

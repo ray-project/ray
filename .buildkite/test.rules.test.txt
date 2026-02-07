@@ -9,7 +9,7 @@ ci/pipeline/test_conditional_testing.py: tools
 
 # === Ray Libraries ===
 
-python/ray/data/__init__.py: data ml train
+python/ray/data/__init__.py: data
 python/ray/air/__init__.py: ml train train_gpu tune data linux_wheels
 python/ray/llm/llm.py: llm
 python/ray/workflow/workflow.py: workflow
