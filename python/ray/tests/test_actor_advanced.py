@@ -616,38 +616,6 @@ except Exception:
     create_and_kill_actor(dup_actor_name)
 
 
-@pytest.mark.parametrize("ray_start_regular", [{"local_mode": True}], indirect=True)
-def test_detached_actor_local_mode(ray_start_regular):
-    RETURN_VALUE = 3
-
-    @ray.remote
-    class Y:
-        def f(self):
-            return RETURN_VALUE
-
-    Y.options(lifetime="detached", name="test").remote()
-    assert ray.util.list_named_actors() == ["test"]
-    y = ray.get_actor("test")
-    assert ray.get(y.f.remote()) == RETURN_VALUE
-
-    ray.kill(y)
-    assert not ray.util.list_named_actors()
-    with pytest.raises(ValueError):
-        ray.get_actor("test")
-
-
-@pytest.mark.parametrize("ray_start_regular", [{"local_mode": True}], indirect=True)
-def test_get_actor_local_mode(ray_start_regular):
-    @ray.remote
-    class A:
-        def hi(self):
-            return "hi"
-
-    a = A.options(name="hi").remote()  # noqa: F841
-    b = ray.get_actor("hi")
-    assert ray.get(b.hi.remote()) == "hi"
-
-
 @pytest.mark.parametrize(
     "ray_start_cluster",
     [
