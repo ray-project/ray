@@ -134,7 +134,7 @@ class AnyscaleJobManager:
             return
         logger.info(f"Terminating job {self._job_id}...")
         try:
-            self._sdk.terminate_job(self._job_id)
+            anyscale.job.terminate(id=self._job_id)
             logger.info(f"Job {self._job_id} terminated!")
         except Exception:
             msg = f"Couldn't terminate job {self._job_id}!"
