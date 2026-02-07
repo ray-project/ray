@@ -131,7 +131,7 @@ class PlacementGroup:
         return self._all_bundle_cache or self.bundle_cache
 
     def _fill_bundle_cache_if_needed(self) -> None:
-        if self.bundle_cache and self._all_bundle_cache:
+        if self.bundle_cache is not None and self._all_bundle_cache is not None:
             return
 
         cache_data = _get_bundle_cache(self.id)
