@@ -948,6 +948,7 @@ py_test(
     name = "test_tf",
     size = "medium",
     srcs = ["tests/datasource/test_tf.py"],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     tags = [
         "exclusive",
         "team:data",
@@ -962,6 +963,7 @@ py_test(
     name = "test_tfrecords",
     size = "small",
     srcs = ["tests/datasource/test_tfrecords.py"],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     tags = [
         "exclusive",
         "team:data",
