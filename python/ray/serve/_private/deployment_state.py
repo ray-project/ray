@@ -1473,11 +1473,19 @@ class DeploymentReplica:
         """Updates state in actor details."""
         self.update_actor_details(state=state)
 
+    _SENTINEL = object()
+
     def update_actor_details(self, **kwargs) -> None:
         # Fast path: skip if all provided values are already current.
         # This avoids unnecessary object creation on every tick when the
         # pop-iterate-readd pattern re-adds replicas without state changes.
-        if all(getattr(self._actor_details, k, None) == v for k, v in kwargs.items()):
+        # We use _SENTINEL (not None) as the getattr default so that an
+        # invalid field name always fails the check and falls through to
+        # .copy(), which will raise an appropriate error.
+        if all(
+            getattr(self._actor_details, k, self._SENTINEL) == v
+            for k, v in kwargs.items()
+        ):
             return
         # Use .copy(update=...) instead of .dict() + reconstruction to avoid
         # full Pydantic serialization and validation on every update.
