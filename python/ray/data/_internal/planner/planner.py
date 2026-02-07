@@ -54,6 +54,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
 from ray.data._internal.planner.plan_write_op import plan_write_op
 from ray.data.checkpoint.load_checkpoint_callback import (
     LoadCheckpointCallback,
+    get_most_specific_checkpoint_callback_class,
 )
 from ray.data.context import DataContext
 
@@ -185,16 +186,12 @@ class Planner:
         ):
             self._supports_checkpointing = True
 
-            # We scan the context to see if the user provided a custom subclass  of LoadCheckpointCallback.
-            # If not, we default to the base class.
-            # We iterate in REVERSE because the default LoadCheckpointCallback is
-            # at the beginning of the list, and user overrides are at the end.
-            # We want the last-registered subclass to take precedence.
-            checkpoint_cls = LoadCheckpointCallback
-            for cls in reversed(logical_plan.context.execution_callback_classes):
-                if issubclass(cls, LoadCheckpointCallback):
-                    checkpoint_cls = cls
-                    break
+            checkpoint_cls = get_most_specific_checkpoint_callback_class(
+                logical_plan.context.execution_callback_classes
+            )
+
+            if checkpoint_cls is None:
+                checkpoint_cls = LoadCheckpointCallback
 
             load_checkpoint = checkpoint_cls.get_loader(checkpoint_config)
 

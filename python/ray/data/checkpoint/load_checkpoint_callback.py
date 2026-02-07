@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional, Type
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data.checkpoint.checkpoint_filter import BatchBasedCheckpointFilter
@@ -11,6 +11,36 @@ if TYPE_CHECKING:
     from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
+
+
+def get_most_specific_checkpoint_callback_class(
+    registered_classes: List[Type],
+) -> Optional[Type["LoadCheckpointCallback"]]:
+    """
+    Find the most specific LoadCheckpointCallback subclass from a list of registered classes.
+
+    This function implements the canonical selection logic used by both the Planner
+    (for checkpoint loading) and callback instances (for checkpoint deletion).
+
+    Args:
+        registered_classes: List of callback classes, typically from
+            DataContext.execution_callback_classes
+
+    Returns:
+        The most specific (last registered) LoadCheckpointCallback subclass,
+        or None if no LoadCheckpointCallback subclass is found.
+    """
+
+    for cls in reversed(registered_classes):
+        try:
+            if issubclass(cls, LoadCheckpointCallback):
+                return cls
+        except TypeError:
+            # cls might not be a class (e.g., if someone registered a non-class object)
+            # Skip it and continue
+            continue
+
+    return None
 
 
 class LoadCheckpointCallback(ExecutionCallback):
@@ -71,13 +101,9 @@ class LoadCheckpointCallback(ExecutionCallback):
         ctx = executor._data_context
         registered_classes = getattr(ctx, "execution_callback_classes", [])
 
-        # Find the most specific (last registered) LoadCheckpointCallback subclass
-        # This matches the Planner's logic in planner.py which iterates in reverse
-        most_specific_cls = None
-        for cls in reversed(registered_classes):
-            if issubclass(cls, LoadCheckpointCallback):
-                most_specific_cls = cls
-                break
+        most_specific_cls = get_most_specific_checkpoint_callback_class(
+            registered_classes
+        )
 
         # Only the most specific class should perform cleanup
         if most_specific_cls is not type(self):
