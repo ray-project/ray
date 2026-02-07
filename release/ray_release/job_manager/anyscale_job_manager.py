@@ -96,8 +96,12 @@ class AnyscaleJobManager:
         logger.info(f"Link to job: " f"{format_link(self.job_url())}")
         return
 
-    def save_last_job_result(self, value):
-        self._last_job_result = value
+    def save_last_job_status(self, status):
+        if status and hasattr(status, "id") and status.id != self._job_id:
+            logger.warning(
+                f"Job ID mismatch: expected {self._job_id}, got {status.id}"
+            )
+        self._last_job_result = status
 
     def job_id(self) -> Optional[str]:
         return self._job_id
@@ -198,7 +202,7 @@ class AnyscaleJobManager:
                     next_status += 30
 
                 result = self._get_job_status_with_retry()
-                self.save_last_job_result(result)
+                self.save_last_job_status(result)
                 status = self._last_job_status()
 
                 if not job_running and status in {
@@ -219,7 +223,7 @@ class AnyscaleJobManager:
                 time.sleep(1)
 
         result = self._get_job_status_with_retry()
-        self.save_last_job_result(result)
+        self.save_last_job_status(result)
         status = self._last_job_status()
         assert status in terminal_state
         if status == JobState.FAILED and not job_running:
