@@ -4,13 +4,12 @@ Organized by critical paths:
 1. Constructor validation
 2. Client initialization
 3. Arrow table preparation
-4. Multi-namespace behavior
-5. Single-namespace batching
-6. Transform to Turbopuffer format
-7. Retry logic
-8. End-to-end write orchestration
-9. Streaming behavior
-10. Serialization
+4. Single-namespace batching
+5. Transform to Turbopuffer format
+6. Retry logic
+7. End-to-end write orchestration
+8. Streaming behavior
+9. Serialization
 """
 
 import pickle
@@ -51,20 +50,8 @@ def mock_turbopuffer_module(monkeypatch):
 def sink():
     """Default sink with minimal required arguments."""
     return TurbopufferDatasink(
-        region="gcp-us-central1",
         namespace="default_ns",
-        api_key="test-api-key",
-    )
-
-
-@pytest.fixture
-def multi_namespace_sink():
-    """Sink configured for multi-namespace mode."""
-    return TurbopufferDatasink(
         region="gcp-us-central1",
-        namespace=None,
-        namespace_column="space_id",
-        namespace_format="ns-{namespace}",
         api_key="test-api-key",
     )
 
@@ -88,23 +75,11 @@ def sample_table():
     )
 
 
-@pytest.fixture
-def sample_table_with_namespace():
-    """Table with namespace column for multi-namespace testing."""
-    return pa.table(
-        {
-            "space_id": ["a", "b", "a"],
-            "id": [1, 2, 3],
-            "vector": [[1.0], [2.0], [3.0]],
-        }
-    )
-
-
 def make_sink(**kwargs) -> TurbopufferDatasink:
     """Helper to construct a sink with minimal required arguments."""
     params = {
-        "region": "gcp-us-central1",
         "namespace": "default_ns",
+        "region": "gcp-us-central1",
         "api_key": "test-api-key",
     }
     params.update(kwargs)
@@ -119,28 +94,12 @@ def make_sink(**kwargs) -> TurbopufferDatasink:
 class TestConstructorValidation:
     """Tests for constructor argument validation."""
 
-    def test_requires_either_namespace_or_namespace_column(self):
-        """Must provide exactly one of namespace or namespace_column."""
-        # Neither provided
-        with pytest.raises(ValueError):
-            TurbopufferDatasink(region="gcp-us-central1", api_key="k")
-
-        # Both provided
-        with pytest.raises(ValueError):
+    def test_requires_namespace(self):
+        """Must provide namespace."""
+        with pytest.raises(ValueError, match="namespace is required"):
             TurbopufferDatasink(
+                namespace="",
                 region="gcp-us-central1",
-                namespace="ns",
-                namespace_column="space_id",
-                api_key="k",
-            )
-
-    def test_namespace_format_requires_placeholder(self):
-        """namespace_format must contain {namespace} placeholder."""
-        with pytest.raises(ValueError):
-            TurbopufferDatasink(
-                region="gcp-us-central1",
-                namespace_column="space_id",
-                namespace_format="space-{id}",  # Wrong placeholder
                 api_key="k",
             )
 
@@ -150,30 +109,17 @@ class TestConstructorValidation:
 
         # No api_key and no env var -> error
         with pytest.raises(ValueError):
-            TurbopufferDatasink(region="gcp-us-central1", namespace="ns")
+            TurbopufferDatasink(namespace="ns", region="gcp-us-central1")
 
         # With env var, init should succeed
         monkeypatch.setenv("TURBOPUFFER_API_KEY", "env-api-key")
-        sink = TurbopufferDatasink(region="gcp-us-central1", namespace="ns")
+        sink = TurbopufferDatasink(namespace="ns", region="gcp-us-central1")
         assert sink.api_key == "env-api-key"
 
-    @pytest.mark.parametrize(
-        "id_col,vector_col,ns_col,expected_match",
-        [
-            ("doc_id", "doc_id", None, "id_column and vector_column"),
-            ("doc_id", "vector", "doc_id", "cannot be the same as id_column"),
-            ("id", "embedding", "embedding", "cannot be the same as vector_column"),
-        ],
-        ids=["id==vector", "namespace==id", "namespace==vector"],
-    )
-    def test_rejects_column_conflicts(self, id_col, vector_col, ns_col, expected_match):
-        """Column names must be distinct."""
-        kwargs = {"id_column": id_col, "vector_column": vector_col}
-        if ns_col:
-            kwargs["namespace"] = None
-            kwargs["namespace_column"] = ns_col
-        with pytest.raises(ValueError, match=expected_match):
-            make_sink(**kwargs)
+    def test_rejects_same_id_and_vector_column(self):
+        """id_column and vector_column must be distinct."""
+        with pytest.raises(ValueError, match="id_column and vector_column"):
+            make_sink(id_column="doc_id", vector_column="doc_id")
 
 
 # =============================================================================
@@ -243,6 +189,14 @@ class TestArrowTablePreparation:
         with pytest.raises(ValueError):
             sink._prepare_arrow_table(table)
 
+    def test_missing_vector_column_raises(self):
+        """Missing vector column raises ValueError."""
+        table = pa.table({"id": [1, 2, 3]})
+        sink = make_sink(vector_column="embedding")
+
+        with pytest.raises(ValueError, match="Vector column 'embedding' not found"):
+            sink._prepare_arrow_table(table)
+
     @pytest.mark.parametrize(
         "existing_col,custom_col,expected_match",
         [
@@ -271,109 +225,14 @@ class TestArrowTablePreparation:
 
 
 # =============================================================================
-# 4. Multi-namespace behavior
-# =============================================================================
-
-
-class TestMultiNamespaceBehavior:
-    """Tests for _write_multi_namespace grouping and formatting."""
-
-    def test_groups_by_column_and_formats_names(
-        self, multi_namespace_sink, sample_table_with_namespace
-    ):
-        """Rows are grouped by namespace column and names formatted."""
-        client = MagicMock()
-
-        with patch.object(
-            multi_namespace_sink, "_write_single_namespace"
-        ) as mock_write:
-            multi_namespace_sink._write_multi_namespace(
-                client, sample_table_with_namespace
-            )
-
-        assert mock_write.call_count == 2
-
-        seen_namespaces = {call.args[2] for call in mock_write.call_args_list}
-        rows_per_ns = {
-            call.args[2]: call.args[1].num_rows for call in mock_write.call_args_list
-        }
-
-        assert seen_namespaces == {"ns-a", "ns-b"}
-        assert rows_per_ns["ns-a"] == 2  # "a" appears twice
-        assert rows_per_ns["ns-b"] == 1
-
-    @pytest.mark.parametrize(
-        "byte_values,expected_format",
-        [
-            # 16-byte UUID bytes -> UUID string format
-            (
-                [uuid.uuid4().bytes, uuid.uuid4().bytes],
-                lambda u: str(uuid.UUID(bytes=u)),
-            ),
-            # Non-16-byte bytes -> hex format
-            (
-                [b"\x01\x02\x03", b"\xde\xad\xbe\xef"],
-                lambda b: b.hex(),
-            ),
-        ],
-        ids=["uuid_bytes", "non_uuid_bytes"],
-    )
-    def test_bytes_to_namespace_conversion(self, byte_values, expected_format):
-        """Bytes in namespace column are converted to valid namespace strings."""
-        b1, b2 = byte_values[0], byte_values[1]
-        table = pa.table(
-            {
-                "space_id": [b1, b2, b1],
-                "id": [1, 2, 3],
-                "vector": [[1.0], [2.0], [3.0]],
-            }
-        )
-        sink = make_sink(
-            namespace=None,
-            namespace_column="space_id",
-            namespace_format="ns-{namespace}",
-        )
-        client = MagicMock()
-
-        with patch.object(sink, "_write_single_namespace") as mock_write:
-            sink._write_multi_namespace(client, table)
-
-        ns_names = {call.args[2] for call in mock_write.call_args_list}
-        expected = {f"ns-{expected_format(b1)}", f"ns-{expected_format(b2)}"}
-        assert ns_names == expected
-
-    def test_missing_namespace_column_raises(self, multi_namespace_sink):
-        """Missing namespace column raises ValueError."""
-        table = pa.table({"id": [1, 2], "vector": [[1.0], [2.0]]})
-        client = MagicMock()
-
-        with pytest.raises(ValueError):
-            multi_namespace_sink._write_multi_namespace(client, table)
-
-    def test_null_namespace_values_raises(self, multi_namespace_sink):
-        """Null values in namespace column raise ValueError."""
-        table = pa.table(
-            {
-                "space_id": ["a", None, "b"],
-                "id": [1, 2, 3],
-                "vector": [[1.0], [2.0], [3.0]],
-            }
-        )
-        client = MagicMock()
-
-        with pytest.raises(ValueError, match="contains null values"):
-            multi_namespace_sink._write_multi_namespace(client, table)
-
-
-# =============================================================================
-# 5. Single-namespace batching
+# 4. Single-namespace batching
 # =============================================================================
 
 
 class TestSingleNamespaceBatching:
-    """Tests for _write_single_namespace batching behavior."""
+    """Tests for write batching behavior."""
 
-    def test_batches_by_batch_size(self, sink, mock_client):
+    def test_batches_by_batch_size(self, mock_client):
         """Large tables are split into batches."""
         num_rows = 25
         table = pa.table(
@@ -385,16 +244,13 @@ class TestSingleNamespaceBatching:
         sink = make_sink(batch_size=10)
         batch_sizes: List[int] = []
 
-        def track_batch(ns, batch_data, ns_name):
-            batch_sizes.append(len(next(iter(batch_data.values()))))
+        def track_batch(ns, batch):
+            # batch is a RecordBatch, get its row count
+            batch_sizes.append(batch.num_rows)
 
-        with patch.object(
-            sink,
-            "_transform_to_turbopuffer_format",
-            side_effect=lambda t: t.to_pydict(),
-        ):
+        with patch.object(sink, "_get_client", return_value=mock_client):
             with patch.object(sink, "_write_batch_with_retry", side_effect=track_batch):
-                sink._write_single_namespace(mock_client, table, "ns")
+                sink.write([table], ctx=None)
 
         assert batch_sizes == [10, 10, 5]
 
@@ -403,17 +259,15 @@ class TestSingleNamespaceBatching:
         empty_table = pa.table({"id": [], "vector": []})
 
         with patch.object(sink, "_get_client") as mock_get_client:
-            with patch.object(sink, "_write_single_namespace") as mock_single:
-                with patch.object(sink, "_write_multi_namespace") as mock_multi:
-                    mock_get_client.return_value = MagicMock()
-                    sink.write([empty_table], ctx=None)
+            with patch.object(sink, "_write_batch_with_retry") as mock_write:
+                mock_get_client.return_value = MagicMock()
+                sink.write([empty_table], ctx=None)
 
-        mock_single.assert_not_called()
-        mock_multi.assert_not_called()
+        mock_write.assert_not_called()
 
 
 # =============================================================================
-# 6. Transform to Turbopuffer format
+# 5. Transform to Turbopuffer format
 # =============================================================================
 
 
@@ -454,31 +308,34 @@ class TestTransformToTurbopufferFormat:
 
 
 # =============================================================================
-# 7. Retry logic
+# 6. Retry logic
 # =============================================================================
 
 
 class TestRetryLogic:
     """Tests for _write_batch_with_retry."""
 
-    def test_success_first_try(self, sink):
+    @pytest.fixture
+    def sample_batch(self):
+        """A simple batch for retry tests."""
+        return pa.table({"id": [1], "vector": [[0.1]]})
+
+    def test_success_first_try(self, sink, sample_batch):
         """Successful write on first attempt."""
         namespace = MagicMock()
-        batch_data = {"id": [1], "vector": [[0.1]]}
 
-        sink._write_batch_with_retry(namespace, batch_data, "ns")
+        sink._write_batch_with_retry(namespace, sample_batch)
 
         namespace.write.assert_called_once_with(
-            upsert_columns=batch_data,
+            upsert_columns={"id": [1], "vector": [[0.1]]},
             schema=None,
             distance_metric="cosine_distance",
         )
 
-    def test_retries_then_succeeds(self, sink, monkeypatch):
+    def test_retries_then_succeeds(self, sink, sample_batch, monkeypatch):
         """Transient failures are retried."""
         monkeypatch.setattr(time, "sleep", lambda _: None)
         namespace = MagicMock()
-        batch_data = {"id": [1], "vector": [[0.1]]}
         attempts = {"count": 0}
 
         def flaky_write(*args, **kwargs):
@@ -488,19 +345,18 @@ class TestRetryLogic:
 
         namespace.write.side_effect = flaky_write
 
-        sink._write_batch_with_retry(namespace, batch_data, "ns")
+        sink._write_batch_with_retry(namespace, sample_batch)
 
         assert attempts["count"] == 3
 
-    def test_exhausts_retries_and_raises(self, sink, monkeypatch):
+    def test_exhausts_retries_and_raises(self, sink, sample_batch, monkeypatch):
         """Persistent failures exhaust retries and raise."""
         monkeypatch.setattr(time, "sleep", lambda _: None)
         namespace = MagicMock()
-        batch_data = {"id": [1], "vector": [[0.1]]}
         namespace.write.side_effect = RuntimeError("persistent error")
 
         with pytest.raises(RuntimeError, match="persistent error"):
-            sink._write_batch_with_retry(namespace, batch_data, "ns")
+            sink._write_batch_with_retry(namespace, sample_batch)
 
         assert namespace.write.call_count == 5  # max_attempts=5
 
@@ -517,141 +373,77 @@ class TestRetryLogic:
         """Schema and distance_metric are passed to write."""
         sink = make_sink(schema=schema, distance_metric=distance_metric)
         namespace = MagicMock()
-        batch_data = {"id": [1], "vector": [[0.1]]}
+        batch = pa.table({"id": [1], "vector": [[0.1]]})
 
-        sink._write_batch_with_retry(namespace, batch_data, "ns")
+        sink._write_batch_with_retry(namespace, batch)
 
         namespace.write.assert_called_once_with(
-            upsert_columns=batch_data,
+            upsert_columns={"id": [1], "vector": [[0.1]]},
             schema=schema,
             distance_metric=distance_metric,
         )
 
 
 # =============================================================================
-# 8. End-to-end write orchestration
+# 7. End-to-end write orchestration
 # =============================================================================
 
 
 class TestWriteOrchestration:
     """Tests for top-level write() method."""
 
-    @pytest.mark.parametrize(
-        "mode,blocks,expected_single_calls,expected_multi_calls",
-        [
-            # Single-namespace mode: calls _write_single_namespace
-            (
-                "single",
-                [
-                    {"id": [1, 2], "vector": [[1.0], [2.0]]},
-                    {"id": [3], "vector": [[3.0]]},
-                ],
-                2,
-                0,
-            ),
-            # Multi-namespace mode: calls _write_multi_namespace
-            (
-                "multi",
-                [
-                    {"space_id": ["a"], "id": [1], "vector": [[1.0]]},
-                    {"space_id": ["b"], "id": [2], "vector": [[2.0]]},
-                ],
-                0,
-                2,
-            ),
-        ],
-        ids=["single_namespace", "multi_namespace"],
-    )
-    def test_write_routes_to_correct_handler(
-        self,
-        sink,
-        multi_namespace_sink,
-        mode,
-        blocks,
-        expected_single_calls,
-        expected_multi_calls,
-    ):
-        """Write routes to single or multi namespace handler based on config."""
-        target_sink = sink if mode == "single" else multi_namespace_sink
-        tables = [pa.table(b) for b in blocks]
+    def test_write_multiple_blocks(self, sink):
+        """Multiple blocks are processed and written."""
+        blocks = [
+            pa.table({"id": [1, 2], "vector": [[1.0], [2.0]]}),
+            pa.table({"id": [3], "vector": [[3.0]]}),
+        ]
+        write_calls = []
 
-        # Track calls to write handlers
-        single_calls = []
-        multi_calls = []
+        def track_write(ns, batch):
+            write_calls.append(batch.num_rows)
 
-        def track_single(client, table, ns_name):
-            single_calls.append(ns_name)
+        with patch.object(sink, "_get_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
+            with patch.object(sink, "_write_batch_with_retry", side_effect=track_write):
+                sink.write(blocks, ctx=None)
 
-        def track_multi(client, table):
-            multi_calls.append(table.num_rows)
+        # Two blocks written
+        assert len(write_calls) == 2
+        assert write_calls == [2, 1]
 
-        with patch.object(target_sink, "_get_client", return_value=MagicMock()):
-            with patch.object(
-                target_sink, "_write_single_namespace", side_effect=track_single
-            ):
-                with patch.object(
-                    target_sink, "_write_multi_namespace", side_effect=track_multi
-                ):
-                    target_sink.write(tables, ctx=None)
-
-        assert len(single_calls) == expected_single_calls
-        assert len(multi_calls) == expected_multi_calls
-
-        # Verify single-namespace writes go to correct namespace
-        if mode == "single":
-            assert all(ns == "default_ns" for ns in single_calls)
+        # Namespace accessed with correct name
+        mock_client.namespace.assert_called_with("default_ns")
 
 
 # =============================================================================
-# 9. Streaming behavior (memory efficiency)
+# 8. Streaming behavior (memory efficiency)
 # =============================================================================
 
 
 class TestStreamingBehavior:
     """Tests for memory-efficient streaming writes."""
 
-    @staticmethod
-    def _collect_writes(target_sink, blocks):
-        """Execute write and return {namespace: [row_counts]} for each write call."""
-        writes = {}
-
-        def track(client, table, ns_name):
-            writes.setdefault(ns_name, []).append(table.num_rows)
-
-        with patch.object(target_sink, "_get_client", return_value=MagicMock()):
-            with patch.object(
-                target_sink, "_write_single_namespace", side_effect=track
-            ):
-                target_sink.write(blocks, ctx=None)
-        return writes
-
     def test_processes_blocks_independently(self, sink):
         """Each block is processed and written separately."""
         blocks = [pa.table({"id": [i], "vector": [[float(i)]]}) for i in range(5)]
+        write_counts = []
 
-        writes = self._collect_writes(sink, blocks)
+        def track_write(ns, batch):
+            write_counts.append(batch.num_rows)
+
+        with patch.object(sink, "_get_client", return_value=MagicMock()):
+            with patch.object(sink, "_write_batch_with_retry", side_effect=track_write):
+                sink.write(blocks, ctx=None)
 
         # 5 blocks → 5 writes of 1 row each
-        all_counts = [c for counts in writes.values() for c in counts]
-        assert len(all_counts) == 5
-        assert all(c == 1 for c in all_counts)
-
-    def test_multi_namespace_streaming(self, multi_namespace_sink):
-        """Same namespace can receive writes from multiple blocks."""
-        blocks = [
-            pa.table({"space_id": ["a", "a"], "id": [1, 2], "vector": [[1.0], [2.0]]}),
-            pa.table({"space_id": ["a", "b"], "id": [3, 4], "vector": [[3.0], [4.0]]}),
-        ]
-
-        writes = self._collect_writes(multi_namespace_sink, blocks)
-
-        # Namespace "a" receives 2 writes: 2 rows from block1, 1 row from block2
-        assert writes["ns-a"] == [2, 1]
-        assert writes["ns-b"] == [1]
+        assert len(write_counts) == 5
+        assert all(c == 1 for c in write_counts)
 
 
 # =============================================================================
-# 10. Serialization behavior
+# 9. Serialization behavior
 # =============================================================================
 
 
