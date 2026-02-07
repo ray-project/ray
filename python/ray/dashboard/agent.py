@@ -10,7 +10,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._common.network_utils import build_address, is_localhost
+from ray._common.network_utils import build_address, is_localhost, find_free_port
 from ray._common.utils import get_or_create_event_loop
 from ray._private import logging_utils
 from ray._private.process_watcher import create_check_raylet_task
@@ -150,12 +150,14 @@ class DashboardAgent:
             ),  # noqa
         )
 
-        # grpc_port can be 0 for dynamic port assignment. get the actual bound port.
-        self.grpc_port = add_port_to_grpc_server(
-            self.server, build_address(self.ip, self.grpc_port)
-        )
+        # Dynamic port allocation
+        if self.grpc_port == 0:
+            self.grpc_port = find_free_port()
+
+        # Bind to localhost first (it has higher port contention)
+        add_port_to_grpc_server(self.server, f"127.0.0.1:{self.grpc_port}")
         if not is_localhost(self.ip):
-            add_port_to_grpc_server(self.server, f"127.0.0.1:{self.grpc_port}")
+            add_port_to_grpc_server(self.server, build_address(self.ip, self.grpc_port))
 
         persist_port(
             self.session_dir,
