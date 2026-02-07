@@ -362,9 +362,9 @@ TEST_F(AuthenticationTokenLoaderTest, TestJWTExpiration) {
       R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": true})");
   AuthenticationTokenLoader::instance().ResetCache();
 
-  // Create a JWT that expires in 1 second
+  // Create a JWT with expiration time buffer (300) + 2 seconds
   auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-  int64_t exp = now + 1;
+  int64_t exp = now + 302;
 
   std::string header =
       "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0";  // {"alg":"none","typ":"JWT"}
