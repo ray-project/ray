@@ -10,6 +10,14 @@ py_library(
 )
 
 py_library(
+    name = "parser",
+    srcs = ["parser.py"],
+    deps = [
+        ci_require("pip_requirements_parser"),
+    ],
+)
+
+py_library(
     name = "raydepsets_lib",
     srcs = [
         "cli.py",
@@ -63,6 +71,19 @@ py_library(
     srcs = ["tests/utils.py"],
     deps = [
         ci_require("bazel-runfiles"),
+    ],
+)
+
+py_test(
+    name = "test_parser",
+    srcs = ["tests/test_parser.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ":parser",
     ],
 )
 
