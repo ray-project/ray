@@ -610,6 +610,7 @@ doctest(
     ],
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     gpu = True,
 )
 
