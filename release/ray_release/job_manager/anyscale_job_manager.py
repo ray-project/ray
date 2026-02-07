@@ -3,11 +3,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, Optional, Tuple
 
 import anyscale
-from anyscale.job.models import JobState
-from anyscale.sdk.anyscale_client.models import (
-    CreateProductionJob,
-    CreateProductionJobConfig,
-)
+from anyscale.job.models import JobConfig, JobState
 
 from ray_release.anyscale_util import LAST_LOGS_LENGTH
 from ray_release.cluster_manager.cluster_manager import ClusterManager
@@ -37,7 +33,6 @@ class AnyscaleJobManager:
         self.start_time = None
         self.counter = 0
         self.cluster_manager = cluster_manager
-        self._sdk = cluster_manager.sdk
         self._last_job_result = None
         self._job_id: Optional[str] = None
         self._last_logs = None
@@ -60,28 +55,18 @@ class AnyscaleJobManager:
             f"Executing {cmd_to_run} with {env_vars_for_job} via Anyscale job submit"
         )
 
-        runtime_env = {
-            "env_vars": env_vars_for_job,
-        }
-        if working_dir:
-            runtime_env["working_dir"] = working_dir
-            if upload_path:
-                runtime_env["upload_path"] = upload_path
-
         try:
-            job_request = CreateProductionJob(
+            job_config = JobConfig(
                 name=self.cluster_manager.cluster_name,
-                description=f"Smoke test: {self.cluster_manager.smoke_test}",
-                project_id=self.cluster_manager.project_id,
-                config=CreateProductionJobConfig(
-                    entrypoint=cmd_to_run,
-                    runtime_env=runtime_env,
-                    build_id=self.cluster_manager.cluster_env_build_id,
-                    compute_config_id=self.cluster_manager.cluster_compute_id,
-                    max_retries=0,
-                ),
+                entrypoint=cmd_to_run,
+                image_uri=self.cluster_manager.test.get_anyscale_byod_image(),
+                compute_config=self.cluster_manager.cluster_compute_id,
+                project=self.cluster_manager.project_name,
+                env_vars=env_vars_for_job,
+                working_dir=working_dir if working_dir else None,
+                max_retries=0,
             )
-            job_response = self._sdk.create_job(job_request)
+            self._job_id = anyscale.job.submit(config=job_config)
         except Exception as e:
             raise JobStartupFailed(
                 "Error starting job with name "
@@ -89,7 +74,6 @@ class AnyscaleJobManager:
                 f"{e}"
             ) from e
 
-        self._job_id = job_response.result.id
         self._last_job_result = None
         self.start_time = time.time()
 
