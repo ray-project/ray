@@ -64,6 +64,7 @@ depsets:
       - ray_img_depset_${PYTHON_SHORT}
     output: python/deplocks/base_extra_testdeps/ray-llm-base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
+      - --index https://download.pytorch.org/whl/cu128
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
@@ -82,7 +83,7 @@ depsets:
       - ray_img_depset_${PYTHON_SHORT}
     output: python/deplocks/base_extra_testdeps/ray-gpu-base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
-      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - --index https://download.pytorch.org/whl/cu128
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
@@ -101,7 +102,7 @@ depsets:
       - ray_img_depset_${PYTHON_SHORT}
     output: python/deplocks/base_extra_testdeps/ray-ml-base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
-      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - --index https://download.pytorch.org/whl/cu128
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
