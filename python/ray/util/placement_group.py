@@ -131,14 +131,13 @@ class PlacementGroup:
         return self._all_bundle_cache or self.bundle_cache
 
     def _fill_bundle_cache_if_needed(self) -> None:
-        if self.bundle_cache is not None:
+        if self.bundle_cache and self._all_bundle_cache:
             return
 
-        if not self.bundle_cache or not self._all_bundle_cache:
-            cache_data = _get_bundle_cache(self.id)
+        cache_data = _get_bundle_cache(self.id)
 
-            self.bundle_cache = cache_data["active"]
-            self._all_bundle_cache = cache_data["all"]
+        self.bundle_cache = cache_data["active"]
+        self._all_bundle_cache = cache_data["all"]
 
     def __eq__(self, other):
         if not isinstance(other, PlacementGroup):
