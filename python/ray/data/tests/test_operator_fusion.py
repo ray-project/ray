@@ -844,6 +844,48 @@ def test_filter_operator_no_upstream_fusion(ray_start_regular_shared_2_cpus, cap
     assert "TaskPoolMapOperator[MapBatches(<lambda>)->Filter(<lambda>)]" in captured
 
 
+def test_streaming_repartition_multiple_fusion_non_strict(
+    ray_start_regular_shared_2_cpus,
+):
+    """Test that non-strict mode allows multiple operators to fuse with StreamingRepartition.
+
+    Case 1: Map > Map > SR (non-strict)
+    Case 2: Map > SR (non-strict) > Map
+    """
+    n = 100
+    target_rows = 20
+
+    # Case 1: Map > Map > SR (non-strict)
+    ds1 = ray.data.range(n, override_num_blocks=2)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=None)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=None)
+    ds1 = ds1.repartition(target_num_rows_per_block=target_rows, strict=False)
+
+    assert len(ds1.take_all()) == n
+    stats1 = ds1.stats()
+
+    # Verify all three operators are fused together
+    assert (
+        f"MapBatches(<lambda>)->MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows},strict=False]"
+        in stats1
+    ), f"Expected full fusion in stats: {stats1}"
+
+    # Case 2: Map > SR (non-strict) > Map
+    ds2 = ray.data.range(n, override_num_blocks=2)
+    ds2 = ds2.map_batches(lambda x: x, batch_size=None)
+    ds2 = ds2.repartition(target_num_rows_per_block=target_rows, strict=False)
+    ds2 = ds2.map_batches(lambda x: x, batch_size=None)
+
+    assert len(ds2.take_all()) == n
+    stats2 = ds2.stats()
+
+    # Verify all three operators are fused together
+    assert (
+        f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows},strict=False]->MapBatches(<lambda>)"
+        in stats2
+    ), f"Expected full fusion in stats: {stats2}"
+
+
 def test_combine_repartition_aggregate(
     ray_start_regular_shared_2_cpus, configure_shuffle_method, capsys
 ):
