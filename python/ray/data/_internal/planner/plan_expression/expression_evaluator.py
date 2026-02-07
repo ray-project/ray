@@ -748,6 +748,32 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
 
     names, output_cols = zip(*[(e.name, eval_expr(e, block)) for e in projection_exprs])
 
+    block_type = block_accessor.block_type()
+    if block_type == BlockType.ARROW:
+        num_rows = block_accessor.num_rows()
+        arrays = []
+        for output_col in output_cols:
+            if isinstance(output_col, (pa.Array, pa.ChunkedArray)):
+                arrays.append(output_col)
+            else:
+                if isinstance(output_col, pa.Scalar):
+                    column_type = output_col.type
+                else:
+                    column_type = pa.infer_type([output_col])
+                array = pa.nulls(num_rows, type=column_type)
+                arrays.append(pc.fill_null(array, output_col))
+        return pa.Table.from_arrays(arrays, names=list(names))
+    elif block_type == BlockType.PANDAS:
+        num_rows = block_accessor.num_rows()
+        index = block.index if isinstance(block, pd.DataFrame) else range(num_rows)
+        data = {}
+        for name, output_col in zip(names, output_cols):
+            if isinstance(output_col, (pa.Array, pa.ChunkedArray)):
+                data[name] = output_col.to_pandas()
+            else:
+                data[name] = output_col
+        return pd.DataFrame(data, index=index)
+
     # Build an empty block that preserves row count across block types. Arrow tables
     # cannot be created truly empty (0 columns) while retaining row count, so
     # BlockAccessor.select([]) injects a stub column internally for Arrow blocks.
