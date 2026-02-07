@@ -18,7 +18,6 @@ from ray_release.exception import (
     JobBrokenError,
     JobNoLogsError,
     JobOutOfRetriesError,
-    JobTerminatedBeforeStartError,
     LogsError,
     PrepareCommandError,
     PrepareCommandTimeout,
@@ -158,15 +157,14 @@ class AnyscaleJobRunner(CommandRunner):
         )
 
     def _handle_command_output(self, job_state: int, raise_on_timeout: bool = True):
+        if job_state == -1:
+            raise JobOutOfRetriesError(
+                "Job returned non-success state: 'FAILED' "
+                "(command has not been ran or no logs could have been obtained)."
+            )
+
         if job_state == -2:
             raise JobBrokenError("Job state is 'UNKNOWN'.")
-
-        if job_state == -4:
-            raise JobTerminatedBeforeStartError(
-                "Job entered 'FAILED' state before it started "
-                "(most likely due to inability to provision required nodes; "
-                "otherwise it was terminated manually or Ray was stopped)."
-            )
 
         # First try to obtain the output.json from S3.
         # If that fails, try logs.
@@ -220,12 +218,6 @@ class AnyscaleJobRunner(CommandRunner):
         if workload_status_code is not None and workload_status_code != 0:
             raise TestCommandError(
                 f"Command returned non-success status: {workload_status_code}."
-            )
-
-        if job_state == -1:
-            raise JobOutOfRetriesError(
-                "Job returned non-success state: 'FAILED' "
-                "(command has not been ran or no logs could have been obtained)."
             )
 
     def _get_full_command_env(self, env: Optional[Dict[str, str]] = None):
