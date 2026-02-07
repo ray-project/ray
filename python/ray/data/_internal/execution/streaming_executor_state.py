@@ -51,27 +51,26 @@ Topology = Dict[PhysicalOperator, "OpState"]
 class OpBufferQueue:
     """A FIFO queue to buffer RefBundles between upstream and downstream operators.
     This class is thread-safe.
+
+    Args:
+        num_splits: Number of output splits operator's output is partitioned into.
+            In case of `num_splits` > 1, bundles are routed to corresponding queue
+             based on their `bundle.output_split_idx`.
     """
 
-    def __init__(self):
+    def __init__(self, num_splits: int):
+        assert num_splits >= 1, f"n_splits must be >= 1, got {num_splits}"
+
         self._num_blocks = 0
-        self._queue = create_bundle_queue()
-        self._num_per_split = defaultdict(int)
+        self._queues = [create_bundle_queue() for _ in range(num_splits)]
+
         self._lock = threading.Lock()
-        # Used to buffer output RefBundles indexed by output splits.
-        self._outputs_by_split = defaultdict(create_bundle_queue)
-        super().__init__()
 
     @property
     def memory_usage(self) -> int:
         """The total memory usage of the queue in bytes."""
         with self._lock:
-            # Bundles are either in the main queue (no output_split_idx) or in
-            # one of the split queues, so no double counting.
-            return self._queue.estimate_size_bytes() + sum(
-                split_queue.estimate_size_bytes()
-                for split_queue in self._outputs_by_split.values()
-            )
+            return sum(q.estimate_size_bytes() for q in self._queues)
 
     @property
     def num_blocks(self) -> int:
@@ -81,61 +80,52 @@ class OpBufferQueue:
 
     def __len__(self):
         with self._lock:
-            return len(self._queue)
+            return len(self._queues[0])
 
     def has_next(self, output_split_idx: Optional[int] = None) -> bool:
         """Whether next RefBundle is available.
 
         Args:
             output_split_idx: If specified, only check ref bundles with the
-                given output split.
+                given output split. When None, checks the default queue (index 0).
         """
-        if output_split_idx is None:
-            with self._lock:
-                return len(self._queue) > 0
-        else:
-            with self._lock:
-                return self._num_per_split[output_split_idx] > 0
+        with self._lock:
+            return len(self._get_queue_for(output_split_idx)) > 0
 
-    def append(self, ref: RefBundle):
+    def append(self, bundle: RefBundle):
         """Append a RefBundle to the queue."""
         with self._lock:
-            if ref.output_split_idx is not None:
-                self._outputs_by_split[ref.output_split_idx].add(ref)
-                self._num_per_split[ref.output_split_idx] += 1
-            else:
-                self._queue.add(ref)
+            self._get_queue_for(bundle.output_split_idx).add(ref)
             self._num_blocks += len(ref.blocks)
 
     def pop(self, output_split_idx: Optional[int] = None) -> Optional[RefBundle]:
         """Pop a RefBundle from the queue.
+
         Args:
             output_split_idx: If specified, only pop a RefBundle
-                with the given output split.
+                with the given output split. When None, pops from the default
+                queue (index 0).
         Returns:
             A RefBundle if available, otherwise None.
         """
         with self._lock:
             try:
-                if output_split_idx is None:
-                    ret = self._queue.get_next()
-                else:
-                    ret = self._outputs_by_split[output_split_idx].get_next()
+                ret = self._get_queue_for(output_split_idx).get_next()
             except IndexError:
                 return None
 
             self._num_blocks -= len(ret.blocks)
-            if ret.output_split_idx is not None:
-                self._num_per_split[ret.output_split_idx] -= 1
             return ret
 
     def clear(self):
         with self._lock:
-            self._queue.clear()
-            for split_queue in self._outputs_by_split.values():
-                split_queue.clear()
+            for q in self._queues:
+                q.clear()
             self._num_blocks = 0
-            self._num_per_split.clear()
+
+    def _get_queue_for(self, output_split_idx: Optional[int]) -> QueueWithRemoval:
+        # If output split idx is null, fallback to the first queue
+        return self._queues[output_split_idx or 0]
 
 
 @dataclass
@@ -174,7 +164,7 @@ class OpState:
         # Note: this queue is also accessed concurrently from the consumer thread.
         # (in addition to the streaming executor thread). Hence, it must be a
         # thread-safe type such as `deque`.
-        self.output_queue: OpBufferQueue = OpBufferQueue()
+        self.output_queue: OpBufferQueue = OpBufferQueue(num_splits=op.num_output_splits())
         self.op = op
         self.num_completed_tasks = 0
         self.inputs_done_called = False
