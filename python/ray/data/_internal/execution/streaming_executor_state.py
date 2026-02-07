@@ -12,7 +12,10 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
-from ray.data._internal.execution.bundle_queue import create_bundle_queue
+from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
+    create_bundle_queue,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -62,7 +65,9 @@ class OpBufferQueue:
         assert num_splits >= 1, f"n_splits must be >= 1, got {num_splits}"
 
         self._num_blocks = 0
-        self._queues = [create_bundle_queue() for _ in range(num_splits)]
+        self._queues: List[BaseBundleQueue] = [
+            create_bundle_queue() for _ in range(num_splits)
+        ]
 
         self._lock = threading.Lock()
 
@@ -95,8 +100,8 @@ class OpBufferQueue:
     def append(self, bundle: RefBundle):
         """Append a RefBundle to the queue."""
         with self._lock:
-            self._get_queue_for(bundle.output_split_idx).add(ref)
-            self._num_blocks += len(ref.blocks)
+            self._get_queue_for(bundle.output_split_idx).add(bundle)
+            self._num_blocks += len(bundle.blocks)
 
     def pop(self, output_split_idx: Optional[int] = None) -> Optional[RefBundle]:
         """Pop a RefBundle from the queue.
@@ -123,7 +128,7 @@ class OpBufferQueue:
                 q.clear()
             self._num_blocks = 0
 
-    def _get_queue_for(self, output_split_idx: Optional[int]) -> QueueWithRemoval:
+    def _get_queue_for(self, output_split_idx: Optional[int]) -> "BaseBundleQueue":
         # If output split idx is null, fallback to the first queue
         return self._queues[output_split_idx or 0]
 
@@ -164,7 +169,9 @@ class OpState:
         # Note: this queue is also accessed concurrently from the consumer thread.
         # (in addition to the streaming executor thread). Hence, it must be a
         # thread-safe type such as `deque`.
-        self.output_queue: OpBufferQueue = OpBufferQueue(num_splits=op.num_output_splits())
+        self.output_queue: OpBufferQueue = OpBufferQueue(
+            num_splits=op.num_output_splits()
+        )
         self.op = op
         self.num_completed_tasks = 0
         self.inputs_done_called = False
