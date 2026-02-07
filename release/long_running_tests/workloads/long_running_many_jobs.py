@@ -34,8 +34,13 @@ def wait_until_finish(
     start_time_s = time.time()
     while time.time() - start_time_s <= timeout_s:
         # Test calling list_jobs
-        client.list_jobs()
-        status = client.get_job_status(job_id)
+        try:
+            client.list_jobs()
+            status = client.get_job_status(job_id)
+        except RuntimeError as exc:
+            print(f"list_jobs/get_job_status failed, retrying: {exc}")
+            time.sleep(retry_interval_s)
+            continue
         if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
             return status
         time.sleep(retry_interval_s)
