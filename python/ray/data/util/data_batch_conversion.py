@@ -220,7 +220,6 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
     """
     Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray.
     """
-    pd = _lazy_import_pandas()
     # Get the SettingWithCopyWarning class if available
     SettingWithCopyWarning = get_setting_with_copy_warning()
 
@@ -261,7 +260,6 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
 
 def _cast_tensor_columns_to_ndarrays(df: "pd.DataFrame") -> "pd.DataFrame":
     """Cast all tensor extension columns in df to NumPy ndarrays."""
-    pd = _lazy_import_pandas()
     # Get the SettingWithCopyWarning class if available
     SettingWithCopyWarning = get_setting_with_copy_warning()
     from ray.data._internal.tensor_extensions.pandas import TensorDtype
