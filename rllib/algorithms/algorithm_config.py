@@ -537,7 +537,7 @@ class AlgorithmConfig(_Config):
         # Offline evaluation.
         self.offline_evaluation_interval = None
         self.num_offline_eval_runners = 0
-        self.offline_evaluation_type: str = None
+        self.offline_evaluation_type: str = "eval_loss"
         self.offline_eval_runner_class = None
         # TODO (simon): Only `_offline_evaluate_with_fixed_duration` works. Also,
         # decide, if we use `offline_evaluation_duration` or
@@ -5396,31 +5396,45 @@ class AlgorithmConfig(_Config):
             )
 
         # Offline evaluation.
-        from ray.rllib.offline.offline_policy_evaluation_runner import (
-            OfflinePolicyEvaluationTypes,
-        )
+        if self.offline_evaluation_interval:
+            if self.offline_evaluation_interval <= 0:
+                self._value_error(
+                    "`offline_evaluation_interval` must be > 0 "
+                    "if offline evaluation should be performed!"
+                )
 
-        offline_eval_types = list(OfflinePolicyEvaluationTypes)
-        if (
-            self.offline_evaluation_type
-            and self.offline_evaluation_type != "eval_loss"
-            and self.offline_evaluation_type not in OfflinePolicyEvaluationTypes
-        ):
-            self._value_error(
-                f"Unknown offline evaluation type: {self.offline_evaluation_type}."
-                "Available types of offline evaluation are either `'eval_loss' to evaluate "
-                f"the training loss on a validation dataset or {offline_eval_types}."
+            if self.offline_evaluation_type is None:
+                self._value_error(
+                    "If `offline_evaluation_interval > 0`, `offline_evaluation_type` must be set to "
+                    "specify the type of offline evaluation to be performed."
+                )
+
+            from ray.rllib.offline.offline_policy_evaluation_runner import (
+                OfflinePolicyEvaluationTypes,
             )
 
-        from ray.rllib.offline.offline_evaluation_runner import OfflineEvaluationRunner
+            if (
+                self.offline_evaluation_type
+                and self.offline_evaluation_type
+                not in OfflinePolicyEvaluationTypes._value2member_map_
+            ):
+                offline_eval_types = list(OfflinePolicyEvaluationTypes)
+                self._value_error(
+                    f"Unknown offline evaluation type: {self.offline_evaluation_type}."
+                    f"Available types of offline evaluation are {offline_eval_types}."
+                )
 
-        if self.offline_eval_runner_class and not issubclass(
-            self.offline_eval_runner_class, OfflineEvaluationRunner
-        ):
-            self._value_error(
-                "Unknown `offline_eval_runner_class`. OfflineEvaluationRunner class needs to inherit "
-                "from `OfflineEvaluationRunner` class."
+            from ray.rllib.offline.offline_evaluation_runner import (
+                OfflineEvaluationRunner,
             )
+
+            if self.offline_eval_runner_class and not issubclass(
+                self.offline_eval_runner_class, OfflineEvaluationRunner
+            ):
+                self._value_error(
+                    "Unknown `offline_eval_runner_class`. OfflineEvaluationRunner class needs to inherit "
+                    "from `OfflineEvaluationRunner` class."
+                )
 
     @property
     def is_online(self) -> bool:

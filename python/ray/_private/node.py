@@ -554,6 +554,7 @@ class Node:
                 self._ray_params.num_cpus,
                 self._ray_params.num_gpus,
                 self._ray_params.memory,
+                self._ray_params.available_memory_bytes,
                 self._ray_params.object_store_memory,
                 self._ray_params.resources,
                 self._ray_params.labels,
@@ -1385,10 +1386,6 @@ class Node:
             fallback_directory=self._fallback_directory,
             huge_pages=self._ray_params.huge_pages,
         )
-
-        # add plasma store memory to the total system reserved memory
-        if self.resource_isolation_config.is_enabled():
-            self.resource_isolation_config.add_object_store_memory(object_store_memory)
 
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()

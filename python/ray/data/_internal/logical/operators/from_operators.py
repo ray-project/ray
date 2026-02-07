@@ -47,7 +47,7 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
         )
 
         # `owns_blocks` is False because this op may be shared by multiple Datasets.
-        self._input_data = [
+        self.input_data = [
             RefBundle(
                 [(input_blocks[i], input_metadata[i])],
                 owns_blocks=False,
@@ -56,12 +56,8 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
             for i in range(len(input_blocks))
         ]
 
-    @property
-    def input_data(self) -> List[RefBundle]:
-        return self._input_data
-
     def output_data(self) -> Optional[List[RefBundle]]:
-        return self._input_data
+        return self.input_data
 
     @functools.cached_property
     def _cached_output_metadata(self) -> BlockMetadata:
@@ -73,13 +69,13 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
         )
 
     def _num_rows(self):
-        if all(bundle.num_rows() is not None for bundle in self._input_data):
-            return sum(bundle.num_rows() for bundle in self._input_data)
+        if all(bundle.num_rows() is not None for bundle in self.input_data):
+            return sum(bundle.num_rows() for bundle in self.input_data)
         else:
             return None
 
     def _size_bytes(self):
-        metadata = [m for bundle in self._input_data for m in bundle.metadata]
+        metadata = [m for bundle in self.input_data for m in bundle.metadata]
         if all(m.size_bytes is not None for m in metadata):
             return sum(m.size_bytes for m in metadata)
         else:
@@ -89,7 +85,7 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
         return self._cached_output_metadata
 
     def infer_schema(self):
-        return unify_ref_bundles_schema(self._input_data)
+        return unify_ref_bundles_schema(self.input_data)
 
     def is_lineage_serializable(self) -> bool:
         # This operator isn't serializable because it contains ObjectRefs.

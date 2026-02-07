@@ -22,8 +22,8 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/core_worker/actor_creator.h"
-#include "ray/core_worker/actor_handle.h"
+#include "ray/core_worker/actor_management/actor_creator.h"
+#include "ray/core_worker/actor_management/actor_handle.h"
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
@@ -121,6 +121,7 @@ class ActorManager {
                              bool owned);
 
   /// Wait for actor reference deletion.
+  /// This is only called on the owner.
   ///
   /// \param actor_id The actor id that owns the callback.
   /// \param actor_ref_deleted_callback The callback function that will be called when
