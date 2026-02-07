@@ -424,6 +424,39 @@ class TestReplicaQueueLengthPolicy:
 
         assert num_replicas == 0
 
+    def test_downscale_to_zero_when_min_replicas_zero(self):
+        config = AutoscalingConfig(
+            min_replicas=0,
+            max_replicas=1,
+            target_ongoing_requests=1,
+            downscale_delay_s=0,
+            downscale_to_zero_delay_s=0,
+        )
+        ctx = AutoscalingContext(
+            target_num_replicas=1,
+            total_num_requests=0,
+            current_num_replicas=1,
+            config=config,
+            capacity_adjusted_min_replicas=config.min_replicas,
+            capacity_adjusted_max_replicas=config.max_replicas,
+            policy_state={},
+            deployment_id=None,
+            deployment_name="test",
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            total_queued_requests=0,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
+            total_pending_async_requests=0,
+        )
+
+        new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
+
+        assert new_num_replicas == 0
+
     @pytest.mark.parametrize("downscale_to_zero_delay_s", [None, 300])
     def test_upscale_downscale_delay(self, downscale_to_zero_delay_s):
         """Unit test for upscale_delay_s, downscale_delay_s and downscale_to_zero_delay_s"""
