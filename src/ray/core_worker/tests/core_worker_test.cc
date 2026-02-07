@@ -31,8 +31,8 @@
 #include "ray/common/asio/fake_periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_config.h"
-#include "ray/core_worker/actor_creator.h"
-#include "ray/core_worker/actor_manager.h"
+#include "ray/core_worker/actor_management/actor_creator.h"
+#include "ray/core_worker/actor_management/actor_manager.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
 #include "ray/core_worker/future_resolver.h"
@@ -818,6 +818,93 @@ TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest, HandlePubsubCommandBatch
 INSTANTIATE_TEST_SUITE_P(WorkerObjectEvictionChannel,
                          CoreWorkerPubsubWorkerObjectEvictionChannelTest,
                          ::testing::Values(true, false));
+
+TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidChannelType) {
+  // Test that HandlePubsubCommandBatch returns InvalidArgument for an invalid channel
+  // type. The publisher was created with only:
+  // - WORKER_OBJECT_EVICTION
+  // - WORKER_REF_REMOVED_CHANNEL
+  // - WORKER_OBJECT_LOCATIONS_CHANNEL
+  // Using a channel type that was not registered should return InvalidArgument.
+  auto subscriber_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+
+  rpc::PubsubCommandBatchRequest command_batch_request;
+  command_batch_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_batch_request.add_commands();
+  // Use GCS_ACTOR_CHANNEL which is not registered with the core worker's publisher.
+  command->set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
+  command->set_key_id(object_id.Binary());
+  command->mutable_subscribe_message();
+
+  rpc::PubsubCommandBatchReply command_reply;
+  bool callback_invoked = false;
+  Status received_status;
+
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply,
+      [&callback_invoked, &received_status](
+          const Status &status, std::function<void()>, std::function<void()>) {
+        callback_invoked = true;
+        received_status = status;
+      });
+
+  ASSERT_TRUE(callback_invoked);
+  ASSERT_FALSE(received_status.ok());
+  ASSERT_TRUE(received_status.IsInvalidArgument());
+  EXPECT_TRUE(received_status.message().find("Invalid channel type") !=
+              std::string::npos);
+}
+
+TEST_F(CoreWorkerTest,
+       HandlePubsubCommandBatchMissingSubscribeOrUnsubscribeReturnsInvalidArgument) {
+  auto subscriber_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+
+  rpc::PubsubCommandBatchRequest command_batch_request;
+  command_batch_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_batch_request.add_commands();
+  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_key_id(object_id.Binary());
+
+  rpc::PubsubCommandBatchReply command_reply;
+  Status received_status;
+
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply,
+      [&received_status](const Status &status,
+                         std::function<void()>,
+                         std::function<void()>) { received_status = status; });
+
+  ASSERT_TRUE(received_status.IsInvalidArgument());
+}
+
+TEST_F(CoreWorkerTest,
+       HandlePubsubCommandBatchInvalidSubscribeMessageTypeReturnsInvalidArgument) {
+  auto subscriber_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+
+  rpc::PubsubCommandBatchRequest command_batch_request;
+  command_batch_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_batch_request.add_commands();
+  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_key_id(object_id.Binary());
+  command->mutable_subscribe_message();
+
+  rpc::PubsubCommandBatchReply command_reply;
+  Status received_status;
+
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply,
+      [&received_status](const Status &status,
+                         std::function<void()>,
+                         std::function<void()>) { received_status = status; });
+
+  ASSERT_TRUE(received_status.IsInvalidArgument());
+}
 
 class CoreWorkerPubsubWorkerRefRemovedChannelTest
     : public CoreWorkerTest,
