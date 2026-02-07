@@ -1634,6 +1634,25 @@ class ReplicaStateContainer:
                 "Only one of `version` or `exclude_version` may be provided."
             )
 
+    def remove(self, replica_id: ReplicaID) -> Optional[DeploymentReplica]:
+        """Remove and return a replica by its ID.
+
+        Searches across all states for the replica with the given ID and
+        removes it from the container.
+
+        Args:
+            replica_id: the ReplicaID of the replica to remove.
+
+        Returns:
+            The removed DeploymentReplica, or None if not found.
+        """
+        for state in ALL_REPLICA_STATES:
+            replicas = self._replicas[state]
+            for i, replica in enumerate(replicas):
+                if replica.replica_id == replica_id:
+                    return replicas.pop(i)
+        return None
+
     def __str__(self):
         return str(self._replicas)
 
@@ -3147,11 +3166,10 @@ class DeploymentState:
         self._curr_status_info = self._curr_status_info.update_message(message)
 
     def stop_replicas(self, replicas_to_stop) -> None:
-        for replica in self._replicas.pop():
-            if replica.replica_id in replicas_to_stop:
+        for replica_id in replicas_to_stop:
+            replica = self._replicas.remove(replica_id)
+            if replica is not None:
                 self._stop_replica(replica)
-            else:
-                self._replicas.add(replica.actor_details.state, replica)
 
     def _stop_replica(self, replica: DeploymentReplica, graceful_stop=True):
         """Stop replica
