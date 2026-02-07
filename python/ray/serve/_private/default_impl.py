@@ -33,7 +33,6 @@ from ray.serve._private.deployment_scheduler import (
 from ray.serve._private.event_loop_monitoring import EventLoopMonitor
 from ray.serve._private.grpc_util import gRPCGenericServer
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
-from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.router import CurrentLoopRouter, Router, SingletonThreadRouter
 from ray.serve._private.utils import (
     asyncio_grpc_exception_handler,
@@ -265,4 +264,6 @@ def get_proxy_actor_class():
 
         return HAProxyManager
     else:
+        from ray.serve._private.proxy import ProxyActor
+
         return ProxyActor
