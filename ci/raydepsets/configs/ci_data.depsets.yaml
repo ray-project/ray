@@ -81,6 +81,8 @@ depsets:
     operation: expand
     depsets:
       - data_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/mongo.txt
     output: python/deplocks/ci/data-mongo-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}

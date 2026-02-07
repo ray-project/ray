@@ -92,7 +92,14 @@ def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
             # No running loop, relying on the error message as for now to
             # differentiate runtime errors.
             assert "no running event loop" in str(e)
-            return asyncio.get_event_loop_policy().get_event_loop()
+            try:
+                return asyncio.get_event_loop_policy().get_event_loop()
+            except RuntimeError:
+                # Some event loop policies (e.g. uvloop) raise RuntimeError
+                # when no event loop exists instead of creating one.
+                loop = asyncio.get_event_loop_policy().new_event_loop()
+                asyncio.set_event_loop(loop)
+                return loop
 
     return asyncio.get_event_loop()
 
