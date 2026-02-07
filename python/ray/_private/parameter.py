@@ -31,6 +31,7 @@ class RayParams:
             of that resource available.
         labels: The key-value labels of the node.
         memory: Total available memory for workers requesting memory.
+        available_memory_bytes: The memory available for use on this node in bytes.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
         object_manager_port int: The port to use for the object manager.
@@ -132,6 +133,7 @@ class RayParams:
         resources: Optional[Dict[str, float]] = None,
         labels: Optional[Dict[str, str]] = None,
         memory: Optional[float] = None,
+        available_memory_bytes: Optional[int] = None,
         object_store_memory: Optional[float] = None,
         redis_port: Optional[int] = None,
         redis_shard_ports: Optional[List[int]] = None,
@@ -188,6 +190,7 @@ class RayParams:
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
+        self.available_memory_bytes = available_memory_bytes
         self.object_store_memory = object_store_memory
         self.resources = resources
         self.redis_port = redis_port
@@ -244,7 +247,7 @@ class RayParams:
         self.resource_isolation_config = resource_isolation_config
         if not self.resource_isolation_config:
             self.resource_isolation_config = ResourceIsolationConfig(
-                enable_resource_isolation=False
+                object_store_memory=object_store_memory, enable_resource_isolation=False
             )
 
         # Set the internal config options for object reconstruction.
