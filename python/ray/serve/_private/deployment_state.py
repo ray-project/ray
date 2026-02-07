@@ -3953,7 +3953,7 @@ class DeploymentStateManager:
             and ds.get_num_running_replicas(ds.target_version) == ds.target_num_replicas
             # To be extra conservative, only actively compact if there
             # are no non-running replicas
-            and len(ds._replicas.get()) == ds.target_num_replicas
+            and ds._replicas.count() == ds.target_num_replicas
             for ds in self._deployment_states.values()
         )
         if RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY:
