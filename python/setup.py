@@ -218,10 +218,8 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
-    # Ray Data currently relies on pandas APIs that are not available in pandas 3.x
-    # (e.g. SettingWithCopyWarning). Keep an upper bound until full pandas 3 support
-    # is added.
-    pandas_dep = "pandas >= 1.3, < 3"
+    # Ray Data now supports pandas 3.x through graceful version checking
+    pandas_dep = "pandas >= 1.3"
     numpy_dep = "numpy >= 1.20"
     pyarrow_deps = [
         "pyarrow >= 9.0.0",
