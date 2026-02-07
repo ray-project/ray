@@ -5,22 +5,24 @@ from typing import List
 
 import click
 
-from ci.ray_ci.automation.crane_lib import (
-    CraneError,
-    call_crane_copy,
-    call_crane_manifest,
+from ci.ray_ci.automation.image_tags_lib import (
+    ImageTagsError,
+    copy_image,
+    format_platform_tag,
+    get_platform_suffixes,
+    get_python_suffixes,
+    get_variation_suffix,
+    image_exists,
 )
 from ci.ray_ci.configs import (
     ARCHITECTURE,
     DEFAULT_ARCHITECTURE,
-    DEFAULT_PYTHON_TAG_VERSION,
     PYTHON_VERSIONS,
 )
 from ci.ray_ci.docker_container import (
     ARCHITECTURES_RAY,
     ARCHITECTURES_RAY_LLM,
     ARCHITECTURES_RAY_ML,
-    GPU_PLATFORM,
     PLATFORMS_RAY,
     PLATFORMS_RAY_LLM,
     PLATFORMS_RAY_ML,
@@ -48,14 +50,10 @@ class PushRayImageError(Exception):
     """Error raised when pushing ray images fails."""
 
 
+# Re-export for backward compatibility with tests
 def compact_cuda_suffix(platform: str) -> str:
     """Convert a CUDA platform string to compact suffix (e.g. cu12.1.1-cudnn8 -> -cu121)."""
-    platform_base = platform.split("-", 1)[0]
-    parts = platform_base.split(".")
-    if len(parts) < 2:
-        raise PushRayImageError(f"Unrecognized GPU platform format: {platform}")
-
-    return f"-{parts[0]}{parts[1]}"
+    return format_platform_tag(platform)
 
 
 class RayImagePushContext:
@@ -188,62 +186,28 @@ class RayImagePushContext:
 
     def _variation_suffix(self) -> str:
         """Get -extra suffix for extra image types."""
-        if self.ray_type in {
-            RayType.RAY_EXTRA,
-            RayType.RAY_ML_EXTRA,
-            RayType.RAY_LLM_EXTRA,
-        }:
-            return "-extra"
-        return ""
+        return get_variation_suffix(self.ray_type.value)
 
     def _python_suffixes(self) -> List[str]:
         """Get python version suffixes (includes empty for default version)."""
-        suffixes = [f"-py{self.python_version.replace('.', '')}"]
-        if self.python_version == DEFAULT_PYTHON_TAG_VERSION:
-            suffixes.append("")
-        return suffixes
+        return get_python_suffixes(self.python_version)
 
     def _platform_suffixes(self) -> List[str]:
         """Get platform suffixes (includes aliases like -gpu for GPU_PLATFORM)."""
-        if self.platform == "cpu":
-            suffixes = ["-cpu"]
-            # no tag is alias to cpu for ray image
-            if self.ray_type in {RayType.RAY, RayType.RAY_EXTRA}:
-                suffixes.append("")
-            return suffixes
-
-        suffixes = [compact_cuda_suffix(self.platform)]
-        if self.platform == GPU_PLATFORM:
-            # gpu is alias to GPU_PLATFORM value for ray image
-            suffixes.append("-gpu")
-            # no tag is alias to gpu for ray-ml image
-            if self.ray_type in {RayType.RAY_ML, RayType.RAY_ML_EXTRA}:
-                suffixes.append("")
-
-        return suffixes
+        return get_platform_suffixes(self.platform, self.ray_type.value)
 
 
 def _image_exists(tag: str) -> bool:
     """Check if a container image manifest exists using crane."""
-    try:
-        call_crane_manifest(tag)
-        return True
-    except CraneError:
-        return False
+    return image_exists(tag)
 
 
 def _copy_image(reference: str, destination: str, dry_run: bool = False) -> None:
     """Copy a container image from source to destination using crane."""
-    if dry_run:
-        logger.info(f"DRY RUN: Would copy {reference} -> {destination}")
-        return
-
-    logger.info(f"Copying {reference} -> {destination}")
     try:
-        call_crane_copy(reference, destination)
-        logger.info(f"Successfully copied to {destination}")
-    except CraneError as e:
-        raise PushRayImageError(f"Crane copy failed: {e}")
+        copy_image(reference, destination, dry_run)
+    except ImageTagsError as e:
+        raise PushRayImageError(str(e))
 
 
 def _should_upload(pipeline_id: str, branch: str, rayci_schedule: str) -> bool:
