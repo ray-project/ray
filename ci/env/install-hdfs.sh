@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -eo pipefail
+
 apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openjdk-8-jdk net-tools curl netcat gnupg libsnappy-dev && rm -rf /var/lib/apt/lists/*
 
 export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64/
@@ -51,7 +53,7 @@ chmod 640 ~/.ssh/authorized_keys
 sudo service ssh restart
 
 # without this `jps` won't show NameNode but only SecondaryNameNode
-yes | hadoop namenode -format
+echo "Y" | hadoop namenode -format
 $HADOOP_HOME/sbin/start-all.sh
 
 # Check that NameNode is up and running.
