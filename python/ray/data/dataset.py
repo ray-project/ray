@@ -5264,10 +5264,8 @@ class Dataset:
     def write_turbopuffer(
         self,
         *,
+        namespace: str,
         region: str,
-        namespace: Optional[str] = None,
-        namespace_column: Optional[str] = None,
-        namespace_format: str = "{namespace}",
         api_key: Optional[str] = None,
         schema: Optional[Dict[str, Any]] = None,
         id_column: str = "id",
@@ -5282,17 +5280,7 @@ class Dataset:
         To control the number of parallel write tasks, use ``.repartition()``
         before calling this method.
 
-        TurbopufferDatasink supports two write modes:
-
-        * **Single-namespace mode**: Provide ``namespace`` to write all rows into a
-          single Turbopuffer namespace.
-        * **Multi-namespace mode**: Provide ``namespace_column`` (and optionally
-          ``namespace_format``) to group rows by a column and write each group to a
-          separate namespace.
-
         Examples:
-
-            Single-namespace write:
 
             .. testcode::
                 :skipif: True
@@ -5313,34 +5301,10 @@ class Dataset:
                     region="gcp-us-central1",
                 )
 
-            Multi-namespace write (for example, multi-tenant workspaces):
-
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                # Each row has a "space_id" and an embedding vector.
-                ds = ...
-
-                ds.write_turbopuffer(
-                    namespace_column="space_id",
-                    namespace_format="space-{namespace}",
-                    api_key="<YOUR_API_KEY>",
-                )
-
         Args:
+            namespace: Name of the Turbopuffer namespace to write into.
             region: Turbopuffer region identifier (for example,
                 ``"gcp-us-central1"``).
-            namespace: Name of a single Turbopuffer namespace to write into.
-                This argument is mutually exclusive with ``namespace_column``.
-            namespace_column: Name of the column whose values determine the
-                target namespace for each row (multi-namespace mode). This
-                argument is mutually exclusive with ``namespace``.
-            namespace_format: Python format string used to construct namespace
-                names in multi-namespace mode. It must contain the
-                ``"{namespace}"`` placeholder, which is replaced with the raw
-                column value (or its UUID or hex string representation).
             api_key: Turbopuffer API key. If omitted, the value is read from
                 the ``TURBOPUFFER_API_KEY`` environment variable.
             schema: Optional Turbopuffer schema definition to pass along with
@@ -5366,10 +5330,8 @@ class Dataset:
                 resources.
         """
         datasink = TurbopufferDatasink(
-            region=region,
             namespace=namespace,
-            namespace_column=namespace_column,
-            namespace_format=namespace_format,
+            region=region,
             api_key=api_key,
             schema=schema,
             id_column=id_column,
