@@ -364,10 +364,10 @@ class TrainController:
             callback.before_controller_shutdown()
 
     def _replace_bad_workers(self, worker_group_status: WorkerGroupPollStatus):
-        """Replace workers that have errors or are not running.
+        """Replace replica groups that contain workers with errors or not running.
 
-        This method identifies workers with errors or that have stopped running
-        and replaces them with new workers at the same ranks in the placement group.
+        When any worker in a replica group fails, the entire group must be
+        replaced because the group's TCPStore and process group are coupled.
 
         Args:
             worker_group_status: The poll status containing worker statuses.
@@ -375,23 +375,39 @@ class TrainController:
             None
         """
         # Get world ranks of workers that have errors or are not running
-        world_ranks_to_replace = [
+        bad_ranks = [
             world_rank
             for world_rank, status in worker_group_status.worker_statuses.items()
             if status.error is not None or not status.running
         ]
 
-        if not world_ranks_to_replace:
+        if not bad_ranks:
             logger.debug("No bad workers to replace.")
             return
 
+        replica_groups = self._worker_group.replica_groups
+        if replica_groups is None:
+            # No replica groups configured — shouldn't happen with TorchftConfig
+            logger.warning(
+                f"Detected {len(bad_ranks)} bad workers but no replica groups "
+                "configured. Cannot replace."
+            )
+            return
+
+        # Find all replica groups that contain at least one bad worker
+        groups_to_replace = {
+            rg.replica_group_id
+            for rg in replica_groups
+            if rg.has_failures(worker_group_status)
+        }
+
         logger.info(
-            f"Detected {len(world_ranks_to_replace)} bad/non-running workers. "
-            f"Replacing workers at world ranks: {world_ranks_to_replace}"
+            f"Detected failures in replica groups: {groups_to_replace}. "
+            f"Replacing entire groups."
         )
 
-        # Replace the bad workers
-        self._worker_group.replace_workers(world_ranks_to_replace)
+        for group_id in groups_to_replace:
+            self._worker_group.replace_replica_group(group_id)
 
     def _shutdown_worker_group(self):
         """Shutdown the worker group and set the worker group to None."""

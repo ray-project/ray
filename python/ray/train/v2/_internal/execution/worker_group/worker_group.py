@@ -78,6 +78,40 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+@dataclass
+class ReplicaGroup:
+    """A group of workers that form an independent replica for torchft.
+
+    Each replica group has its own TCPStore and process group.
+    """
+
+    replica_group_id: int
+    world_ranks: List[int]
+
+    def get_workers(self, all_workers: List[Worker]) -> List[Worker]:
+        """Get the workers belonging to this replica group."""
+        rank_set = set(self.world_ranks)
+        return [w for w in all_workers if w.distributed_context.world_rank in rank_set]
+
+    def get_rank_0_worker(self, all_workers: List[Worker]) -> Worker:
+        """Get the rank 0 worker of this group."""
+        for w in all_workers:
+            if w.distributed_context.world_rank == self.world_ranks[0]:
+                return w
+        raise ValueError(
+            f"No worker found with world rank {self.world_ranks[0]} "
+            f"for replica group {self.replica_group_id}"
+        )
+
+    def has_failures(self, poll_status: WorkerGroupPollStatus) -> bool:
+        """Check if any worker in this group has failures."""
+        for rank in self.world_ranks:
+            status = poll_status.worker_statuses.get(rank)
+            if status is not None and (status.error is not None or not status.running):
+                return True
+        return False
+
+
 @dataclass(frozen=True)
 class WorkerGroupContext:
     """Context for a worker group.
@@ -161,6 +195,7 @@ class WorkerGroup(BaseWorkerGroup):
         ]
 
         self._worker_group_state: Optional[WorkerGroupState] = None
+        self._replica_groups: Optional[List[ReplicaGroup]] = None
         # Maps world rank to the ongoing poll task.
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
         self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
@@ -314,6 +349,15 @@ class WorkerGroup(BaseWorkerGroup):
             )
             worker_group_state_builder.with_workers(workers)
 
+            # Build replica groups if using TorchftConfig
+            from ray.train.torch.config import TorchftConfig
+
+            if isinstance(self._train_run_context.backend_config, TorchftConfig):
+                dp_workers = self._train_run_context.backend_config.dp_workers
+                self._replica_groups = WorkerGroup._build_replica_groups(
+                    workers, dp_workers
+                )
+
             # All the ray.get calls in this try block can possibly error if the
             # worker actors die during initialization.
             # To prevent the driver from crashing, catch all `RayActorError`s and
@@ -412,7 +456,13 @@ class WorkerGroup(BaseWorkerGroup):
             Worker(actor, meta, resources_per_worker, bundle_index=i)
             for i, (actor, meta) in enumerate(zip(actors, actor_metadatas))
         ]
-        return WorkerGroup._assign_worker_ranks(workers)
+        # Extract dp_workers from backend config if using TorchftConfig
+        dp_workers = None
+        from ray.train.torch.config import TorchftConfig
+
+        if isinstance(self._train_run_context.backend_config, TorchftConfig):
+            dp_workers = self._train_run_context.backend_config.dp_workers
+        return WorkerGroup._assign_worker_ranks(workers, dp_workers=dp_workers)
 
     def _init_train_context_on_workers(
         self,
@@ -464,6 +514,7 @@ class WorkerGroup(BaseWorkerGroup):
 
     def _clear_state(self):
         self._worker_group_state = None
+        self._replica_groups = None
         self._world_rank_to_ongoing_poll = {}
 
     def abort(self):
@@ -619,88 +670,53 @@ class WorkerGroup(BaseWorkerGroup):
     # Replace Workers
     #####################################################################################
 
-    def replace_workers(self, world_ranks_to_replace: List[int]) -> None:
-        """Replace workers at the specified world ranks.
+    def replace_replica_group(self, replica_group_id: int) -> None:
+        """Replace all workers in a replica group.
 
-        This method kills the old workers at the specified ranks and creates new
-        workers at the same bundle indices in the placement group. The new workers
-        are initialized with the same distributed context (same ranks) as before.
+        This kills all workers in the group, creates new actors at the same
+        bundle indices, re-assigns distributed context, re-initializes the
+        per-group TCPStore and process group via BackendSetupCallback, and
+        launches the training function on the new workers.
 
         Args:
-            world_ranks_to_replace: List of world ranks of workers to replace.
+            replica_group_id: The ID of the replica group to replace.
         """
-        if not world_ranks_to_replace:
-            return
-
         self._assert_active()
 
+        if self._replica_groups is None:
+            raise ValueError("Replica groups not configured. Use TorchftConfig.")
+
+        # Find the replica group
+        target_group = None
+        for rg in self._replica_groups:
+            if rg.replica_group_id == replica_group_id:
+                target_group = rg
+                break
+        if target_group is None:
+            raise ValueError(f"No replica group found with id {replica_group_id}")
+
         workers = self.get_workers()
-        placement_group = self._worker_group_state.placement_group
+        pg = self._worker_group_state.placement_group
         sync_actor = self._worker_group_state.sync_actor
         resources_per_worker = self._worker_group_context.resources_per_worker
 
-        # Build a mapping of world rank to worker
         world_rank_to_worker = {w.distributed_context.world_rank: w for w in workers}
-
-        # Identify workers to replace and their bundle indices
-        workers_to_replace = []
-        for world_rank in world_ranks_to_replace:
-            if world_rank not in world_rank_to_worker:
-                raise ValueError(f"No worker found with world rank {world_rank}")
-            workers_to_replace.append(world_rank_to_worker[world_rank])
+        workers_to_replace = [world_rank_to_worker[r] for r in target_group.world_ranks]
 
         logger.info(
-            f"Replacing {len(workers_to_replace)} workers at world ranks: {world_ranks_to_replace}"
+            f"Replacing replica group {replica_group_id} "
+            f"(world ranks {target_group.world_ranks})"
         )
 
-        # Get distributed env vars from a surviving worker before killing old ones.
-        # These are set by TorchBackend.on_start (MASTER_ADDR, MASTER_PORT) and
-        # TorchBackend.on_training_start (RANK, LOCAL_RANK, WORLD_SIZE, etc.)
-        # during initial worker group creation, but we need to propagate them to new workers.
-        surviving_workers = [
-            w
-            for w in workers
-            if w.distributed_context.world_rank not in world_ranks_to_replace
-        ]
-        distributed_env_vars = {}
-        if surviving_workers:
-            try:
-
-                def get_distributed_env_vars():
-                    import os
-
-                    # Capture all distributed training env vars
-                    # TODO: might not all be needed and have different usages in torchft Manager.
-                    # TODO: maybe even set these inside TorchConfig.on_start?
-                    env_var_names = [
-                        "MASTER_ADDR",
-                        "MASTER_PORT",
-                        # "WORLD_SIZE",
-                        # "LOCAL_WORLD_SIZE",
-                        # "NODE_RANK",
-                    ]
-                    return {k: os.environ.get(k, "") for k in env_var_names}
-
-                distributed_env_vars = ray.get(
-                    surviving_workers[0].actor.execute.remote(get_distributed_env_vars)
-                )
-                logger.info(
-                    f"Retrieved distributed env vars from surviving worker: {distributed_env_vars}"
-                )
-            except Exception as e:
-                logger.warning(
-                    f"Failed to get distributed env vars from surviving worker: {e}"
-                )
-
-        # Kill the old actors
+        # Kill old actors
         for worker in workers_to_replace:
             ray.kill(worker.actor)
 
-        # Clear ongoing poll tasks for the replaced workers
-        for world_rank in world_ranks_to_replace:
-            self._world_rank_to_ongoing_poll.pop(world_rank, None)
+        # Clear ongoing poll tasks
+        for rank in target_group.world_ranks:
+            self._world_rank_to_ongoing_poll.pop(rank, None)
 
-        # Create new actors at the same bundle indices
+        # Create new actors at same bundle indices
         runtime_env = self._get_worker_runtime_env(
             custom_runtime_env=self._train_run_context.run_config.worker_runtime_env
         )
@@ -714,7 +730,7 @@ class WorkerGroup(BaseWorkerGroup):
             bundle_index = old_worker.bundle_index
             new_actor = worker_actor_cls.options(
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=placement_group,
+                    placement_group=pg,
                     placement_group_bundle_index=bundle_index,
                 ),
             ).remote()
@@ -735,55 +751,41 @@ class WorkerGroup(BaseWorkerGroup):
             )
             new_workers.append(new_worker)
 
-        # Set distributed env vars on new workers.
-        # Shared vars (MASTER_ADDR, MASTER_PORT, WORLD_SIZE, etc.) come from surviving workers.
-        # Worker-specific vars (RANK, LOCAL_RANK) are set based on the worker's distributed context.
-        if distributed_env_vars:
+        # Re-initialize backend (per-group TCPStore + init_process_group)
+        # via BackendSetupCallback
+        from ray.train.v2._internal.callbacks.backend_setup import BackendSetupCallback
 
-            def set_distributed_env_vars(shared_env_vars, rank, local_rank):
-                import os
-
-                for k, v in shared_env_vars.items():
-                    if v:  # Only set non-empty values
-                        os.environ[k] = v
-                # Set worker-specific env vars
-                # TODO: I don't think this is needed.
-                os.environ["RANK"] = str(rank)
-                os.environ["LOCAL_RANK"] = str(local_rank)
-
-            try:
-                ray_get_safe(
-                    [
-                        w.actor.execute.remote(
-                            set_distributed_env_vars,
-                            distributed_env_vars,
-                            w.distributed_context.world_rank,
-                            w.distributed_context.local_rank,
-                        )
-                        for w in new_workers
-                    ]
+        for callback in self._callbacks:
+            if isinstance(callback, BackendSetupCallback):
+                # First update workers in state so the callback can access them
+                new_workers_by_rank = {
+                    w.distributed_context.world_rank: w for w in new_workers
+                }
+                updated_workers = [
+                    new_workers_by_rank.get(w.distributed_context.world_rank, w)
+                    for w in workers
+                ]
+                self._worker_group_state = WorkerGroupState(
+                    start_time=self._worker_group_state.start_time,
+                    placement_group=pg,
+                    workers=updated_workers,
+                    sync_actor=sync_actor,
                 )
-                logger.info(
-                    f"Set distributed env vars on new workers: {distributed_env_vars} "
-                    f"(plus worker-specific RANK and LOCAL_RANK)"
-                )
-            except Exception as e:
-                logger.warning(
-                    f"Failed to set distributed env vars on new workers: {e}"
-                )
+                callback.reinitialize_workers(self, target_group.world_ranks)
+                break
 
         # Get train context args from callbacks
         train_context_args = {}
-        for callback in self._callbacks:
-            args = callback.before_init_train_context(new_workers)
+        for cb in self._callbacks:
+            args = cb.before_init_train_context(new_workers)
             for arg, arg_values in args.items():
                 assert len(arg_values) == len(new_workers), (
-                    f"Callback {callback} returned {arg} with "
+                    f"Callback {cb} returned {arg} with "
                     f"{len(arg_values)} values, expected {len(new_workers)}."
                 )
                 assert (
                     arg not in train_context_args
-                ), f"Callback {callback} returned {arg} which is already set."
+                ), f"Callback {cb} returned {arg} which is already set."
                 train_context_args[arg] = arg_values
 
         # Initialize train context on new workers
@@ -809,20 +811,21 @@ class WorkerGroup(BaseWorkerGroup):
             ]
         )
 
-        # Update the worker list - replace old workers with new ones
-        new_workers_by_rank = {w.distributed_context.world_rank: w for w in new_workers}
-        updated_workers = [
-            new_workers_by_rank.get(w.distributed_context.world_rank, w)
-            for w in workers
-        ]
-
-        # Update worker group state with the new workers list
-        self._worker_group_state = WorkerGroupState(
-            start_time=self._worker_group_state.start_time,
-            placement_group=placement_group,
-            workers=updated_workers,
-            sync_actor=sync_actor,
-        )
+        # Update state if not already updated above (in case no BackendSetupCallback)
+        if not any(isinstance(cb, BackendSetupCallback) for cb in self._callbacks):
+            new_workers_by_rank = {
+                w.distributed_context.world_rank: w for w in new_workers
+            }
+            updated_workers = [
+                new_workers_by_rank.get(w.distributed_context.world_rank, w)
+                for w in workers
+            ]
+            self._worker_group_state = WorkerGroupState(
+                start_time=self._worker_group_state.start_time,
+                placement_group=pg,
+                workers=updated_workers,
+                sync_actor=sync_actor,
+            )
 
         # Decorate log file paths for new workers
         self._decorate_worker_log_file_paths(new_workers)
@@ -836,7 +839,9 @@ class WorkerGroup(BaseWorkerGroup):
                 for w in new_workers
             ]
         )
-        logger.info(f"Successfully replaced workers:\n{workers_info}")
+        logger.info(
+            f"Successfully replaced replica group {replica_group_id}:\n{workers_info}"
+        )
 
     #####################################################################################
     # Execution Methods
@@ -923,6 +928,10 @@ class WorkerGroup(BaseWorkerGroup):
         self._assert_active()
         return self._worker_group_state.workers
 
+    @property
+    def replica_groups(self) -> Optional[List[ReplicaGroup]]:
+        return self._replica_groups
+
     def get_worker_group_context(self) -> WorkerGroupContext:
         return self._worker_group_context
 
@@ -947,10 +956,17 @@ class WorkerGroup(BaseWorkerGroup):
     #########################################################################################
 
     @staticmethod
-    def _assign_worker_ranks(workers: List[Worker]) -> List[Worker]:
+    def _assign_worker_ranks(
+        workers: List[Worker], dp_workers: Optional[int] = None
+    ) -> List[Worker]:
         """Assign world ranks to workers by increasing node id and GPU id.
 
         Initializes the `DistributedContext` for each worker.
+
+        Args:
+            workers: The workers to assign ranks to.
+            dp_workers: If set, compute replica_group_id and replica_group_rank
+                based on the number of data-parallel workers per replica group.
 
         Returns:
             workers: Workers sorted by increasing world rank,
@@ -964,16 +980,41 @@ class WorkerGroup(BaseWorkerGroup):
         node_ips = list(node_ip_to_workers.keys())
 
         for world_rank, worker in enumerate(workers):
+            replica_group_id = -1
+            replica_group_rank = -1
+            if dp_workers is not None:
+                replica_group_id = world_rank // dp_workers
+                replica_group_rank = world_rank % dp_workers
+
             distributed_context = DistributedContext(
                 local_rank=node_ip_to_workers[worker.metadata.node_ip].index(worker),
                 local_world_size=len(node_ip_to_workers[worker.metadata.node_ip]),
                 world_rank=world_rank,
                 world_size=len(workers),
                 node_rank=node_ips.index(worker.metadata.node_ip),
+                replica_group_id=replica_group_id,
+                replica_group_rank=replica_group_rank,
             )
             worker.distributed_context = distributed_context
 
         return workers
+
+    @staticmethod
+    def _build_replica_groups(
+        workers: List[Worker], dp_workers: int
+    ) -> List[ReplicaGroup]:
+        """Build ReplicaGroup objects from workers with assigned ranks."""
+        num_workers = len(workers)
+        num_groups = num_workers // dp_workers
+        groups = []
+        for group_id in range(num_groups):
+            world_ranks = list(
+                range(group_id * dp_workers, (group_id + 1) * dp_workers)
+            )
+            groups.append(
+                ReplicaGroup(replica_group_id=group_id, world_ranks=world_ranks)
+            )
+        return groups
 
     @staticmethod
     def _decorate_worker_log_file_paths(workers: List[Worker]) -> List[Worker]:

@@ -1,4 +1,5 @@
 import logging
+from typing import List
 
 from ray.exceptions import RayActorError
 from ray.train.backend import BackendConfig
@@ -16,6 +17,22 @@ class BackendSetupCallback(WorkerGroupCallback):
     def after_worker_group_start(self, worker_group: WorkerGroup):
         self._backend.on_start(worker_group, self._backend_config)
         self._backend.on_training_start(worker_group, self._backend_config)
+
+    def reinitialize_workers(self, worker_group: WorkerGroup, world_ranks: List[int]):
+        """Re-initialize backend for replaced workers (per-group setup).
+
+        This is called when a replica group is replaced. It sets up the
+        per-group TCPStore and process group for the new workers.
+        """
+        from ray.train.torch.config import _TorchftBackend
+
+        if isinstance(self._backend, _TorchftBackend):
+            self._backend.on_start(
+                worker_group, self._backend_config, workers_subset=world_ranks
+            )
+            self._backend.on_training_start(
+                worker_group, self._backend_config, workers_subset=world_ranks
+            )
 
     def before_worker_group_shutdown(self, worker_group: WorkerGroup):
         try:

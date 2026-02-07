@@ -2,7 +2,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Optional
+from typing import List, Optional
 
 import torch
 import torch.distributed as dist
@@ -68,6 +68,29 @@ class TorchConfig(BackendConfig):
     @property
     def train_func_context(self):
         return TorchConfigContextManager
+
+
+@dataclass
+class TorchftConfig(TorchConfig):
+    """Configuration for torchft-based fault-tolerant training with replica groups.
+
+    Each replica group has its own independent TCPStore and process group,
+    matching the torchrun model where each torchrun instance is an independent
+    replica group.
+
+    Args:
+        dp_workers: Number of data-parallel workers per replica group.
+            Total workers = num_replica_groups * dp_workers.
+        min_replicas: Minimum number of replica groups required for torchft
+            lighthouse quorum.
+    """
+
+    dp_workers: int = 1
+    min_replicas: int = 1
+
+    @property
+    def backend_cls(self):
+        return _TorchftBackend
 
 
 def _setup_torch_process_group(
@@ -232,3 +255,164 @@ class _TorchBackend(Backend):
         self, worker_group: BaseWorkerGroup, backend_config: BackendConfig
     ):
         worker_group.execute(_set_torch_distributed_env_vars)
+
+
+def _set_torchft_distributed_env_vars(replica_group_rank, dp_workers):
+    """Set torch distributed env vars for torchft replica group workers.
+
+    Unlike the global _set_torch_distributed_env_vars, this sets RANK and
+    WORLD_SIZE to the replica-group-local values so that torchft Manager
+    uses the correct group-local rank.
+    """
+    from ray.train.torch import get_device
+
+    context = ray.train.get_context()
+    os.environ["LOCAL_RANK"] = str(context.get_local_rank())
+    os.environ["RANK"] = str(replica_group_rank)
+    os.environ["LOCAL_WORLD_SIZE"] = str(context.get_local_world_size())
+    os.environ["WORLD_SIZE"] = str(dp_workers)
+    os.environ["NODE_RANK"] = str(context.get_node_rank())
+
+    device = get_device()
+    os.environ["ACCELERATE_TORCH_DEVICE"] = str(device)
+
+
+class _TorchftBackend(Backend):
+    """Backend for torchft-based fault-tolerant training with replica groups.
+
+    Creates a separate TCPStore and process group per replica group,
+    matching the torchrun model.
+    """
+
+    share_cuda_visible_devices: bool = True
+
+    def on_start(
+        self,
+        worker_group: BaseWorkerGroup,
+        backend_config: TorchftConfig,
+        workers_subset: Optional[List[int]] = None,
+    ):
+        if not dist.is_available():
+            raise RuntimeError("Distributed torch is not available.")
+
+        # Determine backend (nccl/gloo)
+        if backend_config.backend is None:
+            resources = worker_group.get_resources_per_worker()
+            num_gpus_per_worker = resources.get("GPU", 0)
+            backend = "nccl" if num_gpus_per_worker > 0 else "gloo"
+        else:
+            backend = backend_config.backend
+
+        dp_workers = backend_config.dp_workers
+        num_workers = len(worker_group)
+        num_groups = num_workers // dp_workers
+
+        if workers_subset is not None:
+            # Determine which groups need initialization based on the subset
+            group_ids = set()
+            for rank in workers_subset:
+                group_ids.add(rank // dp_workers)
+        else:
+            group_ids = set(range(num_groups))
+
+        for group_id in group_ids:
+            self._init_replica_group(
+                worker_group, backend_config, backend, group_id, dp_workers
+            )
+
+    def _init_replica_group(
+        self,
+        worker_group: BaseWorkerGroup,
+        backend_config: TorchftConfig,
+        backend: str,
+        group_id: int,
+        dp_workers: int,
+    ):
+        """Initialize a single replica group's TCPStore and process group."""
+        group_ranks = list(range(group_id * dp_workers, (group_id + 1) * dp_workers))
+
+        # Get master addr/port from group's rank 0
+        master_addr, master_port = worker_group.execute_single(
+            group_ranks[0], get_address_and_port
+        )
+
+        if backend_config.init_method == "env":
+
+            def set_env_vars(addr, port):
+                os.environ["MASTER_ADDR"] = addr
+                os.environ["MASTER_PORT"] = str(port)
+
+            # Set MASTER_ADDR/MASTER_PORT on all workers in this group
+            for rank in group_ranks:
+                worker_group.execute_single(
+                    rank, set_env_vars, addr=master_addr, port=master_port
+                )
+            url = "env://"
+        elif backend_config.init_method == "tcp":
+            url = f"tcp://{build_address(master_addr, master_port)}"
+        else:
+            raise ValueError(
+                f"The provided init_method ("
+                f"{backend_config.init_method}) is not supported. Must "
+                f"be either 'env' or 'tcp'."
+            )
+
+        # Call init_process_group on each worker in the group with
+        # group-local ranks (0..dp_workers-1)
+        setup_futures = []
+        for i, global_rank in enumerate(group_ranks):
+            setup_futures.append(
+                worker_group.execute_single_async(
+                    global_rank,
+                    _setup_torch_process_group,
+                    backend=backend,
+                    world_rank=i,  # group-local rank
+                    world_size=dp_workers,
+                    init_method=url,
+                    timeout_s=backend_config.timeout_s,
+                )
+            )
+        ray.get(setup_futures)
+
+        logger.info(
+            f"Initialized replica group {group_id} with {dp_workers} workers "
+            f"(global ranks {group_ranks}), master={master_addr}:{master_port}"
+        )
+
+    def on_training_start(
+        self,
+        worker_group: BaseWorkerGroup,
+        backend_config: TorchftConfig,
+        workers_subset: Optional[List[int]] = None,
+    ):
+        dp_workers = backend_config.dp_workers
+
+        if workers_subset is not None:
+            ranks_to_init = workers_subset
+        else:
+            ranks_to_init = list(range(len(worker_group)))
+
+        for global_rank in ranks_to_init:
+            replica_group_rank = global_rank % dp_workers
+            worker_group.execute_single(
+                global_rank,
+                _set_torchft_distributed_env_vars,
+                replica_group_rank=replica_group_rank,
+                dp_workers=dp_workers,
+            )
+
+    def on_shutdown(self, worker_group: BaseWorkerGroup, backend_config):
+        futures = worker_group.execute_async(
+            _shutdown_torch,
+            destroy_process_group=len(worker_group) > 1,
+        )
+        timeout_s = ray_constants.env_integer(
+            TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
+            DEFAULT_TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
+        )
+        try:
+            ray.get(futures, timeout=timeout_s)
+        except GetTimeoutError:
+            logger.warning(
+                f"Torch process group shutdown timed out after {timeout_s} seconds"
+            )

@@ -4,8 +4,6 @@ import sys
 import threading
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from torchft.coordination import LighthouseServer
-
 import ray
 from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.usage import usage_lib
@@ -263,13 +261,20 @@ class DataParallelTrainer:
             RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
             DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE,
         )
-        lighthouse = LighthouseServer(
-            bind="[::]:0", min_replicas=1, join_timeout_ms=60000
-        )
-        env_vars.setdefault(
-            TORCHFT_LIGHTHOUSE_ENV_VAR,
-            lighthouse.address(),
-        )
+
+        # Only create a lighthouse if using TorchftConfig
+        lighthouse = None
+        from ray.train.torch.config import TorchftConfig
+
+        if isinstance(self.backend_config, TorchftConfig):
+            from torchft.coordination import LighthouseServer
+
+            lighthouse = LighthouseServer(
+                bind="[::]:0",
+                min_replicas=self.backend_config.min_replicas,
+                join_timeout_ms=60000,
+            )
+            env_vars[TORCHFT_LIGHTHOUSE_ENV_VAR] = lighthouse.address()
 
         # Attach the controller to the node running the driver script.
         controller_actor_cls = ray.remote(

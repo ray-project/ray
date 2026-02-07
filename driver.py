@@ -21,18 +21,7 @@ from torchvision.transforms import Compose, Normalize, ToTensor
 import ray.train.torch
 
 
-TP_SIZE = 2  # Tensor Parallel dimension
-
-
 def train_func():
-    world_rank = ray.train.get_context().get_world_rank()
-    world_size = ray.train.get_context().get_world_size()
-
-    # Derived values for TP
-    group_rank = world_rank % TP_SIZE  # Rank within replica group (0 or 1 for TP=2)
-    replica_group_id = world_rank // TP_SIZE  # Which replica group this worker belongs to
-    num_replica_groups = world_size // TP_SIZE  # Number of replica groups
-
     # Model, Loss, Optimizer
     model = resnet18(num_classes=10)
     model.conv1 = torch.nn.Conv2d(
@@ -64,12 +53,12 @@ def train_func():
         min_replica_size=1,
         load_state_dict=load_state_dict,
         state_dict=state_dict,
-        # Replica group world size (TP dimension)
-        world_size=TP_SIZE,
-        # Rank within replica group
-        rank=group_rank,
-        # Replica group identifier (workers in same group share the same replica_id)
-        replica_id=f"train_ddp_{replica_group_id}",
+        # This is replica group world size. torchft example doesn't set this.
+        world_size=1,
+        # Always rank 0 per replica group.
+        rank=0,
+        # example does REPLICA_GROUP_ID, but we will do N replica groups and 1 worker per replica group
+        replica_id=f"train_ddp_{ray.train.get_context().get_world_rank()}",
         timeout=timedelta(seconds=30),
         checkpoint_transport=transport,
     )
@@ -89,11 +78,11 @@ def train_func():
     # majority of groups will be available so few batches will be dropped.
     sampler = DistributedSampler(
         train_data,
-        replica_rank=replica_group_id,
-        num_replica_groups=num_replica_groups,
-        group_rank=group_rank,
-        # TP dimension - number of workers per replica group
-        num_replicas=TP_SIZE,
+        replica_rank=ray.train.get_context().get_world_rank(),
+        num_replica_groups=ray.train.get_context().get_world_size(),
+        group_rank=0,
+        # for DDP we can use replica groups of size 1, FSDP/PP/CP would need more.
+        num_replicas=1,
         shuffle=True,
     )
     # This uses the torchdata StatefulDataLoader to be able to checkpoint and
@@ -122,7 +111,7 @@ def train_func():
 
 
 # [4] Configure scaling and resource requirements.
-scaling_config = ray.train.ScalingConfig(num_workers=4, use_gpu=True)
+scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
 
 # [5] Launch distributed training job.
 trainer = ray.train.torch.TorchTrainer(

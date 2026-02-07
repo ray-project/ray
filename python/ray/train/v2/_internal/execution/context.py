@@ -83,6 +83,8 @@ class DistributedContext:
     local_rank: int
     local_world_size: int
     node_rank: int
+    replica_group_id: int = -1
+    replica_group_rank: int = -1
 
 
 @dataclass(frozen=True)
@@ -144,6 +146,12 @@ class TrainContext:
 
     def get_node_rank(self) -> int:
         return self.distributed_context.node_rank
+
+    def get_replica_group_id(self) -> int:
+        return self.distributed_context.replica_group_id
+
+    def get_replica_group_rank(self) -> int:
+        return self.distributed_context.replica_group_rank
 
     def get_storage(self):
         return self.storage_context

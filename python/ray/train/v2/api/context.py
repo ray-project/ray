@@ -176,6 +176,22 @@ class TrainContext(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_replica_group_id(self) -> int:
+        """Get the replica group ID of this worker.
+
+        Returns -1 if replica groups are not configured (i.e., not using TorchftConfig).
+        """
+        pass
+
+    @abstractmethod
+    def get_replica_group_rank(self) -> int:
+        """Get the rank of this worker within its replica group.
+
+        Returns -1 if replica groups are not configured (i.e., not using TorchftConfig).
+        """
+        pass
+
     @DeveloperAPI
     @abstractmethod
     def get_storage(self):
@@ -211,6 +227,12 @@ class DistributedTrainContext(TrainContext):
     def get_node_rank(self) -> int:
         return get_internal_train_context().get_node_rank()
 
+    def get_replica_group_id(self) -> int:
+        return get_internal_train_context().get_replica_group_id()
+
+    def get_replica_group_rank(self) -> int:
+        return get_internal_train_context().get_replica_group_rank()
+
     def get_storage(self):
         return get_internal_train_context().get_storage()
 
@@ -227,6 +249,8 @@ class LocalTrainContext(TrainContext):
         local_rank: int = 0,
         local_world_size: int = 1,
         node_rank: int = 0,
+        replica_group_id: int = -1,
+        replica_group_rank: int = -1,
     ):
         self.experiment_name = experiment_name
         self.world_size = world_size
@@ -234,6 +258,8 @@ class LocalTrainContext(TrainContext):
         self.local_rank = local_rank
         self.local_world_size = local_world_size
         self.node_rank = node_rank
+        self.replica_group_id = replica_group_id
+        self.replica_group_rank = replica_group_rank
 
     def get_experiment_name(self) -> str:
         return self.experiment_name
@@ -252,6 +278,12 @@ class LocalTrainContext(TrainContext):
 
     def get_node_rank(self) -> int:
         return self.node_rank
+
+    def get_replica_group_id(self) -> int:
+        return self.replica_group_id
+
+    def get_replica_group_rank(self) -> int:
+        return self.replica_group_rank
 
     def get_storage(self):
         raise NotImplementedError("Local storage context not yet implemented. ")
