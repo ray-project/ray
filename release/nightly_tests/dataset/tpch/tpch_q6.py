@@ -32,8 +32,10 @@ def main(args):
         )
 
         # Aggregate
-        result = ds.aggregate(Sum(on="revenue", alias_name="revenue"))
-        return result
+        _ = ds.aggregate(Sum(on="revenue", alias_name="revenue"))
+
+        # Report arguments for the benchmark.
+        return vars(args)
 
     run_tpch_benchmark("tpch_q6", benchmark_fn)
 

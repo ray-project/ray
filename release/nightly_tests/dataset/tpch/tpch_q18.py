@@ -12,8 +12,8 @@ def main(args):
         orders = load_table("orders", args.sf)
         lineitem = load_table("lineitem", args.sf)
 
-        # Q18 parameters
-        quantity = 300
+        # Q18 parameters (spec: [312..315])
+        quantity = 312
 
         # Calculate total quantity per order
         lineitem_quantity = lineitem.groupby("l_orderkey").aggregate(
@@ -28,7 +28,7 @@ def main(args):
             large_orders,
             join_type="inner",
             num_partitions=100,
-            on="l_orderkey",
+            on=("l_orderkey",),
         )
 
         # Join with orders
