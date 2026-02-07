@@ -13,36 +13,23 @@ from ray._common.utils import try_to_create_directory
 from ray._private import ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray._private.services import get_node_ip_address
-from ray._private.utils import get_all_node_info_until_retrieved
 from ray._raylet import GcsClient
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler._private.monitor import Monitor
 from ray.autoscaler.v2.instance_manager.config import KubeRayConfigReader
 from ray.autoscaler.v2.utils import is_autoscaler_v2
-from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 
 logger = logging.getLogger(__name__)
 
 BACKOFF_S = 5
 
 
-def _get_log_dir(gcs_client: GcsClient) -> str:
-    head_node_selector = GetAllNodeInfoRequest.NodeSelector()
-    head_node_selector.is_head_node = True
-
-    # We need to wait until head node's raylet is registered in GCS.
-    node_infos = get_all_node_info_until_retrieved(
-        gcs_client,
-        node_selectors=[head_node_selector],
+def _get_log_dir() -> str:
+    return os.path.join(
+        ray._common.utils.get_ray_temp_dir(),
+        ray._private.ray_constants.SESSION_LATEST,
+        "logs",
     )
-
-    node_info = next(iter(node_infos))
-    temp_dir = getattr(node_info, "temp_dir", None)
-    if temp_dir is None:
-        raise Exception(
-            "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
-        )
-    return os.path.join(temp_dir, ray._private.ray_constants.SESSION_LATEST, "logs")
 
 
 def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
@@ -70,12 +57,9 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
             )
             time.sleep(BACKOFF_S)
 
-    gcs_client = GcsClient(ray_address)
-    log_dir = _get_log_dir(gcs_client)
-
     # The Ray head container sets up the log directory. Thus, we set up logging
     # only after the Ray head is ready.
-    _setup_logging(log_dir)
+    _setup_logging()
 
     # autoscaling_config_producer reads the RayCluster CR from K8s and uses the CR
     # to output an autoscaling config.
@@ -83,13 +67,14 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
         cluster_name, cluster_namespace
     )
 
+    gcs_client = GcsClient(ray_address)
     if is_autoscaler_v2(fetch_from_server=True, gcs_client=gcs_client):
         from ray.autoscaler.v2.monitor import AutoscalerMonitor as MonitorV2
 
         MonitorV2(
             address=gcs_client.address,
             config_reader=KubeRayConfigReader(autoscaling_config_producer),
-            log_dir=log_dir,
+            log_dir=_get_log_dir(),
             monitor_ip=head_ip,
         ).run()
     else:
@@ -106,15 +91,13 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
         ).run()
 
 
-def _setup_logging(log_dir: str) -> None:
+def _setup_logging() -> None:
     """Log to autoscaler log file
     (typically, /tmp/ray/session_latest/logs/monitor.*)
 
     Also log to pod stdout (logs viewable with `kubectl logs <head-pod> -c autoscaler`).
-
-    Args:
-        log_dir: The path to the log directory.
     """
+    log_dir = _get_log_dir()
     # The director should already exist, but try (safely) to create it just in case.
     try_to_create_directory(log_dir)
 

@@ -60,6 +60,9 @@ def get_span_list():
 
 
 @pytest.mark.skipif(
+    sys.platform == "win32", reason="Temp directory cleanup fails on Windows"
+)
+@pytest.mark.skipif(
     os.environ.get("RAY_SERVE_USE_GRPC_BY_DEFAULT", "0") == "1",
     reason="Tracing context propagation not yet supported in gRPC mode. "
     "See https://github.com/ray-project/ray/issues/60223",

@@ -56,30 +56,26 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
+    Count,
+    Filter,
+    FlatMap,
+    InputData,
+    Join,
+    Limit,
+    MapBatches,
+    MapRows,
+    Project,
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
     Sort,
-)
-from ray.data._internal.logical.operators.count_operator import Count
-from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.join_operator import Join
-from ray.data._internal.logical.operators.map_operator import (
-    Filter,
-    FlatMap,
-    MapBatches,
-    MapRows,
-    Project,
     StreamingRepartition,
-)
-from ray.data._internal.logical.operators.n_ary_operator import (
+    StreamingSplit,
     Union as UnionLogicalOperator,
+    Write,
     Zip,
 )
-from ray.data._internal.logical.operators.one_to_one_operator import Limit
-from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
-from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -108,7 +104,6 @@ from ray.data.aggregate import (
     Unique,
 )
 from ray.data.block import (
-    VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
     DataBatch,
@@ -492,7 +487,7 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
-        udf_modifying_row_count: bool = False,
+        udf_modifying_row_count: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -666,7 +661,9 @@ class Dataset:
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: This argument is deprecated. Use ``compute`` argument.
-            udf_modifying_row_count: Set to True if the UDF may modify the number of rows it receives so the limit pushdown optimization will not be applied.
+            udf_modifying_row_count: If your UDF produces the same number of output rows
+                as it receives, set this parameter to False. It allows Ray Data to
+                perform more optimizations like limit pushdown.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -791,11 +788,6 @@ class Dataset:
             ray_remote_args["memory"] = memory
 
         batch_format = _apply_batch_format(batch_format)
-        if batch_format not in VALID_BATCH_FORMATS:
-            raise ValueError(
-                f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "
-                f"{batch_format}"
-            )
 
         plan = self._plan.copy()
         map_batches_op = MapBatches(
@@ -892,8 +884,7 @@ class Dataset:
             A new dataset with the added column evaluated via the expression.
         """
         # TODO: update schema based on the expression AST.
-        from ray.data._internal.logical.operators.map_operator import Project
-        from ray.data._internal.logical.operators.one_to_one_operator import Download
+        from ray.data._internal.logical.operators import Download, Project
 
         # TODO: Once the expression API supports UDFs, we can clean up the code here.
         from ray.data.expressions import DownloadExpr
@@ -905,6 +896,7 @@ class Dataset:
                 uri_column_names=[expr.uri_column_name],
                 output_bytes_column_names=[column_name],
                 ray_remote_args=ray_remote_args,
+                filesystem=expr.filesystem,
             )
             logical_plan = LogicalPlan(download_op, self.context)
         else:
@@ -2699,7 +2691,7 @@ class Dataset:
         return ds_train, ds_test
 
     @PublicAPI(api_group=SMJ_API_GROUP)
-    def union(self, *other: List["Dataset"]) -> "Dataset":
+    def union(self, *other: "Dataset") -> "Dataset":
         """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
 
         The order of the blocks in the datasets is preserved, as is the
@@ -2714,11 +2706,11 @@ class Dataset:
             >>> import ray
             >>> ds1 = ray.data.range(2)
             >>> ds2 = ray.data.range(3)
-            >>> ds1.union(ds2).take_all()
+            >>> ds1.union(ds2).take_all()  # doctest: +SKIP
             [{'id': 0}, {'id': 1}, {'id': 0}, {'id': 1}, {'id': 2}]
 
         Args:
-            other: List of datasets to combine with this one. The datasets
+            *other: The datasets to combine with this one. The datasets
                 must have the same schema as this dataset, otherwise the
                 behavior is undefined.
 
@@ -3513,7 +3505,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=SMJ_API_GROUP)
-    def zip(self, *other: List["Dataset"]) -> "Dataset":
+    def zip(self, *other: "Dataset") -> "Dataset":
         """Zip the columns of this dataset with the columns of another.
 
         The datasets must have the same number of rows. Their column sets are
@@ -3537,7 +3529,7 @@ class Dataset:
             {'id': array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4]), 'id_2': array([0, 1, 2, 3, 4])}
 
         Args:
-            *other: List of datasets to combine with this one. The datasets
+            *other: The datasets to combine with this one. The datasets
                 must have the same row count as this dataset, otherwise the
                 ValueError is raised.
 
@@ -5522,6 +5514,7 @@ class Dataset:
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        pin_memory: bool = False,
     ) -> Iterable[TorchBatchType]:
         """Return an iterable over batches of data represented as Torch tensors.
 
@@ -5597,6 +5590,8 @@ class Dataset:
                 the buffer, the remaining rows in the buffer are drained.
                 ``batch_size`` must also be specified when using local shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            pin_memory: [Alpha] If True, copies the tensor to pinned memory. Note that
+                `pin_memory` is only supported when using `DefaultCollateFn`.
 
         Returns:
             An iterable over Torch Tensor batches.
@@ -5614,6 +5609,7 @@ class Dataset:
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
+            pin_memory=pin_memory,
         )
 
     @ConsumptionAPI
@@ -6918,7 +6914,7 @@ class Schema:
         from ray.data.extensions import ArrowTensorType, TensorDtype
 
         def _convert_to_pa_type(
-            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
+            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype],
         ) -> pa.DataType:
             if isinstance(dtype, pd.ArrowDtype):
                 return dtype.pyarrow_dtype

@@ -224,17 +224,26 @@ def ray_deps_setup():
         patch_args = ["-p1"],
     )
 
+    # WARNING: Upgrading the OTEL version caused a major regression in actor creation/task throughput.
+    # Verify that this regression is fixed before upgrading the below two OTEL versions.
     auto_http_archive(
         name = "io_opentelemetry_cpp",
-        url = "https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.22.0.zip",
-        sha256 = "814e494d4fdc6361a81ae1d40a2a195bb1152b9081bc7feff14893f9ddf63fd7",
+        url = "https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.19.0.zip",
+        sha256 = "8ef0a63f4959d5dfc3d8190d62229ef018ce41eef36e1f3198312d47ab2de05a",
+        # Enable mTLS support for OTLP gRPC exporter.
+        # This is required because Ray's gRPC servers require client certificates when TLS is enabled.
+        # See https://github.com/ray-project/ray/issues/59968
+        patches = [
+            "@io_ray//thirdparty/patches:opentelemetry-cpp-enable-mtls.patch",
+        ],
+        patch_args = ["-p1"],
     )
 
     auto_http_archive(
         name = "com_github_opentelemetry_proto",
-        url = "https://github.com/open-telemetry/opentelemetry-proto/archive/refs/tags/v1.7.0.zip",
+        url = "https://github.com/open-telemetry/opentelemetry-proto/archive/refs/tags/v1.2.0.zip",
         build_file = "@io_opentelemetry_cpp//bazel:opentelemetry_proto.BUILD",
-        sha256 = "ddb80357ff146f5e3bda584907185b1f635412a4b31edf6f96b102a18b8e05dc",
+        sha256 = "b3cf4fefa4eaea43879ade612639fa7029c624c1b959f019d553b86ad8e01e82",
     )
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
@@ -327,8 +336,8 @@ def ray_deps_setup():
     # protobuf library that Ray supports.
     auto_http_archive(
         name = "com_google_protobuf_rules_proto_grpc",
-        url = "https://github.com/protocolbuffers/protobuf/archive/v3.19.4.tar.gz",
-        sha256 = "3bd7828aa5af4b13b99c191e8b1e884ebfa9ad371b0ce264605d347f135d2568",
+        url = "https://github.com/protocolbuffers/protobuf/archive/v3.20.3.tar.gz",
+        sha256 = "9c0fd39c7a08dff543c643f0f4baf081988129a411b977a07c46221793605638",
     )
     auto_http_archive(
         name = "rules_proto_grpc",
