@@ -89,7 +89,7 @@ def test_placement_group_fallback_priority(ray_start_cluster):
     ray.init(address=cluster.address)
 
     fallback_strategy = [
-        {"bundles": [{"CPU": 10}]},  # Infeasible
+        {"bundles": [{"CPU": 11}]},  # Infeasible
         {"bundles": [{"CPU": 5}]},  # Feasible
         {"bundles": [{"CPU": 1}]},  # Feasible
     ]
