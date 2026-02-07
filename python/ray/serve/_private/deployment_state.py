@@ -1474,9 +1474,14 @@ class DeploymentReplica:
         self.update_actor_details(state=state)
 
     def update_actor_details(self, **kwargs) -> None:
-        details_kwargs = self._actor_details.dict()
-        details_kwargs.update(kwargs)
-        self._actor_details = ReplicaDetails(**details_kwargs)
+        # Fast path: skip if all provided values are already current.
+        # This avoids unnecessary object creation on every tick when the
+        # pop-iterate-readd pattern re-adds replicas without state changes.
+        if all(getattr(self._actor_details, k, None) == v for k, v in kwargs.items()):
+            return
+        # Use .copy(update=...) instead of .dict() + reconstruction to avoid
+        # full Pydantic serialization and validation on every update.
+        self._actor_details = self._actor_details.copy(update=kwargs)
 
     def resource_requirements(self) -> Tuple[str, str]:
         """Returns required and currently available resources.
