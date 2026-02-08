@@ -67,12 +67,7 @@ class ClusterNodeInfoCache(ABC):
         )
 
     def _fetch_available_resources_per_node(self) -> Dict[str, Dict[str, float]]:
-        """Fetch available resources per alive node via get_all_resource_usage().
-
-        Uses the existing GcsClient instead of the legacy
-        ray._private.state.available_resources_per_node() which goes through
-        GlobalStateAccessor and creates a redundant connection.
-        """
+        """Fetch available resources per alive node via get_all_resource_usage()."""
         try:
             reply = self._gcs_client.get_all_resource_usage(
                 timeout=RAY_GCS_RPC_TIMEOUT_S
