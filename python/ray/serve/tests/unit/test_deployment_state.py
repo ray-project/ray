@@ -6059,5 +6059,80 @@ def test_replicas_changed_flag_set_on_state_transitions(mock_deployment_state_ma
     assert ds._replicas.count(states=[ReplicaState.STOPPING]) >= 1
 
 
+def test_replicas_changed_flag_set_on_lightweight_broadcast_config_update(
+    mock_deployment_state_manager,
+):
+    """Regression test: when a config change requires a long-poll broadcast
+    (e.g. max_ongoing_requests changed) but does NOT require an actor restart
+    or reconfigure, the _replicas_changed flag must still be set by the
+    requires_long_poll_broadcast path so the broadcast is not skipped.
+
+    This guards against a future scenario where a broadcast-affecting field
+    is changed to a lighter update type that doesn't trigger actor_updating.
+    """
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    # Deploy v1 and bring to healthy steady state.
+    b_info_1, v1 = deployment_info(version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert ds._replicas_changed is False
+
+    # Deploy v2 with a different max_ongoing_requests.
+    b_info_2, v2 = deployment_info(version="1", max_ongoing_requests=42)
+    dsm.deploy(TEST_DEPLOYMENT_ID, b_info_2)
+
+    # _set_target_state also sets _replicas_changed. Clear it so we can
+    # isolate whether _stop_or_update_outdated_version_replicas sets the
+    # flag via the requires_long_poll_broadcast path.
+    ds._replicas_changed = False
+
+    # Patch the running replica's mock actor so reconfigure() returns False
+    # (simulating a broadcast-needed but no-actor-update scenario).
+    replica = ds._replicas.get()[0]
+    original_reconfigure = replica._actor.reconfigure
+
+    def patched_reconfigure(version, rank=None):
+        # Perform the version/rank bookkeeping but report no actor update.
+        original_reconfigure(version, rank=rank)
+        return False
+
+    replica._actor.reconfigure = patched_reconfigure
+
+    # Confirm preconditions: the version change requires a broadcast.
+    assert v1.requires_long_poll_broadcast(v2)
+
+    # Directly call _stop_or_update_outdated_version_replicas (the method
+    # that checks requires_long_poll_broadcast) so we can inspect the flag
+    # before broadcast clears it.
+    ds._stop_or_update_outdated_version_replicas()
+
+    # The replica should stay RUNNING (no actor restart, no UPDATING state)
+    # because our patched reconfigure() returns False.
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v2)])
+
+    # Key assertion: _replicas_changed was set by the
+    # requires_long_poll_broadcast path, NOT by actor_updating.
+    assert ds._replicas_changed is True
+
+    # Now broadcast and verify it fires (clearing the flag).
+    ds.broadcast_running_replicas_if_changed()
+    assert ds._replicas_changed is False
+    ds._long_poll_host.notify_changed.assert_called()
+
+    # Verify the fast path works: no further broadcast on next tick.
+    ds._long_poll_host.notify_changed.reset_mock()
+    with patch.object(ds, "get_running_replica_infos") as mock_get_infos:
+        ds.broadcast_running_replicas_if_changed()
+        mock_get_infos.assert_not_called()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

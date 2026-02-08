@@ -2807,6 +2807,7 @@ class DeploymentState:
                     self._target_state.version
                 ):
                     replicas_changed = True
+                    self._replicas_changed = True
                 # Get current rank for the replica
                 current_rank = self._rank_manager.get_replica_rank(
                     replica.replica_id.unique_id
