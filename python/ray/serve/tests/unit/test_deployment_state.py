@@ -442,6 +442,13 @@ class FakeDeploymentReplica:
 
     def __init__(self, version: DeploymentVersion):
         self._version = version
+        self._replica_id = ReplicaID(
+            get_random_string(), deployment_id=DeploymentID(name="fake")
+        )
+
+    @property
+    def replica_id(self):
+        return self._replica_id
 
     @property
     def version(self):
