@@ -75,10 +75,10 @@ def _rebuild_list_array(
     offsets = arr.offsets
     if len(offsets) > 0:
         start_offset = offsets[0]
-        if start_offset.as_py() != 0:
-            end_offset = offsets[-1].as_py()
+        if start_offset != 0:
+            end_offset = offsets[-1]
             child_array = child_array.slice(
-                offset=start_offset.as_py(), length=end_offset - start_offset.as_py()
+                offset=int(start_offset), length=int(end_offset) - int(start_offset)
             )
             offsets = pc.subtract(offsets, start_offset)
 
@@ -175,30 +175,8 @@ class _MapNamespace:
         return_dtype = DataType(object)
         if self._expr.data_type.is_arrow_type():
             arrow_type = self._expr.data_type.to_arrow_dtype()
-
-            is_physical_map = (
-                (
-                    pyarrow.types.is_list(arrow_type)
-                    or pyarrow.types.is_large_list(arrow_type)
-                )
-                and pyarrow.types.is_struct(arrow_type.value_type)
-                and arrow_type.value_type.num_fields >= 2
-            )
-
-            inner_arrow_type = None
-            if pyarrow.types.is_map(arrow_type):
-                inner_arrow_type = (
-                    arrow_type.key_type
-                    if component == MapComponent.KEYS
-                    else arrow_type.item_type
-                )
-            elif is_physical_map:
-                # List<Struct> map representation: idx 0 is key, idx 1 is value.
-                idx = 0 if component == MapComponent.KEYS else 1
-                inner_arrow_type = arrow_type.value_type.field(idx).type
-
-            if inner_arrow_type:
-                return_dtype = DataType.list(DataType.from_arrow(inner_arrow_type))
+            result_arrow_type = _get_result_type(arrow_type, component)
+            return_dtype = DataType.from_arrow(result_arrow_type)
 
         @pyarrow_udf(return_dtype=return_dtype)
         def _project_map(arr: pyarrow.Array) -> pyarrow.Array:

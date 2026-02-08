@@ -110,7 +110,6 @@ def test_map_nulls_and_empty():
     arrow_table = pa.Table.from_arrays([arrays], names=["m"])
     ds = ray.data.from_arrow(arrow_table)
 
-    # Use take_all() to avoid pandas casting errors with mixed None/list types
     rows = (
         ds.with_column("keys", col("m").map.keys())
         .with_column("values", col("m").map.values())
