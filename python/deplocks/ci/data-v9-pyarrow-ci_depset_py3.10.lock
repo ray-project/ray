@@ -4472,32 +4472,19 @@ torch==2.3.0+cpu \
     --hash=sha256:ab0c05525195b8fecdf2ea75968ed32ccd87dff16381b6e13249babb4a9596ff \
     --hash=sha256:e3c220702d82c7596924150e0499fbbffcf62a88a59adc860fa357cd8dc1c302
     # via
-    #   --override python/requirements/data/pyarrow-v9.txt
     #   -r python/requirements/data/data-base.txt
-    #   -r python/requirements/data/pyarrow-v9.txt
     #   torchvision
-torchvision==0.25.0+cpu \
-    --hash=sha256:0c2d0da9bc011a0fde1d125af396a8fbe94d99becf9d313764f24ca7657a3448 \
-    --hash=sha256:2d444009c0956669ada149f61ed78f257c1cc96d259efa6acf3929ca96ceb3f0 \
-    --hash=sha256:3e2ae9981e32a5b9db685659d5c7af0f04b159ff20394650a90124baf6ada51a \
-    --hash=sha256:499eae1e535766391b6ee2d1e6e841239c20e2e6d88203a15b8f9f8d60a1f8bd \
-    --hash=sha256:4d72a57a8f0b5146e26dac1fbfa2c905280cd04f5fcb23b9c56253506b683aeb \
-    --hash=sha256:59be99d1c470ef470b134468aa6afa6f968081a503acb4ee883d70332f822e35 \
-    --hash=sha256:727334e9a721cfc1ac296ce0bf9e69d9486821bfa5b1e75a8feb6f78041db481 \
-    --hash=sha256:73ce04dea64914ff1110008311204c366107d651d3b04faa0dbee77efb7133b7 \
-    --hash=sha256:783c8fc580bbfc159bff52f4f72cdd538e42b32956e70dffa42b940db114e151 \
-    --hash=sha256:7d47d544899fabac52ebe0d4812975608fd7ab79a3d7fb6383275eb667e33f53 \
-    --hash=sha256:7f851245a2687743742157988ed9c42c6e312b95bbe6cfcac9e7d0d0c28ae62f \
-    --hash=sha256:813f0106eb3e268f3783da67b882458e544c6fb72f946e6ca64b5ed4e62c6a77 \
-    --hash=sha256:90eec299e1f82cfaf080ccb789df3838cb9a54b57e2ebe33852cd392c692de5c \
-    --hash=sha256:9212210f417888e6261c040495180f053084812cf873dedba9fc51ff4b24b2d3 \
-    --hash=sha256:9511339b3b5eb75229e0b5041202e8aed9bef3b1de3a715b9fb319c9e97688fd \
-    --hash=sha256:aa016ab73e06a886f72edc8929ed2ed4c85aaaa6e10500ecdef921b03129b19e \
-    --hash=sha256:c1be164e93c68b2dbf460fd58975377c892dbcf3358fb72941709c3857351bba \
-    --hash=sha256:c7eb5f219fdfaf1f65e68c00eb81172ab4fa08a9874dae9dad2bca360da34d0f \
-    --hash=sha256:e985e12a9a232618e5a43476de5689e4b14989f5da6b93909c57afa57ec27012 \
-    --hash=sha256:fb9f07f6a10f0ac24ac482ae68c6df99110b74a0d80a4c64fddc9753267d8815 \
-    --hash=sha256:fe54cbd5942cd0b26a90f1748f0d4421caf67be35c281c6c3b8573733a03d630
+torchvision==0.18.0+cpu \
+    --hash=sha256:09eb510de992fe64fb30d326e0662cbf94ac891a3a616b2a8acf14e6663df6d0 \
+    --hash=sha256:0e764a15c69f51742b09ec17cc2dcd1eee445e87cfd93a9b13b1caa2037f154d \
+    --hash=sha256:1b83ff7a519036fc63c018b08046d84fceefbcef519fe7f55476e84d1c237e59 \
+    --hash=sha256:6f285024f8a93598a67fbd2c86b534cd01236e8f6bda8704cd3459cc63d665a3 \
+    --hash=sha256:ad2cfbf625f93f6a51bbbb8e993f4e0ba96e84a12a6719cc5f7ed3cc5b0fc09d \
+    --hash=sha256:b9578be98e357d90b508669cd77de8609327fc234d67cfc9455634be436b0bda \
+    --hash=sha256:d09fe6166bca6c3b0bc3f5e87674045af79d9c80bbcf1b88890fc497caa90a98 \
+    --hash=sha256:d20a65db1c6821fd79b8b4678cd21c14c8d8c1a1fd0d5ae2b43528db568ea890 \
+    --hash=sha256:d7169c0bc00faee13c1e9eae186cfe19a5b32e1079eec5d47bf494140fe945cf \
+    --hash=sha256:e47a0ccd1e80ced219a2d91250c6edc2901387ea444bfdd16b248d81cc76b171
     # via -r python/requirements/data/data-base.txt
 tornado==6.5.4 \
     --hash=sha256:053e6e16701eb6cbe641f308f4c1a9541f91b6261991160391bfc342e8a551a1 \
