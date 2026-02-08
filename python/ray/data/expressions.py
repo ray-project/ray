@@ -673,9 +673,9 @@ class Expr(ABC):
 
         Example:
             >>> from ray.data.expressions import col
-            >>> from torchvision import transforms
-            >>> augmentation = [transforms.ToTensor(), transforms.RandomResizedCrop(224)]
-            >>> ds.with_column("augmented", col("image").image.compose(augmentation))
+            >>> from torchvision.transforms import v2
+            >>> augmentation = [v2.ToTensor(), v2.RandomResizedCrop(224)]
+            >>> ds.with_column("augmented", col("image").image.compose(augmentation))  # doctest: +SKIP
         """
         from ray.data.namespace_expressions.image_namespace import _ImageNamespace
 

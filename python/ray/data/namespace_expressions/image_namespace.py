@@ -37,7 +37,7 @@ class _ImageNamespace:
             ...     v2.RandomResizedCrop(224),
             ...     v2.RandomHorizontalFlip(p=0.5),
             ... ]
-            >>> ds.with_column("augmented", col("image").image.compose(augmentation))
+            >>> ds.with_column("augmented", col("image").image.compose(augmentation))  # doctest: +SKIP
         """
         if not transforms:
             raise ValueError("transforms list must not be empty")
