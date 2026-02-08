@@ -133,8 +133,6 @@ def train_func():
         checkpoint_transport=transport,
         #use_async_quorum=False
     )
-    # Note: We don't wrap model with torchft's DistributedDataParallel since
-    # we're using PyTorch's native TP. torchft provides fault tolerance via Manager.
     optimizer = Optimizer(manager, optimizer)
 
     # Data
@@ -168,6 +166,19 @@ def train_func():
         outputs = model(images)
         loss = criterion(outputs, labels)
         loss.backward()
+        # All-reduce gradients across replica groups via the manager.
+        # manager.allreduce() calls wait_quorum() internally, ensuring ft_pg
+        # is configured before use. Each replica group computes gradients
+        # independently with TP; this syncs them across groups (DP dimension).
+        for param in model.parameters():
+            if param.grad is not None:
+                # For DTensor grads from TP, all-reduce the local tensor
+                grad = (
+                    param.grad._local_tensor
+                    if hasattr(param.grad, "_local_tensor")
+                    else param.grad
+                )
+                manager.allreduce(grad).wait()
         optimizer.step()
 
         current_step = manager.current_step()
