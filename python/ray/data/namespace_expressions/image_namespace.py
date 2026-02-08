@@ -19,8 +19,7 @@ class _ImageNamespace:
     def compose(self, transforms: List[Callable]) -> "UDFExpr":
         """Apply a pipeline of torchvision transforms to images.
 
-        Reuses the transform logic from TorchVisionPreprocessor with batched=False,
-        meaning transforms are applied individually to each image.
+        Transforms are applied individually to each image.
 
         Args:
             transforms: List of torchvision transform objects. Must be non-empty.
@@ -30,44 +29,36 @@ class _ImageNamespace:
 
         Note:
             The transform pipeline must return torch.Tensor or np.ndarray.
-            For better performance with batch-supporting transforms, consider
-            using TorchVisionPreprocessor directly with batched=True.
 
         Example:
-            >>> from torchvision import transforms
+            >>> from torchvision.transforms import v2
             >>> augmentation = [
-            ...     transforms.ToTensor(),
-            ...     transforms.RandomResizedCrop(224),
-            ...     transforms.RandomHorizontalFlip(p=0.5),
+            ...     v2.ToTensor(),
+            ...     v2.RandomResizedCrop(224),
+            ...     v2.RandomHorizontalFlip(p=0.5),
             ... ]
             >>> ds.with_column("augmented", col("image").image.compose(augmentation))
         """
         if not transforms:
             raise ValueError("transforms list must not be empty")
 
-        from torchvision import transforms as T
+        from torchvision.transforms import v2
 
-        from ray.data.preprocessors import TorchVisionPreprocessor
-
-        # Create composed transform
-        composed = T.Compose(transforms)
-
-        # Reuse TorchVisionPreprocessor's transform logic
-        preprocessor = TorchVisionPreprocessor(
-            columns=["__image__"],
-            transform=composed,
-            batched=False,
-        )
+        composed = v2.Compose(transforms)
 
         @pyarrow_udf(return_dtype=DataType(object))
         def _apply_transforms(images):
+            import numpy as np
             import pyarrow as pa
+            import torch
 
             from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
+            from ray.data._internal.tensor_extensions.utils import (
+                _create_possibly_ragged_ndarray,
+            )
 
-            # Convert PyArrow ChunkedArray/Array to numpy for TorchVisionPreprocessor
+            # Convert PyArrow ChunkedArray/Array to numpy
             if isinstance(images, pa.ChunkedArray):
-                # Combine all chunks to avoid data loss with multi-chunk arrays
                 images = images.combine_chunks()
 
             if isinstance(images, (pa.Array, ArrowTensorArray)):
@@ -75,11 +66,24 @@ class _ImageNamespace:
             else:
                 np_images = images
 
-            # Use preprocessor's internal transform method
-            batch = {"__image__": np_images}
-            result = preprocessor._transform_numpy(batch)
+            # Apply transforms to each image individually.
+            # Pass numpy arrays directly — v2 transforms handle numpy natively.
+            def apply_single(image):
+                output = composed(image)
+                if isinstance(output, torch.Tensor):
+                    output = output.numpy()
+                if not isinstance(output, np.ndarray):
+                    raise ValueError(
+                        "Expected your transform to return a `torch.Tensor` or "
+                        "`np.ndarray`, but your transform returned a "
+                        f"`{type(output).__name__}` instead."
+                    )
+                return output
 
-            # Convert result back to ArrowTensorArray for proper storage
-            return ArrowTensorArray.from_numpy(result["__image__"])
+            results = _create_possibly_ragged_ndarray(
+                [apply_single(img) for img in np_images]
+            )
+
+            return ArrowTensorArray.from_numpy(results)
 
         return _apply_transforms(self._expr)

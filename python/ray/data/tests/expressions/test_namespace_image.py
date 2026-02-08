@@ -27,7 +27,7 @@ class TestImageNamespace:
 
     def test_image_compose_single_transform(self, ray_start_regular_shared):
         """Test compose with a single transform."""
-        from torchvision import transforms
+        from torchvision.transforms import v2
 
         ds = ray.data.from_items(
             [
@@ -36,7 +36,7 @@ class TestImageNamespace:
             ]
         )
 
-        augmentation = [transforms.ToTensor()]
+        augmentation = [v2.ToTensor()]
 
         result_ds = ds.with_column(
             "transformed", col("image").image.compose(augmentation)
@@ -53,7 +53,7 @@ class TestImageNamespace:
 
     def test_image_compose_multiple_transforms(self, ray_start_regular_shared):
         """Test compose with multiple transforms."""
-        from torchvision import transforms
+        from torchvision.transforms import v2
 
         ds = ray.data.from_items(
             [
@@ -63,8 +63,8 @@ class TestImageNamespace:
         )
 
         augmentation = [
-            transforms.ToTensor(),
-            transforms.Resize((32, 32)),
+            v2.ToTensor(),
+            v2.Resize((32, 32)),
         ]
 
         result_ds = ds.with_column("resized", col("image").image.compose(augmentation))
@@ -78,7 +78,7 @@ class TestImageNamespace:
 
     def test_image_compose_with_augmentation_pipeline(self, ray_start_regular_shared):
         """Test compose with a realistic augmentation pipeline."""
-        from torchvision import transforms
+        from torchvision.transforms import v2
 
         ds = ray.data.from_items(
             [
@@ -87,9 +87,9 @@ class TestImageNamespace:
         )
 
         augmentation = [
-            transforms.ToTensor(),
-            transforms.RandomHorizontalFlip(p=1.0),  # Always flip for determinism
-            transforms.Resize((48, 48)),
+            v2.ToTensor(),
+            v2.RandomHorizontalFlip(p=1.0),  # Always flip for determinism
+            v2.Resize((48, 48)),
         ]
 
         result_ds = ds.with_column(
@@ -102,7 +102,7 @@ class TestImageNamespace:
 
     def test_image_compose_preserves_other_columns(self, ray_start_regular_shared):
         """Test that compose preserves other columns in the dataset."""
-        from torchvision import transforms
+        from torchvision.transforms import v2
 
         ds = ray.data.from_items(
             [
@@ -119,7 +119,7 @@ class TestImageNamespace:
             ]
         )
 
-        augmentation = [transforms.ToTensor()]
+        augmentation = [v2.ToTensor()]
 
         result_ds = ds.with_column(
             "transformed", col("image").image.compose(augmentation)
@@ -137,7 +137,7 @@ class TestImageNamespace:
 
     def test_image_compose_ragged_images(self, ray_start_regular_shared):
         """Test compose with images of different sizes."""
-        from torchvision import transforms
+        from torchvision.transforms import v2
 
         ds = ray.data.from_items(
             [
@@ -148,8 +148,8 @@ class TestImageNamespace:
         )
 
         augmentation = [
-            transforms.ToTensor(),
-            transforms.Resize((24, 24)),
+            v2.ToTensor(),
+            v2.Resize((24, 24)),
         ]
 
         result_ds = ds.with_column("resized", col("image").image.compose(augmentation))
@@ -162,7 +162,7 @@ class TestImageNamespace:
 
     def test_image_compose_grayscale_to_rgb(self, ray_start_regular_shared):
         """Test compose can handle grayscale images with Lambda transform."""
-        from torchvision import transforms
+        from torchvision.transforms import v2
 
         # Grayscale image (H, W) - no channel dimension
         ds = ray.data.from_items(
@@ -173,8 +173,8 @@ class TestImageNamespace:
 
         augmentation = [
             # Add channel dimension and convert to RGB
-            transforms.Lambda(lambda x: np.stack([x, x, x], axis=-1)),
-            transforms.ToTensor(),
+            v2.Lambda(lambda x: np.stack([x, x, x], axis=-1)),
+            v2.ToTensor(),
         ]
 
         result_ds = ds.with_column("rgb", col("image").image.compose(augmentation))
@@ -196,7 +196,7 @@ class TestImageNamespace:
 
     def test_image_compose_invalid_dtype_raises(self, ray_start_regular_shared):
         """Test that image.compose on non-image column raises an error."""
-        from torchvision import transforms
+        from torchvision.transforms import v2
 
         ds = ray.data.from_items([{"value": 1}, {"value": 2}])
 
@@ -204,7 +204,7 @@ class TestImageNamespace:
             (ray.exceptions.RayTaskError, ray.exceptions.UserCodeException)
         ):
             ds.with_column(
-                "transformed", col("value").image.compose([transforms.ToTensor()])
+                "transformed", col("value").image.compose([v2.ToTensor()])
             ).materialize()
 
 
