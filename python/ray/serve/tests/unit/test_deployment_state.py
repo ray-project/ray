@@ -6134,5 +6134,154 @@ def test_replicas_changed_flag_set_on_lightweight_broadcast_config_update(
         mock_get_infos.assert_not_called()
 
 
+def test_needs_reconciliation_cleared_at_steady_state(mock_deployment_state_manager):
+    """Test that _needs_reconciliation is cleared once a deployment reaches
+    HEALTHY steady state and that subsequent ticks skip expensive work."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info_1, v1 = deployment_info()
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Flag must be True after deploy.
+    assert ds._needs_reconciliation is True
+
+    # STARTING phase: flag stays True.
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, None)])
+    assert ds._needs_reconciliation is True
+
+    # Replica becomes ready → transitions to RUNNING.
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    # Steady state reached: flag must now be False.
+    assert ds._needs_reconciliation is False
+
+
+def test_needs_reconciliation_skips_expensive_methods(mock_deployment_state_manager):
+    """When _needs_reconciliation is False, check_curr_status and
+    scale_deployment_replicas should be no-ops."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info_1, v1 = deployment_info()
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Bring to steady state.
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    assert ds._needs_reconciliation is False
+
+    # check_curr_status should return fast (False, False).
+    assert ds.check_curr_status() == (False, False)
+
+    # scale_deployment_replicas should return fast ([], None).
+    assert ds.scale_deployment_replicas() == ([], None)
+
+    # Verify check_and_update_replicas runs health checks but skips
+    # startup/stopping by patching _check_startup_replicas.
+    with patch.object(ds, "_check_startup_replicas") as mock_startup:
+        ds.check_and_update_replicas()
+        mock_startup.assert_not_called()
+
+
+def test_needs_reconciliation_set_on_health_check_failure(
+    mock_deployment_state_manager,
+):
+    """A health check failure during steady state must re-enable
+    reconciliation so the controller can recover."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info_1, v1 = deployment_info(num_replicas=2)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Bring to steady state.
+    dsm.update()
+    for r in ds._replicas.get():
+        r._actor.set_ready()
+    dsm.update()
+    assert ds._needs_reconciliation is False
+
+    # Fail a health check.
+    ds._replicas.get()[0]._actor.set_unhealthy()
+    dsm.update()
+
+    # Flag must be set (via _stop_replica) and there should be a
+    # STOPPING replica being processed.
+    assert ds._replicas.count(states=[ReplicaState.STOPPING]) >= 1
+    # The flag may already be cleared again if check_curr_status ran
+    # in the same tick and found reconciliation needed, so just verify
+    # the system is still functioning — the deployment should not be
+    # stuck.
+    assert ds._needs_reconciliation is True
+
+
+def test_needs_reconciliation_set_on_target_state_change(
+    mock_deployment_state_manager,
+):
+    """Changing the target state (redeploy, autoscale) must set the flag."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info_1, v1 = deployment_info(version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Bring to steady state.
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    assert ds._needs_reconciliation is False
+
+    # Redeploy with a new version.
+    info_2, v2 = deployment_info(version="2")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+    assert ds._needs_reconciliation is True
+
+
+def test_routing_stats_change_triggers_broadcast(mock_deployment_state_manager):
+    """Routing stats changes during health checks must set _replicas_changed
+    so that the broadcast fast path does not skip the update."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info_1, v1 = deployment_info()
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Bring to steady state.
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    assert ds._replicas_changed is False
+    assert ds._request_routing_info_updated is False
+
+    # Simulate routing stats changing on the replica actor.
+    ds._replicas.get()[0]._actor.get_routing_stats = lambda: {"new_key": 42}
+
+    # Run health checks (STEP 1 of update loop).
+    ds.check_and_update_replicas()
+
+    # The flag must be set because routing_stats changed.
+    assert ds._replicas_changed is True
+
+    # Broadcast should now run (not take the fast path).
+    with patch.object(
+        ds, "get_running_replica_infos", wraps=ds.get_running_replica_infos
+    ) as mock_get_infos:
+        ds.broadcast_running_replicas_if_changed()
+        mock_get_infos.assert_called_once()
+
+    assert ds._replicas_changed is False
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
