@@ -539,6 +539,37 @@ class TestReplicaStateContainer:
         assert c.get([ReplicaState.STARTING]) == [r1, r2]
         assert c.get([ReplicaState.STOPPING]) == [r3]
 
+    def test_get_by_id(self):
+        c = ReplicaStateContainer()
+        r1, r2, r3 = replica(), replica(), replica()
+
+        c.add(ReplicaState.STARTING, r1)
+        c.add(ReplicaState.RUNNING, r2)
+        c.add(ReplicaState.STOPPING, r3)
+
+        # Found: each replica is retrievable by its ID regardless of state.
+        assert c.get_by_id(r1.replica_id) is r1
+        assert c.get_by_id(r2.replica_id) is r2
+        assert c.get_by_id(r3.replica_id) is r3
+
+        # Not found: a replica ID that was never added returns None.
+        unknown = replica()
+        assert c.get_by_id(unknown.replica_id) is None
+
+        # After pop: popped replicas are no longer in the index.
+        popped = c.pop(states=[ReplicaState.RUNNING])
+        assert popped == [r2]
+        assert c.get_by_id(r2.replica_id) is None
+
+        # Remaining replicas are still found.
+        assert c.get_by_id(r1.replica_id) is r1
+        assert c.get_by_id(r3.replica_id) is r3
+
+        # Pop everything and verify the index is fully cleared.
+        c.pop()
+        assert c.get_by_id(r1.replica_id) is None
+        assert c.get_by_id(r3.replica_id) is None
+
     def test_pop_basic(self):
         c = ReplicaStateContainer()
         r1, r2, r3 = replica(), replica(), replica()
