@@ -736,7 +736,7 @@ class AsyncioRouter:
         replica_id: ReplicaID,
         internal_request_id: str,
         result: Union[Any, RayError],
-    ):
+    ) -> None:
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             self._metrics_manager.dec_num_running_requests_for_replica(replica_id)
 

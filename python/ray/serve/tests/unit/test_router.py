@@ -248,14 +248,14 @@ class FakeRequestRouter(RequestRouter):
         pending_request: PendingRequest,
         replica_id: ReplicaID,
         result: ReplicaResult,
-    ):
+    ) -> None:
         self.on_request_routed_called = True
 
     def on_request_completed(
         self,
         replica_id: ReplicaID,
         internal_request_id: str,
-    ):
+    ) -> None:
         self.completed_requests.append((replica_id, internal_request_id))
 
 

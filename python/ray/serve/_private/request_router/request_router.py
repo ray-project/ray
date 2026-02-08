@@ -1366,7 +1366,7 @@ class RequestRouter(ABC):
         pending_request: PendingRequest,
         replica_id: ReplicaID,
         result: ReplicaResult,
-    ):
+    ) -> None:
         """Called when a request is routed to a replica.
 
         This is used as a callback to update the state of the request router
@@ -1378,7 +1378,7 @@ class RequestRouter(ABC):
         self,
         replica_id: ReplicaID,
         internal_request_id: str,
-    ):
+    ) -> None:
         """Called when a request to a replica has completed.
 
         This lifecycle hook is called after a request finishes (successfully or
