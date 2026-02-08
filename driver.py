@@ -1,6 +1,7 @@
 import os
 import tempfile
 from datetime import timedelta
+from pathlib import Path
 
 import torch
 from torch.nn import CrossEntropyLoss
@@ -19,9 +20,13 @@ from torchvision.models import resnet18
 from torchvision.transforms import Compose, Normalize, ToTensor
 
 import ray.train.torch
+from ray.train.torch.config import TorchftConfig
 
 
 def train_func():
+    group_rank = ray.train.get_context().get_replica_group_rank()
+    replica_group_id = ray.train.get_context().get_replica_group_id()
+
     # Model, Loss, Optimizer
     model = resnet18(num_classes=10)
     model.conv1 = torch.nn.Conv2d(
@@ -101,7 +106,20 @@ def train_func():
         loss.backward()
         optimizer.step()
 
-        if manager.current_step() >= 200:
+        current_step = manager.current_step()
+
+        checkpoint_path = Path(ray.train.get_context().get_storage().build_checkpoint_path_from_name("marker"))
+        if ray.train.get_context().get_world_rank() == 1 and current_step == 123 and not checkpoint_path.exists():
+            checkpoint_path.touch()
+            raise ValueError("inject fake error")
+
+        if current_step % 50 == 0 or current_step >= 195:
+            print(
+                f"[group={replica_group_id} rank={group_rank}] "
+                f"step={current_step} loss={loss.item():.4f}"
+            )
+
+        if current_step >= 200:
             # complete training
             break
 
@@ -117,12 +135,14 @@ scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
 trainer = ray.train.torch.TorchTrainer(
     train_func,
     scaling_config=scaling_config,
+    # TODO: fix misleading naming. Right now dp_workers is actually the size of each replica group.
+    torch_config=TorchftConfig(dp_workers=1, min_replicas=2),
     # [5a] If running in a multi-node cluster, this is where you
     # should configure the run's persistent storage that is accessible
     # across all worker nodes.
     run_config=ray.train.RunConfig(
         storage_path="/mnt/cluster_storage",
-        name="my_run_name",
+        #name="my_run_name",
         failure_config=ray.train.FailureConfig(max_failures=3),
     ),
 )

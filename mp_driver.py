@@ -173,7 +173,7 @@ def train_func():
         current_step = manager.current_step()
 
         checkpoint_path = Path(ray.train.get_context().get_storage().build_checkpoint_path_from_name("marker"))
-        if world_rank == 3 and current_step == 123 and not checkpoint_path.exists():
+        if world_rank == 0 and current_step == 123 and not checkpoint_path.exists():
             checkpoint_path.touch()
             raise ValueError("inject fake error")
 
