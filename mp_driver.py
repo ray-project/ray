@@ -4,6 +4,7 @@ import time
 from datetime import timedelta
 from pathlib import Path
 
+import torch
 import torch.nn as nn
 from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.tensor.parallel import (
@@ -135,6 +136,23 @@ def train_func():
     )
     optimizer = Optimizer(manager, optimizer)
 
+    # Register post-accumulate grad hooks to allreduce gradients across replica
+    # groups automatically during backward(), instead of a manual loop.
+    def _make_post_grad_hook(mgr):
+        def post_grad_hook(p: torch.Tensor) -> None:
+            if p.grad is not None:
+                grad = (
+                    p.grad._local_tensor
+                    if hasattr(p.grad, "_local_tensor")
+                    else p.grad
+                )
+                mgr.allreduce(grad)
+        return post_grad_hook
+
+    hook = _make_post_grad_hook(manager)
+    for p in model.parameters():
+        p.register_post_accumulate_grad_hook(hook)
+
     # Data
     transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
     data_dir = os.path.join(tempfile.gettempdir(), "data")
@@ -166,19 +184,7 @@ def train_func():
         outputs = model(images)
         loss = criterion(outputs, labels)
         loss.backward()
-        # All-reduce gradients across replica groups via the manager.
-        # manager.allreduce() calls wait_quorum() internally, ensuring ft_pg
-        # is configured before use. Each replica group computes gradients
-        # independently with TP; this syncs them across groups (DP dimension).
-        for param in model.parameters():
-            if param.grad is not None:
-                # For DTensor grads from TP, all-reduce the local tensor
-                grad = (
-                    param.grad._local_tensor
-                    if hasattr(param.grad, "_local_tensor")
-                    else param.grad
-                )
-                manager.allreduce(grad).wait()
+        # Gradients are allreduced automatically via post_accumulate_grad_hook
         optimizer.step()
 
         current_step = manager.current_step()
