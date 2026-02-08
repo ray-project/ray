@@ -19,7 +19,7 @@ depsets:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: python/deplocks/ci/data-base-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
-      - --extra-index-url https://download.pytorch.org/whl/cpu
+      - --index https://download.pytorch.org/whl/cpu
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
@@ -39,7 +39,7 @@ depsets:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: python/deplocks/ci/data-docs-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
-      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - --index https://download.pytorch.org/whl/cu128
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
@@ -55,7 +55,7 @@ depsets:
       - python/requirements/data/pyarrow-latest.txt
     output: python/deplocks/ci/data-latest-pyarrow-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
-      - --extra-index-url https://download.pytorch.org/whl/cpu
+      - --index https://download.pytorch.org/whl/cpu
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
@@ -72,7 +72,7 @@ depsets:
       - python/requirements/data/pyarrow-v9.txt
     output: python/deplocks/ci/data-v9-pyarrow-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
-      - --extra-index-url https://download.pytorch.org/whl/cpu
+      - --index https://download.pytorch.org/whl/cpu
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
@@ -88,7 +88,7 @@ depsets:
       - python/requirements/data/mongo.txt
     output: python/deplocks/ci/data-mongo-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
-      - --extra-index-url https://download.pytorch.org/whl/cpu
+      - --index https://download.pytorch.org/whl/cpu
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
