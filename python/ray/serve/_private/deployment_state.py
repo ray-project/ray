@@ -2274,6 +2274,12 @@ class DeploymentState:
         # time we checked.
         self._request_routing_info_updated = False
 
+        # Dirty flag: set when replicas transition state (start, stop, health
+        # check fail, migration) or when availability-related fields change.
+        # When False *and* _request_routing_info_updated is False, the
+        # broadcast_running_replicas_if_changed() method can skip all work.
+        self._replicas_changed = True
+
         self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
         self._last_broadcasted_availability: bool = True
         self._last_broadcasted_deployment_config = None
@@ -2456,7 +2462,16 @@ class DeploymentState:
 
         The set will also be broadcast if any replicas have an updated set of
         multiplexed model IDs.
+
+        Uses a dirty flag (_replicas_changed) to skip all work in steady state
+        when no replicas have transitioned and no routing info has been updated.
+        RunningReplicaInfo objects are only constructed when a broadcast may
+        actually be needed.
         """
+        # Fast path: nothing could have changed, skip entirely.
+        if not self._replicas_changed and not self._request_routing_info_updated:
+            return
+
         running_replica_infos = self.get_running_replica_infos()
         is_available = not self._terminally_failed()
 
@@ -2466,6 +2481,10 @@ class DeploymentState:
             or self._request_routing_info_updated
         )
         availability_changed = is_available != self._last_broadcasted_availability
+
+        # Clear the dirty flag now that we've done the comparison.
+        self._replicas_changed = False
+
         if not running_replicas_changed and not availability_changed:
             return
 
@@ -2661,6 +2680,7 @@ class DeploymentState:
         )
         self._replica_constructor_retry_counter = 0
         self._replica_has_started = False
+        self._replicas_changed = True
         return True
 
     def autoscale(self, decision_num_replicas: int) -> bool:
@@ -2796,6 +2816,7 @@ class DeploymentState:
                 )
                 if actor_updating:
                     self._replicas.add(ReplicaState.UPDATING, replica)
+                    self._replicas_changed = True
                 else:
                     self._replicas.add(ReplicaState.RUNNING, replica)
             # We don't allow going from STARTING, PENDING_MIGRATION to UPDATING.
@@ -2966,6 +2987,8 @@ class DeploymentState:
             # leave it to the controller to fully scale to target
             # number of replicas and only return as completed once
             # reached target replica count
+            if not self._replica_has_started:
+                self._replicas_changed = True
             self._replica_has_started = True
         elif self._replica_startup_failing():
             self._curr_status_info = self._curr_status_info.handle_transition(
@@ -3039,6 +3062,7 @@ class DeploymentState:
                 # This replica should be now be added to handle's replica
                 # set.
                 self._replicas.add(ReplicaState.RUNNING, replica)
+                self._replicas_changed = True
                 self._deployment_scheduler.on_replica_running(
                     replica.replica_id, replica.actor_node_id
                 )
@@ -3124,8 +3148,10 @@ class DeploymentState:
         if self._target_state.target_num_replicas == 0:
             return
 
-        # Increase startup failure counter
+        # Increase startup failure counter (may change _terminally_failed()
+        # result, which affects broadcasted availability).
         self._replica_constructor_retry_counter += 1
+        self._replicas_changed = True
         self._replica_constructor_error_msg = error_msg
 
         # Update the deployment message only if replicas are failing during
@@ -3162,6 +3188,7 @@ class DeploymentState:
         logger.debug(f"Adding STOPPING to replica: {replica.replica_id}.")
         replica.stop(graceful=graceful_stop)
         self._replicas.add(ReplicaState.STOPPING, replica)
+        self._replicas_changed = True
         self._deployment_scheduler.on_replica_stopping(replica.replica_id)
         self.health_check_gauge.set(
             0,
@@ -3513,6 +3540,7 @@ class DeploymentState:
         replica_to_stop = running_replicas.pop()
         replica_to_stop.stop(graceful=False)
         self._replicas.add(ReplicaState.STOPPING, replica_to_stop)
+        self._replicas_changed = True
         for replica in running_replicas:
             self._replicas.add(ReplicaState.RUNNING, replica)
 

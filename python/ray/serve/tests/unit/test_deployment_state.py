@@ -5948,5 +5948,116 @@ class TestGetOutboundDeployments:
         assert ds.get_outbound_deployments() == [d3]
 
 
+def test_broadcast_skips_work_when_replicas_unchanged(mock_deployment_state_manager):
+    """Test that broadcast_running_replicas_if_changed() skips all work in
+    steady state when _replicas_changed is False and
+    _request_routing_info_updated is False."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info_1, v1 = deployment_info()
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # _replicas_changed should be True after deploy.
+    assert ds._replicas_changed is True
+
+    # Bring deployment to healthy state.
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    # After update(), the broadcast should have cleared the flag.
+    assert ds._replicas_changed is False
+    assert ds._request_routing_info_updated is False
+
+    # Call broadcast again — should be a no-op (early return).
+    # We verify by patching get_running_replica_infos; if the fast path
+    # works, the patched method will NOT be called.
+    with patch.object(ds, "get_running_replica_infos") as mock_get_infos:
+        ds.broadcast_running_replicas_if_changed()
+        mock_get_infos.assert_not_called()
+
+    # Now stop a replica (sets _replicas_changed = True).
+    ds._stop_one_running_replica_for_testing()
+    assert ds._replicas_changed is True
+
+    # broadcast should now do the full check.
+    ds.broadcast_running_replicas_if_changed()
+    # Flag should be cleared after the broadcast.
+    assert ds._replicas_changed is False
+
+
+def test_broadcast_runs_when_routing_info_updated(mock_deployment_state_manager):
+    """Test that broadcast_running_replicas_if_changed() runs when
+    _request_routing_info_updated is True even if _replicas_changed is False."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info_1, v1 = deployment_info()
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Bring deployment to healthy state.
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    assert ds._replicas_changed is False
+
+    # Simulate routing info update.
+    ds._request_routing_info_updated = True
+
+    # broadcast should NOT take the fast path.
+    with patch.object(
+        ds, "get_running_replica_infos", wraps=ds.get_running_replica_infos
+    ) as mock_get_infos:
+        ds.broadcast_running_replicas_if_changed()
+        mock_get_infos.assert_called_once()
+
+    # Both flags should be cleared after broadcast.
+    assert ds._replicas_changed is False
+    assert ds._request_routing_info_updated is False
+
+
+def test_replicas_changed_flag_set_on_state_transitions(mock_deployment_state_manager):
+    """Test that _replicas_changed is set correctly during replica state
+    transitions."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info_1, v1 = deployment_info(num_replicas=2)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Flag should be True after deploy (_set_target_state sets it).
+    assert ds._replicas_changed is True
+
+    # After update, replicas are STARTING.
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
+
+    # broadcast clears the flag.
+    assert ds._replicas_changed is False
+
+    # Set replicas ready — this transitions them to RUNNING in _check_startup_replicas.
+    for r in ds._replicas.get():
+        r._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+
+    # Flag should be cleared again after broadcast.
+    assert ds._replicas_changed is False
+
+    # Now fail a health check (sets _replicas_changed via _stop_replica).
+    ds._replicas.get()[0]._actor.set_unhealthy()
+    dsm.update()
+    # Flag set by _stop_replica then cleared by broadcast.
+    assert ds._replicas_changed is False
+    # Verify a replica was stopped.
+    assert ds._replicas.count(states=[ReplicaState.STOPPING]) >= 1
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
