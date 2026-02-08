@@ -50,6 +50,7 @@ class Operation(Enum):
         SUB: Subtraction operation (-)
         MUL: Multiplication operation (*)
         DIV: Division operation (/)
+        MOD: Modulo operation (%)
         FLOORDIV: Floor division operation (//)
         GT: Greater than comparison (>)
         LT: Less than comparison (<)
