@@ -604,6 +604,7 @@ doctest_each(
 
 doctest(
     name = "doctest[data-gpu]",
+    size = "large",
     files = [
         "source/data/batch_inference.rst",
         "source/data/transforming-data.rst",
