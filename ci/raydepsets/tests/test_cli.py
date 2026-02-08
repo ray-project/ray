@@ -20,6 +20,8 @@ from ci.raydepsets.cli import (
     _override_uv_flags,
     _uv_binary,
     build,
+    parse_lock_file,
+    write_lock_file,
 )
 from ci.raydepsets.tests.utils import (
     append_to_file,
@@ -884,6 +886,93 @@ class TestCli(unittest.TestCase):
             assert manager.build_graph is not None
             assert len(manager.build_graph.nodes) == 12
             assert len(manager.build_graph.edges) == 8
+
+    def test_parse_lock_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_file = Path(tmpdir) / "requirements.txt"
+            lock_file.write_text(
+                "emoji==2.9.0 \\\n"
+                "    --hash=sha256:abc123\n"
+                "pyperclip==1.6.0 \\\n"
+                "    --hash=sha256:def456\n"
+            )
+            rf = parse_lock_file(str(lock_file))
+            names = [req.name for req in rf.requirements]
+            assert "emoji" in names
+            assert "pyperclip" in names
+            assert len(rf.requirements) == 2
+
+    def test_parse_lock_file_with_index_url(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_file = Path(tmpdir) / "requirements.txt"
+            lock_file.write_text(
+                "--index-url https://pypi.org/simple\n"
+                "\n"
+                "emoji==2.9.0 \\\n"
+                "    --hash=sha256:abc123\n"
+            )
+            rf = parse_lock_file(str(lock_file))
+            assert len(rf.requirements) == 1
+            assert rf.requirements[0].name == "emoji"
+
+    def test_parse_lock_file_empty(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_file = Path(tmpdir) / "requirements.txt"
+            lock_file.write_text("")
+            rf = parse_lock_file(str(lock_file))
+            assert len(rf.requirements) == 0
+
+    def test_parse_lock_file_comments_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_file = Path(tmpdir) / "requirements.txt"
+            lock_file.write_text("# This is a comment\n# Another comment\n")
+            rf = parse_lock_file(str(lock_file))
+            assert len(rf.requirements) == 0
+
+    def test_write_lock_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_file = Path(tmpdir) / "requirements.txt"
+            lock_file.write_text(
+                "emoji==2.9.0 \\\n"
+                "    --hash=sha256:abc123\n"
+                "pyperclip==1.6.0 \\\n"
+                "    --hash=sha256:def456\n"
+            )
+            rf = parse_lock_file(str(lock_file))
+
+            output_file = Path(tmpdir) / "output.txt"
+            write_lock_file(rf, str(output_file))
+
+            output_text = output_file.read_text()
+            assert "emoji==2.9.0" in output_text
+            assert "pyperclip==1.6.0" in output_text
+
+    def test_write_lock_file_empty(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_file = Path(tmpdir) / "empty.txt"
+            lock_file.write_text("")
+            rf = parse_lock_file(str(lock_file))
+
+            output_file = Path(tmpdir) / "output.txt"
+            write_lock_file(rf, str(output_file))
+            assert output_file.read_text().strip() == ""
+
+    def test_roundtrip_preserves_packages(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_file = Path(tmpdir) / "requirements.txt"
+            lock_file.write_text(
+                "emoji==2.9.0 \\\n"
+                "    --hash=sha256:abc123\n"
+                "pyperclip==1.6.0 \\\n"
+                "    --hash=sha256:def456\n"
+            )
+            rf = parse_lock_file(str(lock_file))
+
+            output_file = Path(tmpdir) / "output.txt"
+            write_lock_file(rf, str(output_file))
+
+            rf2 = parse_lock_file(str(output_file))
+            assert rf.dumps() == rf2.dumps()
 
 
 if __name__ == "__main__":
