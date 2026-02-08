@@ -3,6 +3,7 @@ torch
 tensorflow
 jax
 jaxlib
-torchvision
 tensorflow-datasets
 tf-keras
+torchvision==0.18.0
+torch==2.3.0
