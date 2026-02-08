@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import logging
 import time
+from typing_extensions import AsyncContextManager
 import warnings
 from typing import (
     Any,
@@ -38,6 +39,7 @@ from ray.serve._private.handle_options import (
     InitHandleOptionsBase,
 )
 from ray.serve._private.replica_result import ReplicaResult
+from ray.serve._private.request_router.common import ReplicaSelection
 from ray.serve._private.router import Router
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -894,3 +896,47 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 request_metadata,
                 _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
             )
+    def choose_replica(
+        self,
+        *args,
+        **kwargs,
+    ) -> AsyncContextManager[ReplicaSelection]:
+        """Execute the request router to select a replica without dispatching.
+
+        This method runs the full routing logic (load balancing, locality awareness,
+        queue length probing, etc.) and returns an async context manager that yields
+        a ReplicaSelection. A request slot is reserved on the selected replica,
+        guaranteeing that dispatch will succeed.
+
+        The context manager ensures proper cleanup:
+        - If dispatch() is called, the slot is consumed normally.
+        - If the context exits without dispatch (e.g., exception, early return), the slot is released.
+
+        Args:
+            *args, **kwargs: Arguments that may influence routing decisions
+                            (e.g., for multiplexed model routing).
+
+        Returns:
+            AsyncContextManager[ReplicaSelection] - must be used with async with.
+        """
+        pass
+
+    async def dispatch(
+        self,
+        selection: ReplicaSelection,
+        *args,
+        **kwargs,
+    ) -> DeploymentResponse:
+        """Dispatch a request to a previously selected replica.
+
+        Args:
+            selection: A ReplicaSelection from choose_replica() context manager.
+            *args, **kwargs: The actual request arguments.
+
+        Returns:
+            DeploymentResponse or DeploymentResponseGenerator (if streaming).
+
+        Raises:
+            ReplicaUnavailableError: If the selected replica is no longer available.
+        """
+        pass

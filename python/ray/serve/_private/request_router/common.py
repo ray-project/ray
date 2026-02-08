@@ -10,6 +10,8 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.util.annotations import PublicAPI
+from ray.serve._private.request_router.replica_wrapper import  RunningReplica
+from ray.serve.handle import DeploymentHandle
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -61,6 +63,64 @@ class PendingRequest:
 class ReplicaQueueLengthCacheEntry:
     queue_len: int
     timestamp: float
+
+
+@dataclass
+class ReplicaSelection:
+    """Represents a selected replica, holding information for dispatch or coordination.
+
+    This class is returned by the choose_replica() context manager.
+    The slot reservation lifecycle is managed by the context manager.
+    """
+
+    # Public, user-accessible fields
+    replica_id: str
+    """Unique identifier for the selected replica."""
+
+    node_ip: str
+    """IP address of the node running this replica."""
+
+    port: Optional[int]
+    """Port number for direct communication (if configured)."""
+
+    node_id: str
+    """Ray node ID where the replica is running."""
+
+    availability_zone: Optional[str]
+    """Cloud availability zone of the replica's node."""
+
+    # Internal fields (not part of public API)
+    _replica: "RunningReplica"
+    _deployment_handle: "DeploymentHandle"
+    _method_name: str
+    _slot_token: str  # Token for reserved slot
+    _dispatched: bool = field(default=False, init=False)  # Tracks if dispatch was called
+
+    @property
+    def address(self) -> str:
+        """Returns the replica address in host:port format."""
+        if self.port:
+            return f"{self.node_ip}:{self.port}"
+        return self.node_ip
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize public fields to a dictionary."""
+        return {
+            "replica_id": self.replica_id,
+            "node_ip": self.node_ip,
+            "port": self.port,
+            "node_id": self.node_id,
+            "availability_zone": self.availability_zone,
+        }
+
+    def _mark_dispatched(self) -> None:
+        """Internal: Mark this selection as dispatched (slot consumed)."""
+        self._dispatched = True
+
+    def _release_slot(self) -> None:
+        """Internal: Release the reserved slot if not yet dispatched."""
+        if not self._dispatched:
+            self._replica.release_slot(self._slot_token)
 
 
 class ReplicaQueueLengthCache:
