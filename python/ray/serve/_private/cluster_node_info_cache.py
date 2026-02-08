@@ -80,14 +80,12 @@ class ClusterNodeInfoCache(ABC):
             )
             return self._cached_available_resources_per_node
 
-        available_resources_by_id: Dict[str, Dict[str, float]] = {}
-        for resource_data in reply.resource_usage_data.batch:
-            node_id = binary_to_hex(resource_data.node_id)
-            if node_id in self._alive_node_id_set:
-                available_resources_by_id[node_id] = dict(
-                    resource_data.resources_available
-                )
-        return available_resources_by_id
+        return {
+            node_id: dict(resource_data.resources_available)
+            for resource_data in reply.resource_usage_data.batch
+            if (node_id := binary_to_hex(resource_data.node_id))
+            in self._alive_node_id_set
+        }
 
     def get_alive_nodes(self) -> List[Tuple[str, str, str]]:
         """Get IDs, IPs, and Instance IDs for all live nodes in the cluster.
