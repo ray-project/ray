@@ -8,10 +8,11 @@ from abc import ABC, abstractmethod
 from asyncio import AbstractEventLoop, ensure_future, futures
 from collections import defaultdict
 from collections.abc import MutableMapping
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from functools import lru_cache, partial
 from typing import (
     Any,
+    AsyncIterator,
     Callable,
     Coroutine,
     DefaultDict,
@@ -21,6 +22,7 @@ from typing import (
     Union,
 )
 
+from python.ray.serve._private.request_router.common import ReplicaSelection
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
@@ -62,7 +64,11 @@ from ray.serve._private.utils import (
     resolve_deployment_response,
 )
 from ray.serve.config import AutoscalingConfig
-from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
+from ray.serve.exceptions import (
+    BackPressureError,
+    DeploymentUnavailableError,
+    ReplicaUnavailableError,
+)
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -923,6 +929,81 @@ class AsyncioRouter:
                     replica_result.cancel()
 
                 raise
+
+    @asynccontextmanager
+    async def choose_replica(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncIterator[ReplicaSelection]:
+        """Execute routing and reserve a slot, with automatic cleanup."""
+        await self._request_router_initialized.wait()
+
+        pr = PendingRequest(
+            args=list(request_args),
+            kwargs=request_kwargs,
+            metadata=request_meta,
+        )
+
+        # Resolve arguments (e.g., for multiplexed routing)
+        if not pr.resolved:
+            await self._resolve_request_arguments(pr)
+
+        # Run the request router
+        replica = await self.request_router._choose_replica_for_request(pr)
+
+        # TODO: Implement function to reserve a slot on the replica
+        slot_token = replica.reserve_slot()
+
+        selection = ReplicaSelection(
+            replica_id=replica.replica_id.unique_id,
+            node_ip=replica._replica_info.node_ip,
+            port=replica._replica_info.port,
+            node_id=replica.node_id,
+            availability_zone=replica.availability_zone,
+            _replica=replica,
+            _deployment_handle=self._deployment_handle,
+            _method_name=request_meta.call_method,
+            _slot_token=slot_token,
+        )
+
+        try:
+            yield selection
+        finally:
+            # Release slot if dispatch was not called
+            selection._release_slot()
+
+    async def dispatch(
+        self,
+        selection: ReplicaSelection,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> ReplicaResult:
+        """Dispatch to a specific replica, consuming the reserved slot."""
+        # Verify replica is still available
+        if selection.replica_id not in self.request_router.curr_replicas:
+            raise ReplicaUnavailableError(
+                f"Replica {selection.replica_id} is no longer available"
+            )
+
+        pr = PendingRequest(
+            args=list(request_args),
+            kwargs=request_kwargs,
+            metadata=request_meta,
+        )
+
+        replica = selection._replica
+
+        # Mark as dispatched so __aexit__ won't release the slot
+        selection._mark_dispatched()
+
+        # Use the reserved slot
+        result = replica.send_request_with_slot(pr, selection._slot_token)
+
+        self.request_router.on_send_request(replica.replica_id)
+        return result
 
     async def shutdown(self):
         await self._metrics_manager.shutdown()
