@@ -751,28 +751,22 @@ class WorkerGroup(BaseWorkerGroup):
             )
             new_workers.append(new_worker)
 
-        # Re-initialize backend (per-group TCPStore + init_process_group)
-        # via BackendSetupCallback
+        # Update workers in state so callbacks can access them
         from ray.train.v2._internal.callbacks.backend_setup import BackendSetupCallback
 
-        for callback in self._callbacks:
-            if isinstance(callback, BackendSetupCallback):
-                # First update workers in state so the callback can access them
-                new_workers_by_rank = {
-                    w.distributed_context.world_rank: w for w in new_workers
-                }
-                updated_workers = [
-                    new_workers_by_rank.get(w.distributed_context.world_rank, w)
-                    for w in workers
-                ]
-                self._worker_group_state = WorkerGroupState(
-                    start_time=self._worker_group_state.start_time,
-                    placement_group=pg,
-                    workers=updated_workers,
-                    sync_actor=sync_actor,
-                )
-                callback.reinitialize_workers(self, target_group.world_ranks)
-                break
+        new_workers_by_rank = {
+            w.distributed_context.world_rank: w for w in new_workers
+        }
+        updated_workers = [
+            new_workers_by_rank.get(w.distributed_context.world_rank, w)
+            for w in workers
+        ]
+        self._worker_group_state = WorkerGroupState(
+            start_time=self._worker_group_state.start_time,
+            placement_group=pg,
+            workers=updated_workers,
+            sync_actor=sync_actor,
+        )
 
         # Get train context args from callbacks
         train_context_args = {}
@@ -788,7 +782,9 @@ class WorkerGroup(BaseWorkerGroup):
                 ), f"Callback {cb} returned {arg} which is already set."
                 train_context_args[arg] = arg_values
 
-        # Initialize train context on new workers
+        # Initialize train context on new workers first
+        # (needed before reinitialize_workers, which calls on_training_start
+        # that uses ray.train.get_context())
         try:
             self._init_train_context_on_workers(
                 new_workers, sync_actor, train_context_args
@@ -801,6 +797,12 @@ class WorkerGroup(BaseWorkerGroup):
             )
             raise WorkerGroupStartupFailedError(error_msg) from actor_error
 
+        # Re-initialize backend (per-group TCPStore + init_process_group + env vars)
+        for callback in self._callbacks:
+            if isinstance(callback, BackendSetupCallback):
+                callback.reinitialize_workers(self, target_group.world_ranks)
+                break
+
         # Launch training function on new workers
         ray_get_safe(
             [
@@ -810,22 +812,6 @@ class WorkerGroup(BaseWorkerGroup):
                 for worker in new_workers
             ]
         )
-
-        # Update state if not already updated above (in case no BackendSetupCallback)
-        if not any(isinstance(cb, BackendSetupCallback) for cb in self._callbacks):
-            new_workers_by_rank = {
-                w.distributed_context.world_rank: w for w in new_workers
-            }
-            updated_workers = [
-                new_workers_by_rank.get(w.distributed_context.world_rank, w)
-                for w in workers
-            ]
-            self._worker_group_state = WorkerGroupState(
-                start_time=self._worker_group_state.start_time,
-                placement_group=pg,
-                workers=updated_workers,
-                sync_actor=sync_actor,
-            )
 
         # Decorate log file paths for new workers
         self._decorate_worker_log_file_paths(new_workers)

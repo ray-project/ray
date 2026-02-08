@@ -1,6 +1,8 @@
 import os
 import tempfile
+import time
 from datetime import timedelta
+from pathlib import Path
 
 import torch.nn as nn
 from torch.distributed.device_mesh import init_device_mesh
@@ -129,6 +131,7 @@ def train_func():
         replica_id=f"train_tp_{replica_group_id}",
         timeout=timedelta(seconds=30),
         checkpoint_transport=transport,
+        #use_async_quorum=False
     )
     # Note: We don't wrap model with torchft's DistributedDataParallel since
     # we're using PyTorch's native TP. torchft provides fault tolerance via Manager.
@@ -167,7 +170,20 @@ def train_func():
         loss.backward()
         optimizer.step()
 
-        if manager.current_step() >= 200:
+        current_step = manager.current_step()
+
+        checkpoint_path = Path(ray.train.get_context().get_storage().build_checkpoint_path_from_name("marker"))
+        if world_rank == 3 and current_step == 123 and not checkpoint_path.exists():
+            checkpoint_path.touch()
+            raise ValueError("inject fake error")
+
+        if current_step % 50 == 0 or current_step >= 195:
+            print(
+                f"[group={replica_group_id} rank={group_rank}] "
+                f"step={current_step} loss={loss.item():.4f}"
+            )
+
+        if current_step >= 200:
             # complete training
             break
 
@@ -187,10 +203,11 @@ scaling_config = ray.train.ScalingConfig(num_workers=4, use_gpu=True)
 trainer = ray.train.torch.TorchTrainer(
     train_func,
     scaling_config=scaling_config,
-    backend_config=TorchftConfig(dp_workers=TP_SIZE, min_replicas=1),
+    # TODO: fix misleading naming. Right now dp_workers is actually the size of each replica group.
+    torch_config=TorchftConfig(dp_workers=TP_SIZE, min_replicas=2),
     run_config=ray.train.RunConfig(
         storage_path="/mnt/cluster_storage",
-        name="my_run_name",
+        #name="my_run_name",
         failure_config=ray.train.FailureConfig(max_failures=3),
     ),
 )

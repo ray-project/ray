@@ -22,7 +22,10 @@ class BackendSetupCallback(WorkerGroupCallback):
         """Re-initialize backend for replaced workers (per-group setup).
 
         This is called when a replica group is replaced. It sets up the
-        per-group TCPStore and process group for the new workers.
+        per-group TCPStore, process group, and distributed env vars.
+
+        Must be called AFTER _init_train_context_on_workers since
+        on_training_start needs ray.train.get_context().
         """
         from ray.train.torch.config import _TorchftBackend
 
