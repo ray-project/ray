@@ -1812,11 +1812,10 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr;
   runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>();
 
-  if (!IsRuntimeEnvInfoEmpty(
-          std::string(serialized_runtime_env_info))) {  // Convert for function
+  auto serialized_runtime_env_info_str = std::string(serialized_runtime_env_info);  // Convert once for reuse
+  if (!IsRuntimeEnvInfoEmpty(serialized_runtime_env_info_str)) {
     RAY_CHECK(google::protobuf::util::JsonStringToMessage(
-                  std::string(serialized_runtime_env_info),  // Convert for protobuf
-                  runtime_env_info.get())
+                  serialized_runtime_env_info_str, runtime_env_info.get())
                   .ok());
   }
 
@@ -1862,9 +1861,8 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
     }
   }
 
-  runtime_env_json_serialization_cache_.Put(
-      std::string(serialized_runtime_env_info),  // Convert for cache key
-      runtime_env_info);
+  runtime_env_json_serialization_cache_.Put(serialized_runtime_env_info_str,
+                                            runtime_env_info);
   return runtime_env_info;
 }
 
