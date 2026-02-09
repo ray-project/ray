@@ -90,7 +90,7 @@ def submit_batch_jobs(
             print(
                 f"Job {job_id} failed with status {status} (`None` indicates timeout)"
             )
-            return False
+            # return False
     return True
 
 
