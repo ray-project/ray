@@ -729,7 +729,9 @@ class TestReservationOpResourceAllocator:
         topo = build_streaming_topology(o5, ExecutionOptions())
 
         # Cluster with 2 GPUs available
-        global_limits = ExecutionResources(cpu=16, gpu=2, object_store_memory=10_000_000)
+        global_limits = ExecutionResources(
+            cpu=16, gpu=2, object_store_memory=10_000_000
+        )
 
         # Simulate state where GPU operator has 1 actor running
         op_usages = {
