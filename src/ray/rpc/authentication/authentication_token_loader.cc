@@ -59,22 +59,8 @@ AuthenticationTokenLoader::GetTokenExpiration(const std::string &token) {
     return std::nullopt;
   }
 
-  std::string payload_b64 = parts[1];
-  // Convert Base64URL to Base64
-  for (char &c : payload_b64) {
-    if (c == '-') {
-      c = '+';
-    } else if (c == '_') {
-      c = '/';
-    }
-  }
-  // Add padding if necessary
-  while (payload_b64.size() % 4 != 0) {
-    payload_b64 += '=';
-  }
-
   std::string payload;
-  if (!absl::Base64Unescape(payload_b64, &payload)) {
+  if (!absl::WebSafeBase64Unescape(parts[1], &payload)) {
     RAY_LOG(WARNING) << "Unable to base64 decode JWT token.";
     return std::nullopt;
   }
