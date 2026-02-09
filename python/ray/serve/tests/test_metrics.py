@@ -1221,6 +1221,9 @@ def test_routing_stats_delay_metric(metrics_start_shutdown):
         def __call__(self):
             return "hello"
 
+        async def record_routing_stats(self):
+            return {}
+
     serve.run(Model.bind(), name="app")
     timeseries = PrometheusTimeseries()
 

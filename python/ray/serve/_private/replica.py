@@ -260,6 +260,7 @@ ReplicaMetadata = Tuple[
     ReplicaRank,  # rank
     Optional[List[str]],  # route_patterns
     Optional[List[DeploymentID]],  # outbound_deployments
+    bool,  # has_user_routing_stats_method
 ]
 
 
@@ -1073,6 +1074,11 @@ class ReplicaBase(ABC):
             if hasattr(self._user_callable_asgi_app, "routes"):
                 route_patterns = extract_route_patterns(self._user_callable_asgi_app)
 
+        has_user_routing_stats_method = (
+            self._user_callable_wrapper is not None
+            and self._user_callable_wrapper.has_user_routing_stats_method
+        )
+
         return (
             self._version.deployment_config,
             self._version,
@@ -1084,6 +1090,7 @@ class ReplicaBase(ABC):
             current_rank,
             route_patterns,
             self.list_outbound_deployments(),
+            has_user_routing_stats_method,
         )
 
     def get_dynamically_created_handles(self) -> Set[DeploymentID]:
@@ -3018,6 +3025,11 @@ class UserCallableWrapper:
             return self._call_user_health_check()
 
         return None
+
+    @property
+    def has_user_routing_stats_method(self) -> bool:
+        """Whether the user has defined a record_routing_stats method."""
+        return self._user_record_routing_stats is not None
 
     def call_user_record_routing_stats(self) -> Optional[concurrent.futures.Future]:
         self._raise_if_not_initialized("call_user_record_routing_stats")
