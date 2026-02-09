@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/actor_handle.h"
+#include "ray/core_worker/actor_management/actor_handle.h"
 
 #include <memory>
 #include <string>

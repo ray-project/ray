@@ -191,17 +191,18 @@ def get_browser_request_middleware(
         if allowed_paths and request.path in allowed_paths:
             return await handler(request)
 
+        # No methods allowed for browsers, return `403` status.
+        if not allowed_methods:
+            return aiohttp_module.web.Response(
+                status=403, text="Browser requests not allowed."
+            )
+
+        # This specific method is not allowed, return `405` status.
         if request.method not in allowed_methods:
-            # 403 if no methods allowed (all browsers blocked)
-            # 405 if some methods allowed but not this one
-            if allowed_methods:
-                return aiohttp_module.web.Response(
-                    status=405, text="Method Not Allowed for browser traffic."
-                )
-            else:
-                return aiohttp_module.web.Response(
-                    status=403, text="Browser requests not allowed."
-                )
+            return aiohttp_module.web.Response(
+                status=405,
+                text=f"'{request.method}' method not allowed for browser traffic.",
+            )
 
         return await handler(request)
 

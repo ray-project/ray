@@ -234,7 +234,9 @@ class PercentilesStats(StatsBase):
         return return_stats
 
     def __repr__(self) -> str:
-        return f"PercentilesStats({self.peek()}; window={self._window}; len={len(self)}"
+        return (
+            f"PercentilesStats({self.peek()}; window={self._window}; len={len(self)})"
+        )
 
     @staticmethod
     def _get_init_args(stats_object=None, state=None) -> Dict[str, Any]:

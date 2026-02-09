@@ -26,7 +26,7 @@ WORKDIR /home/forge/ray
 COPY . .
 
 RUN --mount=type=cache,target=${DOWNLOAD_CACHE},uid=2000,gid=100,id=ray-downloads-${HOSTTYPE} \
-    --mount=type=cache,target=${BAZEL_CACHE},uid=2000,gid=100,id=ray-bazel-${HOSTTYPE}-py${PYTHON_VERSION} \
+    --mount=type=cache,target=${BAZEL_CACHE},uid=2000,gid=100,id=ray-bazel-${HOSTTYPE} \
     <<'EOF'
 #!/bin/bash
 set -euo pipefail
