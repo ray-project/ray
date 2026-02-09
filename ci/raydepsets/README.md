@@ -1,16 +1,39 @@
 # raydepsets
 
-A Python dependency lock file management tool for Ray CI pipelines. It provides a declarative YAML-based configuration layer on top of [`uv pip compile`](https://docs.astral.sh/uv/pip/compile/) to generate reproducible, hash-verified lock files across multiple Python versions, platforms, and CUDA variants.
+A dependency lock file management tool for Ray CI pipelines. It
+maintains consistency relationships among lock files — ensuring that
+when a dependency is updated, all related lock files are regenerated
+together in the correct order. Built on top of
+[`uv pip compile`](https://docs.astral.sh/uv/pip/compile/), it
+generates reproducible, hash-verified lock files across multiple
+Python versions, platforms, and CUDA variants.
 
 ## Why
 
-Ray's CI builds containers and test environments for many combinations of Python version (3.10-3.13), platform (Linux x86_64, macOS ARM), and GPU support (CPU, CUDA 12.8). Each combination needs a locked, reproducible set of dependencies. Managing these by hand is error-prone and doesn't scale.
+Ray's CI builds containers and test environments for many
+combinations of Python version, platform (Linux x86_64, macOS ARM),
+and GPU support (CPU, e.g. CUDA 12.8). Each combination needs a
+locked, reproducible set of dependencies, and many of these lock
+files have consistency relationships with each other — for example,
+a test environment's lock file must be a strict superset of the base
+image it runs on, and all CUDA variants for a given Python version
+must agree on common package versions. A single `uv pip compile`
+call can produce one lock file, but it has no awareness of these
+cross-file constraints. When a dependency is updated, all downstream
+lock files need to be regenerated in the right order to stay
+consistent.
 
 raydepsets solves this by:
-- Defining dependency sets declaratively in YAML with template variables for matrix builds
-- Supporting three composable operations (**compile**, **subset**, **expand**) to build complex dependency sets from simpler ones
-- Automatically resolving execution order via a dependency graph
-- Validating that committed lock files are up-to-date in CI (`--check` mode)
+- Modeling the relationships between lock files as a dependency
+  graph, so that updating one file automatically propagates to all
+  dependents
+- Supporting three composable operations (**compile**, **subset**,
+  **expand**) to express how lock files derive from each other
+- Defining dependency sets declaratively in YAML with template
+  variables for matrix builds
+- Automatically resolving execution order via topological sort
+- Validating that committed lock files are up-to-date and mutually
+  consistent in CI (`--check` mode)
 
 ## Directory Structure
 
@@ -42,16 +65,16 @@ raydepsets is built and run via Bazel:
 
 ```bash
 # Build all depsets in a config
-bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayimg.depsets.yaml
+bazelisk run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayimg.depsets.yaml
 
 # Build a single named depset (and its dependencies)
-bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayimg.depsets.yaml --name ray_img_depset_313
+bazelisk run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayimg.depsets.yaml --name ray_img_depset_313
 
 # Build all configs at once
-bazel run //ci/raydepsets:raydepsets -- build --all-configs
+bazelisk run //ci/raydepsets:raydepsets -- build --all-configs
 
 # Validate that lock files are up-to-date (used in CI)
-bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayimg.depsets.yaml --check
+bazelisk run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayimg.depsets.yaml --check
 ```
 
 ### CLI Options
@@ -216,10 +239,10 @@ Pre-hooks support template variable substitution and are modeled as nodes in the
 
 ```bash
 # Run all tests
-bazel test //ci/raydepsets:test_cli //ci/raydepsets:test_workspace
+bazelisk test //ci/raydepsets:test_cli //ci/raydepsets:test_workspace
 
 # Run a specific test
-bazel test //ci/raydepsets:test_cli --test_filter=test_compile
+bazelisk test //ci/raydepsets:test_cli --test_filter=test_compile
 ```
 
 Tests cover compilation, subsetting, expansion, graph construction, pre-hook execution, config parsing, build arg substitution, lock file diffing, and error handling.
