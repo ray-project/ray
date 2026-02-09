@@ -5,8 +5,10 @@ import pytest
 
 import ray
 from ray._common.test_utils import (
-    PrometheusTimeseries,
     wait_for_condition,
+)
+from ray._private.test_utils import (
+    PrometheusTimeseries,
 )
 from ray.tests.test_task_metrics import METRIC_CONFIG, tasks_by_all
 

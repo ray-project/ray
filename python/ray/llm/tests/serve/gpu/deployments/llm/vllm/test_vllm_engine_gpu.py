@@ -5,8 +5,7 @@ import pytest
 import ray
 from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
-from ray.util.placement_group import placement_group
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.placement_group import PlacementGroupSchedulingStrategy, placement_group
 
 
 @pytest.mark.asyncio

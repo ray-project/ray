@@ -918,17 +918,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   Status WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
                                  int64_t timeout_seconds);
 
-  /// Asynchronously wait for a placement group to be ready.
-  /// Returns an ObjectRef that can be used with ray.get()/ray.wait()/await.
-  ///
-  /// \param placement_group_id The id of a placement group to wait for.
-  /// \param serialized_object_data The serialized object data to put when ready.
-  /// \param serialized_object_metadata The serialized object metadata.
-  /// \return ObjectID that becomes ready when the placement group is ready.
-  ObjectID AsyncWaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
-                                        const std::string &serialized_object_data,
-                                        const std::string &serialized_object_metadata);
-
   /// Submit an actor task.
   ///
   /// \param[in] actor_id ID of the actor.

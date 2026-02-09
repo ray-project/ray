@@ -16,7 +16,8 @@ from starlette.responses import PlainTextResponse
 
 import ray
 from ray import serve
-from ray._common.test_utils import Semaphore, SignalActor, wait_for_condition
+from ray._common.test_utils import Semaphore, SignalActor
+from ray._private.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private.common import DeploymentID
