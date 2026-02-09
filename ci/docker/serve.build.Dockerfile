@@ -1,5 +1,35 @@
 # syntax=docker/dockerfile:1.3-labs
 
+# Build HAProxy in a separate stage so build deps don't bloat the final image
+FROM ubuntu:22.04 AS haproxy-builder
+
+RUN <<EOF
+#!/bin/bash
+set -euo pipefail
+
+apt-get update -y
+apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    curl \
+    libc6-dev \
+    liblua5.3-dev \
+    libpcre3-dev \
+    libssl-dev \
+    wget \
+    zlib1g-dev
+
+rm -rf /var/lib/apt/lists/*
+
+HAPROXY_VERSION="2.8.12"
+HAPROXY_BUILD_DIR=$(mktemp -d)
+wget -O "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
+tar -xzf "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" -C "${HAPROXY_BUILD_DIR}" --strip-components=1
+make -C "${HAPROXY_BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc)
+make -C "${HAPROXY_BUILD_DIR}" install
+rm -rf "${HAPROXY_BUILD_DIR}"
+EOF
+
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py3.10
 FROM $DOCKER_IMAGE_BASE_BUILD
 
@@ -11,44 +41,24 @@ SHELL ["/bin/bash", "-ice"]
 
 COPY . .
 
-# Install HAProxy from source
+# Copy HAProxy binary from builder stage
+COPY --from=haproxy-builder /usr/local/sbin/haproxy /usr/local/sbin/haproxy
+
+# Install HAProxy runtime deps and setup
 RUN <<EOF
 #!/bin/bash
 set -euo pipefail
 
-# Install HAProxy dependencies
-sudo apt-get update && sudo apt-get install -y \
-    build-essential \
-    curl \
-    libc6-dev \
-    liblua5.3-dev \
-    libpcre3-dev \
-    libssl-dev \
-    socat \
-    wget \
-    zlib1g-dev \
-    && sudo rm -rf /var/lib/apt/lists/*
+sudo apt-get update && sudo apt-get install -y --no-install-recommends socat liblua5.3-0
+sudo rm -rf /var/lib/apt/lists/*
 
-# Create haproxy user and group
 sudo groupadd -r haproxy
 sudo useradd -r -g haproxy haproxy
 
-# Download and compile HAProxy from official source
-HAPROXY_VERSION="2.8.12"
-HAPROXY_BUILD_DIR="$(mktemp -d)"
-wget -O "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
-tar -xzf "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" -C "${HAPROXY_BUILD_DIR}" --strip-components=1
-make -C "${HAPROXY_BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1
-sudo make -C "${HAPROXY_BUILD_DIR}" install
-rm -rf "${HAPROXY_BUILD_DIR}"
-
-# Create HAProxy directories
 sudo mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
 sudo chown -R haproxy:haproxy /run/haproxy
 
-# Allow the ray user to manage HAProxy files without password
 echo "ray ALL=(ALL) NOPASSWD: /bin/cp * /etc/haproxy/*, /bin/touch /etc/haproxy/*, /usr/local/sbin/haproxy*" | sudo tee /etc/sudoers.d/haproxy-ray
-
 EOF
 
 RUN <<EOF
