@@ -234,15 +234,3 @@ Pre-hooks support template variable substitution and are modeled as nodes in the
 --quiet
 --unsafe-package setuptools  (unless include_setuptools: true)
 ```
-
-## Testing
-
-```bash
-# Run all tests
-bazelisk test //ci/raydepsets:test_cli //ci/raydepsets:test_workspace
-
-# Run a specific test
-bazelisk test //ci/raydepsets:test_cli --test_filter=test_compile
-```
-
-Tests cover compilation, subsetting, expansion, graph construction, pre-hook execution, config parsing, build arg substitution, lock file diffing, and error handling.
