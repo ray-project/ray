@@ -50,7 +50,7 @@ Joins are generally memory-intensive operations that require accurate memory acc
 Ray Data provides the following levers to allow tuning the performance of joins for your workload:
 
 -   `num_partitions`: (required) specifies number of partitions both incoming datasets will be hash-partitioned into. Check out :ref:`configuring number of partitions <joins_configuring_num_partitions>` section for guidance on how to tune this up.
--   `partition_size_hint`: (optional) Hint to joining operator about the estimated avg expected size of the individual partition (in bytes). If not specified, defaults to DataContext.target_max_block_size (128Mb by default).
+-   `partition_size_hint`: (optional) Hint to joining operator about the estimated avg expected size of the individual partition (in bytes). This hint is only used as a fallback when automatic size estimation from dataset metadata is unavailable. If not specified, defaults to DataContext.target_max_block_size (128Mb by default).
     -   Note that, `num_partitions * partition_size_hint` should ideally be approximating actual dataset size, ie `partition_size_hint` could be estimated as dataset size divided by `num_partitions` (assuming relatively evenly sized partitions)
     -   However, in cases when dataset partitioning is expected to be heavily skewed `partition_size_hint` should approximate largest partition to prevent Out-of-Memory (OOM) errors
 
