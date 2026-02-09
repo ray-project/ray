@@ -983,11 +983,12 @@ class TestLoggingAPI:
 
             if enable_access_log:
                 # Access logs should appear in stderr when enabled.
-                assert "CALL __call__ OK" in stderr_output
+                # HTTP requests produce "GET / 200" format (not "CALL __call__ OK"
+                # which only appears for DeploymentHandle calls).
+                assert "GET / 200" in stderr_output
             else:
-                # Access logs (replica-side "CALL" and proxy-side "GET /")
-                # should NOT appear in stderr when disabled.
-                assert "CALL __call__ OK" not in stderr_output
+                # Access logs should NOT appear in stderr when disabled.
+                assert "GET / 200" not in stderr_output
 
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
     def test_additional_log_standard_attrs(self, serve_and_ray_shutdown, encoding_type):
