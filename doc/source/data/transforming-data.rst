@@ -225,7 +225,7 @@ For example, if the underlying block type is Arrow, specifying ``batch_format="n
 
 Ray Data also strives to minimize the amount of data conversions: for example, if your ``map_batches`` operation returns Pandas batches, then these batches are combined into blocks *without* conversion and propagated further as Pandas blocks. Most Ray Data datasources produce Arrow blocks, so using batch format ``pyarrow`` can avoid unnecessary data conversions.
 
-If you'd like to use a more ergonomic API for transformations but avoid performance overheads, you can consider using ``polars`` inside your ``map_batches`` operation with ``batch_format="pyarrow"`` as follows:
+If you'd like to use a more ergonomic API for transformations but avoid performance overheads, you can consider using Polars inside your ``map_batches`` operation with ``batch_format="pyarrow"`` as follows:
 
 .. testcode::
 
@@ -249,12 +249,12 @@ program might run into out-of-memory (OOM) errors.
 
 If you encounter an OOM errors, try decreasing your ``batch_size``.
 
-Enabling ``Polars`` operations
+Enabling Polars operations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can enable ``Polars`` globally to optimize certain Ray Data operations. Ray Data uses ``Polars`` internally for better performance when processing data.
+You can enable Polars globally to optimize certain Ray Data operations. Ray Data uses Polars internally for better performance when processing data.
 
-To enable ``Polars`` operations, configure the :class:`~ray.data.DataContext`:
+To enable Polars operations, configure the :class:`~ray.data.DataContext`:
 
 .. testcode::
     
@@ -263,7 +263,7 @@ To enable ``Polars`` operations, configure the :class:`~ray.data.DataContext`:
     ctx = ray.data.DataContext.get_current()
     ctx.use_polars_sort = True
 
-When you enable this flag, Ray Data automatically uses ``Polars`` for tabular dataset sorting operations, which can significantly improve performance for certain workloads. This doesn't affect your UDF code. You can still use any batch format in :meth:`~ray.data.Dataset.map_batches`.
+When you enable this flag, Ray Data automatically uses Polars for tabular dataset sorting operations, which can significantly improve performance for certain workloads. This doesn't affect your UDF code. You can still use any batch format in :meth:`~ray.data.Dataset.map_batches`.
 
 
 .. _stateful_transforms:
