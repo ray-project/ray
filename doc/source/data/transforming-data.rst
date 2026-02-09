@@ -249,23 +249,6 @@ program might run into out-of-memory (OOM) errors.
 
 If you encounter an OOM errors, try decreasing your ``batch_size``.
 
-Enabling Polars operations
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-You can enable Polars globally to optimize certain Ray Data operations. Ray Data uses Polars internally for better performance when processing data.
-
-To enable Polars operations, configure the :class:`~ray.data.DataContext`:
-
-.. testcode::
-    
-    import ray
-
-    ctx = ray.data.DataContext.get_current()
-    ctx.use_polars_sort = True
-
-When you enable this flag, Ray Data automatically uses Polars for tabular dataset sorting operations, which can significantly improve performance for certain workloads. This doesn't affect your UDF code. You can still use any batch format in :meth:`~ray.data.Dataset.map_batches`.
-
-
 .. _stateful_transforms:
 
 Stateful/Class-based Transforms
