@@ -1,6 +1,5 @@
 # syntax=docker/dockerfile:1.3-labs
 
-# Build HAProxy in a separate stage so build deps don't bloat the final image
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py3.10
 FROM $DOCKER_IMAGE_BASE_BUILD AS haproxy-builder
 
@@ -31,7 +30,6 @@ sudo make -C "${HAPROXY_BUILD_DIR}" install
 rm -rf "${HAPROXY_BUILD_DIR}"
 EOF
 
-ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py3.10
 FROM $DOCKER_IMAGE_BASE_BUILD
 
 ARG ENABLE_TRACING
