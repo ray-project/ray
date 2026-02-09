@@ -1115,7 +1115,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             except Exception:
                 # Follow the same pattern as single-replica PG creation
                 # failure: log and skip this gang so the controller can
-                # make progress with the other gangs.  The missing
+                # make progress with the other gangs. The missing
                 # replicas will be retried on the next reconciliation loop.
                 logger.exception(
                     f"Failed to create gang placement group "
