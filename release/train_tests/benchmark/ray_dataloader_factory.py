@@ -43,7 +43,7 @@ class SpillMetricsMonitor:
         )
         return memory_info.store_stats.spilled_bytes_total
 
-    def _poll_loop(self):
+    def _poll_loop(self) -> None:
         try:
             prev_spilled_bytes = self._get_spilled_bytes()
             prev_time = time.monotonic()
