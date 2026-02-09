@@ -9,7 +9,7 @@ certifi
 pycurl
 azure-identity
 smart_open[s3,gcs,azure,http]
-adlfs[abfs]
+adlfs
 openlineage-python>=1.36.0
 
 # Anyscale CLI requirements

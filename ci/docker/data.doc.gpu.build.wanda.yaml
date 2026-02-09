@@ -1,10 +1,10 @@
-name: "data9build-py$PYTHON"
+name: "datadocgpubuild-py$PYTHON"
 froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON"]
 dockerfile: ci/docker/data.base.build.Dockerfile
 srcs:
-  - python/deplocks/ci/data-v9-pyarrow-ci_depset_py$PYTHON.lock
+  - python/deplocks/ci/data-doc-ci_depset_py$PYTHON.lock
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
-  - IMAGE_TYPE=v9-pyarrow
+  - IMAGE_TYPE=doc
 tags:
-  - cr.ray.io/rayproject/data9build-py$PYTHON
+  - cr.ray.io/rayproject/datadocgpubuild-py$PYTHON
