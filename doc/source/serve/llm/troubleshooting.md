@@ -84,6 +84,8 @@ If you encounter issues not covered in this guide:
 - [Ray GitHub Issues](https://github.com/ray-project/ray/issues) - Report bugs or request features
 - [Ray Slack](https://ray-distributed.slack.com) - Get help from the community
 - [Ray Discourse Forum](https://discuss.ray.io) - Ask questions and share knowledge
+- [Ray LLM Office Hours](https://docs.google.com/forms/d/e/1FAIpQLScx-7uE0s8vvW4yRV8h1bVYZLcjhVJHHauOx198vS28Bzvutw/viewform) - Learn about new features, ask questions, and get guidance from the team
+  - [Past Office Hours Recordings](https://youtube.com/playlist?list=PLzTswPQNepXl2IYF8DcV35FdCoVbeL4_6&si=ik81bljIlasYAHKN) - View recordings from previous sessions
 
 ## See also
 
