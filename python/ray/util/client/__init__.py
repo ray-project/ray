@@ -16,6 +16,47 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
+def _apply_uv_hook_for_client(
+    runtime_env: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Apply UV runtime env hook on client side before connection.
+
+    This allows Ray Client to support 'uv run' environments by detecting
+    the UV configuration on the client side and propagating it to workers.
+    The hook only runs if RAY_ENABLE_UV_RUN_RUNTIME_ENV is enabled and
+    the client is running under 'uv run'.
+
+    Args:
+        runtime_env: The runtime environment dict to potentially modify.
+
+    Returns:
+        Modified runtime_env dict with UV configuration if detected,
+        otherwise the original runtime_env unchanged.
+    """
+    try:
+        if not ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV:
+            return runtime_env
+
+        from ray._private.runtime_env.uv_runtime_env_hook import (
+            _get_uv_run_cmdline,
+            hook,
+        )
+
+        cmdline = _get_uv_run_cmdline()
+        if cmdline:
+            # UV environment detected on client side
+            logger.debug(f"UV environment detected: {cmdline}")
+            return hook(runtime_env)
+    except Exception as e:
+        # Log warning but don't fail connection
+        logger.warning(
+            f"Failed to apply UV runtime env hook for Ray Client: {e}. "
+            "UV environment will not be propagated to workers."
+        )
+
+    return runtime_env
+
+
 class _ClientContext:
     def __init__(self):
         from ray.util.client.api import _ClientAPI
@@ -74,7 +115,25 @@ class _ClientContext:
         if ray_init_kwargs is None:
             ray_init_kwargs = {}
 
-        # NOTE(architkulkarni): env_hook is not supported with Ray Client.
+        # Apply UV hook client-side before connection (if UV detected).
+        # This allows UV environments to work with Ray Client by detecting
+        # the UV configuration on the client machine and propagating it to
+        # the cluster workers. See: https://github.com/ray-project/ray/issues/57991
+        runtime_env = ray_init_kwargs.get("runtime_env")
+        if runtime_env is None and job_config and job_config.runtime_env:
+            # Fall back to job_config runtime_env if ray_init_kwargs
+            # doesn't specify one (explicit empty dict {} takes precedence)
+            runtime_env = job_config.runtime_env
+
+        runtime_env = _apply_uv_hook_for_client(runtime_env)
+
+        if runtime_env is not None:
+            ray_init_kwargs["runtime_env"] = runtime_env
+            if job_config:
+                job_config.set_runtime_env(runtime_env)
+
+        # NOTE(architkulkarni): Custom env_hook is not supported with Ray Client.
+        # However, UV hook is now applied client-side above.
         ray_init_kwargs["_skip_env_hook"] = True
 
         if ray_init_kwargs.get("logging_level") is not None:

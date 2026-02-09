@@ -499,5 +499,65 @@ with open("{tmp_dir / "output.txt"}", "w") as out:
         assert json.load(f) == {"working_dir_files": os.listdir(working_dir)}
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
+def test_uv_run_ray_client_mode(shutdown_only, tmp_working_dir):
+    """Test that UV environment works with Ray Client mode.
+
+    This verifies the fix for: https://github.com/ray-project/ray/issues/57991
+    """
+    from unittest.mock import patch
+
+    tmp_dir = tmp_working_dir
+
+    # Start Ray cluster
+    ray.init(num_cpus=1)
+
+    # Start Ray Client server
+    import ray.util.client.server.server as ray_client_server
+
+    server_handle = ray_client_server.serve("localhost", 50052)
+
+    try:
+        # Simulate running under 'uv run' by mocking the process tree
+        with patch(
+            "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
+        ) as mock_uv:
+            mock_uv.return_value = [
+                "uv",
+                "run",
+                "--python-preference=only-system",
+                "script.py",
+            ]
+
+            # Connect via Ray Client
+            import ray as ray_client
+
+            ray_client.util.connect(
+                "localhost:50052",
+                runtime_env={
+                    "working_dir": tmp_dir,
+                    # Use system environment to find Ray installation
+                    "env_vars": {"PYTHONPATH": ":".join(sys.path)},
+                },
+            )
+
+            @ray_client.remote
+            def emojize():
+                import emoji
+
+                return emoji.emojize("Ray rocks :thumbs_up:")
+
+            # This should work because UV hook detected and propagated UV config
+            result = ray_client.get(emojize.remote())
+            assert (
+                result == "Ray rocks 👍"
+            ), "UV should have installed emoji package on workers"
+
+            ray_client.util.disconnect()
+    finally:
+        server_handle.stop(0)
+        ray.shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
