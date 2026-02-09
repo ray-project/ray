@@ -1,3 +1,4 @@
+import itertools
 import json
 import logging
 import math
@@ -1554,7 +1555,9 @@ class ReplicaStateContainer:
 
         assert isinstance(states, list)
 
-        return sum((self._replicas[state] for state in states), [])
+        return list(
+            itertools.chain.from_iterable(self._replicas[state] for state in states)
+        )
 
     def pop(
         self,
