@@ -8,8 +8,6 @@ ARG BASE_IMAGE="ubuntu:22.04"
 # --- HAProxy Build Stage ---
 FROM ${BASE_IMAGE} AS haproxy-builder
 
-USER root
-
 RUN <<EOF
 #!/bin/bash
 set -euo pipefail
@@ -24,8 +22,6 @@ apt-get install -y --no-install-recommends \
     libpcre3-dev \
     libssl-dev \
     zlib1g-dev
-
-rm -rf /var/lib/apt/lists/*
 
 # Install HAProxy from source
 HAPROXY_VERSION="2.8.12"
@@ -90,6 +86,10 @@ APT_PKGS=(
     netbase
     openssh-client
     gnupg
+
+    # For HAProxy
+    socat
+    liblua5.3-0
 )
 
 apt-get install -y "${APT_PKGS[@]}"
@@ -98,7 +98,12 @@ useradd -ms /bin/bash -d /home/ray ray --uid $RAY_UID --gid $RAY_GID
 usermod -aG sudo ray
 echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers
 
+mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
+chown -R ray:"$(id -gn ray)" /run/haproxy
+
 EOF
+
+COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
 
 USER $RAY_UID
 ENV HOME=/home/ray
@@ -162,25 +167,3 @@ sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get clean
 
 EOF
-
-# Copy HAProxy binary from builder stage
-COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
-
-# Install HAProxy runtime dependency and setup
-USER root
-
-RUN <<EOF
-#!/bin/bash
-set -euo pipefail
-
-apt-get update -y
-apt-get install -y --no-install-recommends socat liblua5.3-0
-
-mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
-chown -R ray:"$(id -gn ray)" /run/haproxy
-
-rm -rf /var/lib/apt/lists/*
-EOF
-
-USER $RAY_UID
-WORKDIR $HOME
