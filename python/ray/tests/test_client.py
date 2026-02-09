@@ -985,5 +985,114 @@ def test_internal_kv_in_proxy_mode(call_ray_start_shared):
     assert client_api._internal_kv_get(b"key") is None
 
 
+def test_ray_client_uv_hook_detection():
+    """Test that _apply_uv_hook_for_client correctly detects and applies UV config.
+
+    Related to: https://github.com/ray-project/ray/issues/57991
+    """
+    from unittest.mock import patch
+
+    from ray.util.client import _apply_uv_hook_for_client
+
+    # Test 1: UV detected - should set py_executable
+    with patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
+    ) as mock_uv:
+        mock_uv.return_value = [
+            "uv",
+            "run",
+            "--locked",
+            "--python",
+            "3.11",
+            "script.py",
+        ]
+
+        result = _apply_uv_hook_for_client({"working_dir": "/tmp/test"})
+
+        assert "py_executable" in result, "py_executable should be set when UV detected"
+        assert "uv run" in result["py_executable"], "should contain 'uv run'"
+        assert "--locked" in result["py_executable"], "should preserve --locked flag"
+        # working_dir should be preserved (not overwritten)
+        assert result["working_dir"] == "/tmp/test"
+
+    # Test 2: No UV detected - should return runtime_env unchanged
+    with patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
+    ) as mock_uv:
+        mock_uv.return_value = None
+
+        original = {"working_dir": "/tmp/test"}
+        result = _apply_uv_hook_for_client(original)
+
+        assert "py_executable" not in result, "py_executable should not be set"
+        assert result == original
+
+    # Test 3: None runtime_env - should handle gracefully
+    with patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
+    ) as mock_uv:
+        mock_uv.return_value = None
+
+        result = _apply_uv_hook_for_client(None)
+        assert result is None
+
+    # Test 4: Hook failure - should return original and not crash
+    with patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline",
+        side_effect=RuntimeError("mock error"),
+    ):
+        original = {"working_dir": "/tmp/test"}
+        result = _apply_uv_hook_for_client(original)
+        assert result == original, "should return original on error"
+
+
+def test_ray_client_uv_no_detection_without_uv(call_ray_start_shared):
+    """Test that Ray Client works normally when UV is not detected."""
+    # Ensure clean state (previous tests may leave Ray initialized)
+    import ray as ray_module
+
+    ray_module.shutdown()
+    with ray_start_client_server_for_address(call_ray_start_shared) as ray:
+        # Connect without UV (normal case)
+
+        @ray.remote
+        def simple_task():
+            return "success"
+
+        # Should work normally
+        result = ray.get(simple_task.remote())
+        assert result == "success"
+
+
+def test_ray_client_uv_hook_with_existing_runtime_env():
+    """Test UV hook correctly merges with existing runtime_env settings.
+
+    Related to: https://github.com/ray-project/ray/issues/57991
+    """
+    from unittest.mock import patch
+
+    from ray.util.client import _apply_uv_hook_for_client
+
+    with patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
+    ) as mock_uv:
+        mock_uv.return_value = ["uv", "run", "script.py"]
+
+        # Existing runtime_env with working_dir should be preserved
+        runtime_env = {
+            "working_dir": "/my/custom/dir",
+            "env_vars": {"MY_VAR": "value"},
+        }
+        result = _apply_uv_hook_for_client(runtime_env)
+
+        assert "py_executable" in result
+        assert (
+            result["working_dir"] == "/my/custom/dir"
+        ), "User's working_dir should take precedence"
+        assert (
+            result["env_vars"]["MY_VAR"] == "value"
+        ), "Existing env_vars should be preserved"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
