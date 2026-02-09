@@ -126,22 +126,10 @@ def main(args):
             col("is_nation") * col("volume"),
         )
 
-        # Calculate total volume per year (all suppliers, for customers in the region)
-        total_by_year = ds.groupby("o_year").aggregate(
-            Sum(on="volume", alias_name="total_volume")
-        )
-
-        # Calculate volume from specific nation per year (conditional sum)
-        nation_by_year = ds.groupby("o_year").aggregate(
-            Sum(on="nation_volume", alias_name="nation_volume")
-        )
-
-        # Join to get total volume for each year
-        result = nation_by_year.join(
-            total_by_year,
-            join_type="inner",
-            num_partitions=100,
-            on=("o_year",),
+        # Aggregate total volume and nation volume per year in a single groupby
+        result = ds.groupby("o_year").aggregate(
+            Sum(on="volume", alias_name="total_volume"),
+            Sum(on="nation_volume", alias_name="nation_volume"),
         )
 
         # Calculate market share for the specific nation
