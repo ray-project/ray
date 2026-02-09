@@ -617,7 +617,7 @@ class ActorMethod:
             is_generator: True if a given method is a Python generator.
             generator_backpressure_num_objects: Generator-only config.
                 If a number of unconsumed objects reach this threshold,
-                a actor task stop pausing.
+                the actor task stops pausing.
             enable_task_events: True if task events is enabled, i.e., task events from
                 the actor should be reported. Defaults to True.
             decorator: An optional decorator that should be applied to the actor
@@ -1632,12 +1632,6 @@ class ActorClass(Generic[T]):
                 "'non_detached' and 'None'."
             )
 
-        # LOCAL_MODE cannot handle cross_language
-        if worker.mode == ray.LOCAL_MODE:
-            assert (
-                not meta.is_cross_language
-            ), "Cross language ActorClass cannot be executed locally."
-
         # Export the actor.
         if not meta.is_cross_language and (
             meta.last_export_cluster_and_job != worker.current_cluster_and_job
@@ -2141,11 +2135,6 @@ class ActorHandle(Generic[T]):
                 list_args = signature.flatten_args(function_signature, args, kwargs)
             function_descriptor = self._ray_function_descriptor[method_name]
 
-        if worker.mode == ray.LOCAL_MODE:
-            assert (
-                not self._ray_is_cross_language
-            ), "Cross language remote actor method cannot be executed locally."
-
         if num_returns == "dynamic":
             num_returns = -1
         elif num_returns == "streaming":
@@ -2409,9 +2398,7 @@ def _modify_class(cls):
             return fn(self, *args, **kwargs)
 
         def __ray_terminate__(self):
-            worker = ray._private.worker.global_worker
-            if worker.mode != ray.LOCAL_MODE:
-                ray.actor.exit_actor()
+            ray.actor.exit_actor()
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__

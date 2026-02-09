@@ -114,7 +114,7 @@ void LocalLeaseManager::WaitForLeaseArgsRequests(std::shared_ptr<internal::Work>
       RAY_LOG(DEBUG) << "Waiting for args for lease: " << lease_id;
       auto it = waiting_lease_queue_.insert(waiting_lease_queue_.end(), std::move(work));
       RAY_CHECK(waiting_leases_index_.emplace(lease_id, it).second);
-      cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsBusy(
+      cluster_resource_scheduler_.GetLocalResourceManager().MaybeMarkFootprintAsBusy(
           WorkFootprint::PULLING_TASK_ARGUMENTS);
     }
   } else {
@@ -325,7 +325,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           auto it = waiting_lease_queue_.insert(waiting_lease_queue_.begin(),
                                                 std::move(*work_it));
           RAY_CHECK(waiting_leases_index_.emplace(lease_id, it).second);
-          cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsBusy(
+          cluster_resource_scheduler_.GetLocalResourceManager().MaybeMarkFootprintAsBusy(
               WorkFootprint::PULLING_TASK_ARGUMENTS);
           work_it = leases_to_grant_queue.erase(work_it);
           RAY_LOG(DEBUG) << "Failed to pin arguments for lease " << lease_id;

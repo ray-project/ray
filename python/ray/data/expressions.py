@@ -50,6 +50,7 @@ class Operation(Enum):
         SUB: Subtraction operation (-)
         MUL: Multiplication operation (*)
         DIV: Division operation (/)
+        MOD: Modulo operation (%)
         FLOORDIV: Floor division operation (//)
         GT: Greater than comparison (>)
         LT: Less than comparison (<)
@@ -821,14 +822,39 @@ class _CallableClassSpec:
         cls: The original callable class type
         args: Positional arguments for the constructor
         kwargs: Keyword arguments for the constructor
+        _cached_key: Pre-computed key that survives serialization
     """
 
     cls: type
     args: Tuple[Any, ...] = ()
     kwargs: Dict[str, Any] = field(default_factory=dict)
+    _cached_key: Optional[Tuple] = field(default=None, compare=False, repr=False)
+
+    def __post_init__(self):
+        """Pre-compute and cache the key at construction time.
+
+        This ensures the same key survives serialization, since the cached
+        key tuple (containing the already-computed repr strings) gets pickled
+        and unpickled as-is.
+        """
+        if self._cached_key is None:
+            class_id = f"{self.cls.__module__}.{self.cls.__qualname__}"
+            try:
+                key = (
+                    class_id,
+                    self.args,
+                    tuple(sorted(self.kwargs.items())),
+                )
+                # Verify the key is actually hashable (args may contain lists)
+                hash(key)
+            except TypeError:
+                # Fallback for unhashable args/kwargs - use repr for comparison
+                key = (class_id, repr(self.args), repr(self.kwargs))
+            # Use object.__setattr__ since dataclass is frozen
+            object.__setattr__(self, "_cached_key", key)
 
     def make_key(self) -> Tuple:
-        """Create a hashable key for UDF instance lookup.
+        """Return the pre-computed hashable key for UDF instance lookup.
 
         The key uniquely identifies a UDF by its class and constructor arguments.
         This ensures that the same class with different constructor args
@@ -837,18 +863,7 @@ class _CallableClassSpec:
         Returns:
             A hashable tuple that uniquely identifies this UDF configuration.
         """
-        try:
-            key = (
-                id(self.cls),
-                self.args,
-                tuple(sorted(self.kwargs.items())),
-            )
-            # Verify the key is actually hashable (args may contain lists)
-            hash(key)
-            return key
-        except TypeError:
-            # Fallback for unhashable args/kwargs - use repr for comparison
-            return (id(self.cls), repr(self.args), repr(self.kwargs))
+        return self._cached_key
 
 
 class _CallableClassUDF:
@@ -1304,6 +1319,7 @@ class DownloadExpr(Expr):
     """Expression that represents a download operation."""
 
     uri_column_name: str
+    filesystem: "pyarrow.fs.FileSystem" = None
     data_type: DataType = field(default_factory=lambda: DataType.binary(), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
@@ -1341,7 +1357,7 @@ class AliasExpr(Expr):
             isinstance(other, AliasExpr)
             and self.expr.structurally_equals(other.expr)
             and self.name == other.name
-            and self._is_rename == self._is_rename
+            and self._is_rename == other._is_rename
         )
 
 
@@ -1448,7 +1464,11 @@ def star() -> StarExpr:
 
 
 @PublicAPI(stability="alpha")
-def download(uri_column_name: str) -> DownloadExpr:
+def download(
+    uri_column_name: str,
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+) -> DownloadExpr:
     """
     Create a download expression that downloads content from URIs.
 
@@ -1458,6 +1478,8 @@ def download(uri_column_name: str) -> DownloadExpr:
 
     Args:
         uri_column_name: The name of the column containing URIs to download from
+        filesystem: PyArrow filesystem to use for reading remote files.
+            If None, the filesystem is auto-detected from the path scheme.
     Returns:
         A DownloadExpr that will download content from the specified URI column
 
@@ -1472,7 +1494,7 @@ def download(uri_column_name: str) -> DownloadExpr:
         >>> # Add downloaded bytes column
         >>> ds_with_bytes = ds.with_column("bytes", download("uri"))
     """
-    return DownloadExpr(uri_column_name=uri_column_name)
+    return DownloadExpr(uri_column_name=uri_column_name, filesystem=filesystem)
 
 
 # ──────────────────────────────────────
