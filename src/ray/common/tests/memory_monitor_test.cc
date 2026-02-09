@@ -1,4 +1,4 @@
-// Copyright 2026 The Ray Authors.
+// Copyright 2022 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,91 +14,25 @@
 
 #include "ray/common/memory_monitor.h"
 
-#include <sys/mman.h>
 #include <sys/sysinfo.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
 #include <boost/filesystem.hpp>
-#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <memory>
-#include <sstream>
 #include <string>
-#include <thread>
 #include <utility>
 
-#include "absl/container/flat_hash_map.h"
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/cgroup2/cgroup_test_utils.h"
 #include "ray/common/id.h"
+#include "ray/common/memory_monitor_test_utils.h"
 #include "ray/util/process.h"
 
 namespace ray {
 
-class MemoryMonitorTest : public ::testing::Test {
- protected:
-  void MakeMemoryUsage(pid_t pid,
-                       const std::string usage_kb,
-                       const std::string proc_dir) {
-    boost::filesystem::create_directory(proc_dir);
-    boost::filesystem::create_directory(proc_dir + "/" + std::to_string(pid));
-
-    std::string usage_filename = proc_dir + "/" + std::to_string(pid) + "/smaps_rollup";
-
-    std::ofstream usage_file;
-    usage_file.open(usage_filename);
-    usage_file << "SomeHeader" << std::endl;
-    usage_file << "Private_Clean: " << usage_kb << " kB" << std::endl;
-    usage_file.close();
-  }
-
-  /**
-   * Sets up a mock cgroup v2 directory for emulating memory usage and populates
-   * the files with the provided mock memory values.
-   *
-   * @param total_bytes the value to write to memory.max (total memory limit)
-   * @param current_bytes the value to write to memory.current (current usage)
-   * @param inactive_file_bytes the inactive_file value in memory.stat
-   * @param active_file_bytes the active_file value in memory.stat
-   * @return the path to the created mock cgroup directory
-   */
-  std::string MockCgroupMemoryUsage(int64_t total_bytes,
-                                    int64_t current_bytes,
-                                    int64_t inactive_file_bytes,
-                                    int64_t active_file_bytes) {
-    auto temp_dir_or = TempDirectory::Create();
-    RAY_CHECK(temp_dir_or.ok())
-        << "Failed to create temp directory: " << temp_dir_or.status().message();
-    mock_cgroup_dir_ = std::move(temp_dir_or.value());
-
-    const std::string &cgroup_path = mock_cgroup_dir_->GetPath();
-
-    mock_memory_max_file_ = std::make_unique<TempFile>(cgroup_path + "/memory.max");
-    mock_memory_max_file_->AppendLine(std::to_string(total_bytes) + "\n");
-
-    mock_memory_current_file_ =
-        std::make_unique<TempFile>(cgroup_path + "/memory.current");
-    mock_memory_current_file_->AppendLine(std::to_string(current_bytes) + "\n");
-
-    mock_memory_stat_file_ = std::make_unique<TempFile>(cgroup_path + "/memory.stat");
-    mock_memory_stat_file_->AppendLine("anon 123456\n");
-    mock_memory_stat_file_->AppendLine("inactive_file " +
-                                       std::to_string(inactive_file_bytes) + "\n");
-    mock_memory_stat_file_->AppendLine("active_file " +
-                                       std::to_string(active_file_bytes) + "\n");
-    mock_memory_stat_file_->AppendLine("some_other_key 789\n");
-
-    return cgroup_path;
-  }
-
-  // Mock cgroup directory and files
-  std::unique_ptr<TempDirectory> mock_cgroup_dir_;
-  std::unique_ptr<TempFile> mock_memory_max_file_;
-  std::unique_ptr<TempFile> mock_memory_current_file_;
-  std::unique_ptr<TempFile> mock_memory_stat_file_;
-};
+class MemoryMonitorTest : public MemoryMonitorTestUtils {};
 
 TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive) {
   {
@@ -349,7 +283,7 @@ TEST_F(MemoryMonitorTest, TestGetCommandLinePidExistReturnsValid) {
   std::string pid_dir = proc_dir + "/123";
   boost::filesystem::create_directories(pid_dir);
 
-  std::string cmdline_filename = pid_dir + "/cmdline";
+  std::string cmdline_filename = pid_dir + "/" + MemoryMonitor::kCommandlinePath;
 
   std::ofstream cmdline_file;
   cmdline_file.open(cmdline_filename);
@@ -429,12 +363,21 @@ TEST_F(MemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc) {
 }
 
 TEST_F(MemoryMonitorTest, TestTakePerProcessMemorySnapshotFiltersBadPids) {
-  std::string proc_dir = UniqueID::FromRandom().Hex();
-  MakeMemoryUsage(1, "111", proc_dir);
+  std::string proc_dir = MockProcMemoryUsage(1, "111");
 
   // Invalid pids with no memory usage file.
-  boost::filesystem::create_directory(proc_dir + "/2");
-  boost::filesystem::create_directory(proc_dir + "/3");
+  auto proc_2_memory_usage_file_or = TempDirectory::Create(proc_dir + "/2");
+  RAY_CHECK(proc_2_memory_usage_file_or.ok())
+      << "Failed to create temp directory: "
+      << proc_2_memory_usage_file_or.status().message();
+  std::unique_ptr<TempFile> proc_2_memory_usage_file =
+      std::make_unique<TempFile>(proc_dir + "/2/smaps_rollup");
+  auto proc_3_memory_usage_file_or = TempDirectory::Create(proc_dir + "/3");
+  RAY_CHECK(proc_3_memory_usage_file_or.ok())
+      << "Failed to create temp directory: "
+      << proc_3_memory_usage_file_or.status().message();
+  std::unique_ptr<TempFile> proc_3_memory_usage_file =
+      std::make_unique<TempFile>(proc_dir + "/3/smaps_rollup");
 
   auto usage = MemoryMonitor::TakePerProcessMemorySnapshot(proc_dir);
 

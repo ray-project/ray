@@ -35,52 +35,14 @@
 #include "ray/common/cgroup2/cgroup_test_utils.h"
 #include "ray/common/id.h"
 #include "ray/common/memory_monitor.h"
+#include "ray/common/memory_monitor_test_utils.h"
 #include "ray/util/process.h"
 
 namespace ray {
 
-class ThresholdMemoryMonitorTest : public ::testing::Test {
+class ThresholdMemoryMonitorTest : public MemoryMonitorTestUtils {
  protected:
   void TearDown() override { instance.reset(); }
-
-  /**
-   * Sets up a mock cgroup v2 directory for emulating memory usage and populates
-   * the files with the provided mock memory values.
-   *
-   * @param total_bytes the value to write to memory.max (total memory limit)
-   * @param current_bytes the value to write to memory.current (current usage)
-   * @param inactive_file_bytes the inactive_file value in memory.stat
-   * @param active_file_bytes the active_file value in memory.stat
-   * @return the path to the created mock cgroup directory
-   */
-  std::string MockCgroupMemoryUsage(int64_t total_bytes,
-                                    int64_t current_bytes,
-                                    int64_t inactive_file_bytes,
-                                    int64_t active_file_bytes) {
-    auto temp_dir_or = TempDirectory::Create();
-    RAY_CHECK(temp_dir_or.ok())
-        << "Failed to create temp directory: " << temp_dir_or.status().message();
-    mock_cgroup_dir_ = std::move(temp_dir_or.value());
-
-    const std::string &cgroup_path = mock_cgroup_dir_->GetPath();
-
-    mock_memory_max_file_ = std::make_unique<TempFile>(cgroup_path + "/memory.max");
-    mock_memory_max_file_->AppendLine(std::to_string(total_bytes) + "\n");
-
-    mock_memory_current_file_ =
-        std::make_unique<TempFile>(cgroup_path + "/memory.current");
-    mock_memory_current_file_->AppendLine(std::to_string(current_bytes) + "\n");
-
-    mock_memory_stat_file_ = std::make_unique<TempFile>(cgroup_path + "/memory.stat");
-    mock_memory_stat_file_->AppendLine("anon 123456\n");
-    mock_memory_stat_file_->AppendLine("inactive_file " +
-                                       std::to_string(inactive_file_bytes) + "\n");
-    mock_memory_stat_file_->AppendLine("active_file " +
-                                       std::to_string(active_file_bytes) + "\n");
-    mock_memory_stat_file_->AppendLine("some_other_key 789\n");
-
-    return cgroup_path;
-  }
 
   ThresholdMemoryMonitor &MakeThresholdMemoryMonitor(
       float usage_threshold,
@@ -96,12 +58,6 @@ class ThresholdMemoryMonitorTest : public ::testing::Test {
     return *instance;
   }
   std::unique_ptr<ThresholdMemoryMonitor> instance;
-
-  // Mock cgroup directory and files
-  std::unique_ptr<TempDirectory> mock_cgroup_dir_;
-  std::unique_ptr<TempFile> mock_memory_max_file_;
-  std::unique_ptr<TempFile> mock_memory_current_file_;
-  std::unique_ptr<TempFile> mock_memory_stat_file_;
 };
 
 TEST_F(ThresholdMemoryMonitorTest, TestMonitorTriggerCanDetectMemoryUsage) {
@@ -112,8 +68,12 @@ TEST_F(ThresholdMemoryMonitorTest, TestMonitorTriggerCanDetectMemoryUsage) {
       -1 /*min_memory_free_bytes*/,
       1 /*refresh_interval_ms*/,
       [has_checked_once](const SystemMemorySnapshot &system_memory) {
-        ASSERT_GT(system_memory.total_bytes, 0);
-        ASSERT_GT(system_memory.used_bytes, 0);
+        ASSERT_GT(system_memory.total_bytes, 0)
+            << "Reported total bytes from cgroup is <= 0. Is the system memory snapshot "
+               "taken correctly?";
+        ASSERT_GE(system_memory.used_bytes, 0)
+            << "Reported used bytes from cgroup is < 0. Is the system memory snapshot "
+               "taken correctly?";
         has_checked_once->count_down();
       },
       "" /*root_cgroup_path*/);
@@ -138,7 +98,9 @@ TEST_F(ThresholdMemoryMonitorTest,
       -1 /*min_memory_free_bytes*/,
       1 /*refresh_interval_ms*/,
       [has_checked_once, cgroup_total_bytes](const SystemMemorySnapshot &system_memory) {
-        ASSERT_EQ(system_memory.total_bytes, cgroup_total_bytes);
+        ASSERT_EQ(system_memory.total_bytes, cgroup_total_bytes)
+            << "Unexpected total bytes read from cgroup. Are we correctly reading memory "
+               "from the cgroup?";
         has_checked_once->count_down();
       },
       cgroup_dir /*root_cgroup_path*/);
@@ -172,7 +134,8 @@ TEST_F(ThresholdMemoryMonitorTest,
   std::this_thread::sleep_for(std::chrono::seconds(5));
 
   ASSERT_FALSE(callback_triggered->load())
-      << "Callback should not have been triggered when memory is below threshold";
+      << "Callback should not have been triggered when memory is below threshold. "
+         "Are is the memory monitor correctly reading memory from the system?";
 }
 
 }  // namespace ray

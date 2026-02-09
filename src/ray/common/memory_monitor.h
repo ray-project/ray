@@ -236,9 +236,6 @@ class MemoryMonitor {
   static const std::vector<std::tuple<pid_t, int64_t>> GetTopNMemoryUsage(
       uint32_t top_n, const ProcessesMemorySnapshot &all_usage);
 
-  FRIEND_TEST(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive);
-  FRIEND_TEST(MemoryMonitorTest,
-              TestTakeSystemMemorySnapshotUsesCgroupWhenLowerThanSystem);
   FRIEND_TEST(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
   FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidReturnsWorkingSet);
   FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidKeyLastReturnsWorkingSet);
@@ -255,7 +252,6 @@ class MemoryMonitor {
   FRIEND_TEST(MemoryMonitorTest, TestLongStringTruncated);
   FRIEND_TEST(MemoryMonitorTest, TestTopNLessThanNReturnsMemoryUsedDesc);
   FRIEND_TEST(MemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc);
-  FRIEND_TEST(MemoryMonitorTest, TestTakePerProcessMemorySnapshotFiltersBadPids);
 
  protected:
   static constexpr int64_t kNull = -1;
