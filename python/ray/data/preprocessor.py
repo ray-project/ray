@@ -443,10 +443,10 @@ class Preprocessor(abc.ABC):
         return BatchFormat.PANDAS
 
     def get_input_columns(self) -> List[str]:
-        return getattr(self, "columns", [])
+        return getattr(self, "_columns", [])
 
     def get_output_columns(self) -> List[str]:
-        return getattr(self, "output_columns", [])
+        return getattr(self, "_output_columns", [])
 
     def __getstate__(self) -> Dict[str, Any]:
         state = self.__dict__.copy()
