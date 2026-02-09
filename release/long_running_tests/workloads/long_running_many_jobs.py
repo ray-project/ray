@@ -132,7 +132,22 @@ if __name__ == "__main__":
             exit(1)
 
         # Test list jobs
-        jobs: List[JobDetails] = clients[0].list_jobs()
+        max_list_jobs_retries = 50000
+        list_jobs_retry_interval_s = 2
+        jobs = None
+        for attempt in range(1, max_list_jobs_retries + 1):
+            try:
+                jobs = clients[0].list_jobs()
+                break
+            except RuntimeError as exc:
+                print(
+                    "list_jobs failed (attempt "
+                    f"{attempt}/{max_list_jobs_retries}), retrying: {exc}"
+                )
+                time.sleep(list_jobs_retry_interval_s)
+        if jobs is None:
+            print("list_jobs failed after retries")
+            exit(1)
         print(f"Total jobs submitted so far: {len(jobs)}")
 
         # Get job logs from random submission job
@@ -142,7 +157,22 @@ if __name__ == "__main__":
             is_submission_job = job_details.type == "SUBMISSION"
         job_id = job_details.submission_id
         print(f"Getting logs for randomly chosen job {job_id}...")
-        logs = clients[0].get_job_logs(job_id)
+    max_get_logs_retries = 50000
+    get_logs_retry_interval_s = 2
+    logs = None
+    for attempt in range(1, max_get_logs_retries + 1):
+        try:
+            logs = clients[0].get_job_logs(job_id)
+            break
+        except RuntimeError as exc:
+            print(
+                "get_job_logs failed (attempt "
+                f"{attempt}/{max_get_logs_retries}), retrying: {exc}"
+            )
+            time.sleep(get_logs_retry_interval_s)
+    if logs is None:
+        print("get_job_logs failed after retries")
+        exit(1)
         print(logs)
 
     time_taken = time.time() - start
