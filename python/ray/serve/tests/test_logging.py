@@ -944,8 +944,9 @@ class TestLoggingAPI:
             with pytest.raises(AssertionError):
                 check_log_file(resp["logs_path"], [".*model_not_show.*"])
 
-    def test_access_log_suppressed_in_stderr(self, serve_and_ray_shutdown):
-        """Test that enable_access_log=False suppresses access logs in stderr.
+    @pytest.mark.parametrize("enable_access_log", [True, False])
+    def test_access_log_in_stderr(self, serve_and_ray_shutdown, enable_access_log):
+        """Test that access logs in stderr respect the enable_access_log setting.
 
         Regression test: the log_access_log_filter was previously only applied
         to the file handler (memory_handler), not the stream handler (stderr).
@@ -955,7 +956,7 @@ class TestLoggingAPI:
         logger = logging.getLogger("ray.serve")
 
         @serve.deployment(
-            logging_config={"enable_access_log": False},
+            logging_config={"enable_access_log": enable_access_log},
         )
         class Model:
             def __call__(self, req: starlette.requests.Request):
@@ -976,12 +977,17 @@ class TestLoggingAPI:
 
             stderr_output = f.getvalue()
 
-            # Normal user logs should still appear in stderr.
+            # Normal user logs should still appear in stderr regardless
+            # of the enable_access_log setting.
             assert "user_log_should_appear" in stderr_output
 
-            # Access logs (replica-side "CALL" and proxy-side "GET /") should
-            # NOT appear in stderr when enable_access_log=False.
-            assert "CALL __call__ OK" not in stderr_output
+            if enable_access_log:
+                # Access logs should appear in stderr when enabled.
+                assert "CALL __call__ OK" in stderr_output
+            else:
+                # Access logs (replica-side "CALL" and proxy-side "GET /")
+                # should NOT appear in stderr when disabled.
+                assert "CALL __call__ OK" not in stderr_output
 
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
     def test_additional_log_standard_attrs(self, serve_and_ray_shutdown, encoding_type):
