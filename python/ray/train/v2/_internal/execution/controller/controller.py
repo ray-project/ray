@@ -190,6 +190,11 @@ class TrainController:
         # TODO: These can be attributes of a RunAttempt?
         self._latest_poll_time = float("-inf")
 
+        # Generate an initial run attempt ID so that `_run_controller_hook`
+        # can reference it if a callback fails during `_start`.
+        # The first control-loop iteration will regenerate it because
+        # `InitializingState.needs_new_run_attempt` is True.
+        self._generate_run_attempt_id()
         self._start()
 
     def _run_controller_hook(
@@ -454,8 +459,11 @@ class TrainController:
         return None
 
     def _start(self):
-        for callback in self._controller_callbacks:
-            callback.after_controller_start(self._train_run_context)
+        failure_result = self._run_controller_hook(
+            "after_controller_start", self._train_run_context
+        )
+        if failure_result:
+            self._set_state(failure_result.next_state)
 
     def _shutdown(self) -> Optional["TrainControllerLoopIterationResult"]:
         if self._worker_group:
@@ -469,9 +477,7 @@ class TrainController:
                     training_failed_error=controller_error,
                 )
 
-        return self._run_controller_hook(
-            "before_controller_shutdown",
-        )
+        return self._run_controller_hook("before_controller_shutdown")
 
     def _shutdown_worker_group(self):
         """Shutdown the worker group and set the worker group to None."""
@@ -672,10 +678,18 @@ class TrainController:
         while not self.get_state().is_terminal():
             await self._run_control_loop_iteration()
 
-        # Call after_controller_finish with the final result
+        # Call after_controller_finish with the final result.
         result = self._build_result()
-        for callback in self._controller_callbacks:
-            callback.after_controller_finish(result)
+        failure_result = self._run_controller_hook("after_controller_finish", result)
+        # Since we are already in a terminal state, a callback failure should
+        # not overwrite the training outcome — log and preserve the result.
+        if failure_result:
+            logger.warning(
+                "A callback failed after training finished. "
+                "This failure is being ignored to preserve the original "
+                "training result. Error: %s",
+                failure_result.training_failed_error,
+            )
 
     async def abort(self):
         """Trigger callback abort hooks and terminate the controller process."""
