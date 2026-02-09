@@ -7,9 +7,7 @@ to provide weather information.
 
 from __future__ import annotations
 
-import asyncio
 import os
-import time
 
 from agent_runtime.agent_builder import build_mcp_agent
 from agent_runtime.config import MCPEndpoint
