@@ -19,6 +19,7 @@ from ray.rllib.examples.algorithms.mappo.torch.mappo_torch_learner import (
 
 logger = logging.getLogger(__name__)
 
+
 class MAPPO(PPO):
     @classmethod
     @override(Algorithm)
