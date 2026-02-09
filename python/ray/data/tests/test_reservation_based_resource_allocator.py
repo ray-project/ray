@@ -694,6 +694,74 @@ class TestReservationOpResourceAllocator:
             f"but got {allocator._op_budgets[o2].gpu}"
         )
 
+    def test_actor_pool_gpu_operator_gets_gpu_budget_in_cpu_pipeline(
+        self, restore_data_context
+    ):
+        """Test GPU ActorPool gets budget in a pipeline with multiple CPU operators.
+
+        Regression test for a following pipeline:
+            Input -> ListFiles -> ReadFiles -> Preprocess -> Infer(GPU) -> Write
+
+        The GPU inference operator (ActorPool with GPUs) was stuck at 1 actor
+        because it had gpu_budget=0, preventing autoscaling.
+
+        Root cause: The borrowing logic used incremental_resource_usage() which
+        returns gpu=0 for ActorPoolMapOperator (since submitting tasks to existing
+        actors doesn't need new GPUs). The fix uses min_scheduling_resources()
+        which returns the per-actor GPU requirement.
+        """
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        # Build pipeline: Input -> Read -> Preprocess -> Infer(GPU) -> Write
+        # This mirrors the production pipeline structure
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1}, name="ReadFiles")
+        o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1}, name="Preprocess")
+        o4 = mock_map_op(
+            o3,
+            ray_remote_args={"num_cpus": 0, "num_gpus": 1},
+            compute_strategy=ray.data.ActorPoolStrategy(min_size=1, max_size=4),
+            name="Infer",
+        )
+        o5 = mock_map_op(o4, ray_remote_args={"num_cpus": 1}, name="Write")
+
+        topo = build_streaming_topology(o5, ExecutionOptions())
+
+        # Cluster with 2 GPUs available
+        global_limits = ExecutionResources(cpu=16, gpu=2, object_store_memory=10_000_000)
+
+        # Simulate state where GPU operator has 1 actor running
+        op_usages = {
+            o1: ExecutionResources.zero(),
+            o2: ExecutionResources.zero(),
+            o3: ExecutionResources.zero(),
+            o4: ExecutionResources(gpu=1),  # 1 GPU actor running
+            o5: ExecutionResources.zero(),
+        }
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3, o4, o5], 0)
+        resource_manager._mem_op_outputs = dict.fromkeys([o1, o2, o3, o4, o5], 0)
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        allocator.update_budgets(limits=global_limits)
+
+        # Verify the GPU operator gets GPU budget to scale up.
+        # With 2 GPUs total, 1 used, the operator should have budget for 1 more.
+        # Before the fix: budget.gpu=0 (couldn't scale)
+        # After the fix: budget.gpu=1 (can scale to 1 more actor)
+        assert allocator._op_budgets[o4] == ExecutionResources(
+            cpu=0, gpu=1, object_store_memory=625000
+        )
+        assert allocator.get_allocation(o4) == ExecutionResources(
+            cpu=0, gpu=2, object_store_memory=625000
+        )
+
     def test_gpu_bounded_vs_unbounded_operators(self, restore_data_context):
         """Test GPU allocation when one operator is bounded and one is unbounded.
 
