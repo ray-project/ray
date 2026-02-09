@@ -192,8 +192,6 @@ class TrainController:
 
         # Generate an initial run attempt ID so that `_run_controller_hook`
         # can reference it if a callback fails during `_start`.
-        # The first control-loop iteration will regenerate it because
-        # `InitializingState.needs_new_run_attempt` is True.
         self._generate_run_attempt_id()
         self._start()
 
@@ -267,9 +265,7 @@ class TrainController:
         )
 
         if optional_controller_error:
-            failure_decision = self._failure_policy.make_decision(
-                training_failed_error=optional_controller_error,
-            )
+            failure_decision = self._make_failure_decision(optional_controller_error)
             return self._execute_failure_decision(
                 failure_decision,
                 training_failed_error=optional_controller_error,
@@ -580,9 +576,7 @@ class TrainController:
                 raise
             except Exception as e:
                 training_failed_error = ControllerError(e)
-                failure_decision = self._failure_policy.make_decision(
-                    training_failed_error=training_failed_error,
-                )
+                failure_decision = self._make_failure_decision(training_failed_error)
                 return self._execute_failure_decision(
                     failure_decision, training_failed_error=training_failed_error
                 )
@@ -597,9 +591,7 @@ class TrainController:
                 )
             if worker_group_status.errors:
                 worker_group_error = worker_group_status.get_worker_group_error()
-                failure_decision = self._failure_policy.make_decision(
-                    training_failed_error=worker_group_error,
-                )
+                failure_decision = self._make_failure_decision(worker_group_error)
                 return self._execute_failure_decision(
                     failure_decision, training_failed_error=worker_group_error
                 )
@@ -680,7 +672,9 @@ class TrainController:
 
         # Call after_controller_finish with the final result.
         result = self._build_result()
-        failure_result = self._run_controller_hook("after_controller_finish", result)
+        failure_result = self._run_controller_hook(
+            "after_controller_finish", result, invoke_failure_decision_callbacks=False
+        )
         # Since we are already in a terminal state, a callback failure should
         # not overwrite the training outcome — log and preserve the result.
         if failure_result:
