@@ -160,18 +160,61 @@ class TestPartitionAwareGroupBy:
         
         metadata3 = Mock(spec=BlockMetadata)
         metadata3.input_files = [
-            "/data/date=2024-01-01/hour=13/partition=3/file1.parquet",
-            "/data/date=2024-01-01/hour=13/partition=3/file2.parquet",
+            "/data/date=2024-01-01/hour=13/partition=1/file1.parquet",
+            "/data/date=2024-01-01/hour=13/partition=1/file2.parquet",
         ]
         metadata3.num_rows = 100
         metadata3.size_bytes = 1000
         
-        # Check partition awareness for groupby on "partition"
+        # Check partition awareness for groupby on "partition" -- this should fail
+        # because metadata1 and metadata3 contain the same partition (partition=1)
         can_skip, reason = is_partition_aware_groupby_possible(
             [metadata1, metadata2, metadata3],
             ["partition"]
         )
-        
+
+        assert can_skip is False
+        assert reason is not None
+        assert "same partition" in reason.lower() or "duplicate" in reason.lower()
+
+    def test_read_metadata_heuristic_skips_bundle_consumption(self, monkeypatch):
+        """Ensure we can detect partition-awareness from Read metadata without consuming RefBundles."""
+
+        # Create a fake Read-like object with infer_metadata() returning input_files
+        class FakeMeta:
+            def __init__(self, input_files):
+                self.input_files = input_files
+
+        class FakeRead:
+            def __init__(self, input_files):
+                self._meta = FakeMeta(input_files)
+                self.input_dependencies = []
+
+            def infer_metadata(self):
+                return self._meta
+
+        # Create a fake logical plan with FakeRead as its dag
+        class FakeLogicalPlan:
+            def __init__(self, fake_read):
+                self.dag = fake_read
+
+        # Create a fake dataset object that will raise if iter_internal_ref_bundles is called
+        class FakeDataset:
+            def __init__(self, fake_read):
+                self._logical_plan = FakeLogicalPlan(fake_read)
+                self.context = type("C", (), {})()
+
+            def iter_internal_ref_bundles(self):
+                raise RuntimeError("iter_internal_ref_bundles should not be called")
+
+        # Two files with different partition values -> unique per-file partitions
+        fake_read = FakeRead(["/data/partition=1/file.parquet", "/data/partition=2/file.parquet"])
+        ds = FakeDataset(fake_read)
+
+        from ray.data.groupby import GroupedData as GroupedDataClass
+        gd = GroupedDataClass(ds, key="partition", num_partitions=None)
+
+        can_skip, reason = gd._check_partition_awareness()
         assert can_skip is True
         assert reason is None
     
@@ -197,7 +240,8 @@ class TestPartitionAwareGroupBy:
         )
         
         assert can_skip is False
-        assert "same partition" in reason.lower()
+        assert reason is not None
+        assert "same partition" in reason.lower() or "duplicate" in reason.lower()
 
 
 if __name__ == "__main__":

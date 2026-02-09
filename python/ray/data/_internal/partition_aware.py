@@ -42,13 +42,15 @@ def extract_partition_values_from_paths(
                 if key in partition_columns:
                     current_partitions[key] = value
 
-        # If any file does not contain partition columns, we cannot rely on
-        # partition-awareness across the dataset.
+        # If this file lacks partition columns, bail out early.
         if not current_partitions:
             return None
 
-        # Initialize on the first valid file
+        # On first valid file, store its partition values.
         if partition_values is None:
+            # Ensure all requested partition columns are present.
+            if any(col not in current_partitions for col in partition_columns):
+                return None
             partition_values = current_partitions
         else:
             # All files must have the same partition values
@@ -58,10 +60,7 @@ def extract_partition_values_from_paths(
                 if partition_values.get(col) != current_partitions[col]:
                     return None
 
-    # At this point partition_values must be set and have all required columns
-    if partition_values is None:
-        return None
-
+    # At this point we have a consistent partition_values dict
     return partition_values
 
 

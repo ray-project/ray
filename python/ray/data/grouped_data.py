@@ -64,67 +64,84 @@ class GroupedData:
         groupby_cols = self._key if isinstance(self._key, list) else [self._key]
         
         try:
-            # Avoid triggering partition-awareness for complex plans to reduce
-            # the risk of re-executing the dataset plan. If the dataset's
-            # logical dag is not a simple Read operator, skip the check.
-            try:
-                from ray.data._internal.logical.operators.read_operator import Read
+            # 1) First, try to detect partitioning from the logical Read source metadata
+            dag = self._dataset._logical_plan.dag
+            # Walk up until the SourceOperator
+            while not isinstance(dag, SourceOperator):
+                if not dag.input_dependencies:
+                    break
+                dag = dag.input_dependencies[0]
 
-                root_op = getattr(self._dataset._logical_plan, "dag", None)
-                if root_op is None or not isinstance(root_op, Read):
-                    logger = logging.getLogger(__name__)
-                    logger.debug(
-                        "Skipping partition-awareness: complex logical plan would require execution"
-                    )
-                    return False, "Complex plan - skipping partition awareness"
-            except Exception:
-                # If we cannot introspect the plan safely, skip the optimization.
-                logger = logging.getLogger(__name__)
-                logger.debug("Could not inspect logical plan - skipping partition awareness")
-                return False, "Could not inspect plan"
+            # If the source operator is a Read, we can use its cached metadata
+            # which does not trigger a full execution.
+            blocks_metadata = []
+            from ray.data._internal.logical.operators.read_operator import Read
 
-            # Get all block metadata from RefBundles. `bundle.metadata` may be
-            # either a list of BlockMetadata or an object with a `blocks`
-            # attribute depending on the internal representation. Handle both.
-            blocks_metadata: List = []
+            if isinstance(dag, Read):
+                try:
+                    read_meta = dag.infer_metadata()
+                    input_files = read_meta.input_files or []
+
+                    # If there are input files, attempt a per-file partition check (conservative).
+                    if input_files:
+                        per_file_partitions = []
+                        from ray.data._internal.partition_aware import (
+                            extract_partition_values_from_paths,
+                        )
+
+                        for f in input_files:
+                            partitions = extract_partition_values_from_paths(
+                                [f], groupby_cols
+                            )
+                            if partitions is None:
+                                # If any file is missing partition info, fallback to bundle-based check.
+                                per_file_partitions = []
+                                break
+                            per_file_partitions.append(tuple(sorted(partitions.items())))
+
+                        if per_file_partitions:
+                            # If each file corresponds to a unique partition tuple, it's safe to skip shuffle
+                            if len(set(per_file_partitions)) == len(per_file_partitions):
+                                logger = logging.getLogger(__name__)
+                                logger.info(
+                                    f"Skipping shuffle for groupby on {self._key} based on Read metadata (per-file partition uniqueness)."
+                                )
+                                return True, None
+                            # Otherwise, conservative fallback to shuffle
+                except Exception:
+                    # If read metadata introspection fails, proceed to bundle-based check below
+                    pass
+
+            # 2) Fall back to bundle-based check (may execute the plan). Log a warning about potential cost.
+            logger = logging.getLogger(__name__)
+            logger.debug(
+                "Falling back to consuming RefBundles for partition-awareness check; this may execute the plan."
+            )
+
+            blocks_metadata = []
             for bundle in self._dataset.iter_internal_ref_bundles():
-                meta = getattr(bundle, "metadata", None)
-                if meta is None:
-                    # Older/newer representations may put block list on bundle.blocks
-                    meta = getattr(bundle, "blocks", None)
-
-                if meta is None:
-                    continue
-
-                # If meta is a list of BlockMetadata objects, extend directly.
-                if isinstance(meta, list):
-                    blocks_metadata.extend(meta)
-                else:
-                    # Otherwise, attempt to iterate over `meta.blocks` which
-                    # yields (ref, BlockMetadata) tuples.
-                    blocks = getattr(meta, "blocks", None)
-                    if blocks is not None:
-                        for _ref, block_metadata in blocks:
-                            blocks_metadata.append(block_metadata)
+                # Each RefBundle contains metadata (list[BlockMetadata]) and/or bundle.blocks.
+                if getattr(bundle, "metadata", None):
+                    # bundle.metadata is a list[BlockMetadata]
+                    blocks_metadata.extend(bundle.metadata)
+                elif getattr(bundle, "blocks", None):
+                    for block_ref, block_metadata in bundle.blocks:
+                        blocks_metadata.append(block_metadata)
 
             if not blocks_metadata:
                 return False, "No block metadata available"
 
-            # Check if dataset is already partition-aware
+            # Check if dataset is already partition-aware using block-level metadata
             can_skip, reason = is_partition_aware_groupby_possible(
-                blocks_metadata,
-                groupby_cols,
+                blocks_metadata, groupby_cols
             )
 
             return can_skip, reason
         except Exception as e:
-            # If anything goes wrong, fall back to regular shuffle but log
-            # the exception for observability.
+            # If anything goes wrong, fall back to regular shuffle
             logger = logging.getLogger(__name__)
             logger.warning(
-                "Partition awareness check failed, falling back to shuffle: %s",
-                e,
-                exc_info=True,
+                "Partition awareness check failed, falling back to shuffle: %s", e, exc_info=True
             )
             return False, f"Partition awareness check failed: {str(e)}"
 
