@@ -18,13 +18,14 @@ srcs:
   - java/BUILD.bazel
   - java/dependencies.bzl
   - release/BUILD.bazel
-  - release/requirements_buildkite.txt
   - release/requirements_py310.txt
+  - ci/build/container_resource_utils.py
 build_args:
   - PYTHON_VERSION
   - ARCH_SUFFIX
   - BUILDKITE_BAZEL_CACHE_URL
   - HOSTTYPE
-  - MANYLINUX_VERSION=251216.3835fc5
+  - MANYLINUX_VERSION
 build_hint_args:
   - BUILDKITE_CACHE_READONLY
+  - IS_LOCAL_BUILD

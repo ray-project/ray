@@ -51,7 +51,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
         Note, in this case each row of the dataset is an episode
         that could potentially contain hundreds of steps.
         """
-        data_dir = "local://" / self.base_path / "cartpole-episodes"
+        data_dir = pathlib.Path("local://") / self.base_path / "cartpole-episodes"
         config = self.config.offline_data(
             output=data_dir.as_posix(),
             # Store experiences in episodes.
@@ -65,7 +65,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
             random_actions=True,
         )
 
-        data_path = data_dir / self.config.env.lower()
+        data_path = data_dir / self._get_dir_name(offline_env_runner)
         records = list(data_path.iterdir())
 
         self.assertEqual(len(records), 1)
@@ -101,7 +101,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
         Note, in this case each row in the dataset contains only a single
         timestep of the agent.
         """
-        data_dir = "local://" / self.base_path / "cartpole-columns"
+        data_dir = pathlib.Path("local://") / self.base_path / "cartpole-columns"
         config = self.config.offline_data(
             output=data_dir.as_posix(),
             # Store experiences in episodes.
@@ -117,7 +117,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
             random_actions=True,
         )
 
-        data_path = data_dir / self.config.env.lower()
+        data_path = data_dir / self._get_dir_name(offline_env_runner)
         records = list(data_path.iterdir())
 
         self.assertEqual(len(records), 1)
@@ -144,7 +144,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
         Note, `input_compress_columns` will compress only the columns
         listed. `Columns.OBS` will also compress `Columns.NEXT_OBS`.
         """
-        data_dir = "local://" / self.base_path / "cartpole-columns"
+        data_dir = pathlib.Path("local://") / self.base_path / "cartpole-columns"
         config = self.config.offline_data(
             output=data_dir.as_posix(),
             # Store experiences in episodes.
@@ -173,7 +173,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
             random_actions=True,
         )
 
-        data_path = data_dir / self.config.env.lower()
+        data_path = data_dir / self._get_dir_name(offline_env_runner)
         records = list(data_path.iterdir())
 
         self.assertEqual(len(records), 1)
@@ -202,6 +202,33 @@ class TestOfflineEnvRunner(unittest.TestCase):
         self.assertTrue(len(batch[Columns.OBS]) == 100)
         # Remove all data.
         shutil.rmtree(data_dir)
+
+    @staticmethod
+    def _get_dir_name(offline_env_runner):
+        if offline_env_runner.env:
+            # Set the subdir (environment specific).
+            if isinstance(offline_env_runner.env, str):
+                # `env` is a string.
+                offline_env_runner.subdir_path = offline_env_runner.env.lower()
+            else:
+                # `env`` is a class or callable we use its class name.
+                offline_env_runner.subdir_path = offline_env_runner.env.unwrapped.envs[
+                    0
+                ].unwrapped.__class__.__name__.lower()
+
+            return offline_env_runner.subdir_path
+        elif not offline_env_runner.env and (
+            (
+                offline_env_runner.config.create_env_on_local_worker
+                and offline_env_runner.worker_index == 0
+            )
+            or offline_env_runner.worker_index > 0
+        ):
+            raise ValueError(
+                "To set up the output path, the environment "
+                "`env` must be provided when creating the "
+                "`OfflineSingleAgentEnvRunner`."
+            )
 
 
 if __name__ == "__main__":

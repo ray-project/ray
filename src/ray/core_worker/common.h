@@ -65,18 +65,17 @@ class RayFunction {
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() = default;
-  TaskOptions(
-      std::string name_p,
-      int num_returns_p,
-      std::unordered_map<std::string, double> &resources_p,
-      std::string concurrency_group_name_p = "",
-      int64_t generator_backpressure_num_objects_p = -1,
-      std::string serialized_runtime_env_info_p = "{}",
-      bool enable_task_events_p = kDefaultTaskEventEnabled,
-      std::unordered_map<std::string, std::string> labels_p = {},
-      LabelSelector label_selector_p = {},
-      rpc::TensorTransport tensor_transport_p = rpc::TensorTransport::OBJECT_STORE,
-      std::vector<FallbackOption> fallback_strategy_p = {})
+  TaskOptions(std::string name_p,
+              int num_returns_p,
+              std::unordered_map<std::string, double> &resources_p,
+              std::string concurrency_group_name_p = "",
+              int64_t generator_backpressure_num_objects_p = -1,
+              std::string serialized_runtime_env_info_p = "{}",
+              bool enable_task_events_p = kDefaultTaskEventEnabled,
+              std::unordered_map<std::string, std::string> labels_p = {},
+              LabelSelector label_selector_p = {},
+              std::optional<std::string> tensor_transport_p = std::nullopt,
+              std::vector<FallbackOption> fallback_strategy_p = {})
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
@@ -87,7 +86,7 @@ struct TaskOptions {
         labels(std::move(labels_p)),
         label_selector(std::move(label_selector_p)),
         fallback_strategy(std::move(fallback_strategy_p)),
-        tensor_transport(tensor_transport_p) {}
+        tensor_transport(std::move(tensor_transport_p)) {}
 
   /// The name of this task.
   std::string name;
@@ -114,7 +113,7 @@ struct TaskOptions {
   // A list of fallback options defining scheduling strategies.
   std::vector<FallbackOption> fallback_strategy;
   // The tensor transport (e.g., NCCL, GLOO, etc.) to use for this task.
-  rpc::TensorTransport tensor_transport;
+  std::optional<std::string> tensor_transport;
 };
 
 /// Options for actor creation tasks.
@@ -264,22 +263,18 @@ struct PlacementGroupCreationOptions {
 
 class ObjectLocation {
  public:
-  ObjectLocation(NodeID primary_node_id,
-                 int64_t object_size,
+  ObjectLocation(int64_t object_size,
                  std::vector<NodeID> node_ids,
                  bool is_spilled,
                  std::string spilled_url,
                  NodeID spilled_node_id,
                  bool did_spill)
-      : primary_node_id_(primary_node_id),
-        object_size_(object_size),
+      : object_size_(object_size),
         node_ids_(std::move(node_ids)),
         is_spilled_(is_spilled),
         spilled_url_(std::move(spilled_url)),
         spilled_node_id_(spilled_node_id),
         did_spill_(did_spill) {}
-
-  const NodeID &GetPrimaryNodeID() const { return primary_node_id_; }
 
   const int64_t GetObjectSize() const { return object_size_; }
 
@@ -294,9 +289,6 @@ class ObjectLocation {
   const bool GetDidSpill() const { return did_spill_; }
 
  private:
-  /// The ID of the node has the primary copy of the object.
-  /// Nil if the object is pending resolution.
-  const NodeID primary_node_id_;
   /// The size of the object in bytes. -1 if unknown.
   const int64_t object_size_;
   /// The IDs of the nodes that this object appeared on or was evicted by.

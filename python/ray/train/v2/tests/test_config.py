@@ -44,6 +44,17 @@ def test_storage_filesystem_repr():
     repr(config)
 
 
+def test_scaling_config_default_workers():
+    """Test that num_workers defaults to 1 for non-TPU workloads."""
+    config = ScalingConfig()
+    assert config.num_workers == 1
+    assert config.total_resources == {"CPU": 1}
+
+    config_gpu = ScalingConfig(use_gpu=True)
+    assert config_gpu.num_workers == 1
+    assert config_gpu.total_resources == {"GPU": 1}
+
+
 if __name__ == "__main__":
     import sys
 

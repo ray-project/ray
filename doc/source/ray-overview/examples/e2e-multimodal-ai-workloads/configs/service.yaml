@@ -64,6 +64,6 @@ py_executable: python  # uv run  # remove the requirements and py_modules
 # When empty, this uses the default Anyscale Cloud in your organization.
 cloud:
 
-# Speciy the Ray Serve app to deploy.
+# Specify the Ray Serve app to deploy.
 applications:
 - import_path: doggos.serve:app

@@ -29,7 +29,7 @@ class MockStoreClient : public StoreClient {
               AsyncGet,
               (const std::string &table_name,
                const std::string &key,
-               ToPostable<OptionalItemCallback<std::string>> callback),
+               ToPostable<rpc::OptionalItemCallback<std::string>> callback),
               (override));
   MOCK_METHOD(void,
               AsyncGetAll,

@@ -37,6 +37,7 @@ import contextvars
 import concurrent.futures
 import collections
 
+from dataclasses import dataclass
 from libc.stdint cimport (
     int32_t,
     int64_t,
@@ -81,6 +82,7 @@ from ray.includes.common cimport (
     CWorkerExitType,
     CRayObject,
     CRayStatus,
+    CStatusOr,
     CActorTableData,
     CErrorTableData,
     CFallbackOption,
@@ -102,6 +104,8 @@ from ray.includes.common cimport (
     CLabelMatchExpression,
     CLabelIn,
     CLabelNotIn,
+    CLabelSelector,
+    CNodeResources,
     CRayFunction,
     CWorkerType,
     CJobConfig,
@@ -136,8 +140,11 @@ from ray.includes.common cimport (
     PythonGetNodeLabels,
     PythonGetResourcesTotal,
     kGcsPidKey,
-    CTensorTransport,
-    TENSOR_TRANSPORT_OBJECT_STORE,
+    GetPortFileName,
+    PersistPort,
+    WaitForPersistedPort,
+    CWaitForPersistedPortResult,
+    SetNodeResourcesLabels,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -171,9 +178,6 @@ from ray.includes.global_state_accessor cimport (
     RedisDelKeyPrefixSync,
     RedisGetKeySync
 )
-from ray.includes.optional cimport (
-    optional, nullopt
-)
 
 cimport cpython
 
@@ -196,8 +200,9 @@ include "includes/rpc_token_authentication.pxi"
 
 import ray
 from ray.exceptions import (
-    RayActorError,
+    ActorHandleNotFoundError,
     ActorDiedError,
+    RayActorError,
     RayError,
     RaySystemError,
     RayTaskError,
@@ -237,7 +242,6 @@ import ray.core.generated.common_pb2 as common_pb2
 from ray._common.utils import decode
 from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import ObjectRefGenerator, DynamicObjectRefGenerator
-from ray._private.custom_types import TensorTransportEnum
 from ray._private.gc_collect_manager import PythonGCThread
 
 # Expose GCC & Clang macro to report
@@ -267,9 +271,12 @@ current_task_id_lock = threading.Lock()
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
 
-# It is used to indicate optional::nullopt for
+# It is used to indicate std::nullopt for
 # AllocateDynamicReturnId.
 cdef optional[ObjectIDIndexType] NULL_PUT_INDEX = nullopt
+# Used to indicate std::nullopt for tensor_transport.
+cdef optional[c_string] NULL_TENSOR_TRANSPORT = nullopt
+
 # This argument is used to obtain the correct task id inside
 # an asyncio task. It is because task_id can be obtained
 # by the worker_context_ API, which is per thread, not per
@@ -310,7 +317,7 @@ class SerializedRayObject(NamedTuple):
     metadata: Optional[Buffer]
     # If set to None, use the default object store transport. Data will be
     # either inlined in `data` or found in the plasma object store.
-    tensor_transport: Optional[TensorTransportEnum]
+    tensor_transport: Optional[str]
 
 
 cdef RayObjectsToSerializedRayObjects(
@@ -329,12 +336,17 @@ cdef RayObjectsToSerializedRayObjects(
             if objects[i].get().HasMetadata():
                 metadata = Buffer.make(
                     objects[i].get().GetMetadata()).to_pybytes()
-            tensor_transport = TensorTransportEnum(<int>(objects[i].get().GetTensorTransport()))
+
+            c_tensor_transport = objects[i].get().GetTensorTransport()
+            tensor_transport = None
             if (
-                tensor_transport == TensorTransportEnum.OBJECT_STORE
+                not c_tensor_transport.has_value()
                 and object_refs is not None
             ):
-                tensor_transport = TensorTransportEnum(object_refs[i].tensor_transport())
+                tensor_transport = object_refs[i].tensor_transport()
+            elif c_tensor_transport.has_value():
+                tensor_transport = c_tensor_transport.value().decode("utf-8")
+
             serialized_ray_objects.append(SerializedRayObject(data, metadata, tensor_transport))
     return serialized_ray_objects
 
@@ -343,13 +355,15 @@ cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs,
                         skip_adding_local_ref):
     result = []
     for i in range(object_refs.size()):
-        tensor_transport_val = <int>object_refs[i].tensor_transport()
+        tensor_transport = None
+        if object_refs[i].has_tensor_transport():
+            tensor_transport = object_refs[i].tensor_transport().decode("utf-8")
         result.append(ObjectRef(
             object_refs[i].object_id(),
             object_refs[i].owner_address().SerializeAsString(),
             object_refs[i].call_site(),
-            skip_adding_local_ref=skip_adding_local_ref,
-            tensor_transport_val=tensor_transport_val))
+            skip_adding_local_ref,
+            tensor_transport))
     return result
 
 
@@ -385,14 +399,46 @@ def compute_task_id(ObjectRef object_ref):
     return TaskID(object_ref.native().TaskId().Binary())
 
 
+def get_port_filename(node_id: str, port_name: str) -> str:
+    cdef CNodeID c_node_id = CNodeID.FromHex(node_id)
+    return GetPortFileName(c_node_id, port_name.encode()).decode()
+
+
+def persist_port(dir: str, node_id: str, port_name: str, port: int) -> None:
+    cdef CNodeID c_node_id = CNodeID.FromHex(node_id)
+    cdef CRayStatus status = PersistPort(
+        dir.encode(), c_node_id, port_name.encode(), port)
+    if not status.ok():
+        raise RuntimeError(status.message().decode())
+
+
+def wait_for_persisted_port(
+    dir: str,
+    node_id: str,
+    port_name: str,
+    timeout_ms: int = 30000,
+    poll_interval_ms: int = 100
+) -> int:
+    cdef CNodeID c_node_id = CNodeID.FromHex(node_id)
+    cdef CWaitForPersistedPortResult result = WaitForPersistedPort(
+        dir.encode(), c_node_id, port_name.encode(), timeout_ms, poll_interval_ms)
+    if not result.has_value():
+        raise RuntimeError(result.message().decode())
+    return result.value()
+
+
 cdef increase_recursion_limit():
     """
     Ray does some weird things with asio fibers and asyncio to run asyncio actors.
     This results in the Python interpreter thinking there's a lot of recursion depth,
     so we need to increase the limit when we start getting close.
 
-    0x30C0000 is Python 3.12
-        On 3.12, when recursion depth increases, c_recursion_remaining will decrease,
+    0x30E0000 is Python 3.14+
+        On 3.14+, when recursion depth increases, py_recursion_remaining will decrease
+        (renamed from c_recursion_remaining in 3.12-3.13).
+        Increasing it by 1000 when it drops below 1000 will keep us from raising the RecursionError.
+    0x30C0000 is Python 3.12-3.13
+        On 3.12-3.13, when recursion depth increases, c_recursion_remaining will decrease,
         and that's what's actually compared to raise a RecursionError. So increasing
         it by 1000 when it drops below 1000 will keep us from raising the RecursionError.
         https://github.com/python/cpython/blob/bfb9e2f4a4e690099ec2ec53c08b90f4d64fde36/Python/pystate.c#L1353
@@ -407,7 +453,17 @@ cdef increase_recursion_limit():
     cdef:
         cdef extern from *:
             """
-#if PY_VERSION_HEX >= 0x30C0000
+#if PY_VERSION_HEX >= 0x30E0000
+    // Python 3.14+ renamed c_recursion_remaining to py_recursion_remaining
+    bool IncreaseRecursionLimitIfNeeded(PyThreadState *x) {
+        if (x->py_recursion_remaining < 1000) {
+            x->py_recursion_remaining += 1000;
+            return true;
+        }
+        return false;
+    }
+#elif PY_VERSION_HEX >= 0x30C0000
+    // Python 3.12-3.13 use c_recursion_remaining
     bool IncreaseRecursionLimitIfNeeded(PyThreadState *x) {
         if (x->c_recursion_remaining < 1000) {
             x->c_recursion_remaining += 1000;
@@ -467,11 +523,6 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
     for i in range(c_node_ids.size()):
         node_id = c_node_ids[i].Hex().decode("ascii")
         node_ids.add(node_id)
-
-    # add primary_node_id into node_ids
-    if not c_object_location.GetPrimaryNodeID().IsNil():
-        node_ids.add(
-            c_object_location.GetPrimaryNodeID().Hex().decode("ascii"))
 
     # add spilled_node_id into node_ids
     if not c_object_location.GetSpilledNodeID().IsNil():
@@ -563,6 +614,23 @@ cdef int prepare_label_selector(
         c_label_selector[0].AddConstraint(key.encode("utf-8"), value.encode("utf-8"))
 
     return 0
+
+def node_labels_match_selector(node_labels: Dict[str, str], selector: Dict[str, str]) -> bool:
+    """
+    Checks if the given node labels satisfy the label selector. This helper function exposes
+    the C++ logic for determining if a node satisfies a label selector to the Python layer.
+    """
+    cdef:
+        CNodeResources c_node_resources
+        CLabelSelector c_label_selector
+        unordered_map[c_string, c_string] c_labels_map
+
+    prepare_labels(node_labels, &c_labels_map)
+    SetNodeResourcesLabels(c_node_resources, c_labels_map)
+    prepare_label_selector(selector, &c_label_selector)
+
+    # Return whether the node resources satisfy the label constraint.
+    return c_node_resources.HasRequiredLabels(c_label_selector)
 
 cdef int prepare_fallback_strategy(
         list fallback_strategy,
@@ -678,12 +746,11 @@ def raise_sys_exit_with_custom_error_message(
 
 
 cdef prepare_args_and_increment_put_refs(
-        CoreWorker core_worker,
         Language language, args,
         c_vector[unique_ptr[CTaskArg]] *args_vector, function_descriptor,
         c_vector[CObjectID] *incremented_put_arg_ids):
     try:
-        prepare_args_internal(core_worker, language, args, args_vector,
+        prepare_args_internal(language, args, args_vector,
                               function_descriptor, incremented_put_arg_ids)
     except Exception as e:
         # An error occurred during arg serialization. We must remove the
@@ -695,10 +762,37 @@ cdef prepare_args_and_increment_put_refs(
         raise e
 
 cdef prepare_args_internal(
-        CoreWorker core_worker,
         Language language, args,
         c_vector[unique_ptr[CTaskArg]] *args_vector, function_descriptor,
         c_vector[CObjectID] *incremented_put_arg_ids):
+    """Serializes, reference count, and optionally stores arguments in the Object Store.
+
+    Args:
+        language: used to inspect the serialized metadata of arguments that are not ObjectRefs.
+        args_vector[out]: used to return remote function references or values.
+        function_descriptor: used to build a detailed error message if serialization fails.
+        incremented_put_arg_ids[out]: arguments that were added to the Object Store and therefore
+            must have their reference counts decremented after the task is submitted.
+
+    There are two semantics for passing arguments to remote functions:
+        1. pass-by-reference
+        2. pass-by-value
+
+    If an argument is an ObjectRef, it is always passed-by-ref. Ray already knows about this
+    argument therefore it does not need to be serialized and its reference count does not need
+    to be incremented.
+
+    If an argument is not an ObjectRef, it needs to be serialized so it can be transported. If
+    the argument is small and there are enough bytes available in the transport buffer, the argument
+    will be passed-by-value. No reference counting is necessary for pass-by-value. If the argument is not
+    passed-by-value, then it is put into the object store and reference counted.
+
+    Raises:
+        TypeError: If an argument is a CompiledDAGRef or if an argument is not an ObjectRef and cannot be
+        serialized.
+        Exception: If the language is not python and the serialized metadata is unrecognized.
+
+    """
     cdef:
         size_t size
         int64_t put_threshold
@@ -710,6 +804,7 @@ cdef prepare_args_internal(
         c_vector[CObjectReference] inlined_refs
         CAddress c_owner_address
         CRayStatus op_status
+        optional[c_string] c_tensor_transport = NULL_TENSOR_TRANSPORT
 
     worker = ray._private.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -731,8 +826,8 @@ cdef prepare_args_internal(
                     c_arg,
                     c_owner_address,
                     arg.call_site(),
-                    c_tensor_transport)))
-
+                    move(c_tensor_transport))))
+            c_tensor_transport = NULL_TENSOR_TRANSPORT
         else:
             try:
                 serialized_arg = serialization_context.serialize(arg)
@@ -758,10 +853,7 @@ cdef prepare_args_internal(
 
             if RayConfig.instance().record_ref_creation_sites():
                 get_py_stack(&put_arg_call_site)
-            # TODO(edoakes): any objects containing ObjectRefs are spilled to
-            # plasma here. This is inefficient for small objects, but inlined
-            # arguments aren't associated ObjectRefs right now so this is a
-            # simple fix for reference counting purposes.
+
             if <int64_t>size <= put_threshold and \
                     (<int64_t>size + total_inlined <= rpc_inline_threshold):
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
@@ -782,14 +874,15 @@ cdef prepare_args_internal(
                 total_inlined += <int64_t>size
             else:
                 put_id = CObjectID.FromBinary(
-                        core_worker.put_serialized_object_and_increment_local_ref(
-                            serialized_arg, inline_small_object=False))
+                        (<CoreWorker>worker.core_worker).put_serialized_object_and_increment_local_ref(
+                            serialized_arg, c_tensor_transport, pin_object=True,
+                            owner_address=None, inline_small_object=False))
                 args_vector.push_back(unique_ptr[CTaskArg](
                     new CTaskArgByReference(
                             put_id,
                             CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
                             put_arg_call_site,
-                            TENSOR_TRANSPORT_OBJECT_STORE
+                            c_tensor_transport
                         )))
                 incremented_put_arg_ids.push_back(put_id)
 
@@ -880,7 +973,7 @@ cdef store_task_errors(
         const CAddress &caller_address,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_string* application_error,
-        CTensorTransport c_tensor_transport=TENSOR_TRANSPORT_OBJECT_STORE):
+        optional[c_string] c_tensor_transport):
     cdef:
         CoreWorker core_worker = worker.core_worker
 
@@ -914,10 +1007,12 @@ cdef store_task_errors(
 
     # Pass the failure object back to the CoreWorker.
     # We also cap the size of the error message to the last
-    # MAX_APPLICATION_ERROR_LEN characters of the error message.
+    # MAX_APPLICATION_ERROR_LENGTH characters of the error message.
     if application_error != NULL:
-        application_error[0] = str(failure_object)[
-            -ray_constants.MAX_APPLICATION_ERROR_LEN:]
+        if ray_constants.MAX_APPLICATION_ERROR_LENGTH == 0:
+            application_error[0] = b""
+        else:
+            application_error[0] = str(failure_object)[-ray_constants.MAX_APPLICATION_ERROR_LENGTH:]
 
     errors = []
     for _ in range(returns[0].size()):
@@ -1064,6 +1159,12 @@ cdef class StreamingGeneratorExecutionContext:
 
         return self
 
+
+@dataclass(frozen=True)
+class StreamingGeneratorStats:
+    object_creation_dur_s: float
+
+
 cdef report_streaming_generator_output(
     StreamingGeneratorExecutionContext context,
     output: object,
@@ -1084,6 +1185,8 @@ cdef report_streaming_generator_output(
     cdef:
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
+
+    start = time.perf_counter()
 
     # Report the intermediate result if there was no error.
     create_generator_return_obj(
@@ -1111,6 +1214,8 @@ cdef report_streaming_generator_output(
             return_obj.first,
             is_plasma_object(return_obj.second)))
 
+    serialization_dur_s = time.perf_counter() - start
+
     with nogil:
         check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
             return_obj,
@@ -1119,6 +1224,11 @@ cdef report_streaming_generator_output(
             generator_index,
             context.attempt_number,
             context.waiter))
+
+
+    return StreamingGeneratorStats(
+        object_creation_dur_s=serialization_dur_s,
+    )
 
 
 cdef report_streaming_generator_exception(
@@ -1213,9 +1323,20 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     gen = context.generator
 
     try:
-        for output in gen:
-            report_streaming_generator_output(context, output, gen_index, None)
-            gen_index += 1
+        stats = None
+
+        while True:
+            try:
+                # Send object serialization duration to the generator and retrieve
+                # next output
+                output = gen.send(stats)
+                # Track serialization duration of the next output
+                stats = report_streaming_generator_output(context, output, gen_index, None)
+
+                gen_index += 1
+
+            except StopIteration:
+                break
     except Exception as e:
         report_streaming_generator_exception(context, e, gen_index, None)
 
@@ -1269,8 +1390,11 @@ async def execute_streaming_generator_async(
     interrupt_signal_event = threading.Event()
 
     try:
-        try:
-            async for output in gen:
+        stats = None
+
+        while True:
+            try:
+                output = await gen.asend(stats)
                 # NOTE: Report of streaming generator output is done in a
                 # standalone thread-pool to avoid blocking the event loop,
                 # since serializing and actual RPC I/O is done with "nogil". We
@@ -1283,7 +1407,7 @@ async def execute_streaming_generator_async(
                 # are currently under backpressure. Then we need to wait for an
                 # ack from the caller (the reply for a possibly previous report
                 # RPC) that they have consumed more ObjectRefs.
-                await loop.run_in_executor(
+                stats = await loop.run_in_executor(
                     executor,
                     report_streaming_generator_output,
                     context,
@@ -1292,9 +1416,13 @@ async def execute_streaming_generator_async(
                     interrupt_signal_event,
                 )
                 cur_generator_index += 1
-        except Exception as e:
-            # Report the exception to the owner of the task.
-            report_streaming_generator_exception(context, e, cur_generator_index, None)
+
+            except StopAsyncIteration:
+                break
+
+    except Exception as e:
+        # Report the exception to the owner of the task.
+        report_streaming_generator_exception(context, e, cur_generator_index, None)
 
     except BaseException as be:
         # NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
@@ -1470,7 +1598,9 @@ cdef create_generator_error_object(
                 actor_id,  # actor id
                 function_name, task_type, title,
                 caller_address,
-                &intermediate_result, application_error)
+                &intermediate_result,
+                application_error,
+                NULL_TENSOR_TRANSPORT)
 
     error_object[0] = intermediate_result.back()
 
@@ -1538,7 +1668,9 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                         None,  # actor
                         None,  # actor id
                         function_name, task_type, title, caller_address,
-                        dynamic_returns, application_error)
+                        dynamic_returns,
+                        application_error,
+                        NULL_TENSOR_TRANSPORT)
             if num_errors_stored == 0:
                 assert is_reattempt
                 # TODO(swang): The generator task failed and we
@@ -1568,6 +1700,7 @@ cdef void execute_task(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         c_bool *is_retryable_error,
+        c_string *actor_repr_name,
         c_string *application_error,
         # This parameter is only used for actor creation task to define
         # the concurrency groups of this actor.
@@ -1580,7 +1713,7 @@ cdef void execute_task(
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
         int64_t generator_backpressure_num_objects,
-        CTensorTransport c_tensor_transport) except *:
+        optional[c_string] c_tensor_transport) except *:
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
@@ -1843,16 +1976,14 @@ cdef void execute_task(
                 if (hasattr(actor_class, "__ray_actor_class__") and
                         (actor_class.__ray_actor_class__.__repr__
                          != object.__repr__)):
-                    actor_repr = repr(actor)
+                    actor_repr_str = repr(actor)
                     actor_magic_token = "{}{}\n".format(
-                        ray_constants.LOG_PREFIX_ACTOR_NAME, actor_repr)
+                        ray_constants.LOG_PREFIX_ACTOR_NAME, actor_repr_str)
                     # Flush on both stdout and stderr.
                     print(actor_magic_token, end="")
                     print(actor_magic_token, file=sys.stderr, end="")
 
-                    # Sets the actor repr name for the actor so other components
-                    # like GCS has such info.
-                    core_worker.set_actor_repr_name(actor_repr)
+                    actor_repr_name[0] = actor_repr_str
 
             if (returns[0].size() > 0
                     and not inspect.isgenerator(outputs)
@@ -1939,6 +2070,7 @@ cdef execute_task_with_cancellation_handler(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         c_bool *is_retryable_error,
+        c_string *actor_repr_name,
         c_string *application_error,
         # This parameter is only used for actor creation task to define
         # the concurrency groups of this actor.
@@ -1948,7 +2080,7 @@ cdef execute_task_with_cancellation_handler(
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
         int64_t generator_backpressure_num_objects,
-        CTensorTransport c_tensor_transport):
+        optional[c_string] c_tensor_transport):
 
     is_retryable_error[0] = False
 
@@ -2033,6 +2165,7 @@ cdef execute_task_with_cancellation_handler(
                      dynamic_returns,
                      streaming_generator_returns,
                      is_retryable_error,
+                     actor_repr_name,
                      application_error,
                      c_defined_concurrency_groups,
                      c_name_of_concurrency_group_to_execute,
@@ -2068,7 +2201,8 @@ cdef execute_task_with_cancellation_handler(
                 returns,
                 # application_error: we are passing NULL since we don't want the
                 # cancel tasks to fail.
-                NULL)
+                NULL,
+                NULL_TENSOR_TRANSPORT)
     finally:
         with current_task_id_lock:
             current_task_id = None
@@ -2098,7 +2232,14 @@ cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
     with gil:
         object_id = c_object_id.Hex().decode()
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        gpu_object_manager.free_object_primary_copy(object_id)
+        gpu_object_manager.queue_or_free_object_primary_copy(object_id)
+
+cdef void set_direct_transport_metadata(const CObjectID &c_object_id, const c_string &c_direct_transport_metadata) nogil:
+    with gil:
+        object_id = c_object_id.Hex().decode()
+        tensor_transport_meta = ray_pickle.loads(c_direct_transport_metadata)
+        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+        gpu_object_manager.set_tensor_transport_metadata_and_trigger_queued_operations(object_id, tensor_transport_meta)
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -2143,6 +2284,7 @@ cdef CRayStatus task_execution_handler(
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
         c_bool *is_retryable_error,
+        c_string *actor_repr_name,
         c_string *application_error,
         const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
         const c_string name_of_concurrency_group_to_execute,
@@ -2150,7 +2292,7 @@ cdef CRayStatus task_execution_handler(
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
         int64_t generator_backpressure_num_objects,
-        CTensorTransport c_tensor_transport) nogil:
+        optional[c_string] c_tensor_transport) nogil:
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
@@ -2172,6 +2314,7 @@ cdef CRayStatus task_execution_handler(
                         dynamic_returns,
                         streaming_generator_returns,
                         is_retryable_error,
+                        actor_repr_name,
                         application_error,
                         defined_concurrency_groups,
                         name_of_concurrency_group_to_execute,
@@ -2437,7 +2580,7 @@ cdef void unhandled_exception_handler(const CRayObject& error) nogil:
             metadata = Buffer.make(error.GetMetadata()).to_pybytes()
         # TODO(ekl) why does passing a ObjectRef.nil() lead to shutdown errors?
         object_ids = [None]
-        worker.raise_errors([SerializedRayObject(data, metadata, TensorTransportEnum.OBJECT_STORE)], object_ids)
+        worker.raise_errors([SerializedRayObject(data, metadata, None)], object_ids)
 
 
 def maybe_initialize_job_config():
@@ -2636,14 +2779,12 @@ cdef class CoreWorker:
     def __cinit__(self, worker_type, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port,
-                  local_mode, driver_name,
+                  driver_name,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token, session_name, cluster_id, entrypoint,
+                  WorkerID worker_id, session_name, cluster_id, entrypoint,
                   worker_launch_time_ms, worker_launched_time_ms, debug_source):
-        self.is_local_mode = local_mode
-
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
-        if worker_type in (ray.LOCAL_MODE, ray.SCRIPT_MODE):
+        if worker_type == ray.SCRIPT_MODE:
             self.is_driver = True
             options.worker_type = WORKER_TYPE_DRIVER
         elif worker_type == ray.WORKER_MODE:
@@ -2675,6 +2816,7 @@ cdef class CoreWorker:
         options.initialize_thread_callback = initialize_pygilstate_for_thread
         options.task_execution_callback = task_execution_handler
         options.free_actor_object_callback = free_actor_object_callback
+        options.set_direct_transport_metadata = set_direct_transport_metadata
         options.check_signals = check_signals
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler
@@ -2683,13 +2825,12 @@ cdef class CoreWorker:
         options.unhandled_exception_handler = unhandled_exception_handler
         options.cancel_async_actor_task = cancel_async_actor_task
         options.get_lang_stack = get_py_stack
-        options.is_local_mode = local_mode
         options.kill_main = kill_main_task
         options.actor_shutdown_callback = call_actor_shutdown
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
         options.runtime_env_hash = runtime_env_hash
-        options.startup_token = startup_token
+        options.worker_id = worker_id.native()
         options.session_name = session_name
         options.cluster_id = CClusterID.FromHex(cluster_id)
         options.entrypoint = entrypoint
@@ -2873,12 +3014,6 @@ cdef class CoreWorker:
 
         return CCoreWorkerProcess.GetCoreWorker(
             ).UpdateTaskIsDebuggerPaused(c_task_id, is_debugger_paused)
-
-    def set_webui_display(self, key, message):
-        CCoreWorkerProcess.GetCoreWorker().SetWebuiDisplay(key, message)
-
-    def set_actor_repr_name(self, repr_name):
-        CCoreWorkerProcess.GetCoreWorker().SetActorReprName(repr_name)
 
     def get_objects(self, object_refs, int64_t timeout_ms=-1):
         cdef:
@@ -3073,12 +3208,20 @@ cdef class CoreWorker:
             owner_address,
             c_bool inline_small_object,
             c_bool _is_experimental_channel,
-            int tensor_transport_val=0
+            tensor_transport: Optional[str] = None,
     ):
         """Create an object reference with the current worker as the owner.
         """
+        cdef:
+            optional[c_string] c_tensor_transport = NULL_TENSOR_TRANSPORT
+            c_string c_tensor_transport_str
+
+        if tensor_transport is not None:
+            c_tensor_transport_str = tensor_transport.encode()
+            c_tensor_transport.emplace(move(c_tensor_transport_str))
+
         created_object = self.put_serialized_object_and_increment_local_ref(
-            serialized_object, pin_object, owner_address, inline_small_object, _is_experimental_channel, tensor_transport_val)
+            serialized_object, c_tensor_transport, pin_object, owner_address, inline_small_object, _is_experimental_channel)
         if owner_address is None:
             owner_address = CCoreWorkerProcess.GetCoreWorker().GetRpcAddress().SerializeAsString()
 
@@ -3088,22 +3231,21 @@ cdef class CoreWorker:
             created_object,
             owner_address,
             skip_adding_local_ref=True,
-            tensor_transport_val=tensor_transport_val
+            tensor_transport=tensor_transport
         )
 
-    def put_serialized_object_and_increment_local_ref(
+    cdef put_serialized_object_and_increment_local_ref(
             self,
             serialized_object,
+            optional[c_string] c_tensor_transport,
             c_bool pin_object=True,
             owner_address=None,
             c_bool inline_small_object=True,
             c_bool _is_experimental_channel=False,
-            int tensor_transport_val=0
-            ):
+        ):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
-            c_vector[CObjectReference] contained_object_refs
             shared_ptr[CBuffer] metadata = string_to_buffer(
                 serialized_object.metadata)
             unique_ptr[CAddress] c_owner_address = self._convert_python_address(
@@ -3112,7 +3254,6 @@ cdef class CoreWorker:
                 serialized_object.contained_object_refs)
             size_t total_bytes = serialized_object.total_bytes
 
-        c_tensor_transport_val = <CTensorTransport>tensor_transport_val
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                 .CreateOwnedAndIncrementLocalRef(
@@ -3124,7 +3265,7 @@ cdef class CoreWorker:
                     &data,
                     c_owner_address,
                     inline_small_object,
-                    c_tensor_transport_val))
+                    c_tensor_transport))
 
         if (data.get() == NULL):
             # Object already exists
@@ -3136,24 +3277,14 @@ cdef class CoreWorker:
         if total_bytes > 0:
             (<SerializedObject>serialized_object).write_to(
                 Buffer.make(data))
-        if self.is_local_mode:
-            contained_object_refs = (
-                    CCoreWorkerProcess.GetCoreWorker().
-                    GetObjectRefs(contained_object_ids))
-            if owner_address is not None:
-                raise Exception(
-                    "cannot put data into memory store directly"
-                    " and assign owner at the same time")
-            check_status(CCoreWorkerProcess.GetCoreWorker().Put(
-                    CRayObject(data, metadata, contained_object_refs),
-                    contained_object_ids, c_object_id))
-        else:
-            with nogil:
-                check_status(
-                    CCoreWorkerProcess.GetCoreWorker().SealOwned(
-                                c_object_id,
-                                pin_object,
-                                move(c_owner_address)))
+
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().SealOwned(
+                            c_object_id,
+                            pin_object,
+                            move(c_owner_address)))
+
         return c_object_id.Binary()
 
     def wait(self,
@@ -3431,7 +3562,7 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
-                self, language, args, &args_vector, function_descriptor,
+                language, args, &args_vector, function_descriptor,
                 &incremented_put_arg_ids)
 
             task_options = CTaskOptions(
@@ -3443,8 +3574,7 @@ cdef class CoreWorker:
                 c_labels,
                 c_label_selector,
                 # `tensor_transport` is currently only supported in Ray Actor tasks.
-                # For Ray tasks, we always use `OBJECT_STORE`.
-                TENSOR_TRANSPORT_OBJECT_STORE,
+                NULL_TENSOR_TRANSPORT,
                 c_fallback_strategy)
 
             current_c_task_id = current_task.native()
@@ -3537,7 +3667,7 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
-                self, language, args, &args_vector, function_descriptor,
+                language, args, &args_vector, function_descriptor,
                 &incremented_put_arg_ids)
             prepare_actor_concurrency_groups(
                 concurrency_groups_dict, &c_concurrency_groups)
@@ -3655,6 +3785,22 @@ cdef class CoreWorker:
                     placement_group_id))
         return status.ok()
 
+    def async_wait_placement_group_ready(self, PlacementGroupID placement_group_id,
+                                         serialized_object):
+        cdef CPlacementGroupID cplacement_group_id = (
+            CPlacementGroupID.FromBinary(placement_group_id.binary()))
+        cdef CObjectID c_object_id
+        cdef c_string serialized_object_data = serialized_object.to_bytes()
+        cdef c_string serialized_object_metadata = serialized_object.metadata
+        with nogil:
+            c_object_id = CCoreWorkerProcess.GetCoreWorker() \
+                .AsyncWaitPlacementGroupReady(cplacement_group_id,
+                                              serialized_object_data,
+                                              serialized_object_metadata)
+        # skip_adding_local_ref is True because it's already added through the
+        # call to AsyncWaitPlacementGroupReady.
+        return ObjectRef(c_object_id.Binary(), skip_adding_local_ref=True)
+
     def submit_actor_task(self,
                           Language language,
                           ActorID actor_id,
@@ -3669,7 +3815,7 @@ cdef class CoreWorker:
                           c_string concurrency_group_name,
                           int64_t generator_backpressure_num_objects,
                           c_bool enable_task_events,
-                          int py_tensor_transport):
+                          tensor_transport: Optional[str]):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -3685,8 +3831,13 @@ cdef class CoreWorker:
             unordered_map[c_string, c_string] c_labels
             CLabelSelector c_label_selector
             c_string call_site
-            CTensorTransport c_tensor_transport_val
             c_vector[CFallbackOption] c_fallback_strategy
+            optional[c_string] c_tensor_transport = NULL_TENSOR_TRANSPORT
+            c_string c_tensor_transport_str
+
+        if tensor_transport is not None:
+            c_tensor_transport_str = tensor_transport.encode("utf-8")
+            c_tensor_transport.emplace(move(c_tensor_transport_str))
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
@@ -3694,8 +3845,6 @@ cdef class CoreWorker:
 
         if RayConfig.instance().record_task_actor_creation_sites():
             call_site = ''.join(traceback.format_stack())
-
-        c_tensor_transport_val = <CTensorTransport>py_tensor_transport
 
         with self.profile_event(b"submit_task"):
             if self._task_prepare_time_ms_histogram is not None:
@@ -3706,7 +3855,7 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
-                self, language, args, &args_vector, function_descriptor,
+                language, args, &args_vector, function_descriptor,
                 &incremented_put_arg_ids)
 
             current_c_task_id = current_task.native()
@@ -3730,7 +3879,7 @@ cdef class CoreWorker:
                         enable_task_events,
                         c_labels,
                         c_label_selector,
-                        c_tensor_transport_val,
+                        c_tensor_transport,
                         c_fallback_strategy),
                     max_retries,
                     retry_exceptions,
@@ -3772,10 +3921,16 @@ cdef class CoreWorker:
     def kill_actor(self, ActorID actor_id, c_bool no_restart):
         cdef:
             CActorID c_actor_id = actor_id.native()
+            CRayStatus status = CRayStatus.OK()
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().KillActor(
-                  c_actor_id, True, no_restart))
+            status = CCoreWorkerProcess.GetCoreWorker().KillActor(
+                c_actor_id, True, no_restart)
+
+        if status.IsNotFound():
+            raise ActorHandleNotFoundError(status.message().decode())
+
+        check_status(status)
 
     def cancel_task(self, ObjectRef object_ref, c_bool force_kill,
                     c_bool recursive):
@@ -3792,6 +3947,26 @@ cdef class CoreWorker:
 
         if not status.ok():
             raise TypeError(status.message().decode())
+
+    def is_canceled(self):
+        """Check if the current task has been canceled.
+
+        Returns:
+            True if the current task has been canceled, False otherwise.
+        """
+        cdef:
+            CTaskID c_task_id
+            c_bool is_canceled
+            TaskID task_id
+
+        # Get the current task ID
+        task_id = self.get_current_task_id()
+        c_task_id = task_id.native()
+
+        with nogil:
+            is_canceled = CCoreWorkerProcess.GetCoreWorker().IsTaskCanceled(c_task_id)
+
+        return is_canceled
 
     def resource_ids(self):
         cdef:
@@ -4047,18 +4222,10 @@ cdef class CoreWorker:
             if return_ptr.get().HasData():
                 (<SerializedObject>serialized_object).write_to(
                     Buffer.make(return_ptr.get().GetData()))
-            if self.is_local_mode:
+            with nogil:
                 check_status(
-                    CCoreWorkerProcess.GetCoreWorker().Put(
-                        CRayObject(return_ptr.get().GetData(),
-                                   return_ptr.get().GetMetadata(),
-                                   c_vector[CObjectReference]()),
-                        c_vector[CObjectID](), return_id))
-            else:
-                with nogil:
-                    check_status(
-                        CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
-                            return_id, return_ptr[0], generator_id, caller_address))
+                    CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
+                        return_id, return_ptr[0], generator_id, caller_address))
             return True
         else:
             with nogil:
@@ -4075,7 +4242,7 @@ cdef class CoreWorker:
                             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]]
                             *returns,
                             ref_generator_id=None,
-                            CTensorTransport c_tensor_transport=TENSOR_TRANSPORT_OBJECT_STORE):
+                            optional[c_string] c_tensor_transport=NULL_TENSOR_TRANSPORT):
         cdef:
             CObjectID return_id
             size_t data_size
@@ -4085,6 +4252,7 @@ cdef class CoreWorker:
             int64_t num_returns = -1
             CObjectID c_ref_generator_id = CObjectID.Nil()
             shared_ptr[CRayObject] *return_ptr
+            c_string c_pickled_rdt_metadata
 
         if ref_generator_id:
             c_ref_generator_id = CObjectID.FromBinary(ref_generator_id)
@@ -4123,6 +4291,9 @@ cdef class CoreWorker:
 
             return num_outputs_stored
 
+        tensor_transport = None
+        if c_tensor_transport.has_value():
+            tensor_transport = c_tensor_transport.value().decode("utf-8")
         task_output_inlined_bytes = 0
         i = -1
         for i, output in enumerate(outputs):
@@ -4157,14 +4328,17 @@ cdef class CoreWorker:
             # TODO(kevin85421): We should consider unifying both serialization logic in the future
             # when GPU objects are more stable. We currently separate the logic to ensure
             # GPU object-related logic does not affect the normal object serialization logic.
-            if <int>c_tensor_transport != <int>TENSOR_TRANSPORT_OBJECT_STORE:
+            if tensor_transport is not None:
                 # `output` contains tensors. We need to retrieve these tensors from `output`
                 # and store them in the GPUObjectManager.
                 serialized_object, tensors = context.serialize_gpu_objects(output)
-                context.store_gpu_objects(return_id.Hex().decode("ascii"), tensors)
-
+                pickled_rdt_metadata = context.store_gpu_objects(
+                    return_id.Hex().decode("ascii"), tensors, tensor_transport)
+                # One copy from python bytes object to C++ string
+                c_pickled_rdt_metadata = pickled_rdt_metadata
             else:
                 serialized_object = context.serialize(output)
+
             data_size = serialized_object.total_bytes
             metadata_str = serialized_object.metadata
             if ray._private.worker.global_worker.debugger_get_breakpoint:
@@ -4206,6 +4380,10 @@ cdef class CoreWorker:
                 time.sleep(base_backoff_s * (2 ** (attempt-1)))
                 attempt += 1
                 continue
+
+            if tensor_transport is not None:
+                return_ptr.get().SetDirectTransportMetadata(move(c_pickled_rdt_metadata))
+                c_pickled_rdt_metadata = c_string()
 
             num_outputs_stored += 1
 

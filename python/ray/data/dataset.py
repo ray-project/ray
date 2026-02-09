@@ -28,11 +28,8 @@ import ray
 import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.air.util.tensor_extensions.arrow import (
-    ArrowTensorTypeV2,
-    get_arrow_extension_fixed_shape_tensor_types,
-)
-from ray.data._internal.compute import ComputeStrategy
+from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
+from ray.data._internal.dataset_repr import _build_dataset_ascii_repr
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.clickhouse_datasink import (
     ClickHouseDatasink,
@@ -59,36 +56,36 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
+    Count,
+    Filter,
+    FlatMap,
+    InputData,
+    Join,
+    Limit,
+    MapBatches,
+    MapRows,
+    Project,
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
     Sort,
-)
-from ray.data._internal.logical.operators.count_operator import Count
-from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.join_operator import Join
-from ray.data._internal.logical.operators.map_operator import (
-    Filter,
-    FlatMap,
-    MapBatches,
-    MapRows,
-    Project,
     StreamingRepartition,
-)
-from ray.data._internal.logical.operators.n_ary_operator import (
+    StreamingSplit,
     Union as UnionLogicalOperator,
+    Write,
     Zip,
 )
-from ray.data._internal.logical.operators.one_to_one_operator import Limit
-from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
-from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, _StatsManager
+from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    get_arrow_extension_fixed_shape_tensor_types,
+)
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
@@ -107,7 +104,6 @@ from ray.data.aggregate import (
     Unique,
 )
 from ray.data.block import (
-    VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
     DataBatch,
@@ -144,6 +140,7 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
@@ -242,12 +239,22 @@ class Dataset:
         999
         >>> # Shuffle this dataset randomly.
         >>> ds.random_shuffle()  # doctest: +ELLIPSIS
-        RandomShuffle
-        +- Dataset(num_rows=1000, schema={id: int64})
+        shape: (1000, 1)
+        ╭───────╮
+        │ id    │
+        │ ---   │
+        │ int64 │
+        ╰───────╯
+        (Dataset isn't materialized)
         >>> # Sort it back in order.
         >>> ds.sort("id")  # doctest: +ELLIPSIS
-        Sort
-        +- Dataset(num_rows=1000, schema={id: int64})
+        shape: (1000, 1)
+        ╭───────╮
+        │ id    │
+        │ ---   │
+        │ int64 │
+        ╰───────╯
+        (Dataset isn't materialized)
 
     Both unexecuted and materialized Datasets can be passed between Ray tasks and
     actors without incurring a copy. Dataset supports conversion to/from several
@@ -480,7 +487,7 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
-        udf_modifying_row_count: bool = False,
+        udf_modifying_row_count: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -654,7 +661,9 @@ class Dataset:
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: This argument is deprecated. Use ``compute`` argument.
-            udf_modifying_row_count: Set to True if the UDF may modify the number of rows it receives so the limit pushdown optimization will not be applied.
+            udf_modifying_row_count: If your UDF produces the same number of output rows
+                as it receives, set this parameter to False. It allows Ray Data to
+                perform more optimizations like limit pushdown.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -779,17 +788,13 @@ class Dataset:
             ray_remote_args["memory"] = memory
 
         batch_format = _apply_batch_format(batch_format)
-        if batch_format not in VALID_BATCH_FORMATS:
-            raise ValueError(
-                f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "
-                f"{batch_format}"
-            )
 
         plan = self._plan.copy()
         map_batches_op = MapBatches(
             self._logical_plan.dag,
             fn,
             batch_size=batch_size,
+            can_modify_num_rows=udf_modifying_row_count,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
             min_rows_per_bundled_input=batch_size,
@@ -798,7 +803,6 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
-            udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
@@ -810,6 +814,8 @@ class Dataset:
         self,
         column_name: str,
         expr: Expr,
+        *,
+        compute: Optional[ComputeStrategy] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """
@@ -818,6 +824,10 @@ class Dataset:
         This method allows you to add a new column to a dataset by applying an
         expression. The expression can be composed of existing columns, literals,
         and user-defined functions (UDFs).
+
+        For callable class UDFs, Ray Data automatically uses actor semantics to maintain
+        state across batches. You can customize the compute strategy to control parallelism
+        and resource allocation.
 
         Examples:
             >>> import ray
@@ -841,9 +851,32 @@ class Dataset:
             {'id': 0, 'id_plus_one': 1}
             {'id': 1, 'id_plus_one': 2}
 
+            >>> # Using a callable class UDF (automatically uses actors)
+            >>> @udf(return_dtype=DataType.int32())
+            ... class AddOffset:
+            ...     def __init__(self, offset):
+            ...         self.offset = offset
+            ...     def __call__(self, x):
+            ...         return pc.add(x, self.offset)
+            >>>
+            >>> add_five = AddOffset(5)
+            >>> ds.with_column("id_plus_five", add_five(col("id"))).show(2)
+            {'id': 0, 'id_plus_five': 5}
+            {'id': 1, 'id_plus_five': 6}
+
         Args:
             column_name: The name of the new column.
             expr: An expression that defines the new column values.
+            compute: The compute strategy to use for the projection operation.
+                If not specified and the expression contains callable class UDFs,
+                Ray Data automatically uses ``ActorPoolStrategy`` for actor semantics.
+                Otherwise, uses ``TaskPoolStrategy``.
+
+                * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size
+                  actor pool of ``n`` workers.
+                * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` to use
+                  an autoscaling actor pool from ``m`` to ``n`` workers.
+
             **ray_remote_args: Additional resource requirements to request from
                 Ray for the map tasks (e.g., `num_gpus=1`).
 
@@ -851,8 +884,7 @@ class Dataset:
             A new dataset with the added column evaluated via the expression.
         """
         # TODO: update schema based on the expression AST.
-        from ray.data._internal.logical.operators.map_operator import Project
-        from ray.data._internal.logical.operators.one_to_one_operator import Download
+        from ray.data._internal.logical.operators import Download, Project
 
         # TODO: Once the expression API supports UDFs, we can clean up the code here.
         from ray.data.expressions import DownloadExpr
@@ -864,12 +896,14 @@ class Dataset:
                 uri_column_names=[expr.uri_column_name],
                 output_bytes_column_names=[column_name],
                 ray_remote_args=ray_remote_args,
+                filesystem=expr.filesystem,
             )
             logical_plan = LogicalPlan(download_op, self.context)
         else:
             project_op = Project(
                 self._logical_plan.dag,
                 exprs=[StarExpr(), expr.alias(column_name)],
+                compute=compute,
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(project_op, self.context)
@@ -1116,9 +1150,6 @@ class Dataset:
             raise TypeError(
                 "select_columns requires 'cols' to be a string or a list of strings."
             )
-        # Don't feel like we really need this
-        from ray.data._internal.compute import TaskPoolStrategy
-
         compute = TaskPoolStrategy(size=concurrency)
 
         plan = self._plan.copy()
@@ -1243,7 +1274,6 @@ class Dataset:
             )
 
         # Construct the plan and project operation
-        from ray.data._internal.compute import TaskPoolStrategy
 
         compute = TaskPoolStrategy(size=concurrency)
 
@@ -1529,7 +1559,6 @@ class Dataset:
 
         if expr is not None:
             _check_fn_params_incompatible("expr")
-            from ray.data._internal.compute import TaskPoolStrategy
 
             # Check if expr is a string (deprecated) or Expr object
             if isinstance(expr, str):
@@ -2662,7 +2691,7 @@ class Dataset:
         return ds_train, ds_test
 
     @PublicAPI(api_group=SMJ_API_GROUP)
-    def union(self, *other: List["Dataset"]) -> "Dataset":
+    def union(self, *other: "Dataset") -> "Dataset":
         """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
 
         The order of the blocks in the datasets is preserved, as is the
@@ -2677,11 +2706,11 @@ class Dataset:
             >>> import ray
             >>> ds1 = ray.data.range(2)
             >>> ds2 = ray.data.range(3)
-            >>> ds1.union(ds2).take_all()
+            >>> ds1.union(ds2).take_all()  # doctest: +SKIP
             [{'id': 0}, {'id': 1}, {'id': 0}, {'id': 1}, {'id': 2}]
 
         Args:
-            other: List of datasets to combine with this one. The datasets
+            *other: The datasets to combine with this one. The datasets
                 must have the same schema as this dataset, otherwise the
                 behavior is undefined.
 
@@ -3476,7 +3505,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=SMJ_API_GROUP)
-    def zip(self, *other: List["Dataset"]) -> "Dataset":
+    def zip(self, *other: "Dataset") -> "Dataset":
         """Zip the columns of this dataset with the columns of another.
 
         The datasets must have the same number of rows. Their column sets are
@@ -3500,7 +3529,7 @@ class Dataset:
             {'id': array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4]), 'id_2': array([0, 1, 2, 3, 4])}
 
         Args:
-            *other: List of datasets to combine with this one. The datasets
+            *other: The datasets to combine with this one. The datasets
                 must have the same row count as this dataset, otherwise the
                 ValueError is raised.
 
@@ -5322,7 +5351,7 @@ class Dataset:
             self._logical_plan.dag,
             datasink,
             ray_remote_args=ray_remote_args,
-            concurrency=concurrency,
+            compute=TaskPoolStrategy(concurrency),
         )
         logical_plan = LogicalPlan(write_op, self.context)
 
@@ -5342,7 +5371,7 @@ class Dataset:
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
 
-            iter_, stats = self._write_ds._execute_to_iterator()
+            iter_, stats, _ = self._write_ds._execute_to_iterator()
             write_results = []
 
             for bundle in iter_:
@@ -5485,6 +5514,7 @@ class Dataset:
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        pin_memory: bool = False,
     ) -> Iterable[TorchBatchType]:
         """Return an iterable over batches of data represented as Torch tensors.
 
@@ -5560,6 +5590,8 @@ class Dataset:
                 the buffer, the remaining rows in the buffer are drained.
                 ``batch_size`` must also be specified when using local shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            pin_memory: [Alpha] If True, copies the tensor to pinned memory. Note that
+                `pin_memory` is only supported when using `DefaultCollateFn`.
 
         Returns:
             An iterable over Torch Tensor batches.
@@ -5577,6 +5609,7 @@ class Dataset:
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
+            pin_memory=pin_memory,
         )
 
     @ConsumptionAPI
@@ -6248,7 +6281,24 @@ class Dataset:
             >>> ds = ray.data.range(10)
             >>> materialized_ds = ds.materialize()
             >>> materialized_ds
-            MaterializedDataset(num_blocks=..., num_rows=10, schema={id: int64})
+            shape: (10, 1)
+            ╭───────╮
+            │ id    │
+            │ ---   │
+            │ int64 │
+            ╞═══════╡
+            │ 0     │
+            │ 1     │
+            │ 2     │
+            │ 3     │
+            │ 4     │
+            │ 5     │
+            │ 6     │
+            │ 7     │
+            │ 8     │
+            │ 9     │
+            ╰───────╯
+            (Showing 10 of 10 rows)
 
         Returns:
             A MaterializedDataset holding the materialized data blocks.
@@ -6685,7 +6735,15 @@ class Dataset:
         return Tab(children, titles=["Metadata", "Schema"])
 
     def __repr__(self) -> str:
-        return self._plan.get_plan_as_string(self.__class__)
+        return self._tabular_repr()
+
+    def _tabular_repr(self) -> str:
+        schema = self.schema(fetch_if_missing=False)
+        if schema is None or not isinstance(schema, Schema):
+            return self._plan.get_plan_as_string(self.__class__)
+
+        is_materialized = isinstance(self, MaterializedDataset)
+        return _build_dataset_ascii_repr(self, schema, is_materialized)
 
     def __str__(self) -> str:
         return repr(self)
@@ -6744,13 +6802,15 @@ class Dataset:
             self._current_executor.shutdown(force=True)
             self._current_executor = None
 
-    def _execute_to_iterator(self) -> Tuple[Iterator[RefBundle], DatasetStats]:
+    def _execute_to_iterator(
+        self,
+    ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["StreamingExecutor"]]:
         bundle_iter, stats, executor = self._plan.execute_to_iterator()
         # Capture current executor to be able to clean it up properly, once
         # dataset is garbage-collected
         self._current_executor = executor
 
-        return bundle_iter, stats
+        return bundle_iter, stats, executor
 
     def __getstate__(self):
         # Note: excludes _current_executor which is not serializable.
@@ -6854,7 +6914,7 @@ class Schema:
         from ray.data.extensions import ArrowTensorType, TensorDtype
 
         def _convert_to_pa_type(
-            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
+            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype],
         ) -> pa.DataType:
             if isinstance(dtype, pd.ArrowDtype):
                 return dtype.pyarrow_dtype

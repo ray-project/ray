@@ -1,4 +1,3 @@
-load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@python3_10//:defs.bzl", python310 = "interpreter")
 load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_runtime", "py_runtime_pair")
@@ -66,27 +65,6 @@ config_setting(
 # Hermetic python environment, currently only used for CI infra and scripts.
 
 py_runtime(
-    name = "py39_runtime",
-    interpreter = python39,
-    python_version = "PY3",
-    visibility = ["//visibility:private"],
-)
-
-py_runtime_pair(
-    name = "py39_runtime_pair",
-    py2_runtime = None,
-    py3_runtime = ":py39_runtime",
-    visibility = ["//visibility:private"],
-)
-
-toolchain(
-    name = "py39_toolchain",
-    exec_compatible_with = [":py39"],
-    toolchain = ":py39_runtime_pair",
-    toolchain_type = "@bazel_tools//tools/python:toolchain_type",
-)
-
-py_runtime(
     name = "py310_runtime",
     interpreter = python310,
     python_version = "PY3",
@@ -110,22 +88,9 @@ toolchain(
 constraint_setting(name = "python_version")
 
 constraint_value(
-    name = "py39",
-    constraint_setting = ":python_version",
-    visibility = ["//visibility:public"],
-)
-
-constraint_value(
     name = "py310",
     constraint_setting = ":python_version",
     visibility = ["//visibility:public"],
-)
-
-platform(
-    name = "py39_platform",
-    constraint_values = [":py39"],
-    parents = ["@local_config_platform//:host"],
-    visibility = ["//visibility:private"],
 )
 
 platform(

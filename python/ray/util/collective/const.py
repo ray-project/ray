@@ -14,11 +14,11 @@ def get_store_name(group_name):
     Args:
         group_name: unique user name for the store.
     Return:
-        str: SHA1-hexlified name for the store.
+        str: SHA256-hexlified name for the store.
     """
     if not group_name:
         raise ValueError("group_name is None.")
-    hexlified_name = hashlib.sha1(group_name.encode()).hexdigest()
+    hexlified_name = hashlib.sha256(group_name.encode()).hexdigest()
     return hexlified_name
 
 

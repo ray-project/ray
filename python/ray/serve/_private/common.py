@@ -26,6 +26,25 @@ class DeploymentID:
     name: str
     app_name: str = SERVE_DEFAULT_APP_NAME
 
+    def __hash__(self):
+        # Lazy hash caching: compute on first access, cache for subsequent calls.
+        # The _hash attribute is excluded from pickling via __getstate__, so after
+        # deserialization it gets recomputed with the correct per-process hash seed.
+        try:
+            return self._hash
+        except AttributeError:
+            h = hash((self.name, self.app_name))
+            object.__setattr__(self, "_hash", h)
+            return h
+
+    def __getstate__(self):
+        # Exclude _hash from pickling - it must be recomputed per-process
+        return {"name": self.name, "app_name": self.app_name}
+
+    def __setstate__(self, state):
+        object.__setattr__(self, "name", state["name"])
+        object.__setattr__(self, "app_name", state["app_name"])
+
     def to_replica_actor_class_name(self):
         return f"ServeReplica:{self.app_name}:{self.name}"
 
@@ -46,6 +65,25 @@ class ReplicaID:
 
     deployment_id: DeploymentID
     """The deployment this replica belongs to."""
+
+    def __hash__(self):
+        # Lazy hash caching: compute on first access, cache for subsequent calls.
+        # The _hash attribute is excluded from pickling via __getstate__, so after
+        # deserialization it gets recomputed with the correct per-process hash seed.
+        try:
+            return self._hash
+        except AttributeError:
+            h = hash((self.unique_id, self.deployment_id))
+            object.__setattr__(self, "_hash", h)
+            return h
+
+    def __getstate__(self):
+        # Exclude _hash from pickling - it must be recomputed per-process
+        return {"unique_id": self.unique_id, "deployment_id": self.deployment_id}
+
+    def __setstate__(self, state):
+        object.__setattr__(self, "unique_id", state["unique_id"])
+        object.__setattr__(self, "deployment_id", state["deployment_id"])
 
     def to_full_id_str(self) -> str:
         s = f"{self.deployment_id.name}#{self.unique_id}"
@@ -683,6 +721,21 @@ class gRPCRequest:
     user_request_proto: Any
 
 
+@dataclass
+class gRPCStreamingRequest:
+    """Sent from the GRPC proxy to replicas for client/bidirectional streaming.
+
+    This class carries metadata about the streaming session. The actual request
+    messages are delivered through a separate channel/callback mechanism.
+    """
+
+    # Session ID for tracking this streaming session
+    session_id: str
+
+    # Name of the proxy actor to call back for receiving messages
+    proxy_actor_name: str
+
+
 class RequestProtocol(str, Enum):
     UNDEFINED = "UNDEFINED"
     HTTP = "HTTP"
@@ -728,7 +781,19 @@ class RequestMetadata:
     # Serve's gRPC context associated with this request for getting and setting metadata
     grpc_context: Optional[RayServegRPCContext] = None
 
+    # Tracing context
+    tracing_context: Optional[Dict[str, str]] = None
+
+    # Whether it is a direct ingress request
+    is_direct_ingress: bool = False
+
+    # By reference or value
     _by_reference: bool = True
+    _on_separate_loop: bool = True
+
+    # gRPC serialization options
+    request_serialization: str = "cloudpickle"
+    response_serialization: str = "cloudpickle"
 
     @property
     def is_http_request(self) -> bool:
@@ -805,6 +870,8 @@ class CreatePlacementGroupRequest:
     target_node_id: str
     name: str
     runtime_env: Optional[str] = None
+    bundle_label_selector: Optional[List[Dict[str, str]]] = None
+    fallback_strategy: Optional[List[Dict[str, Any]]] = None
 
 
 # This error is used to raise when a by-value DeploymentResponse is converted to an
@@ -972,6 +1039,21 @@ class ReplicaMetricReport:
     aggregated_metrics: Dict[str, float]
     metrics: Dict[str, TimeSeries]
     timestamp: float
+
+
+@dataclass
+class AsyncInferenceTaskQueueMetricReport:
+    """Metric report from QueueMonitor to controller for async inference.
+
+    Args:
+        deployment_id: The deployment ID this queue belongs to.
+        queue_length: The number of pending tasks in the broker queue.
+        timestamp_s: The time at which this report was created.
+    """
+
+    deployment_id: DeploymentID
+    queue_length: int
+    timestamp_s: float
 
 
 class AutoscalingSnapshotError(str, Enum):

@@ -10,9 +10,9 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import find_free_port
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
 from ray._private.grpc_utils import init_grpc_channel
-from ray._private.test_utils import wait_for_condition
 from ray._raylet import GcsClient, JobID, TaskID
 from ray.core.generated.common_pb2 import (
     ErrorType,
@@ -507,6 +507,69 @@ def test_aggregator_agent_profile_events_not_exposed(
         assert req_json[0]["eventType"] == "TASK_DEFINITION_EVENT"
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": generate_event_export_env_vars(
+                additional_env_vars={
+                    "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "ALL",
+                }
+            )
+        },
+    ],
+    indirect=True,
+)
+def test_aggregator_agent_all_event_types_exposed(
+    ray_start_cluster_head_with_env_vars,
+    httpserver,
+    fake_timestamp,
+):
+    """Test that setting EXPOSABLE_EVENT_TYPES to 'ALL' allows all event types including profile events."""
+    cluster = ray_start_cluster_head_with_env_vars
+    stub = get_event_aggregator_grpc_stub(
+        cluster.gcs_address, cluster.head_node.node_id
+    )
+
+    httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
+
+    # Send both a profile event (normally filtered) and a task definition event
+    request = AddEventsRequest(
+        events_data=RayEventsData(
+            events=[
+                _create_profile_event_request(fake_timestamp[0]),
+                RayEvent(
+                    event_id=b"2",
+                    source_type=RayEvent.SourceType.CORE_WORKER,
+                    event_type=RayEvent.EventType.TASK_DEFINITION_EVENT,
+                    timestamp=fake_timestamp[0],
+                    severity=RayEvent.Severity.INFO,
+                    message="task_def_event",
+                ),
+            ],
+            task_events_metadata=TaskEventsMetadata(
+                dropped_task_attempts=[],
+            ),
+        )
+    )
+
+    stub.AddEvents(request)
+
+    # Wait for events to be received
+    wait_for_condition(lambda: len(httpserver.log) == 1)
+
+    req, _ = httpserver.log[0]
+    req_json = json.loads(req.data)
+
+    # With "ALL" config, both events should be published
+    assert len(req_json) == 2
+
+    # Verify both event types are present
+    event_types = {event["eventType"] for event in req_json}
+    assert "TASK_PROFILE_EVENT" in event_types
+    assert "TASK_DEFINITION_EVENT" in event_types
+
+
 def _create_task_definition_event_proto(timestamp):
     return RayEvent(
         event_id=b"1",
@@ -927,7 +990,7 @@ EVENT_TYPES_TO_TEST = [
     ("preserve_proto_field_name", "ray_start_cluster_head_with_env_vars"),
     build_export_env_vars_param_list(
         additional_env_vars={
-            "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISHER_HTTP_ENDPOINT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_LIFECYCLE_EVENT,ACTOR_TASK_DEFINITION_EVENT,TASK_PROFILE_EVENT",
+            "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "TASK_DEFINITION_EVENT,TASK_LIFECYCLE_EVENT,ACTOR_TASK_DEFINITION_EVENT,TASK_PROFILE_EVENT",
         }
     ),
     indirect=["ray_start_cluster_head_with_env_vars"],

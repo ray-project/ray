@@ -40,6 +40,7 @@ from ray._private.test_utils import (
     get_redis_cli,
     init_error_pubsub,
     init_log_pubsub,
+    kill_processes,
     redis_replicas,
     redis_sentinel_replicas,
     reset_autoscaler_v2_enabled_cache,
@@ -408,6 +409,13 @@ def start_redis(db_dir):
 
 
 def kill_all_redis_server():
+    """
+    Find all redis server processes running on this host via cmdline
+    and kill them.
+    Note: killed redis process will raise ResourceWarning
+          when the python Subprocess tracking the
+          underlying process is garbage collected.
+    """
     import psutil
 
     # Find Redis server processes
@@ -455,9 +463,7 @@ def _setup_redis(request, with_sentinel=False):
         else:
             del os.environ["RAY_external_storage_namespace"]
 
-        for proc in processes:
-            proc.process.kill()
-        kill_all_redis_server()
+        kill_processes(processes)
 
 
 @pytest.fixture
@@ -623,13 +629,6 @@ def ray_start_regular_shared_2_cpus(request):
         yield res
 
 
-@pytest.fixture(scope="module", params=[{"local_mode": True}, {"local_mode": False}])
-def ray_start_shared_local_modes(request):
-    param = getattr(request, "param", {})
-    with _ray_start(**param) as res:
-        yield res
-
-
 @pytest.fixture
 def ray_start_2_cpus(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
@@ -743,10 +742,12 @@ def ray_start_cluster_head_with_env_vars(
     request, maybe_setup_external_redis, monkeypatch
 ):
     param = getattr(request, "param", {})
-    env_vars = param.pop("env_vars", {})
+    env_vars = param.get("env_vars", {})
+    # Create a copy of param without env_vars to pass to _ray_start_cluster
+    cluster_param = {k: v for k, v in param.items() if k != "env_vars"}
     for k, v in env_vars.items():
         monkeypatch.setenv(k, v)
-    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+    with _ray_start_cluster(do_init=True, num_nodes=1, **cluster_param) as res:
         yield res
 
 
@@ -1492,6 +1493,34 @@ def make_httpserver(httpserver_listen_address, httpserver_ssl_context):
         server.stop()
 
 
+@pytest.fixture(scope="function")
+def event_routing_config(request, monkeypatch):
+    """
+    fixture to toggle event routing modes.
+    Modes:
+      - "default": Uses the existing core_worker to gcs code path.
+      - "aggregator": Enable publishing events to GCS through the Aggregator agent.
+    """
+    mode = getattr(request, "param", "default")
+    # clear envs to ensure default behavior
+    monkeypatch.delenv(
+        "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", raising=False
+    )
+    monkeypatch.delenv("RAY_enable_core_worker_ray_event_to_aggregator", raising=False)
+
+    if mode == "aggregator":
+        print("using aggregator mode")
+        # Enable aggregator path in core worker
+        monkeypatch.setenv("RAY_enable_core_worker_ray_event_to_aggregator", "1")
+        # Explicitly disable core worker to GCS so that all events are only sent to GCS once (through the aggregator pathway)
+        monkeypatch.setenv("RAY_enable_core_worker_task_event_to_gcs", "0")
+        # Ensure aggregator agent publishes to GCS
+        monkeypatch.setenv(
+            "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", "True"
+        )
+    yield
+
+
 @pytest.fixture
 def cleanup_auth_token_env():
     """Reset authentication environment variables, files, and caches."""
@@ -1513,7 +1542,9 @@ def setup_cluster_with_token_auth(cleanup_auth_token_env):
     reset_auth_token_state()
 
     cluster = Cluster()
-    cluster.add_node()
+    # Use dynamic port to avoid port conflicts on Windows where sockets
+    # linger in TIME_WAIT state between tests
+    cluster.add_node(dashboard_agent_listen_port=find_free_port())
 
     try:
         context = ray.init(address=cluster.address)
@@ -1537,7 +1568,9 @@ def setup_cluster_without_token_auth(cleanup_auth_token_env):
     reset_auth_token_state()
 
     cluster = Cluster()
-    cluster.add_node()
+    # Use dynamic port to avoid port conflicts on Windows where sockets
+    # linger in TIME_WAIT state between tests
+    cluster.add_node(dashboard_agent_listen_port=find_free_port())
 
     try:
         context = ray.init(address=cluster.address)

@@ -201,6 +201,12 @@ def add_rllib_example_script_args(
             "automatically be uploaded to WandB."
         ),
     )
+    parser.add_argument(
+        "--tune-max-report-freq",
+        type=int,
+        default=5,  # tune default to 5
+        help="The frequency (in seconds) at which to log the training performance.",
+    )
 
     # WandB logging options.
     parser.add_argument(
@@ -290,11 +296,6 @@ def add_rllib_example_script_args(
 
     # Ray init options.
     parser.add_argument("--num-cpus", type=int, default=0)
-    parser.add_argument(
-        "--local-mode",
-        action="store_true",
-        help="Init Ray in local mode for easier debugging.",
-    )
 
     # Old API stack: config.num_gpus.
     parser.add_argument(
@@ -309,11 +310,18 @@ def add_rllib_example_script_args(
         help="Run this script on the old API stack of RLlib.",
     )
 
-    # Deprecated options. Throws error when still used. Use `--old-api-stack` for
-    # disabling the new API stack.
+    # Deprecated options that are maintained to throw an error when still used.
+
+    # Use `--old-api-stack` to disable the new API stack.
     parser.add_argument(
         "--enable-new-api-stack",
         action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--local-mode",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
 
     return parser
@@ -454,14 +462,20 @@ def run_rllib_example_script_experiment(
             "the `--old-api-stack` flag."
         )
 
+    if args.local_mode:
+        raise ValueError("`--local-mode` is no longer supported.")
+
     # If run --as-release-test, --as-test must also be set.
     if args.as_release_test:
         args.as_test = True
 
+    if args.as_test:
+        args.verbose = 1
+        args.tune_max_report_freq = 30
+
     # Initialize Ray.
     ray.init(
         num_cpus=args.num_cpus or None,
-        local_mode=args.local_mode,
         ignore_reinit_error=True,
     )
 
@@ -529,7 +543,7 @@ def run_rllib_example_script_experiment(
                 else 1
             ) * num_actual_learners
             # Define compute resources used.
-            config.resources(num_gpus=0)  # old API stack setting
+            config.resources(num_gpus=0)  # @OldAPIStack
             if args.num_learners is not None:
                 config.learners(num_learners=args.num_learners)
 
@@ -643,25 +657,38 @@ def run_rllib_example_script_experiment(
                 **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
             )
         )
+
     # Auto-configure a CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
-    if progress_reporter is None and args.num_agents > 0:
-        progress_reporter = CLIReporter(
-            metric_columns={
-                **{
+    if progress_reporter is None:
+        if args.num_agents == 0:
+            progress_reporter = CLIReporter(
+                metric_columns={
                     TRAINING_ITERATION: "iter",
                     "time_total_s": "total time (s)",
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: "ts",
-                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "combined return",
+                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "episode return mean",
                 },
-                **{
-                    (
-                        f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/" f"{pid}"
-                    ): f"return {pid}"
-                    for pid in config.policies
+                max_report_frequency=args.tune_max_report_freq,
+            )
+        else:
+            progress_reporter = CLIReporter(
+                metric_columns={
+                    **{
+                        TRAINING_ITERATION: "iter",
+                        "time_total_s": "total time (s)",
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME: "ts",
+                        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "combined return",
+                    },
+                    **{
+                        (
+                            f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/{pid}"
+                        ): f"return {pid}"
+                        for pid in config.policies
+                    },
                 },
-            },
-        )
+                max_report_frequency=args.tune_max_report_freq,
+            )
 
     # Force Tuner to use old progress output as the new one silently ignores our custom
     # `CLIReporter`.
@@ -753,8 +780,13 @@ def run_rllib_example_script_experiment(
                 json.dump(json_summary, f)
 
         if not test_passed:
-            raise ValueError(
-                f"`{success_metric_key}` of {success_metric_value} not reached!"
-            )
+            if args.as_release_test:
+                print(
+                    f"`{success_metric_key}` of {success_metric_value} not reached! Best value reached is {best_value}"
+                )
+            else:
+                raise ValueError(
+                    f"`{success_metric_key}` of {success_metric_value} not reached! Best value reached is {best_value}"
+                )
 
     return results

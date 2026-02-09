@@ -9,7 +9,11 @@ Endpoints:
     POST /sleep: Put engine to sleep (frees GPU memory)
     POST /wakeup: Wake up engine from sleep
     GET /is_sleeping: Check if engine is sleeping
+    POST /pause: Pause generation (keeps weights in GPU)
+    POST /resume: Resume generation after pause
+    GET /is_paused: Check if engine is paused
     POST /reset_prefix_cache: Reset the KV prefix cache
+    POST /collective_rpc: Execute collective RPC on all workers
 """
 
 import pprint
@@ -27,6 +31,8 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 )
 from ray.llm._internal.serve.core.ingress.mixins import (
     CacheManagerIngressMixin,
+    CollectiveRpcIngressMixin,
+    PausableIngressMixin,
     SleepableIngressMixin,
 )
 from ray.llm._internal.serve.core.server.builder import build_llm_deployment
@@ -39,12 +45,20 @@ logger = get_logger(__name__)
 # Endpoint map for DevIngress - includes all default endpoints plus control plane
 DEV_ENDPOINTS = {
     **CacheManagerIngressMixin.ENDPOINTS,
+    **CollectiveRpcIngressMixin.ENDPOINTS,
+    **PausableIngressMixin.ENDPOINTS,
     **SleepableIngressMixin.ENDPOINTS,
     **DEFAULT_ENDPOINTS,
 }
 
 
-class DevIngress(OpenAiIngress, SleepableIngressMixin, CacheManagerIngressMixin):
+class DevIngress(
+    OpenAiIngress,
+    SleepableIngressMixin,
+    PausableIngressMixin,
+    CacheManagerIngressMixin,
+    CollectiveRpcIngressMixin,
+):
     """OpenAI-compatible ingress with additional control plane endpoints.
 
     This ingress extends the standard OpenAI endpoints with control plane
@@ -52,10 +66,13 @@ class DevIngress(OpenAiIngress, SleepableIngressMixin, CacheManagerIngressMixin)
     - RL training: Put engines to sleep during training, wake up for rollouts
     - Memory management: Free GPU memory between inference workloads
     - Benchmarking: Reset prefix cache between benchmark rounds
+    - RLHF: Execute collective RPC on all workers for weight updates
 
     Control plane endpoints provided by mixins:
     - SleepableIngressMixin: /sleep, /wakeup, /is_sleeping
+    - PausableIngressMixin: /pause, /resume, /is_paused
     - CacheManagerIngressMixin: /reset_prefix_cache
+    - CollectiveRpcIngressMixin: /collective_rpc
 
     WARNING: These endpoints are intended for development and trusted
     environments. Consider access control in production deployments.
@@ -68,8 +85,11 @@ def build_dev_openai_app(builder_config: Dict) -> Application:
     """Build an OpenAI compatible app with dev/control plane endpoints.
 
     This is similar to build_openai_app but uses DevIngress with
-    additional control plane endpoints (/sleep, /wakeup, /is_sleeping,
-    /reset_prefix_cache).
+    additional control plane endpoints:
+    - /sleep, /wakeup, /is_sleeping (sleep mode - offloads weights to CPU)
+    - /pause, /resume, /is_paused (pause mode - keeps weights in GPU)
+    - /reset_prefix_cache (cache management)
+    - /collective_rpc (RLHF - execute RPC on all workers)
 
     Args:
         builder_config: Configuration conforming to LLMServingArgs.
