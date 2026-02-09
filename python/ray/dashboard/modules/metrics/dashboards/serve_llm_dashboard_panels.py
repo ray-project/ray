@@ -336,7 +336,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='rate(ray_vllm_nixl_xfer_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])\n/\nrate(ray_vllm_nixl_xfer_time_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])\n* 1000',
+                expr='sum by(model_name, WorkerId) (rate(ray_vllm_nixl_xfer_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_nixl_xfer_time_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n* 1000',
                 legend="Avg Latency - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -352,7 +352,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="GBs",
         targets=[
             Target(
-                expr='rate(ray_vllm_nixl_bytes_transferred_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])\n/\nrate(ray_vllm_nixl_xfer_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])\n/ 1024 / 1024 / 1024',
+                expr='sum by(model_name, WorkerId) (rate(ray_vllm_nixl_bytes_transferred_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_nixl_xfer_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/ 1024 / 1024 / 1024',
                 legend="Throughput - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -384,7 +384,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='rate(ray_vllm_nixl_post_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])\n/\nrate(ray_vllm_nixl_post_time_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])\n* 1000',
+                expr='sum by(model_name, WorkerId) (rate(ray_vllm_nixl_post_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_nixl_post_time_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n* 1000',
                 legend="Avg Post Time - {{model_name}} - {{WorkerId}}",
             ),
         ],
@@ -400,8 +400,8 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='sum by (WorkerId) (increase(ray_vllm_nixl_num_failed_transfers{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
-                legend="Failed Transfers - {{WorkerId}}",
+                expr='sum by (model_name, WorkerId) (increase(ray_vllm_nixl_num_failed_transfers{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
+                legend="Failed Transfers - {{model_name}} - {{WorkerId}}",
             ),
         ],
         fill=1,
@@ -416,8 +416,8 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='sum by (WorkerId) (increase(ray_vllm_nixl_num_kv_expired_reqs{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
-                legend="KV Expired - {{WorkerId}}",
+                expr='sum by (model_name, WorkerId) (increase(ray_vllm_nixl_num_kv_expired_reqs{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
+                legend="KV Expired - {{model_name}} - {{WorkerId}}",
             ),
         ],
         fill=1,
