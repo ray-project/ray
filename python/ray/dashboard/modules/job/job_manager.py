@@ -323,15 +323,15 @@ class JobManager:
                             JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE
                         )
 
-                    job_status = JobStatus.FAILED
-                    await self._job_info_client.put_status(
-                        job_id,
-                        job_status,
-                        message=target_job_error_message,
-                        error_type=target_job_error_type
-                        or JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE,
-                        timeout=None,
-                    )
+                    # job_status = JobStatus.FAILED
+                    # await self._job_info_client.put_status(
+                    #     job_id,
+                    #     job_status,
+                    #     message=target_job_error_message,
+                    #     error_type=target_job_error_type
+                    #     or JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE,
+                    #     timeout=None,
+                    # )
 
                 # Log error message to the job driver file for easy access.
                 if target_job_error_message:
