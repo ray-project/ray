@@ -850,7 +850,7 @@ def test_streaming_repartition_multiple_fusion_non_strict(
     """Test that non-strict mode allows multiple operators to fuse with StreamingRepartition.
 
     Case 1: Map > Map > SR (non-strict)
-    Case 2: Map > SR (non-strict) > Map
+    Case 2: Map > SR (non-strict) > SR (non-strict)
     """
     n = 100
     target_rows = 20
@@ -870,20 +870,23 @@ def test_streaming_repartition_multiple_fusion_non_strict(
         in stats1
     ), f"Expected full fusion in stats: {stats1}"
 
-    # Case 2: Map > SR (non-strict) > Map
+    # Case 2: Map > SR (non-strict) > SR (non-strict)
+    # Note: Two consecutive StreamingRepartition operators are merged into one by
+    # CombineShuffles._combine() during logical optimization (before physical fusion).
+    # This test verifies that Map > SR fusion still works after the SR merging.
     ds2 = ray.data.range(n, override_num_blocks=2)
     ds2 = ds2.map_batches(lambda x: x, batch_size=None)
     ds2 = ds2.repartition(target_num_rows_per_block=target_rows, strict=False)
-    ds2 = ds2.map_batches(lambda x: x, batch_size=None)
+    ds2 = ds2.repartition(target_num_rows_per_block=target_rows, strict=False)
 
     assert len(ds2.take_all()) == n
     stats2 = ds2.stats()
 
-    # Verify all three operators are fused together
+    # Verify Map > SR fusion (the two SRs were already merged into one)
     assert (
-        f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows},strict=False]->MapBatches(<lambda>)"
+        f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows},strict=False]"
         in stats2
-    ), f"Expected full fusion in stats: {stats2}"
+    ), f"Expected Map->SR fusion in stats: {stats2}"
 
 
 def test_combine_repartition_aggregate(
