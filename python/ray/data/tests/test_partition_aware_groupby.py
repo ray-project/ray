@@ -160,8 +160,8 @@ class TestPartitionAwareGroupBy:
         
         metadata3 = Mock(spec=BlockMetadata)
         metadata3.input_files = [
-            "/data/date=2024-01-01/hour=13/partition=1/file1.parquet",
-            "/data/date=2024-01-01/hour=13/partition=1/file2.parquet",
+            "/data/date=2024-01-01/hour=13/partition=3/file1.parquet",
+            "/data/date=2024-01-01/hour=13/partition=3/file2.parquet",
         ]
         metadata3.num_rows = 100
         metadata3.size_bytes = 1000

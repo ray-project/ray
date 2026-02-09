@@ -28,22 +28,27 @@ def extract_partition_values_from_paths(
     if not input_files or not partition_columns:
         return None
     
-    partition_values: Dict[str, Any] = {}
-    
+    partition_values: Optional[Dict[str, Any]] = None
+
     for file_path in input_files:
         # Extract partition values from Hive-style paths
         # e.g., /path/date=2024-01-01/hour=12/partition=1/file.parquet
-        current_partitions = {}
-        
+        current_partitions: Dict[str, Any] = {}
+
         path_parts = file_path.split("/")
         for part in path_parts:
             if "=" in part:
                 key, value = part.split("=", 1)
                 if key in partition_columns:
                     current_partitions[key] = value
-        
-        # Check consistency across all files
-        if not partition_values:
+
+        # If any file does not contain partition columns, we cannot rely on
+        # partition-awareness across the dataset.
+        if not current_partitions:
+            return None
+
+        # Initialize on the first valid file
+        if partition_values is None:
             partition_values = current_partitions
         else:
             # All files must have the same partition values
@@ -52,12 +57,12 @@ def extract_partition_values_from_paths(
                     return None
                 if partition_values.get(col) != current_partitions[col]:
                     return None
-    
-    # Check that all partition columns were found
-    if len(partition_values) != len(partition_columns):
+
+    # At this point partition_values must be set and have all required columns
+    if partition_values is None:
         return None
-    
-    return partition_values if partition_values else None
+
+    return partition_values
 
 
 def is_partition_aware_groupby_possible(

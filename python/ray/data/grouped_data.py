@@ -64,29 +64,66 @@ class GroupedData:
         groupby_cols = self._key if isinstance(self._key, list) else [self._key]
         
         try:
-            # Get all block metadata from RefBundles
-            blocks_metadata = []
+            # Avoid triggering partition-awareness for complex plans to reduce
+            # the risk of re-executing the dataset plan. If the dataset's
+            # logical dag is not a simple Read operator, skip the check.
+            try:
+                from ray.data._internal.logical.operators.read_operator import Read
+
+                root_op = getattr(self._dataset._logical_plan, "dag", None)
+                if root_op is None or not isinstance(root_op, Read):
+                    logger = logging.getLogger(__name__)
+                    logger.debug(
+                        "Skipping partition-awareness: complex logical plan would require execution"
+                    )
+                    return False, "Complex plan - skipping partition awareness"
+            except Exception:
+                # If we cannot introspect the plan safely, skip the optimization.
+                logger = logging.getLogger(__name__)
+                logger.debug("Could not inspect logical plan - skipping partition awareness")
+                return False, "Could not inspect plan"
+
+            # Get all block metadata from RefBundles. `bundle.metadata` may be
+            # either a list of BlockMetadata or an object with a `blocks`
+            # attribute depending on the internal representation. Handle both.
+            blocks_metadata: List = []
             for bundle in self._dataset.iter_internal_ref_bundles():
-                # Each RefBundle contains metadata for one or more blocks
-                if bundle.metadata and hasattr(bundle.metadata, 'blocks'):
-                    for block_ref, block_metadata in bundle.metadata.blocks:
-                        blocks_metadata.append(block_metadata)
-            
+                meta = getattr(bundle, "metadata", None)
+                if meta is None:
+                    # Older/newer representations may put block list on bundle.blocks
+                    meta = getattr(bundle, "blocks", None)
+
+                if meta is None:
+                    continue
+
+                # If meta is a list of BlockMetadata objects, extend directly.
+                if isinstance(meta, list):
+                    blocks_metadata.extend(meta)
+                else:
+                    # Otherwise, attempt to iterate over `meta.blocks` which
+                    # yields (ref, BlockMetadata) tuples.
+                    blocks = getattr(meta, "blocks", None)
+                    if blocks is not None:
+                        for _ref, block_metadata in blocks:
+                            blocks_metadata.append(block_metadata)
+
             if not blocks_metadata:
                 return False, "No block metadata available"
-            
+
             # Check if dataset is already partition-aware
             can_skip, reason = is_partition_aware_groupby_possible(
                 blocks_metadata,
                 groupby_cols,
             )
-            
+
             return can_skip, reason
         except Exception as e:
-            # If anything goes wrong, fall back to regular shuffle
+            # If anything goes wrong, fall back to regular shuffle but log
+            # the exception for observability.
             logger = logging.getLogger(__name__)
             logger.warning(
-                f"Partition awareness check failed, falling back to shuffle: {str(e)}",
+                "Partition awareness check failed, falling back to shuffle: %s",
+                e,
                 exc_info=True,
             )
             return False, f"Partition awareness check failed: {str(e)}"
