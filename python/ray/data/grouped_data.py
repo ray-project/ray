@@ -64,11 +64,12 @@ class GroupedData:
         groupby_cols = self._key if isinstance(self._key, list) else [self._key]
         
         try:
-            # Get all block metadata
+            # Get all block metadata from RefBundles
             blocks_metadata = []
-            for ref, metadata in self._dataset.iter_internal_ref_bundles():
-                if hasattr(metadata, 'blocks') and metadata.blocks:
-                    for block_ref, block_metadata in metadata.blocks:
+            for bundle in self._dataset.iter_internal_ref_bundles():
+                # Each RefBundle contains metadata for one or more blocks
+                if bundle.metadata and hasattr(bundle.metadata, 'blocks'):
+                    for block_ref, block_metadata in bundle.metadata.blocks:
                         blocks_metadata.append(block_metadata)
             
             if not blocks_metadata:
@@ -83,6 +84,11 @@ class GroupedData:
             return can_skip, reason
         except Exception as e:
             # If anything goes wrong, fall back to regular shuffle
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Partition awareness check failed, falling back to shuffle: {str(e)}",
+                exc_info=True,
+            )
             return False, f"Partition awareness check failed: {str(e)}"
 
     @PublicAPI(api_group=FA_API_GROUP)
