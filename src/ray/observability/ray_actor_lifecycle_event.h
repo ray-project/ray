@@ -26,9 +26,7 @@ class RayActorLifecycleEvent : public RayEvent<rpc::events::ActorLifecycleEvent>
  public:
   RayActorLifecycleEvent(const rpc::ActorTableData &data,
                          rpc::events::ActorLifecycleEvent::State state,
-                         const std::string &session_name,
-                         rpc::events::ActorLifecycleEvent::RestartReason restart_reason =
-                             rpc::events::ActorLifecycleEvent::ACTOR_FAILURE);
+                         const std::string &session_name);
 
   std::string GetEntityId() const override;
   void MergeData(RayEvent<rpc::events::ActorLifecycleEvent> &&other) override;

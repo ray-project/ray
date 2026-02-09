@@ -45,8 +45,9 @@
 namespace ray {
 namespace gcs {
 
-/// GcsActor just wraps `ActorTableData` and provides some convenient interfaces to
-/// access the fields inside `ActorTableData`. This class is not thread-safe.
+/// GcsActor just wraps `ActorTableData` and provides some convenient interfaces to access
+/// the fields inside `ActorTableData`.
+/// This class is not thread-safe.
 class GcsActor {
  public:
   /// Create a GcsActor by actor_table_data.
@@ -230,10 +231,7 @@ class GcsActor {
   rpc::LeaseSpec *GetMutableLeaseSpec();
   /// Write an event containing this actor's ActorTableData
   /// to file for the Export API.
-  void WriteActorExportEvent(
-      bool is_actor_registration,
-      std::optional<rpc::events::ActorLifecycleEvent::RestartReason> restart_reason =
-          std::nullopt) const;
+  void WriteActorExportEvent(bool is_actor_registration) const;
   // Verify if export events should be written for EXPORT_ACTOR source types
   bool IsExportAPIEnabledActor() const {
     return IsExportAPIEnabledSourceType(

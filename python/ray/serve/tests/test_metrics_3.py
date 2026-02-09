@@ -13,7 +13,8 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
-from ray._common.test_utils import PrometheusTimeseries, SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import PrometheusTimeseries
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,

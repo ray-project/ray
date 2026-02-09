@@ -150,10 +150,12 @@ class DashboardAgent:
             ),  # noqa
         )
 
-        grpc_ip = "127.0.0.1" if is_localhost(self.ip) else "0.0.0.0"
+        # grpc_port can be 0 for dynamic port assignment. get the actual bound port.
         self.grpc_port = add_port_to_grpc_server(
-            self.server, build_address(grpc_ip, self.grpc_port)
+            self.server, build_address(self.ip, self.grpc_port)
         )
+        if not is_localhost(self.ip):
+            add_port_to_grpc_server(self.server, f"127.0.0.1:{self.grpc_port}")
 
         persist_port(
             self.session_dir,

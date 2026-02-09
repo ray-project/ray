@@ -102,9 +102,7 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
-void GcsActor::WriteActorExportEvent(
-    bool is_actor_registration,
-    std::optional<rpc::events::ActorLifecycleEvent::RestartReason> restart_reason) const {
+void GcsActor::WriteActorExportEvent(bool is_actor_registration) const {
   // If ray event is enabled and recorder present, emit actor events to the aggregator.
   if (RayConfig::instance().enable_ray_event()) {
     std::vector<std::unique_ptr<observability::RayEventInterface>> events;
@@ -112,16 +110,10 @@ void GcsActor::WriteActorExportEvent(
       events.push_back(std::make_unique<observability::RayActorDefinitionEvent>(
           actor_table_data_, session_name_));
     }
-    const auto lifecycle_state =
-        ConvertActorStateToLifecycleEvent(actor_table_data_.state());
-    if (lifecycle_state == rpc::events::ActorLifecycleEvent::RESTARTING &&
-        restart_reason.has_value()) {
-      events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
-          actor_table_data_, lifecycle_state, session_name_, restart_reason.value()));
-    } else {
-      events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
-          actor_table_data_, lifecycle_state, session_name_));
-    }
+    events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
+        actor_table_data_,
+        ConvertActorStateToLifecycleEvent(actor_table_data_.state()),
+        session_name_));
 
     ray_event_recorder_.AddEvents(std::move(events));
     return;

@@ -12,7 +12,7 @@ import pytest
 from pyarrow import ArrowInvalid
 
 import ray
-from ray._common.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver
 from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
     ArrowBlockBuilder,

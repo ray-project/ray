@@ -420,8 +420,7 @@ void GcsActorManager::HandleRestartActorForLineageReconstruction(
         for (auto &callback : callbacks) {
           callback(actor);
         }
-      },
-      rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION);
+      });
 }
 
 void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
@@ -1443,12 +1442,10 @@ void GcsActorManager::SetPreemptedAndPublish(const NodeID &node_id) {
   }
 }
 
-void GcsActorManager::RestartActor(
-    const ActorID &actor_id,
-    bool need_reschedule,
-    const rpc::ActorDeathCause &death_cause,
-    std::function<void()> done_callback,
-    std::optional<rpc::events::ActorLifecycleEvent::RestartReason> restart_reason) {
+void GcsActorManager::RestartActor(const ActorID &actor_id,
+                                   bool need_reschedule,
+                                   const rpc::ActorDeathCause &death_cause,
+                                   std::function<void()> done_callback) {
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before restart.
   auto iter = registered_actors_.find(actor_id);
@@ -1518,14 +1515,10 @@ void GcsActorManager::RestartActor(
     // GCS will mistakenly consider this lease request succeeds when restarting.
     actor->UpdateAddress(rpc::Address());
     mutable_actor_table_data->clear_resource_mapping();
-    // Emit lifecycle event immediately after state transition so tests and
-    // observers see the restart without waiting for async table writes.
-    actor->WriteActorExportEvent(false, restart_reason);
     // The backend storage is reliable in the future, so the status must be ok.
     gcs_table_storage_->ActorTable().Put(
         actor_id,
         *mutable_actor_table_data,
-
         {[this, actor, actor_id, mutable_actor_table_data, done_callback](
              Status actor_table_status) {
            gcs_table_storage_->ActorTaskSpecTable().Put(
@@ -1538,6 +1531,7 @@ void GcsActorManager::RestartActor(
                   }
                   gcs_publisher_->PublishActor(
                       actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
+                  actor->WriteActorExportEvent(false);
                 },
                 io_context_});
          },

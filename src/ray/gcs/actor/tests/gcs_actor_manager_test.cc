@@ -1403,13 +1403,6 @@ TEST_F(GcsActorManagerTest, TestKillActorWhenActorIsCreating) {
 }
 
 TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
-  RayConfig::instance().initialize(
-      R"(
-{
-  "maximum_gcs_destroyed_actor_cached_count": 10,
-  "enable_ray_event": true
-}
-  )");
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id, /*max_restarts*/ -1);
   rpc::CreateActorRequest create_actor_request;
@@ -1441,7 +1434,6 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
   OnNodeDead(node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
-  fake_ray_event_recorder_->FlushBuffer();
 
   // Add node and check that the actor is restarted.
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
@@ -1493,7 +1485,6 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   ReportActorOutOfScope(actor->GetActorID(),
                         /*num_restarts_due_to_lineage_reconstruction=*/0);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
-  fake_ray_event_recorder_->FlushBuffer();
 
   // Restart the actor due to linage reconstruction.
   rpc::RestartActorForLineageReconstructionRequest request;
@@ -1506,26 +1497,6 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   io_service_.run_one();
   io_service_.run_one();
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
-  auto events = fake_ray_event_recorder_->FlushBuffer();
-  bool found_lineage_restart_event = false;
-  for (auto &event : events) {
-    if (event->GetEventType() != rpc::events::RayEvent::ACTOR_LIFECYCLE_EVENT) {
-      continue;
-    }
-    auto ray_event = std::move(*event).Serialize();
-    const auto &lifecycle_event = ray_event.actor_lifecycle_event();
-    if (lifecycle_event.state_transitions_size() == 0) {
-      continue;
-    }
-    const auto &transition = lifecycle_event.state_transitions(0);
-    if (transition.state() == rpc::events::ActorLifecycleEvent::RESTARTING) {
-      ASSERT_EQ(transition.restart_reason(),
-                rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION);
-      found_lineage_restart_event = true;
-      break;
-    }
-  }
-  ASSERT_TRUE(found_lineage_restart_event);
 
   // Add node and check that the actor is restarted.
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
