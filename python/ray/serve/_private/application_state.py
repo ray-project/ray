@@ -415,7 +415,7 @@ class ApplicationState:
                 if info.ingress:
                     self._ingress_deployment_name = name
 
-            self._apply_queue_autoscaling_policy(deployment_infos)
+            self._apply_queue_autoscaling_policy_if_applicable(deployment_infos)
 
         target_state = ApplicationTargetState(
             deployment_infos,
@@ -431,7 +431,7 @@ class ApplicationState:
 
         self._target_state = target_state
 
-    def _apply_queue_autoscaling_policy(
+    def _apply_queue_autoscaling_policy_if_applicable(
         self,
         deployment_infos: Dict[str, DeploymentInfo],
     ) -> None:
