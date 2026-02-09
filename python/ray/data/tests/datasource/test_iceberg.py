@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from pkg_resources import parse_version
+from packaging.version import parse as parse_version
 from pyiceberg import (
     catalog as pyi_catalog,
     expressions as pyi_expr,

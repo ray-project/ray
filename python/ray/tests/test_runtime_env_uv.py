@@ -89,10 +89,10 @@ def test_uv_with_version_and_check(shutdown_only):
         runtime_env={"uv": {"packages": ["requests==2.32.3"], "uv_version": "==0.4.0"}}
     )
     def f():
-        import pkg_resources
+        from importlib.metadata import version
         import requests
 
-        assert pkg_resources.get_distribution("uv").version == "0.4.0"
+        assert version("uv") == "0.4.0"
         assert requests.__version__ == "2.32.3"
 
     ray.get(f.remote())

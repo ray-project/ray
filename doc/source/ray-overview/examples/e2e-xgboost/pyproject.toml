@@ -28,7 +28,7 @@ ignore = ["E501", "E226"]
 quote-style = "double"
 
 [build-system]
-requires = ["setuptools>=64", "wheel"]
+requires = ["setuptools>=64,<82.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

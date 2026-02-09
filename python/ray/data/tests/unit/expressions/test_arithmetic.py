@@ -13,7 +13,7 @@ import math
 
 import pandas as pd
 import pytest
-from pkg_resources import parse_version
+from packaging.version import parse as parse_version
 
 from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
 from ray.data.expressions import BinaryExpr, Operation, UDFExpr, col, lit
