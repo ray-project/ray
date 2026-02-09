@@ -869,7 +869,7 @@ def get_group_handle_multigpu(group_name: str = "default"):
                 r = rank[ids.index(id_)]
                 # Create only the multigpu NCCL group locally.
                 _group_mgr.create_multigpu_nccl_group(world_size, r, group_name)
-            except ValueError as exc:
+            except (ValueError, TypeError) as exc:
                 # check if this group is initialized using options()
                 if (
                     "collective_group_name" in os.environ
@@ -924,7 +924,7 @@ def get_group_handle(group_name: str = "default"):
 
 
 # TODO(tianyi): remove multigpu when it's deprecated
-def _ensure_group_backend_nccl(group_name: str):
+def _ensure_group_backend_nccl(group_name: str) -> None:
     """Ensure the base group exists and uses NCCL backend.
 
     Returns the base group handle if OK.
@@ -935,7 +935,6 @@ def _ensure_group_backend_nccl(group_name: str):
             f"Group '{group_name}' does not use NCCL backend. "
             "MultiGPU APIs require NCCL."
         )
-    return g
 
 
 def _check_single_tensor_input(tensor):

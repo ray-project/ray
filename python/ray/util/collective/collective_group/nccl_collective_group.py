@@ -893,13 +893,21 @@ class NCCLGroup(BaseGroup):
         super(NCCLGroup, self).__init__(world_size, rank, group_name)
 
         self._comm = None
+        # record the current device id. raise if failed to get device id
+        try:
+            self._device = cupy.cuda.get_device_id()
+        except cupy.cuda.runtime.CUDARuntimeError as e:
+            logger.error("Failed to create nccl group without device: {}".format(e))
+            raise
+        # create a new non-blocking stream for collective and p2p
+        self._stream = cupy.cuda.Stream(null=False, non_blocking=True)
 
         if nccl_util.get_nccl_build_version() < 2000:
             raise RuntimeError("NCCL in Ray requires NCCL >= 2.0.")
         if nccl_util.get_nccl_runtime_version() < 2704:
             logger.warning("NCCL send/recv calls requires NCCL>=2.7.4")
 
-        # Initialize communicator via rendezvous (rank 0 generates and stores NCCLUniqueID).
+        # initialize communicator via rendezvous (rank 0 generates and stores NCCLUniqueID).
         store_key = self.group_name
         if self.rank == 0:
             nccl_uid = self._generate_nccl_uid(store_key)
@@ -907,9 +915,10 @@ class NCCLGroup(BaseGroup):
             rendezvous = Rendezvous(store_key)
             rendezvous.meet()
             nccl_uid = rendezvous.get_nccl_id()
-        self._comm = nccl_util.create_nccl_communicator(
-            self.world_size, nccl_uid, self.rank
-        )
+        with nccl_util.Device(self._device):
+            self._comm = nccl_util.create_nccl_communicator(
+                self.world_size, nccl_uid, self.rank
+            )
 
         self._barrier_tensor = None
 
@@ -1105,7 +1114,9 @@ class NCCLGroup(BaseGroup):
         self._point2point(tensor, p2p_fn, recv_options.src_rank)
 
     @staticmethod
-    def _sync_stream(device: int, stream: torch.cuda.Stream | cupy.cuda.Stream) -> None:
+    def _sync_current_stream(
+        device: int, stream: torch.cuda.Stream | cupy.cuda.Stream
+    ) -> None:
         """Let NCCL stream wait for current stream for the device.
 
         Insert an event to the current stream, and wait for the given stream to reach the
@@ -1120,11 +1131,33 @@ class NCCLGroup(BaseGroup):
             None
         """
         # make sure all the earlier events on this stream are done
-        if ENV.NCCL_USE_MULTISTREAM.val:
-            with nccl_util.Device(device):
-                event = cupy.cuda.Event()
-                event.record(cupy.cuda.get_current_stream())
-                stream.wait_event(event)
+        with nccl_util.Device(device):
+            event = cupy.cuda.Event()
+            event.record(cupy.cuda.get_current_stream())
+            stream.wait_event(event)
+
+    @staticmethod
+    def _sync_comm_stream(
+        device: int, stream: torch.cuda.Stream | cupy.cuda.Stream
+    ) -> None:
+        """Let NCCL stream wait for comm stream for the device.
+
+        Insert an event to the current stream, and wait for the given communication
+        stream to reach the event point. This operation is similar to stream.sychronize(),
+        but allows fine-grained control over the synchronization points.
+
+        Args:
+            device: The device ID.
+            stream: The communication stream to synchronize with.
+
+        Returns:
+            None
+        """
+        # make sure all the earlier events on this stream are done
+        with nccl_util.Device(device):
+            event = cupy.cuda.Event()
+            event.record(stream)
+            cupy.cuda.get_current_stream().wait_event(event)
 
     @staticmethod
     def _destroy_store(group_key: str) -> None:
@@ -1171,12 +1204,12 @@ class NCCLGroup(BaseGroup):
         if not nccl_util.is_gpu_tensor(tensor):
             raise RuntimeError("Tensor must be a GPU tensor.")
         tensor_device = nccl_util.get_tensor_device(tensor)
-        current_device = cupy.cuda.Device().id
-        if tensor_device != current_device:
+
+        if tensor_device != self._device:
             raise RuntimeError(
                 "Tensor is on GPU {}, but the current device is GPU {}. "
                 "Please make sure the tensor is on the current device.".format(
-                    tensor_device, current_device
+                    tensor_device, self._device
                 )
             )
 
@@ -1193,32 +1226,25 @@ class NCCLGroup(BaseGroup):
         self._check_gpu_tensor_on_current_device(input_tensor)
         self._check_gpu_tensor_on_current_device(output_tensor)
 
-        device = nccl_util.get_tensor_device(input_tensor)
-        # Create a stream on the tensor device for this operation.
-        stream = get_stream_pool(device).get_stream()
-
-        # Ensure the NCCL stream waits for the current stream if multistream is enabled.
-        self._sync_stream(device, stream)
+        self._sync_current_stream(self._device, self._stream)
 
         if preprocess_fn:
             preprocess_fn()
 
         nccl_util.groupStart()
-        collective_fn(input_tensor, output_tensor, self._comm, stream)
+        collective_fn(input_tensor, output_tensor, self._comm, self._stream)
         nccl_util.groupEnd()
 
         if postprocess_fn:
             postprocess_fn()
+
+        self._sync_comm_stream(self._device, self._stream)
 
     def _point2point(
         self, tensor: cupy.ndarray | torch.Tensor, p2p_fn: Any, peer_rank: int
     ) -> None:
         """Encapsulate a single-tensor peer-to-peer call (send/recv)."""
         self._check_gpu_tensor_on_current_device(tensor)
-
-        device = nccl_util.get_tensor_device(tensor)
-        stream = get_stream_pool(device).get_stream()
-
-        self._sync_stream(device, stream)
-
-        p2p_fn(tensor, self._comm, stream, peer_rank)
+        self._sync_current_stream(self._device, self._stream)
+        p2p_fn(tensor, self._comm, self._stream, peer_rank)
+        self._sync_comm_stream(self._device, self._stream)
