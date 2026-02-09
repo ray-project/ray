@@ -292,7 +292,8 @@ def test_health_check_failure_makes_deployment_unhealthy_transition(serve_instan
 
 
 def test_gang_health_check_restarts_gang(serve_instance):
-    """If one replica in a gang fails health check, the entire gang is restarted."""
+    """RESTART_GANG tears down the entire gang on failure while the deployment
+    keeps serving traffic with no downtime."""
 
     class Toggle:
         def __init__(self):
@@ -353,9 +354,14 @@ def test_gang_health_check_restarts_gang(serve_instance):
             break
     assert len(initial_replicas) == 4
 
+    # Identify the two distinct gang IDs.
+    gang_ids = {r["gang_id"] for r in initial_replicas.values()}
+    assert len(gang_ids) == 2
+
     # Make one replica fail health checks.
     fail_info = h.set_should_fail.remote().result()
     target_gang_id = fail_info["gang_id"]
+    surviving_gang_id = (gang_ids - {target_gang_id}).pop()
     ray.get(toggle.set_should_fail.remote())
 
     # Wait for deployment to become UNHEALTHY.
@@ -367,6 +373,13 @@ def test_gang_health_check_restarts_gang(serve_instance):
         return True
 
     wait_for_condition(check_unhealthy, timeout=30)
+
+    # Zero-downtime check.
+    # While the failed gang is being torn down and before the replacement
+    # gang comes up, the surviving gang must keep serving traffic.
+    for _ in range(30):
+        result = h.remote().result()
+        assert result["gang_id"] == surviving_gang_id
 
     # Turn off failures so replacement replicas start healthy.
     ray.get(toggle.unset_should_fail.remote())

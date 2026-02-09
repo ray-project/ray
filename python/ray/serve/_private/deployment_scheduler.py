@@ -8,7 +8,10 @@ from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from functools import total_ordering
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
+
+if TYPE_CHECKING:
+    from ray.util.placement_group import PlacementGroup
 
 import ray
 from ray._raylet import node_labels_match_selector
@@ -1084,7 +1087,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 success=False,
                 error_message=(
                     f"num_replicas_to_add {request.num_replicas_to_add} "
-                    f"is not divisible by gang_size {gang_size}. "
+                    f"is not divisible by gang_size {gang_size}."
                 ),
             )
         num_gangs = request.num_replicas_to_add // gang_size
