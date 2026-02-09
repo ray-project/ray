@@ -221,9 +221,7 @@ class TrainController:
         try:
             self._controller_callback_manager.invoke(hook_name, *args, **context)
         except ControllerError as error:
-            failure_decision = self._failure_policy.make_decision(
-                training_failed_error=error,
-            )
+            failure_decision = self._make_failure_decision(error)
             # Avoid re-entering controller callback hooks while handling a callback failure.
             return self._execute_failure_decision(
                 failure_decision,
@@ -231,6 +229,18 @@ class TrainController:
                 invoke_failure_decision_callbacks=invoke_failure_decision_callbacks,
             )
         return None
+
+    def _make_failure_decision(
+        self, training_failed_error: TrainingFailedError
+    ) -> FailureDecision:
+        controller_state = self.get_state()
+        if isinstance(controller_state, ShuttingDownState) and isinstance(
+            controller_state.next_state, ErroredState
+        ):
+            return FailureDecision.RAISE
+        return self._failure_policy.make_decision(
+            training_failed_error=training_failed_error,
+        )
 
     def _execute_resize_decision(
         self, decision: ResizeDecision
@@ -449,7 +459,15 @@ class TrainController:
 
     def _shutdown(self) -> Optional["TrainControllerLoopIterationResult"]:
         if self._worker_group:
-            self._shutdown_worker_group()
+            try:
+                self._shutdown_worker_group()
+            except Exception as e:
+                controller_error = ControllerError(e)
+                failure_decision = self._make_failure_decision(controller_error)
+                return self._execute_failure_decision(
+                    failure_decision,
+                    training_failed_error=controller_error,
+                )
 
         return self._run_controller_hook(
             "before_controller_shutdown",
