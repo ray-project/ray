@@ -4462,7 +4462,9 @@ tensorflow-datasets==4.9.3 \
     #   -r python/requirements/ml/data-test-requirements.txt
 tensorflow-metadata==1.17.3 \
     --hash=sha256:452912e6398b3cb7302f0de6139dea794b3be1bd0eb40e6765eb3a04e51ea991
-    # via tensorflow-datasets
+    # via
+    #   -r python/requirements/data/data-base.txt
+    #   tensorflow-datasets
 termcolor==3.3.0 \
     --hash=sha256:348871ca648ec6a9a983a13ab626c0acce02f515b9e1983332b17af7979521c5 \
     --hash=sha256:cf642efadaf0a8ebbbf4bc7a31cec2f9b5f21a9f726f4ccbb08192c9c26f43a5
