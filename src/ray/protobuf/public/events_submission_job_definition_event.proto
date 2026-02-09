@@ -40,7 +40,7 @@ message SubmissionJobDefinitionEvent {
     map<string, double> custom_resources = 4;
   }
 
-  // Unique submission job identifier (e.g., "raysubmit_XYZ").
+  // Unique submission job identifier.
   string submission_id = 1;
   // The entrypoint command for this job.
   string entrypoint = 2;

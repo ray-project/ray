@@ -20,6 +20,7 @@
 #include <tuple>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
@@ -30,9 +31,11 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
                              float usage_threshold,
                              int64_t min_memory_free_bytes,
                              uint64_t monitor_interval_ms,
-                             MemoryUsageRefreshCallback monitor_callback)
+                             MemoryUsageRefreshCallback monitor_callback,
+                             const std::string root_cgroup_path)
     : usage_threshold_(usage_threshold),
       min_memory_free_bytes_(min_memory_free_bytes),
+      root_cgroup_path_(root_cgroup_path),
       monitor_callback_(monitor_callback),
       runner_(PeriodicalRunner::Create(io_service)) {
   RAY_CHECK(monitor_callback_ != nullptr);
@@ -40,26 +43,27 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
   RAY_CHECK_LE(usage_threshold_, 1);
   if (monitor_interval_ms > 0) {
 #ifdef __linux__
-    auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
+    int64_t total_memory_bytes = TakeSystemMemorySnapshot(root_cgroup_path_).total_bytes;
     computed_threshold_bytes_ =
         GetMemoryThreshold(total_memory_bytes, usage_threshold_, min_memory_free_bytes_);
     computed_threshold_fraction_ = float(computed_threshold_bytes_) / total_memory_bytes;
-    RAY_LOG(INFO) << "MemoryMonitor initialized with usage threshold at "
-                  << computed_threshold_bytes_ << " bytes ("
-                  << absl::StrFormat("%.2f", computed_threshold_fraction_)
-                  << " system memory), total system memory bytes: " << total_memory_bytes;
+    RAY_LOG(INFO) << absl::StrFormat(
+        "MemoryMonitor initialized with usage threshold at %d bytes "
+        "(%f system memory), total system memory bytes: %d",
+        computed_threshold_bytes_,
+        computed_threshold_fraction_,
+        total_memory_bytes);
     runner_->RunFnPeriodically(
         [this] {
-          auto [used_mem_bytes, total_mem_bytes] = GetMemoryBytes();
-          MemorySnapshot system_memory;
-          system_memory.used_bytes = used_mem_bytes;
-          system_memory.total_bytes = total_mem_bytes;
+          SystemMemorySnapshot cur_memory_snapshot =
+              TakeSystemMemorySnapshot(root_cgroup_path_);
 
           bool is_usage_above_threshold =
-              IsUsageAboveThreshold(system_memory, computed_threshold_bytes_);
+              IsUsageAboveThreshold(cur_memory_snapshot, computed_threshold_bytes_);
 
-          monitor_callback_(
-              is_usage_above_threshold, system_memory, computed_threshold_fraction_);
+          monitor_callback_(is_usage_above_threshold,
+                            std::move(cur_memory_snapshot),
+                            computed_threshold_fraction_);
         },
         monitor_interval_ms,
         "MemoryMonitor.CheckIsMemoryUsageAboveThreshold");
@@ -73,7 +77,7 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
   }
 }
 
-bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory,
+bool MemoryMonitor::IsUsageAboveThreshold(const SystemMemorySnapshot &system_memory,
                                           int64_t threshold_bytes) {
   int64_t used_memory_bytes = system_memory.used_bytes;
   int64_t total_memory_bytes = system_memory.total_bytes;
@@ -85,21 +89,24 @@ bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory,
   }
   bool is_usage_above_threshold = used_memory_bytes > threshold_bytes;
   if (is_usage_above_threshold) {
-    RAY_LOG_EVERY_MS(INFO, kLogIntervalMs)
-        << "Node memory usage above threshold, used: " << used_memory_bytes
-        << ", threshold_bytes: " << threshold_bytes
-        << ", total bytes: " << total_memory_bytes
-        << ", threshold fraction: " << float(threshold_bytes) / total_memory_bytes;
+    RAY_LOG_EVERY_MS(INFO, kLogIntervalMs) << absl::StrFormat(
+        "Node memory usage above threshold, used: %d, threshold_bytes: %d, "
+        "total bytes: %d, threshold fraction: %f",
+        used_memory_bytes,
+        threshold_bytes,
+        total_memory_bytes,
+        float(threshold_bytes) / total_memory_bytes);
   }
   return is_usage_above_threshold;
 }
 
-std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
-  auto [cgroup_used_bytes, cgroup_total_bytes] = GetCGroupMemoryBytes();
+const SystemMemorySnapshot MemoryMonitor::TakeSystemMemorySnapshot(
+    const std::string root_cgroup_path, const std::string proc_dir) {
+  auto [cgroup_used_bytes, cgroup_total_bytes] = GetCGroupMemoryBytes(root_cgroup_path);
 #ifndef __linux__
   RAY_CHECK(false) << "Memory monitor currently supports only linux";
 #endif
-  auto [system_used_bytes, system_total_bytes] = GetLinuxMemoryBytes();
+  auto [system_used_bytes, system_total_bytes] = GetLinuxMemoryBytes(proc_dir);
   /// cgroup memory limit can be higher than system memory limit when it is
   /// not used. We take its value only when it is less than or equal to system memory
   /// limit. TODO(clarng): find a better way to detect cgroup memory limit is used.
@@ -108,7 +115,7 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   if (system_total_bytes == cgroup_total_bytes) {
     system_used_bytes = cgroup_used_bytes;
   }
-  return std::tuple(system_used_bytes, system_total_bytes);
+  return SystemMemorySnapshot{system_used_bytes, system_total_bytes};
 }
 
 int64_t MemoryMonitor::GetCGroupMemoryUsedBytes(const char *stat_path,
@@ -152,10 +159,12 @@ int64_t MemoryMonitor::GetCGroupMemoryUsedBytes(const char *stat_path,
   memusage_ifs >> current_usage_bytes;
   if (current_usage_bytes == kNull || inactive_file_bytes == kNull ||
       active_file_bytes == kNull) {
-    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-        << "Failed to parse cgroup memory usage. memory usage " << current_usage_bytes
-        << " inactive file " << inactive_file_bytes << " active file "
-        << active_file_bytes;
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << absl::StrFormat(
+        "Failed to parse cgroup memory usage. memory usage %d inactive file %d active "
+        "file %d",
+        current_usage_bytes,
+        inactive_file_bytes,
+        active_file_bytes);
     return kNull;
   }
   // The total file cache is inactive + active per
@@ -163,27 +172,37 @@ int64_t MemoryMonitor::GetCGroupMemoryUsedBytes(const char *stat_path,
   return current_usage_bytes - inactive_file_bytes - active_file_bytes;
 }
 
-std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
+std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes(
+    const std::string root_cgroup_path) {
+  std::string cgroupV1MemoryMaxPath = root_cgroup_path + "/" + kCgroupsV1MemoryMaxPath;
+  std::string cgroupV1MemoryUsagePath =
+      root_cgroup_path + "/" + kCgroupsV1MemoryUsagePath;
+  std::string cgroupV1MemoryStatPath = root_cgroup_path + "/" + kCgroupsV1MemoryStatPath;
+  std::string cgroupV2MemoryMaxPath = root_cgroup_path + "/" + kCgroupsV2MemoryMaxPath;
+  std::string cgroupV2MemoryUsagePath =
+      root_cgroup_path + "/" + kCgroupsV2MemoryUsagePath;
+  std::string cgroupV2MemoryStatPath = root_cgroup_path + "/" + kCgroupsV2MemoryStatPath;
+
   int64_t total_bytes = kNull;
-  if (std::filesystem::exists(kCgroupsV2MemoryMaxPath)) {
-    std::ifstream mem_file(kCgroupsV2MemoryMaxPath, std::ios::in | std::ios::binary);
+  if (std::filesystem::exists(cgroupV2MemoryMaxPath)) {
+    std::ifstream mem_file(cgroupV2MemoryMaxPath, std::ios::in | std::ios::binary);
     mem_file >> total_bytes;
-  } else if (std::filesystem::exists(kCgroupsV1MemoryMaxPath)) {
-    std::ifstream mem_file(kCgroupsV1MemoryMaxPath, std::ios::in | std::ios::binary);
+  } else if (std::filesystem::exists(cgroupV1MemoryMaxPath)) {
+    std::ifstream mem_file(cgroupV1MemoryMaxPath, std::ios::in | std::ios::binary);
     mem_file >> total_bytes;
   }
 
   int64_t used_bytes = kNull;
-  if (std::filesystem::exists(kCgroupsV2MemoryUsagePath) &&
-      std::filesystem::exists(kCgroupsV2MemoryStatPath)) {
-    used_bytes = GetCGroupMemoryUsedBytes(kCgroupsV2MemoryStatPath,
-                                          kCgroupsV2MemoryUsagePath,
+  if (std::filesystem::exists(cgroupV2MemoryUsagePath) &&
+      std::filesystem::exists(cgroupV2MemoryStatPath)) {
+    used_bytes = GetCGroupMemoryUsedBytes(cgroupV2MemoryStatPath.c_str(),
+                                          cgroupV2MemoryUsagePath.c_str(),
                                           kCgroupsV2MemoryStatInactiveFileKey,
                                           kCgroupsV2MemoryStatActiveFileKey);
-  } else if (std::filesystem::exists(kCgroupsV1MemoryStatPath) &&
-             std::filesystem::exists(kCgroupsV1MemoryUsagePath)) {
-    used_bytes = GetCGroupMemoryUsedBytes(kCgroupsV1MemoryStatPath,
-                                          kCgroupsV1MemoryUsagePath,
+  } else if (std::filesystem::exists(cgroupV1MemoryStatPath) &&
+             std::filesystem::exists(cgroupV1MemoryUsagePath)) {
+    used_bytes = GetCGroupMemoryUsedBytes(cgroupV1MemoryStatPath.c_str(),
+                                          cgroupV1MemoryUsagePath.c_str(),
                                           kCgroupsV1MemoryStatInactiveFileKey,
                                           kCgroupsV1MemoryStatActiveFileKey);
   }
@@ -194,18 +213,18 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
   }
 
   if (used_bytes < 0) {
-    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-        << "Got negative used memory for cgroup " << used_bytes << ", setting it to zero";
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << absl::StrFormat(
+        "Got negative used memory for cgroup %d, setting it to zero", used_bytes);
     used_bytes = 0;
   }
   if (total_bytes != kNull) {
     if (used_bytes >= total_bytes) {
-      RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-          << " Used memory is greater than or equal to total memory used. This can "
-             "happen if the memory limit is set and the container is "
-             "using a lot of memory. Used "
-          << used_bytes << ", total " << total_bytes
-          << ", setting used to be equal to total";
+      RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << absl::StrFormat(
+          "Used memory is greater than or equal to total memory used. This can "
+          "happen if the memory limit is set and the container is "
+          "using a lot of memory. Used %d, total %d, setting used to be equal to total",
+          used_bytes,
+          total_bytes);
       used_bytes = total_bytes;
     }
   }
@@ -213,8 +232,9 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
   return {used_bytes, total_bytes};
 }
 
-std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
-  std::string meminfo_path = "/proc/meminfo";
+std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes(
+    const std::string proc_dir) {
+  std::string meminfo_path = proc_dir + "/meminfo";
   std::ifstream meminfo_ifs(meminfo_path, std::ios::in | std::ios::binary);
   if (!meminfo_ifs.is_open()) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << meminfo_path;
@@ -278,8 +298,8 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
   }
   int64_t used_bytes = mem_total_bytes - available_bytes;
   if (used_bytes < 0) {
-    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-        << "Got negative used memory for linux " << used_bytes << ", setting it to zero";
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << absl::StrFormat(
+        "Got negative used memory for linux %d, setting it to zero", used_bytes);
     used_bytes = 0;
   }
   return {used_bytes, mem_total_bytes};
@@ -398,28 +418,33 @@ const std::string MemoryMonitor::GetCommandLineForPid(pid_t pid,
   return {};
 }
 
-const std::string MemoryMonitor::TopNMemoryDebugString(uint32_t top_n,
-                                                       const MemorySnapshot system_memory,
-                                                       const std::string proc_dir) {
-  auto pid_to_memory_usage =
-      MemoryMonitor::GetTopNMemoryUsage(top_n, system_memory.process_used_bytes);
+const std::string MemoryMonitor::TopNMemoryDebugString(
+    uint32_t top_n,
+    const ProcessesMemorySnapshot &process_memory_snapshot,
+    const std::string proc_dir) {
+  std::vector<std::tuple<pid_t, int64_t>> pid_to_memory_usage =
+      MemoryMonitor::GetTopNMemoryUsage(top_n, process_memory_snapshot);
 
-  std::string debug_string = "PID\tMEM(GB)\tCOMMAND";
-  for (std::tuple<pid_t, int64_t> entry : pid_to_memory_usage) {
-    auto [pid, memory_used_bytes] = entry;
-    auto pid_string = std::to_string(pid);
-    auto memory_usage_gb = absl::StrFormat(
-        "%.2f", static_cast<float>(memory_used_bytes) / 1024 / 1024 / 1024);
-    auto commandline = MemoryMonitor::TruncateString(
-        MemoryMonitor::GetCommandLineForPid(pid, proc_dir), 100);
-    debug_string += "\n" + pid_string + "\t" + memory_usage_gb + "\t" + commandline;
+  std::string debug_string = "PID\tMEM(GB)\tCOMMAND, ";
+  if (!pid_to_memory_usage.empty()) {
+    debug_string += absl::StrJoin(
+        pid_to_memory_usage,
+        ", ",
+        [&proc_dir](std::string *out, const std::tuple<pid_t, int64_t> &entry) {
+          auto [pid, memory_used_bytes] = entry;
+          std::string memory_usage_gb = absl::StrFormat(
+              "%.2f", static_cast<float>(memory_used_bytes) / 1024 / 1024 / 1024);
+          std::string commandline = MemoryMonitor::TruncateString(
+              MemoryMonitor::GetCommandLineForPid(pid, proc_dir), 100);
+          absl::StrAppend(out, pid, "\t", memory_usage_gb, "\t", commandline);
+        });
   }
 
   return debug_string;
 }
 
 const std::vector<std::tuple<pid_t, int64_t>> MemoryMonitor::GetTopNMemoryUsage(
-    uint32_t top_n, const absl::flat_hash_map<pid_t, int64_t> all_usage) {
+    uint32_t top_n, const ProcessesMemorySnapshot &all_usage) {
   std::vector<std::tuple<pid_t, int64_t>> pid_to_memory_usage;
   for (auto entry : all_usage) {
     pid_to_memory_usage.push_back({entry.first, entry.second});
@@ -441,7 +466,7 @@ const std::vector<std::tuple<pid_t, int64_t>> MemoryMonitor::GetTopNMemoryUsage(
   return pid_to_memory_usage;
 }
 
-const absl::flat_hash_map<pid_t, int64_t> MemoryMonitor::GetProcessMemoryUsage(
+const absl::flat_hash_map<pid_t, int64_t> MemoryMonitor::TakePerProcessMemorySnapshot(
     const std::string proc_dir) {
   std::vector<pid_t> pids = MemoryMonitor::GetPidsFromDir(proc_dir);
   absl::flat_hash_map<pid_t, int64_t> pid_to_memory_usage;
@@ -463,7 +488,7 @@ const std::string MemoryMonitor::TruncateString(const std::string value,
   return value;
 }
 
-std::ostream &operator<<(std::ostream &os, const MemorySnapshot &memory_snapshot) {
+std::ostream &operator<<(std::ostream &os, const SystemMemorySnapshot &memory_snapshot) {
   os << "Used bytes: " << memory_snapshot.used_bytes
      << ", Total bytes: " << memory_snapshot.total_bytes;
   return os;
