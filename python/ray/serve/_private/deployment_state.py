@@ -3052,11 +3052,9 @@ class DeploymentState:
                 The scheduling requests for the new replicas and the downscale request.
         """
 
-        if self._target_state.target_num_replicas < 0:
-            raise ValueError(
-                f"Target number of replicas for {self._id} is {self._target_state.target_num_replicas}. "
-                "Target number of replicas must be greater than or equal to 0."
-            )
+        assert (
+            self._target_state.target_num_replicas >= 0
+        ), "Target number of replicas must be greater than or equal to 0."
 
         upscale = []
         downscale = None
@@ -3080,7 +3078,7 @@ class DeploymentState:
             to_add = delta_replicas
             if to_add > 0 and not self._terminally_failed():
                 gang_config = self.get_gang_config()
-                gang_prep_result = (
+                gang_reservation_result = (
                     gang_placement_groups.get(self._id)
                     if gang_placement_groups
                     else None
@@ -3088,7 +3086,7 @@ class DeploymentState:
 
                 if gang_config is not None:
                     upscale = self._add_replicas_with_gang_scheduling(
-                        to_add, gang_config, gang_prep_result
+                        to_add, gang_config, gang_reservation_result
                     )
                 else:
                     logger.info(
@@ -3161,6 +3159,7 @@ class DeploymentState:
         gang_size = gang_config.gang_size
         num_gangs = len(gang_pgs)
         replicas_to_add = num_gangs * gang_size
+
         logger.info(
             f"Adding {replicas_to_add} replica{'s' * (replicas_to_add > 1)} "
             f"to {self._id} using gang scheduling "
@@ -3291,6 +3290,7 @@ class DeploymentState:
                 slow to reach running state.
         """
         slow_replicas = []
+        failed_gang_ids: Set[str] = set()
         for replica in self._replicas.pop(states=[original_state]):
             start_status, error_msg = replica.check_started()
             if start_status == ReplicaStartupStatus.SUCCEEDED:
@@ -3369,6 +3369,9 @@ class DeploymentState:
                 # Replica reconfigure (deploy / upgrade) failed
                 self.record_replica_startup_failure(error_msg)
                 self._stop_replica(replica)
+                # Track failed gang IDs for sibling cleanup below.
+                if replica.gang_context is not None:
+                    failed_gang_ids.add(replica.gang_context.gang_id)
             elif start_status in [
                 ReplicaStartupStatus.PENDING_ALLOCATION,
                 ReplicaStartupStatus.PENDING_INITIALIZATION,
@@ -3383,6 +3386,24 @@ class DeploymentState:
                     self._stop_replica(replica, graceful_stop=False)
                 else:
                     self._replicas.add(original_state, replica)
+
+        # If any gang member failed during startup, stop all other members of
+        # that gang so partial gangs never exist.
+        if failed_gang_ids:
+            for state in {original_state, ReplicaState.RUNNING}:
+                for replica in self._replicas.pop(states=[state]):
+                    if (
+                        replica.gang_context is not None
+                        and replica.gang_context.gang_id in failed_gang_ids
+                    ):
+                        logger.info(
+                            f"Stopping {replica.replica_id} because a gang "
+                            f"member failed during startup "
+                            f"(gang_id={replica.gang_context.gang_id})."
+                        )
+                        self._stop_replica(replica)
+                    else:
+                        self._replicas.add(state, replica)
 
         return slow_replicas
 
@@ -3470,11 +3491,6 @@ class DeploymentState:
             == GangRuntimeFailurePolicy.RESTART_GANG
         )
 
-        # --- Gang health check: two-pass approach ---
-        # Pass 1: Check health of all replicas. Collect which gang_ids
-        #         have at least one unhealthy member.
-        # Pass 2: Process results. Healthy replicas whose gang has an
-        #         unhealthy member are forcefully stopped too.
         healthy_replicas: List[DeploymentReplica] = []
         unhealthy_replicas: List[DeploymentReplica] = []
         gang_ids_to_restart: Set[str] = set()
@@ -3502,7 +3518,6 @@ class DeploymentState:
                 if restart_gang and replica.gang_context is not None:
                     gang_ids_to_restart.add(replica.gang_context.gang_id)
 
-        # Pass 2: process healthy replicas.
         for replica in healthy_replicas:
             if (
                 restart_gang
@@ -4296,10 +4311,10 @@ class DeploymentStateManager:
         for deployment_id, deployment_state in self._deployment_states.items():
             deployment_state.migrate_replicas_on_draining_nodes(draining_nodes)
 
-        # STEP 3.5: Prepare gang placement groups
-        gang_placement_groups = self._prepare_gang_placement_groups()
+        # STEP 4: Reserve gang placement groups
+        gang_placement_groups = self._reserve_gang_placement_groups()
 
-        # STEP 4: Scale replicas
+        # STEP 5: Scale replicas
         for deployment_id, deployment_state in self._deployment_states.items():
             upscale, downscale = deployment_state.scale_deployment_replicas(
                 gang_placement_groups=gang_placement_groups,
@@ -4310,7 +4325,7 @@ class DeploymentStateManager:
             if downscale:
                 downscales[deployment_id] = downscale
 
-        # STEP 5: Update status
+        # STEP 6: Update status
         for deployment_id, deployment_state in self._deployment_states.items():
             deleted, any_replicas_recovering = deployment_state.check_curr_status()
 
@@ -4318,7 +4333,7 @@ class DeploymentStateManager:
                 deleted_ids.append(deployment_id)
             any_recovering |= any_replicas_recovering
 
-        # STEP 6: Schedule all STARTING replicas and stop all STOPPING replicas
+        # STEP 7: Schedule all STARTING replicas and stop all STOPPING replicas
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(
             upscales, downscales
         )
@@ -4327,7 +4342,7 @@ class DeploymentStateManager:
         for deployment_id, scheduling_requests in upscales.items():
             self._handle_scheduling_request_failures(deployment_id, scheduling_requests)
 
-        # STEP 7: Broadcast long poll information
+        # STEP 8: Broadcast long poll information
         for deployment_id, deployment_state in self._deployment_states.items():
             deployment_state.broadcast_running_replicas_if_changed()
             deployment_state.broadcast_deployment_config_if_changed()
@@ -4337,7 +4352,7 @@ class DeploymentStateManager:
                     running_replicas=deployment_state.get_running_replica_ids(),
                 )
 
-        # STEP 8: Record deployment status metrics
+        # STEP 9: Record deployment status metrics
         for deployment_id, deployment_state in self._deployment_states.items():
             status = deployment_state.curr_status_info.status
             self._deployment_status_gauge.set(
@@ -4348,7 +4363,7 @@ class DeploymentStateManager:
                 },
             )
 
-        # STEP 9: Cleanup
+        # STEP 10: Cleanup
         for deployment_id in deleted_ids:
             self._deployment_scheduler.on_deployment_deleted(deployment_id)
             self._autoscaling_state_manager.deregister_deployment(deployment_id)
@@ -4439,13 +4454,10 @@ class DeploymentStateManager:
                 num_gpu_deployments += 1
         ServeUsageTag.NUM_GPU_DEPLOYMENTS.record(str(num_gpu_deployments))
 
-    def _prepare_gang_placement_groups(
+    def _reserve_gang_placement_groups(
         self,
     ) -> Dict[DeploymentID, GangReservationResult]:
-        """Prepare gang placement groups for deployments that need them.
-
-        Called in Step 3.5 before scale_deployment_replicas() to pre-create
-        placement groups for gang-scheduled deployments.
+        """Reserve gang placement groups for deployments.
 
         Returns:
             Map of deployment_id to GangReservationResult containing the
