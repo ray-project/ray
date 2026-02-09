@@ -15,6 +15,7 @@
 #include "ray/core_worker/reference_counter.h"
 
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -23,6 +24,50 @@
 
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
+
+using json = nlohmann::json;
+
+namespace {
+
+json AddressToJson(const ray::rpc::Address &address) {
+  return {
+      {"node_id", ray::NodeID::FromBinary(address.node_id()).Hex()},
+      {"ip_address", address.ip_address()},
+      {"port", address.port()},
+      {"worker_id", ray::WorkerID::FromBinary(address.worker_id()).Hex()},
+  };
+}
+
+template <class Container>
+json IdContainerToJsonArray(const Container &c) {
+  json output = json::array();
+  for (const auto &id : c) {
+    output.push_back(id.Hex());
+  }
+  return output;
+}
+
+constexpr const char *LineageReconstructionEligibilityToString(
+    ray::core::LineageReconstructionEligibility lre) noexcept {
+  switch (lre) {
+  case ray::core::LineageReconstructionEligibility::ELIGIBLE:
+    return "ELIGIBLE";
+  case ray::core::LineageReconstructionEligibility::INELIGIBLE_PUT:
+    return "INELIGIBLE_PUT";
+  case ray::core::LineageReconstructionEligibility::INELIGIBLE_NO_RETRIES:
+    return "INELIGIBLE_NO_RETRIES";
+  case ray::core::LineageReconstructionEligibility::INELIGIBLE_LINEAGE_EVICTED:
+    return "INELIGIBLE_LINEAGE_EVICTED";
+  case ray::core::LineageReconstructionEligibility::INELIGIBLE_LINEAGE_DISABLED:
+    return "INELIGIBLE_LINEAGE_DISABLED";
+  case ray::core::LineageReconstructionEligibility::INELIGIBLE_REF_NOT_FOUND:
+    return "INELIGIBLE_REF_NOT_FOUND";
+  default:
+    return "UNKNOWN";
+  };
+};
+
+};  // namespace
 
 #define PRINT_REF_COUNT(it) \
   RAY_LOG(DEBUG) << "REF " << it->first << ": " << it->second.DebugString();
@@ -1764,6 +1809,76 @@ std::string ReferenceCounter::DebugString() const {
   }
   ss << "}";
   return ss.str();
+}
+
+json ReferenceCounter::NestedReferenceCount::ToJson() const {
+  return {
+      {"contained_in_owned", IdContainerToJsonArray(contained_in_owned)},
+      {"contained_in_borrowed_ids", IdContainerToJsonArray(contained_in_borrowed_ids)},
+      {"contains", IdContainerToJsonArray(contains)}};
+}
+
+json ReferenceCounter::BorrowInfo::ToJson() const {
+  json stored_in_objects_json = json::array();
+  for (const auto &[object_id, addr] : stored_in_objects) {
+    stored_in_objects_json.push_back(
+        {{"object_id", object_id.Hex()}, {"address", AddressToJson(addr)}});
+  }
+  json borrowers_json = json::array();
+  for (const auto &address : borrowers) {
+    borrowers_json.push_back(AddressToJson(address));
+  }
+  return {{"stored_in_objects", stored_in_objects_json}, {"borrowers", borrowers_json}};
+}
+
+std::string ReferenceCounter::ToJsonString() const {
+  absl::MutexLock lock(&mutex_);
+  json ref_table_json = json::array();
+  for (const auto &[obj_id, reference] : object_id_refs_) {
+    ref_table_json.push_back({
+        {"object_id", obj_id.Hex()},
+        {"reference", reference.ToJson()},
+    });
+  }
+  json output = {{"rpc_address", AddressToJson(rpc_address_)},
+                 {"reference_table", ref_table_json},
+                 {"freed_objects", IdContainerToJsonArray(freed_objects_)},
+                 {"reconstructable_owned_objects",
+                  IdContainerToJsonArray(reconstructable_owned_objects_)},
+                 {"objects_to_recover", IdContainerToJsonArray(objects_to_recover_)}};
+  return output.dump();
+}
+
+json ReferenceCounter::Reference::ToJson() const {
+  return {
+      {"call_site", call_site_},
+      {"object_size", object_size_},
+      {"locations", IdContainerToJsonArray(locations)},
+      {"owner_address", owner_address_ ? AddressToJson(*owner_address_) : json(nullptr)},
+      {"pinned_at_node_id",
+       pinned_at_node_id_ ? json(pinned_at_node_id_->Hex()) : json(nullptr)},
+      {"tensor_transport", tensor_transport_ ? json(*tensor_transport_) : json(nullptr)},
+      {"owned_by_us", owned_by_us_},
+      {"lineage_eligibility",
+       LineageReconstructionEligibilityToString(lineage_eligibility_)},
+      {"lineage_ref_count", lineage_ref_count},
+      {"local_ref_count", local_ref_count},
+      {"submitted_task_ref_count", submitted_task_ref_count},
+      {"nested_reference_count",
+       nested_reference_count ? nested_reference_count->ToJson() : json(nullptr)},
+      {"borrow_info", borrow_info ? borrow_info->ToJson() : json(nullptr)},
+      {"num_object_out_of_scope_or_freed_callbacks",
+       on_object_out_of_scope_or_freed_callbacks.size()},
+      {"num_object_ref_deleted_callbacks", object_ref_deleted_callbacks.size()},
+      {"publish_ref_removed", publish_ref_removed},
+      {"spilled_url", spilled_url},
+      {"spilled_node_id", spilled_node_id.Hex()},
+      {"spilled", spilled},
+      {"foreign_owner_already_monitoring", foreign_owner_already_monitoring},
+      {"has_nested_refs_report", has_nested_refs_to_report},
+      {"pending_creation", pending_creation_},
+      {"did_spill", did_spill},
+  };
 }
 
 std::string ReferenceCounter::Reference::DebugString() const {
