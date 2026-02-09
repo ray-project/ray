@@ -37,7 +37,7 @@ class gRPCInputStream(AsyncIterator[T]):
 
     def __init__(
         self,
-        request_iterator: AsyncIterator[Any],
+        request_iterator: AsyncIterator[T],
         *,
         cancel_event: Optional[asyncio.Event] = None,
     ):
@@ -65,12 +65,9 @@ class gRPCInputStream(AsyncIterator[T]):
         """
         if self._exhausted:
             raise StopAsyncIteration
-
-        if self._cancel_event.is_set():
-            self._exhausted = True
-            raise StopAsyncIteration
-
         try:
+            if self._cancel_event.is_set():
+                raise StopAsyncIteration
             return await self._request_iterator.__anext__()
         except StopAsyncIteration:
             self._exhausted = True
