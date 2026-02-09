@@ -9,6 +9,7 @@ import torch
 
 import ray
 from ray.actor import ActorHandle
+from ray.experimental import GetTensorOptions, cache_memory_registration
 
 
 class Model(torch.nn.Module):
@@ -61,14 +62,17 @@ class Generator:
         # Sync weights.
         views = self._model.get_views()
         ref = refs[0]
+        old_items = [view[0].item() for view in views]
         get_start = time.perf_counter()
-        received_tensors = ray.get(ref)
+        received_tensors = ray.get(
+            ref,
+            _get_tensor_options=GetTensorOptions(tensor_buffers=views),
+        )
         self._timings_ms["ray_get"].append((time.perf_counter() - get_start) * 1000.0)
-        for view, received_tensor in zip(views, received_tensors):
-            item = view[0].item()
-            view.copy_(received_tensor)
-            if not torch.all(item + 1 == view).item():
-                print("weights not synced, got", view[0], "expected", item + 1)
+        for view, received_tensor, old_item in zip(views, received_tensors, old_items):
+            assert received_tensor.data_ptr() == view.data_ptr()
+            if not torch.all(old_item + 1 == view).item():
+                print("weights not synced, got", view[0], "expected", old_item + 1)
 
         self._model_version = model_version
         print("synced weights", model_version)
@@ -109,6 +113,9 @@ class Trainer:
         self._model_version = 0
         self._generators = []
         self._tensor_transport = "nixl" if use_nixl else None
+        if use_nixl:
+            for view in self._model.get_views():
+                cache_memory_registration(view)
         self._timings_ms = {"ray_put": [], "ray_get": []}
         self._timings_ms["Trainer.__init__"] = [
             (time.perf_counter() - init_start) * 1000.0
