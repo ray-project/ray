@@ -42,7 +42,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FAIL_ON_RANK_ERROR,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
-    RAY_SERVE_HEALTH_GAUGE_REPORT_INTERVAL_S,
+    RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
@@ -3169,7 +3169,7 @@ class DeploymentState:
         if (
             cached is not None
             and cached[0] == value
-            and (now - cached[1]) < RAY_SERVE_HEALTH_GAUGE_REPORT_INTERVAL_S
+            and (now - cached[1]) < RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S
         ):
             return
         self.health_check_gauge.set(value, tags={"replica": replica_unique_id})
