@@ -5,9 +5,13 @@ import pyarrow.parquet as pq
 import pytest
 from pkg_resources import parse_version
 
+from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.planner.plan_expression.expression_evaluator import (
     ExpressionEvaluator,
+    eval_projection,
 )
+from ray.data.block import BlockAccessor
+from ray.data.expressions import col, lit
 from ray.data.tests.conftest import get_pyarrow_version
 
 
@@ -348,6 +352,62 @@ def test_filter_bad_expression(sample_data):
     sample_data_path, _ = sample_data
     with pytest.raises(pa.ArrowInvalid):
         pq.read_table(sample_data_path, filters=filters)
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        pa.table({"a": [1, 2], "b": [3, 4]}),
+        pd.DataFrame({"a": [1, 2], "b": [3, 4]}),
+    ],
+)
+def test_eval_projection_builds_from_empty_block(block):
+    exprs = [lit(5).alias("five"), (col("a") + lit(1)).alias("a_plus")]
+
+    out = eval_projection(exprs, block)
+    acc = BlockAccessor.for_block(out)
+
+    assert acc.num_rows() == 2
+    assert acc.column_names() == ["five", "a_plus"]
+
+    out_df = acc.to_pandas()
+    assert out_df["five"].tolist() == [5, 5]
+    assert out_df["a_plus"].tolist() == [2, 3]
+
+    if isinstance(out, pa.Table):
+        assert _BATCH_SIZE_PRESERVING_STUB_COL_NAME not in acc.column_names()
+
+
+def test_eval_projection_empty_block():
+    block = pa.table({"a": pa.array([], type=pa.int64())})
+    exprs = [lit(5).alias("five")]
+
+    out = eval_projection(exprs, block)
+
+    assert BlockAccessor.for_block(out).num_rows() == 0
+
+
+def test_eval_projection_with_stub_col_name_in_projection():
+    block = pa.table({"a": [1, 2]})
+    exprs = [lit(999).alias(_BATCH_SIZE_PRESERVING_STUB_COL_NAME)]
+
+    out = eval_projection(exprs, block)
+
+    acc = BlockAccessor.for_block(out)
+    assert _BATCH_SIZE_PRESERVING_STUB_COL_NAME in acc.column_names()
+    assert acc.to_pandas()[_BATCH_SIZE_PRESERVING_STUB_COL_NAME].tolist() == [
+        999,
+        999,
+    ]
+
+
+def test_eval_projection_single_column():
+    block = pa.table({"a": [1, 2], "b": [3, 4]})
+    exprs = [col("a")]
+
+    out = eval_projection(exprs, block)
+
+    assert BlockAccessor.for_block(out).column_names() == ["a"]
 
 
 if __name__ == "__main__":
