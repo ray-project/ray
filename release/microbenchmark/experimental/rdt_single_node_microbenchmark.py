@@ -151,11 +151,12 @@ TEST_FUNCS = [
 # (transport, device)
 TRANSPORTS_AND_DEVICE = [
     ("nccl", "cuda"),
+    ("cuda_ipc", "cuda"),
     # ("nixl", "cuda"), # nixl enabled based on cli arg
     # ("nixl", "cpu"),
     ("gloo", "cpu"),
-    # ("object_store", "cpu"),
-    # ("object_store", "cuda"),
+    (None, "cpu"),
+    (None, "cuda"),
     # ("torch", "cuda") # only works with torch TEST_FUNCS, added based on cli arg
 ]
 
@@ -178,8 +179,13 @@ SIZES_AND_NUM_TRANSFERS = [
 
 def do_benchmark(transport, device, test_func):
     # Create actors + collective group
-    sender = GPUActor.remote()
-    receiver = GPUActor.remote()
+    if transport == "cuda_ipc":
+        sender = GPUActor.options(num_gpus=0.5).remote()
+        receiver = GPUActor.options(num_gpus=0.5).remote()
+    else:
+        sender = GPUActor.remote()
+        receiver = GPUActor.remote()
+
     if transport == "nccl" or transport == "gloo":
         create_collective_group([sender, receiver], transport)
 
