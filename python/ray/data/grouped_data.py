@@ -1,10 +1,12 @@
 from collections.abc import Iterator as IteratorABC
 from functools import partial
+import logging
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import Aggregate
+from ray.data._internal.partition_aware import is_partition_aware_groupby_possible
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     Block,
@@ -48,6 +50,40 @@ class GroupedData:
         return (
             f"{self.__class__.__name__}(dataset={self._dataset}, " f"key={self._key!r})"
         )
+
+    def _check_partition_awareness(self) -> Tuple[bool, Optional[str]]:
+        """Check if the dataset is already partitioned by the groupby columns.
+        
+        Returns:
+            Tuple of (can_skip_shuffle, reason_if_not)
+        """
+        if self._key is None:
+            return False, "Groupby key is None"
+        
+        # Convert key to list format
+        groupby_cols = self._key if isinstance(self._key, list) else [self._key]
+        
+        try:
+            # Get all block metadata
+            blocks_metadata = []
+            for ref, metadata in self._dataset.iter_internal_ref_bundles():
+                if hasattr(metadata, 'blocks') and metadata.blocks:
+                    for block_ref, block_metadata in metadata.blocks:
+                        blocks_metadata.append(block_metadata)
+            
+            if not blocks_metadata:
+                return False, "No block metadata available"
+            
+            # Check if dataset is already partition-aware
+            can_skip, reason = is_partition_aware_groupby_possible(
+                blocks_metadata,
+                groupby_cols,
+            )
+            
+            return can_skip, reason
+        except Exception as e:
+            # If anything goes wrong, fall back to regular shuffle
+            return False, f"Partition awareness check failed: {str(e)}"
 
     @PublicAPI(api_group=FA_API_GROUP)
     def aggregate(self, *aggs: AggregateFn) -> Dataset:
@@ -223,20 +259,35 @@ class GroupedData:
         #   - In case when hash-shuffle strategy is employed -- perform `repartition_and_sort`
         #   - Otherwise we perform "global" sort of the dataset (to co-locate rows with the
         #     same key values)
+        #
+        #   - NEW: Check for partition awareness to potentially skip shuffle
         if self._key is None:
             shuffled_ds = self._dataset.repartition(1)
         elif self._dataset.context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
-            num_partitions = (
-                self._num_partitions
-                or self._dataset.context.default_hash_shuffle_parallelism
-            )
-            shuffled_ds = self._dataset.repartition(
-                num_partitions,
-                keys=self._key,
-                # Blocks must be sorted after repartitioning, such that group
-                # of rows sharing the same key values are co-located
-                sort=True,
-            )
+            # Check if we can skip shuffle due to existing partitioning
+            can_skip_shuffle, reason = self._check_partition_awareness()
+            
+            if can_skip_shuffle:
+                # Dataset is already partitioned correctly, skip the shuffle
+                logger = logging.getLogger(__name__)
+                logger.info(
+                    f"Skipping shuffle for groupby on {self._key} - "
+                    f"data is already partition-aware"
+                )
+                shuffled_ds = self._dataset
+            else:
+                # Fall back to regular shuffle
+                num_partitions = (
+                    self._num_partitions
+                    or self._dataset.context.default_hash_shuffle_parallelism
+                )
+                shuffled_ds = self._dataset.repartition(
+                    num_partitions,
+                    keys=self._key,
+                    # Blocks must be sorted after repartitioning, such that group
+                    # of rows sharing the same key values are co-located
+                    sort=True,
+                )
         else:
             shuffled_ds = self._dataset.sort(self._key)
 
