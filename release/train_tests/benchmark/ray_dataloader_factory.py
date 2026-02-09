@@ -59,7 +59,7 @@ class SpillMetricsMonitor:
                 delta_bytes = current_bytes - prev_spilled_bytes
                 delta_time = current_time - prev_time
 
-                if delta_time > 0:
+                if delta_time > 0 and delta_bytes >= 0:
                     rate_gb_s = (delta_bytes / (1024**3)) / delta_time
                     with self._lock:
                         self._spill_rates_gb_s.append(rate_gb_s)
