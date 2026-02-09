@@ -23,79 +23,99 @@
 namespace ray {
 
 /// A snapshot of memory information.
-struct MemorySnapshot {
+struct SystemMemorySnapshot {
   /// The memory used.
   int64_t used_bytes;
 
-  /// The total memory that can be used. >= used_bytes;
+  /// The total memory that can be used. >= used_bytes.
   int64_t total_bytes;
 
-  /// The per-process memory used;
-  absl::flat_hash_map<pid_t, int64_t> process_used_bytes;
-
   friend std::ostream &operator<<(std::ostream &os,
-                                  const MemorySnapshot &memory_snapshot);
+                                  const SystemMemorySnapshot &memory_snapshot);
 };
 
-/// Callback that runs at each monitoring interval.
-///
-/// \param is_usage_above_threshold true if memory usage is above the threshold
-/// \param system_memory snapshot of system memory information.
-/// \param usage_threshold the memory usage threshold.
-/// threshold at this instant.
-using MemoryUsageRefreshCallback = std::function<void(
-    bool is_usage_above_threshold, MemorySnapshot system_memory, float usage_threshold)>;
+using ProcessesMemorySnapshot = absl::flat_hash_map<pid_t, int64_t>;
 
-/// Monitors the memory usage of the node.
-/// It checks the memory usage p
-/// This class is thread safe.
+/**
+ * @brief Callback to call when the memory usage exceeds the threshold.
+ *
+ * @param is_usage_above_threshold true if memory usage is above the threshold.
+ * @param system_memory Snapshot of system memory information.
+ * @param usage_threshold The memory usage threshold.
+ */
+using MemoryUsageRefreshCallback = std::function<void(bool is_usage_above_threshold,
+                                                      SystemMemorySnapshot system_memory,
+                                                      float usage_threshold)>;
+
+/**
+ * @brief Monitors the memory usage of the node
+ *        and kills workers if memory usage exceeds the threshold.
+ *
+ * This class is thread safe.
+ */
 class MemoryMonitor {
  public:
-  /// Constructor.
-  ///
-  /// \param io_service the event loop.
-  /// \param usage_threshold a value in [0-1] to indicate the max usage.
-  /// \param min_memory_free_bytes to indicate the minimum amount of free space before it
-  /// becomes over the threshold.
-  /// \param monitor_interval_ms the frequency to update the usage. 0 disables the the
-  /// monitor and callbacks won't fire.
-  /// \param monitor_callback function to execute on a dedicated thread owned by this
-  /// monitor when the usage is refreshed.
+  /**
+   * @param io_service the io context the memory monitor will run on
+   *                   and post the callback to.
+   * @param usage_threshold A value in [0-1] to indicate the max usage.
+   * @param min_memory_free_bytes The minimum amount of free space before it
+   *        becomes over the threshold.
+   * @param monitor_interval_ms The frequency to update the usage. 0 disables the
+   *        monitor and callbacks won't fire.
+   * @param monitor_callback Function to execute on a dedicated thread owned by this
+   *        monitor when the usage is refreshed.
+   * @param root_cgroup_path The path to the root cgroup that the threshold monitor will
+   *        use to calculate the system memory usage.
+   */
   MemoryMonitor(instrumented_io_context &io_service,
                 float usage_threshold,
                 int64_t min_memory_free_bytes,
                 uint64_t monitor_interval_ms,
-                MemoryUsageRefreshCallback monitor_callback);
+                MemoryUsageRefreshCallback monitor_callback,
+                const std::string root_cgroup_path = kDefaultCgroupPath);
 
- public:
-  /// \param top_n the number of top memory-using processes
-  /// \param system_memory the snapshot of memory usage
-  /// \param proc_dir the directory to scan for the processes
-  ///
-  /// \return the debug string that contains up to the top N memory-using processes,
-  /// empty if process directory is invalid
+  /**
+   * @param top_n The number of top memory-using processes.
+   * @param process_memory_snapshot The snapshot of per process memory usage.
+   * @param proc_dir The directory to scan for the processes.
+   * @return The debug string that contains up to the top N memory-using processes,
+   *         empty if process directory is invalid.
+   */
   static const std::string TopNMemoryDebugString(
       uint32_t top_n,
-      const MemorySnapshot system_memory,
+      const ProcessesMemorySnapshot &process_memory_snapshot,
       const std::string proc_dir = kProcDirectory);
 
-  /// \param proc_dir the directory to scan for the processes
-  ///
-  /// \return the pid to memory usage map for all the processes
-  static const absl::flat_hash_map<pid_t, int64_t> GetProcessMemoryUsage(
+  /**
+   * @brief Takes a snapshot of system memory usage.
+   *
+   * @param root_cgroup_path The path to the root cgroup.
+   * @param proc_dir The proc directory path.
+   * @return The used and total memory in bytes.
+   */
+  static const SystemMemorySnapshot TakeSystemMemorySnapshot(
+      const std::string root_cgroup_path, const std::string proc_dir = kProcDirectory);
+
+  /**
+   * @brief Takes a snapshot of per-process memory usage.
+   *
+   * @param proc_dir The directory to scan for the processes.
+   * @return The pid to memory usage map for all the processes.
+   */
+  static const ProcessesMemorySnapshot TakePerProcessMemorySnapshot(
       const std::string proc_dir = kProcDirectory);
 
  private:
-  static constexpr char kCgroupsV1MemoryMaxPath[] =
-      "/sys/fs/cgroup/memory/memory.limit_in_bytes";
-  static constexpr char kCgroupsV1MemoryUsagePath[] =
-      "/sys/fs/cgroup/memory/memory.usage_in_bytes";
-  static constexpr char kCgroupsV1MemoryStatPath[] = "/sys/fs/cgroup/memory/memory.stat";
+  static constexpr char kDefaultCgroupPath[] = "/sys/fs/cgroup";
+  static constexpr char kCgroupsV1MemoryMaxPath[] = "memory/memory.limit_in_bytes";
+  static constexpr char kCgroupsV1MemoryUsagePath[] = "memory/memory.usage_in_bytes";
+  static constexpr char kCgroupsV1MemoryStatPath[] = "memory/memory.stat";
   static constexpr char kCgroupsV1MemoryStatInactiveFileKey[] = "total_inactive_file";
   static constexpr char kCgroupsV1MemoryStatActiveFileKey[] = "total_active_file";
-  static constexpr char kCgroupsV2MemoryMaxPath[] = "/sys/fs/cgroup/memory.max";
-  static constexpr char kCgroupsV2MemoryUsagePath[] = "/sys/fs/cgroup/memory.current";
-  static constexpr char kCgroupsV2MemoryStatPath[] = "/sys/fs/cgroup/memory.stat";
+  static constexpr char kCgroupsV2MemoryMaxPath[] = "memory.max";
+  static constexpr char kCgroupsV2MemoryUsagePath[] = "memory.current";
+  static constexpr char kCgroupsV2MemoryStatPath[] = "memory.stat";
   static constexpr char kCgroupsV2MemoryStatInactiveFileKey[] = "inactive_file";
   static constexpr char kCgroupsV2MemoryStatActiveFileKey[] = "active_file";
   static constexpr char kProcDirectory[] = "/proc";
@@ -104,95 +124,135 @@ class MemoryMonitor {
   static constexpr uint32_t kLogIntervalMs = 5000;
   static constexpr int64_t kNull = -1;
 
-  /// \param system_memory snapshot of system memory information.
-  /// \param threshold_bytes usage threshold in bytes.
-  /// \return true if the memory usage of this node is above the threshold.
-  static bool IsUsageAboveThreshold(MemorySnapshot system_memory,
+  /**
+   * @brief Checks if memory usage is above the threshold.
+   *
+   * @param system_memory Snapshot of system memory information.
+   * @param threshold_bytes Usage threshold to check against.
+   * @return true if the memory usage of this node is above the threshold.
+   */
+  static bool IsUsageAboveThreshold(const SystemMemorySnapshot &system_memory,
                                     int64_t threshold_bytes);
 
-  /// \return the used and total memory in bytes.
-  std::tuple<int64_t, int64_t> GetMemoryBytes();
+  /**
+   * @brief Gets memory information from the given cgroup.
+   *
+   * @param root_cgroup_path The path to the root cgroup
+   *                         to read the memory usage from.
+   * @return The used and total memory in bytes from the cgroup.
+   */
+  static std::tuple<int64_t, int64_t> GetCGroupMemoryBytes(
+      const std::string root_cgroup_path);
 
-  /// \return the used and total memory in bytes from Cgroup.
-  std::tuple<int64_t, int64_t> GetCGroupMemoryBytes();
-
-  /// \param stat_path file path to the memory.stat file.
-  /// \param usage_path file path to the memory.current file
-  /// \param inactive_file_key inactive_file key name in memory.stat file
-  /// \param active_file_key active_file key name in memory.stat file
-  /// \return the used memory for cgroup. May return negative value, which should be
-  /// discarded.
+  /**
+   * @brief Gets the current memory usage for cgroup.
+   *
+   * @param stat_path File path to the memory.stat file.
+   * @param usage_path File path to the memory.current file.
+   * @param inactive_file_key inactive_file key name in memory.stat file.
+   * @param active_file_key active_file key name in memory.stat file.
+   * @return The used memory for cgroup. May return negative value, which should be
+   *         discarded.
+   */
   static int64_t GetCGroupMemoryUsedBytes(const char *stat_path,
                                           const char *usage_path,
                                           const char *inactive_file_key,
                                           const char *active_file_key);
 
-  /// \return the used and total memory in bytes for linux OS.
-  std::tuple<int64_t, int64_t> GetLinuxMemoryBytes();
+  /**
+   * @brief Gets memory information for Linux OS.
+   *
+   * @param proc_dir The proc directory path to read the memory usage from.
+   * @return The used and total memory in bytes for Linux OS.
+   */
+  static std::tuple<int64_t, int64_t> GetLinuxMemoryBytes(const std::string proc_dir);
 
-  /// \param smap_path file path to the smap file
-  ///
-  /// \return the used memory in bytes from the given smap file or kNull if the file does
-  /// not exist or if it fails to read a valid value.
+  /**
+   * @brief Gets the used memory from the smap file.
+   *
+   * @param smap_path File path to the smap file.
+   * @return The used memory in bytes from the given smap file or kNull if the file does
+   *         not exist or if it fails to read a valid value.
+   */
   static int64_t GetLinuxProcessMemoryBytesFromSmap(const std::string smap_path);
 
-  /// \param proc_dir directory to scan for the process ids
-  ///
-  /// \return list of process ids found in the directory,
-  /// or empty list if the directory doesn't exist
+  /**
+   * @brief Gets process IDs from a directory.
+   *
+   * @param proc_dir Directory to scan for the process IDs.
+   * @return List of process IDs found in the directory,
+   *         or empty list if the directory doesn't exist.
+   */
   static const std::vector<pid_t> GetPidsFromDir(
       const std::string proc_dir = kProcDirectory);
 
-  /// \param pid the process id
-  /// \param proc_dir directory to scan for the process ids
-  ///
-  /// \return the command line for the executing process,
-  /// or empty string if the process doesn't exist
+  /**
+   * @brief Gets the command line for a process.
+   *
+   * @param pid The process ID.
+   * @param proc_dir Directory to scan for the process IDs.
+   * @return The command line for the executing process,
+   *         or empty string if the process doesn't exist.
+   */
   static const std::string GetCommandLineForPid(
       pid_t pid, const std::string proc_dir = kProcDirectory);
 
-  /// Truncates string if it is too long and append '...'
-  ///
-  /// \param value the string to truncate
-  /// \param max_length the max length of the string value to preserve
-  ///
-  /// \return the debug string that contains the top N memory using process
+  /**
+   * @brief Truncates string if it is too long and appends '...'.
+   *
+   * @param value The string to truncate.
+   * @param max_length The max length of the string value to preserve.
+   * @return The truncated string.
+   */
   static const std::string TruncateString(const std::string value, uint32_t max_length);
 
-  /// \return the smaller of the two integers, kNull if both are kNull,
-  /// or one of the values if the other is kNull.
+  /**
+   * @brief Returns the smaller of the two integers with null handling.
+   *
+   * @param left First integer value.
+   * @param right Second integer value.
+   * @return The smaller of the two integers, kNull if both are kNull,
+   *         or one of the values if the other is kNull.
+   */
   static int64_t NullableMin(int64_t left, int64_t right);
 
-  /// Computes the memory threshold, where
-  /// Memory usage threshold = max(total_memory * usage_threshold_, total_memory -
-  /// min_memory_free_bytes)
-  ///
-  /// \param total_memory_bytes the total amount of memory available in the system.
-  /// \param usage_threshold a value in [0-1] to indicate the max usage.
-  /// \param min_memory_free_bytes the min amount of free space to maintain before it is
-  /// exceeding the threshold.
-  ///
-  /// \return the memory threshold.
+  /**
+   * @brief Computes the memory threshold.
+   *
+   * @details Memory usage threshold = max(total_memory * usage_threshold_, total_memory -
+   * min_memory_free_bytes)
+   *
+   * @param total_memory_bytes The total amount of memory available in the system.
+   * @param usage_threshold A value in [0-1] to indicate the max usage.
+   * @param min_memory_free_bytes The min amount of free space to maintain before it is
+   *        exceeding the threshold.
+   * @return The memory threshold.
+   */
   static int64_t GetMemoryThreshold(int64_t total_memory_bytes,
                                     float usage_threshold,
                                     int64_t min_memory_free_bytes);
 
-  /// \param pid the process id
-  /// \param proc_dir the process directory
-  ///
-  /// \return the used memory in bytes for the process,
-  /// kNull if the file doesn't exist or it fails to find the fields
+  /**
+   * @brief Gets the used memory for a process.
+   *
+   * @param pid The process ID.
+   * @param proc_dir The process directory.
+   * @return The used memory in bytes for the process,
+   *         kNull if the file doesn't exist or it fails to find the fields.
+   */
   static int64_t GetProcessMemoryBytes(pid_t pid,
                                        const std::string proc_dir = kProcDirectory);
 
-  /// \param top_n the number of top memory-using processes
-  /// \param all_usage process to memory usage map
-  ///
-  /// \return the top N memory-using processes
+  /**
+   * @brief Gets the top N memory-using processes.
+   *
+   * @param top_n The number of top memory-using processes.
+   * @param all_usage Process to memory usage map.
+   * @return The top N memory-using processes.
+   */
   static const std::vector<std::tuple<pid_t, int64_t>> GetTopNMemoryUsage(
-      uint32_t top_n, const absl::flat_hash_map<pid_t, int64_t> all_usage);
+      uint32_t top_n, const ProcessesMemorySnapshot &all_usage);
 
- private:
   FRIEND_TEST(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold);
   FRIEND_TEST(MemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold);
   FRIEND_TEST(MemoryMonitorTest, TestUsageAtThresholdReportsFalse);
@@ -229,6 +289,10 @@ class MemoryMonitor {
 
   /// The computed threshold fraction on usage_threshold_ and min_memory_free_bytes_.
   float computed_threshold_fraction_;
+
+  /// The path to the root cgroup that the threshold monitor will
+  /// use to calculate the system memory usage.
+  const std::string root_cgroup_path_;
 
   /// Callback function that executes at each monitoring interval,
   /// on a dedicated thread managed by this class.
