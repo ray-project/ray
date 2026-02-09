@@ -23,5 +23,6 @@ build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_$BASE_TYPE-py$PYTHON
   - RAYCI_IS_GPU_BUILD
   - PYTHON
+  - BUILD_VARIANT
 tags:
   - cr.ray.io/rayproject/ml$BUILD_VARIANT-py$PYTHON

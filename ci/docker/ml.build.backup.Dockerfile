@@ -6,14 +6,10 @@ FROM $DOCKER_IMAGE_BASE_BUILD
 ARG RAYCI_IS_GPU_BUILD=false
 ARG RAYCI_LIGHTNING_2=false
 ARG PYTHON
-ARG BUILD_VARIANT=build
-ARG PYTHON_DEPSET=python/deplocks/ci/ml-$BUILD_VARIANT-ci_depset_py$PYTHON.lock
 
 SHELL ["/bin/bash", "-ice"]
 
 COPY . .
-
-COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 RUN <<EOF
 #!/bin/bash
@@ -21,8 +17,6 @@ RUN <<EOF
 set -euo pipefail
 
 set -x
-
-uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
 if [[ "${PYTHON-}" == "3.12" ]]; then
   # hebo and doc test dependencies are not needed for 3.12 test jobs
