@@ -66,19 +66,3 @@ def build_agent_card(
         default_output_modes=["text/plain"],
         skills=[primary_skill],
     )
-
-
-def tags_from_strings(values: Iterable[str]) -> list[str]:
-    """Normalize and de-duplicate tag strings."""
-    out: list[str] = []
-    seen: set[str] = set()
-    for v in values or []:
-        if not isinstance(v, str):
-            continue
-        t = v.strip()
-        if not t or t in seen:
-            continue
-        out.append(t)
-        seen.add(t)
-    return out
-
