@@ -361,6 +361,8 @@ class Test(dict):
         """
         Returns whether this test is jailed with open issue.
         """
+        from github import GithubException
+
         # is jailed
         state = self.get_state()
         if state != TestState.JAILED:
@@ -370,8 +372,14 @@ class Test(dict):
         issue_number = self.get(self.KEY_GITHUB_ISSUE_NUMBER)
         if issue_number is None:
             return False
-        issue = ray_github.get_issue(issue_number)
-        return issue.state == "open"
+        try:
+            issue = ray_github.get_issue(issue_number)
+            return issue.state == "open"
+        except GithubException as e:
+            logger.warning(
+                f"Failed to get issue {issue_number} for test {self.get_name()} from GitHub: {e}"
+            )
+            return False
 
     def is_stable(self) -> bool:
         """
