@@ -675,9 +675,19 @@ def _actor_info_summary_str(info: _ActorPoolInfo) -> str:
         return f"{base} ({info})"
 
 
-def _format_info_message(
+def _format_schema_mismatch_section(
     title: str, entries: List[str], truncate_num_mismatched_fields_to: int
 ) -> str:
+    """Generate a titled section of the schema mismatch warning.
+
+    Args:
+        title: Section title describing the mismatched fields.
+        entries: Field detail strings (name + type).
+        truncate_num_mismatched_fields_to: Max entries shown before truncation.
+    Returns:
+        A formatted message for the warning section, or "" if entries is empty.
+
+    """
     if not entries:
         return ""
 
@@ -690,7 +700,7 @@ def _format_info_message(
     return f"{title} ({len(entries)} total):\n{body}{suffix}\n"
 
 
-def _find_schemas_mismatch(
+def _build_schemas_mismatch_warning(
     old_schema: "Schema", new_schema: Optional["Schema"], truncation_length: int = 20
 ) -> str:
     from ray.data.block import _is_empty_schema
@@ -699,7 +709,7 @@ def _find_schemas_mismatch(
         old_fields_info = [
             f"{name}: {str(t)}" for name, t in zip(old_schema.names, old_schema.types)
         ]
-        return _format_info_message(
+        return _format_schema_mismatch_section(
             "Operator produced a RefBundle with an empty/unknown schema.",
             old_fields_info,
             truncate_num_mismatched_fields_to=truncation_length,
@@ -729,17 +739,17 @@ def _find_schemas_mismatch(
         for field in changed_fields
     ]
 
-    new_excl_fields_message = _format_info_message(
+    new_excl_fields_message = _format_schema_mismatch_section(
         "Fields exclusive to the incoming schema",
         new_excl_fields_info,
         truncate_num_mismatched_fields_to=truncation_length,
     )
-    old_excl_fields_message = _format_info_message(
+    old_excl_fields_message = _format_schema_mismatch_section(
         "Fields exclusive to the old schema",
         old_excl_fields_info,
         truncate_num_mismatched_fields_to=truncation_length,
     )
-    changed_fields_message = _format_info_message(
+    changed_fields_message = _format_schema_mismatch_section(
         "Fields that have different types across the old and the incoming schemas",
         changed_fields_info,
         truncate_num_mismatched_fields_to=truncation_length,
@@ -798,7 +808,7 @@ def dedupe_schemas_with_validation(
 
     diverged = True
     if warn and enforce_schemas:
-        warning_message = _find_schemas_mismatch(
+        warning_message = _build_schemas_mismatch_warning(
             old_schema, bundle.schema, truncation_length=truncation_length
         )
         logger.warning(f"{warning_message}This may lead to unexpected behavior.")
