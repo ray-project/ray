@@ -55,6 +55,7 @@ std::optional<std::chrono::system_clock::time_point>
 AuthenticationTokenLoader::GetTokenExpiration(const std::string &token) {
   std::vector<std::string> parts = absl::StrSplit(token, '.');
   if (parts.size() != 3) {
+    RAY_LOG(WARNING) << "Invalid JWT token format.";
     return std::nullopt;
   }
 
@@ -74,6 +75,7 @@ AuthenticationTokenLoader::GetTokenExpiration(const std::string &token) {
 
   std::string payload;
   if (!absl::Base64Unescape(payload_b64, &payload)) {
+    RAY_LOG(WARNING) << "Unable to base64 decode JWT token.";
     return std::nullopt;
   }
 
@@ -132,13 +134,16 @@ std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
   // Cache and return the loaded token
   if (has_token) {
     cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
-    auto exp = GetTokenExpiration(cached_token_->GetRawValue());
-    if (exp) {
-      cached_token_expiration_time_ =
-          *exp - std::chrono::seconds(kRaySATokenExpirationBufferSeconds);
-    } else {
-      cached_token_expiration_time_ = std::chrono::system_clock::now() +
-                                      std::chrono::seconds(kRaySATokenDefaultTTLSeconds);
+    if (IsK8sTokenAuthEnabled()) {
+      auto exp = GetTokenExpiration(cached_token_->GetRawValue());
+      if (exp) {
+        cached_token_expiration_time_ =
+            *exp - std::chrono::seconds(kRaySATokenExpirationBufferSeconds);
+      } else {
+        cached_token_expiration_time_ =
+            std::chrono::system_clock::now() +
+            std::chrono::seconds(kRaySATokenDefaultTTLSeconds);
+      }
     }
   }
   return cached_token_;
@@ -186,13 +191,15 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
   }
   // Cache and return success
   cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
-  auto exp = GetTokenExpiration(cached_token_->GetRawValue());
-  if (exp) {
-    cached_token_expiration_time_ =
-        *exp - std::chrono::seconds(kRaySATokenExpirationBufferSeconds);
-  } else {
-    cached_token_expiration_time_ = std::chrono::system_clock::now() +
-                                    std::chrono::seconds(kRaySATokenDefaultTTLSeconds);
+  if (IsK8sTokenAuthEnabled()) {
+    auto exp = GetTokenExpiration(cached_token_->GetRawValue());
+    if (exp) {
+      cached_token_expiration_time_ =
+          *exp - std::chrono::seconds(kRaySATokenExpirationBufferSeconds);
+    } else {
+      cached_token_expiration_time_ = std::chrono::system_clock::now() +
+                                      std::chrono::seconds(kRaySATokenDefaultTTLSeconds);
+    }
   }
   result.token = *cached_token_;  // Copy back for return
   return result;
