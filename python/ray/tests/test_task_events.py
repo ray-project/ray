@@ -7,15 +7,12 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._common.test_utils import (
-    PrometheusTimeseries,
-    SignalActor,
-    wait_for_condition,
-)
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.state_api_test_utils import (
     verify_failed_task,
 )
 from ray._private.test_utils import (
+    PrometheusTimeseries,
     raw_metric_timeseries,
     wait_for_aggregator_agent_if_enabled,
 )

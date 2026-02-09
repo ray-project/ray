@@ -14,10 +14,8 @@ import numpy as np
 import pytest
 
 import ray
-from ray._common.test_utils import (
-    run_string_as_driver,
-    wait_for_condition,
-)
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import run_string_as_driver
 from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,

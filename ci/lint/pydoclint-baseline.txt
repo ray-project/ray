@@ -243,6 +243,8 @@ python/ray/_private/test_utils.py
     DOC103: Function `start_redis_instance`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [db_dir: , fate_share: Optional[bool], free_port: , leader_id: , replica_of: ].
     DOC106: Function `_pid_alive`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Function `_pid_alive`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
+    DOC101: Function `run_string_as_driver`: Docstring contains fewer arguments than in function signature.
+    DOC103: Function `run_string_as_driver`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [encode: str].
     DOC101: Function `run_string_as_driver_stdout_stderr`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `run_string_as_driver_stdout_stderr`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [encode: str].
     DOC101: Function `run_string_as_driver_nonblocking`: Docstring contains fewer arguments than in function signature.

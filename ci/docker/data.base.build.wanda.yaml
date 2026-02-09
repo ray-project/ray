@@ -1,0 +1,10 @@
+name: "databuild-py$PYTHON"
+froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON"]
+dockerfile: ci/docker/data.base.build.Dockerfile
+srcs:
+  - python/deplocks/ci/data-base-ci_depset_py$PYTHON.lock
+build_args:
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
+  - IMAGE_TYPE=base
+tags:
+  - cr.ray.io/rayproject/databuild-py$PYTHON

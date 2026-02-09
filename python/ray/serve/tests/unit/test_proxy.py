@@ -16,7 +16,7 @@ from ray.serve._private.proxy import (
     ResponseStatus,
     gRPCProxy,
 )
-from ray.serve._private.proxy_request_response import ProxyRequest, gRPCStreamingType
+from ray.serve._private.proxy_request_response import ProxyRequest
 from ray.serve._private.proxy_router import (
     NO_REPLICAS_MESSAGE,
     NO_ROUTES_MESSAGE,
@@ -381,8 +381,7 @@ class TestgRPCProxy:
         grpc_proxy = self.create_grpc_proxy()
         request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
         unary_entrypoint = grpc_proxy.service_handler_factory(
-            service_method="service_method",
-            streaming_type=gRPCStreamingType.UNARY_UNARY,
+            service_method="service_method", stream=False
         )
         assert unary_entrypoint.__name__ == "unary_unary"
 
@@ -403,8 +402,7 @@ class TestgRPCProxy:
 
         # Ensure gRPC streaming call uses the correct entry point.
         streaming_entrypoint = grpc_proxy.service_handler_factory(
-            service_method="service_method",
-            streaming_type=gRPCStreamingType.UNARY_STREAM,
+            service_method="service_method", stream=True
         )
         assert streaming_entrypoint.__name__ == "unary_stream"
 
