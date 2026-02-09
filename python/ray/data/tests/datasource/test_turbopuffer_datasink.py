@@ -9,7 +9,8 @@ Organized by critical paths:
 6. Retry logic
 7. End-to-end write orchestration
 8. Streaming behavior
-9. Serialization
+9. Multi-namespace writes
+10. Serialization
 """
 
 import pickle
@@ -94,14 +95,31 @@ def make_sink(**kwargs) -> TurbopufferDatasink:
 class TestConstructorValidation:
     """Tests for constructor argument validation."""
 
-    def test_requires_namespace(self):
-        """Must provide namespace."""
-        with pytest.raises(ValueError, match="namespace is required"):
+    def test_requires_namespace_or_namespace_column(self):
+        """Must provide exactly one of namespace / namespace_column."""
+        with pytest.raises(ValueError, match="Either.*must be provided"):
             TurbopufferDatasink(
-                namespace="",
                 region="gcp-us-central1",
                 api_key="k",
             )
+
+    def test_rejects_both_namespace_and_namespace_column(self):
+        """Cannot provide both namespace and namespace_column."""
+        with pytest.raises(ValueError, match="exactly one"):
+            TurbopufferDatasink(
+                namespace="ns",
+                namespace_column="ns_col",
+                region="gcp-us-central1",
+                api_key="k",
+            )
+
+    def test_namespace_column_cannot_be_id_or_vector(self):
+        """namespace_column must not collide with id_column or vector_column."""
+        with pytest.raises(ValueError, match="namespace_column.*must not be the same"):
+            make_sink(namespace=None, namespace_column="id")
+
+        with pytest.raises(ValueError, match="namespace_column.*must not be the same"):
+            make_sink(namespace=None, namespace_column="vector")
 
     def test_api_key_from_env(self, monkeypatch):
         """API key can come from environment variable."""
@@ -244,7 +262,7 @@ class TestSingleNamespaceBatching:
         sink = make_sink(batch_size=10)
         batch_sizes: List[int] = []
 
-        def track_batch(ns, batch):
+        def track_batch(ns, batch, namespace_name=None):
             # batch is a RecordBatch, get its row count
             batch_sizes.append(batch.num_rows)
 
@@ -400,7 +418,7 @@ class TestWriteOrchestration:
         ]
         write_calls = []
 
-        def track_write(ns, batch):
+        def track_write(ns, batch, namespace_name=None):
             write_calls.append(batch.num_rows)
 
         with patch.object(sink, "_get_client") as mock_get_client:
@@ -430,7 +448,7 @@ class TestStreamingBehavior:
         blocks = [pa.table({"id": [i], "vector": [[float(i)]]}) for i in range(5)]
         write_counts = []
 
-        def track_write(ns, batch):
+        def track_write(ns, batch, namespace_name=None):
             write_counts.append(batch.num_rows)
 
         with patch.object(sink, "_get_client", return_value=MagicMock()):
@@ -443,7 +461,120 @@ class TestStreamingBehavior:
 
 
 # =============================================================================
-# 9. Serialization behavior
+# 9. Multi-namespace writes
+# =============================================================================
+
+
+class TestMultiNamespaceWrites:
+    """Tests for namespace_column-driven multi-namespace writes."""
+
+    def test_routes_rows_to_correct_namespaces(self):
+        """Rows are grouped by namespace_column and written to the right ns."""
+        sink = make_sink(namespace=None, namespace_column="tenant")
+        table = pa.table(
+            {
+                "tenant": ["ns_a", "ns_b", "ns_a", "ns_b"],
+                "id": [1, 2, 3, 4],
+                "vector": [[0.1], [0.2], [0.3], [0.4]],
+            }
+        )
+
+        writes = {}  # namespace_name -> list of row counts
+
+        def track_write(ns, batch, namespace_name=None):
+            writes.setdefault(namespace_name, []).append(batch.num_rows)
+
+        mock_client = MagicMock()
+        mock_client.namespace.return_value = MagicMock()
+        with patch.object(sink, "_get_client", return_value=mock_client):
+            with patch.object(sink, "_write_batch_with_retry", side_effect=track_write):
+                sink.write([table], ctx=None)
+
+        assert "ns_a" in writes
+        assert "ns_b" in writes
+        assert sum(writes["ns_a"]) == 2
+        assert sum(writes["ns_b"]) == 2
+
+    def test_drops_namespace_column_before_writing(self):
+        """The namespace column is not included in the written data."""
+        sink = make_sink(namespace=None, namespace_column="tenant")
+        table = pa.table(
+            {
+                "tenant": ["ns_a"],
+                "id": [1],
+                "vector": [[0.1]],
+            }
+        )
+
+        written_batches = []
+
+        def capture_batch(ns, batch, namespace_name=None):
+            written_batches.append(batch)
+
+        mock_client = MagicMock()
+        mock_client.namespace.return_value = MagicMock()
+        with patch.object(sink, "_get_client", return_value=mock_client):
+            with patch.object(
+                sink, "_write_batch_with_retry", side_effect=capture_batch
+            ):
+                sink.write([table], ctx=None)
+
+        assert len(written_batches) == 1
+        assert "tenant" not in written_batches[0].column_names
+        assert "id" in written_batches[0].column_names
+
+    def test_missing_namespace_column_raises(self):
+        """Missing namespace column in data raises ValueError."""
+        sink = make_sink(namespace=None, namespace_column="tenant")
+        table = pa.table(
+            {
+                "id": [1],
+                "vector": [[0.1]],
+            }
+        )
+
+        mock_client = MagicMock()
+        with patch.object(sink, "_get_client", return_value=mock_client):
+            with pytest.raises(ValueError, match="Namespace column.*not found"):
+                sink.write([table], ctx=None)
+
+    def test_null_namespace_values_raise(self):
+        """Null values in namespace column raise ValueError."""
+        sink = make_sink(namespace=None, namespace_column="tenant")
+        table = pa.table(
+            {
+                "tenant": ["ns_a", None],
+                "id": [1, 2],
+                "vector": [[0.1], [0.2]],
+            }
+        )
+
+        mock_client = MagicMock()
+        with patch.object(sink, "_get_client", return_value=mock_client):
+            with pytest.raises(ValueError, match="contains null values"):
+                sink.write([table], ctx=None)
+
+    def test_skips_empty_blocks_in_multi_namespace(self):
+        """Empty blocks are skipped in multi-namespace mode."""
+        sink = make_sink(namespace=None, namespace_column="tenant")
+        empty_table = pa.table(
+            {
+                "tenant": pa.array([], type=pa.string()),
+                "id": pa.array([], type=pa.int64()),
+                "vector": pa.array([], type=pa.list_(pa.float64())),
+            }
+        )
+
+        mock_client = MagicMock()
+        with patch.object(sink, "_get_client", return_value=mock_client):
+            with patch.object(sink, "_write_batch_with_retry") as mock_write:
+                sink.write([empty_table], ctx=None)
+
+        mock_write.assert_not_called()
+
+
+# =============================================================================
+# 10. Serialization behavior
 # =============================================================================
 
 
@@ -456,6 +587,7 @@ class TestSerialization:
         unpickled = pickle.loads(pickled)
 
         assert unpickled.namespace == sink.namespace
+        assert unpickled.namespace_column == sink.namespace_column
         assert unpickled.api_key == sink.api_key
         assert unpickled.region == sink.region
         assert unpickled.batch_size == sink.batch_size
@@ -465,6 +597,16 @@ class TestSerialization:
         client = unpickled._get_client()
         assert client is not None
         mock_turbopuffer_module.Turbopuffer.assert_called()
+
+    def test_preserves_namespace_column_configuration(self, mock_turbopuffer_module):
+        """namespace_column configuration survives pickle round-trip."""
+        sink = make_sink(namespace=None, namespace_column="tenant")
+        pickled = pickle.dumps(sink)
+        unpickled = pickle.loads(pickled)
+
+        assert unpickled.namespace is None
+        assert unpickled.namespace_column == "tenant"
+        assert unpickled._client is None
 
 
 if __name__ == "__main__":

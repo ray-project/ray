@@ -8,13 +8,16 @@ This is based on [Turbopuffer Write API](https://turbopuffer.com/docs/write)
 
 import logging
 import os
-from typing import TYPE_CHECKING, Iterable, Optional, Union
+from typing import TYPE_CHECKING, Iterable, Literal, Optional, Union
 
 import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray._common.retry import call_with_retry
+from ray.data._internal.arrow_block import ArrowBlockAccessor
+from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
@@ -36,8 +39,24 @@ class TurbopufferDatasink(Datasink):
     A Ray :class:`~ray.data.datasource.Datasink` for writing data into the
     `Turbopuffer <https://turbopuffer.com/>`_ vector database.
 
+    Supports two modes of operation:
+
+    * **Single namespace** -- provide ``namespace`` to write all rows into one
+      Turbopuffer namespace.
+    * **Multi-namespace** -- provide ``namespace_column`` to route each row to
+      the namespace whose name is stored in that column.  The column is
+      automatically dropped before the data is sent to Turbopuffer.
+
+    Exactly one of ``namespace`` or ``namespace_column`` must be supplied.
+
     Args:
         namespace: Name of the Turbopuffer namespace to write into.
+            Mutually exclusive with ``namespace_column``.
+        namespace_column: Name of a column whose values determine the
+            target namespace for each row.  Rows are grouped by this column
+            and each group is written to its corresponding namespace.  The
+            column is removed from the data before writing.  Mutually
+            exclusive with ``namespace``.
         region: Turbopuffer region identifier (for example,
             ``"gcp-us-central1"``).
         api_key: Turbopuffer API key. If omitted, the value is read from the
@@ -60,6 +79,8 @@ class TurbopufferDatasink(Datasink):
             :meth:`~ray.data.Dataset.write_datasink` ``concurrency``.
 
     Examples:
+        Write to a single namespace:
+
         .. testcode::
            :skipif: True
 
@@ -78,27 +99,52 @@ class TurbopufferDatasink(Datasink):
                    region="gcp-us-central1",
                )
            )
+
+        Write to multiple namespaces driven by a column:
+
+        .. testcode::
+           :skipif: True
+
+           ds.write_datasink(
+               TurbopufferDatasink(
+                   namespace_column="tenant",
+                   api_key="<YOUR_API_KEY>",
+                   region="gcp-us-central1",
+               )
+           )
     """
 
     def __init__(
         self,
-        namespace: str,
+        namespace: Optional[str] = None,
+        *,
+        namespace_column: Optional[str] = None,
         region: str,
         api_key: Optional[str] = None,
         schema: Optional[dict] = None,
         id_column: str = "id",
         vector_column: str = "vector",
         batch_size: int = 10000,
-        distance_metric: str = "cosine_distance",
+        distance_metric: Literal[
+            "cosine_distance", "euclidean_distance"
+        ] = "cosine_distance",
         concurrency: Optional[int] = None,
     ):
         _check_import(self, module="turbopuffer", package="turbopuffer")
 
-        if not namespace:
-            raise ValueError("namespace is required")
+        # Validate namespace / namespace_column mutual exclusivity.
+        if namespace and namespace_column:
+            raise ValueError(
+                "Specify exactly one of 'namespace' or 'namespace_column', " "not both."
+            )
+        if not namespace and not namespace_column:
+            raise ValueError(
+                "Either 'namespace' or 'namespace_column' must be provided."
+            )
 
         # Store configuration
         self.namespace = namespace
+        self.namespace_column = namespace_column
         self.api_key = api_key or os.getenv(TURBOPUFFER_API_KEY_ENV_VAR)
         self.region = region
         self.schema = schema
@@ -112,6 +158,16 @@ class TurbopufferDatasink(Datasink):
             raise ValueError(
                 "id_column and vector_column refer to the same column "
                 f"'{self.id_column}'. They must be distinct."
+            )
+
+        if self.namespace_column and self.namespace_column in (
+            self.id_column,
+            self.vector_column,
+        ):
+            raise ValueError(
+                f"namespace_column '{self.namespace_column}' must not be the "
+                f"same as id_column ('{self.id_column}') or vector_column "
+                f"('{self.vector_column}')."
             )
 
         # Validate API key
@@ -157,10 +213,13 @@ class TurbopufferDatasink(Datasink):
         pattern used by ClickHouseDatasink.
 
         Each block is prepared (columns renamed, null IDs filtered), then
-        written in batches of `batch_size`.
+        written in batches of ``batch_size``.
+
+        When ``namespace_column`` is set, each block is grouped by the
+        namespace column and each group is written to its corresponding
+        Turbopuffer namespace.
         """
         client = self._get_client()
-        ns = client.namespace(self.namespace)
 
         for block in blocks:
             accessor = BlockAccessor.for_block(block)
@@ -169,15 +228,19 @@ class TurbopufferDatasink(Datasink):
             if table.num_rows == 0:
                 continue
 
-            # Prepare table (rename columns, filter nulls)
-            table = self._prepare_arrow_table(table)
+            if self.namespace_column:
+                # Multi-namespace: group by namespace column, write to each.
+                self._write_multi_namespace(client, table)
+            else:
+                # Single namespace.
+                table = self._prepare_arrow_table(table)
 
-            if table.num_rows == 0:
-                continue
+                if table.num_rows == 0:
+                    continue
 
-            # Write in batches
-            for batch in table.to_batches(max_chunksize=self.batch_size):
-                self._write_batch_with_retry(ns, batch)
+                ns = client.namespace(self.namespace)
+                for batch in table.to_batches(max_chunksize=self.batch_size):
+                    self._write_batch_with_retry(ns, batch, self.namespace)
 
     def _rename_column_if_needed(
         self,
@@ -239,6 +302,51 @@ class TurbopufferDatasink(Datasink):
 
         return table
 
+    def _write_multi_namespace(
+        self, client: "turbopuffer.Turbopuffer", table: pa.Table
+    ) -> None:
+        """Group rows by ``namespace_column`` and write each group to its namespace.
+
+        Uses :meth:`BlockAccessor._iter_groups_sorted` for efficient
+        zero-copy slicing by group.
+        """
+        group_col_name = self.namespace_column
+
+        if group_col_name not in table.column_names:
+            raise ValueError(
+                f"Namespace column '{group_col_name}' not found in table. "
+                f"Available columns: {table.column_names}"
+            )
+
+        # Reject null namespace values early -- we cannot route them.
+        ns_col = table.column(group_col_name)
+        if pc.any(pc.is_null(ns_col)).as_py():
+            raise ValueError(
+                f"Namespace column '{group_col_name}' contains null values; "
+                "fill or drop them before writing with namespace_column."
+            )
+
+        # Sort by the namespace column so _iter_groups_sorted can yield
+        # contiguous zero-copy slices for each unique namespace value.
+        sort_key = SortKey(key=group_col_name, descending=False)
+        sorted_table = transform_pyarrow.sort(table, sort_key)
+        block_accessor = ArrowBlockAccessor.for_block(sorted_table)
+
+        for (namespace_name,), group_table in block_accessor._iter_groups_sorted(
+            sort_key
+        ):
+            # Drop the namespace column -- it is routing metadata, not data.
+            group_table = group_table.drop(group_col_name)
+
+            # Prepare (rename id/vector columns, filter null IDs).
+            group_table = self._prepare_arrow_table(group_table)
+            if group_table.num_rows == 0:
+                continue
+
+            ns = client.namespace(namespace_name)
+            for batch in group_table.to_batches(max_chunksize=self.batch_size):
+                self._write_batch_with_retry(ns, batch, namespace_name)
+
     def _transform_to_turbopuffer_format(
         self, table: Union[pa.Table, pa.RecordBatch]
     ) -> dict:
@@ -263,10 +371,17 @@ class TurbopufferDatasink(Datasink):
         self,
         namespace: "turbopuffer.Namespace",
         batch: pa.Table,
+        namespace_name: Optional[str] = None,
     ):
+        """Write a single batch with exponential backoff retry.
+
+        Args:
+            namespace: The Turbopuffer namespace object to write to.
+            batch: Arrow table or record-batch to write.
+            namespace_name: Human-readable namespace name for log messages.
+                Falls back to ``self.namespace`` when not provided.
         """
-        Write a single batch with exponential backoff retry using Ray's common utility.
-        """
+        ns_label = namespace_name or self.namespace
         try:
             batch_data = self._transform_to_turbopuffer_format(batch)
             call_with_retry(
@@ -275,12 +390,10 @@ class TurbopufferDatasink(Datasink):
                     schema=self.schema,
                     distance_metric=self.distance_metric,
                 ),
-                description=f"write batch to namespace '{self.namespace}'",
+                description=f"write batch to namespace '{ns_label}'",
                 max_attempts=5,
                 max_backoff_s=32,
             )
         except Exception as e:
-            logger.error(
-                f"Write failed for namespace '{self.namespace}' after retries: {e}"
-            )
+            logger.error(f"Write failed for namespace '{ns_label}' after retries: {e}")
             raise

@@ -5264,7 +5264,8 @@ class Dataset:
     def write_turbopuffer(
         self,
         *,
-        namespace: str,
+        namespace: Optional[str] = None,
+        namespace_column: Optional[str] = None,
         region: str,
         api_key: Optional[str] = None,
         schema: Optional[Dict[str, Any]] = None,
@@ -5277,10 +5278,22 @@ class Dataset:
     ) -> None:
         """Write the dataset to a Turbopuffer vector database namespace.
 
+        Supports two modes:
+
+        * **Single namespace** -- pass ``namespace`` to write all rows into
+          one Turbopuffer namespace.
+        * **Multi-namespace** -- pass ``namespace_column`` to route each row
+          to the namespace whose name is stored in that column.  The column
+          is dropped before the data is sent to Turbopuffer.
+
+        Exactly one of ``namespace`` or ``namespace_column`` must be supplied.
+
         To control the number of parallel write tasks, use ``.repartition()``
         before calling this method.
 
         Examples:
+
+            Write to a single namespace:
 
             .. testcode::
                 :skipif: True
@@ -5301,8 +5314,25 @@ class Dataset:
                     region="gcp-us-central1",
                 )
 
+            Write to multiple namespaces driven by a column:
+
+            .. testcode::
+                :skipif: True
+
+                ds.write_turbopuffer(
+                    namespace_column="tenant",
+                    api_key="<YOUR_API_KEY>",
+                    region="gcp-us-central1",
+                )
+
         Args:
             namespace: Name of the Turbopuffer namespace to write into.
+                Mutually exclusive with ``namespace_column``.
+            namespace_column: Name of a column whose values determine the
+                target namespace for each row.  Rows are grouped by this
+                column and each group is written to its corresponding
+                namespace.  The column is removed from the data before
+                writing.  Mutually exclusive with ``namespace``.
             region: Turbopuffer region identifier (for example,
                 ``"gcp-us-central1"``).
             api_key: Turbopuffer API key. If omitted, the value is read from
@@ -5331,6 +5361,7 @@ class Dataset:
         """
         datasink = TurbopufferDatasink(
             namespace=namespace,
+            namespace_column=namespace_column,
             region=region,
             api_key=api_key,
             schema=schema,
