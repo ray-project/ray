@@ -366,6 +366,14 @@ class ServeControllerClient:
                     deployment_args_proto.route_prefix = deployment_args["route_prefix"]
                 deployment_args_proto.ingress = deployment_args["ingress"]
 
+                task_consumer_queue_config = deployment_args.get(
+                    "task_consumer_queue_config"
+                )
+                if task_consumer_queue_config:
+                    deployment_args_proto.task_consumer_queue_config.CopyFrom(
+                        task_consumer_queue_config.to_proto()
+                    )
+
                 deployment_args_list.append(deployment_args_proto.SerializeToString())
 
             application_args_proto = ApplicationArgs()

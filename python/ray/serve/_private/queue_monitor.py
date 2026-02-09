@@ -1,5 +1,6 @@
 import logging
 import time
+from typing import Optional
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
@@ -55,15 +56,20 @@ class QueueMonitorActor:
         queue_name: str,
         deployment_id: DeploymentID,
         controller_handle: ActorHandle,
-        rabbitmq_http_url: str = "http://guest:guest@localhost:15672/api/",
+        rabbitmq_management_url: Optional[str],
     ):
         self._broker_url = broker_url
         self._queue_name = queue_name
         self._deployment_id = deployment_id
         self._controller_handle = controller_handle
-        self._rabbitmq_http_url = rabbitmq_http_url
+        self._rabbitmq_management_url = rabbitmq_management_url
 
-        self._broker = Broker(self._broker_url, http_api=self._rabbitmq_http_url)
+        if self._rabbitmq_management_url is not None:
+            self._broker = Broker(
+                self._broker_url, http_api=self._rabbitmq_management_url
+            )
+        else:
+            self._broker = Broker(self._broker_url)
 
         self._metrics_pusher = MetricsPusher()
         self._start_metrics_pusher()
@@ -137,7 +143,7 @@ def create_queue_monitor_actor(
     broker_url: str,
     queue_name: str,
     controller_handle: ActorHandle,
-    rabbitmq_http_url: str = "http://guest:guest@localhost:15672/api/",
+    rabbitmq_management_url: Optional[str] = None,
     namespace: str = "serve",
 ) -> ray.actor.ActorHandle:
     """
@@ -148,7 +154,7 @@ def create_queue_monitor_actor(
         broker_url: URL of the message broker
         queue_name: Name of the queue to monitor
         controller_handle: Handle to the Serve controller for pushing metrics
-        rabbitmq_http_url: HTTP API URL for RabbitMQ management (only for RabbitMQ)
+        rabbitmq_management_url: HTTP API URL for RabbitMQ management (only for RabbitMQ)
         namespace: Ray namespace for the actor
 
     Returns:
@@ -173,7 +179,7 @@ def create_queue_monitor_actor(
             queue_name=queue_name,
             deployment_id=deployment_id,
             controller_handle=controller_handle,
-            rabbitmq_http_url=rabbitmq_http_url,
+            rabbitmq_management_url=rabbitmq_management_url,
         )
 
         logger.info(

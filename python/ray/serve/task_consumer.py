@@ -19,23 +19,29 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+def _resolve_adapter_class(task_processor_config: TaskProcessorConfig) -> type:
+    """Resolve the adapter class from the task processor config.
+
+    Handles both string-based (module path) and class reference adapters.
+    """
+    adapter = task_processor_config.adapter
+
+    if isinstance(adapter, str):
+        return import_attr(adapter)
+    elif callable(adapter):
+        return adapter
+    else:
+        raise TypeError(
+            f"Adapter must be either a string path or a callable class, "
+            f"got {type(adapter).__name__}: {adapter}"
+        )
+
+
 def _instantiate_adapter(
     task_processor_config: TaskProcessorConfig,
     consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY,
 ) -> TaskProcessorAdapter:
-    adapter = task_processor_config.adapter
-
-    # Handle string-based adapter specification (module path)
-    if isinstance(adapter, str):
-        adapter_class = import_attr(adapter)
-
-    elif callable(adapter):
-        adapter_class = adapter
-
-    else:
-        raise TypeError(
-            f"Adapter must be either a string path or a callable class, got {type(adapter).__name__}: {adapter}"
-        )
+    adapter_class = _resolve_adapter_class(task_processor_config)
 
     try:
         adapter_instance = adapter_class(task_processor_config)
@@ -123,8 +129,14 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
     """
 
     def decorator(target_cls):
+        adapter_class = _resolve_adapter_class(task_processor_config)
+
         class _TaskConsumerWrapper(target_cls, TaskConsumerWrapper):
             _adapter: TaskProcessorAdapter
+            _task_processor_config = task_processor_config
+            _task_consumer_queue_config = adapter_class.get_queue_monitor_config(
+                task_processor_config
+            )
 
             def __init__(self, *args, **kwargs):
                 target_cls.__init__(self, *args, **kwargs)

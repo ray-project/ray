@@ -267,6 +267,13 @@ enum TargetCapacityDirection {
   DOWN = 2;
 }
 
+// Configuration for task consumer queue-based autoscaling.
+message TaskConsumerQueueConfig {
+  string broker_url = 1;
+  string queue_name = 2;
+  optional string rabbitmq_management_url = 3;
+}
+
 message DeploymentInfo {
   string name = 1;
   DeploymentConfig deployment_config = 2;
@@ -433,6 +440,7 @@ message DeploymentArgs {
   optional string route_prefix = 5;
   bool ingress = 6;
   optional string docs_path = 7;
+  optional TaskConsumerQueueConfig task_consumer_queue_config = 8;
 }
 
 message ApplicationArgs {

@@ -22,13 +22,18 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     EndpointInfo,
     TargetCapacityDirection,
+    TaskConsumerQueueConfig,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
+    DEFAULT_ASYNC_INFERENCE_AUTOSCALING_POLICY_NAME,
     DEFAULT_AUTOSCALING_POLICY_NAME,
+    DEFAULT_RABBITMQ_MANAGEMENT_URL,
     DEFAULT_REQUEST_ROUTER_PATH,
     RAY_SERVE_ENABLE_TASK_EVENTS,
+    SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve._private.deploy_utils import (
     deploy_args_to_deployment_info,
@@ -39,6 +44,11 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.logging_utils import configure_component_logger
+from ray.serve._private.queue_monitor import (
+    create_queue_monitor_actor,
+    get_queue_monitor_actor,
+    kill_queue_monitor_actor,
+)
 from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -266,6 +276,13 @@ class ApplicationState:
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         self._deployment_timestamp = time.time()
 
+        # Track QueueMonitor actors for TaskConsumer deployments
+        # Maps deployment_id -> (queue_monitor_handle, queue_config)
+        self._queue_monitors: Dict[
+            DeploymentID, Tuple[ray.actor.ActorHandle, TaskConsumerQueueConfig]
+        ] = {}
+        self._controller_handle = None
+
         self._build_app_task_info: Optional[BuildAppTaskInfo] = None
         # Before a deploy app task finishes, we don't know what the
         # target deployments are, so set deployment_infos=None
@@ -403,6 +420,8 @@ class ApplicationState:
                 if info.ingress:
                     self._ingress_deployment_name = name
 
+            self._apply_queue_autoscaling_policy(deployment_infos)
+
         target_state = ApplicationTargetState(
             deployment_infos,
             code_version,
@@ -416,6 +435,33 @@ class ApplicationState:
         )
 
         self._target_state = target_state
+
+    def _apply_queue_autoscaling_policy(
+        self,
+        deployment_infos: Dict[str, DeploymentInfo],
+    ) -> None:
+        """Auto-apply async_inference_autoscaling_policy for TaskConsumer deployments.
+
+        For TaskConsumer deployments with autoscaling enabled and no custom policy,
+        automatically sets the async_inference_autoscaling_policy which scales
+        based on queue length.
+        """
+        for name, info in deployment_infos.items():
+            queue_config = info.task_consumer_queue_config
+            has_autoscaling = info.deployment_config.autoscaling_config is not None
+
+            if queue_config is not None and has_autoscaling:
+                autoscaling_config = info.deployment_config.autoscaling_config
+                if autoscaling_config.policy is None or (
+                    autoscaling_config.policy.policy_function
+                    == DEFAULT_AUTOSCALING_POLICY_NAME
+                ):
+                    logger.info(
+                        f"TaskConsumer '{name}': auto-applying async_inference_autoscaling_policy for queue-based autoscaling"
+                    )
+                    autoscaling_config.policy = AutoscalingPolicy(
+                        policy_function=DEFAULT_ASYNC_INFERENCE_AUTOSCALING_POLICY_NAME
+                    )
 
     def _set_target_state_deleting(self):
         """Set target state to deleting.
@@ -461,8 +507,32 @@ class ApplicationState:
             Whether the target state has changed.
         """
         id = DeploymentID(name=name, app_name=self._name)
+        # Clean up QueueMonitor for this deployment if it exists
+        self._kill_queue_monitor(id)
+
         self._endpoint_state.delete_endpoint(id)
         return self._deployment_state_manager.delete_deployment(id)
+
+    def _kill_queue_monitor(self, deployment_id: DeploymentID) -> None:
+        """Kill a QueueMonitor actor for a deployment.
+
+        Args:
+            deployment_id: ID of the deployment whose QueueMonitor to kill.
+        """
+        if deployment_id not in self._queue_monitors:
+            return
+
+        try:
+            kill_queue_monitor_actor(deployment_id, namespace=SERVE_NAMESPACE)
+            logger.info(f"Killed QueueMonitor for deployment '{deployment_id}'")
+        except ValueError:
+            pass  # Actor already dead
+        except Exception as e:
+            logger.warning(
+                f"Error killing QueueMonitor for deployment '{deployment_id}': {e}"
+            )
+        finally:
+            self._queue_monitors.pop(deployment_id, None)
 
     def delete(self):
         """Delete the application"""
@@ -954,6 +1024,11 @@ class ApplicationState:
                 or target_state_changed
             )
 
+            # Update QueueMonitor for TaskConsumer deployments
+            self._update_queue_monitor_if_needed(
+                DeploymentID(name=deployment_name, app_name=self._name), deploy_info
+            )
+
         # Delete outdated deployments
         for deployment_name in self._get_live_deployments():
             if deployment_name not in self.target_deployments:
@@ -962,6 +1037,91 @@ class ApplicationState:
                 )
 
         return target_state_changed
+
+    def _update_queue_monitor_if_needed(
+        self,
+        deployment_id: DeploymentID,
+        deployment_info: DeploymentInfo,
+    ) -> None:
+        """Update QueueMonitor for a deployment based on current config.
+
+        This handles three cases:
+        1. TaskConsumer with autoscaling -> create/update QueueMonitor
+        2. TaskConsumer without autoscaling -> kill QueueMonitor if exists
+        3. Non-TaskConsumer -> kill QueueMonitor if exists
+        """
+        queue_config = deployment_info.task_consumer_queue_config
+        has_autoscaling = (
+            deployment_info.deployment_config.autoscaling_config is not None
+        )
+
+        if queue_config is not None and has_autoscaling:
+            # Case 1: TaskConsumer with autoscaling enabled
+            if deployment_id in self._queue_monitors:
+                _, existing_config = self._queue_monitors[deployment_id]
+                if existing_config != queue_config:
+                    # Config changed, recreate monitor
+                    self._kill_queue_monitor(deployment_id)
+                    self._recover_or_create_queue_monitor(deployment_id, queue_config)
+            else:
+                # New TaskConsumer with autoscaling
+                self._recover_or_create_queue_monitor(deployment_id, queue_config)
+        else:
+            # Case 2 & 3: No queue autoscaling needed
+            if deployment_id in self._queue_monitors:
+                self._kill_queue_monitor(deployment_id)
+
+    def _recover_or_create_queue_monitor(
+        self,
+        deployment_id: DeploymentID,
+        queue_config: TaskConsumerQueueConfig,
+    ) -> None:
+        """Create or recover a QueueMonitor actor for a TaskConsumer deployment.
+
+        Args:
+            deployment_id: ID of the deployment.
+            queue_config: Queue configuration for the deployment.
+        """
+        # Check if we already have this monitor tracked with the same config
+        if deployment_id in self._queue_monitors:
+            _, existing_config = self._queue_monitors[deployment_id]
+            if existing_config == queue_config:
+                return  # Already tracking with same config
+
+        # Try to recover existing actor first
+        try:
+            existing_actor = get_queue_monitor_actor(
+                deployment_id, namespace=SERVE_NAMESPACE
+            )
+            self._queue_monitors[deployment_id] = (existing_actor, queue_config)
+            logger.info(
+                f"Recovered existing QueueMonitor for deployment '{deployment_id}'"
+            )
+            return
+        except ValueError:
+            pass  # Actor doesn't exist, create new one
+
+        if self._controller_handle is None:
+            self._controller_handle = ray.get_actor(
+                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+            )
+
+        actor = create_queue_monitor_actor(
+            deployment_id=deployment_id,
+            broker_url=queue_config.broker_url,
+            queue_name=queue_config.queue_name,
+            controller_handle=self._controller_handle,
+            rabbitmq_management_url=(
+                queue_config.rabbitmq_management_url
+                if queue_config.rabbitmq_management_url
+                else DEFAULT_RABBITMQ_MANAGEMENT_URL
+            ),
+            namespace=SERVE_NAMESPACE,
+        )
+        self._queue_monitors[deployment_id] = (actor, queue_config)
+        logger.info(
+            f"Created QueueMonitor for TaskConsumer deployment '{deployment_id}'"
+        )
 
     def get_deployment_topology(self) -> Optional[DeploymentTopology]:
         """Get the deployment topology for this application.

@@ -24,6 +24,7 @@ from ray.serve._private.common import (
     ReplicaState,
     RequestProtocol,
     ServeDeployMode,
+    TaskConsumerQueueConfig,
 )
 from ray.serve._private.constants import (
     DEFAULT_CONSUMER_CONCURRENCY,
@@ -1503,6 +1504,12 @@ class CeleryAdapterConfig(BaseModel):
     broker_transport_options: Optional[Dict[str, Any]] = Field(
         default=None, description="The broker transport options to use for Celery."
     )
+    rabbitmq_management_url: Optional[str] = Field(
+        default=None,
+        description="The RabbitMQ Management Plugin API URL "
+        "(e.g., http://guest:guest@localhost:15672/api/). "
+        "Only needed for RabbitMQ brokers for queue length monitoring in autoscaling.",
+    )
 
 
 @PublicAPI(stability="alpha")
@@ -1660,6 +1667,26 @@ class TaskProcessorAdapter(ABC):
 
         Returns:
             List[Dict]: Health status information for workers/components.
+        """
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def get_queue_monitor_config(
+        task_processor_config: TaskProcessorConfig,
+    ) -> TaskConsumerQueueConfig:
+        """
+        Return configuration for queue monitoring (used for autoscaling).
+
+        This method is called at decoration time to extract the information
+        needed to create a QueueMonitor actor for queue-based autoscaling.
+
+        Args:
+            task_processor_config: The task processor configuration.
+
+        Returns:
+            TaskConsumerQueueConfig with broker_url, queue_name, and optionally
+            rabbitmq_management_url.
         """
         pass
 
