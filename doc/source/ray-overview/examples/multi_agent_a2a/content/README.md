@@ -177,7 +177,7 @@ Let’s get the system running first, then explore how it works.
 
 
 ```python
-!pip install -r requirements.txt
+!pip install fastapi==0.115.12 langchain==1.0.5 langchain-mcp-adapters==0.1.12 langchain-openai==1.0.2 langgraph==1.0.3 openai==2.7.2 uvicorn==0.38.0 "a2a-sdk[http-server]==0.3.22" httpx==0.28.1 mcp==1.22.0 protego==0.5.0 readabilipy==0.3.0 markdownify==0.14.1
 ```
 
 ### Obtain the Google search API keys
@@ -255,7 +255,7 @@ Run each of the following curl commands separately and check their responses:
 
 ```python
 # Run all tests
-python tests/run_all.py
+!python tests/run_all.py
 ```
 
 ## 4. Production deployment to Anyscale
@@ -339,12 +339,12 @@ You can run the full test suite against your production deployment:
 !export ANYSCALE_API_TOKEN="<your-anyscale-api-token>"
 !export TEST_TIMEOUT_SECONDS="2000"
 
-python tests/run_all.py
+!python tests/run_all.py
 ```
 
 ## 5. Deep dive: Understanding each component
 
-Now let’s explore how each service is implemented.
+Now let's explore how each service is implemented.
 
 ### 5.1 The LLM service
 
@@ -365,7 +365,7 @@ For detailed information on deploying and configuring LLM services, see the [Any
 
 MCP (Model Context Protocol) servers expose external tools that agents can discover and use dynamically.
 
-Ray Serve only supports stateless HTTP mode in MCP. Set `stateless_http=True` to prevent “session not found” errors when running multiple replicas.
+Ray Serve only supports stateless HTTP mode in MCP. Set `stateless_http=True` to prevent "session not found" errors when running multiple replicas.
 
 For more information, check out the [Anyscale MCP documentation](https://docs.anyscale.com/mcp) and [MCP Ray Serve template](https://console.anyscale.com/template-preview/mcp-ray-serve).
 
@@ -375,7 +375,7 @@ Check out [mcps/weather_mcp_server.py](mcps/weather_mcp_server.py):
 
 | Tool | Description | Parameters |
 |---------------|------------------------------|----------------------------|
-| `get_alerts` | Fetches active weather alerts | `state: str` (e.g., “CA”) |
+| `get_alerts` | Fetches active weather alerts | `state: str` (e.g., "CA") |
 | `get_forecast` | Gets a 5-period forecast | `latitude: float`, `longitude: float` |
 
 #### 5.2.2 Web search MCP server
@@ -399,32 +399,32 @@ The agent runtime provides a builder pattern for creating agents and deploying t
 
 The agent runtime consists of four core modules:
 
-#### 5.3.1 Configuration management ([`agent_runtime/config.py`](agent_runtime/config.py))
+#### 5.3.1 Configuration management
 
-Centralizes configuration loading for LLM and MCP settings from environment variables.
+The configuration module [`agent_runtime/config.py`](agent_runtime/config.py) centralizes configuration loading for LLM and MCP settings from environment variables.
 
 - **Classes:** `LLMConfig` (LLM backend settings) and `MCPEndpoint` (MCP server configuration).
 - **Functions:** `load_llm_config()`, `weather_mcp_endpoint()`, and `web_search_mcp_endpoint()`.
 
 
-#### 5.3.2 Agent building helpers ([`agent_runtime/agent_builder.py`](agent_runtime/agent_builder.py))
+#### 5.3.2 Agent building helpers
 
-Provides factory functions for building LangGraph agents, centralizing LLM setup, MCP tool discovery, and agent creation to eliminate boilerplate.
+The agent builder module [`agent_runtime/agent_builder.py`](agent_runtime/agent_builder.py) provides factory functions for building LangGraph agents, centralizing LLM setup, MCP tool discovery, and agent creation to eliminate boilerplate.
 
 - **Functions:** `build_llm()`, `load_mcp_tools()`, `build_tool_agent()`, and `build_mcp_agent()`.
 - **Logic handled:** Configuration loading, LLM construction, dynamic MCP tool discovery, and agent creation with `MemorySaver` checkpointing.
 
-#### 5.3.3 SSE deployment factory ([`agent_runtime/serve_deployment.py`](agent_runtime/serve_deployment.py))
+#### 5.3.3 SSE deployment factory
 
-Builds the FastAPI application and Ray Serve deployment for the human-to-agent chat interface.
+The SSE deployment module [`agent_runtime/serve_deployment.py`](agent_runtime/serve_deployment.py) builds the FastAPI application and Ray Serve deployment for the human-to-agent chat interface.
 
 - **Endpoints:** Exposes `POST /chat` with SSE streaming support.
 - **Functions:** `create_chat_app()` and `create_serve_deployment()`.
 - **Features:** Real-time SSE streaming, conversation continuity via Thread IDs, and automatic LangGraph event serialization.
 
-#### 5.3.4 A2A deployment factory ([`agent_runtime/a2a_deployment.py`](agent_runtime/a2a_deployment.py))
+#### 5.3.4 A2A deployment factory
 
-Enables standardized agent-to-agent communication by creating Ray Serve deployments with A2A protocol compliance.
+The A2A deployment module [`agent_runtime/a2a_deployment.py`](agent_runtime/a2a_deployment.py) enables standardized agent-to-agent communication by creating Ray Serve deployments with A2A protocol compliance.
 
 
 ### 5.4 The specialized agents
@@ -659,7 +659,7 @@ print(result)
 # python -c 'import asyncio; from protocols.a2a_client import a2a_execute_text; print(asyncio.run(a2a_execute_text("http://127.0.0.1:8000/a2a-weather","Weather in NYC?")))'
 ```
 
-#### Calling an Agent via A2A
+#### 5.5.4 Calling an Agent via A2A
 
 Use the `a2a_execute_text` helper for simple text-based calls:
 
