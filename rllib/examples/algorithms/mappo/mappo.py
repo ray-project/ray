@@ -19,11 +19,6 @@ from ray.rllib.examples.algorithms.mappo.torch.mappo_torch_learner import (
 
 logger = logging.getLogger(__name__)
 
-LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
-LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
-LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
-
-
 class MAPPO(PPO):
     @classmethod
     @override(Algorithm)
