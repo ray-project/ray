@@ -972,7 +972,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # borrow some resources from the upstream operator, if remaining_shared
             # is still enough.
             to_borrow = (
-                op.incremental_resource_usage()
+                op.min_scheduling_resources()
                 .subtract(self._op_budgets[op].add(op_shared))
                 .max(ExecutionResources.zero())
             )
