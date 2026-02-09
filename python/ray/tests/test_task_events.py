@@ -246,7 +246,12 @@ def test_failed_task_runtime_env_setup(shutdown_only):
     def f():
         pass
 
-    bad_env = RuntimeEnv(conda={"dependencies": ["_this_does_not_exist"]})
+    bad_env = RuntimeEnv(
+        conda={
+            "channels": ["defaults"],
+            "dependencies": ["_this_does_not_exist"],
+        }
+    )
     with pytest.raises(
         RuntimeEnvSetupError,
     ):
