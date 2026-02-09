@@ -41,7 +41,7 @@ class FakeEventAggregatorClient : public rpc::EventAggregatorClient {
   FakeEventAggregatorClient() {}
 
   void AddEvents(
-      const rpc::events::AddEventsRequest &request,
+      rpc::events::AddEventsRequest &&request,
       const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) override {
     absl::MutexLock lock(&mutex_);
     for (const auto &event : request.events_data().events()) {
@@ -96,18 +96,24 @@ class RayEventRecorderTest : public ::testing::Test {
   RayEventRecorderTest() {
     fake_client_ = std::make_unique<FakeEventAggregatorClient>();
     fake_dropped_events_counter_ = std::make_unique<FakeCounter>();
+    fake_events_sent_counter_ = std::make_unique<FakeCounter>();
+    fake_events_failed_to_send_counter_ = std::make_unique<FakeCounter>();
     test_node_id_ = NodeID::FromRandom();
     recorder_ = std::make_unique<RayEventRecorder>(*fake_client_,
                                                    io_service_,
                                                    max_buffer_size_,
                                                    "gcs",
                                                    *fake_dropped_events_counter_,
+                                                   *fake_events_sent_counter_,
+                                                   *fake_events_failed_to_send_counter_,
                                                    test_node_id_);
   }
 
   instrumented_io_context io_service_;
   std::unique_ptr<FakeEventAggregatorClient> fake_client_;
   std::unique_ptr<FakeCounter> fake_dropped_events_counter_;
+  std::unique_ptr<FakeCounter> fake_events_sent_counter_;
+  std::unique_ptr<FakeCounter> fake_events_failed_to_send_counter_;
   std::unique_ptr<RayEventRecorder> recorder_;
   size_t max_buffer_size_ = 5;
   NodeID test_node_id_;
