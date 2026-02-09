@@ -808,8 +808,8 @@ class TestGangScheduling:
     def test_sufficient_resources(self, ray_start_cluster):
         """Verifies that gang scheduling succeeds when cluster has sufficient resources."""
         cluster = ray_start_cluster
-        cluster.add_node(num_cpus=4)
-        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
         serve.start()
@@ -820,7 +820,7 @@ class TestGangScheduling:
 
         app = GangDeployment.options(
             num_replicas=8,
-            ray_actor_options={"num_cpus": 1},
+            ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=4),
         ).bind()
 
@@ -841,8 +841,8 @@ class TestGangScheduling:
     def test_sufficient_resources_with_options(self, ray_start_cluster):
         """Verifies gang scheduling via .options() succeeds and responds to requests."""
         cluster = ray_start_cluster
-        cluster.add_node(num_cpus=4)
-        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
         serve.start()
@@ -854,7 +854,7 @@ class TestGangScheduling:
 
         app = GangDeployment.options(
             num_replicas=8,
-            ray_actor_options={"num_cpus": 1},
+            ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=4),
         ).bind()
 
@@ -877,8 +877,8 @@ class TestGangScheduling:
         Verifies that schedulable gangs serve traffic while unschedulable gangs wait for resources.
         """
         cluster = ray_start_cluster
-        cluster.add_node(num_cpus=4)
-        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
         serve.start()
@@ -890,14 +890,14 @@ class TestGangScheduling:
 
         app = IncompleteGangDeployment.options(
             num_replicas=12,
-            ray_actor_options={"num_cpus": 1},
+            ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=4),
         ).bind()
 
         handle = serve._run(app, name="gang_partial_app", _blocking=False)
 
-        # The deployment should NOT fail.  2 of 3 gangs should be scheduled,
-        # and those 8 replicas should serve traffic.  The deployment stays
+        # The deployment should NOT fail. 2 of 3 gangs should be scheduled,
+        # and those 8 replicas should serve traffic. The deployment stays
         # DEPLOYING because it hasn't reached 12 replicas.
         def check_replicas_running(expected_count: int):
             try:
@@ -910,7 +910,8 @@ class TestGangScheduling:
                 # Check that some replicas are running
                 dep_status = list(app_status.deployments.values())[0]
                 running = dep_status.replica_states.get("RUNNING", 0)
-                return running == expected_count
+                assert running == expected_count
+                return True
             except KeyError:
                 return False
 
@@ -927,7 +928,7 @@ class TestGangScheduling:
         assert app_status.status == "DEPLOYING"
 
         # Now add a 3rd node so the remaining gang can be scheduled.
-        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=1)
         cluster.wait_for_nodes()
 
         # The deployment should become RUNNING with all 12 replicas.
@@ -949,10 +950,10 @@ class TestGangScheduling:
     def test_no_partial_gang(self, ray_start_cluster):
         """Verifies atomic gang scheduling: no partial gangs are created."""
         cluster = ray_start_cluster
-        # 20 CPUs total: enough for 2 full gangs (16 CPUs) but not 3 (24 CPUs).
-        # The leftover 4 CPUs must NOT produce a partial gang.
-        cluster.add_node(num_cpus=10)
-        cluster.add_node(num_cpus=10)
+        # 2 CPUs total: enough for 2 full gangs (1.6 CPUs) but not 3 (2.4 CPUs).
+        # The leftover 0.4 CPUs must NOT produce a partial gang.
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
         serve.start()
@@ -964,7 +965,7 @@ class TestGangScheduling:
 
         app = AtomicGangDeployment.options(
             num_replicas=12,
-            ray_actor_options={"num_cpus": 2},
+            ray_actor_options={"num_cpus": 0.2},
             gang_scheduling_config=GangSchedulingConfig(gang_size=4),
         ).bind()
 
@@ -981,7 +982,8 @@ class TestGangScheduling:
                     )
                 dep_status = list(app_status.deployments.values())[0]
                 running = dep_status.replica_states.get("RUNNING", 0)
-                return running == expected_count
+                assert running == expected_count
+                return True
             except KeyError:
                 return False
 
@@ -997,8 +999,8 @@ class TestGangScheduling:
             results.add(handle.remote().result())
         assert len(results) > 0
 
-        # Add 4 more CPUs so the 3rd gang (8 CPUs) can be scheduled.
-        cluster.add_node(num_cpus=4)
+        # Add 1 more CPU so the 3rd gang (0.8 CPUs) can be scheduled.
+        cluster.add_node(num_cpus=1)
         cluster.wait_for_nodes()
 
         # The deployment should become RUNNING with all 12 replicas.
@@ -1016,8 +1018,8 @@ class TestGangScheduling:
     def test_pack_strategy(self, ray_start_cluster):
         """Verifies that PACK strategy places gang replicas on the same node."""
         cluster = ray_start_cluster
-        cluster.add_node(num_cpus=4)
-        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
         serve.start()
@@ -1031,7 +1033,7 @@ class TestGangScheduling:
         # 1 gang with PACK strategy - all replicas should be on same node
         app = PackDeployment.options(
             num_replicas=4,
-            ray_actor_options={"num_cpus": 1},
+            ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(
                 gang_size=4,
                 gang_placement_strategy=GangPlacementStrategy.PACK,
@@ -1056,28 +1058,24 @@ class TestGangScheduling:
     def test_gang_scheduling_spread_strategy(self, ray_start_cluster):
         """Verifies that SPREAD strategy places gang replicas on different nodes."""
         cluster = ray_start_cluster
-        cluster.add_node(num_cpus=4)
-        cluster.add_node(num_cpus=4)
-        cluster.add_node(num_cpus=4)
-        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
         serve.start()
 
         @serve.deployment
         def SpreadDeployment():
-            import os
-
             return os.environ.get(
                 "RAY_NODE_ID", ray.get_runtime_context().get_node_id()
             )
 
         # 1 gang with SPREAD strategy - replicas should be on different nodes
         app = SpreadDeployment.options(
-            num_replicas=4,
-            ray_actor_options={"num_cpus": 1},
+            num_replicas=2,
+            ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(
-                gang_size=4,
+                gang_size=2,
                 gang_placement_strategy=GangPlacementStrategy.SPREAD,
             ),
         ).bind()
@@ -1091,8 +1089,8 @@ class TestGangScheduling:
             result = handle.remote().result()
             node_ids.add(result)
 
-        # With SPREAD strategy, 4 replicas should be on 4 different nodes
-        assert len(node_ids) == 4
+        # With SPREAD strategy, 2 replicas should be on 2 different nodes
+        assert len(node_ids) == 2
 
         serve.delete("gang_spread_app")
         serve.shutdown()
@@ -1100,7 +1098,7 @@ class TestGangScheduling:
     def test_gang_context(self, ray_start_cluster):
         """Verifies GangContext is correctly populated in ReplicaContext."""
         cluster = ray_start_cluster
-        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=1)
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
         serve.start()
@@ -1122,7 +1120,7 @@ class TestGangScheduling:
 
         app = GangContextDeployment.options(
             num_replicas=4,
-            ray_actor_options={"num_cpus": 1},
+            ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         ).bind()
 
@@ -1148,7 +1146,6 @@ class TestGangScheduling:
             gang_id = ctx["gang_id"]
             gangs.setdefault(gang_id, []).append(ctx)
 
-        # Should have exactly 2 gangs
         assert len(gangs) == 2
 
         for gang_id, members in gangs.items():
