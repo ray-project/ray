@@ -51,7 +51,7 @@ def _read_configs_for_dashboard(
     and the log link URL for a given dashboard.
 
     Returns:
-      Tuple with format uid, global_filters, data_link_url
+      Tuple with format uid, global_filters, log_link_url
     """
     uid = (
         os.environ.get(
