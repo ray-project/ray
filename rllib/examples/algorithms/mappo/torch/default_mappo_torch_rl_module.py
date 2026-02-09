@@ -41,7 +41,6 @@ class DefaultMAPPOTorchRLModule(TorchRLModule, DefaultMAPPORLModule):
         """Train forward pass."""
         output = {}
         encoder_outs = self.encoder(batch)
-        output[Columns.EMBEDDINGS] = encoder_outs[ENCODER_OUT]
         if Columns.STATE_OUT in encoder_outs:
             output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
         output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT])
