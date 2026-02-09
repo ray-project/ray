@@ -597,5 +597,57 @@ def test_is_canceled_not_supported_in_async_actor(shutdown_only):
     assert not ray.get(actor.is_canceled.remote())
 
 
+def test_cancel_head_unblocks_queue(shutdown_only):
+    """
+    Test that when the head task of an actor's queue is cancelled,
+    subsequent tasks with resolved dependencies can proceed.
+
+    Scenario:
+    - Task A depends on a long-running task (unresolved dependency)
+    - Task B has no dependencies (resolved immediately)
+    - Task B is queued behind Task A
+    - Cancel Task A
+    - Task B should now execute
+    """
+
+    @ray.remote
+    class Actor:
+        def process(self, data):
+            return f"processed: {data}"
+
+    @ray.remote
+    def long_running_task():
+        time.sleep(3600)
+
+    ray.init()
+    actor = Actor.remote()
+
+    # Task A with unresolved dependency
+    ref_long = long_running_task.remote()
+    ref_a = actor.process.remote(ref_long)
+
+    # Task B with no dependencies, queued behind A
+    ref_b = actor.process.remote("ready_value")
+
+    # Wait for Task B's dependency resolution to complete. After resolution,
+    # Task B won't trigger SendPendingTasks again (it only happens in the
+    # resolution callback). So if CancelTask doesn't call SendPendingTasks
+    # properly, Task B will remain stuck in the queue forever.
+    # TODO(Yicheng-Lu-llll): Use a deterministic approach if an API becomes
+    # available to query whether a task's dependencies are resolved while
+    # still queued on the client side.
+    time.sleep(1)
+
+    # Cancel Task A
+    ray.cancel(ref_a)
+
+    # Task B should complete
+    result = ray.get(ref_b, timeout=5)
+    assert result == "processed: ready_value"
+
+    # Cleanup
+    ray.cancel(ref_long, force=True)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
