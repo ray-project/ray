@@ -238,13 +238,6 @@ steps:
         --only-tags tfxbsl
     depends_on: datatfxbslbuild-multipy
 
-  - name: datadocgpubuild
-    label: "wanda: datadocgpubuild-py3.10"
-    wanda: ci/docker/data.doc.gpu.build.wanda.yaml
-    env:
-      PYTHON: "3.10"
-    tags: cibase
-
   - label: ":database: data: doc tests"
     tags:
       - data
@@ -289,18 +282,18 @@ steps:
     commands:
       # doc tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //doc/... data
-        --build-name datadocgpubuild-py3.10
+        --build-name docgpubuild-py3.10
         --only-tags doctest
         --except-tags cpu
         --python-version 3.10
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
-        --build-name datadocgpubuild-py3.10
+        --build-name docgpubuild-py3.10
         --except-tags doctest
         --only-tags gpu
         --skip-ray-installation
         --python-version 3.10
-    depends_on: datadocgpubuild
+    depends_on: docgpubuild
 
   - label: ":database: data: integration tests"
     tags:
@@ -356,10 +349,10 @@ steps:
     soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... data --run-flaky-tests
-        --build-name datadocgpubuild-py3.10
+        --build-name docgpubuild-py3.10
         --only-tags gpu,gpu_only
         --python-version 3.10
-    depends_on: datadocgpubuild
+    depends_on: docgpubuild
 
   - label: ":database: data: postmerge authenticated tests"
     key: data_postmerge_authenticated_tests
