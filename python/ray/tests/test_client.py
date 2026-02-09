@@ -18,12 +18,12 @@ import ray
 import ray.cloudpickle as cloudpickle
 import ray.util.client.server.server as ray_client_server
 from ray._common.network_utils import build_address
+from ray._common.test_utils import run_string_as_driver
 from ray._private.client_mode_hook import (
     client_mode_should_convert,
     disable_client_hook,
     enable_client_mode,
 )
-from ray._private.test_utils import run_string_as_driver
 from ray.tests.client_test_utils import (
     create_remote_signal_actor,
     run_wrapped_actor_creation,

@@ -3,8 +3,8 @@ import sys
 import pytest
 
 import ray
+from ray._common.test_utils import run_string_as_driver
 from ray._private.ray_logging.logging_config import LoggingConfig
-from ray._private.test_utils import run_string_as_driver
 
 
 def test_invalid_encoding():
