@@ -28,7 +28,8 @@
 namespace ray {
 
 MemoryMonitor::MemoryMonitor(KillWorkersCallback kill_workers_callback)
-    : kill_workers_callback_(std::move(kill_workers_callback)) {
+    : worker_killing_in_progress_(false),
+      kill_workers_callback_(std::move(kill_workers_callback)) {
   RAY_CHECK(kill_workers_callback_ != nullptr)
       << "Failed to initialize MemoryMonitor due to null kill_workers_callback_. "
       << "Was a kill worker callback correctly passed when constructing the "
@@ -418,6 +419,18 @@ const std::string MemoryMonitor::TruncateString(const std::string value,
     return value.substr(0, max_length) + "...";
   }
   return value;
+}
+
+void MemoryMonitor::SetWorkerKillingCompleted() {
+  worker_killing_in_progress_.store(false);
+}
+
+void MemoryMonitor::SetWorkerKillingInProgress() {
+  worker_killing_in_progress_.store(true);
+}
+
+bool MemoryMonitor::GetWorkerKillingInProgress() {
+  return worker_killing_in_progress_.load();
 }
 
 std::ostream &operator<<(std::ostream &os, const SystemMemorySnapshot &memory_snapshot) {

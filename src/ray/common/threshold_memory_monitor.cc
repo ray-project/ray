@@ -63,8 +63,8 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
           bool is_usage_above_threshold =
               IsUsageAboveThreshold(cur_memory_snapshot, computed_threshold_bytes_);
 
-          if (is_usage_above_threshold) {
-            // TODO(Kunchd): Call get process snapshot in node_manager.cc
+          if (is_usage_above_threshold && !GetWorkerKillingInProgress()) {
+            SetWorkerKillingInProgress();
             kill_workers_callback_(cur_memory_snapshot);
           }
         },

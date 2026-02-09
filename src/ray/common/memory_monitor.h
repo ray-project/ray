@@ -70,6 +70,12 @@ class MemoryMonitor {
   virtual ~MemoryMonitor() = default;
 
   /**
+   * @brief Notifies this memory monitor that the worker killing event has completed.
+   *        This rearms the memory monitor to be able to trigger the kill callback again.
+   */
+  void SetWorkerKillingCompleted();
+
+  /**
    * @param top_n The number of top memory-using processes.
    * @param process_memory_snapshot The snapshot of per process memory usage.
    * @param proc_dir The directory to scan for the processes.
@@ -236,6 +242,9 @@ class MemoryMonitor {
   static const std::vector<std::tuple<pid_t, int64_t>> GetTopNMemoryUsage(
       uint32_t top_n, const ProcessesMemorySnapshot &all_usage);
 
+  /// Flag to indicate that the worker killing event is in progress.
+  std::atomic<bool> worker_killing_in_progress_;
+
   FRIEND_TEST(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
   FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidReturnsWorkingSet);
   FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidKeyLastReturnsWorkingSet);
@@ -254,6 +263,18 @@ class MemoryMonitor {
   FRIEND_TEST(MemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc);
 
  protected:
+  /**
+   * @brief Notifies this memory monitor that the worker killing event has started.
+   *        The memory monitor will not fire the callback until the worker killing event
+   * has completed.
+   */
+  void SetWorkerKillingInProgress();
+
+  /**
+   * @return True if the worker killing event is in progress, false otherwise.
+   */
+  bool GetWorkerKillingInProgress();
+
   static constexpr int64_t kNull = -1;
   /// The logging frequency. Decoupled from how often the monitor runs.
   static constexpr uint32_t kLogIntervalMs = 5000;

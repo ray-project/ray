@@ -3074,6 +3074,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
                      "killing."
                   << "This could be due to worker memory leak and"
                   << "idle worker are occupying most of the memory.";
+              self->memory_monitor_->SetWorkerKillingCompleted();
               return;
             }
             std::pair<std::shared_ptr<WorkerInterface>, bool>
@@ -3158,6 +3159,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
               }
             }
           }
+          self->memory_monitor_->SetWorkerKillingCompleted();
         },
         "NodeManager.KillWorkersCallback");
   };
