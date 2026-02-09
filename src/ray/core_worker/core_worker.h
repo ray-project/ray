@@ -398,12 +398,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// (local, submitted_task) reference counts. For debugging purposes.
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
 
-  /// Returns a JSON string representation of the internal state of the
-  /// ReferenceCounter.
-  /// NOTE: This is very expensive and must only be used for debugging.
-  /// Please do NOT use this for production observability or testing.
-  std::string GetReferenceCounterDebugJson() const;
-
   /// Return all pending children task ids for a given parent task id.
   /// The parent task id should exist in the current worker.
   /// For debugging and testing only.
@@ -923,6 +917,17 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// server times out. NotFound if placement group is already removed or doesn't exist.
   Status WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
                                  int64_t timeout_seconds);
+
+  /// Asynchronously wait for a placement group to be ready.
+  /// Returns an ObjectRef that can be used with ray.get()/ray.wait()/await.
+  ///
+  /// \param placement_group_id The id of a placement group to wait for.
+  /// \param serialized_object_data The serialized object data to put when ready.
+  /// \param serialized_object_metadata The serialized object metadata.
+  /// \return ObjectID that becomes ready when the placement group is ready.
+  ObjectID AsyncWaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
+                                        const std::string &serialized_object_data,
+                                        const std::string &serialized_object_metadata);
 
   /// Submit an actor task.
   ///
