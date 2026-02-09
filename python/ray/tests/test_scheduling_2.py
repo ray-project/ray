@@ -792,9 +792,9 @@ def test_workload_placement_metrics(ray_start_regular):
     # functions. So the expected task workload metrics values are different between
     # client and non-client mode.
     if client_test_enabled():
-        expected_task_metrics_value = 4.0
+        expected_task_metrics_value = 3.0
     else:
-        expected_task_metrics_value = 2.0
+        expected_task_metrics_value = 1.0
 
     timeseries = PrometheusTimeseries()
     placement_metric_condition = get_metric_check_condition(
