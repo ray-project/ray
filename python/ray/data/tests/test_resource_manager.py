@@ -566,22 +566,10 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
     """Tests for OpResourceAllocator._should_unblock_streaming_output_backpressure."""
 
     def test_unblock_backpressure_terminal_operator(self, restore_data_context):
-        """Terminal operator (no downstream) should always unblock."""
+        """Terminal operator (no downstream eligible ops) should always unblock."""
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
-
-        topo = build_streaming_topology(o2, ExecutionOptions())
-
-        resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
-        )
-        allocator = resource_manager._op_resource_allocator
-
-        # o2 is terminal (no output_dependencies), should always unblock
-        assert allocator._should_unblock_streaming_output_backpressure(o2) is True
-
-        # Add o3 operator - o2 is no longer terminal
-        o3 = mock_map_op(o2)
+        o3 = LimitOperator(1, o2, DataContext.get_current())
 
         topo = build_streaming_topology(o3, ExecutionOptions())
 
@@ -590,9 +578,23 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
         )
         allocator = resource_manager._op_resource_allocator
 
-        # Mock downstream (o3) has active tasks and input blocks (ie unblocking
+        # o2 is terminal (no downstream eligible ops beyond it), should always
+        # unblock
+        assert allocator._should_unblock_streaming_output_backpressure(o2) is True
+
+        # Add o4 operator - o2 is no longer terminal
+        o4 = mock_map_op(o3)
+
+        topo = build_streaming_topology(o4, ExecutionOptions())
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        allocator = resource_manager._op_resource_allocator
+
+        # Mock downstream (o4) having active tasks and input blocks (ie unblocking
         # conditions not met)
-        o3.num_active_tasks = MagicMock(return_value=1)
+        o4.num_active_tasks = MagicMock(return_value=1)
         allocator._idle_detector.detect_idle = MagicMock(return_value=False)
 
         # o2 is not terminal anymore, falls back to idle detector which returns False
