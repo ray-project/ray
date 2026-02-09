@@ -4372,6 +4372,7 @@ tensorflow-metadata==1.13.1 \
     --hash=sha256:8abdead4cae3d7258f815d9f63a146ae1e31853ac07ba271db0ea9dfb0a6b317
     # via
     #   --override python/requirements/data/pyarrow-v9.txt
+    #   -r python/requirements/data/data-base.txt
     #   -r python/requirements/data/pyarrow-v9.txt
     #   tensorflow-datasets
 termcolor==3.3.0 \
