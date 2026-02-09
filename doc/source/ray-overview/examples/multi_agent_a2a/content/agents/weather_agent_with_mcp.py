@@ -56,27 +56,3 @@ async def build_agent():
         system_prompt=PROMPT,
         mcp_endpoints=[_weather_mcp_endpoint()],
     )
-
-
-# ========== MAIN ==========
-if __name__ == "__main__":
-    from helpers.agent_runner import run_agent_with_trace
-
-    async def main():
-        start_time = time.time()
-        user_request = "what is the weather like in palo alto?"
-
-        agent = await build_agent()
-
-        await run_agent_with_trace(
-            agent=agent,
-            user_request=user_request,
-            system_prompt=PROMPT,
-            max_iterations=5,
-            show_model_messages=True,
-        )
-
-        end_time = time.time()
-        print(f"Time taken: {end_time - start_time} seconds")
-
-    asyncio.run(main())

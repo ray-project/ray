@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Optional
 
 
 @dataclass
@@ -69,7 +69,7 @@ def load_llm_config(
     """
     return LLMConfig(
         model=model or os.getenv("MODEL", _DEFAULTS["model"]),
-        temperature=temperature or float(os.getenv("TEMPERATURE", _DEFAULTS["temperature"])),
+        temperature=temperature if temperature is not None else float(os.getenv("TEMPERATURE", _DEFAULTS["temperature"])),
         openai_base_url=os.getenv("OPENAI_COMPAT_BASE_URL", "").strip(),
         openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
         anyscale_version=os.getenv(
