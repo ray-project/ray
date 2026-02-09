@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Optional, Type, Union
+from typing import TYPE_CHECKING, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -153,8 +153,3 @@ class MAPPOConfig(AlgorithmConfig):
                 )
         if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
             self._value_error("`entropy_coeff` must be >= 0.0")
-
-    @property
-    @override(AlgorithmConfig)
-    def _model_config_auto_includes(self) -> Dict[str, Any]:
-        return super()._model_config_auto_includes | {}

@@ -57,7 +57,7 @@ from ray.rllib.examples.algorithms.mappo.mappo import MAPPOConfig
 from ray.rllib.examples.algorithms.mappo.torch.shared_critic_torch_rl_module import (
     SharedCriticTorchRLModule,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
