@@ -21,6 +21,7 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
+      - --override python/requirements/serve/serve-overrides.txt
     build_arg_sets:
       - py310
       - py312
@@ -37,6 +38,7 @@ depsets:
       - --python-platform=linux
       - --unsafe-package ray
       - --override python/requirements/serve/tracing-reqs.txt
+      - --override python/requirements/serve/serve-overrides.txt
     build_arg_sets:
       - py310
 
@@ -50,5 +52,6 @@ depsets:
       - --python-platform=linux
       - --unsafe-package ray
       - --override python/requirements/serve/pydantic-reqs.txt
+      - --override python/requirements/serve/serve-overrides.txt
     build_arg_sets:
       - py310
