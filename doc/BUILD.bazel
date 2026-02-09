@@ -599,20 +599,16 @@ doctest_each(
     ),
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
-    env = {"TF_USE_LEGACY_KERAS": "1"},
 )
 
 doctest(
     name = "doctest[data-gpu]",
-    size = "large",
-    timeout = "eternal",
     files = [
         "source/data/batch_inference.rst",
         "source/data/transforming-data.rst",
     ],
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
-    env = {"TF_USE_LEGACY_KERAS": "1"},
     gpu = True,
 )
 

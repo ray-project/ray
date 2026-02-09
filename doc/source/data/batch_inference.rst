@@ -155,7 +155,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             # and reuse it for inference across multiple batches.
             class TFPredictor:
                 def __init__(self):
-                    import tf_keras as keras
+                    from tensorflow import keras
 
                     # Load a dummy neural network.
                     # Set `self.model` to your pre-trained Keras model.
@@ -352,7 +352,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             class TFPredictor:
                 def __init__(self):
                     import tensorflow as tf
-                    import tf_keras as keras
+                    from tensorflow import keras
 
                     # Move the neural network to GPU by specifying the GPU device.
                     with tf.device("GPU:0"):
