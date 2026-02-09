@@ -2506,14 +2506,9 @@ def test_deploy_with_gang_placement_group_failure(
 ):
     """
     Test deploy with a gang placement group creation failure.
-
-    Follows the same pattern as test_deploy_with_placement_group_failure:
-    when all gang PG creations fail, the deployment retries up to the
-    threshold and then transitions to DEPLOY_FAILED.
     """
 
     def failing_create_placement_group_fn(request, *args, **kwargs):
-        """Always raises to simulate gang PG creation failure."""
         raise RuntimeError("Simulated gang PG creation failure")
 
     create_dsm, _, _, _ = mock_deployment_state_manager
@@ -2530,7 +2525,7 @@ def test_deploy_with_gang_placement_group_failure(
     assert ds.curr_status_info.status == DeploymentStatus.UPDATING
 
     # Each dsm.update() call attempts to create gang PGs, fails, and
-    # increments the retry counter by 1.  The threshold is
+    # increments the retry counter by 1. The threshold is
     # min(max_constructor_retry_count, target_num_replicas * MAX_PER_REPLICA_RETRY_COUNT)
     # = min(inf, 4 * 2) = 8.
     threshold = ds._failed_to_start_threshold

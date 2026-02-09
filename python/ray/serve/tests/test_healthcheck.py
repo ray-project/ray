@@ -11,6 +11,7 @@ from ray.serve._private.constants import (
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve.config import GangSchedulingConfig
 
 
 class Counter:
@@ -307,8 +308,6 @@ def test_gang_health_check_restarts_gang(serve_instance):
 
         def should_fail(self):
             return self._should_fail
-
-    from ray.serve.config import GangSchedulingConfig
 
     toggle = ray.remote(Toggle).remote()
 
