@@ -25,29 +25,30 @@
 #include <vector>
 
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/raylet/worker_interface.h"
 #include "ray/util/process.h"
 
 namespace ray {
 
-/// A snapshot of memory information.
+/// A snapshot of aggregated memory usage
+/// across the system.
 struct SystemMemorySnapshot {
-  /// The memory used.
   int64_t used_bytes;
 
-  /// The total memory that can be used. >= used_bytes.
+  /// The total memory available on the system. >= used_bytes.
   int64_t total_bytes;
 
   friend std::ostream &operator<<(std::ostream &os,
                                   const SystemMemorySnapshot &memory_snapshot);
 };
 
+/// A snapshot of per-process memory usage.
 using ProcessesMemorySnapshot = absl::flat_hash_map<pid_t, int64_t>;
 
 /// Callback that runs at each monitoring interval.
 ///
 /// \param system_memory snapshot of system memory information.
-using KillWorkersCallback = std::function<void(MemorySnapshot system_memory)>;
+using KillWorkersCallback =
+    std::function<void(const SystemMemorySnapshot &system_memory)>;
 
 /// Base class for memory monitor implementations.
 /// Monitors the memory usage of the node.
@@ -66,7 +67,6 @@ class MemoryMonitor {
    */
   MemoryMonitor(KillWorkersCallback kill_workers_callback);
 
-  /// Virtual destructor to ensure proper cleanup of derived classes.
   virtual ~MemoryMonitor() = default;
 
   /**
@@ -100,8 +100,25 @@ class MemoryMonitor {
   static const ProcessesMemorySnapshot TakePerProcessMemorySnapshot(
       const std::string proc_dir = kProcDirectory);
 
- private:
+  /**
+   * @brief Computes the memory threshold.
+   *
+   * @details Memory usage threshold = max(total_memory * usage_threshold_, total_memory -
+   * min_memory_free_bytes)
+   *
+   * @param total_memory_bytes The total amount of memory available in the system.
+   * @param usage_threshold A value in [0-1] to indicate the max usage.
+   * @param min_memory_free_bytes The min amount of free space to maintain before it is
+   *        exceeding the threshold.
+   * @return The memory threshold.
+   */
+  static int64_t GetMemoryThreshold(int64_t total_memory_bytes,
+                                    float usage_threshold,
+                                    int64_t min_memory_free_bytes);
+
   static constexpr char kDefaultCgroupPath[] = "/sys/fs/cgroup";
+
+ private:
   static constexpr char kCgroupsV1MemoryMaxPath[] = "memory/memory.limit_in_bytes";
   static constexpr char kCgroupsV1MemoryUsagePath[] = "memory/memory.usage_in_bytes";
   static constexpr char kCgroupsV1MemoryStatPath[] = "memory/memory.stat";
@@ -114,9 +131,6 @@ class MemoryMonitor {
   static constexpr char kCgroupsV2MemoryStatActiveFileKey[] = "active_file";
   static constexpr char kProcDirectory[] = "/proc";
   static constexpr char kCommandlinePath[] = "cmdline";
-  /// The logging frequency. Decoupled from how often the monitor runs.
-  static constexpr uint32_t kLogIntervalMs = 5000;
-  static constexpr int64_t kNull = -1;
 
   /**
    * @brief Gets memory information from the given cgroup.
@@ -143,14 +157,6 @@ class MemoryMonitor {
                                           const char *usage_path,
                                           const char *inactive_file_key,
                                           const char *active_file_key);
-
-  /**
-   * @brief Gets memory information for Linux OS.
-   *
-   * @param proc_dir The proc directory path to read the memory usage from.
-   * @return The used and total memory in bytes for Linux OS.
-   */
-  static std::tuple<int64_t, int64_t> GetLinuxMemoryBytes(const std::string proc_dir);
 
   /**
    * @brief Gets memory information for Linux OS.
@@ -210,22 +216,6 @@ class MemoryMonitor {
   static int64_t NullableMin(int64_t left, int64_t right);
 
   /**
-   * @brief Computes the memory threshold.
-   *
-   * @details Memory usage threshold = max(total_memory * usage_threshold_, total_memory -
-   * min_memory_free_bytes)
-   *
-   * @param total_memory_bytes The total amount of memory available in the system.
-   * @param usage_threshold A value in [0-1] to indicate the max usage.
-   * @param min_memory_free_bytes The min amount of free space to maintain before it is
-   *        exceeding the threshold.
-   * @return The memory threshold.
-   */
-  static int64_t GetMemoryThreshold(int64_t total_memory_bytes,
-                                    float usage_threshold,
-                                    int64_t min_memory_free_bytes);
-
-  /**
    * @brief Gets the used memory for a process.
    *
    * @param pid The process ID.
@@ -246,33 +236,32 @@ class MemoryMonitor {
   static const std::vector<std::tuple<pid_t, int64_t>> GetTopNMemoryUsage(
       uint32_t top_n, const ProcessesMemorySnapshot &all_usage);
 
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestUsageAtThresholdReportsFalse);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestCgroupFilesValidReturnsWorkingSet);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestCgroupFilesValidKeyLastReturnsWorkingSet);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestCgroupFilesValidNegativeWorkingSet);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestCgroupFilesValidMissingFieldReturnskNull);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestCgroupNonexistentStatFileReturnskNull);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestCgroupNonexistentUsageFileReturnskNull);
-  FRIEND_TEST(ThresholdMemoryMonitorTest,
-              TestMonitorPeriodSetMaxUsageThresholdCallbackExecuted);
-  FRIEND_TEST(ThresholdMemoryMonitorTest,
-              TestMonitorPeriodDisableMinMemoryCallbackExecuted);
-  FRIEND_TEST(ThresholdMemoryMonitorTest,
-              TestGetMemoryThresholdTakeGreaterOfTheTwoValues);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestGetPidsFromDirOnlyReturnsNumericFilenames);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestGetPidsFromNonExistentDirReturnsEmpty);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestGetCommandLinePidExistReturnsValid);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestShortStringNotTruncated);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestLongStringTruncated);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestTopNLessThanNReturnsMemoryUsedDesc);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc);
+  FRIEND_TEST(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive);
+  FRIEND_TEST(MemoryMonitorTest,
+              TestTakeSystemMemorySnapshotUsesCgroupWhenLowerThanSystem);
+  FRIEND_TEST(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidReturnsWorkingSet);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidKeyLastReturnsWorkingSet);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidNegativeWorkingSet);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidMissingFieldReturnskNull);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupNonexistentStatFileReturnskNull);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupNonexistentUsageFileReturnskNull);
+  FRIEND_TEST(MemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues);
+  FRIEND_TEST(MemoryMonitorTest, TestGetPidsFromDirOnlyReturnsNumericFilenames);
+  FRIEND_TEST(MemoryMonitorTest, TestGetPidsFromNonExistentDirReturnsEmpty);
+  FRIEND_TEST(MemoryMonitorTest, TestGetCommandLinePidExistReturnsValid);
+  FRIEND_TEST(MemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty);
+  FRIEND_TEST(MemoryMonitorTest, TestShortStringNotTruncated);
+  FRIEND_TEST(MemoryMonitorTest, TestLongStringTruncated);
+  FRIEND_TEST(MemoryMonitorTest, TestTopNLessThanNReturnsMemoryUsedDesc);
+  FRIEND_TEST(MemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc);
+  FRIEND_TEST(MemoryMonitorTest, TestTakePerProcessMemorySnapshotFiltersBadPids);
 
  protected:
+  static constexpr int64_t kNull = -1;
+  /// The logging frequency. Decoupled from how often the monitor runs.
+  static constexpr uint32_t kLogIntervalMs = 5000;
+
   /// Callback function that executes at each monitoring interval,
   /// on a dedicated thread managed by this class.
   const KillWorkersCallback kill_workers_callback_;

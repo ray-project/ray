@@ -1,4 +1,4 @@
-// Copyright 2022 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,8 +28,11 @@
 namespace ray {
 
 MemoryMonitor::MemoryMonitor(KillWorkersCallback kill_workers_callback)
-    : kill_workers_callback_(kill_workers_callback) {
-  RAY_CHECK(kill_workers_callback_ != nullptr);
+    : kill_workers_callback_(std::move(kill_workers_callback)) {
+  RAY_CHECK(kill_workers_callback_ != nullptr)
+      << "Failed to initialize MemoryMonitor due to null kill_workers_callback_. "
+      << "Was a kill worker callback correctly passed when constructing the "
+         "MemoryMonitor?";
 }
 
 const SystemMemorySnapshot MemoryMonitor::TakeSystemMemorySnapshot(

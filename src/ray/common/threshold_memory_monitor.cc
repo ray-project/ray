@@ -1,4 +1,4 @@
-// Copyright 2022 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,30 +40,32 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
       << "Invalid configuration: usage_threshold must be >= 0";
   RAY_CHECK_LE(usage_threshold, 1)
       << "Invalid configuration: usage_threshold must be <= 1";
+  int64_t total_memory_bytes =
+      MemoryMonitor::TakeSystemMemorySnapshot(root_cgroup_path_).total_bytes;
+  computed_threshold_bytes_ = MemoryMonitor::GetMemoryThreshold(
+      total_memory_bytes, usage_threshold, min_memory_free_bytes);
+  float computed_threshold_fraction = static_cast<float>(computed_threshold_bytes_) /
+                                      static_cast<float>(total_memory_bytes);
+  RAY_LOG(INFO) << absl::StrFormat(
+      "MemoryMonitor initialized with usage threshold at %d bytes "
+      "(%f%% of system memory), total system memory bytes: %d, monitor interval: %dms",
+      computed_threshold_bytes_,
+      computed_threshold_fraction * 100,
+      total_memory_bytes,
+      monitor_interval_ms);
+
   if (monitor_interval_ms > 0) {
-    int64_t total_memory_bytes =
-        MemoryMonitor::TakeSystemMemorySnapshot(root_cgroup_path_).total_bytes;
-    computed_threshold_bytes_ =
-        GetMemoryThreshold(total_memory_bytes, usage_threshold, min_memory_free_bytes);
-    computed_threshold_fraction_ = static_cast<float>(computed_threshold_bytes_) /
-                                   static_cast<float>(total_memory_bytes);
-    RAY_LOG(INFO) << absl::StrFormat(
-        "MemoryMonitor initialized with usage threshold at %d bytes "
-        "(%f system memory), total system memory bytes: %d",
-        computed_threshold_bytes_,
-        computed_threshold_fraction_,
-        total_memory_bytes);
     runner_->RunFnPeriodically(
         [this] {
           SystemMemorySnapshot cur_memory_snapshot =
               TakeSystemMemorySnapshot(root_cgroup_path_);
 
           bool is_usage_above_threshold =
-              IsUsageAboveThreshold(system_memory, computed_threshold_bytes_);
+              IsUsageAboveThreshold(cur_memory_snapshot, computed_threshold_bytes_);
 
           if (is_usage_above_threshold) {
             // TODO(Kunchd): Call get process snapshot in node_manager.cc
-            kill_workers_callback_(std::move(cur_memory_snapshot));
+            kill_workers_callback_(cur_memory_snapshot);
           }
         },
         monitor_interval_ms,

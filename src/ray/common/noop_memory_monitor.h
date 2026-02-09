@@ -1,4 +1,4 @@
-// Copyright 2025 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,20 +17,22 @@
 
 namespace ray {
 
-/// A no-op memory monitor that does not perform any monitoring.
-/// Used on platforms where memory monitoring is not supported (e.g., non-Linux).
+/**
+ * @brief A no-op memory monitor that does not perform any monitoring.
+ *
+ * Used on platforms where memory monitoring is not supported (e.g., non-Linux).
+ */
 class NoopMemoryMonitor : public MemoryMonitor {
  public:
-  /// Constructor.
-  ///
-  /// \param io_service the event loop (unused in noop implementation).
-  /// \param monitor_callback function callback (unused in noop implementation).
+  /**
+   * @param kill_workers_callback function to execute when the memory usage limit is
+   *        exceeded.
+   */
   NoopMemoryMonitor(KillWorkersCallback kill_workers_callback)
-      : MemoryMonitor(kill_workers_callback) {
+      : MemoryMonitor(std::move(kill_workers_callback)) {
     // No-op: does not start any periodic monitoring
   }
 
-  // Uncopyable type.
   NoopMemoryMonitor(const NoopMemoryMonitor &) = delete;
   NoopMemoryMonitor &operator=(const NoopMemoryMonitor &) = delete;
   NoopMemoryMonitor(NoopMemoryMonitor &&) = default;

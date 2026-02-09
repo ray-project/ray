@@ -56,8 +56,6 @@ constexpr const char *LineageReconstructionEligibilityToString(
     return "INELIGIBLE_PUT";
   case ray::core::LineageReconstructionEligibility::INELIGIBLE_NO_RETRIES:
     return "INELIGIBLE_NO_RETRIES";
-  case ray::core::LineageReconstructionEligibility::INELIGIBLE_LOCAL_MODE:
-    return "INELIGIBLE_LOCAL_MODE";
   case ray::core::LineageReconstructionEligibility::INELIGIBLE_LINEAGE_EVICTED:
     return "INELIGIBLE_LINEAGE_EVICTED";
   case ray::core::LineageReconstructionEligibility::INELIGIBLE_LINEAGE_DISABLED:

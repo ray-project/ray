@@ -139,7 +139,8 @@ enum RayletShutdownState : std::uint8_t {
 
 class NodeManager : public rpc::NodeManagerServiceHandler,
                     public syncer::ReporterInterface,
-                    public syncer::ReceiverInterface {
+                    public syncer::ReceiverInterface,
+                    public std::enable_shared_from_this<NodeManager> {
  public:
   /// Create a node manager.
   ///
@@ -901,7 +902,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   Throttler global_gc_throttler_;
 
   /// Target being evicted or null if no target
-  std::shared_ptr<WorkerInterface> high_memory_eviction_target_;
+  std::shared_ptr<WorkerInterface> worker_being_killed;
 
   ray::observability::MetricInterface &memory_manager_worker_eviction_total_count_;
 

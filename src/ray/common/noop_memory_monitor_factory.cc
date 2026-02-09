@@ -22,8 +22,6 @@ namespace ray {
 
 std::unique_ptr<MemoryMonitor> MemoryMonitorFactory::Create(
     KillWorkersCallback kill_workers_callback) {
-  RAY_LOG(WARNING) << "MemoryMonitor is only supported on Linux. "
-                   << "Using no-op memory monitor.";
   return std::make_unique<NoopMemoryMonitor>(std::move(kill_workers_callback));
 }
 

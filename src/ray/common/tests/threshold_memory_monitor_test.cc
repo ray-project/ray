@@ -1,4 +1,4 @@
-// Copyright 2022 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,21 +43,6 @@ class ThresholdMemoryMonitorTest : public ::testing::Test {
  protected:
   void TearDown() override { instance.reset(); }
 
-  void MakeMemoryUsage(pid_t pid,
-                       const std::string usage_kb,
-                       const std::string proc_dir) {
-    boost::filesystem::create_directory(proc_dir);
-    boost::filesystem::create_directory(proc_dir + "/" + std::to_string(pid));
-
-    std::string usage_filename = proc_dir + "/" + std::to_string(pid) + "/smaps_rollup";
-
-    std::ofstream usage_file;
-    usage_file.open(usage_filename);
-    usage_file << "SomeHeader" << std::endl;
-    usage_file << "Private_Clean: " << usage_kb << " kB" << std::endl;
-    usage_file.close();
-  }
-
   /**
    * Sets up a mock cgroup v2 directory for emulating memory usage and populates
    * the files with the provided mock memory values.
@@ -101,11 +86,13 @@ class ThresholdMemoryMonitorTest : public ::testing::Test {
       float usage_threshold,
       int64_t min_memory_free_bytes,
       uint64_t monitor_interval_ms,
-      KillWorkersCallback kill_workers_callback) {
-    instance = std::make_unique<ThresholdMemoryMonitor>(kill_workers_callback,
+      KillWorkersCallback kill_workers_callback,
+      const std::string &root_cgroup_path) {
+    instance = std::make_unique<ThresholdMemoryMonitor>(std::move(kill_workers_callback),
                                                         usage_threshold,
                                                         min_memory_free_bytes,
-                                                        monitor_interval_ms);
+                                                        monitor_interval_ms,
+                                                        root_cgroup_path);
     return *instance;
   }
   std::unique_ptr<ThresholdMemoryMonitor> instance;
@@ -117,74 +104,24 @@ class ThresholdMemoryMonitorTest : public ::testing::Test {
   std::unique_ptr<TempFile> mock_memory_stat_file_;
 };
 
-TEST_F(ThresholdMemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive) {
-  {
-    auto system_memory = MemoryMonitor::TakeSystemMemorySnapshot("");
-    ASSERT_GT(system_memory.total_bytes, 0);
-    ASSERT_GT(system_memory.total_bytes, system_memory.used_bytes);
-  }
-}
-
-TEST_F(MemoryMonitorTest, TestTakeSystemMemorySnapshotUsesCgroupWhenLowerThanSystem) {
-  int64_t cgroup_total_bytes = 1024 * 1024 * 1024;   // 1 GB
-  int64_t cgroup_current_bytes = 500 * 1024 * 1024;  // 500 MB current usage
-  int64_t inactive_file_bytes = 50 * 1024 * 1024;    // 50 MB inactive file cache
-  int64_t active_file_bytes = 30 * 1024 * 1024;      // 30 MB active file cache
-  int64_t expected_used_bytes =
-      cgroup_current_bytes - inactive_file_bytes - active_file_bytes;
-
-  std::string cgroup_dir = MockCgroupMemoryUsage(
-      cgroup_total_bytes, cgroup_current_bytes, inactive_file_bytes, active_file_bytes);
-
-  auto system_memory = MemoryMonitor::TakeSystemMemorySnapshot(cgroup_dir);
-
-  ASSERT_EQ(system_memory.total_bytes, cgroup_total_bytes);
-  ASSERT_EQ(system_memory.used_bytes, expected_used_bytes);
-}
-
-TEST_F(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
-  {
-    auto system_memory = MemoryMonitor::TakeSystemMemorySnapshot("");
-    auto [cgroup_used_bytes, cgroup_total_bytes] =
-        MemoryMonitor::GetCGroupMemoryBytes("");
-
-    auto cmd_out = Process::Exec("free -b");
-    std::string title;
-    std::string total;
-    std::string used;
-    std::string free;
-    std::string shared;
-    std::string cache;
-    std::string available;
-    std::istringstream cmd_out_ss(cmd_out);
-    cmd_out_ss >> total >> used >> free >> shared >> cache >> available;
-    cmd_out_ss >> title >> total >> used >> free >> shared >> cache >> available;
-
-    int64_t free_total_bytes;
-    std::istringstream total_ss(total);
-    total_ss >> free_total_bytes;
-
-    ASSERT_TRUE(system_memory.total_bytes == free_total_bytes ||
-                system_memory.total_bytes == cgroup_total_bytes);
-  }
-}
-
 TEST_F(ThresholdMemoryMonitorTest, TestMonitorTriggerCanDetectMemoryUsage) {
   std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
 
-  MakeThresholdMemoryMonitor(0.0 /*usage_threshold*/,
-                             -1 /*min_memory_free_bytes*/,
-                             1 /*refresh_interval_ms*/,
-                             "" /*root_cgroup_path*/,
-                             [has_checked_once](MemorySnapshot system_memory) {
-                               ASSERT_GT(system_memory.total_bytes, 0);
-                               ASSERT_GT(system_memory.used_bytes, 0);
-                               has_checked_once->count_down();
-                             });
+  MakeThresholdMemoryMonitor(
+      0.0 /*usage_threshold*/,
+      -1 /*min_memory_free_bytes*/,
+      1 /*refresh_interval_ms*/,
+      [has_checked_once](const SystemMemorySnapshot &system_memory) {
+        ASSERT_GT(system_memory.total_bytes, 0);
+        ASSERT_GT(system_memory.used_bytes, 0);
+        has_checked_once->count_down();
+      },
+      "" /*root_cgroup_path*/);
   has_checked_once->wait();
 }
 
-TEST_F(MemoryMonitorTest, TestMonitorDetectsMemoryAboveThresholdCallbackExecuted) {
+TEST_F(ThresholdMemoryMonitorTest,
+       TestMonitorDetectsMemoryAboveThresholdCallbackExecuted) {
   int64_t cgroup_total_bytes = 1024 * 1024 * 1024;   // 1 GB
   int64_t cgroup_current_bytes = 850 * 1024 * 1024;  // 850 MB current usage
   int64_t inactive_file_bytes = 30 * 1024 * 1024;    // 30 MB inactive file cache
@@ -196,333 +133,46 @@ TEST_F(MemoryMonitorTest, TestMonitorDetectsMemoryAboveThresholdCallbackExecuted
 
   std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
 
-  MakeMemoryMonitor(
+  MakeThresholdMemoryMonitor(
       0.7 /*usage_threshold (70%)*/,
       -1 /*min_memory_free_bytes*/,
       1 /*refresh_interval_ms*/,
-      cgroup_dir /*root_cgroup_path*/,
-      [has_checked_once, cgroup_total_bytes](bool is_usage_above_threshold,
-                                             SystemMemorySnapshot system_memory,
-                                             float usage_threshold) {
+      [has_checked_once, cgroup_total_bytes](const SystemMemorySnapshot &system_memory) {
         ASSERT_EQ(system_memory.total_bytes, cgroup_total_bytes);
-        ASSERT_TRUE(is_usage_above_threshold);
         has_checked_once->count_down();
-      });
+      },
+      cgroup_dir /*root_cgroup_path*/);
 
   has_checked_once->wait();
 }
 
-TEST_F(MemoryMonitorTest, TestMonitorMinFreeZeroThresholdIsOne) {
-  std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
+TEST_F(ThresholdMemoryMonitorTest,
+       TestMonitorDetectsMemoryBelowThresholdCallbackNotExecuted) {
+  int64_t cgroup_total_bytes = 1024 * 1024 * 1024;   // 1 GB
+  int64_t cgroup_current_bytes = 500 * 1024 * 1024;  // 500 MB current usage
+  int64_t inactive_file_bytes = 30 * 1024 * 1024;    // 30 MB inactive file cache
+  int64_t active_file_bytes = 20 * 1024 * 1024;      // 20 MB active file cache
+  // Working set = 500 - 30 - 20 = 450 MB (45% of 1GB, below 70% threshold)
 
-  MakeMemoryMonitor(0.4 /*usage_threshold*/,
-                    0 /*min_memory_free_bytes*/,
-                    1 /*refresh_interval_ms*/,
-                    "" /*root_cgroup_path*/,
-                    [has_checked_once](bool is_usage_above_threshold,
-                                       SystemMemorySnapshot system_memory,
-                                       float usage_threshold) {
-                      ASSERT_FLOAT_EQ(1.0f, usage_threshold);
-                      ASSERT_GT(system_memory.total_bytes, 0);
-                      ASSERT_GT(system_memory.used_bytes, 0);
-                      has_checked_once->count_down();
-                    });
+  std::string cgroup_dir = MockCgroupMemoryUsage(
+      cgroup_total_bytes, cgroup_current_bytes, inactive_file_bytes, active_file_bytes);
 
-  std::this_thread::sleep_for(std::chrono::seconds(20));
+  std::shared_ptr<std::atomic<bool>> callback_triggered =
+      std::make_shared<std::atomic<bool>>(false);
 
-  ASSERT_FALSE(callback_triggered.load())
+  MakeThresholdMemoryMonitor(
+      0.7 /*usage_threshold (70%)*/,
+      -1 /*min_memory_free_bytes*/,
+      1 /*refresh_interval_ms*/,
+      [callback_triggered](const SystemMemorySnapshot &system_memory) {
+        callback_triggered->store(true);
+      },
+      cgroup_dir /*root_cgroup_path*/);
+
+  std::this_thread::sleep_for(std::chrono::seconds(5));
+
+  ASSERT_FALSE(callback_triggered->load())
       << "Callback should not have been triggered when memory is below threshold";
-}
-
-TEST_F(ThresholdMemoryMonitorTest, TestCgroupFilesValidReturnsWorkingSet) {
-  std::string stat_file_name = UniqueID::FromRandom().Hex();
-  std::ofstream stat_file;
-  stat_file.open(stat_file_name);
-  stat_file << "random_key "
-            << "random_value" << std::endl;
-  stat_file << "inactive_file "
-            << "123" << std::endl;
-  stat_file << "active_file "
-            << "88" << std::endl;
-  stat_file << "another_random_key "
-            << "some_value" << std::endl;
-  stat_file.close();
-
-  std::string curr_file_name = UniqueID::FromRandom().Hex();
-  std::ofstream curr_file;
-  curr_file.open(curr_file_name);
-  curr_file << "300" << std::endl;
-  curr_file.close();
-
-  int64_t used_bytes = MemoryMonitor::GetCGroupMemoryUsedBytes(
-      stat_file_name.c_str(), curr_file_name.c_str(), "inactive_file", "active_file");
-
-  std::remove(stat_file_name.c_str());
-  std::remove(curr_file_name.c_str());
-
-  ASSERT_EQ(used_bytes, 300 - 123 - 88);
-}
-
-TEST_F(ThresholdMemoryMonitorTest, TestCgroupFilesValidKeyLastReturnsWorkingSet) {
-  std::string stat_file_name = UniqueID::FromRandom().Hex();
-  std::ofstream stat_file;
-  stat_file.open(stat_file_name);
-  stat_file << "random_key "
-            << "random_value" << std::endl;
-  stat_file << "inactive_file "
-            << "123" << std::endl;
-  stat_file << "active_file "
-            << "88" << std::endl;
-  stat_file.close();
-
-  std::string curr_file_name = UniqueID::FromRandom().Hex();
-  std::ofstream curr_file;
-  curr_file.open(curr_file_name);
-  curr_file << "300" << std::endl;
-  curr_file.close();
-
-  int64_t used_bytes = MemoryMonitor::GetCGroupMemoryUsedBytes(
-      stat_file_name.c_str(), curr_file_name.c_str(), "inactive_file", "active_file");
-
-  std::remove(stat_file_name.c_str());
-  std::remove(curr_file_name.c_str());
-
-  ASSERT_EQ(used_bytes, 300 - 123 - 88);
-}
-
-TEST_F(ThresholdMemoryMonitorTest, TestCgroupFilesValidNegativeWorkingSet) {
-  std::string stat_file_name = UniqueID::FromRandom().Hex();
-  std::ofstream stat_file;
-  stat_file.open(stat_file_name);
-  stat_file << "random_key "
-            << "random_value" << std::endl;
-  stat_file << "inactive_file "
-            << "300" << std::endl;
-  stat_file << "active_file "
-            << "100" << std::endl;
-  stat_file.close();
-
-  std::string curr_file_name = UniqueID::FromRandom().Hex();
-  std::ofstream curr_file;
-  curr_file.open(curr_file_name);
-  curr_file << "123" << std::endl;
-  curr_file.close();
-
-  int64_t used_bytes = MemoryMonitor::GetCGroupMemoryUsedBytes(
-      stat_file_name.c_str(), curr_file_name.c_str(), "inactive_file", "active_file");
-
-  std::remove(stat_file_name.c_str());
-  std::remove(curr_file_name.c_str());
-
-  ASSERT_EQ(used_bytes, 123 - 300 - 100);
-}
-
-TEST_F(ThresholdMemoryMonitorTest, TestCgroupFilesValidMissingFieldReturnskNull) {
-  std::string file_name = UniqueID::FromRandom().Hex();
-  std::string stat_file_name = UniqueID::FromRandom().Hex();
-  std::ofstream stat_file;
-  stat_file.open(stat_file_name);
-  stat_file << "random_key "
-            << "random_value" << std::endl;
-  stat_file << "another_random_key "
-            << "123" << std::endl;
-  stat_file.close();
-
-  std::string curr_file_name = UniqueID::FromRandom().Hex();
-  std::ofstream curr_file;
-  curr_file.open(curr_file_name);
-  curr_file << "300" << std::endl;
-  curr_file.close();
-
-  int64_t used_bytes = MemoryMonitor::GetCGroupMemoryUsedBytes(
-      stat_file_name.c_str(), curr_file_name.c_str(), "inactive_file", "active_file");
-
-  std::remove(stat_file_name.c_str());
-  std::remove(curr_file_name.c_str());
-
-  ASSERT_EQ(used_bytes, MemoryMonitor::kNull);
-}
-
-TEST_F(ThresholdMemoryMonitorTest, TestCgroupNonexistentStatFileReturnskNull) {
-  std::string stat_file_name = UniqueID::FromRandom().Hex();
-
-  std::string curr_file_name = UniqueID::FromRandom().Hex();
-  std::ofstream curr_file;
-  curr_file.open(curr_file_name);
-  curr_file << "300" << std::endl;
-  curr_file.close();
-
-  int64_t used_bytes = MemoryMonitor::GetCGroupMemoryUsedBytes(
-      stat_file_name.c_str(), curr_file_name.c_str(), "inactive_file", "active_file");
-  std::remove(curr_file_name.c_str());
-
-  ASSERT_EQ(used_bytes, MemoryMonitor::kNull);
-}
-
-TEST_F(ThresholdMemoryMonitorTest, TestCgroupNonexistentUsageFileReturnskNull) {
-  std::string curr_file_name = UniqueID::FromRandom().Hex();
-
-  std::string stat_file_name = UniqueID::FromRandom().Hex();
-  std::ofstream stat_file;
-  stat_file.open(stat_file_name);
-  stat_file << "random_key "
-            << "random_value" << std::endl;
-  stat_file << "inactive_file "
-            << "300" << std::endl;
-  stat_file << "active_file "
-            << "88" << std::endl;
-  stat_file.close();
-
-  int64_t used_bytes = MemoryMonitor::GetCGroupMemoryUsedBytes(
-      stat_file_name.c_str(), curr_file_name.c_str(), "inactive_file", "active_file");
-  std::remove(stat_file_name.c_str());
-
-  ASSERT_EQ(used_bytes, MemoryMonitor::kNull);
-}
-
-TEST_F(ThresholdMemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues) {
-  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0.5, 0), 100);
-  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0.5, 60), 50);
-
-  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 1, 10), 100);
-  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 1, 100), 100);
-
-  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0.1, 100), 10);
-  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0, 10), 90);
-  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0, 100), 0);
-
-  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0, MemoryMonitor::kNull), 0);
-  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0.5, MemoryMonitor::kNull), 50);
-  ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 1, MemoryMonitor::kNull), 100);
-}
-
-TEST_F(ThresholdMemoryMonitorTest, TestGetPidsFromDirOnlyReturnsNumericFilenames) {
-  std::string proc_dir = UniqueID::FromRandom().Hex();
-  boost::filesystem::create_directory(proc_dir);
-
-  std::string num_filename = proc_dir + "/123";
-  std::string non_num_filename = proc_dir + "/123b";
-
-  std::ofstream num_file;
-  num_file.open(num_filename);
-  num_file << num_filename;
-  num_file.close();
-
-  std::ofstream non_num_file;
-  non_num_file.open(non_num_filename);
-  non_num_file << non_num_filename;
-  non_num_file.close();
-
-  auto pids = ThresholdMemoryMonitor::GetPidsFromDir(proc_dir);
-
-  boost::filesystem::remove_all(proc_dir);
-
-  ASSERT_EQ(pids.size(), 1);
-  ASSERT_EQ(pids[0], 123);
-}
-
-TEST_F(ThresholdMemoryMonitorTest, TestGetPidsFromNonExistentDirReturnsEmpty) {
-  std::string proc_dir = UniqueID::FromRandom().Hex();
-  auto pids = ThresholdMemoryMonitor::GetPidsFromDir(proc_dir);
-  ASSERT_EQ(pids.size(), 0);
-}
-
-TEST_F(ThresholdMemoryMonitorTest, TestGetCommandLinePidExistReturnsValid) {
-  std::string proc_dir = UniqueID::FromRandom().Hex();
-  std::string pid_dir = proc_dir + "/123";
-  boost::filesystem::create_directories(pid_dir);
-
-  std::string cmdline_filename = pid_dir + "/" + ThresholdMemoryMonitor::kCommandlinePath;
-
-  std::ofstream cmdline_file;
-  cmdline_file.open(cmdline_filename);
-  cmdline_file << "/my/very/custom/command --test passes!     ";
-  cmdline_file.close();
-
-  std::string commandline = ThresholdMemoryMonitor::GetCommandLineForPid(123, proc_dir);
-
-  boost::filesystem::remove_all(proc_dir);
-
-  ASSERT_EQ(commandline, "/my/very/custom/command --test passes!");
-}
-
-TEST_F(ThresholdMemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty) {
-  {
-    std::string proc_dir = UniqueID::FromRandom().Hex();
-    std::string commandline = ThresholdMemoryMonitor::GetCommandLineForPid(123, proc_dir);
-    boost::filesystem::remove_all(proc_dir);
-    ASSERT_EQ(commandline, "");
-  }
-
-  {
-    std::string proc_dir = UniqueID::FromRandom().Hex();
-    boost::filesystem::create_directory(proc_dir);
-    std::string commandline = ThresholdMemoryMonitor::GetCommandLineForPid(123, proc_dir);
-    boost::filesystem::remove_all(proc_dir);
-    ASSERT_EQ(commandline, "");
-  }
-
-  {
-    std::string proc_dir = UniqueID::FromRandom().Hex();
-    std::string pid_dir = proc_dir + "/123";
-    boost::filesystem::create_directories(pid_dir);
-    std::string commandline = ThresholdMemoryMonitor::GetCommandLineForPid(123, proc_dir);
-    boost::filesystem::remove_all(proc_dir);
-    ASSERT_EQ(commandline, "");
-  }
-}
-
-TEST_F(ThresholdMemoryMonitorTest, TestShortStringNotTruncated) {
-  std::string out = ThresholdMemoryMonitor::TruncateString("im short", 20);
-  ASSERT_EQ(out, "im short");
-}
-
-TEST_F(ThresholdMemoryMonitorTest, TestLongStringTruncated) {
-  std::string out = ThresholdMemoryMonitor::TruncateString(std::string(7, 'k'), 5);
-  ASSERT_EQ(out, "kkkkk...");
-}
-
-TEST_F(ThresholdMemoryMonitorTest, TestTopNLessThanNReturnsMemoryUsedDesc) {
-  absl::flat_hash_map<pid_t, int64_t> usage;
-  usage.insert({1, 111});
-  usage.insert({2, 222});
-  usage.insert({3, 333});
-
-  auto list = ThresholdMemoryMonitor::GetTopNMemoryUsage(2, usage);
-
-  ASSERT_EQ(list.size(), 2);
-  ASSERT_EQ(std::get<0>(list[0]), 3);
-  ASSERT_EQ(std::get<1>(list[0]), 333);
-  ASSERT_EQ(std::get<0>(list[1]), 2);
-  ASSERT_EQ(std::get<1>(list[1]), 222);
-}
-
-TEST_F(ThresholdMemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc) {
-  absl::flat_hash_map<pid_t, int64_t> usage;
-  usage.insert({1, 111});
-  usage.insert({2, 222});
-
-  auto list = ThresholdMemoryMonitor::GetTopNMemoryUsage(3, usage);
-
-  ASSERT_EQ(list.size(), 2);
-  ASSERT_EQ(std::get<0>(list[0]), 2);
-  ASSERT_EQ(std::get<1>(list[0]), 222);
-  ASSERT_EQ(std::get<0>(list[1]), 1);
-  ASSERT_EQ(std::get<1>(list[1]), 111);
-}
-
-TEST_F(MemoryMonitorTest, TestTakePerProcessMemorySnapshotFiltersBadPids) {
-  std::string proc_dir = UniqueID::FromRandom().Hex();
-  MakeMemoryUsage(1, "111", proc_dir);
-
-  // Invalid pids with no memory usage file.
-  boost::filesystem::create_directory(proc_dir + "/2");
-  boost::filesystem::create_directory(proc_dir + "/3");
-
-  auto usage = MemoryMonitor::TakePerProcessMemorySnapshot(proc_dir);
-
-  ASSERT_EQ(usage.size(), 1);
-  ASSERT_TRUE(usage.contains(1));
 }
 
 }  // namespace ray

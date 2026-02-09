@@ -25,23 +25,27 @@
 
 namespace ray {
 
-/// File-system based memory monitor with threshold support.
-/// Monitors the memory usage of the node using /proc filesystem and cgroups.
-/// It checks the memory usage periodically and invokes the callback.
-/// This class is thread safe.
+/**
+ * @brief Filesystem based memory monitor that triggers when
+ * the memory usage exceeds a configured threshold.
+ *
+ * Monitors the memory usage of the node using /proc filesystem and cgroups.
+ * It checks the memory usage periodically and invokes the callback.
+ * This class is thread safe.
+ */
 class ThresholdMemoryMonitor : public MemoryMonitor {
  public:
-  /// Constructor.
-  ///
-  /// \param kill_workers_callback function to execute when the memory usage limit is
-  /// exceeded.
-  /// \param usage_threshold a value in [0-1] to indicate the max usage.
-  /// \param min_memory_free_bytes to indicate the minimum amount of free space before it
-  /// becomes over the threshold.
-  /// \param monitor_interval_ms the frequency to update the
-  /// usage. 0 disables the monitor and callbacks won't fire.
-  /// \param root_cgroup_path the path to the root cgroup that the threshold monitor will
-  /// use to calculate the system memory usage.
+  /**
+   * @param kill_workers_callback function to execute when the memory usage limit is
+   *        exceeded.
+   * @param usage_threshold a value in [0-1] to indicate the max usage.
+   * @param min_memory_free_bytes to indicate the minimum amount of free space before it
+   *        becomes over the threshold.
+   * @param monitor_interval_ms the frequency to update the usage. 0 disables the monitor
+   *        and callbacks won't fire.
+   * @param root_cgroup_path the path to the root cgroup that the threshold monitor will
+   *        use to calculate the system memory usage.
+   */
   ThresholdMemoryMonitor(KillWorkersCallback kill_workers_callback,
                          float usage_threshold,
                          int64_t min_memory_free_bytes,
@@ -57,14 +61,17 @@ class ThresholdMemoryMonitor : public MemoryMonitor {
    * @param system_memory The snapshot of system memory usage.
    * @return True if the memory usage is above the threshold.
    */
-  bool IsUsageAboveThreshold(const SystemMemorySnapshot &system_memory);
+  bool IsUsageAboveThreshold(const SystemMemorySnapshot &system_memory,
+                             int64_t threshold_bytes);
 
-  /// The computed threshold in bytes based on usage_threshold_ and
-  /// min_memory_free_bytes_.
+  /// The threshold in bytes that triggers the callback.
+  /// Computed by: max(total_memory * usage_threshold, total_memory -
+  /// min_memory_free_bytes)
   int64_t computed_threshold_bytes_;
 
-  /// The computed threshold fraction on usage_threshold_ and min_memory_free_bytes_.
-  float computed_threshold_fraction_;
+  /// The path to the root cgroup that the threshold monitor will
+  /// use to monitor the system memory usage.
+  std::string root_cgroup_path_;
 
   /// IO service for running the memory monitoring event loop.
   instrumented_io_context io_service_;

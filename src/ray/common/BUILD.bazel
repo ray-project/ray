@@ -83,10 +83,13 @@ ray_cc_library(
     hdrs = [
         "memory_monitor.h",
     ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/raylet:__subpackages__",
+    ],
     deps = [
         ":asio",
         ":ray_config",
-        "//src/ray/raylet:worker_interface",
         "//src/ray/util:process",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -143,7 +146,10 @@ ray_cc_library(
     hdrs = [
         "memory_monitor_factory.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/raylet:__subpackages__",
+    ],
     deps = [
         ":memory_monitor",
         ":noop_memory_monitor",

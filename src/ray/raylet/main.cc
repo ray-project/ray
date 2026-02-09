@@ -392,7 +392,7 @@ int main(int argc, char *argv[]) {
   std::shared_ptr<plasma::PlasmaClient> plasma_client;
   std::unique_ptr<ray::raylet::PlacementGroupResourceManager>
       placement_group_resource_manager;
-  std::unique_ptr<ray::raylet::NodeManager> node_manager;
+  std::shared_ptr<ray::raylet::NodeManager> node_manager;
   std::unique_ptr<ray::rpc::ClientCallManager> client_call_manager;
   std::unique_ptr<ray::rpc::CoreWorkerClientPool> worker_rpc_pool;
   std::unique_ptr<ray::rpc::RayletClientPool> raylet_client_pool;
@@ -988,7 +988,7 @@ int main(int argc, char *argv[]) {
         std::make_unique<ray::raylet::NewPlacementGroupResourceManager>(
             *cluster_resource_scheduler);
 
-    node_manager = std::make_unique<ray::raylet::NodeManager>(
+    node_manager = std::make_shared<ray::raylet::NodeManager>(
         main_service,
         raylet_node_id,
         node_name,
