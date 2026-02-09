@@ -3869,6 +3869,42 @@ class AutoscalingTest(unittest.TestCase):
         events = autoscaler.summary()
         assert events.failed_nodes == [("172.0.0.0", "ray.worker.default")]
 
+    def testWrongClusterIDRecoveryV1(self):
+        ray.init()
+        gcs_address = ray._private.worker.global_worker.gcs_client.address
+        monitor = Monitor(
+            address=gcs_address,
+            autoscaling_config=None,
+            log_dir=self.tmpdir,
+        )
+        old_client = monitor.gcs_client
+
+        calls = 0
+        original_get_all_resource_usage = old_client.get_all_resource_usage
+
+        def flaky():
+            nonlocal calls
+            if calls == 0:
+                calls += 1
+                raise ray.exceptions.AuthenticationError("WrongClusterID")
+            return original_get_all_resource_usage()
+
+        # replace time.sleep(AUTOSCALER_UPDATE_INTERVAL_S) in monitor._run()
+        def raise_stop(_):
+            raise RuntimeError("stop")
+
+        # inject the failure once
+        with patch.object(old_client, "get_all_resource_usage", side_effect=flaky):
+            # breaks the infinite loop with the patched time.sleep
+            with patch.object(time, "sleep", side_effect=raise_stop):
+                # verify stop happened
+                with self.assertRaises(RuntimeError):
+                    # raise AuthenticationError once
+                    monitor._run()
+
+        # assert the gcs client is refreshed on both monitor
+        self.assertIsNot(monitor.gcs_client, old_client)
+
 
 def test_import():
     """This test ensures that all the autoscaler imports work as expected to
