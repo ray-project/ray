@@ -1,14 +1,15 @@
 # syntax=docker/dockerfile:1.3-labs
 
 # Build HAProxy in a separate stage so build deps don't bloat the final image
-FROM ubuntu:22.04 AS haproxy-builder
+ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py3.10
+FROM $DOCKER_IMAGE_BASE_BUILD AS haproxy-builder
 
 RUN <<EOF
 #!/bin/bash
 set -euo pipefail
 
-apt-get update -y
-apt-get install -y --no-install-recommends \
+sudo apt-get update -y
+sudo apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
     curl \
@@ -19,14 +20,14 @@ apt-get install -y --no-install-recommends \
     wget \
     zlib1g-dev
 
-rm -rf /var/lib/apt/lists/*
+sudo rm -rf /var/lib/apt/lists/*
 
 HAPROXY_VERSION="2.8.12"
 HAPROXY_BUILD_DIR=$(mktemp -d)
 wget -O "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
 tar -xzf "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" -C "${HAPROXY_BUILD_DIR}" --strip-components=1
 make -C "${HAPROXY_BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc)
-make -C "${HAPROXY_BUILD_DIR}" install
+sudo make -C "${HAPROXY_BUILD_DIR}" install
 rm -rf "${HAPROXY_BUILD_DIR}"
 EOF
 
