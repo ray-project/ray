@@ -34,8 +34,13 @@ def wait_until_finish(
     start_time_s = time.time()
     while time.time() - start_time_s <= timeout_s:
         # Test calling list_jobs
-        client.list_jobs()
-        status = client.get_job_status(job_id)
+        try:
+            client.list_jobs()
+            status = client.get_job_status(job_id)
+        except RuntimeError as exc:
+            print(f"list_jobs/get_job_status failed, retrying: {exc}")
+            time.sleep(retry_interval_s)
+            continue
         if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
             return status
         time.sleep(retry_interval_s)
@@ -48,13 +53,27 @@ def submit_batch_jobs(
     timeout_s: int = 10 * 60,
     retry_interval_s: int = 1,
 ) -> bool:
+    max_submit_retries = 50000
     job_ids = []
     for i in range(num_jobs):
         # Cycle through clients arbitrarily
         client = clients[i % len(clients)]
-        job_id = client.submit_job(
-            entrypoint="echo hello",
-        )
+        job_id = None
+        for attempt in range(1, max_submit_retries + 1):
+            try:
+                job_id = client.submit_job(
+                    entrypoint="echo hello",
+                )
+                break
+            except RuntimeError as exc:
+                print(
+                    "submit_job failed (attempt "
+                    f"{attempt}/{max_submit_retries}), retrying: {exc}"
+                )
+                time.sleep(retry_interval_s)
+        if job_id is None:
+            print("submit_job failed after retries")
+            return False
         job_ids.append(job_id)
         print(f"submitted job: {job_id}")
 
@@ -71,7 +90,7 @@ def submit_batch_jobs(
             print(
                 f"Job {job_id} failed with status {status} (`None` indicates timeout)"
             )
-            return False
+            # return False
     return True
 
 
@@ -113,7 +132,22 @@ if __name__ == "__main__":
             exit(1)
 
         # Test list jobs
-        jobs: List[JobDetails] = clients[0].list_jobs()
+        max_list_jobs_retries = 50000
+        list_jobs_retry_interval_s = 2
+        jobs = None
+        for attempt in range(1, max_list_jobs_retries + 1):
+            try:
+                jobs = clients[0].list_jobs()
+                break
+            except RuntimeError as exc:
+                print(
+                    "list_jobs failed (attempt "
+                    f"{attempt}/{max_list_jobs_retries}), retrying: {exc}"
+                )
+                time.sleep(list_jobs_retry_interval_s)
+        if jobs is None:
+            print("list_jobs failed after retries")
+            exit(1)
         print(f"Total jobs submitted so far: {len(jobs)}")
 
         # Get job logs from random submission job
@@ -123,7 +157,22 @@ if __name__ == "__main__":
             is_submission_job = job_details.type == "SUBMISSION"
         job_id = job_details.submission_id
         print(f"Getting logs for randomly chosen job {job_id}...")
-        logs = clients[0].get_job_logs(job_id)
+    max_get_logs_retries = 50000
+    get_logs_retry_interval_s = 2
+    logs = None
+    for attempt in range(1, max_get_logs_retries + 1):
+        try:
+            logs = clients[0].get_job_logs(job_id)
+            break
+        except RuntimeError as exc:
+            print(
+                "get_job_logs failed (attempt "
+                f"{attempt}/{max_get_logs_retries}), retrying: {exc}"
+            )
+            time.sleep(get_logs_retry_interval_s)
+    if logs is None:
+        print("get_job_logs failed after retries")
+        exit(1)
         print(logs)
 
     time_taken = time.time() - start

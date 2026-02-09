@@ -66,7 +66,9 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 )
                 if not dashboard_http_address:
                     raise ValueError("Dashboard http address not found in InternalKV.")
-                self._dashboard_http_address = dashboard_http_address.decode()
+                self._dashboard_http_address = (
+                    f"http://{dashboard_http_address.decode()}"
+                )
                 return self._dashboard_http_address
             except Exception:
                 logger.exception("Get dashboard http address failed.")
