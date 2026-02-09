@@ -802,12 +802,13 @@ class DataContext:
         remote workers used for parallelization.
         """
         global _default_context
-        if (
-            not _default_context
-            or _default_context.dataset_logger_id != context.dataset_logger_id
-        ):
-            update_dataset_logger_for_worker(context.dataset_logger_id)
-        _default_context = context
+        with _context_lock:
+            if (
+                not _default_context
+                or _default_context.dataset_logger_id != context.dataset_logger_id
+            ):
+                update_dataset_logger_for_worker(context.dataset_logger_id)
+            _default_context = context
 
     @property
     def shuffle_strategy(self) -> ShuffleStrategy:
