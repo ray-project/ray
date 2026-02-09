@@ -57,12 +57,23 @@ APT_PKGS=(
     gnupg
 )
 
+
+POWER_APT_PKGS=(
+    build-essential
+    pkg-config
+    libssl-dev
+    curl
+)
+
+if [[ "${HOSTTYPE:-}" =~ ^(ppc64le|powerpc64le)$ ]]; then
+    APT_PKGS+=("${POWER_APT_PKGS[@]}")
+fi
+
 apt-get install -y "${APT_PKGS[@]}"
 
 useradd -ms /bin/bash -d /home/ray ray --uid $RAY_UID --gid $RAY_GID
 usermod -aG sudo ray
 echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers
-
 EOF
 
 USER $RAY_UID
@@ -84,6 +95,8 @@ if [[ "${HOSTTYPE}" =~ ^x86_64 ]]; then
     ARCH="x86_64"
 elif [[ "${HOSTTYPE}" =~ ^aarch64 ]]; then
     ARCH="aarch64"
+elif [[ "${HOSTTYPE}" =~ ^(ppc64le|powerpc64le)$ ]]; then
+    ARCH="ppc64le"
 else
     echo "Unsupported architecture ${HOSTTYPE}" >/dev/stderr
     exit 1
@@ -108,6 +121,12 @@ wget -qO- https://astral.sh/uv/install.sh | sudo -E env UV_UNMANAGED_INSTALL="/u
 
 # Set up Conda as system Python
 export PATH=$HOME/anaconda3/bin:$PATH
+
+if [[ "${HOSTTYPE:-}" =~ ^(ppc64le|powerpc64le)$ ]]; then
+    # Install Rust for POWER
+    curl https://sh.rustup.rs -sSf | sh -s -- -y
+    echo 'export PATH=$HOME/.cargo/bin:$PATH' >> "$HOME/.bashrc"
+fi
 
 # Some packages are on PyPI as well as other indices, but the latter
 # (unhelpfully) take precedence. We use `--index-strategy unsafe-best-match`
