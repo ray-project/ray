@@ -272,9 +272,16 @@ class OpState:
         ref, diverged = dedupe_schemas_with_validation(
             self._schema,
             ref,
-            warn=not self._warned_on_schema_divergence,
             enforce_schemas=self.op.data_context.enforce_schemas,
         )
+
+        if (
+            diverged
+            and not self._warned_on_schema_divergence
+            and self.op.data_context.enforce_schemas
+        ):
+            warning_message = build_schemas_mismatch_warning(self._schema, ref.schema)
+            logger.warning(warning_message)
 
         self._schema = ref.schema
         self._warned_on_schema_divergence |= diverged
@@ -700,7 +707,7 @@ def _format_schema_mismatch_section(
     return f"{title} ({len(entries)} total):\n{body}{suffix}\n"
 
 
-def _build_schemas_mismatch_warning(
+def build_schemas_mismatch_warning(
     old_schema: "Schema", new_schema: Optional["Schema"], truncation_length: int = 20
 ) -> str:
     from ray.data.block import _is_empty_schema
@@ -709,11 +716,12 @@ def _build_schemas_mismatch_warning(
         old_fields_info = [
             f"{name}: {str(t)}" for name, t in zip(old_schema.names, old_schema.types)
         ]
-        return _format_schema_mismatch_section(
+        is_empty_message = _format_schema_mismatch_section(
             "Operator produced a RefBundle with an empty/unknown schema.",
             old_fields_info,
             truncate_num_mismatched_fields_to=truncation_length,
         )
+        return is_empty_message + "This may lead to unexpected behavior."
 
     # We assume old_schema and new_schema have the same underlying type
     # and can only either be PyArrow schemas or PandasBlockSchema
@@ -767,27 +775,23 @@ def _build_schemas_mismatch_warning(
         + old_excl_fields_message
         + changed_fields_message
         + disordered_message
+        + "This may lead to unexpected behavior."
     )
 
 
 def dedupe_schemas_with_validation(
     old_schema: Optional["Schema"],
     bundle: "RefBundle",
-    warn: bool = True,
     enforce_schemas: bool = False,
-    truncation_length: int = 20,
 ) -> Tuple["RefBundle", bool]:
-    """Unify/Dedupe two schemas, warning if warn=True
+    """Unify/Dedupe two schemas
 
     Args:
         old_schema: The old schema to unify. This can be `None`, in which case
             the new schema will be used as the old schema.
         bundle: The new `RefBundle` to unify with the old schema.
-        warn: Raise a warning if the schemas diverge.
         enforce_schemas: If `True`, allow the schemas to diverge and return unified schema.
             If `False`, but keep the old schema.
-        truncation_length: When warning is active, limits the number of mismatched fields
-            between the old schema and the incoming schema of the new `RefBundle`.
 
     Returns:
         A ref bundle with the unified schema of the two input schemas.
@@ -807,11 +811,6 @@ def dedupe_schemas_with_validation(
         return bundle, diverged
 
     diverged = True
-    if warn and enforce_schemas:
-        warning_message = _build_schemas_mismatch_warning(
-            old_schema, bundle.schema, truncation_length=truncation_length
-        )
-        logger.warning(f"{warning_message}This may lead to unexpected behavior.")
     if enforce_schemas:
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
 
