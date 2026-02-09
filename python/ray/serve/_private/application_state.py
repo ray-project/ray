@@ -44,11 +44,6 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.logging_utils import configure_component_logger
-from ray.serve._private.queue_monitor import (
-    create_queue_monitor_actor,
-    get_queue_monitor_actor,
-    kill_queue_monitor_actor,
-)
 from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -521,6 +516,8 @@ class ApplicationState:
         """
         if deployment_id not in self._queue_monitors:
             return
+
+        from ray.serve._private.queue_monitor import kill_queue_monitor_actor
 
         try:
             kill_queue_monitor_actor(deployment_id, namespace=SERVE_NAMESPACE)
@@ -1082,6 +1079,11 @@ class ApplicationState:
             deployment_id: ID of the deployment.
             queue_config: Queue configuration for the deployment.
         """
+        from ray.serve._private.queue_monitor import (
+            create_queue_monitor_actor,
+            get_queue_monitor_actor,
+        )
+
         # Check if we already have this monitor tracked with the same config
         if deployment_id in self._queue_monitors:
             _, existing_config = self._queue_monitors[deployment_id]
