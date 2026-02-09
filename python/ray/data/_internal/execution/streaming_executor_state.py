@@ -9,7 +9,6 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
-from uuid import UUID
 
 import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
@@ -203,12 +202,12 @@ class OpState:
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
-        # Progress Manager
-        self.progress_manager_uuid: Optional[UUID] = None
-        self.output_row_count: int = 0
 
     def __repr__(self):
         return f"OpState({self.op.name})"
+
+    def has_pending_bundles(self) -> bool:
+        return any(len(q) > 0 for q in self.input_queues)
 
     def total_enqueued_input_blocks(self) -> int:
         """Total number of blocks currently enqueued among:
@@ -223,9 +222,6 @@ class OpState:
         )
         return external_queue_size + internal_queue_size
 
-    def has_pending_bundles(self) -> bool:
-        return any(len(q) > 0 for q in self.input_queues)
-
     def total_enqueued_input_blocks_bytes(self) -> int:
         """Total number of bytes occupied by input bundles currently enqueued among:
         1. Input queue(s) pending dispatching (``OpState.input_queues``)
@@ -237,6 +233,38 @@ class OpState:
             else 0
         )
         return self.input_queue_bytes() + internal_queue_size_bytes
+
+    def total_enqueued_output_blocks(self) -> int:
+        """Total number of blocks currently enqueued among:
+
+        1. Output queue(s) pending dispatching (``OpState.output_queue``)
+        2. Operator's internal output queues (like ``MapOperator``s reordering
+        bundle-queue, when ``preserve_order=True`` etc)
+        """
+        external_queue_size = self.output_queue.num_blocks
+        internal_queue_size = (
+            self.op.internal_output_queue_num_blocks()
+            if isinstance(self.op, InternalQueueOperatorMixin)
+            else 0
+        )
+
+        return external_queue_size + internal_queue_size
+
+    def total_enqueued_output_blocks_bytes(self) -> int:
+        """Total number of bytes occupied by output bundles currently enqueued
+        among:
+
+        1. Output queue(s) pending dispatching (``OpState.output_queue``)
+        2. Operator's internal output queues (like ``MapOperator``s reordering
+        bundle-queue, when ``preserve_order=True`` etc)
+        """
+        internal_queue_size_bytes = (
+            self.op.internal_output_queue_num_bytes()
+            if isinstance(self.op, InternalQueueOperatorMixin)
+            else 0
+        )
+
+        return self.output_queue_bytes() + internal_queue_size_bytes
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
@@ -255,8 +283,6 @@ class OpState:
         self.num_completed_tasks += 1
 
         actor_info = self.op.get_actor_info()
-        if ref.num_rows() is not None:
-            self.output_row_count += ref.num_rows()
 
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
@@ -266,46 +292,6 @@ class OpState:
             next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
         self.op.metrics.num_external_outqueue_blocks += len(ref.blocks)
         self.op.metrics.num_external_outqueue_bytes += ref.size_bytes()
-
-    def summary_str_raw(
-        self, resource_manager: ResourceManager, verbose: bool = False
-    ) -> str:
-        # Active tasks
-        active = self.op.num_active_tasks()
-        desc = f"Tasks: {active}"
-        if (
-            self.op._in_task_submission_backpressure
-            or self.op._in_task_output_backpressure
-        ):
-            backpressure_types = []
-            if self.op._in_task_submission_backpressure:
-                # The op is backpressured from submitting new tasks.
-                policy = self.op._task_submission_backpressure_policy or ""
-                backpressure_types.append(f"tasks({policy})")
-            if self.op._in_task_output_backpressure:
-                # The op is backpressured from producing new outputs.
-                policy = self.op._task_output_backpressure_policy or ""
-                backpressure_types.append(f"outputs({policy})")
-            desc += f" [backpressured:{','.join(backpressure_types)}]"
-
-        # Actors info
-        desc += f"; {_actor_info_summary_str(self.op.get_actor_info())}"
-
-        # Queued blocks
-        desc += f"; Queued blocks: {self.total_enqueued_input_blocks()} ({memory_string(self.total_enqueued_input_blocks_bytes())})"
-        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op, verbose=verbose)}"
-
-        # Any additional operator specific information.
-        suffix = self.op.progress_str()
-        if suffix:
-            desc += f"; {suffix}"
-
-        return desc
-
-    def summary_str(
-        self, resource_manager: ResourceManager, verbose: bool = False
-    ) -> str:
-        return f"- {self.op.name}: {self.summary_str_raw(resource_manager, verbose)}"
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
@@ -476,6 +462,7 @@ def process_completed_tasks(
             ready_tasks_by_op[state].append(task)
 
         for state, ready_tasks in ready_tasks_by_op.items():
+            # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
             for task in ready_tasks:
                 if isinstance(task, DataOpTask):
@@ -610,7 +597,7 @@ def get_eligible_operators(
         #   - Its input queue has a valid bundle
         if (
             not op.has_completed()
-            and op.should_add_input()
+            and op.can_add_input()
             and state.has_pending_bundles()
         ):
             if not in_backpressure:
@@ -742,3 +729,40 @@ def dedupe_schemas_with_validation(
         ),
         diverged,
     )
+
+
+def format_op_state_summary(
+    op_state: OpState, resource_manager: ResourceManager, verbose: bool = False
+) -> str:
+    """Get a formatted summary of the OpState for progress reporting."""
+    # Active tasks
+    active = op_state.op.num_active_tasks()
+    desc = f"Tasks: {active}"
+    if (
+        op_state.op._in_task_submission_backpressure
+        or op_state.op._in_task_output_backpressure
+    ):
+        backpressure_types = []
+        if op_state.op._in_task_submission_backpressure:
+            # The op is backpressured from submitting new tasks.
+            policy = op_state.op._task_submission_backpressure_policy or ""
+            backpressure_types.append(f"tasks({policy})")
+        if op_state.op._in_task_output_backpressure:
+            # The op is backpressured from producing new outputs.
+            policy = op_state.op._task_output_backpressure_policy or ""
+            backpressure_types.append(f"outputs({policy})")
+        desc += f" [backpressured:{','.join(backpressure_types)}]"
+
+    # Actors info
+    desc += f"; {_actor_info_summary_str(op_state.op.get_actor_info())}"
+
+    # Queued blocks
+    desc += f"; Queued blocks: {op_state.total_enqueued_input_blocks()} ({memory_string(op_state.total_enqueued_input_blocks_bytes())})"
+    desc += f"; Resources: {resource_manager.get_op_usage_str(op_state.op, verbose=verbose)}"
+
+    # Any additional operator specific information.
+    suffix = op_state.op.progress_str()
+    if suffix:
+        desc += f"; {suffix}"
+
+    return desc

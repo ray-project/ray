@@ -74,6 +74,7 @@ def make_local_deployment_handle(
         local_testing_mode=True,
         deployment_config=deployment._deployment_config,
         actor_id="local",
+        ray_actor_options=deployment.ray_actor_options,
     )
     try:
         logger.info(f"Initializing local replica class for {deployment_id}.")

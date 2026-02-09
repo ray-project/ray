@@ -11,7 +11,7 @@ pip3 install --no-cache-dir \
     opencv-python-headless==4.11.0.86 \
     pillow==11.1.0 \
     pycocotools==2.0.8 \
-    requests==2.31.0 \
+    requests==2.32.5 \
     smart-open==6.2.0 \
     torch==2.6.0 \
     torchvision==0.21.0 \

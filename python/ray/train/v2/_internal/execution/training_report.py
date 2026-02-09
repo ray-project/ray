@@ -1,36 +1,22 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 if TYPE_CHECKING:
     from ray.train import Checkpoint
-
-
-class _ValidationSpec:
-    """A specification for validation."""
-
-    def __init__(
-        self,
-        validate_fn: Callable[["Checkpoint", Optional[Dict]], Dict],
-        validate_config: Dict,
-    ):
-        self.validate_fn = validate_fn
-        self.validate_config = validate_config
-
-    def __repr__(self) -> str:
-        return f"ValidationSpec(validate_fn={self.validate_fn}, validate_config={self.validate_config})"
+    from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 
 class _TrainingReport:
-    """A _TrainingResult reported by the user and a _ValidationSpec that describes how to validate it."""
+    """Checkpoint and metrics reported by user, as well as optional validation configuration."""
 
     def __init__(
         self,
         checkpoint: Optional["Checkpoint"],
         metrics: Dict[str, Any],
-        validation_spec: Optional[_ValidationSpec],
+        validation: Union[bool, "ValidationTaskConfig"],
     ):
         self.checkpoint = checkpoint
         self.metrics = metrics
-        self.validation_spec = validation_spec
+        self.validation = validation
 
     def __repr__(self) -> str:
-        return f"TrainingReport(checkpoint={self.checkpoint}, metrics={self.metrics}, validation_spec={self.validation_spec})"
+        return f"TrainingReport(checkpoint={self.checkpoint}, metrics={self.metrics}, validation={self.validation})"

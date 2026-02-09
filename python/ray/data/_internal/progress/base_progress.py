@@ -5,6 +5,8 @@ from abc import ABC, abstractmethod
 from typing import Any, List, Optional
 
 import ray
+from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.progress.utils import truncate_operator_name
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
@@ -117,7 +119,13 @@ class BaseExecutionProgressManager(ABC):
     TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS = 50
 
     @abstractmethod
-    def __init__(self, dataset_id: str, topology: "Topology"):
+    def __init__(
+        self,
+        dataset_id: str,
+        topology: "Topology",
+        show_op_progress: bool,
+        verbose_progress: bool,
+    ):
         """Initialize the progress manager, create all necessary progress bars
         and sub-progress bars for the given topology. Sub-progress bars are
         created for operators that implement the SubProgressBarMixin.
@@ -125,6 +133,10 @@ class BaseExecutionProgressManager(ABC):
         Args:
             dataset_id: id of Dataset
             topology: operation topology built via `build_streaming_topology`
+            show_op_progress: whether to show individual operator progress
+                (only for non-AllToAll by default).
+            verbose_progress: whether to show individual operator progress for
+                non-AllToAll operators as well.
         """
         ...
 
@@ -178,3 +190,69 @@ class BaseExecutionProgressManager(ABC):
             resource_manager: the ResourceManager.
         """
         ...
+
+
+class NoopSubProgressBar(BaseProgressBar):
+    """Sub-Progress Bar for Noop (Disabled) Progress Manager"""
+
+    def __init__(self, name: str, max_name_length: int):
+        self._max_name_length = max_name_length
+        self._desc = truncate_operator_name(name, self._max_name_length)
+
+    def set_description(self, name: str) -> None:
+        self._desc = truncate_operator_name(name, self._max_name_length)
+
+    def get_description(self) -> str:
+        return self._desc
+
+    def update(self, increment: int = 0, total: Optional[int] = None) -> None:
+        pass
+
+    def refresh(self):
+        pass
+
+    def close(self):
+        pass
+
+
+class NoopExecutionProgressManager(BaseExecutionProgressManager):
+    """Noop Data Execution Progress Display Manager (Progress Display Disabled)"""
+
+    def __init__(
+        self,
+        dataset_id: str,
+        topology: "Topology",
+        show_op_progress: bool,
+        verbose_progress: bool,
+    ):
+        for state in topology.values():
+            op = state.op
+            if not isinstance(op, SubProgressBarMixin):
+                continue
+            sub_pg_names = op.get_sub_progress_bar_names()
+            if sub_pg_names is not None:
+                for name in sub_pg_names:
+                    pg = NoopSubProgressBar(
+                        name=name, max_name_length=self.MAX_NAME_LENGTH
+                    )
+                    op.set_sub_progress_bar(name, pg)
+
+    def start(self) -> None:
+        pass
+
+    def refresh(self) -> None:
+        pass
+
+    def close_with_finishing_description(self, desc: str, success: bool) -> None:
+        pass
+
+    def update_total_progress(self, new_rows: int, total_rows: Optional[int]) -> None:
+        pass
+
+    def update_total_resource_status(self, resource_status: str) -> None:
+        pass
+
+    def update_operator_progress(
+        self, opstate: "OpState", resource_manager: "ResourceManager"
+    ) -> None:
+        pass

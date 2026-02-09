@@ -89,19 +89,8 @@ build_wheel_windows() {
 
   # Start a subshell to prevent PATH and cd from affecting our shell environment
   (
-    if ! is_python_version "${pyversion}"; then
-      conda install -y conda=24.1.2 python="${pyversion}"
-    fi
-    if ! is_python_version "${pyversion}"; then
-      echo "Expected pip for Python ${pyversion} but found Python $(get_python_version) with $(pip --version); exiting..." 1>&2
-      exit 1
-    fi
-
     unset PYTHON2_BIN_PATH PYTHON3_BIN_PATH  # make sure these aren't set by some chance
     build_dashboard
-
-    python -m pip install pip==25.2
-    python -m pip install wheel==0.45.1 delvewheel==1.11.2 setuptools==80.9.0
 
     cd "${WORKSPACE_DIR}"/python
     # Set the commit SHA in _version.py.
@@ -112,12 +101,19 @@ build_wheel_windows() {
       exit 1
     fi
 
-    # build ray wheel
-    python -m pip wheel -v -w dist . --no-deps --use-pep517
-    # Pack any needed system dlls like msvcp140.dll
-    delvewheel repair dist/ray-*.whl
-    # build ray-cpp wheel
-    RAY_INSTALL_CPP=1 python -m pip wheel -v -w dist . --no-deps --use-pep517
+    # build ray wheel and ray-cpp wheel
+    # delvewheel packs any needed system dlls like msvcp140.dll
+    uv run --no-project --no-config --no-cache \
+      --with wheel==0.45.1 \
+      --with delvewheel==1.11.2 \
+      --with setuptools==80.9.0 \
+      --with pip==25.2 \
+      --python "${pyversion}" \
+      /bin/bash -o pipefail -ec "
+        python -m pip wheel -v -w dist . --no-deps --use-pep517
+        delvewheel repair dist/ray-*.whl
+        RAY_INSTALL_CPP=1 python -m pip wheel -v -w dist . --no-deps --use-pep517
+      "
   )
 }
 

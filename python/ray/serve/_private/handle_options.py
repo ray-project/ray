@@ -3,7 +3,10 @@ from dataclasses import dataclass, fields
 
 import ray
 from ray.serve._private.common import DeploymentHandleSource
-from ray.serve._private.constants import RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP
+from ray.serve._private.constants import (
+    RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+)
 from ray.serve._private.utils import DEFAULT
 
 
@@ -62,7 +65,9 @@ class DynamicHandleOptionsBase(ABC):
 
 @dataclass(frozen=True)
 class DynamicHandleOptions(DynamicHandleOptionsBase):
-    _by_reference: bool = True
+    _by_reference: bool = not RAY_SERVE_USE_GRPC_BY_DEFAULT
+    request_serialization: str = "cloudpickle"
+    response_serialization: str = "cloudpickle"
 
     def copy_and_update(self, **kwargs) -> "DynamicHandleOptions":
         new_kwargs = {}

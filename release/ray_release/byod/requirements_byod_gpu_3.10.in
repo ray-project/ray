@@ -24,7 +24,7 @@ pyarrow
 pydantic>=2.5.0
 pytest
 pyyaml
-requests>=2.31.0
+requests>=2.32.5
 semidbm
 s3fs
 scikit-learn
