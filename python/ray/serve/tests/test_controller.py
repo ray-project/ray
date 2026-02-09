@@ -480,8 +480,8 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
     for snap in [snap_1, snap_2]:
         for key in [
             "timestamp_str",
-            "app",
-            "deployment",
+            "app_name",
+            "deployment_name",
             "current_replicas",
             "target_replicas",
             "min_replicas",
@@ -775,7 +775,7 @@ def test_application_autoscaling_snapshot_log_emitted_and_well_formed(serve_inst
     for key in [
         "snapshot_type",
         "timestamp_str",
-        "app",
+        "app_name",
         "num_deployments",
         "total_current_replicas",
         "total_target_replicas",
@@ -787,7 +787,7 @@ def test_application_autoscaling_snapshot_log_emitted_and_well_formed(serve_inst
 
     # Validate field values
     assert snap["snapshot_type"] == "application"
-    assert snap["app"] == APP_NAME
+    assert snap["app_name"] == APP_NAME
     # We have 2 deployments with autoscaling: Preprocessor and Model
     assert snap["num_deployments"] == 2
     assert isinstance(snap["total_current_replicas"], int)
