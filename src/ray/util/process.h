@@ -163,6 +163,8 @@ class Process : public ProcessInterface {
    *          Behaviors of duplicate environment variables will be undefined.
    * @return A pair of the process ID and the fd of the read end of the pipe
    *         to track child process's lifetime.
+   *         Invariant: The pid and fd returned by this function are either
+   *         always both valid or both invalid.
    */
   std::pair<pid_t, intptr_t> Spawnvpe(const char *argv[],
                                       std::error_code &ec,

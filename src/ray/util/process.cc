@@ -72,26 +72,22 @@ Process::~Process() {
 
 Process::Process() : pid_(-1), fd_(-1) {}
 
-Process::Process(pid_t pid) {
-  if (pid != -1) {
+Process::Process(pid_t pid) : pid_(pid), fd_(-1) {
+  if (pid_ != -1) {
     bool process_does_not_exist = false;
     std::error_code error;
 #ifdef _WIN32
-    if (fd_ == -1) {
-      BOOL inheritable = FALSE;
-      DWORD permissions = MAXIMUM_ALLOWED;
-      HANDLE handle = OpenProcess(permissions, inheritable, static_cast<DWORD>(pid));
-      if (handle) {
-        fd_ = reinterpret_cast<intptr_t>(handle);
-      } else {
-        DWORD error_code = GetLastError();
-        error = std::error_code(error_code, std::system_category());
-        if (error_code == ERROR_INVALID_PARAMETER) {
-          process_does_not_exist = true;
-        }
-      }
+    BOOL inheritable = FALSE;
+    DWORD permissions = MAXIMUM_ALLOWED;
+    HANDLE handle = OpenProcess(permissions, inheritable, static_cast<DWORD>(pid));
+    if (handle) {
+      fd_ = reinterpret_cast<intptr_t>(handle);
     } else {
-      RAY_CHECK(pid == GetProcessId(reinterpret_cast<HANDLE>(fd_)));
+      DWORD error_code = GetLastError();
+      error = std::error_code(error_code, std::system_category());
+      if (error_code == ERROR_INVALID_PARAMETER) {
+        process_does_not_exist = true;
+      }
     }
 #else
     if (kill(pid, 0) == -1 && errno == ESRCH) {
@@ -116,9 +112,6 @@ Process::Process(pid_t pid) {
       }
     }
   }
-
-  pid_ = pid;
-  fd_ = -1;
 }
 
 Process::Process(const char *argv[],
@@ -357,6 +350,12 @@ std::pair<pid_t, intptr_t> Process::Spawnvpe(const char *argv[],
     ec = std::error_code(errno, std::system_category());
   }
 #endif
+  RAY_CHECK((pid == -1 && fd == -1) || (pid != -1 && fd != -1)) << absl::StrFormat(
+      "Process (pid: %d) failed to be spawned to executed. "
+      "Invariant violated: pid: %d and fd: %d are not both valid or both invalid.",
+      pid,
+      pid,
+      fd);
   return std::pair<pid_t, intptr_t>(pid, fd);
 }
 
