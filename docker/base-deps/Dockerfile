@@ -167,3 +167,5 @@ sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get clean
 
 EOF
+
+WORKDIR $HOME
