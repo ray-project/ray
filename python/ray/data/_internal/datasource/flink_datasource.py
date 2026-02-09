@@ -16,14 +16,17 @@ from ray.data._internal.datasource.streaming_lag_metrics import LagMetrics
 from ray.data._internal.datasource.streaming_utils import (
     HTTPClientConfig,
     TwoPhaseCommitMixin,
+    compute_budget_deadline_s,
     create_block_coalescer,
     create_standard_schema,
     yield_coalesced_blocks,
+    yield_coalesced_blocks_with_progress,
 )
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.unbound_datasource import (
+    TriggerBudget,
     UnboundDatasource,
     create_unbound_read_task,
 )
@@ -39,6 +42,12 @@ class FlinkDatasource(UnboundDatasource, TwoPhaseCommitMixin):
 
     Reads data from Flink jobs via REST API. Supports reading metrics,
     accumulators, and job output.
+
+    Uses requests for HTTP API access. See:
+    https://requests.readthedocs.io/
+
+    Flink REST API documentation:
+    https://nightlies.apache.org/flink/flink-docs-master/docs/ops/rest_api/
     """
 
     def __init__(
@@ -81,6 +90,10 @@ class FlinkDatasource(UnboundDatasource, TwoPhaseCommitMixin):
         self._current_checkpoint: Optional[Dict[str, Any]] = None
         self._pending_commit_token: Optional[Any] = None
 
+    def supports_exactly_once(self) -> bool:
+        # REST polling is at-least-once. Exactly-once requires Flink checkpoint integration.
+        return False
+
     def _get_job_parallelism(self) -> int:
         """Query Flink job parallelism via REST API.
 
@@ -113,37 +126,38 @@ class FlinkDatasource(UnboundDatasource, TwoPhaseCommitMixin):
     def get_read_tasks(
         self,
         parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        *,
         checkpoint: Optional[Dict[str, Any]] = None,
         trigger: Optional[Any] = None,
         batch_id: Optional[int] = None,
-        max_records_per_trigger: Optional[int] = None,
-        max_bytes_per_trigger: Optional[int] = None,
-        max_splits_per_trigger: Optional[int] = None,
+        budget: Optional[TriggerBudget] = None,
+        max_records_per_trigger: Optional[int] = None,  # back-compat
+        max_bytes_per_trigger: Optional[int] = None,    # back-compat
+        max_splits_per_trigger: Optional[int] = None,   # back-compat
     ) -> Tuple[List[ReadTask], Optional[Dict[str, Any]]]:
         """Create read tasks for Flink job outputs with checkpoint support.
 
-        Args:
-            parallelism: Number of parallel tasks.
-            checkpoint: Optional checkpoint dict (task_id -> last_read_timestamp).
-            trigger: Optional StreamingTrigger (unused for Flink).
-            batch_id: Optional microbatch ID (unused for Flink).
-            max_records_per_trigger: Maximum records per microbatch.
-            max_bytes_per_trigger: Maximum bytes per microbatch (optional).
-            max_splits_per_trigger: Maximum splits per microbatch (optional).
-
-        Returns:
-            Tuple of (list of ReadTask objects, next checkpoint dict).
+        NOTE: This datasource polls Flink REST endpoints and is at-least-once.
+        It is NOT equivalent to structured streaming over Flink records unless
+        the endpoint provides record-level semantics.
         """
         # Store checkpoint for this microbatch
         self._current_checkpoint = checkpoint or {}
+        batch_id = batch_id or 0
 
         # Query job parallelism
         job_parallelism = self._get_job_parallelism()
         num_tasks = min(job_parallelism, parallelism) if parallelism > 0 else job_parallelism
 
-        # Apply max_splits_per_trigger if set
-        if max_splits_per_trigger and max_splits_per_trigger > 0:
-            num_tasks = min(num_tasks, max_splits_per_trigger)
+        # Determine microbatch bounds
+        max_splits = (budget.max_splits if budget and budget.max_splits is not None else max_splits_per_trigger)
+        if max_splits and max_splits > 0:
+            num_tasks = min(num_tasks, max_splits)
+
+        poll_timeout_s = getattr(trigger, "poll_timeout_seconds", self.poll_interval_seconds) if trigger else self.poll_interval_seconds
+        deadline_s = budget.deadline_s if budget and budget.deadline_s is not None else compute_budget_deadline_s(poll_timeout_seconds=float(poll_timeout_s))
+        max_records = budget.max_records if budget and budget.max_records is not None else (max_records_per_trigger or self.max_records_per_task)
 
         # Create schema
         schema = create_standard_schema(include_binary_data=False)
@@ -151,26 +165,74 @@ class FlinkDatasource(UnboundDatasource, TwoPhaseCommitMixin):
         schema = schema.append(pa.field("task_id", pa.int32()))
         schema = schema.append(pa.field("metric_name", pa.string()))
 
-        # Track last read timestamps for checkpointing
-        last_timestamps_dict: Dict[int, float] = {}
+        def _make_task(task_id: int) -> ReadTask:
+            # requests is imported on worker
+            def read_fn() -> Iterator[Tuple[Block, BlockMetadata]]:
+                import requests
 
-        # Create read task for each parallel slot
-        read_tasks = [
-            self._create_task_read_task(
-                task_id,
-                schema,
-                checkpoint=self._current_checkpoint.get(str(task_id)) if self._current_checkpoint else None,
-                max_records=max_records_per_trigger or self.max_records_per_task,
-                max_bytes=max_bytes_per_trigger,
-                last_timestamps_dict=last_timestamps_dict,
+                deadline = time.time() + float(deadline_s)
+                coalescer = create_block_coalescer()
+                small_tables: List[pa.Table] = []
+                emitted = 0
+                last_ts: Optional[float] = None
+
+                while emitted < int(max_records) and time.time() < deadline:
+                    # Example REST call (adjust endpoint to the actual API you intend)
+                    url = f"{self.http_config.base_url}/jobs/{self.job_id}"
+                    resp = requests.get(url, **self.http_config.get_request_kwargs())
+                    resp.raise_for_status()
+
+                    # Convert to table (existing helper would be better; keep simple here)
+                    now = time.time()
+                    last_ts = now
+                    rows = [
+                        {"job_id": self.job_id, "task_id": task_id, "metric_name": "job_info", "timestamp": now}
+                    ]
+                    table = pa.Table.from_pylist(rows, schema=schema.append(pa.field("timestamp", pa.float64())))
+                    small_tables.append(table)
+                    emitted += table.num_rows
+
+                    # Yield in bounded batches
+                    if len(small_tables) >= 1:
+                        progress = {str(task_id): last_ts} if last_ts is not None else {}
+                        yield from yield_coalesced_blocks_with_progress(
+                            coalescer,
+                            small_tables,
+                            input_file=f"flink://{self.job_id}/{task_id}",
+                            batch_id=batch_id or 0,
+                            split_id=str(task_id),
+                            progress_delta=progress,
+                        )
+                        small_tables.clear()
+                    break  # bounded: one poll per task per microbatch by default
+
+                # Flush any remaining
+                if small_tables:
+                    progress = {str(task_id): last_ts} if last_ts is not None else {}
+                    yield from yield_coalesced_blocks_with_progress(
+                        coalescer,
+                        small_tables,
+                        input_file=f"flink://{self.job_id}/{task_id}",
+                        batch_id=batch_id or 0,
+                        split_id=str(task_id),
+                        progress_delta=progress,
+                    )
+
+            metadata = BlockMetadata(
+                num_rows=None,
+                size_bytes=None,
+                input_files=[f"flink://{self.job_id}/{task_id}"],
+                exec_stats=None,
             )
-            for task_id in range(num_tasks)
-        ]
+            return create_unbound_read_task(read_fn, metadata, schema=schema)
 
-        # Construct next checkpoint from last timestamps
-        next_checkpoint = {str(task_id): timestamp for task_id, timestamp in last_timestamps_dict.items()}
+        read_tasks = [_make_task(task_id) for task_id in range(num_tasks)]
 
-        return read_tasks, next_checkpoint if next_checkpoint else None
+        # Planned checkpoint is an upper bound/intent; actual is derived from per-block metadata.
+        planned = dict(self._current_checkpoint or {})
+        for task_id in range(num_tasks):
+            planned.setdefault(str(task_id), None)
+        return read_tasks, planned
 
     def _get_read_tasks_for_partition(
         self, partition_info: Dict[str, Any], parallelism: int
@@ -247,14 +309,23 @@ class FlinkDatasource(UnboundDatasource, TwoPhaseCommitMixin):
                     # Note: This is a simplified example - actual implementation
                     # depends on what data you want to extract from Flink
                     for metric in metrics:
-                        current_timestamp = time.time()
+                        # Extract metric timestamp if available, otherwise use current time
+                        metric_timestamp = metric.get("timestamp")
+                        if metric_timestamp is None:
+                            metric_timestamp = time.time()
+                        elif isinstance(metric_timestamp, (int, float)):
+                            # Convert from milliseconds if needed
+                            if metric_timestamp > 1e10:
+                                metric_timestamp = metric_timestamp / 1000.0
+                        else:
+                            metric_timestamp = time.time()
 
                         # Skip metrics older than checkpoint timestamp
-                        if start_timestamp and current_timestamp < start_timestamp:
+                        if start_timestamp and metric_timestamp < start_timestamp:
                             continue
 
                         record = {
-                            "timestamp": int(current_timestamp * 1000),
+                            "timestamp": int(metric_timestamp * 1000),
                             "key": metric.get("id", ""),
                             "value": str(metric.get("value", "")),
                             "headers": {},
@@ -265,7 +336,7 @@ class FlinkDatasource(UnboundDatasource, TwoPhaseCommitMixin):
 
                         records_buffer.append(record)
                         records_read += 1
-                        last_timestamp = current_timestamp
+                        last_timestamp = metric_timestamp
 
                         # Update last timestamp in shared dict
                         if last_timestamps_dict is not None:

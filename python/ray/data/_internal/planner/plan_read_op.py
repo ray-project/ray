@@ -72,11 +72,16 @@ def plan_read_op(
         ), "Read parallelism must be set by the optimizer before execution"
 
         # Get the original read tasks
-        read_tasks = op._datasource_or_legacy_reader.get_read_tasks(
+        read_tasks_result = op._datasource_or_legacy_reader.get_read_tasks(
             parallelism,
             per_task_row_limit=op._per_block_limit,
             data_context=data_context,
         )
+        # Handle both List and Tuple return types for backward compatibility
+        if isinstance(read_tasks_result, tuple):
+            read_tasks = read_tasks_result[0]
+        else:
+            read_tasks = read_tasks_result
 
         _warn_on_high_parallelism(parallelism, len(read_tasks))
 

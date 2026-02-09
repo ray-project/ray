@@ -6,6 +6,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray._raylet import ObjectRefGenerator
+from ray.data._internal.datasource.streaming_utils import (
+    STREAMING_LAG_KEY,
+    STREAMING_PROGRESS_KEY,
+    apply_progress_delta,
+    merge_progress,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -19,6 +25,7 @@ from ray.data._internal.logical.operators.unbound_data_operator import (
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
+from ray.data.datasource.unbound_datasource import TriggerBudget
 
 logger = logging.getLogger(__name__)
 
@@ -139,8 +146,14 @@ class UnboundedDataOperator(PhysicalOperator):
         self._checkpoint = None
         if hasattr(self.datasource, "initial_checkpoint"):
             self._checkpoint = self.datasource.initial_checkpoint()
-        self._checkpoint_pending_commit = None
+        # Planned checkpoint is an *upper bound*; actual checkpoint is derived
+        # from task-emitted progress deltas in BlockMetadata.exec_stats.
+        self._checkpoint_planned: Optional[Dict[str, Any]] = None
+        self._checkpoint_delta_this_batch: Dict[str, Any] = {}
+        self._checkpoint_actual_next: Optional[Dict[str, Any]] = None
+        self._checkpoint_pending_commit = None  # retained for back-compat
         self._commit_token_pending: Any = None
+        self._lag_agg_this_batch: Dict[str, Any] = {}
 
         # Execution-engine backpressure signal (set by notify_in_task_submission_backpressure)
         self._in_engine_backpressure: bool = False
@@ -321,13 +334,16 @@ class UnboundedDataOperator(PhysicalOperator):
                 )
             return False
 
+        # Engine backpressure is authoritative: do not schedule new microbatches.
+        if self._in_engine_backpressure:
+            return False
+
+        if self._shutdown_requested or self._completed:
+            return False
+
         if self.trigger.trigger_type == "once":
             # One-time trigger: only produce batch if we haven't already
             return not self._batch_produced
-
-        # Strong integration point: don't create new microbatches while engine is backpressuring.
-        if self._in_engine_backpressure:
-            return False
 
         # Check if we should stop due to idle timeout or consecutive empty batches
         if self._should_stop_continuous():
@@ -575,13 +591,16 @@ class UnboundedDataOperator(PhysicalOperator):
             reason = f"batch duration ({avg_batch_duration:.2f}s > {target_batch_duration * 1.5:.2f}s)"
 
         if should_scale_up:
+            max_partitions = (
+                lag_metrics.partitions
+                if lag_metrics and lag_metrics.partitions is not None
+                else current_parallelism
+                * self.data_context.streaming_partition_count_multiplier
+            )
             new_parallelism = min(
                 int(current_parallelism * 1.5),  # 50% increase
                 self.trigger.max_parallelism,
-                lag_metrics.partitions
-                if lag_metrics
-                else current_parallelism
-                * self.data_context.streaming_partition_count_multiplier,
+                max_partitions,
             )
             if new_parallelism > current_parallelism:
                 logger.info(
@@ -611,10 +630,12 @@ class UnboundedDataOperator(PhysicalOperator):
                 self.trigger.min_parallelism,
             )
             if new_parallelism < current_parallelism:
+                lag_str = f"{lag_seconds:.1f}s" if lag_seconds is not None else "N/A"
+                duration_str = f"{avg_batch_duration:.2f}s" if avg_batch_duration is not None else "N/A"
                 logger.info(
                     f"Lag-aware autoscaling DOWN: {current_parallelism} -> {new_parallelism} "
-                    f"(lag: {lag_seconds:.1f}s if available, "
-                    f"batch duration: {avg_batch_duration:.2f}s if available, "
+                    f"(lag: {lag_str}, "
+                    f"batch duration: {duration_str}, "
                     f"empty batches: {self._consecutive_empty_batches})"
                 )
                 self.parallelism = new_parallelism
@@ -738,8 +759,52 @@ class UnboundedDataOperator(PhysicalOperator):
                 f"parallelism {self.parallelism}"
             )
         except Exception as e:
-            logger.warning(f"Failed to initialize reader actors: {e}")
-            self._use_reader_actors = False
+            logger.error(f"Failed to initialize reader actors: {e}", exc_info=e)
+            raise
+
+    def _build_trigger_budget(self) -> TriggerBudget:
+        """Build TriggerBudget from current trigger configuration.
+
+        Returns:
+            TriggerBudget instance for current microbatch.
+        """
+        return TriggerBudget(
+            max_records=self._current_max_records_per_trigger,
+            max_bytes=getattr(self.trigger, "max_bytes_per_trigger", None),
+            max_splits=getattr(self.trigger, "max_splits_per_trigger", None),
+            deadline_s=None,  # Will be computed by datasource if needed
+        )
+
+    def _call_get_read_tasks(
+        self, batch_id: int, checkpoint: Optional[Dict[str, Any]] = None
+    ) -> Tuple[List[ReadTask], Optional[Dict[str, Any]]]:
+        """Call datasource.get_read_tasks and handle return value.
+
+        Args:
+            batch_id: Batch ID for this microbatch.
+            checkpoint: Optional checkpoint (uses self._checkpoint if None).
+
+        Returns:
+            Tuple of (tasks, checkpoint).
+        """
+        budget = self._build_trigger_budget()
+        checkpoint = checkpoint if checkpoint is not None else self._checkpoint
+
+        read_tasks_result = self.datasource.get_read_tasks(  # type: ignore[misc]
+            parallelism=self.parallelism,
+            checkpoint=checkpoint,
+            trigger=self.trigger,
+            batch_id=batch_id,
+            budget=budget,
+        )
+
+        if isinstance(read_tasks_result, tuple):
+            tasks, next_checkpoint = read_tasks_result
+        else:
+            # Backward compatibility: old datasources return List only
+            tasks, next_checkpoint = read_tasks_result, None
+
+        return list(tasks or []), next_checkpoint
 
     def _prefetch_next_batch(self) -> None:
         """Prefetch read tasks for the next microbatch in the background.
@@ -750,24 +815,9 @@ class UnboundedDataOperator(PhysicalOperator):
         if len(self._prefetch_queue) >= self._prefetch_max_size:
             return  # Prefetch queue is full
 
-        # Get read tasks for next batch (increment batch ID for prefetch)
-        out = self.datasource.get_read_tasks(
-            self.parallelism,
-            checkpoint=self._checkpoint,
-            trigger=self.trigger,
-            batch_id=self._current_batch_id + 1,
-            max_records_per_trigger=self.trigger.max_records_per_trigger,
-            max_bytes_per_trigger=self.trigger.max_bytes_per_trigger,
-            max_splits_per_trigger=self.trigger.max_splits_per_trigger,
-        )
-
-        if isinstance(out, tuple) and len(out) == 2:
-            tasks, next_ckpt = out
-        else:
-            tasks, next_ckpt = out, self._checkpoint
-
+        tasks, next_ckpt = self._call_get_read_tasks(self._current_batch_id + 1)
         if tasks:
-            self._prefetch_queue.append((list(tasks), next_ckpt))
+            self._prefetch_queue.append((tasks, next_ckpt))
         logger.debug(
             f"Prefetched {len(tasks)} read tasks for batch {self._current_batch_id + 1}"
         )
@@ -786,33 +836,13 @@ class UnboundedDataOperator(PhysicalOperator):
                 self._prefetch_next_batch()
             return tasks, checkpoint
 
-        # Call datasource.get_read_tasks() with checkpoint and trigger info
-        out = self.datasource.get_read_tasks(
-            self.parallelism,
-            checkpoint=self._checkpoint,
-            trigger=self.trigger,
-            batch_id=self._current_batch_id,
-            max_records_per_trigger=getattr(
-                self.trigger, "max_records_per_trigger", None
-            ),
-            max_bytes_per_trigger=getattr(
-                self.trigger, "max_bytes_per_trigger", None
-            ),
-            max_splits_per_trigger=getattr(
-                self.trigger, "max_splits_per_trigger", None
-            ),
-        )
+        # Get tasks for current batch
+        tasks, next_checkpoint = self._call_get_read_tasks(self._current_batch_id)
 
-        if isinstance(out, tuple) and len(out) == 2:
-            tasks, next_ckpt = out
-        else:
-            tasks, next_ckpt = out, self._checkpoint
-
-        tasks_list = list(tasks or [])
         # Start prefetching next batch if enabled
         if self._prefetch_enabled and len(self._prefetch_queue) < self._prefetch_max_size:
             self._prefetch_next_batch()
-        return tasks_list, next_ckpt
+        return tasks, next_checkpoint
 
     def _start_new_microbatch(self) -> None:
         """Start a new microbatch by creating streaming generator tasks."""
@@ -836,14 +866,16 @@ class UnboundedDataOperator(PhysicalOperator):
             return
 
         self._gens.clear()
-        self._checkpoint_pending_commit = next_checkpoint
-        # Prepare commit early (like Spark epoch start); commit later once batch drains.
-        if hasattr(self.datasource, "prepare_commit"):
-            self._commit_token_pending = self.datasource.prepare_commit(
-                next_checkpoint
-            )
-        else:
-            self._commit_token_pending = next_checkpoint
+        self._checkpoint_planned = next_checkpoint
+        self._checkpoint_delta_this_batch.clear()
+        self._checkpoint_actual_next = None
+        self._lag_agg_this_batch.clear()
+        self._checkpoint_pending_commit = None
+
+        # Prepare commit early (epoch start); finalize with ACTUAL checkpoint.
+        self._commit_token_pending = None
+        if hasattr(self.datasource, "prepare_commit") and next_checkpoint is not None:
+            self._commit_token_pending = self.datasource.prepare_commit(next_checkpoint)
 
         validated_args = self._validate_ray_remote_args(self.ray_remote_args)
 
@@ -1037,25 +1069,46 @@ class UnboundedDataOperator(PhysicalOperator):
                 f"{len(failed_gens)}/{len(self._gens)} generators failed. "
                 "Checkpoint not committed to avoid data inconsistency."
             )
-            # Don't commit checkpoint on failure - allows retry from previous checkpoint
+            # Abort any two-phase commit token.
+            if self._commit_token_pending is not None and hasattr(self.datasource, "abort_commit"):
+                self.datasource.abort_commit(self._commit_token_pending)
+
+            # Do not advance checkpoint on failure.
+            self._checkpoint_planned = None
+            self._checkpoint_actual_next = None
             self._checkpoint_pending_commit = None
         else:
-            # All generators completed successfully - safe to commit checkpoint
-            if self._commit_token_pending is not None:
-                if hasattr(self.datasource, "commit"):
-                    self.datasource.commit(self._commit_token_pending)
-                elif hasattr(self.datasource, "commit_checkpoint"):
-                    self.datasource.commit_checkpoint(self._checkpoint_pending_commit)
+            # All generators completed successfully - compute ACTUAL checkpoint.
+            self._checkpoint_actual_next = apply_progress_delta(self._checkpoint, self._checkpoint_delta_this_batch)
 
-            self._checkpoint = self._checkpoint_pending_commit
+            # Expose lag to operator stats for observability.
+            if self._lag_agg_this_batch:
+                # StatsDict uses a dict-like interface in Ray Data.
+                self._metrics._extra_metrics["streaming_lag"] = dict(self._lag_agg_this_batch)
+
+            # Commit actual checkpoint (preferred).
+            if self._commit_token_pending is not None and hasattr(self.datasource, "commit"):
+                self.datasource.commit(self._commit_token_pending, self._checkpoint_actual_next)
+            elif hasattr(self.datasource, "commit_checkpoint"):
+                self.datasource.commit_checkpoint(self._checkpoint_actual_next)
+
+            self._checkpoint = self._checkpoint_actual_next
 
             # Update reader actor checkpoints if using reader actors
             if self._use_reader_actors and self._reader_actors:
                 for actor in self._reader_actors:
                     actor.update_checkpoint.remote(self._checkpoint)
 
+        self._checkpoint_planned = None
         self._checkpoint_pending_commit = None
         self._commit_token_pending = None
+        self._checkpoint_delta_this_batch.clear()
+        self._checkpoint_actual_next = None
+        self._lag_agg_this_batch.clear()
+
+        # Reset bytes_in_flight counter when microbatch completes
+        # (all bundles from this microbatch have been consumed downstream)
+        self._bytes_in_flight = 0
 
         # clear gens -> microbatch complete
         self._gens.clear()
@@ -1233,6 +1286,17 @@ class UnboundedDataOperator(PhysicalOperator):
                 break
 
             bundled_blocks.append((block_ref, meta))
+
+            # Harvest progress and lag from metadata
+            stats = getattr(meta, "exec_stats", None) or {}
+            delta = stats.get(STREAMING_PROGRESS_KEY)
+            if isinstance(delta, dict) and delta:
+                merge_progress(self._checkpoint_delta_this_batch, delta)
+            lag = stats.get(STREAMING_LAG_KEY)
+            if isinstance(lag, dict) and lag:
+                # last-write-wins for now (sources may embed per-split keys)
+                self._lag_agg_this_batch.update(lag)
+
             bundled_bytes += block_size
 
             # Advance this generator
@@ -1537,8 +1601,8 @@ class UnboundedDataOperator(PhysicalOperator):
                     )
 
         except Exception as e:
-            # Don't fail streaming on metrics errors, but log the issue
-            logger.debug(f"Error updating performance metrics: {e}")
+            # Metrics errors shouldn't crash the operator, but we should know about them
+            logger.error(f"Error updating performance metrics: {e}", exc_info=e)
 
     def get_stats(self) -> StatsDict:
         """Get operator statistics."""

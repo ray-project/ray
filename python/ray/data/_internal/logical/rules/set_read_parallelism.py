@@ -33,9 +33,13 @@ def compute_additional_split_factor(
     detected_parallelism, reason, _ = _autodetect_parallelism(
         parallelism, target_max_block_size, ctx, datasource_or_legacy_reader, mem_size
     )
-    num_read_tasks = len(
-        datasource_or_legacy_reader.get_read_tasks(detected_parallelism)
-    )
+    read_tasks_result = datasource_or_legacy_reader.get_read_tasks(detected_parallelism)
+    # Handle both List and Tuple return types for backward compatibility
+    if isinstance(read_tasks_result, tuple):
+        read_tasks = read_tasks_result[0]
+    else:
+        read_tasks = read_tasks_result
+    num_read_tasks = len(read_tasks)
     expected_block_size = None
     if mem_size:
         expected_block_size = mem_size / num_read_tasks

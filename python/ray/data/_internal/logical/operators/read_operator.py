@@ -113,7 +113,12 @@ class Read(
             return BlockMetadataWithSchema(metadata=empty_meta, schema=None)
 
         # HACK: Try to get a single read task to get the metadata.
-        read_tasks = self._datasource.get_read_tasks(1)
+        read_tasks_result = self._datasource.get_read_tasks(1)
+        # Handle both List and Tuple return types for backward compatibility
+        if isinstance(read_tasks_result, tuple):
+            read_tasks = read_tasks_result[0]
+        else:
+            read_tasks = read_tasks_result
         if len(read_tasks) == 0:
             # If there are no read tasks, the dataset is probably empty.
             empty_meta = BlockMetadata(None, None, None, None)

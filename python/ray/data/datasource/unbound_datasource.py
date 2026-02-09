@@ -9,13 +9,29 @@ must implement to create streaming datasources.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import pyarrow as pa
 
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
+
+Checkpoint = Dict[str, Any]
+
+
+@dataclass(frozen=True)
+class TriggerBudget:
+    """Budget that bounds a single microbatch read.
+
+    All unbounded datasource ReadTasks MUST terminate within these bounds.
+    """
+
+    max_records: Optional[int] = None
+    max_bytes: Optional[int] = None
+    max_splits: Optional[int] = None
+    deadline_s: Optional[float] = None
 
 
 @PublicAPI(stability="alpha")
@@ -25,6 +41,9 @@ class UnboundDatasource(Datasource, ABC):
     This class provides the foundation for streaming datasources that represent
     unbounded data streams. Subclasses must implement `_get_read_tasks_for_partition`
     to define how to create read tasks for their specific data source.
+
+    Production streaming sources SHOULD override get_read_tasks() directly and
+    use TriggerBudget + checkpoint + trigger + batch_id.
 
     Example:
         .. testcode::
@@ -62,6 +81,14 @@ class UnboundDatasource(Datasource, ABC):
         """
         self._source_type = source_type
 
+    # ---- Optional lifecycle/capabilities -----------------------------------------
+    def initial_checkpoint(self) -> Optional[Checkpoint]:
+        """Initial checkpoint for the stream, if any (source-specific)."""
+        return None
+
+    def supports_exactly_once(self) -> bool:
+        return False
+
     @abstractmethod
     def _get_read_tasks_for_partition(
         self,
@@ -82,19 +109,46 @@ class UnboundDatasource(Datasource, ABC):
         """
         pass
 
-    def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
-    ) -> List[ReadTask]:
-        """Get read tasks for this datasource.
+    # NOTE: Datasource.get_read_tasks signature is used for bounded reads. For unbounded,
+    # we provide a richer signature while remaining compatible with existing call sites.
+    def get_read_tasks(  # type: ignore[override]
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional[Any] = None,
+        *,
+        checkpoint: Optional[Checkpoint] = None,
+        trigger: Optional[Any] = None,
+        batch_id: Optional[int] = None,
+        budget: Optional[TriggerBudget] = None,
+        **kwargs: Any,
+    ) -> Union[List[ReadTask], Tuple[List[ReadTask], Optional[Checkpoint]]]:
+        """Plan a single microbatch and return (read_tasks, planned_next_checkpoint).
 
         Args:
             parallelism: Desired parallelism level.
             per_task_row_limit: Optional limit on rows per task (unused for unbounded).
+            data_context: Optional DataContext (for backward compatibility with base class).
+            checkpoint: Last committed checkpoint (source-specific, keyword-only).
+            trigger: StreamingTrigger (driver-side, keyword-only).
+            batch_id: Microbatch id (monotonic, driver-side, keyword-only).
+            budget: Budget for this microbatch. ReadTasks MUST terminate within it (keyword-only).
 
         Returns:
-            List of read tasks.
+            List[ReadTask] for backward compatibility when called without streaming args,
+            or Tuple[List[ReadTask], Optional[Checkpoint]] when called with streaming args.
+
+        Default implementation delegates to _get_read_tasks_for_partition for backward
+        compatibility and returns List[ReadTask] (not tuple) when no streaming args provided.
         """
-        return self._get_read_tasks_for_partition({}, parallelism)
+        # Backward compatibility: if called without streaming args, return List only
+        if checkpoint is None and trigger is None and batch_id is None and budget is None:
+            tasks = self._get_read_tasks_for_partition({}, parallelism)
+            return tasks
+
+        # Streaming mode: return tuple
+        tasks = self._get_read_tasks_for_partition({}, parallelism)
+        return tasks, None
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Estimate in-memory data size.
@@ -144,4 +198,6 @@ def create_unbound_read_task(
 __all__ = [
     "UnboundDatasource",
     "create_unbound_read_task",
+    "TriggerBudget",
+    "Checkpoint",
 ]

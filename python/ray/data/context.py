@@ -1059,6 +1059,186 @@ class DataContext:
     def streaming_max_bytes_in_flight(self, value: int) -> None:
         self._streaming_max_bytes_in_flight = value
 
+    @property
+    def streaming_min_backoff_seconds(self) -> float:
+        """Minimum backoff seconds for adaptive backoff in continuous mode."""
+        return self._streaming_min_backoff_seconds
+
+    @streaming_min_backoff_seconds.setter
+    def streaming_min_backoff_seconds(self, value: float) -> None:
+        self._streaming_min_backoff_seconds = value
+
+    @property
+    def streaming_max_backoff_seconds(self) -> float:
+        """Maximum backoff seconds for adaptive backoff in continuous mode."""
+        return self._streaming_max_backoff_seconds
+
+    @streaming_max_backoff_seconds.setter
+    def streaming_max_backoff_seconds(self, value: float) -> None:
+        self._streaming_max_backoff_seconds = value
+
+    @property
+    def streaming_batch_duration_window(self) -> int:
+        """Number of recent batch durations to track for adaptive batching."""
+        return self._streaming_batch_duration_window
+
+    @streaming_batch_duration_window.setter
+    def streaming_batch_duration_window(self, value: int) -> None:
+        self._streaming_batch_duration_window = value
+
+    @property
+    def streaming_default_max_records_per_trigger(self) -> int:
+        """Default maximum records per trigger for streaming datasources."""
+        return self._streaming_default_max_records_per_trigger
+
+    @streaming_default_max_records_per_trigger.setter
+    def streaming_default_max_records_per_trigger(self, value: int) -> None:
+        self._streaming_default_max_records_per_trigger = value
+
+    @property
+    def streaming_min_max_records_per_trigger(self) -> int:
+        """Minimum maximum records per trigger for adaptive batching."""
+        return self._streaming_min_max_records_per_trigger
+
+    @streaming_min_max_records_per_trigger.setter
+    def streaming_min_max_records_per_trigger(self, value: int) -> None:
+        self._streaming_min_max_records_per_trigger = value
+
+    @property
+    def streaming_max_max_records_per_trigger(self) -> int:
+        """Maximum maximum records per trigger for adaptive batching."""
+        return self._streaming_max_max_records_per_trigger
+
+    @streaming_max_max_records_per_trigger.setter
+    def streaming_max_max_records_per_trigger(self, value: int) -> None:
+        self._streaming_max_max_records_per_trigger = value
+
+    @property
+    def streaming_prefetch_max_size(self) -> int:
+        """Maximum size of prefetch queue for pipelined microbatches."""
+        return self._streaming_prefetch_max_size
+
+    @streaming_prefetch_max_size.setter
+    def streaming_prefetch_max_size(self, value: int) -> None:
+        self._streaming_prefetch_max_size = value
+
+    @property
+    def streaming_default_target_batch_duration_seconds(self) -> float:
+        """Default target batch duration in seconds for lag-aware autoscaling."""
+        return self._streaming_default_target_batch_duration_seconds
+
+    @streaming_default_target_batch_duration_seconds.setter
+    def streaming_default_target_batch_duration_seconds(self, value: float) -> None:
+        self._streaming_default_target_batch_duration_seconds = value
+
+    @property
+    def streaming_lag_threshold(self) -> int:
+        """Lag threshold for triggering autoscaling."""
+        return self._streaming_lag_threshold
+
+    @streaming_lag_threshold.setter
+    def streaming_lag_threshold(self, value: int) -> None:
+        self._streaming_lag_threshold = value
+
+    @property
+    def streaming_lag_conversion_factor(self) -> float:
+        """Conversion factor for lag metrics."""
+        return self._streaming_lag_conversion_factor
+
+    @streaming_lag_conversion_factor.setter
+    def streaming_lag_conversion_factor(self, value: float) -> None:
+        self._streaming_lag_conversion_factor = value
+
+    @property
+    def streaming_parallelism_decrease_factor(self) -> float:
+        """Factor for decreasing parallelism during autoscaling."""
+        return self._streaming_parallelism_decrease_factor
+
+    @streaming_parallelism_decrease_factor.setter
+    def streaming_parallelism_decrease_factor(self, value: float) -> None:
+        self._streaming_parallelism_decrease_factor = value
+
+    @property
+    def streaming_partition_count_multiplier(self) -> float:
+        """Multiplier for partition count when determining max parallelism."""
+        return self._streaming_partition_count_multiplier
+
+    @streaming_partition_count_multiplier.setter
+    def streaming_partition_count_multiplier(self, value: float) -> None:
+        self._streaming_partition_count_multiplier = value
+
+    @property
+    def streaming_max_reader_actors(self) -> int:
+        """Maximum number of reader actors for streaming datasources."""
+        return self._streaming_max_reader_actors
+
+    @streaming_max_reader_actors.setter
+    def streaming_max_reader_actors(self, value: int) -> None:
+        self._streaming_max_reader_actors = value
+
+    @property
+    def streaming_large_task_size_bytes(self) -> int:
+        """Size threshold for large task detection."""
+        return self._streaming_large_task_size_bytes
+
+    @streaming_large_task_size_bytes.setter
+    def streaming_large_task_size_bytes(self, value: int) -> None:
+        self._streaming_large_task_size_bytes = value
+
+    @property
+    def streaming_large_task_memory_bytes(self) -> int:
+        """Memory allocation for large tasks."""
+        return self._streaming_large_task_memory_bytes
+
+    @streaming_large_task_memory_bytes.setter
+    def streaming_large_task_memory_bytes(self, value: int) -> None:
+        self._streaming_large_task_memory_bytes = value
+
+    @property
+    def streaming_large_task_cpus(self) -> float:
+        """CPU allocation for large tasks."""
+        return self._streaming_large_task_cpus
+
+    @streaming_large_task_cpus.setter
+    def streaming_large_task_cpus(self, value: float) -> None:
+        self._streaming_large_task_cpus = value
+
+    @property
+    def streaming_large_task_row_threshold(self) -> int:
+        """Row threshold for large task detection."""
+        return self._streaming_large_task_row_threshold
+
+    @streaming_large_task_row_threshold.setter
+    def streaming_large_task_row_threshold(self, value: int) -> None:
+        self._streaming_large_task_row_threshold = value
+
+    @property
+    def streaming_estimated_bytes_per_record(self) -> int:
+        """Estimated bytes per record for memory estimation."""
+        return self._streaming_estimated_bytes_per_record
+
+    @streaming_estimated_bytes_per_record.setter
+    def streaming_estimated_bytes_per_record(self, value: int) -> None:
+        self._streaming_estimated_bytes_per_record = value
+
+    @property
+    def streaming_estimated_rows_per_block(self) -> int:
+        """Estimated rows per block for memory estimation."""
+        return self._streaming_estimated_rows_per_block
+
+    @streaming_estimated_rows_per_block.setter
+    def streaming_estimated_rows_per_block(self, value: int) -> None:
+        self._streaming_estimated_rows_per_block = value
+
+    @property
+    def streaming_batch_logging_interval(self) -> int:
+        """Interval for batch logging."""
+        return self._streaming_batch_logging_interval
+
+    @streaming_batch_logging_interval.setter
+    def streaming_batch_logging_interval(self, value: int) -> None:
+        self._streaming_batch_logging_interval = value
+
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get the value for a key-value style config.
 

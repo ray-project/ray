@@ -216,6 +216,85 @@ def create_standard_schema(
     return pa.schema(fields)
 
 
+# ---- Driver-visible streaming progress metadata ----------------------------------
+STREAMING_PROGRESS_KEY = "ray_data_streaming_progress"
+STREAMING_SPLIT_ID_KEY = "ray_data_streaming_split_id"
+STREAMING_BATCH_ID_KEY = "ray_data_streaming_batch_id"
+STREAMING_LAG_KEY = "ray_data_streaming_lag"
+
+
+def _clone_block_metadata_with_exec_stats(meta: BlockMetadata, exec_stats: Dict[str, Any]) -> BlockMetadata:
+    """Best-effort clone of BlockMetadata preserving fields across Ray versions."""
+    # Newer Ray versions may have schema; older may not. Preserve what exists.
+    kwargs: Dict[str, Any] = {}
+    for field in ("num_rows", "size_bytes", "schema", "input_files", "exec_stats"):
+        if hasattr(meta, field):
+            kwargs[field] = getattr(meta, field)
+    kwargs["exec_stats"] = exec_stats
+    return BlockMetadata(**kwargs)  # type: ignore[arg-type]
+
+
+def attach_streaming_exec_stats(
+    meta: BlockMetadata,
+    *,
+    batch_id: int,
+    split_id: str,
+    progress_delta: Dict[str, Any],
+    lag_metrics: Optional[Dict[str, Any]] = None,
+) -> BlockMetadata:
+    """Attach streaming progress + tags to BlockMetadata.exec_stats.
+
+    Progress MUST be emitted by ReadTasks for the operator/driver to commit
+    *actual* checkpoints safely (no mutable closure state).
+    """
+    # BlockMetadata may have exec_stats as None, dict, or BlockExecStats object
+    exec_stats = getattr(meta, "exec_stats", None)
+    if exec_stats is None:
+        stats = {}
+    elif isinstance(exec_stats, dict):
+        stats = dict(exec_stats)
+    else:
+        # exec_stats is a BlockExecStats object - we need a dict for our stats
+        stats = {}
+    stats[STREAMING_BATCH_ID_KEY] = batch_id
+    stats[STREAMING_SPLIT_ID_KEY] = split_id
+    stats[STREAMING_PROGRESS_KEY] = progress_delta
+    if lag_metrics is not None:
+        stats[STREAMING_LAG_KEY] = lag_metrics
+    return _clone_block_metadata_with_exec_stats(meta, stats)
+
+
+def compute_budget_deadline_s(
+    *,
+    poll_timeout_seconds: float,
+    data_context: Optional[DataContext] = None,
+) -> float:
+    """Compute a bounded task deadline based on poll timeout plus small fudge."""
+    ctx = data_context or DataContext.get_current()
+    fudge = getattr(ctx, "streaming_task_deadline_fudge_seconds", 0.25)
+    return max(0.1, float(poll_timeout_seconds) + float(fudge))
+
+
+def merge_progress(dst: Dict[str, Any], delta: Dict[str, Any]) -> None:
+    """Merge progress deltas (monotonic for numeric offsets)."""
+    for k, v in delta.items():
+        if k not in dst:
+            dst[k] = v
+            continue
+        prev = dst[k]
+        if isinstance(prev, (int, float)) and isinstance(v, (int, float)):
+            if v < prev:
+                raise ValueError(f"Non-monotonic progress for {k}: {prev} -> {v}")
+        dst[k] = v
+
+
+def apply_progress_delta(base: Optional[Dict[str, Any]], delta: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply progress delta to a checkpoint dict."""
+    out = dict(base or {})
+    merge_progress(out, delta)
+    return out
+
+
 def apply_dataclass_to_dict(
     target: Dict[str, Any],
     dataclass_instance: Any,
@@ -288,6 +367,44 @@ def yield_coalesced_blocks(
         yield coalesced_table, meta
 
 
+def yield_coalesced_blocks_with_progress(
+    coalescer: BlockCoalescer,
+    small_tables: List[pa.Table],
+    input_file: str,
+    *,
+    batch_id: int,
+    split_id: str,
+    progress_delta: Dict[str, Any],
+    lag_metrics: Optional[Dict[str, Any]] = None,
+) -> Iterator[Tuple[Block, BlockMetadata]]:
+    """Yield coalesced blocks with streaming progress tracking attached.
+
+    This is a convenience wrapper that combines yield_coalesced_blocks with
+    attach_streaming_exec_stats to reduce code duplication in datasources.
+
+    Args:
+        coalescer: BlockCoalescer instance.
+        small_tables: List of small PyArrow tables to coalesce.
+        input_file: Input file identifier for metadata.
+        batch_id: Microbatch ID for progress tracking.
+        split_id: Split/partition identifier.
+        progress_delta: Progress delta dict (e.g., {"partition": offset}).
+        lag_metrics: Optional lag metrics dict.
+
+    Yields:
+        Tuples of (coalesced_block, metadata_with_progress).
+    """
+    for block, meta in yield_coalesced_blocks(coalescer, small_tables, input_file):
+        meta_with_progress = attach_streaming_exec_stats(
+            meta,
+            batch_id=batch_id,
+            split_id=split_id,
+            progress_delta=progress_delta,
+            lag_metrics=lag_metrics,
+        )
+        yield block, meta_with_progress
+
+
 class TwoPhaseCommitMixin:
     """Mixin providing default two-phase commit implementation for streaming datasources.
 
@@ -329,13 +446,15 @@ class TwoPhaseCommitMixin:
         self._pending_commit_token = checkpoint
         return checkpoint
 
-    def commit(self, commit_token: Dict[str, Any]) -> None:
+    def commit(self, commit_token: Dict[str, Any], checkpoint: Optional[Dict[str, Any]] = None) -> None:
         """Commit prepared token (two-phase commit).
 
         Args:
             commit_token: Commit token from prepare_commit().
+            checkpoint: Actual checkpoint to commit (preferred). If omitted,
+                commit_token is treated as the checkpoint for backward compatibility.
         """
-        self.commit_checkpoint(commit_token)
+        self.commit_checkpoint(checkpoint or commit_token)
         self._pending_commit_token = None
 
     def abort_commit(self, commit_token: Dict[str, Any]) -> None:
@@ -356,5 +475,14 @@ __all__ = [
     "create_block_coalescer",
     "create_block_metadata",
     "yield_coalesced_blocks",
+    "yield_coalesced_blocks_with_progress",
     "TwoPhaseCommitMixin",
+    "attach_streaming_exec_stats",
+    "compute_budget_deadline_s",
+    "merge_progress",
+    "apply_progress_delta",
+    "STREAMING_PROGRESS_KEY",
+    "STREAMING_SPLIT_ID_KEY",
+    "STREAMING_BATCH_ID_KEY",
+    "STREAMING_LAG_KEY",
 ]

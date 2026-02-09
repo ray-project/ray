@@ -37,18 +37,20 @@ import pyarrow as pa
 if TYPE_CHECKING:
     from kafka import KafkaConsumer, TopicPartition
 
+from ray.data._internal.datasource.streaming_lag_metrics import LagMetrics
 from ray.data._internal.datasource.streaming_utils import (
     TwoPhaseCommitMixin,
+    compute_budget_deadline_s,
     create_block_coalescer,
-    yield_coalesced_blocks,
+    yield_coalesced_blocks_with_progress,
 )
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
-from ray.data._internal.streaming.streaming_lag_metrics import LagMetrics
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.datasource.unbound_datasource import (
+    TriggerBudget,
     UnboundDatasource,
     create_unbound_read_task,
 )
@@ -523,7 +525,7 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
             return None
 
         # Read committed offsets from Kafka
-        from kafka import KafkaConsumer
+        from kafka import KafkaConsumer, TopicPartition
 
         config = {
             "bootstrap_servers": self.bootstrap_servers,
@@ -552,15 +554,16 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
     def get_read_tasks(
         self,
         parallelism: int,
+        per_task_row_limit: Optional[int] = None,
         *,
         checkpoint: Optional[Dict[str, Any]] = None,
         trigger: Optional[Any] = None,
         batch_id: Optional[int] = None,
-        max_records_per_trigger: Optional[int] = None,
-        max_bytes_per_trigger: Optional[int] = None,
-        max_splits_per_trigger: Optional[int] = None,
-        **kwargs,
-    ) -> Union[List[ReadTask], Tuple[List[ReadTask], Optional[Dict[str, Any]]]]:
+        budget: Optional[TriggerBudget] = None,
+        max_records_per_trigger: Optional[int] = None,  # back-compat
+        max_bytes_per_trigger: Optional[int] = None,    # back-compat
+        max_splits_per_trigger: Optional[int] = None,   # back-compat
+    ) -> Tuple[List[ReadTask], Optional[Dict[str, Any]]]:
         """Get read tasks with checkpointing and budget support.
 
         Args:
@@ -578,18 +581,12 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
         # Store checkpoint for commit later
         self._current_checkpoint = checkpoint
 
-        # Use budget from trigger if provided, otherwise use instance default
-        effective_max_records = (
-            max_records_per_trigger
-            if max_records_per_trigger is not None
-            else self.max_records_per_task
-        )
+        checkpoint = checkpoint or {}
+        batch_id = batch_id or 0
 
         # Discover partitions and create read tasks
         schema = KafkaBoundedDatasource._create_schema(binary_format=False)
         tasks = []
-        # Initialize next_checkpoint with current checkpoint or empty dict
-        next_checkpoint = checkpoint.copy() if checkpoint else {}
 
         # Get target block size for coalescing
         ctx = DataContext.get_current()
@@ -615,39 +612,44 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
                     )
 
         # Limit partitions if max_splits_per_trigger is set
-        if max_splits_per_trigger and len(topic_partitions) > max_splits_per_trigger:
-            topic_partitions = topic_partitions[:max_splits_per_trigger]
+        max_splits = (
+            (budget.max_splits if budget and budget.max_splits is not None else max_splits_per_trigger)
+            or len(topic_partitions)
+        )
+        original_partition_count = len(topic_partitions)
+        if max_splits and len(topic_partitions) > max_splits:
+            topic_partitions = topic_partitions[:max_splits]
             logger.debug(
                 f"Limited partitions to {max_splits_per_trigger} "
-                f"(from {len(topic_partitions)})"
+                f"(from {original_partition_count})"
             )
 
-        # Create read task for each partition
-        # Use a shared dict to track last offsets (will be updated by read_fn closures)
-        last_offsets: Dict[str, int] = {}
+        poll_timeout_s = getattr(trigger, "poll_timeout_seconds", 1.0) if trigger else 1.0
+        deadline_s = budget.deadline_s if budget and budget.deadline_s is not None else compute_budget_deadline_s(poll_timeout_seconds=float(poll_timeout_s))
 
+        tasks: List[ReadTask] = []
         for topic, partition in topic_partitions:
-            checkpoint_key = f"{topic}:{partition}"
-            task = self._create_partition_read_task(
-                topic=topic,
-                partition=partition,
-                schema=schema,
-                checkpoint=checkpoint,
-                max_records=effective_max_records,
-                max_bytes=max_bytes_per_trigger,
-                target_max_block_size=target_max_block_size,
-                last_offsets_dict=last_offsets,  # Shared dict to track offsets
-            )
-            tasks.append(task)
-            # Initialize checkpoint entry
-            next_checkpoint[checkpoint_key] = (
-                checkpoint.get(checkpoint_key) if checkpoint else None
+            tasks.append(
+                self._create_partition_read_task(
+                    topic=topic,
+                    partition=partition,
+                    schema=schema,
+                    checkpoint=checkpoint.get(f"{topic}:{partition}"),
+                    batch_id=batch_id,
+                    max_records_per_task=(budget.max_records if budget and budget.max_records is not None else self.max_records_per_task),
+                    max_bytes_per_task=(budget.max_bytes if budget and budget.max_bytes is not None else max_bytes_per_trigger),
+                    poll_timeout_ms=int(poll_timeout_s * 1000.0),
+                    budget=budget if budget else TriggerBudget(
+                        max_records=None,
+                        max_bytes=None,
+                        deadline_s=float(deadline_s),
+                    ),
+                    target_max_block_size=target_max_block_size,
+                )
             )
 
-        # Return tuple for checkpoint tracking
-        # Note: last_offsets will be updated by read_fn closures as blocks are read
-        # The operator should extract final offsets from blocks or use a callback
-        return tasks, next_checkpoint
+        # Planned checkpoint is an upper bound; actual comes from per-block progress.
+        return tasks, dict(checkpoint)
 
     def _get_read_tasks_for_partition(
         self,
@@ -678,10 +680,12 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
         partition: int,
         schema: pa.Schema,
         checkpoint: Optional[Dict[str, Any]],
-        max_records: int,
-        max_bytes: Optional[int],
-        target_max_block_size: int,
-        last_offsets_dict: Optional[Dict[str, int]] = None,
+        batch_id: Optional[int] = None,
+        max_records_per_task: Optional[int] = None,
+        max_bytes_per_task: Optional[int] = None,
+        poll_timeout_ms: int = 1000,
+        budget: Optional[TriggerBudget] = None,
+        target_max_block_size: Optional[int] = None,
     ) -> ReadTask:
         """Create a read task for a single Kafka partition.
 
@@ -690,9 +694,12 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
             partition: Partition ID.
             schema: PyArrow schema.
             checkpoint: Optional checkpoint dict (topic:partition -> offset).
-            max_records: Maximum records to read in this batch.
-            max_bytes: Maximum bytes to read in this batch (optional).
-            target_max_block_size: Target block size for coalescing.
+            batch_id: Microbatch ID for progress tracking.
+            max_records_per_task: Maximum records to read in this batch.
+            max_bytes_per_task: Maximum bytes to read in this batch (optional).
+            poll_timeout_ms: Poll timeout in milliseconds.
+            budget: TriggerBudget for this microbatch (optional).
+            target_max_block_size: Target block size for coalescing (optional).
 
         Returns:
             ReadTask for this partition.
@@ -711,20 +718,28 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
             checkpoint.get(checkpoint_key) if checkpoint else None
         )
 
+        # Get target block size from context if not provided
+        if target_max_block_size is None:
+            ctx = DataContext.get_current()
+            target_max_block_size = ctx.target_max_block_size or (128 * 1024 * 1024)
+
         # Initialize block coalescer for well-sized blocks
         coalescer = create_block_coalescer(target_max_block_size)
-
-        # Track last offset for checkpoint updates
-        if last_offsets_dict is not None:
-            last_offsets_dict[checkpoint_key] = checkpoint_offset or -1
 
         def read_fn() -> Iterator[Tuple[Block, BlockMetadata]]:
             """Read function for Kafka partition (unbounded streaming).
 
-            Yields (block, metadata) tuples for zero-copy metadata handling.
+            Yields (block, metadata) tuples with progress tracking for checkpointing.
             Uses BlockCoalescer to produce well-sized blocks.
+
+            Progress is tracked via BlockMetadata.exec_stats for operator-level
+            checkpoint management. See streaming_utils.attach_streaming_exec_stats.
             """
             from kafka import KafkaConsumer, TopicPartition
+
+            # Use max_records_per_task with fallback
+            effective_max_records = max_records_per_task or self.max_records_per_task
+            effective_max_bytes = max_bytes_per_task
 
             # Determine auto_offset_reset
             auto_offset_reset = (
@@ -739,7 +754,7 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
                 "auto_offset_reset": auto_offset_reset,
                 "group_id": group_id,
                 "session_timeout_ms": 30000,
-                "max_poll_records": min(max_records, 500),
+                "max_poll_records": min(effective_max_records, 500),
                 "value_deserializer": lambda v: v.decode("utf-8", errors="replace") if v else None,
                 "key_deserializer": lambda k: k.decode("utf-8", errors="replace") if k else None,
             }
@@ -762,10 +777,23 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
                 records = []
                 records_read = 0
                 bytes_read = 0
-                last_offset = None
+                last_offset = checkpoint_offset
 
                 # Small tables to coalesce
                 small_tables = []
+                input_file = f"kafka://{topic}/{partition}"
+
+                def _yield_with_progress() -> Iterator[Tuple[Block, BlockMetadata]]:
+                    """Helper to yield blocks with progress tracking."""
+                    progress_delta = {checkpoint_key: last_offset} if last_offset is not None else {}
+                    yield from yield_coalesced_blocks_with_progress(
+                        coalescer,
+                        small_tables,
+                        input_file,
+                        batch_id=batch_id or 0,
+                        split_id=checkpoint_key,
+                        progress_delta=progress_delta,
+                    )
 
                 while True:
                     msg_batch = consumer.poll(timeout_ms=poll_timeout_ms)
@@ -773,7 +801,8 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
                     if not msg_batch:
                         # Yield any pending coalesced blocks
                         if small_tables:
-                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
+                            yield from _yield_with_progress()
+                            small_tables.clear()
                         continue
 
                     partition_msgs = msg_batch.get(topic_partition, [])
@@ -788,8 +817,11 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
                             if records:
                                 small_tables.append(pa.Table.from_pylist(records))
                                 records = []
-                            # Yield coalesced blocks
-                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
+                            # Yield coalesced blocks with progress
+                            if small_tables:
+                                yield from _yield_with_progress()
+                                small_tables.clear()
+                            return
 
                         records.append(
                             {
@@ -806,42 +838,44 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
 
                         records_read += 1
                         last_offset = msg.offset
-                        # Update last offset in shared dict for checkpoint tracking
-                        if last_offsets_dict is not None:
-                            last_offsets_dict[checkpoint_key] = msg.offset
                         # Estimate bytes (rough approximation)
                         if msg.value:
                             bytes_read += len(msg.value) if isinstance(msg.value, bytes) else len(str(msg.value).encode())
 
                         # Check max_bytes limit
-                        if max_bytes and bytes_read >= max_bytes:
+                        if effective_max_bytes and bytes_read >= effective_max_bytes:
                             if records:
                                 small_tables.append(pa.Table.from_pylist(records))
                                 records = []
-                            # Yield coalesced blocks
-                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
-                            if last_offsets_dict is not None and last_offset is not None:
-                                last_offsets_dict[checkpoint_key] = last_offset + 1
+                            # Yield coalesced blocks with progress
+                            if small_tables:
+                                yield from _yield_with_progress()
                             return
 
                         # Yield small table for coalescing when batch size reached
-                        if len(records) >= min(max_records, _KAFKA_BATCH_SIZE):
+                        if len(records) >= min(effective_max_records, _KAFKA_BATCH_SIZE):
                             small_tables.append(pa.Table.from_pylist(records))
                             records = []
 
                         # Check max records limit
-                        if records_read >= max_records:
+                        if records_read >= effective_max_records:
                             if records:
                                 small_tables.append(pa.Table.from_pylist(records))
-                            # Yield coalesced blocks
-                            yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
+                                records = []
+                            # Yield coalesced blocks with progress
+                            if small_tables:
+                                yield from _yield_with_progress()
+                                small_tables.clear()
+                            return
 
                 # Flush remaining records
                 if records:
                     small_tables.append(pa.Table.from_pylist(records))
-                yield from yield_coalesced_blocks(coalescer, small_tables, f"kafka://{topic}/{partition}")
+                if small_tables:
+                    yield from _yield_with_progress()
+                    small_tables.clear()
         metadata = BlockMetadata(
-            num_rows=max_records,  # Estimated
+            num_rows=max_records_per_task or self.max_records_per_task,  # Estimated
             size_bytes=None,
             input_files=[f"kafka://{topic}/{partition}"],
             exec_stats=None,
@@ -873,6 +907,8 @@ class KafkaStreamingDatasource(UnboundDatasource, TwoPhaseCommitMixin):
                 # Convert checkpoint dict to TopicPartition -> offset mapping
                 offsets_to_commit = {}
                 for key, offset in checkpoint.items():
+                    if offset is None:
+                        continue  # Skip None offsets
                     if ":" in key:
                         topic, partition_str = key.rsplit(":", 1)
                         try:

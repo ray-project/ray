@@ -1,6 +1,7 @@
 import collections
 import logging
 import os
+import re
 import warnings
 from typing import (
     TYPE_CHECKING,
@@ -438,7 +439,12 @@ def read_datasource(
 
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
-    read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
+    read_tasks_result = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
+    # Handle both List and Tuple return types for backward compatibility
+    if isinstance(read_tasks_result, tuple):
+        read_tasks = read_tasks_result[0]
+    else:
+        read_tasks = read_tasks_result
 
     stats = DatasetStats(
         metadata={"Read": [read_task.metadata for read_task in read_tasks]},
@@ -4493,6 +4499,23 @@ def _emit_meta_provider_deprecation_warning(
         )
 
 
+def _coerce_trigger(trigger: Optional[Union[str, "StreamingTrigger"]]) -> Optional["StreamingTrigger"]:
+    if trigger is None:
+        return None
+    if not isinstance(trigger, str):
+        return trigger
+    s = trigger.strip().lower()
+    if s in ("once", "available_now", "continuous"):
+        return StreamingTrigger(trigger_type=s)
+    m = re.match(r"fixed_interval:(\d+(?:\.\d+)?)(ms|s|m)$", s)
+    if m:
+        val = float(m.group(1))
+        unit = m.group(2)
+        seconds = val / 1000.0 if unit == "ms" else (val if unit == "s" else val * 60.0)
+        return StreamingTrigger(trigger_type="fixed_interval", interval_seconds=seconds)
+    raise ValueError(f"Unsupported trigger string: {trigger!r}")
+
+
 def _parse_streaming_trigger(trigger: Union[str, StreamingTrigger]) -> StreamingTrigger:
     """Parse trigger parameter into StreamingTrigger object.
 
@@ -4629,7 +4652,13 @@ def read_kafka(
     topics: Union[str, List[str]],
     *,
     bootstrap_servers: str,
-    trigger: Union[str, StreamingTrigger] = "once",
+    trigger: Optional[Union[str, StreamingTrigger]] = None,
+    parallelism: int = -1,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    override_num_blocks: Optional[int] = None,
+    checkpoint_location: Optional[str] = None,
+    max_bytes_per_trigger: Optional[int] = None,
+    max_bytes_per_task: Optional[int] = None,
     max_records_per_task: int = 1000,
     start_offset: Optional[str] = None,
     end_offset: Optional[str] = None,
@@ -4653,10 +4682,7 @@ def read_kafka(
     ssl_protocol: Optional[str] = None,
     auto_offset_reset: str = "latest",
     session_timeout_ms: int = 30000,
-    parallelism: int = -1,
-    ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
-    override_num_blocks: Optional[int] = None,
     **kafka_kwargs,
 ) -> Dataset:
     r"""Read from Apache Kafka topics as a streaming or batch dataset.
@@ -4920,6 +4946,7 @@ def read_kafka(
             bootstrap_servers=bootstrap_servers,
             kafka_auth_config=kafka_auth_config,
             max_records_per_task=max_records_per_task,
+            max_bytes_per_task=max_bytes_per_task,
             start_offset=start_offset,
             end_offset=end_offset,
             group_id=group_id,

@@ -501,7 +501,17 @@ class UnboundedData(LogicalOperator, SourceOperator):
             # Use a small, constant number for schema inference to avoid
             # performance issues
             sample_parallelism = 3
-            read_tasks = self.datasource.get_read_tasks(sample_parallelism)
+            # Pass a dummy budget for schema inference
+            from ray.data.datasource.unbound_datasource import TriggerBudget
+            dummy_budget = TriggerBudget(max_records=1, max_splits=1, deadline_s=1.0)
+            read_tasks_result = self.datasource.get_read_tasks(
+                sample_parallelism, budget=dummy_budget
+            )
+            # Handle both List and Tuple return types for backward compatibility
+            if isinstance(read_tasks_result, tuple):
+                read_tasks = read_tasks_result[0]
+            else:
+                read_tasks = read_tasks_result
 
             if not read_tasks:
                 logger.warning("No read tasks available for schema inference")
