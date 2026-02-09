@@ -315,7 +315,7 @@ def test_get_eligible_operators_to_run(ray_start_regular_shared):
     assert _get_eligible_ops_to_run(ensure_liveness=False) == [o2, o3]
 
     # `o2`s queue is not empty, but it can't accept new inputs anymore
-    with patch.object(o2, "should_add_input") as _mock:
+    with patch.object(o2, "can_add_input") as _mock:
         _mock.return_value = False
         assert _get_eligible_ops_to_run(ensure_liveness=False) == [o3]
 
@@ -1037,15 +1037,15 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
 
     assert len(logical_ops) == 3
     assert isinstance(logical_ops[0], Read)
-    datasource = logical_ops[0]._datasource
+    datasource = logical_ops[0].datasource
     assert isinstance(datasource, ParquetDatasource)
     assert datasource._source_paths == input_path
 
     assert isinstance(logical_ops[1], MapRows)
-    assert logical_ops[1]._fn == udf
+    assert logical_ops[1].fn == udf
 
     assert isinstance(logical_ops[2], Write)
-    datasink = logical_ops[2]._datasink_or_legacy_datasource
+    datasink = logical_ops[2].datasink_or_legacy_datasource
     assert isinstance(datasink, ParquetDatasink)
     assert datasink.unresolved_path == output_path
 

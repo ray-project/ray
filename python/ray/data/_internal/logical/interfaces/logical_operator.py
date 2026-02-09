@@ -30,7 +30,7 @@ class LogicalOperator(Operator):
         for x in input_dependencies:
             assert isinstance(x, LogicalOperator), x
 
-        self._num_outputs: Optional[int] = num_outputs
+        self.num_outputs: Optional[int] = num_outputs
 
     def estimated_num_outputs(self) -> Optional[int]:
         """Returns the estimated number of blocks that
@@ -41,8 +41,8 @@ class LogicalOperator(Operator):
         `Dataset.repartition(num_blocks=X)`. A more accurate estimation can be given by
         `PhysicalOperator.num_outputs_total()` during execution.
         """
-        if self._num_outputs is not None:
-            return self._num_outputs
+        if self.num_outputs is not None:
+            return self.num_outputs
         elif len(self.input_dependencies) == 1:
             return self.input_dependencies[0].estimated_num_outputs()
         return None
@@ -71,7 +71,14 @@ class LogicalOperator(Operator):
 
     def _get_args(self) -> Dict[str, Any]:
         """This Dict must be serializable"""
-        return vars(self)
+        args: Dict[str, Any] = {}
+        for key, value in vars(self).items():
+            if key.startswith("_"):
+                args[key] = value
+            else:
+                # Keep underscore-prefixed keys to preserve legacy export schema.
+                args[f"_{key}"] = value
+        return args
 
     def infer_schema(self) -> Optional["Schema"]:
         """Returns the inferred schema of the output blocks."""
