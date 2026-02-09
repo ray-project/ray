@@ -299,6 +299,28 @@ class TrainController:
             if failure_result:
                 return failure_result
 
+        if isinstance(controller_state, ShuttingDownState):
+            if isinstance(controller_state.next_state, ErroredState):
+                logger.warning(
+                    "Another error occurred during shutdown after a training error. "
+                    "This error is being ignored to preserve the original "
+                    "training error. Error: %s",
+                    training_failed_error,
+                )
+                return TrainControllerLoopIterationResult(
+                    run_attempt_id=self._get_run_attempt_id(),
+                    previous_state=controller_state,
+                    next_state=controller_state.next_state,
+                    training_failed_error=controller_state.next_state.training_failed_error,
+                )
+
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=controller_state,
+                next_state=ErroredState(training_failed_error=training_failed_error),
+                training_failed_error=training_failed_error,
+            )
+
         # TODO: What should we do here?
         # This currently never happens because there must be errors.
         if failure_decision == FailureDecision.NOOP:
@@ -425,12 +447,13 @@ class TrainController:
         for callback in self._controller_callbacks:
             callback.after_controller_start(self._train_run_context)
 
-    def _shutdown(self):
+    def _shutdown(self) -> Optional["TrainControllerLoopIterationResult"]:
         if self._worker_group:
             self._shutdown_worker_group()
 
-        for callback in self._controller_callbacks:
-            callback.before_controller_shutdown()
+        return self._run_controller_hook(
+            "before_controller_shutdown",
+        )
 
     def _shutdown_worker_group(self):
         """Shutdown the worker group and set the worker group to None."""
@@ -586,7 +609,9 @@ class TrainController:
             )
         elif isinstance(controller_state, ShuttingDownState):
             # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
-            self._shutdown()
+            failure_result = self._shutdown()
+            if failure_result:
+                return failure_result
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
