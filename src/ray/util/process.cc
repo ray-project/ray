@@ -91,7 +91,7 @@ Process::Process(pid_t pid) {
         }
       }
     } else {
-      RAY_CHECK(pid == GetProcessId(reinterpret_cast<HANDLE>(fd)));
+      RAY_CHECK(pid == GetProcessId(reinterpret_cast<HANDLE>(fd_)));
     }
 #else
     if (kill(pid, 0) == -1 && errno == ESRCH) {
@@ -438,7 +438,7 @@ int Process::Wait() const {
     if (pid_ >= 0) {
       std::error_code error;
 #ifdef _WIN32
-      HANDLE handle = fd != -1 ? reinterpret_cast<HANDLE>(fd) : NULL;
+      HANDLE handle = fd_ != -1 ? reinterpret_cast<HANDLE>(fd_) : NULL;
       DWORD exit_code = STILL_ACTIVE;
       if (WaitForSingleObject(handle, INFINITE) == WAIT_OBJECT_0 &&
           GetExitCodeProcess(handle, &exit_code)) {
