@@ -757,7 +757,7 @@ class TestReservationOpResourceAllocator:
         # With 2 GPUs total, 1 used, the operator should have budget for 1 more.
         # Before the fix: budget.gpu=0 (couldn't scale)
         # After the fix: budget.gpu=1 (can scale to 1 more actor)
-        assert allocator._op_budgets[o4] == ExecutionResources(
+        assert allocator.get_budget(o4) == ExecutionResources(
             cpu=0, gpu=1, object_store_memory=625000
         )
         assert allocator.get_allocation(o4) == ExecutionResources(
