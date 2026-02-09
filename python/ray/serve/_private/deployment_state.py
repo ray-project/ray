@@ -4475,9 +4475,7 @@ class DeploymentStateManager:
             gang_requests[deployment_id] = GangPlacementGroupRequest(
                 deployment_id=deployment_id,
                 gang_size=gang_config.gang_size,
-                gang_placement_strategy=gang_config.gang_placement_strategy.value
-                if hasattr(gang_config.gang_placement_strategy, "value")
-                else str(gang_config.gang_placement_strategy),
+                gang_placement_strategy=gang_config.gang_placement_strategy.value,
                 num_replicas_to_add=num_replicas_to_add,
                 replica_resource_dict=deployment_state.get_replica_resource_dict(),
             )

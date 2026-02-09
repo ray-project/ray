@@ -1,7 +1,10 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from ray.util.placement_group import PlacementGroup
 
 from starlette.types import Scope
 
