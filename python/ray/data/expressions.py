@@ -579,6 +579,22 @@ class Expr(ABC):
         """
         return _create_pyarrow_compute_udf(pc.abs_checked)(self)
 
+    # NULL Handling
+    def is_nan(self) -> "UDFExpr":
+        return _create_pyarrow_compute_udf(pc.is_nan, return_dtype=DataType.bool())(
+            self
+        )
+
+    def is_finite(self) -> "UDFExpr":
+        return _create_pyarrow_compute_udf(pc.is_finite, return_dtype=DataType.bool())(
+            self
+        )
+
+    def is_inf(self) -> "UDFExpr":
+        return _create_pyarrow_compute_udf(pc.is_inf, return_dtype=DataType.bool())(
+            self
+        )
+
     @property
     def arr(self) -> "_ArrayNamespace":
         """Access array operations for this expression."""
@@ -1251,13 +1267,11 @@ def _create_pyarrow_wrapper(
         # Convert inputs to PyArrow and track pandas flags
         args_results = [to_arrow(arg) for arg in args]
         kwargs_results = {k: to_arrow(v) for k, v in kwargs.items()}
-
         converted_args = [v[0] for v in args_results]
         converted_kwargs = {k: v[0] for k, v in kwargs_results.items()}
         input_was_pandas = any(v[1] for v in args_results) or any(
             v[1] for v in kwargs_results.values()
         )
-
         # Call function with converted inputs
         result = fn(*converted_args, **converted_kwargs)
 
