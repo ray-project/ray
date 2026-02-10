@@ -241,7 +241,7 @@ class ElasticScalingPolicy(ScalingPolicy):
                 ),
                 timeout=self.AUTOSCALING_REQUESTS_GET_TIMEOUT_S,
             )
-        except (ray.exceptions.GetTimeoutError, ray.exceptions.RayError):
+        except Exception:
             msg = (
                 f"Failed to get allocated resources for {self._requester_id}."
                 " Will not resize the worker group."

@@ -154,6 +154,19 @@ class ScalingConfig(ScalingConfigV1):
             else self.num_workers[1]
         )
 
+    @property
+    def total_resources(self):
+        """Map of total resources required for training.
+
+        For elastic configs, this returns an upper bound based on max_workers.
+        """
+        total_resource_map = dict(self._trainer_resources_not_none)
+        for k, value in self._resources_per_worker_not_none.items():
+            total_resource_map[k] = total_resource_map.get(k, 0.0) + (
+                value * self.max_workers
+            )
+        return total_resource_map
+
     def _validate_tpu_config(self):
         """Validates configuration specifically for TPU usage."""
         max_workers = self.max_workers
