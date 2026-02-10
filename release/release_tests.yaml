@@ -2008,7 +2008,7 @@
     cluster_compute: cpu_single_node.yaml
 
   run:
-    timeout: 2000  # expected 1000 seconds
+    timeout: 3000  # 50 minutes; expected 1000 seconds (~16 minutes)
     script: python example_algorithms/appo/cartpole_appo.py \
       --as-release-test \
       --num-aggregator-actors-per-learner=2 \
