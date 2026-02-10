@@ -766,13 +766,21 @@ def test_configure_output_locality(mock_scale_up, ray_start_regular_shared):
 
 
 class OpBufferQueueTest(unittest.TestCase):
-    def test_multi_threading(self):
+    def test_invalid_split_index(self):
+        """Test that out-of-range split index raises AssertionError."""
+        queue = OpBufferQueue(num_splits=2)
+        with pytest.raises(AssertionError):
+            queue.has_next(2)
+        with pytest.raises(AssertionError):
+            queue.pop(2)
+
+    def test_e2e_multi_threading(self):
         num_blocks = 5_000
-        num_splits = 4
+        num_splits = 20
         num_per_split = num_blocks // num_splits
         ref_bundles = make_ref_bundles([[[i]] for i in range(num_blocks)])
 
-        queue = OpBufferQueue(num_splits=num_splits)
+        q = OpBufferQueue(num_splits=num_splits)
 
         start = threading.Event()
         done = threading.Event()
@@ -784,11 +792,11 @@ class OpBufferQueueTest(unittest.TestCase):
             try:
                 for i, ref_bundle in enumerate(ref_bundles):
                     if i % 10 == 1:
-                        print(f">>> Queue size {len(queue)}")
+                        print(f">>> Queue size {len(q)}")
                         time.sleep(random.random() * 1e-4)
 
                     ref_bundle.output_split_idx = i % num_splits
-                    queue.append(ref_bundle)
+                    q.append(ref_bundle)
             except Exception as e:
                 print(f">>> Caught exception: {e}")
                 raise
@@ -796,26 +804,25 @@ class OpBufferQueueTest(unittest.TestCase):
             done.set()
             return True
 
+        consumed_splits = [[] for _ in range(num_splits)]
+
         def consume(output_split_idx):
             # Sync producers and consumers
             start.wait()
-
-            count = 0
 
             try:
                 # Iterate until both are true:
                 #   - Producer is done
                 #   - Queue is empty
-                while not done.is_set() or queue.has_next(output_split_idx):
-                    ref_bundle = queue.pop(output_split_idx)
-                    if ref_bundle is not None:
-                        count += 1
-                        assert ref_bundle.output_split_idx == output_split_idx
+                while not done.is_set() or q.has_next(output_split_idx):
+                    b = q.pop(output_split_idx)
+                    if b is not None:
+                        assert b.output_split_idx == output_split_idx
+                        consumed_splits[output_split_idx].append(b)
             except Exception as e:
                 print(f">>> Caught exception: {e}")
                 raise
 
-            assert count == num_per_split
             return True
 
         with ThreadPoolExecutor(max_workers=num_splits + 1) as executor:
@@ -830,6 +837,20 @@ class OpBufferQueueTest(unittest.TestCase):
 
         for f in futures:
             assert f.result() is True, f.result()
+
+        # Verify count, FIFO order per split
+        for split_idx in range(num_splits):
+            consumed = consumed_splits[split_idx]
+            expected = ref_bundles[split_idx::num_splits]
+            assert len(consumed) == num_per_split
+            assert consumed == expected, (
+                f"Split {split_idx}: FIFO order violated"
+            )
+
+        # Verify queue is fully drained
+        assert len(q) == 0
+        assert q.num_blocks == 0
+        assert q.memory_usage == 0
 
 
 def test_exception_concise_stacktrace():
