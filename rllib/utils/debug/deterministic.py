@@ -21,9 +21,7 @@ def update_global_seed_if_necessary(
         seed: An optional int seed. If None, will not do
             anything.
     """
-    if seed is None:
-        return
-
+    seed = seed or 42
     # Python random module.
     random.seed(seed)
     # Numpy.
