@@ -9,11 +9,14 @@ import pytest
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
-from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import (
+    SignalActor,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
     make_global_state_accessor,
-    run_string_as_driver,
     wait_for_pid_to_exit,
 )
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
