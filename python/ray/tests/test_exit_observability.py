@@ -6,9 +6,11 @@ import sys
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.state_api_test_utils import verify_failed_task
-from ray._private.test_utils import run_string_as_driver
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_nodes, list_tasks, list_workers
 

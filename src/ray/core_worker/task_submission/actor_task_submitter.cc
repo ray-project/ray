@@ -990,6 +990,8 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
       RAY_LOG(DEBUG).WithField(task_id)
           << "Task was queued. Mark a task is canceled from a queue.";
       queue->second.actor_submit_queue_->MarkTaskCanceled(send_pos);
+      queue->second.cur_pending_calls_--;
+      SendPendingTasks(actor_id);
     }
   }
 

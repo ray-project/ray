@@ -12,6 +12,7 @@ from typing import List, Optional
 import click
 import runfiles
 from networkx import DiGraph, ancestors as networkx_ancestors, topological_sort
+from pip_requirements_parser import RequirementsFile
 
 from ci.raydepsets.workspace import Depset, Workspace
 
@@ -492,6 +493,22 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
         new_args.append(arg)
 
     return new_args + _flatten_flags(flags)
+
+
+def parse_lock_file(lock_file_path: str) -> RequirementsFile:
+    """
+    Parses a lock file and returns a RequirementsFile object, which contains
+    all information from the file, including requirements, options, and comments.
+    """
+    return RequirementsFile.from_file(lock_file_path)
+
+
+def write_lock_file(requirements_file: RequirementsFile, lock_file_path: str):
+    """
+    Writes a RequirementsFile object to a lock file, preserving all its content.
+    """
+    with open(lock_file_path, "w") as f:
+        f.write(requirements_file.dumps())
 
 
 def _uv_binary():

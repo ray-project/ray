@@ -29,6 +29,34 @@ namespace core {
 
 namespace worker {
 
+namespace {
+
+rpc::events::TaskLifecycleEvent::TaskLogInfo TaskLogInfoToLifecycleEvent(
+    const rpc::TaskLogInfo &src) {
+  rpc::events::TaskLifecycleEvent::TaskLogInfo dest;
+  if (src.has_stdout_file()) {
+    dest.set_stdout_file(src.stdout_file());
+  }
+  if (src.has_stderr_file()) {
+    dest.set_stderr_file(src.stderr_file());
+  }
+  if (src.has_stdout_start()) {
+    dest.set_stdout_start(src.stdout_start());
+  }
+  if (src.has_stdout_end()) {
+    dest.set_stdout_end(src.stdout_end());
+  }
+  if (src.has_stderr_start()) {
+    dest.set_stderr_start(src.stderr_start());
+  }
+  if (src.has_stderr_end()) {
+    dest.set_stderr_end(src.stderr_end());
+  }
+  return dest;
+}
+
+}  // namespace
+
 TaskEvent::TaskEvent(TaskID task_id,
                      JobID job_id,
                      int32_t attempt_number,
@@ -291,6 +319,11 @@ void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
   if (state_update_->is_debugger_paused_.has_value()) {
     lifecycle_event_data.set_is_debugger_paused(
         state_update_->is_debugger_paused_.value());
+  }
+
+  if (state_update_->task_log_info_.has_value()) {
+    *lifecycle_event_data.mutable_task_log_info() =
+        TaskLogInfoToLifecycleEvent(state_update_->task_log_info_.value());
   }
 }
 

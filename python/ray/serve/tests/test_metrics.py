@@ -19,10 +19,11 @@ from websockets.sync.client import connect
 import ray
 from ray import serve
 from ray._common.network_utils import parse_address
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     PrometheusTimeseries,
+    SignalActor,
     fetch_prometheus_metric_timeseries,
+    wait_for_condition,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
@@ -892,6 +893,7 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     wait_for_condition(
         lambda: len(get_metric_dictionaries("ray_serve_deployment_replica_healthy"))
         == 3,
+        timeout=40,
     )
     health_metrics = get_metric_dictionaries("ray_serve_deployment_replica_healthy")
     expected_output = {

@@ -80,10 +80,9 @@ py_test_module_list(
 )
 
 py_test(
-    name = "test_formats",
+    name = "test_arrow",
     size = "medium",
-    srcs = ["tests/datasource/test_formats.py"],
-    data = glob(["tests/image-folder/**/*"]),
+    srcs = ["tests/datasource/test_arrow.py"],
     tags = [
         "exclusive",
         "team:data",
