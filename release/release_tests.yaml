@@ -1994,7 +1994,7 @@
 #
 # --------------------------
 
-- name: rllib_cartpole_local
+- name: rllib_appo_cartpole_local
   python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
