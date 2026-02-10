@@ -113,8 +113,6 @@ def load_table(
     base_uri: str = "s3://ray-benchmark-data/tpch/parquet",
 ) -> ray.data.Dataset:
     path = f"{base_uri}/sf{scale_factor}/{table_name}"
-    ds = ray.data.read_parquet(path)
-
     read_kwargs = {}
     if table_name in TABLE_COLUMNS:
         read_kwargs["columns"] = list(TABLE_COLUMNS[table_name].keys())
