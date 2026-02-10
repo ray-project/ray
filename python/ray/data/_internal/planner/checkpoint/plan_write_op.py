@@ -46,7 +46,7 @@ def plan_write_op_with_checkpoint_writer(
 def _generate_checkpoint_writing_transform(
     data_context: DataContext, logical_op: Write
 ) -> BlockMapTransformFn:
-    datasink = logical_op._datasink_or_legacy_datasource
+    datasink = logical_op.datasink_or_legacy_datasource
     if not isinstance(datasink, Datasink):
         raise InvalidCheckpointingOperators(
             f"To enable checkpointing, Write operation must use a "

@@ -18,9 +18,6 @@ class ResourceIsolationConfig:
     Validates configuration for resource isolation by enforcing types, correct combinations of values, applying default values,
     and sanity checking cpu and memory reservations. Also, converts system_reserved_cpu into cpu.weights for cgroupv2.
 
-    Raises:
-        ValueError: On invalid inputs.
-
     Attributes:
         enable_resource_isolation: True if cgroupv2 based isolation of ray
             system processes is enabled.
@@ -42,7 +39,26 @@ class ResourceIsolationConfig:
         cgroup_path: Optional[str] = None,
         system_reserved_cpu: Optional[float] = None,
         system_reserved_memory: Optional[int] = None,
+        object_store_memory: Optional[int] = None,
     ):
+        """
+        Raises:
+            ValueError: On invalid inputs.
+
+        Args:
+            enable_resource_isolation: True if cgroupv2 based isolation of ray
+                system processes is enabled.
+            cgroup_path: The path for the cgroup the raylet should use to enforce
+                resource isolation.
+            system_reserved_cpu: The amount of cores reserved for ray system
+                processes. Must be >= ray_constants.MINIMUM_SYSTEM_RESERVED_CPU_CORES
+                and < the total number of cores available.
+            system_reserved_memory: The amount of memory in bytes reserved
+                for ray system processes. Must be >= ray_constants.MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES
+                and system_reserved_memory + object_store_memory < the total memory available.
+            object_store_memory: The amount of memory in bytes reserved for the object store.
+                Must be not None when resource isolation is enabled.
+        """
         self._resource_isolation_enabled = enable_resource_isolation
         self.cgroup_path = cgroup_path
         self.system_reserved_memory = system_reserved_memory
@@ -50,11 +66,6 @@ class ResourceIsolationConfig:
 
         # cgroupv2 cpu.weight calculated from system_reserved_cpu assumes ray uses all available cores.
         self.system_reserved_cpu_weight: int = None
-
-        # TODO(irabbani): this is used to ensure that object_store_memory is not added twice
-        # to self._system_reserved_memory. This should be refactored in the future so that ResourceIsolationConfig
-        # can take object_store_memory as a constructor parameter and be constructed fully by the constructor.
-        self._constructed = False
 
         if not enable_resource_isolation:
             if self.cgroup_path:
@@ -78,50 +89,25 @@ class ResourceIsolationConfig:
                 )
             return
 
+        if object_store_memory is None:
+            raise ValueError(
+                "object_store_memory must be resolved before creating a ResourceIsolationConfig "
+                "when resource isolation is enabled. This is likely a bug in Ray, "
+                "please report it at https://github.com/ray-project/ray/issues/new/choose."
+            )
+
         self.system_reserved_cpu_weight = self._validate_and_get_system_reserved_cpu(
             system_reserved_cpu
         )
 
         self.system_reserved_memory = self._validate_and_get_system_reserved_memory(
-            system_reserved_memory
+            system_reserved_memory, object_store_memory
         )
 
         self.cgroup_path = self._validate_and_get_cgroup_path(cgroup_path)
 
     def is_enabled(self) -> bool:
         return self._resource_isolation_enabled
-
-    def add_object_store_memory(self, object_store_memory_bytes: int):
-        """Adds object_store_memory to the memory reserved for system processes.
-
-        Args:
-            object_store_memory_bytes: The amount processes. Must be >= ray_constants.MINIMUM_SYSTEM_RESERVED_CPU_CORES
-                and < the total number of cores available.
-
-        Raises:
-            AssertionError: If called with resource isolation not enabled or called more than once for the same instance.
-            ValueError: If the input is not an integer or if the system_reserved_memory + object_store_memory is greater
-                than the total memory available on the system.
-
-        """
-        assert self.is_enabled(), (
-            "Cannot add object_store_memory to system_reserved_memory when "
-            "enable_resource_isolation is False."
-        )
-        assert not self._constructed, (
-            "Cannot call add_object_store_memory more than once with an instance "
-            "ResourceIsolationConfig. This is a bug in the ray code. "
-        )
-        self.system_reserved_memory += object_store_memory_bytes
-        available_system_memory = ray._common.utils.get_system_memory()
-        if self.system_reserved_memory > available_system_memory:
-            raise ValueError(
-                f"The total requested system_reserved_memory={self.system_reserved_memory}, calculated by "
-                "object_store_bytes + system_reserved_memory, is greater than the total memory "
-                f"available={available_system_memory}. Pick a smaller number of bytes for object_store_bytes "
-                "or system_reserved_memory."
-            )
-        self._constructed = True
 
     def add_system_pids(self, system_pids: str):
         """A comma-separated list of pids to move into the system cgroup."""
@@ -239,6 +225,7 @@ class ResourceIsolationConfig:
     @staticmethod
     def _validate_and_get_system_reserved_memory(
         system_reserved_memory: Optional[int],
+        object_store_memory: int,
     ) -> int:
         """If system_reserved_memory is not specified, returns the default value. Otherwise,
         checks the type, makes sure that the value is in range.
@@ -247,6 +234,7 @@ class ResourceIsolationConfig:
             system_reserved_memory: The amount of memory in bytes reserved
                 for ray system processes. Must be >= ray_constants.MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES
                 and < the total memory available.
+            object_store_memory: The amount of memory in bytes reserved for the object store.
 
         Returns:
             int: The validated system reserved memory in bytes.
@@ -296,9 +284,10 @@ class ResourceIsolationConfig:
                 f"greater than or equal to {ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES}"
             )
 
-        if system_reserved_memory > available_system_memory:
+        total_system_reserved_memory = system_reserved_memory + object_store_memory
+        if total_system_reserved_memory > available_system_memory:
             raise ValueError(
-                f"The total requested system_reserved_memory={system_reserved_memory} is greater than "
+                f"The total requested system_reserved_memory={total_system_reserved_memory} is greater than "
                 f"the amount of memory available={available_system_memory}."
             )
-        return system_reserved_memory
+        return total_system_reserved_memory

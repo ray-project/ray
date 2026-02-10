@@ -230,6 +230,13 @@ def ray_deps_setup():
         name = "io_opentelemetry_cpp",
         url = "https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.19.0.zip",
         sha256 = "8ef0a63f4959d5dfc3d8190d62229ef018ce41eef36e1f3198312d47ab2de05a",
+        # Enable mTLS support for OTLP gRPC exporter.
+        # This is required because Ray's gRPC servers require client certificates when TLS is enabled.
+        # See https://github.com/ray-project/ray/issues/59968
+        patches = [
+            "@io_ray//thirdparty/patches:opentelemetry-cpp-enable-mtls.patch",
+        ],
+        patch_args = ["-p1"],
     )
 
     auto_http_archive(
@@ -329,8 +336,8 @@ def ray_deps_setup():
     # protobuf library that Ray supports.
     auto_http_archive(
         name = "com_google_protobuf_rules_proto_grpc",
-        url = "https://github.com/protocolbuffers/protobuf/archive/v3.19.4.tar.gz",
-        sha256 = "3bd7828aa5af4b13b99c191e8b1e884ebfa9ad371b0ce264605d347f135d2568",
+        url = "https://github.com/protocolbuffers/protobuf/archive/v3.20.3.tar.gz",
+        sha256 = "9c0fd39c7a08dff543c643f0f4baf081988129a411b977a07c46221793605638",
     )
     auto_http_archive(
         name = "rules_proto_grpc",

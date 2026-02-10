@@ -22,10 +22,12 @@ Modin
 [Mm]ultiget(s)?
 ndarray(s)?
 NLP
+[Oo]mni
 [Oo]utqueue(s)?
 PDFs
 PIL
 [Pp]ipelined
+[Pp]olars
 Predibase('s)?
 [Pp]refetch
 [Pp]refetching
