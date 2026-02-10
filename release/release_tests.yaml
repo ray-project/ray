@@ -133,6 +133,26 @@
       cluster:
         ray_version: 2.50.0
 
+- name: hello_world_custom_runtime_env
+  python: "3.10"
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    byod:
+      runtime_env:
+        - HELLO_WORLD_TEST=1
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    script: python hello_world.py
+
+  variations:
+    - __suffix__: aws
+
 - name: hello_world_custom_byod_depset_only
   python: "3.10"
   team: reef
@@ -471,7 +491,8 @@
   group: Tune tests
   working_dir: ml_user_tests
 
-  frequency: nightly-3x
+  # TODO(rllib): https://github.com/anyscale/ray/issues/581
+  frequency: manual
   team: ml
 
   cluster:
@@ -843,7 +864,8 @@
   group: Long running tests
   working_dir: long_running_tests
 
-  frequency: weekly
+  # TODO(rllib): https://github.com/anyscale/ray/issues/568
+  frequency: manual
   team: rllib
 
   cluster:
@@ -855,7 +877,7 @@
     long_running: true
 
   smoke_test:
-    frequency: nightly
+    frequency: manual
 
     run:
       timeout: 3600
@@ -959,7 +981,8 @@
   group: Long running tests
   working_dir: long_running_tests
 
-  frequency: weekly
+  # TODO(rllib): https://github.com/anyscale/ray/issues/571
+  frequency: manual
   team: ml
 
   cluster:
@@ -977,7 +1000,7 @@
 
 
   smoke_test:
-    frequency: nightly
+    frequency: manual
 
     run:
       timeout: 3600
