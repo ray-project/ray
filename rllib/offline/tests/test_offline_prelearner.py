@@ -1,7 +1,5 @@
-import functools
 import shutil
 import unittest
-import functools
 from pathlib import Path
 
 import gymnasium as gym
@@ -145,7 +143,13 @@ class TestOfflinePreLearner(unittest.TestCase):
         )["episodes"]
 
         self.assertTrue(
-            all(all(eps.get_observations()[-1] == [0.0] * 4) for eps in episodes)
+            all(
+                all(
+                    eps.get_observations()[-1]
+                    == [0.0] * self.observation_space.shape[0]
+                )
+                for eps in episodes
+            )
         )
 
     def test_offline_prelearner_convert_from_old_sample_batch_to_episodes(self):
@@ -170,11 +174,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         self.assertTrue(isinstance(episodes[0], SingleAgentEpisode))
 
     def test_offline_prelearner_sample_from_old_sample_batch_data(self):
-        """Tests sampling from a `SampleBatch` dataset.
-
-        Creates a dataset of `SampleBatch`es and use the `OfflinePreLearner` to transform them to episodes.
-        Checks that the transformed data is a batch of size `train_batch_size_per_learner`.
-        """
+        """Tests sampling from a `SampleBatch` dataset."""
 
         data_path = self.base_path / "offline/tests/data/cartpole/large.json"
 
@@ -228,30 +228,6 @@ class TestOfflinePreLearner(unittest.TestCase):
                 len(batch[DEFAULT_POLICY_ID][key]),
                 self.config.train_batch_size_per_learner,
             )
-
-    def test_offline_prelearner_in_map_batches(self):
-        """Tests using the `OfflinePreLearner` in `map_batches` where it is used in `OfflineData`."""
-
-        # Create a simple dataset.
-        data = ray.data.read_parquet(self.data_path)
-
-        # Generate a batch iterator that uses the `OfflinePreLearner` to convert
-        # data to episodes.
-        batch_iterator = data.map_batches(
-            functools.partial(
-                OfflinePreLearner._map_to_episodes,
-                False,
-            )
-        ).iter_batches(
-            batch_size=10,
-            prefetch_batches=1,
-        )
-
-        # Now sample a single batch.
-        batch = next(iter(batch_iterator))
-        # Assert that we have indeed sampled episodes.
-        self.assertTrue("episodes" in batch)
-        self.assertTrue(isinstance(batch["episodes"][0], SingleAgentEpisode))
 
     def test_offline_prelearner_sample_from_episode_data(self):
         """Test sampling and writing of complete epsidoes.

@@ -26,6 +26,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/cgroup2/cgroup_test_utils.h"
 #include "ray/common/id.h"
 #include "ray/util/process.h"
 
@@ -63,60 +64,116 @@ class MemoryMonitorTest : public ::testing::Test {
     usage_file.close();
   }
 
+  /**
+   * Sets up a mock cgroup v2 directory for emulating memory usage and populates
+   * the files with the provided mock memory values.
+   *
+   * @param total_bytes the value to write to memory.max (total memory limit)
+   * @param current_bytes the value to write to memory.current (current usage)
+   * @param inactive_file_bytes the inactive_file value in memory.stat
+   * @param active_file_bytes the active_file value in memory.stat
+   * @return the path to the created mock cgroup directory
+   */
+  std::string MockCgroupMemoryUsage(int64_t total_bytes,
+                                    int64_t current_bytes,
+                                    int64_t inactive_file_bytes,
+                                    int64_t active_file_bytes) {
+    auto temp_dir_or = TempDirectory::Create();
+    RAY_CHECK(temp_dir_or.ok())
+        << "Failed to create temp directory: " << temp_dir_or.status().message();
+    mock_cgroup_dir_ = std::move(temp_dir_or.value());
+
+    const std::string &cgroup_path = mock_cgroup_dir_->GetPath();
+
+    mock_memory_max_file_ = std::make_unique<TempFile>(cgroup_path + "/memory.max");
+    mock_memory_max_file_->AppendLine(std::to_string(total_bytes) + "\n");
+
+    mock_memory_current_file_ =
+        std::make_unique<TempFile>(cgroup_path + "/memory.current");
+    mock_memory_current_file_->AppendLine(std::to_string(current_bytes) + "\n");
+
+    mock_memory_stat_file_ = std::make_unique<TempFile>(cgroup_path + "/memory.stat");
+    mock_memory_stat_file_->AppendLine("anon 123456\n");
+    mock_memory_stat_file_->AppendLine("inactive_file " +
+                                       std::to_string(inactive_file_bytes) + "\n");
+    mock_memory_stat_file_->AppendLine("active_file " +
+                                       std::to_string(active_file_bytes) + "\n");
+    mock_memory_stat_file_->AppendLine("some_other_key 789\n");
+
+    return cgroup_path;
+  }
+
   MemoryMonitor &MakeMemoryMonitor(float usage_threshold,
                                    int64_t min_memory_free_bytes,
                                    uint64_t monitor_interval_ms,
+                                   const std::string &root_cgroup_path,
                                    MemoryUsageRefreshCallback monitor_callback) {
     instance = std::make_unique<MemoryMonitor>(io_context_,
                                                usage_threshold,
                                                min_memory_free_bytes,
                                                monitor_interval_ms,
-                                               std::move(monitor_callback));
+                                               std::move(monitor_callback),
+                                               root_cgroup_path);
     return *instance;
   }
   std::unique_ptr<MemoryMonitor> instance;
+
+  // Mock cgroup directory and files
+  std::unique_ptr<TempDirectory> mock_cgroup_dir_;
+  std::unique_ptr<TempFile> mock_memory_max_file_;
+  std::unique_ptr<TempFile> mock_memory_current_file_;
+  std::unique_ptr<TempFile> mock_memory_stat_file_;
 };
 
 TEST_F(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold) {
-  ASSERT_TRUE(MemoryMonitor::IsUsageAboveThreshold({1, 10}, 0));
+  SystemMemorySnapshot snapshot{1, 10};
+  ASSERT_TRUE(MemoryMonitor::IsUsageAboveThreshold(snapshot, 0));
 }
 
 TEST_F(MemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold) {
-  ASSERT_FALSE(MemoryMonitor::IsUsageAboveThreshold({9, 10}, 10));
+  SystemMemorySnapshot snapshot{9, 10};
+  ASSERT_FALSE(MemoryMonitor::IsUsageAboveThreshold(snapshot, 10));
 }
 
 TEST_F(MemoryMonitorTest, TestUsageAtThresholdReportsFalse) {
-  ASSERT_FALSE(MemoryMonitor::IsUsageAboveThreshold({4, 10}, 5));
-  ASSERT_FALSE(MemoryMonitor::IsUsageAboveThreshold({5, 10}, 5));
-  ASSERT_TRUE(MemoryMonitor::IsUsageAboveThreshold({6, 10}, 5));
+  SystemMemorySnapshot snapshot1{4, 10};
+  ASSERT_FALSE(MemoryMonitor::IsUsageAboveThreshold(snapshot1, 5));
+  SystemMemorySnapshot snapshot2{5, 10};
+  ASSERT_FALSE(MemoryMonitor::IsUsageAboveThreshold(snapshot2, 5));
+  SystemMemorySnapshot snapshot3{6, 10};
+  ASSERT_TRUE(MemoryMonitor::IsUsageAboveThreshold(snapshot3, 5));
 }
 
 TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive) {
   {
-    auto &monitor = MakeMemoryMonitor(
-        0 /*usage_threshold*/,
-        -1 /*min_memory_free_bytes*/,
-        0 /*refresh_interval_ms*/,
-        [](bool is_usage_above_threshold,
-           MemorySnapshot system_memory,
-           float usage_threshold) { FAIL() << "Expected monitor to not run"; });
-    auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
-    ASSERT_GT(total_bytes, 0);
-    ASSERT_GT(total_bytes, used_bytes);
+    auto system_memory = MemoryMonitor::TakeSystemMemorySnapshot("");
+    ASSERT_GT(system_memory.total_bytes, 0);
+    ASSERT_GT(system_memory.total_bytes, system_memory.used_bytes);
   }
+}
+
+TEST_F(MemoryMonitorTest, TestTakeSystemMemorySnapshotUsesCgroupWhenLowerThanSystem) {
+  int64_t cgroup_total_bytes = 1024 * 1024 * 1024;   // 1 GB
+  int64_t cgroup_current_bytes = 500 * 1024 * 1024;  // 500 MB current usage
+  int64_t inactive_file_bytes = 50 * 1024 * 1024;    // 50 MB inactive file cache
+  int64_t active_file_bytes = 30 * 1024 * 1024;      // 30 MB active file cache
+  int64_t expected_used_bytes =
+      cgroup_current_bytes - inactive_file_bytes - active_file_bytes;
+
+  std::string cgroup_dir = MockCgroupMemoryUsage(
+      cgroup_total_bytes, cgroup_current_bytes, inactive_file_bytes, active_file_bytes);
+
+  auto system_memory = MemoryMonitor::TakeSystemMemorySnapshot(cgroup_dir);
+
+  ASSERT_EQ(system_memory.total_bytes, cgroup_total_bytes);
+  ASSERT_EQ(system_memory.used_bytes, expected_used_bytes);
 }
 
 TEST_F(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
   {
-    auto &monitor = MakeMemoryMonitor(
-        0 /*usage_threshold*/,
-        -1 /*min_memory_free_bytes*/,
-        0 /*refresh_interval_ms*/,
-        [](bool is_usage_above_threshold,
-           MemorySnapshot system_memory,
-           float usage_threshold) { FAIL() << "Expected monitor to not run"; });
-    auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
-    auto [cgroup_used_bytes, cgroup_total_bytes] = monitor.GetCGroupMemoryBytes();
+    auto system_memory = MemoryMonitor::TakeSystemMemorySnapshot("");
+    auto [cgroup_used_bytes, cgroup_total_bytes] =
+        MemoryMonitor::GetCGroupMemoryBytes("");
 
     auto cmd_out = Process::Exec("free -b");
     std::string title;
@@ -134,7 +191,8 @@ TEST_F(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
     std::istringstream total_ss(total);
     total_ss >> free_total_bytes;
 
-    ASSERT_TRUE(total_bytes == free_total_bytes || total_bytes == cgroup_total_bytes);
+    ASSERT_TRUE(system_memory.total_bytes == free_total_bytes ||
+                system_memory.total_bytes == cgroup_total_bytes);
   }
 }
 
@@ -144,8 +202,9 @@ TEST_F(MemoryMonitorTest, TestMonitorPeriodSetMaxUsageThresholdCallbackExecuted)
   MakeMemoryMonitor(1 /*usage_threshold*/,
                     -1 /*min_memory_free_bytes*/,
                     1 /*refresh_interval_ms*/,
+                    "" /*root_cgroup_path*/,
                     [has_checked_once](bool is_usage_above_threshold,
-                                       MemorySnapshot system_memory,
+                                       SystemMemorySnapshot system_memory,
                                        float usage_threshold) {
                       ASSERT_FLOAT_EQ(1.0f, usage_threshold);
                       ASSERT_GT(system_memory.total_bytes, 0);
@@ -161,8 +220,9 @@ TEST_F(MemoryMonitorTest, TestMonitorPeriodDisableMinMemoryCallbackExecuted) {
   MakeMemoryMonitor(0.4 /*usage_threshold*/,
                     -1 /*min_memory_free_bytes*/,
                     1 /*refresh_interval_ms*/,
+                    "" /*root_cgroup_path*/,
                     [has_checked_once](bool is_usage_above_threshold,
-                                       MemorySnapshot system_memory,
+                                       SystemMemorySnapshot system_memory,
                                        float usage_threshold) {
                       ASSERT_FLOAT_EQ(0.4f, usage_threshold);
                       ASSERT_GT(system_memory.total_bytes, 0);
@@ -173,14 +233,43 @@ TEST_F(MemoryMonitorTest, TestMonitorPeriodDisableMinMemoryCallbackExecuted) {
   has_checked_once->wait();
 }
 
+TEST_F(MemoryMonitorTest, TestMonitorDetectsMemoryAboveThresholdCallbackExecuted) {
+  int64_t cgroup_total_bytes = 1024 * 1024 * 1024;   // 1 GB
+  int64_t cgroup_current_bytes = 850 * 1024 * 1024;  // 850 MB current usage
+  int64_t inactive_file_bytes = 30 * 1024 * 1024;    // 30 MB inactive file cache
+  int64_t active_file_bytes = 20 * 1024 * 1024;      // 20 MB active file cache
+  // Working set = 850 - 30 - 20 = 800 MB (80% of 1GB, above 70% threshold)
+
+  std::string cgroup_dir = MockCgroupMemoryUsage(
+      cgroup_total_bytes, cgroup_current_bytes, inactive_file_bytes, active_file_bytes);
+
+  std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
+
+  MakeMemoryMonitor(
+      0.7 /*usage_threshold (70%)*/,
+      -1 /*min_memory_free_bytes*/,
+      1 /*refresh_interval_ms*/,
+      cgroup_dir /*root_cgroup_path*/,
+      [has_checked_once, cgroup_total_bytes](bool is_usage_above_threshold,
+                                             SystemMemorySnapshot system_memory,
+                                             float usage_threshold) {
+        ASSERT_EQ(system_memory.total_bytes, cgroup_total_bytes);
+        ASSERT_TRUE(is_usage_above_threshold);
+        has_checked_once->count_down();
+      });
+
+  has_checked_once->wait();
+}
+
 TEST_F(MemoryMonitorTest, TestMonitorMinFreeZeroThresholdIsOne) {
   std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
 
   MakeMemoryMonitor(0.4 /*usage_threshold*/,
                     0 /*min_memory_free_bytes*/,
                     1 /*refresh_interval_ms*/,
+                    "" /*root_cgroup_path*/,
                     [has_checked_once](bool is_usage_above_threshold,
-                                       MemorySnapshot system_memory,
+                                       SystemMemorySnapshot system_memory,
                                        float usage_threshold) {
                       ASSERT_FLOAT_EQ(1.0f, usage_threshold);
                       ASSERT_GT(system_memory.total_bytes, 0);
@@ -468,7 +557,7 @@ TEST_F(MemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc) {
   ASSERT_EQ(std::get<1>(list[1]), 111);
 }
 
-TEST_F(MemoryMonitorTest, TestGetProcessMemoryUsageFiltersBadPids) {
+TEST_F(MemoryMonitorTest, TestTakePerProcessMemorySnapshotFiltersBadPids) {
   std::string proc_dir = UniqueID::FromRandom().Hex();
   MakeMemoryUsage(1, "111", proc_dir);
 
@@ -476,7 +565,7 @@ TEST_F(MemoryMonitorTest, TestGetProcessMemoryUsageFiltersBadPids) {
   boost::filesystem::create_directory(proc_dir + "/2");
   boost::filesystem::create_directory(proc_dir + "/3");
 
-  auto usage = MemoryMonitor::GetProcessMemoryUsage(proc_dir);
+  auto usage = MemoryMonitor::TakePerProcessMemorySnapshot(proc_dir);
 
   ASSERT_EQ(usage.size(), 1);
   ASSERT_TRUE(usage.contains(1));
