@@ -73,6 +73,7 @@ from ray.serve._private.proxy_request_response import (
     ResponseHandlerInfo,
     ResponseStatus,
     gRPCProxyRequest,
+    gRPCStreamingType,
 )
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
@@ -585,7 +586,9 @@ class gRPCProxy(GenericProxy):
             is_error=not healthy,
         )
 
-    def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
+    def service_handler_factory(
+        self, service_method: str, streaming_type: gRPCStreamingType
+    ) -> Callable:
         async def unary_unary(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
         ) -> bytes:
@@ -640,7 +643,25 @@ class gRPCProxy(GenericProxy):
 
             set_grpc_code_and_details(context, status)
 
-        return unary_stream if stream else unary_unary
+        async def stream_unary(
+            request_proto_iterator: Any,
+            context: grpc._cython.cygrpc._ServicerContext,
+        ) -> bytes:
+            raise NotImplementedError("stream_unary not implemented.")
+
+        async def stream_stream(
+            request_proto_iterator: Any,
+            context: grpc._cython.cygrpc._ServicerContext,
+        ) -> Generator[bytes, None, None]:
+            raise NotImplementedError("stream_stream not implemented.")
+
+        handler_map = {
+            gRPCStreamingType.UNARY_UNARY: unary_unary,
+            gRPCStreamingType.UNARY_STREAM: unary_stream,
+            gRPCStreamingType.STREAM_UNARY: stream_unary,
+            gRPCStreamingType.STREAM_STREAM: stream_stream,
+        }
+        return handler_map[streaming_type]
 
     def setup_request_context_and_handle(
         self,
