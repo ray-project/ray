@@ -274,7 +274,7 @@ Learn More About Ray Tune
 
 Below you can find blog posts and talks about Ray Tune:
 
-- [blog] `Tune: a Python library for fast hyperparameter tuning at any scale <https://towardsdatascience.com/fast-hyperparameter-tuning-at-scale-d428223b081c>`_
+- [blog] `Tune: a Python library for fast hyperparameter tuning at any scale <https://medium.com/data-science/fast-hyperparameter-tuning-at-scale-d428223b081c>`_
 - [blog] `Cutting edge hyperparameter tuning with Ray Tune <https://medium.com/riselab/cutting-edge-hyperparameter-tuning-with-ray-tune-be6c0447afdf>`_
 - [slides] `Talk given at RISECamp 2019 <https://docs.google.com/presentation/d/1v3IldXWrFNMK-vuONlSdEuM82fuGTrNUDuwtfx4axsQ/edit?usp=sharing>`_
 - [video] `Talk given at RISECamp 2018 <https://www.youtube.com/watch?v=38Yd_dXW51Q>`_

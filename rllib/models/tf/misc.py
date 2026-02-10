@@ -1,5 +1,6 @@
+from typing import Any, Optional, Tuple
+
 import numpy as np
-from typing import Tuple, Any, Optional
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf

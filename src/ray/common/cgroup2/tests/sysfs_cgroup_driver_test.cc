@@ -62,6 +62,15 @@ TEST(SysFsCgroupDriverTest,
   ASSERT_TRUE(s.IsInvalid()) << s.ToString();
 }
 
+TEST(SysFsCgroupDriverTest,
+     CheckCgroupv2EnabledSucceedsIfMountFileNotFoundButFallbackFileIsCorrect) {
+  TempFile temp_fallback_mount_file;
+  temp_fallback_mount_file.AppendLine("cgroup2 /sys/fs/cgroup cgroup2 rw 0 0\n");
+  SysFsCgroupDriver driver("/does/not/exist", temp_fallback_mount_file.GetPath());
+  Status s = driver.CheckCgroupv2Enabled();
+  EXPECT_TRUE(s.ok()) << s.ToString();
+}
+
 TEST(SysFsCgroupDriverTest, CheckCgroupv2EnabledSucceedsIfOnlyCgroupv2Mounted) {
   TempFile temp_mount_file;
   temp_mount_file.AppendLine("cgroup2 /sys/fs/cgroup cgroup2 rw 0 0\n");
@@ -84,6 +93,23 @@ TEST(SysFsCgroupDriver, CheckCgroupFailsIfCgroupDoesNotExist) {
   // This is not a directory on the cgroupv2 vfs.
   SysFsCgroupDriver driver;
   Status s = driver.CheckCgroup("/some/path/that/doesnt/exist");
+  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
+}
+
+TEST(SysFsCgroupDriver, DeleteCgroupFailsIfNotCgroup2Path) {
+  // This is not a directory on the cgroupv2 vfs.
+  auto temp_dir_or_status = TempDirectory::Create();
+  ASSERT_TRUE(temp_dir_or_status.ok()) << temp_dir_or_status.ToString();
+  std::unique_ptr<TempDirectory> temp_dir = std::move(temp_dir_or_status.value());
+  SysFsCgroupDriver driver;
+  Status s = driver.DeleteCgroup(temp_dir->GetPath());
+  EXPECT_TRUE(s.IsInvalidArgument()) << s.ToString();
+}
+
+TEST(SysFsCgroupDriver, DeleteCgroupFailsIfCgroupDoesNotExist) {
+  // This is not a directory on the cgroupv2 vfs.
+  SysFsCgroupDriver driver;
+  Status s = driver.DeleteCgroup("/some/path/that/doesnt/exist");
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 }
 

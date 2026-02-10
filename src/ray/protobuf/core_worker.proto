@@ -72,6 +72,10 @@ message ActorHandle {
 
   // The key-value labels for actor.
   map<string, string> labels = 15;
+
+  bool enable_tensor_transport = 16;
+
+  bool is_detached = 17;
 }
 
 message PushTaskRequest {
@@ -119,14 +123,17 @@ message PushTaskRequest {
 message PushTaskReply {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
+
   // Dynamically created objects. These are objects whose refs were allocated
   // by the task at run time instead of by the task caller at f.remote() time.
   // We need to notify the task caller that they own these objects. The
   // language-level ObjectRefs should be returned inside one of the statically
   // allocated return objects.
   repeated ReturnObject dynamic_return_objects = 2;
+
   // Set to true if the worker will be exiting.
   bool worker_exiting = 3;
+
   // The references that the worker borrowed during the task execution. A
   // borrower is a process that is currently using the object ID, in one of 3
   // ways:
@@ -142,20 +149,26 @@ message PushTaskReply {
   // may now be borrowing. The reference counts also include any new borrowers
   // that the worker created by passing a borrowed ID into a nested task.
   repeated ObjectReferenceCount borrowed_refs = 4;
+
   // Whether the result contains a retryable application-level error.
   bool is_retryable_error = 5;
+
   // Whether the result contains an application-level error.
   bool is_application_error = 6;
+
   // Whether the task was cancelled before it started running (i.e. while queued).
   bool was_cancelled_before_running = 7;
+
   // If the task was an actor creation task, and the actor class has a customized
   // repr defined for the anonymous actor (not a named actor), the repr name of the
   // actor will be piggybacked to GCS to be included as part of ActorTableData.
   optional string actor_repr_name = 8;
+
   // The pushed task executing error detail message. Either from the application or
   // from the core worker. This is only set when the task execution failed.
   // Default to empty string (not set) when no error happens.
   string task_execution_error = 9;
+
   // A list of streaming generator return IDs and whether
   // they are stored in a plasma store.
   repeated StreamingGeneratorReturnIdInfo streaming_generator_return_ids = 10;
@@ -289,7 +302,7 @@ message CancelTaskReply {
   bool attempt_succeeded = 2;
 }
 
-message RemoteCancelTaskRequest {
+message RequestOwnerToCancelTaskRequest {
   // Object ID of the remote task that should be killed.
   bytes remote_object_id = 1;
   // Whether to kill the worker.
@@ -298,7 +311,7 @@ message RemoteCancelTaskRequest {
   bool recursive = 3;
 }
 
-message RemoteCancelTaskReply {}
+message RequestOwnerToCancelTaskReply {}
 
 message GetCoreWorkerStatsRequest {
   // The ID of the worker this message is intended for.
@@ -334,10 +347,7 @@ message GetCoreWorkerStatsReply {
   int64 tasks_total = 4;
 }
 
-message LocalGCRequest {
-  // Whether this is triggered by a global gc.
-  bool triggered_by_global_gc = 1;
-}
+message LocalGCRequest {}
 
 message LocalGCReply {}
 
@@ -421,16 +431,9 @@ message NumPendingTasksReply {
   int64 num_pending_tasks = 1;
 }
 
-message FreeActorObjectRequest {
-  bytes object_id = 1;
-}
-
-message FreeActorObjectReply {}
-
 message ReportGeneratorItemReturnsRequest {
-  // The intermediate return object that's dynamically
-  // generated from the executor side.
-  repeated ReturnObject dynamic_return_objects = 1;
+  // Object returned from the executor (can be inlined or in plasma).
+  ReturnObject returned_object = 1;
   // The address of the executor.
   Address worker_addr = 2;
   // The index of the task return. It is used to
@@ -472,8 +475,6 @@ service CoreWorkerService {
   rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest)
       returns (RayletNotifyGCSRestartReply);
 
-  // Push a task directly to this worker from another or from GCS with
-  // gcs_actor_scheduling_enabled.
   // Failure: PushActorTask, PushNormalTask, and PushNormalTask from GCS all handle
   // failures. TODO: Failure behavior needs to be documented and tested.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
@@ -493,16 +494,14 @@ service CoreWorkerService {
   // Waits for the actor's owner to decide that the actor has no references.
   // Replying to this message indicates that the client should force-kill the
   // actor process, if still alive and mark the actor as permanently dead.
-  // Failure: TODO, needs better failure behavior, currently assumes worker failed and
-  // GCS continues to destroy actor regardless of success or failure.
+  // Failure: Retries, it's idempotent.
   rpc WaitForActorRefDeleted(WaitForActorRefDeletedRequest)
       returns (WaitForActorRefDeletedReply);
 
-  /// The long polling request sent to the core worker for pubsub operations.
-  /// It is replied once there are batch of objects that need to be published to
-  /// the caller (subscriber).
-  /// Failure: Pubsub system handles failures. TODO: all clients need subscribe failure
-  /// callbacks
+  // The long polling request sent to the core worker for pubsub operations.
+  // It is replied once there are batch of objects that need to be published to
+  // the caller (subscriber).
+  // Failure: Retries on failures, see pubsub/README.md for more details.
   rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
 
   // The RPC to report the intermediate task return from the executor worker to the owner
@@ -513,7 +512,7 @@ service CoreWorkerService {
 
   // The pubsub command batch request used by the subscriber.
   // Subscribe / unsubscribe commands to the publisher worker.
-  // Failure: TODO: Does not handle failures.
+  // Failure: Retries on failures, see pubsub/README.md for more details.
   rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
 
   // Update the batched object location information to the ownership-based object
@@ -528,18 +527,20 @@ service CoreWorkerService {
   rpc GetObjectLocationsOwner(GetObjectLocationsOwnerRequest)
       returns (GetObjectLocationsOwnerReply);
 
-  // Request from the GCS actor manager or actor scheduler that the worker shut down
-  // without completing outstanding work.
-  // Failure: TODO: Never retries
+  // Request from the Raylet that the actor shut down without completing outstanding work.
+  // Failure: Idempotent, does not retry. However requests should only be sent via
+  // KillLocalActor from the raylet which does implement retries
   rpc KillActor(KillActorRequest) returns (KillActorReply);
 
-  // Request from owner worker to executor worker to cancel a task.
-  // Failure: Will retry, TODO: Needs tests for failure behavior.
+  // Request from local raylet to executor worker to cancel a task.
+  // Failure: Idempotent, does not retry. However requests should only be sent via
+  // CancelLocalTask from the raylet which does implement retries
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
 
   // Request from a worker to the owner worker to issue a cancellation.
-  // Failure: TODO: needs failure behavior
-  rpc RemoteCancelTask(RemoteCancelTaskRequest) returns (RemoteCancelTaskReply);
+  // Failure: Retries, it's idempotent.
+  rpc RequestOwnerToCancelTask(RequestOwnerToCancelTaskRequest)
+      returns (RequestOwnerToCancelTaskReply);
 
   // From raylet to get metrics from its workers.
   // Failure: Should not fail, always from local raylet.
@@ -584,9 +585,6 @@ service CoreWorkerService {
   // Failure: Logs a warning on failure, gcs request can be retried by dashboard or state
   // API user.
   rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
-
-  // Free GPU object from in-actor GPU object store.
-  rpc FreeActorObject(FreeActorObjectRequest) returns (FreeActorObjectReply);
 
   // Registers a mutable object reader for compiled graphs.
   // Failure: TODO: Needs failure behavior.

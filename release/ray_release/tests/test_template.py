@@ -2,9 +2,9 @@ import sys
 
 import pytest
 
-from ray_release.test import Test
-from ray_release.template import get_working_dir, bazel_runfile
 from ray_release.exception import ReleaseTestConfigError
+from ray_release.template import bazel_runfile, get_working_dir
+from ray_release.test import Test
 
 
 def test_get_working_dir_with_path_from_root():

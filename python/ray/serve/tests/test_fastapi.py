@@ -28,7 +28,10 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import GetTimeoutError
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    SERVE_DEFAULT_APP_NAME,
+)
 from ray.serve._private.http_util import make_fastapi_class_based_view
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.exceptions import RayServeException
@@ -1108,6 +1111,221 @@ def test_ingress_with_starlette_builder_with_deployment_class(serve_instance):
 
     docs_path = ray.get(serve_instance._controller.get_docs_path.remote("default"))
     assert docs_path is None
+
+
+def test_ingress_multi_level_inheritance(serve_instance):
+    """Test multi-level inheritance works correctly with serve.ingress.
+
+    Tests: Grandparent -> Parent -> Child -> ServedIngress
+
+    This tests the fix in make_fastapi_class_based_view that properly handles
+    inherited methods by checking the MRO instead of just the immediate class.
+
+    Without the fix, inherited endpoints would fail with:
+    'Field required at ('query', 'self')'
+
+    Also tests that unrelated classes whose names CONTAIN an MRO class name
+    as a substring don't cause false positives. For example, if MRO contains
+    "Child", an unrelated class "ChildExtra" should not have its routes matched
+    because "Child" in "ChildExtra.method" would be True with substring matching.
+    This validates that the matching uses prefix matching with a dot delimiter.
+    """
+    app = FastAPI()
+
+    class Grandparent:
+        @app.get("/grandparent")
+        def grandparent_endpoint(self):
+            return {"level": "grandparent"}
+
+    class Parent(Grandparent):
+        @app.get("/parent")
+        def parent_endpoint(self):
+            return {"level": "parent"}
+
+    class Child(Parent):
+        @app.get("/child")
+        def child_endpoint(self):
+            return {"level": "child"}
+
+    # Unrelated class whose name CONTAINS "Child" (an MRO class) as a substring.
+    # With substring matching, "Child" in "ChildExtra.extra_endpoint" would be
+    # True, causing incorrect self injection into this unrelated route.
+    class ChildExtra:
+        @app.get("/extra")
+        def extra_endpoint(self):
+            # This should NOT have self injection since ChildExtra is not in MRO
+            return {"level": "extra"}
+
+    @serve.deployment
+    @serve.ingress(app)
+    class ServedIngress(Child):
+        pass
+
+    serve.run(ServedIngress.bind())
+
+    url = get_application_url("HTTP")
+
+    # Test all inherited endpoints
+    resp = httpx.get(f"{url}/grandparent")
+    assert resp.status_code == 200, f"Grandparent failed: {resp.text}"
+    assert resp.json() == {"level": "grandparent"}
+
+    resp = httpx.get(f"{url}/parent")
+    assert resp.status_code == 200, f"Parent failed: {resp.text}"
+    assert resp.json() == {"level": "parent"}
+
+    resp = httpx.get(f"{url}/child")
+    assert resp.status_code == 200, f"Child failed: {resp.text}"
+    assert resp.json() == {"level": "child"}
+
+    # Test that the unrelated ChildExtra route is NOT processed.
+    # With substring matching bug, "Child" in "ChildExtra.extra_endpoint" would
+    # be True, incorrectly applying self injection and making this route work.
+    # With the fix, the route is correctly excluded from processing, so `self`
+    # is not injected. FastAPI then treats `self` as a required query parameter,
+    # which fails with 422 (unprocessable entity).
+    resp = httpx.get(f"{url}/extra")
+    assert resp.status_code == 422, f"Expected 422 for unprocessed route: {resp.text}"
+
+
+def test_ingress_direct_inheritance(serve_instance):
+    """Test direct inheritance works correctly with serve.ingress.
+
+    Tests: BaseIngress -> DirectServedIngress (with own endpoint)
+
+    This tests the fix in make_fastapi_class_based_view that properly handles
+    inherited methods by checking the MRO instead of just the immediate class.
+
+    Without the fix, inherited endpoints would fail with:
+    'Field required at ('query', 'self')'
+    """
+    app = FastAPI()
+
+    class BaseIngress:
+        @app.get("/base")
+        def base_endpoint(self):
+            return {"level": "base"}
+
+    @serve.deployment
+    @serve.ingress(app)
+    class DirectServedIngress(BaseIngress):
+        @app.get("/direct")
+        def direct_endpoint(self):
+            return {"level": "direct"}
+
+    serve.run(DirectServedIngress.bind())
+
+    url = get_application_url("HTTP")
+
+    # Test both inherited and own endpoints
+    resp = httpx.get(f"{url}/base")
+    assert resp.status_code == 200, f"Base failed: {resp.text}"
+    assert resp.json() == {"level": "base"}
+
+    resp = httpx.get(f"{url}/direct")
+    assert resp.status_code == 200, f"Direct failed: {resp.text}"
+    assert resp.json() == {"level": "direct"}
+
+
+@pytest.mark.parametrize(
+    "app_root_path,serve_root_path,expected_params_1,expected_params_2",
+    [
+        ("", "", ["/hello", "", "/hello"], []),
+        (
+            "/app_root_path",
+            "",
+            ["/hello", "/app_root_path", "/hello"],
+            ["/app_root_path/hello", "/app_root_path", "/app_root_path/hello"],
+        ),
+        (
+            "",
+            "/serve_root_path",
+            ["/hello", "/serve_root_path", "/serve_root_path/hello"],
+            [],
+        ),
+        ("/app_root_path", "/serve_root_path", [], []),
+        ("/root_path", "/root_path", ["/hello", "/root_path", "/root_path/hello"], []),
+    ],
+)
+def test_root_path(
+    ray_shutdown, app_root_path, serve_root_path, expected_params_1, expected_params_2
+):
+    # serve_root_path is a proxy-dependent feature that doesn't apply to direct ingress
+    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip(
+            "serve_root_path is handled by proxy, not applicable for direct ingress"
+        )
+
+    """
+    The test works across uvicorn versions (before and after uvicorn 0.26.0 version which introduces breaking changes for the scope root_path).
+
+    Reference: https://github.com/Kludex/uvicorn/pull/2213
+
+    | Case | `app_root_path`  | `serve_root_path`  | Expected Working URL #1 (suffix) | `root_path` (req.scope) | `path` (req.scope)       | Expected Working URL #2 (suffix) | `root_path` #2   | `path` #2              |
+    | ---: | ---------------- | ------------------ | -------------------------------- | ----------------------- | ------------------------ | -------------------------------- | ---------------- | ---------------------- |
+    |    1 | `""`             | `""`               | `/hello`                         | `""`                    | `/hello`                 | —                                | —                | —                      |
+    |    2 | `/app_root_path` | `""`               | `/hello`                         | `/app_root_path`        | `/hello`                 | `/app_root_path/hello`           | `/app_root_path` | `/app_root_path/hello` |
+    |    3 | `""`             | `/serve_root_path` | `/hello`                         | `/serve_root_path`      | `/serve_root_path/hello` | —                                | —                | —                      |
+    |    4 | `/app_root_path` | `/serve_root_path` | *(none)*                         | —                       | —                        | —                                | —                | —                      |
+    |    5 | `/root_path`     | `/root_path`       | `/hello`                         | `/root_path`            | `/root_path/hello`       | —                                | —                | —                      |
+    """
+    app = FastAPI(root_path=app_root_path)
+
+    @app.get("/hello")
+    def func(request: Request):
+        return {
+            "root_path": request.scope.get("root_path"),
+            "path": request.scope.get("path"),
+        }
+
+    @serve.deployment
+    @serve.ingress(app)
+    class App:
+        pass
+
+    serve.start(http_options={"root_path": serve_root_path})
+    serve.run(App.bind())
+
+    base = get_application_url("HTTP")
+    test_urls = [
+        f"{base}/hello",
+        f"{base}{app_root_path}/hello",
+        f"{base}{serve_root_path}/hello",
+        f"{base}{app_root_path}{serve_root_path}/hello",
+        f"{base}{serve_root_path}{app_root_path}/hello",
+        f"{base}{app_root_path}{app_root_path}/hello",
+        f"{base}{serve_root_path}{serve_root_path}/hello",
+    ]
+
+    tested = set()
+    working_url_params = []
+    for test_url in test_urls:
+        if test_url not in tested:
+            response = httpx.get(test_url)
+            if response.status_code == 200:
+                body = response.json()
+                params = {}
+                params["url"] = test_url
+                params["root_path"] = body["root_path"]
+                params["path"] = body["path"]
+                working_url_params.append(params)
+            tested.add(test_url)
+    if expected_params_1:
+        assert (
+            len(working_url_params) > 0
+        ), "working urls array is expected to have at least 1 item!"
+        assert working_url_params[0]["url"].endswith(expected_params_1[0])
+        assert working_url_params[0]["root_path"] == expected_params_1[1]
+        assert working_url_params[0]["path"] == expected_params_1[2]
+        if expected_params_2:
+            assert (
+                len(working_url_params) > 1
+            ), "working urls array is expected to have at least 2 items!"
+            assert working_url_params[1]["url"].endswith(expected_params_2[0])
+            assert working_url_params[1]["root_path"] == expected_params_2[1]
+            assert working_url_params[1]["path"] == expected_params_2[2]
+    else:
+        assert len(working_url_params) == 0
 
 
 if __name__ == "__main__":

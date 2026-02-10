@@ -23,6 +23,12 @@ with open(config_path, "r") as f:
 llm_configs = config_dict["applications"][0]["args"]["llm_configs"]
 for config in llm_configs:
     config.pop("accelerator_type", None)
+    # Disable compile cache to avoid cache corruption in CI
+    if "runtime_env" not in config:
+        config["runtime_env"] = {}
+    if "env_vars" not in config["runtime_env"]:
+        config["runtime_env"]["env_vars"] = {}
+    config["runtime_env"]["env_vars"]["VLLM_DISABLE_COMPILE_CACHE"] = "1"
 
 app = llm.build_openai_app({"llm_configs": llm_configs})
 serve.run(app, blocking=False)

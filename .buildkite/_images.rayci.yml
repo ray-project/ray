@@ -8,10 +8,10 @@ steps:
       - docker
     wanda: docker/base-deps/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
@@ -20,10 +20,10 @@ steps:
     label: "wanda: ray-py{{matrix}}-cpu-base-extra"
     wanda: docker/base-extra/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
@@ -39,10 +39,10 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
         cuda:
           - "11.7.1-cudnn8"
           - "11.8.0-cudnn8"
@@ -52,6 +52,7 @@ steps:
           - "12.5.1-cudnn"
           - "12.6.3-cudnn"
           - "12.8.1-cudnn"
+          - "12.9.1-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -63,10 +64,10 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
         cuda:
           - "11.7.1-cudnn8"
           - "11.8.0-cudnn8"
@@ -76,6 +77,7 @@ steps:
           - "12.5.1-cudnn"
           - "12.6.3-cudnn"
           - "12.8.1-cudnn"
+          - "12.9.1-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -124,7 +126,6 @@ steps:
     wanda: docker/ray-ml/cpu.wanda.yaml
     depends_on: raycpubase
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
     env:
@@ -134,7 +135,6 @@ steps:
     label: "wanda: ray-ml-py{{matrix}}-cpu-base-extra"
     wanda: docker/base-extra/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
     env:
@@ -153,7 +153,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
         cuda:
@@ -168,7 +167,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
         cuda:
@@ -187,12 +185,11 @@ steps:
       - docker
       - skip-on-release-tests
     wanda: docker/base-slim/cpu.wanda.yaml
-    depends_on: raycpubase
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
@@ -204,14 +201,13 @@ steps:
       - docker
       - skip-on-release-tests
     wanda: docker/base-slim/cuda.wanda.yaml
-    depends_on: raycudabase
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
         cuda:
           - "11.7.1"
           - "11.8.0"
@@ -221,6 +217,7 @@ steps:
           - "12.5.1"
           - "12.6.3"
           - "12.8.1"
+          - "12.9.1"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"

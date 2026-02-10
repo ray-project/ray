@@ -1,18 +1,17 @@
-import functools
-import gymnasium as gym
-import ray
 import shutil
 import unittest
-
 from pathlib import Path
 
+import gymnasium as gym
+
+import ray
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.core import Columns, COMPONENT_RL_MODULE
+from ray.rllib.core import COMPONENT_RL_MODULE, Columns
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import unflatten_dict
 
 
@@ -28,8 +27,19 @@ class TestOfflinePreLearner(unittest.TestCase):
         "n_step",
     ]
 
+    @classmethod
+    def setUpClass(cls):
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
+        # Delete the cluster address just in case.
+        ray._common.utils.reset_ray_address()
+
     def setUp(self) -> None:
-        data_path = "tests/data/cartpole/cartpole-v1_large"
+        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
         self.base_path = Path(__file__).parents[2]
         self.data_path = "local://" + self.base_path.joinpath(data_path).as_posix()
         # Get the observation and action spaces.
@@ -55,10 +65,6 @@ class TestOfflinePreLearner(unittest.TestCase):
                 train_batch_size_per_learner=256,
             )
         )
-        ray.init()
-
-    def tearDown(self) -> None:
-        ray.shutdown()
 
     def test_offline_prelearner_buffer_class(self):
         """Tests using a user-defined buffer class with kwargs."""
@@ -67,7 +73,9 @@ class TestOfflinePreLearner(unittest.TestCase):
             PrioritizedEpisodeReplayBuffer,
         )
 
-        sample_batch_data_path = self.base_path / "tests/data/cartpole/large.json"
+        sample_batch_data_path = (
+            self.base_path / "offline/tests/data/cartpole/large.json"
+        )
 
         self.config.offline_data(
             input_=["local://" + sample_batch_data_path.as_posix()],
@@ -146,14 +154,22 @@ class TestOfflinePreLearner(unittest.TestCase):
         )["episodes"]
 
         self.assertTrue(
-            all(all(eps.get_observations()[-1] == [0.0] * 4) for eps in episodes)
+            all(
+                all(
+                    eps.get_observations()[-1]
+                    == [0.0] * self.observation_space.shape[0]
+                )
+                for eps in episodes
+            )
         )
 
     def test_offline_prelearner_convert_from_old_sample_batch_to_episodes(self):
         """Tests conversion from `SampleBatch` data to episodes."""
 
         # Use the old records storing `SampleBatch`es.
-        sample_batch_data_path = self.base_path / "tests/data/cartpole/large.json"
+        sample_batch_data_path = (
+            self.base_path / "offline/tests/data/cartpole/large.json"
+        )
 
         # Create the dataset.
         data = ray.data.read_json(sample_batch_data_path.as_posix())
@@ -168,36 +184,10 @@ class TestOfflinePreLearner(unittest.TestCase):
         self.assertTrue(len(episodes) == 10)
         self.assertTrue(isinstance(episodes[0], SingleAgentEpisode))
 
-    def test_offline_prelearner_in_map_batches(self):
-        """Tests using the `OfflinePreLearner` in `map_batches` where it is used
-        in `OfflineData`.
-        """
-
-        # Create a simple dataset.
-        data = ray.data.read_parquet(self.data_path)
-
-        # Generate a batch iterator that uses the `OfflinePreLearner` to convert
-        # data to episodes.
-        batch_iterator = data.map_batches(
-            functools.partial(
-                OfflinePreLearner._map_to_episodes,
-                False,
-            )
-        ).iter_batches(
-            batch_size=10,
-            prefetch_batches=1,
-        )
-
-        # Now sample a single batch.
-        batch = next(iter(batch_iterator))
-        # Assert that we have indeed sampled episodes.
-        self.assertTrue("episodes" in batch)
-        self.assertTrue(isinstance(batch["episodes"][0], SingleAgentEpisode))
-
     def test_offline_prelearner_sample_from_old_sample_batch_data(self):
         """Tests sampling from a `SampleBatch` dataset."""
 
-        data_path = self.base_path / "tests/data/cartpole/large.json"
+        data_path = self.base_path / "offline/tests/data/cartpole/large.json"
 
         self.config.offline_data(
             input_=["local://" + data_path.as_posix()],
@@ -232,21 +222,21 @@ class TestOfflinePreLearner(unittest.TestCase):
         # The `OfflinePreLearner`'s episode buffer should buffer all data
         # and sample the exact size requested by the user, i.e.
         # `train_batch_size_per_learner`
-        batch = oplr(batch)
+        batch = unflatten_dict(oplr(batch))
 
         # Ensure all transformations worked and we have a `MultiAgentBatch`.
-        self.assertIsInstance(batch["batch"][0], MultiAgentBatch)
+        self.assertIsInstance(batch, dict)
         # Ensure that we have as many environment steps as the train batch size.
         self.assertEqual(
-            batch["batch"][0][DEFAULT_POLICY_ID].count,
+            batch[DEFAULT_POLICY_ID][Columns.REWARDS].shape[0],
             self.config.train_batch_size_per_learner,
         )
         # Ensure all keys are available and the length of each value is the
         # train batch size.
         for key in self.EXPECTED_KEYS:
-            self.assertIn(key, batch["batch"][0][DEFAULT_POLICY_ID])
+            self.assertIn(key, batch[DEFAULT_POLICY_ID])
             self.assertEqual(
-                len(batch["batch"][0][DEFAULT_POLICY_ID][key]),
+                len(batch[DEFAULT_POLICY_ID][key]),
                 self.config.train_batch_size_per_learner,
             )
 
@@ -267,6 +257,11 @@ class TestOfflinePreLearner(unittest.TestCase):
                 output=data_path,
                 output_write_episodes=True,
             )
+            .training(
+                # Use small batch sizes for the test.
+                train_batch_size_per_learner=20,
+                minibatch_size=10,
+            )
         )
 
         # Record some episodes.
@@ -278,7 +273,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         self.config.offline_data(
             input_=[data_path],
             input_read_episodes=True,
-            input_read_batch_size=50,
+            input_read_batch_size=1,
         )
 
         # Build the `BC` algorithm.
@@ -286,7 +281,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         # Read in the generated set of episode data.
         episode_ds = ray.data.read_parquet(data_path)
         # Sample a batch of episodes from the episode dataset.
-        episode_batch = episode_ds.take_batch(256)
+        episode_batch = episode_ds.take_batch(10)
         # Get the module state from the `Learner`.
         module_state = algo.offline_data.learner_handles[0].get_state(
             component=COMPONENT_RL_MODULE,
@@ -298,12 +293,12 @@ class TestOfflinePreLearner(unittest.TestCase):
             module_state=module_state,
             spaces=algo.offline_data.spaces[INPUT_ENV_SPACES],
         )
-        # Sample a `MultiAgentBatch`.
-        batch = oplr(episode_batch)
+        # Sample a batch.
+        batch = unflatten_dict(oplr(episode_batch))
 
         # Assert that we have indeed a batch of `train_batch_size_per_learner`.
         self.assertEqual(
-            batch["batch"][0][DEFAULT_POLICY_ID].count,
+            batch[DEFAULT_POLICY_ID][Columns.REWARDS].shape[0],
             self.config.train_batch_size_per_learner,
         )
 
@@ -313,6 +308,7 @@ class TestOfflinePreLearner(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

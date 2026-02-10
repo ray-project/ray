@@ -1,0 +1,16 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "core_worker_client_pool_test",
+    size = "small",
+    srcs = [
+        "core_worker_client_pool_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/core_worker_rpc_client:core_worker_client_pool",
+        "//src/ray/core_worker_rpc_client:fake_core_worker_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

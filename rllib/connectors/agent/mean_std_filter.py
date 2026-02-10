@@ -1,22 +1,25 @@
 from typing import Any, List
-from gymnasium.spaces import Discrete, MultiDiscrete
 
 import numpy as np
 import tree
+from gymnasium.spaces import Discrete, MultiDiscrete
 
 from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
-from ray.rllib.connectors.connector import AgentConnector
 from ray.rllib.connectors.connector import (
+    AgentConnector,
     ConnectorContext,
 )
 from ray.rllib.connectors.registry import register_connector
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import OldAPIStack
-from ray.rllib.utils.filter import Filter
-from ray.rllib.utils.filter import MeanStdFilter, ConcurrentMeanStdFilter
+from ray.rllib.utils.filter import (
+    ConcurrentMeanStdFilter,
+    Filter,
+    MeanStdFilter,
+    RunningStat,
+)
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import AgentConnectorDataType
-from ray.rllib.utils.filter import RunningStat
 
 
 @OldAPIStack

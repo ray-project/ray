@@ -2,9 +2,9 @@ import os
 from typing import List, Optional
 
 from ray.train.v2._internal.constants import (
+    COLLECTIVE_TIMEOUT_S_ENV_VAR,
     DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
     DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
-    REPORT_BARRIER_TIMEOUT_S_ENV_VAR,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
     WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
 )
@@ -131,11 +131,11 @@ class BroadcastCollectiveTimeoutError(CollectiveTimeoutError):
         self._timeout_s = timeout_s
 
         message = (
-            f"The broadcast operation timed out after {time_elapsed:.2f} seconds. "
-            "Please make sure all worker ranks call `ray.train.report`. \n"
-            f"The following ranks have not called it: {missing_ranks}\n"
-            f"You can set this timeout with the {REPORT_BARRIER_TIMEOUT_S_ENV_VAR} "
-            f"environment variable (current value: {timeout_s:.2f} s)."
+            f"The collective operation timed out after {time_elapsed:.2f} seconds. "
+            f"The following ranks have not joined the collective operation: {missing_ranks}\n"
+            f"You can set the timeout with the {COLLECTIVE_TIMEOUT_S_ENV_VAR} "
+            f"environment variable (current value: {timeout_s:.2f} seconds). "
+            "Disable the timeout by setting the environment variable to -1."
         )
         super().__init__(message)
 

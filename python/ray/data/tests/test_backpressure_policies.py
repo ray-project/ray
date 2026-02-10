@@ -1,9 +1,10 @@
 import functools
 import math
 import time
+import types
 import unittest
 from collections import defaultdict
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -16,7 +17,9 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
+from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data.context import DataContext
+from ray.data.tests.conftest import mock_all_to_all_op
 
 
 class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
@@ -38,6 +41,18 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         data_context = ray.data.DataContext.get_current()
         data_context.remove_config(ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY)
 
+    def _mock_resource_manager(self):
+        """Helper to create a resource manager mock with real method bindings."""
+        rm = MagicMock()
+        rm.is_op_eligible = types.MethodType(ResourceManager.is_op_eligible, rm)
+        rm._get_downstream_ineligible_ops = types.MethodType(
+            ResourceManager._get_downstream_ineligible_ops, rm
+        )
+        rm._is_blocking_materializing_op = types.MethodType(
+            ResourceManager._is_blocking_materializing_op, rm
+        )
+        return rm
+
     def test_basic(self):
         concurrency = 16
         input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
@@ -45,14 +60,12 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             map_transformer=MagicMock(),
             data_context=DataContext.get_current(),
             input_op=input_op,
-            target_max_block_size=None,
         )
         map_op = TaskPoolMapOperator(
             map_transformer=MagicMock(),
             data_context=DataContext.get_current(),
             input_op=map_op_no_concurrency,
-            target_max_block_size=None,
-            concurrency=concurrency,
+            max_concurrency=concurrency,
         )
         map_op.metrics.num_tasks_running = 0
         map_op.metrics.num_tasks_finished = 0
@@ -62,10 +75,16 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             map_op_no_concurrency: MagicMock(),
         }
 
+        mock_resource_manager = MagicMock()
+        # Return None to skip dynamic output queue size backpressure check
+        mock_resource_manager.get_op_usage.return_value = None
+        mock_resource_manager.get_budget.return_value = None
+        mock_resource_manager.is_op_eligible.return_value = False
+
         policy = ConcurrencyCapBackpressurePolicy(
             DataContext.get_current(),
             topology,
-            MagicMock(),
+            mock_resource_manager,
         )
 
         self.assertEqual(policy._concurrency_caps[map_op], concurrency)
@@ -135,6 +154,307 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         start1, end1 = ray.get(actor.get_start_and_end_time_for_op.remote(1))
         start2, end2 = ray.get(actor.get_start_and_end_time_for_op.remote(2))
         assert start1 < start2 < end1 < end2, (start1, start2, end1, end2)
+
+    def test_can_add_input_with_dynamic_output_queue_size_backpressure_disabled(self):
+        """Test can_add_input when dynamic output queue size backpressure is disabled."""
+        input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
+        map_op = TaskPoolMapOperator(
+            map_transformer=MagicMock(),
+            data_context=DataContext.get_current(),
+            input_op=input_op,
+            max_concurrency=5,
+        )
+        map_op.metrics.num_tasks_running = 3
+
+        topology = {map_op: MagicMock(), input_op: MagicMock()}
+
+        # Create policy with dynamic output queue size backpressure disabled
+        policy = ConcurrencyCapBackpressurePolicy(
+            DataContext.get_current(),
+            topology,
+            MagicMock(),  # resource_manager
+        )
+        policy.enable_dynamic_output_queue_size_backpressure = False
+
+        # Should only check against configured concurrency cap
+        self.assertTrue(policy.can_add_input(map_op))  # 3 < 5
+
+        map_op.metrics.num_tasks_running = 5
+        self.assertFalse(policy.can_add_input(map_op))  # 5 >= 5
+
+    def test_can_add_input_with_non_map_operator(self):
+        """Test can_add_input with non-MapOperator (should use basic cap check)."""
+        input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
+        input_op.metrics.num_tasks_running = 1
+
+        topology = {input_op: MagicMock()}
+
+        policy = ConcurrencyCapBackpressurePolicy(
+            DataContext.get_current(),
+            topology,
+            MagicMock(),  # resource_manager
+        )
+
+        # InputDataBuffer has infinite concurrency cap, so should always allow
+        self.assertTrue(policy.can_add_input(input_op))
+
+    def test_can_add_input_with_ineligible_op(self):
+        """Test can_add_input when op is not eligible for backpressure."""
+        input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
+        map_op = TaskPoolMapOperator(
+            map_transformer=MagicMock(),
+            data_context=DataContext.get_current(),
+            input_op=input_op,
+            max_concurrency=5,
+        )
+        map_op.metrics.num_tasks_running = 3
+
+        topology = {map_op: MagicMock(), input_op: MagicMock()}
+
+        mock_resource_manager = self._mock_resource_manager()
+        # Override to test policy behavior when op is not eligible
+        mock_resource_manager.is_op_eligible = MagicMock(return_value=False)
+
+        policy = ConcurrencyCapBackpressurePolicy(
+            DataContext.get_current(),
+            topology,
+            mock_resource_manager,
+        )
+        policy.enable_dynamic_output_queue_size_backpressure = True
+
+        # Should skip dynamic backpressure and use basic cap check
+        self.assertTrue(policy.can_add_input(map_op))  # 3 < 5
+
+        map_op.metrics.num_tasks_running = 5
+        self.assertFalse(policy.can_add_input(map_op))  # 5 >= 5
+
+    def test_can_add_input_with_materializing_downstream_op(self):
+        """Test can_add_input when downstream op is a materializing operator."""
+        input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
+        map_op = TaskPoolMapOperator(
+            map_transformer=MagicMock(),
+            data_context=DataContext.get_current(),
+            input_op=input_op,
+            max_concurrency=5,
+        )
+        map_op.metrics.num_tasks_running = 3
+
+        # Create materializing downstream op (automatically adds to map_op._output_dependencies)
+        mock_all_to_all_op(map_op)
+
+        topology = {map_op: MagicMock(), input_op: MagicMock()}
+
+        mock_resource_manager = self._mock_resource_manager()
+
+        policy = ConcurrencyCapBackpressurePolicy(
+            DataContext.get_current(),
+            topology,
+            mock_resource_manager,
+        )
+        policy.enable_dynamic_output_queue_size_backpressure = True
+
+        # Should skip dynamic backpressure and use basic cap check
+        # to avoid starving materializing operators
+        self.assertTrue(policy.can_add_input(map_op))  # 3 < 5
+
+        map_op.metrics.num_tasks_running = 5
+        self.assertFalse(policy.can_add_input(map_op))  # 5 >= 5
+
+    @patch(
+        "ray.data._internal.execution.backpressure_policy."
+        "concurrency_cap_backpressure_policy.get_available_object_store_budget_fraction"
+    )
+    def test_can_add_input_with_object_store_memory_usage_ratio_above_threshold(
+        self, mock_get_budget_fraction
+    ):
+        """Test can_add_input when object store memory usage ratio is above threshold."""
+        input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
+        map_op = TaskPoolMapOperator(
+            map_transformer=MagicMock(),
+            data_context=DataContext.get_current(),
+            input_op=input_op,
+            max_concurrency=5,
+        )
+        map_op.metrics.num_tasks_running = 3
+
+        topology = {map_op: MagicMock(), input_op: MagicMock()}
+
+        mock_resource_manager = self._mock_resource_manager()
+
+        # Mock available object store memory budget fraction above threshold to skip dynamic backpressure
+        threshold = (
+            ConcurrencyCapBackpressurePolicy.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
+        )
+        # Set fraction above threshold to skip dynamic backpressure
+        mock_get_budget_fraction.return_value = threshold + 0.05
+
+        policy = ConcurrencyCapBackpressurePolicy(
+            DataContext.get_current(),
+            topology,
+            mock_resource_manager,
+        )
+        policy.enable_dynamic_output_queue_size_backpressure = True
+
+        # Initialize EWMA state to verify it's not updated when ratio > threshold
+        initial_level = 100.0
+        initial_dev = 20.0
+        policy._q_level_nbytes[map_op] = initial_level
+        policy._q_level_dev[map_op] = initial_dev
+
+        # Should skip dynamic backpressure and use basic cap check
+        # EWMA state should not be updated (early return)
+        self.assertTrue(policy.can_add_input(map_op))  # 3 < 5
+        self.assertEqual(policy._q_level_nbytes[map_op], initial_level)
+        self.assertEqual(policy._q_level_dev[map_op], initial_dev)
+
+        map_op.metrics.num_tasks_running = 5
+        self.assertFalse(policy.can_add_input(map_op))  # 5 >= 5
+        # EWMA state should still not be updated
+        self.assertEqual(policy._q_level_nbytes[map_op], initial_level)
+        self.assertEqual(policy._q_level_dev[map_op], initial_dev)
+
+    @patch(
+        "ray.data._internal.execution.backpressure_policy."
+        "concurrency_cap_backpressure_policy.get_available_object_store_budget_fraction"
+    )
+    def test_can_add_input_with_object_store_memory_usage_ratio_below_threshold(
+        self, mock_get_budget_fraction
+    ):
+        """Test can_add_input when object store memory usage ratio is below threshold."""
+        input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
+        map_op = TaskPoolMapOperator(
+            map_transformer=MagicMock(),
+            data_context=DataContext.get_current(),
+            input_op=input_op,
+            max_concurrency=5,
+        )
+        map_op.metrics.num_tasks_running = 3
+
+        topology = {map_op: MagicMock(), input_op: MagicMock()}
+
+        mock_resource_manager = self._mock_resource_manager()
+
+        # Mock available object store memory budget fraction below threshold to apply dynamic backpressure
+        threshold = (
+            ConcurrencyCapBackpressurePolicy.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
+        )
+        # Set fraction below threshold to apply dynamic backpressure
+        mock_get_budget_fraction.return_value = threshold - 0.05
+
+        # Mock queue size methods
+        mock_resource_manager.get_mem_op_internal.return_value = 100
+        mock_resource_manager.get_mem_op_outputs.return_value = 200
+
+        policy = ConcurrencyCapBackpressurePolicy(
+            DataContext.get_current(),
+            topology,
+            mock_resource_manager,
+        )
+        policy.enable_dynamic_output_queue_size_backpressure = True
+
+        # Should proceed with dynamic backpressure logic
+        # Initialize EWMA state for the operator with a different level
+        # so we can verify the update happens (queue size is 300)
+        initial_level = 200.0
+        initial_dev = 50.0
+        policy._q_level_nbytes[map_op] = initial_level
+        policy._q_level_dev[map_op] = initial_dev
+
+        result = policy.can_add_input(map_op)
+        # With queue size 300, initial level=200, dev=50, bounds=[150, 250]
+        # Queue size 300 is above the upper bound, so should backoff.
+        # running=3, backoff by 1 -> effective_cap=2
+        # running=3 < effective_cap=2 should be False
+        self.assertFalse(result)
+        # EWMA state should be updated when ratio < threshold
+        # Level should move toward 300 (queue size)
+        self.assertNotEqual(policy._q_level_nbytes[map_op], initial_level)
+        # Dev should also be updated
+        self.assertNotEqual(policy._q_level_dev[map_op], initial_dev)
+
+    @patch(
+        "ray.data._internal.execution.backpressure_policy."
+        "concurrency_cap_backpressure_policy.get_available_object_store_budget_fraction"
+    )
+    def test_can_add_input_effective_cap_calculation(self, mock_get_budget_fraction):
+        """Test that effective cap calculation works correctly with different queue sizes."""
+        input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
+        map_op = TaskPoolMapOperator(
+            map_transformer=MagicMock(),
+            data_context=DataContext.get_current(),
+            input_op=input_op,
+            max_concurrency=8,
+        )
+        map_op.metrics.num_tasks_running = 4
+
+        topology = {map_op: MagicMock(), input_op: MagicMock()}
+
+        mock_resource_manager = self._mock_resource_manager()
+        threshold = (
+            ConcurrencyCapBackpressurePolicy.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
+        )
+        # Set fraction below threshold to apply dynamic backpressure
+        mock_get_budget_fraction.return_value = threshold - 0.05
+
+        policy = ConcurrencyCapBackpressurePolicy(
+            DataContext.get_current(),
+            topology,
+            mock_resource_manager,
+        )
+        policy.enable_dynamic_output_queue_size_backpressure = True
+
+        # Test different queue sizes using policy constants
+        test_cases = [
+            # (internal_usage, downstream_usage, level, dev, expected_result, description)
+            (
+                50,
+                50,
+                5000.0,
+                200.0,
+                True,
+                "low_queue_below_lower_bound",
+            ),  # 100 < 5000 - 2*200 = 4600, ramp up
+            (
+                200,
+                200,
+                400.0,
+                50.0,
+                False,
+                "medium_queue_in_hold_region",
+            ),  # 400 in [300, 500], hold
+            (
+                300,
+                300,
+                200.0,
+                50.0,
+                False,
+                "high_queue_above_upper_bound",
+            ),  # 600 > 200 + 2*50 = 300, backoff
+        ]
+
+        for (
+            internal_usage,
+            downstream_usage,
+            level,
+            dev,
+            expected_result,
+            description,
+        ) in test_cases:
+            with self.subTest(description=description):
+                mock_resource_manager.get_mem_op_internal.return_value = internal_usage
+                mock_resource_manager.get_mem_op_outputs.return_value = downstream_usage
+                mock_resource_manager.get_op_outputs_object_store_usage_with_downstream.return_value = (
+                    downstream_usage
+                )
+
+                # Initialize EWMA state
+                policy._q_level_nbytes[map_op] = level
+                policy._q_level_dev[map_op] = dev
+
+                result = policy.can_add_input(map_op)
+                assert (
+                    result == expected_result
+                ), f"Expected {expected_result} for {description}"
 
 
 if __name__ == "__main__":

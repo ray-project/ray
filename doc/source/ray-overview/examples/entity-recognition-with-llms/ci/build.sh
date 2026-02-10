@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -exo pipefail
+set -euxo pipefail
 
 # Will use lockfile instead later
 # pip3 install --no-cache-dir -r https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/lockfile.txt

@@ -1,8 +1,8 @@
 import copy
-from functools import partial
 import itertools
-import pathlib
+from functools import partial
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Collection,
@@ -11,11 +11,11 @@ from typing import (
     Optional,
     Set,
     Type,
-    TYPE_CHECKING,
     Union,
 )
 
 import ray
+from ray._common.deprecation import Deprecated
 from ray.rllib.core import (
     COMPONENT_LEARNER,
     COMPONENT_RL_MODULE,
@@ -34,7 +34,10 @@ from ray.rllib.utils.actor_manager import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.metrics.ray_metrics import (
+    DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+    TimerAndPrometheusLogger,
+)
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
@@ -45,6 +48,7 @@ from ray.rllib.utils.typing import (
 )
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.util.annotations import PublicAPI
+from ray.util.metrics import Histogram
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -150,6 +154,18 @@ class LearnerGroup(Checkpointable):
             self._learner = learner_class(config=config, module_spec=module_spec)
             self._learner.build()
             self._worker_manager = None
+
+            # Ray metrics
+            self._metrics_local_learner_training_data_solve_refs = Histogram(
+                name="rllib_learner_local_training_data_solve_refs_time",
+                description="Time spent in resolve training data refs for local learner.",
+                boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+                tag_keys=("rllib",),
+            )
+            self._metrics_local_learner_training_data_solve_refs.set_default_tags(
+                {"rllib": self.__class__.__name__}
+            )
+
         # N remote Learner workers.
         else:
             backend_config = _get_backend_config(learner_class)
@@ -206,6 +222,15 @@ class LearnerGroup(Checkpointable):
                 ),
             )
 
+        # Ray metrics
+        self._metrics_update_time = Histogram(
+            name="rllib_learner_group_update_time",
+            description="Time spent in LearnerGroup.update()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_update_time.set_default_tags({"rllib": self.__class__.__name__})
+
     # TODO (sven): Replace this with call to `self.metrics.peek()`?
     #  Currently LearnerGroup does not have a metrics object.
     def get_stats(self) -> Dict[str, Any]:
@@ -243,18 +268,29 @@ class LearnerGroup(Checkpointable):
         # User kwargs passed onto the Learners.
         **kwargs,
     ) -> List[Dict[str, Any]]:
-        """Performs gradient based updates on Learners, based on given training data.
+        """Performs gradient based updates on Learners in parallel.
+
+        Updates are performed with data from any of the provided arguments
+        (batch, batches, batch_refs, episodes, episodes_refs, data_iterators, training_data).
 
         Args:
             batch: A data batch to use for the update. If there are more
                 than one Learner workers, the batch is split amongst these and one
                 shard is sent to each Learner.
-            batch_refs:
+            batch_refs: A list of Ray ObjectRefs to the batches. If there are more
+                than one Learner workers, the list of batch refs is split amongst these and
+                one list shard is sent to each Learner.
             episodes: A list of Episodes to process and perform the update
                 for. If there are more than one Learner workers, the list of episodes
                 is split amongst these and one list shard is sent to each Learner.
-            episodes_refs:
-            timesteps:
+            episodes_refs: A list of Ray ObjectRefs to the episodes. If there are more
+                than one Learner workers, the list of episode refs is split amongst these and
+                one list shard is sent to each Learner.
+            timesteps: A dictionary of timesteps to pass to the Learners's update method.
+                This is usually used for learning rate scheduling but can be used for any other purpose.
+            training_data: A TrainingData object to use for the update. If not provided,
+                a new TrainingData object will be created from the batch, batches, batch_refs,
+                episodes, and episodes_refs.
             async_update: Whether the update request(s) to the Learner workers should be
                 sent asynchronously. If True, will return NOT the results from the
                 update on the given data, but all results from prior asynchronous update
@@ -289,104 +325,119 @@ class LearnerGroup(Checkpointable):
             results are reduced, a list of dictionaries of the reduced results from each
             call to async_update that is ready.
         """
-        # Create and validate TrainingData object, if not already provided.
-        if training_data is None:
-            training_data = TrainingData(
-                batch=batch,
-                batches=batches,
-                batch_refs=batch_refs,
-                episodes=episodes,
-                episodes_refs=episodes_refs,
-                data_iterators=data_iterators,
-            )
-        training_data.validate()
-
-        # Local Learner instance.
-        if self.is_local:
-            if async_update:
-                raise ValueError(
-                    "Can't call `update(async_update=True)` when running with "
-                    "`num_learners=0`! Set `config.num_learners > 0` to allow async "
-                    "updates."
+        with TimerAndPrometheusLogger(self._metrics_update_time):
+            # Create and validate TrainingData object, if not already provided.
+            if training_data is None:
+                training_data = TrainingData(
+                    batch=batch,
+                    batches=batches,
+                    batch_refs=batch_refs,
+                    episodes=episodes,
+                    episodes_refs=episodes_refs,
+                    data_iterators=data_iterators,
                 )
-            # Solve all ray refs locally already here.
-            training_data.solve_refs()
-            if return_state:
-                kwargs["return_state"] = return_state
-            # Return the single Learner's update results.
-            return [
-                self._learner.update(
-                    training_data=training_data,
+            training_data.validate()
+
+            # NEW: allow caller to defer Ray.get()/materialization to the learner thread.
+            # TODO (simon): Set to `False` and create attribute in config.
+            defer_solve = kwargs.pop("defer_solve_refs_to_learner", False)
+
+            # Local Learner instance.
+            if self.is_local:
+                if async_update:
+                    raise ValueError(
+                        "Can't call `update(async_update=True)` when running with "
+                        "`num_learners=0`! Set `config.num_learners > 0` to allow async "
+                        "updates."
+                    )
+                # Only solve refs here if NOT deferring. When deferring, the Learner/GPU
+                # loader thread will call `training_data.solve_refs()` and build the CPU MAB.
+                if not defer_solve:
+                    # Ray metrics
+                    with TimerAndPrometheusLogger(
+                        self._metrics_local_learner_training_data_solve_refs
+                    ):
+                        training_data.solve_refs()
+
+                if return_state:
+                    kwargs["return_state"] = return_state
+                # Return the single Learner's update results.
+                return [
+                    self._learner.update(
+                        training_data=training_data,
+                        timesteps=timesteps,
+                        **kwargs,
+                    )
+                ]
+
+            # Remote Learner actors' kwargs.
+            remote_call_kwargs = [
+                dict(
+                    training_data=td_shard,
                     timesteps=timesteps,
+                    # If `return_state=True`, only return it from the first Learner
+                    # actor.
+                    return_state=(return_state and i == 0),
+                    **kw,
                     **kwargs,
+                )
+                for i, (td_shard, kw) in enumerate(
+                    training_data.shard(
+                        num_shards=len(self),
+                        len_lookback_buffer=self.config.episode_lookback_horizon,
+                        **kwargs,
+                    )
                 )
             ]
 
-        # Remote Learner actors' kwargs.
-        remote_call_kwargs = [
-            dict(
-                training_data=td_shard,
-                timesteps=timesteps,
-                # If `return_state=True`, only return it from the first Learner
-                # actor.
-                return_state=(return_state and i == 0),
-                **kw,
-                **kwargs,
-            )
-            for i, (td_shard, kw) in enumerate(
-                training_data.shard(
-                    num_shards=len(self),
-                    len_lookback_buffer=self.config.episode_lookback_horizon,
-                    **kwargs,
+            # Async updates.
+            if async_update:
+                # Retrieve all ready results (kicked off by prior calls to this method).
+                results = self._worker_manager.fetch_ready_async_reqs(
+                    timeout_seconds=0.0
                 )
-            )
-        ]
+                # Send out new request(s), if there is still capacity on the actors
+                # (each actor is allowed only some number of max in-flight requests
+                # at the same time).
+                num_sent_requests = self._worker_manager.foreach_actor_async(
+                    "update",
+                    kwargs=remote_call_kwargs,
+                )
 
-        # Async updates.
-        if async_update:
-            # Retrieve all ready results (kicked off by prior calls to this method).
-            results = self._worker_manager.fetch_ready_async_reqs(timeout_seconds=0.0)
-            # Send out new request(s), if there is still capacity on the actors
-            # (each actor is allowed only some number of max in-flight requests
-            # at the same time).
-            num_sent_requests = self._worker_manager.foreach_actor_async(
-                "update",
-                kwargs=remote_call_kwargs,
-            )
+                # Some requests were dropped, record lost ts/data.
+                if num_sent_requests != len(self):
+                    factor = 1 - (num_sent_requests / len(self))
+                    # TODO (sven): Move this logic into a TrainingData API as well
+                    #  (`TrainingData.env_steps()`).
+                    if training_data.batch_refs is not None:
+                        dropped = (
+                            len(training_data.batch_refs)
+                            * self.config.train_batch_size_per_learner
+                        )
+                    elif training_data.batch is not None:
+                        dropped = len(training_data.batch)
+                    # List of Ray ObjectRefs (each object ref is a list of episodes of
+                    # total len=`rollout_fragment_length * num_envs_per_env_runner`)
+                    elif training_data.episodes_refs is not None:
+                        dropped = (
+                            len(training_data.episodes_refs)
+                            * self.config.get_rollout_fragment_length()
+                            * self.config.num_envs_per_env_runner
+                        )
+                    else:
+                        assert training_data.episodes is not None
+                        dropped = sum(len(e) for e in training_data.episodes)
 
-            # Some requests were dropped, record lost ts/data.
-            if num_sent_requests != len(self):
-                factor = 1 - (num_sent_requests / len(self))
-                # TODO (sven): Move this logic into a TrainingData API as well
-                #  (`TrainingData.env_steps()`).
-                if training_data.batch_refs is not None:
-                    dropped = (
-                        len(training_data.batch_refs)
-                        * self.config.train_batch_size_per_learner
-                    )
-                elif training_data.batch is not None:
-                    dropped = len(training_data.batch)
-                # List of Ray ObjectRefs (each object ref is a list of episodes of
-                # total len=`rollout_fragment_length * num_envs_per_env_runner`)
-                elif training_data.episodes_refs is not None:
-                    dropped = (
-                        len(training_data.episodes_refs)
-                        * self.config.get_rollout_fragment_length()
-                        * self.config.num_envs_per_env_runner
-                    )
-                else:
-                    assert training_data.episodes is not None
-                    dropped = sum(len(e) for e in training_data.episodes)
+                    self._ts_dropped += factor * dropped
+            # Sync updates.
+            else:
+                results = self._worker_manager.foreach_actor(
+                    "update",
+                    kwargs=remote_call_kwargs,
+                )
 
-                self._ts_dropped += factor * dropped
-        # Sync updates.
-        else:
-            results = self._worker_manager.foreach_actor(
-                "update",
-                kwargs=remote_call_kwargs,
-            )
+            results = self._get_results(results)
 
-        results = self._get_results(results)
         return results
 
     def add_module(
@@ -680,7 +731,14 @@ class LearnerGroup(Checkpointable):
     def async_update(self, *args, **kwargs):
         pass
 
-    @Deprecated(new="LearnerGroup.load_from_path(path=..., component=...)", error=False)
+    @Deprecated(
+        old="LearnerGroup.load_module_state()",
+        help="To restore RLModule or MultiRLModule state "
+        "use LearnerGroup.restore_from_path(path=..., component=...). "
+        "See docs for more details: "
+        "https://docs.ray.io/en/latest/rllib/rl-modules.html#checkpointing-rlmodules",
+        error=False,
+    )
     def load_module_state(
         self,
         *,
@@ -688,55 +746,60 @@ class LearnerGroup(Checkpointable):
         modules_to_load: Optional[Set[str]] = None,
         rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
     ) -> None:
-        """Load the checkpoints of the modules being trained by this LearnerGroup.
+        """Load the checkpoints of the modules being trained by `LearnerGroup`.
 
         `load_module_state` can be used 3 ways:
-            1. Load a checkpoint for the MultiRLModule being trained by this
-                LearnerGroup. Limit the modules that are loaded from the checkpoint
-                by specifying the `modules_to_load` argument.
-            2. Load the checkpoint(s) for single agent RLModules that
-                are in the MultiRLModule being trained by this LearnerGroup.
-            3. Load a checkpoint for the MultiRLModule being trained by this
-                LearnerGroup and load the checkpoint(s) for single agent RLModules
-                that are in the MultiRLModule. The checkpoints for the single
-                agent RLModules take precedence over the module states in the
-                MultiRLModule checkpoint.
+            1. Load a checkpoint for the `MultiRLModule` being trained by this
+                `LearnerGroup`. Optionally, limit the modules that are loaded
+                from the checkpoint by specifying the `modules_to_load` argument.
+            2. Load the checkpoint(s) for single agent `RLModules` that
+                are in the `MultiRLModule` being trained by this `LearnerGroup`.
+            3. Load a checkpoint for the `MultiRLModule` being trained by this
+                `LearnerGroup` and load the checkpoint(s) for single agent `RLModules`
+                that are in the `MultiRLModule`. The checkpoints for the single
+                agent `RLModules` take precedence over the module states in the
+                `MultiRLModule` checkpoint.
 
-        NOTE: At lease one of multi_rl_module_ckpt_dir or rl_module_ckpt_dirs is
-            must be specified. modules_to_load can only be specified if
-            multi_rl_module_ckpt_dir is specified.
+        At least one of `multi_rl_module_ckpt_dir` or `rl_module_ckpt_dirs`
+        must be specified.
+        `modules_to_load` can only be specified if `multi_rl_module_ckpt_dir`
+        is provided.
 
         Args:
             multi_rl_module_ckpt_dir: The path to the checkpoint for the
-                MultiRLModule.
-            modules_to_load: A set of module ids to load from the checkpoint.
+                `MultiRLModule`.
+            modules_to_load: A set of `RLModule` ids to load from the checkpoint.
             rl_module_ckpt_dirs: A mapping from module ids to the path to a
-                checkpoint for a single agent RLModule.
+                checkpoint for a single agent `RLModule`.
         """
         if not (multi_rl_module_ckpt_dir or rl_module_ckpt_dirs):
             raise ValueError(
-                "At least one of `multi_rl_module_ckpt_dir` or "
-                "`rl_module_ckpt_dirs` must be provided!"
+                f"At least one of `multi_rl_module_ckpt_dir` or "
+                f"`rl_module_ckpt_dirs` must be provided. "
+                f"Got {multi_rl_module_ckpt_dir=} and {rl_module_ckpt_dirs=}."
             )
-        if multi_rl_module_ckpt_dir:
-            multi_rl_module_ckpt_dir = pathlib.Path(multi_rl_module_ckpt_dir)
-        if rl_module_ckpt_dirs:
-            for module_id, path in rl_module_ckpt_dirs.items():
-                rl_module_ckpt_dirs[module_id] = pathlib.Path(path)
+
+        if modules_to_load and not multi_rl_module_ckpt_dir:
+            raise ValueError(
+                f"`modules_to_load` can only be specified if a "
+                f"multi_rl_module_ckpt_dir is provided. "
+                f"Got {modules_to_load=} and {multi_rl_module_ckpt_dir=}."
+            )
 
         # MultiRLModule checkpoint is provided.
         if multi_rl_module_ckpt_dir:
             # Restore the entire MultiRLModule state.
             if modules_to_load is None:
                 self.restore_from_path(
-                    multi_rl_module_ckpt_dir,
+                    path=multi_rl_module_ckpt_dir,
                     component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
-                )
+                ),
             # Restore individual module IDs.
             else:
                 for module_id in modules_to_load:
+                    path = multi_rl_module_ckpt_dir + "/" + module_id
                     self.restore_from_path(
-                        multi_rl_module_ckpt_dir / module_id,
+                        path=path,
                         component=(
                             COMPONENT_LEARNER
                             + "/"
@@ -748,7 +811,7 @@ class LearnerGroup(Checkpointable):
         if rl_module_ckpt_dirs:
             for module_id, path in rl_module_ckpt_dirs.items():
                 self.restore_from_path(
-                    path,
+                    path=path,
                     component=(
                         COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/" + module_id
                     ),

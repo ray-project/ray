@@ -121,7 +121,7 @@ Transformations applied with `map` or `map_batches` can return Torch tensors.
 
             Column  Type
             ------  ----
-            tensor  numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            tensor  ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
     .. tab-item:: map_batches
 
@@ -152,7 +152,7 @@ Transformations applied with `map` or `map_batches` can return Torch tensors.
 
             Column  Type
             ------  ----
-            tensor  numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            tensor  ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
 For more information on transforming data, see :ref:`Transforming data <transforming_data>`.
 
@@ -197,8 +197,8 @@ You can use built-in Torch transforms from ``torchvision``, ``torchtext``, and `
 
             Column             Type
             ------             ----
-            image              numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
-            transformed_image  numpy.ndarray(shape=(3, 10, 10), dtype=float)
+            image              ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
+            transformed_image  ArrowTensorTypeV2(shape=(3, 10, 10), dtype=float)
 
     .. tab-item:: torchtext
 
@@ -276,7 +276,7 @@ With Ray Datasets, you can do scalable offline batch inference with Torch models
     # Step 3: Map the Predictor over the Dataset to get predictions.
     # Use 2 parallel actors for inference. Each actor predicts on a
     # different partition of data.
-    predictions = ds.map_batches(TorchPredictor, concurrency=2)
+    predictions = ds.map_batches(TorchPredictor, compute=ray.data.ActorPoolStrategy(size=2))
     # Step 4: Show one prediction output.
     predictions.show(limit=1)
 

@@ -21,9 +21,9 @@
 namespace ray {
 namespace pubsub {
 
-Status GcsSubscriber::SubscribeAllJobs(
-    const gcs::SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
-    const gcs::StatusCallback &done) {
+void GcsSubscriber::SubscribeAllJobs(
+    const rpc::SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
+    const rpc::StatusCallback &done) {
   auto subscribe_item_callback = [subscribe](rpc::PubMessage &&msg) {
     RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_JOB_CHANNEL);
     const JobID id = JobID::FromBinary(msg.key_id());
@@ -44,13 +44,12 @@ Status GcsSubscriber::SubscribeAllJobs(
       },
       std::move(subscribe_item_callback),
       std::move(subscription_failure_callback));
-  return Status::OK();
 }
 
-Status GcsSubscriber::SubscribeActor(
+void GcsSubscriber::SubscribeActor(
     const ActorID &id,
-    const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-    const gcs::StatusCallback &done) {
+    const rpc::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+    const rpc::StatusCallback &done) {
   auto subscription_callback = [id, subscribe](rpc::PubMessage &&msg) {
     RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_ACTOR_CHANNEL);
     RAY_CHECK(msg.key_id() == id.Binary());
@@ -74,13 +73,11 @@ Status GcsSubscriber::SubscribeActor(
       },
       std::move(subscription_callback),
       std::move(subscription_failure_callback));
-  return Status::OK();
 }
 
-Status GcsSubscriber::UnsubscribeActor(const ActorID &id) {
+void GcsSubscriber::UnsubscribeActor(const ActorID &id) {
   subscriber_->Unsubscribe(
       rpc::ChannelType::GCS_ACTOR_CHANNEL, gcs_address_, id.Binary());
-  return Status::OK();
 }
 
 bool GcsSubscriber::IsActorUnsubscribed(const ActorID &id) {
@@ -89,8 +86,8 @@ bool GcsSubscriber::IsActorUnsubscribed(const ActorID &id) {
 }
 
 void GcsSubscriber::SubscribeAllNodeInfo(
-    const gcs::ItemCallback<rpc::GcsNodeInfo> &subscribe,
-    const gcs::StatusCallback &done) {
+    const rpc::ItemCallback<rpc::GcsNodeInfo> &subscribe,
+    const rpc::StatusCallback &done) {
   auto subscribe_item_callback = [subscribe](rpc::PubMessage &&msg) {
     RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
     subscribe(std::move(*msg.mutable_node_info_message()));
@@ -112,9 +109,35 @@ void GcsSubscriber::SubscribeAllNodeInfo(
       std::move(subscription_failure_callback));
 }
 
-Status GcsSubscriber::SubscribeAllWorkerFailures(
-    const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe,
-    const gcs::StatusCallback &done) {
+void GcsSubscriber::SubscribeAllNodeAddressAndLiveness(
+    const rpc::ItemCallback<rpc::GcsNodeAddressAndLiveness> &subscribe,
+    const rpc::StatusCallback &done) {
+  auto subscribe_item_callback = [subscribe](rpc::PubMessage &&msg) {
+    RAY_CHECK(msg.channel_type() ==
+              rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL);
+    subscribe(std::move(*msg.mutable_node_address_and_liveness_message()));
+  };
+  auto subscription_failure_callback = [](const std::string &, const Status &status) {
+    RAY_LOG(ERROR) << "Subscription to NodeAddressAndLiveness channel failed: "
+                   << status.ToString();
+  };
+  subscriber_->Subscribe(
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL,
+      gcs_address_,
+      /*key_id=*/std::nullopt,
+      [done](const Status &status) {
+        if (done != nullptr) {
+          done(status);
+        }
+      },
+      std::move(subscribe_item_callback),
+      std::move(subscription_failure_callback));
+}
+
+void GcsSubscriber::SubscribeAllWorkerFailures(
+    const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,
+    const rpc::StatusCallback &done) {
   auto subscribe_item_callback = [subscribe](rpc::PubMessage &&msg) {
     RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL);
     subscribe(std::move(*msg.mutable_worker_delta_message()));
@@ -137,7 +160,6 @@ Status GcsSubscriber::SubscribeAllWorkerFailures(
       },
       std::move(subscribe_item_callback),
       std::move(subscription_failure_callback));
-  return Status::OK();
 }
 
 }  // namespace pubsub

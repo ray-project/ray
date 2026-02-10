@@ -15,31 +15,37 @@ import time
 import timeit
 import traceback
 import uuid
-from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from urllib.parse import quote, urlparse
 
 import requests
 import yaml
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.services as services
 import ray._private.utils
+import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import build_address, parse_address
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    MetricSamplePattern,
+    PrometheusTimeseries,
+    fetch_prometheus_metric_timeseries,
+    fetch_prometheus_timeseries,
+    wait_for_condition,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray._private import (
     ray_constants,
 )
 from ray._private.internal_api import memory_summary
+from ray._private.services import ProcessInfo
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._private.worker import RayContext
-from ray._raylet import Config, GcsClientOptions, GlobalStateAccessor
+from ray._raylet import Config, GcsClient, GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import (
     gcs_pb2,
     gcs_service_pb2,
@@ -47,6 +53,7 @@ from ray.core.generated import (
 )
 from ray.util.queue import Empty, Queue, _QueueActor
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.util.state import get_actor, list_actors
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -57,15 +64,6 @@ RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 REDIS_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX
 )
-
-try:
-    from prometheus_client.parser import Sample, text_string_to_metric_families
-except (ImportError, ModuleNotFoundError):
-
-    Sample = None
-
-    def text_string_to_metric_families(*args, **kwargs):
-        raise ModuleNotFoundError("`prometheus_client` not found")
 
 
 def make_global_state_accessor(ray_context):
@@ -395,6 +393,59 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
     check_call_subprocess(["ray"] + args, capture_stdout, capture_stderr)
 
 
+def get_dashboard_agent_address(gcs_client: GcsClient, node_id: str):
+    result = gcs_client.internal_kv_get(
+        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode(),
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+    )
+    if result:
+        # Returns [ip, http_port, grpc_port]
+        ip, _, grpc_port = json.loads(result)
+        return f"{ip}:{grpc_port}"
+    return None
+
+
+def wait_for_dashboard_agent_available(cluster):
+    gcs_client = GcsClient(address=cluster.address)
+    wait_for_condition(
+        lambda: get_dashboard_agent_address(gcs_client, cluster.head_node.node_id)
+        is not None
+    )
+
+
+def wait_for_aggregator_agent(address: str, node_id: str, timeout: float = 10) -> None:
+    """Wait for the aggregator agent to be ready by checking socket connectivity."""
+    gcs_client = GcsClient(address=address)
+    # Wait for the agent to publish its address
+    wait_for_condition(
+        lambda: get_dashboard_agent_address(gcs_client, node_id) is not None
+    )
+    # Get the agent address and test socket connectivity
+    agent_address = get_dashboard_agent_address(gcs_client, node_id)
+    parsed = urlparse(f"grpc://{agent_address}")
+
+    def _can_connect() -> bool:
+        try:
+            with socket.create_connection((parsed.hostname, parsed.port), timeout=1):
+                return True
+        except OSError:
+            return False
+
+    wait_for_condition(_can_connect, timeout=timeout)
+
+
+def wait_for_aggregator_agent_if_enabled(
+    address: str, node_id: str, timeout: float = 10
+) -> None:
+    """Wait for aggregator agent only if aggregator mode is enabled.
+
+    Checks RAY_enable_core_worker_ray_event_to_aggregator env var.
+    """
+    if os.environ.get("RAY_enable_core_worker_ray_event_to_aggregator") == "1":
+        wait_for_aggregator_agent(address, node_id, timeout)
+
+
 def wait_for_pid_to_exit(pid: int, timeout: float = 20):
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -442,33 +493,29 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
-def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "utf-8"):
-    """Run a driver as a separate process.
+def kill_processes(process_infos: List[ProcessInfo]):
+    """
+    Forcefully kills the list of given processes.
+    Ignores processes that are already dead.
 
     Args:
-        driver_script: A string to run as a Python script.
-        env: The environment variables for the driver.
+        process_infos: The list of ProcessInfo representing the processes to kill.
 
-    Returns:
-        The script's output.
+    Raises:
+        TimeoutError: If the process did not exit within 5 seconds.
     """
-    proc = subprocess.Popen(
-        [sys.executable, "-"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        env=env,
-    )
-    with proc:
-        output = proc.communicate(driver_script.encode(encoding=encode))[0]
-        if proc.returncode:
-            print(ray._common.utils.decode(output, encode_type=encode))
-            logger.error(proc.stderr)
-            raise subprocess.CalledProcessError(
-                proc.returncode, proc.args, output, proc.stderr
-            )
-        out = ray._common.utils.decode(output, encode_type=encode)
-    return out
+    for process_info in process_infos:
+        try:
+            process_info.process.kill()
+            process_info.process.wait(timeout=5)
+        except ProcessLookupError:
+            # Process already dead
+            pass
+        except subprocess.TimeoutExpired as exception:
+            raise TimeoutError(
+                f"Process {process_info.process.pid} did not exit within 5 seconds "
+                "after SIGKILL"
+            ) from exception
 
 
 def run_string_as_driver_stdout_stderr(
@@ -547,11 +594,10 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     while time.time() - start_time < timeout:
         if (
             len(
-                [
-                    _
-                    for _ in ray._private.state.actors().values()
-                    if state is None or _["State"] == state
-                ]
+                list_actors(
+                    filters=[("state", "=", state)] if state else None,
+                    limit=num_actors,
+                )
             )
             >= num_actors
         ):
@@ -562,14 +608,14 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
 
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     actor_id = actor._actor_id.hex()
-    current_num_restarts = ray._private.state.actors(actor_id)["NumRestarts"]
+    current_num_restarts = get_actor(id=actor_id).num_restarts
     ray.kill(actor)
     start = time.time()
     while time.time() - start <= timeout:
-        actor_status = ray._private.state.actors(actor_id)
+        actor_state = get_actor(id=actor_id)
         if (
-            actor_status["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
-            or actor_status["NumRestarts"] > current_num_restarts
+            actor_state.state == "DEAD"
+            or actor_state.num_restarts > current_num_restarts
         ):
             return
         time.sleep(retry_interval_ms / 1000.0)
@@ -616,31 +662,10 @@ def wait_for_assertion(
         assertion_predictor(**kwargs)  # Should fail assert
 
 
-@dataclass
-class MetricSamplePattern:
-    name: Optional[str] = None
-    value: Optional[str] = None
-    partial_label_match: Optional[Dict[str, str]] = None
-
-    def matches(self, sample: Sample):
-        if self.name is not None:
-            if self.name != sample.name:
-                return False
-
-        if self.value is not None:
-            if self.value != sample.value:
-                return False
-
-        if self.partial_label_match is not None:
-            for label, value in self.partial_label_match.items():
-                if sample.labels.get(label) != value:
-                    return False
-
-        return True
-
-
 def get_metric_check_condition(
-    metrics_to_check: List[MetricSamplePattern], export_addr: Optional[str] = None
+    metrics_to_check: List[MetricSamplePattern],
+    timeseries: PrometheusTimeseries,
+    export_addr: Optional[str] = None,
 ) -> Callable[[], bool]:
     """A condition to check if a prometheus metrics reach a certain value.
 
@@ -650,6 +675,7 @@ def get_metric_check_condition(
     Args:
         metrics_to_check: A list of MetricSamplePattern. The fields that
             aren't `None` will be matched.
+        timeseries: A PrometheusTimeseries object to store the metrics.
         export_addr: Optional address to export metrics to.
 
     Returns:
@@ -662,15 +688,15 @@ def get_metric_check_condition(
 
     def f():
         for metric_pattern in metrics_to_check:
-            _, _, metric_samples = fetch_prometheus([prom_addr])
+            metric_samples = fetch_prometheus_timeseries(
+                [prom_addr], timeseries
+            ).metric_samples.values()
             for metric_sample in metric_samples:
                 if metric_pattern.matches(metric_sample):
                     break
             else:
-                print(
-                    f"Didn't find {metric_pattern}",
-                    "all samples",
-                    metric_samples,
+                logger.info(
+                    f"Didn't find {metric_pattern} in all samples: {metric_samples}",
                 )
                 return False
         return True
@@ -947,65 +973,36 @@ def object_memory_usage() -> bool:
     return total - avail
 
 
-def fetch_raw_prometheus(prom_addresses):
-    # Local import so minimal dependency tests can run without requests
-    import requests
-
-    for address in prom_addresses:
-        try:
-            response = requests.get(f"http://{address}/metrics")
-            yield address, response.text
-        except requests.exceptions.ConnectionError:
-            continue
-
-
-def fetch_prometheus(prom_addresses):
-    components_dict = {}
-    metric_descriptors = {}
-    metric_samples = []
-
-    for address in prom_addresses:
-        if address not in components_dict:
-            components_dict[address] = set()
-
-    for address, response in fetch_raw_prometheus(prom_addresses):
-        for metric in text_string_to_metric_families(response):
-            for sample in metric.samples:
-                metric_descriptors[sample.name] = metric
-                metric_samples.append(sample)
-                if "Component" in sample.labels:
-                    components_dict[address].add(sample.labels["Component"])
-    return components_dict, metric_descriptors, metric_samples
-
-
-def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
-    """Return prometheus metrics from the given addresses.
-
-    Args:
-        prom_addresses: List of metrics_agent addresses to collect metrics from.
-
-    Returns:
-        Dict mapping from metric name to list of samples for the metric.
-    """
-    _, _, samples = fetch_prometheus(prom_addresses)
-    samples_by_name = defaultdict(list)
-    for sample in samples:
-        samples_by_name[sample.name].append(sample)
-    return samples_by_name
-
-
-def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
-    """Return prometheus metrics from a RayContext
-
-    Args:
-        info: Ray context returned from ray.init()
-
-    Returns:
-        Dict from metric name to a list of samples for the metrics
-    """
+def raw_metric_timeseries(
+    info: RayContext, result: PrometheusTimeseries
+) -> Dict[str, List[Any]]:
+    """Return prometheus timeseries from a RayContext"""
     metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
     print("Fetch metrics from", metrics_page)
-    return fetch_prometheus_metrics([metrics_page])
+    return fetch_prometheus_metric_timeseries([metrics_page], result)
+
+
+def get_system_metric_for_component(
+    system_metric: str, component: str, prometheus_server_address: str
+) -> List[float]:
+    """Get the system metric for a given component from a Prometheus server address.
+    Please note:
+    - This function requires the availability of the Prometheus server. Therefore, it
+    requires the server address.
+    - It assumes the system metric has a `Component` label and `pid` label. `pid` is the
+    process id, so it can be used to uniquely identify the process.
+    """
+    session_name = os.path.basename(
+        ray._private.worker._global_node.get_session_dir_path()
+    )
+    query = f"sum({system_metric}{{Component='{component}',SessionName='{session_name}'}}) by (pid)"
+    resp = requests.get(
+        f"{prometheus_server_address}/api/v1/query?query={quote(query)}"
+    )
+    if resp.status_code != 200:
+        raise Exception(f"Failed to query Prometheus: {resp.status_code}")
+    result = resp.json()
+    return [float(item["value"][1]) for item in result["data"]["result"]]
 
 
 def get_test_config_path(config_file_name):
@@ -1752,14 +1749,6 @@ def job_hook(**kwargs):
     sys.exit(0)
 
 
-def find_free_port() -> int:
-    sock = socket.socket()
-    sock.bind(("", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return port
-
-
 def wandb_setup_api_key_hook():
     """
     Example external hook to set up W&B API key in
@@ -1772,12 +1761,13 @@ def wandb_setup_api_key_hook():
 def get_node_stats(raylet, num_retry=5, timeout=2):
     import grpc
 
+    from ray._private.grpc_utils import init_grpc_channel
     from ray.core.generated import node_manager_pb2_grpc
 
     raylet_address = build_address(
         raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
     )
-    channel = ray._private.utils.init_grpc_channel(raylet_address)
+    channel = init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     for _ in range(num_retry):
         try:
@@ -1793,12 +1783,13 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
 
 # Gets resource usage assuming gcs is local.
 def get_resource_usage(gcs_address, timeout=10):
+    from ray._private.grpc_utils import init_grpc_channel
     from ray.core.generated import gcs_service_pb2_grpc
 
     if not gcs_address:
         gcs_address = ray.worker._global_node.gcs_address
 
-    gcs_channel = ray._private.utils.init_grpc_channel(
+    gcs_channel = init_grpc_channel(
         gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=False
     )
 
@@ -2013,3 +2004,24 @@ def _execute_command_on_node(command: str, node_ip: str):
     except subprocess.CalledProcessError as e:
         print("Exit code:", e.returncode)
         print("Stderr:", e.stderr)
+
+
+RPC_FAILURE_MAP = {
+    "request": {
+        "req_failure_prob": 100,
+        "resp_failure_prob": 0,
+        "in_flight_failure_prob": 0,
+    },
+    "response": {
+        "req_failure_prob": 0,
+        "resp_failure_prob": 100,
+        "in_flight_failure_prob": 0,
+    },
+    "in_flight": {
+        "req_failure_prob": 0,
+        "resp_failure_prob": 0,
+        "in_flight_failure_prob": 100,
+    },
+}
+
+RPC_FAILURE_TYPES = list(RPC_FAILURE_MAP.keys())

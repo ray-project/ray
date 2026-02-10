@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 import gymnasium as gym
 
 from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
     AlgorithmConfigDict,
     TensorType,
 )
-from ray.rllib.utils.annotations import OldAPIStack
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy

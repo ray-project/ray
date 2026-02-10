@@ -11,6 +11,7 @@ develop-and-deploy
 model_composition
 multi-app
 model-multiplexing
+model-registries
 configure-serve-deployment
 http-guide
 Serving LLMs <llm/index>
@@ -18,6 +19,7 @@ Production Guide <production-guide/index>
 monitoring
 resource-allocation
 autoscaling-guide
+asynchronous-inference
 advanced-guides/index
 architecture
 examples

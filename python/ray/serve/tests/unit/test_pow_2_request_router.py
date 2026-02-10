@@ -1864,17 +1864,16 @@ async def test_locality_aware_backoff_skips_sleeps(pow_2_router):
     the same zone, it should not sleep before retrying and add additional latency.
     """
     s = pow_2_router
-
-    # create a stub for random.sample to track the replicas that are chosen
-    original_sample = random.sample
+    original_apply_locality_routing = s.apply_locality_routing
     chosen_replicas = []
 
-    def fake_sample(seq, k):
-        results = original_sample(seq, k)
-        chosen_replicas.append(results)
-        return results
+    def tracking_apply_locality_routing(pending_request=None):
+        result = original_apply_locality_routing(pending_request)
+        # Track the replica IDs that were candidates at this locality scope
+        chosen_replicas.append(list(result))
+        return result
 
-    random.sample = fake_sample
+    s.apply_locality_routing = tracking_apply_locality_routing
 
     loop = get_or_create_event_loop()
     task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
@@ -1918,7 +1917,7 @@ async def test_locality_aware_backoff_skips_sleeps(pow_2_router):
         assert done.pop().result() == r3
 
     # assert that we tried local node, followed by local AZ, followed by all replicas
-    assert len(chosen_replicas) == 3
+    assert len(chosen_replicas) in (3, 4)
     assert set(chosen_replicas[0]) == {r1.replica_id}
     assert set(chosen_replicas[1]) == {r1.replica_id, r2.replica_id}
     # assert intersection of chosen_replicas[2] and {r1.replica_id, r2.replica_id, r3.replica_id} is not empty

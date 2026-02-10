@@ -5,13 +5,15 @@ import time
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private import ray_constants
 from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
     object_memory_usage,
-    run_string_as_driver,
     run_string_as_driver_nonblocking,
 )
 
@@ -22,7 +24,7 @@ import psutil
     "call_ray_start",
     [
         "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0",
+        "--max-worker-port=0 --port 0"
     ],
     indirect=True,
 )

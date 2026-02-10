@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -13,12 +13,12 @@ logger = logging.getLogger(__name__)
 @PublicAPI(stability="alpha")
 class Concatenator(Preprocessor):
     """Combine numeric columns into a column of type
-    :class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`. Only columns
+    :class:`~ray.data._internal.tensor_extensions.pandas.TensorDtype`. Only columns
     specified in ``columns`` will be concatenated.
 
     This preprocessor concatenates numeric columns and stores the result in a new
     column. The new column contains
-    :class:`~ray.air.util.tensor_extensions.pandas.TensorArrayElement` objects of
+    :class:`~ray.data._internal.tensor_extensions.pandas.TensorArrayElement` objects of
     shape :math:`(m,)`, where :math:`m` is the number of columns concatenated.
     The :math:`m` concatenated columns are dropped after concatenation.
     The preprocessor preserves the order of the columns provided in the ``colummns``
@@ -31,7 +31,7 @@ class Concatenator(Preprocessor):
         >>> from ray.data.preprocessors import Concatenator
 
         :py:class:`Concatenator` combines numeric columns into a column of
-        :py:class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`.
+        :py:class:`~ray.data._internal.tensor_extensions.pandas.TensorDtype`.
 
         >>> df = pd.DataFrame({"X0": [0, 3, 1], "X1": [0.5, 0.2, 0.9]})
         >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
@@ -94,8 +94,8 @@ class Concatenator(Preprocessor):
         raise_if_missing: bool = False,
         flatten: bool = False,
     ):
+        super().__init__()
         self.columns = columns
-
         self.output_column_name = output_column_name
         self.dtype = dtype
         self.raise_if_missing = raise_if_missing
@@ -137,6 +137,12 @@ class Concatenator(Preprocessor):
         df.loc[:, self.output_column_name] = pd.Series(list(concatenated))
         return df
 
+    def get_input_columns(self) -> List[str]:
+        return self.columns
+
+    def get_output_columns(self) -> List[str]:
+        return [self.output_column_name]
+
     def __repr__(self):
         default_values = {
             "output_column_name": "concat_out",
@@ -153,3 +159,10 @@ class Concatenator(Preprocessor):
                 non_default_arguments.append(f"{parameter}={value}")
 
         return f"{self.__class__.__name__}({', '.join(non_default_arguments)})"
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        # flatten is a recent field, to ensure backwards compatibility
+        # assign a default in case it is missing in the serialized state
+        if not hasattr(self, "flatten"):
+            self.flatten = False

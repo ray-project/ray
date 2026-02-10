@@ -33,11 +33,6 @@ cdef class Config:
                 .raylet_client_connect_timeout_milliseconds())
 
     @staticmethod
-    def raylet_fetch_timeout_milliseconds():
-        return (RayConfig.instance()
-                .raylet_fetch_timeout_milliseconds())
-
-    @staticmethod
     def kill_worker_timeout_milliseconds():
         return RayConfig.instance().kill_worker_timeout_milliseconds()
 
@@ -140,3 +135,7 @@ cdef class Config:
     @staticmethod
     def maximum_gcs_destroyed_actor_cached_count():
         return RayConfig.instance().maximum_gcs_destroyed_actor_cached_count()
+
+    @staticmethod
+    def start_python_gc_manager_thread():
+        return RayConfig.instance().start_python_gc_manager_thread()

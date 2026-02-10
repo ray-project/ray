@@ -7,18 +7,30 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    PrometheusTimeseries,
+    SignalActor,
+    wait_for_condition,
+)
 from ray._private.state_api_test_utils import (
     verify_failed_task,
 )
 from ray._private.test_utils import (
-    raw_metrics,
-    run_string_as_driver_nonblocking,
+    raw_metric_timeseries,
+    wait_for_aggregator_agent_if_enabled,
 )
 from ray._private.worker import RayContext
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
 from ray.util.state import list_tasks
+
+# Run every test in this module twice: default and with core-worker to aggregator feature flag enabled
+pytestmark = [
+    pytest.mark.parametrize(
+        "event_routing_config", ["default", "aggregator"], indirect=True
+    ),
+    pytest.mark.usefixtures("event_routing_config"),
+]
 
 _SYSTEM_CONFIG = {
     "task_events_report_interval_ms": 100,
@@ -28,7 +40,9 @@ _SYSTEM_CONFIG = {
 }
 
 
-def aggregate_task_event_metric(info: RayContext) -> Dict:
+def aggregate_task_event_metric(
+    info: RayContext, timeseries: PrometheusTimeseries
+) -> Dict:
     """
     Aggregate metrics of task events into:
         {
@@ -40,7 +54,7 @@ def aggregate_task_event_metric(info: RayContext) -> Dict:
                 ray_gcs_task_manager_task_events_dropped STATUS_EVENT,
         }
     """
-    res = raw_metrics(info)
+    res = raw_metric_timeseries(info, timeseries)
     task_events_info = defaultdict(int)
     if "ray_gcs_task_manager_task_events_dropped" in res:
         for sample in res["ray_gcs_task_manager_task_events_dropped"]:
@@ -69,8 +83,10 @@ def test_status_task_events_metrics(shutdown_only):
     for _ in range(10):
         ray.get(f.remote())
 
+    timeseries = PrometheusTimeseries()
+
     def verify():
-        metric = aggregate_task_event_metric(info)
+        metric = aggregate_task_event_metric(info, timeseries)
         assert metric["REPORTED"] >= 10, (
             "At least 10 tasks events should be reported. "
             "Could be more than 10 with multiple flush."
@@ -167,40 +183,32 @@ def test_failed_task_error(shutdown_only):
 
 def test_failed_task_failed_due_to_node_failure(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1)
+    head_node_id = cluster.add_node(num_cpus=1).node_id
     ray.init(address=cluster.address)
     node = cluster.add_node(num_cpus=2)
 
-    driver_script = """
-import ray
-ray.init("auto")
+    signal = SignalActor.options(
+        label_selector={"ray.io/node-id": head_node_id}
+    ).remote()
 
-@ray.remote(num_cpus=2, max_retries=0)
-def sleep():
-    import time
-    time.sleep(999)
+    @ray.remote(num_cpus=2, max_retries=0)
+    def sleep():
+        ray.get(signal.send.remote())
+        while True:
+            time.sleep(1)
 
-x = sleep.options(name="node-killed").remote()
-ray.get(x)
-    """
+    obj_ref = sleep.options(name="node-killed").remote()
+    ray.get(signal.wait.remote())
 
-    run_string_as_driver_nonblocking(driver_script)
-
-    def driver_running():
-        t = list_tasks(filters=[("name", "=", "node-killed")])
-        return len(t) > 0
-
-    wait_for_condition(driver_running)
-
-    # Kill the node
     cluster.remove_node(node)
+    with pytest.raises(ray.exceptions.NodeDiedError):
+        ray.get(obj_ref)
 
     wait_for_condition(
         verify_failed_task,
         name="node-killed",
         error_type="NODE_DIED",
-        error_message="Task failed due to the node (where this task was running) "
-        " was dead or unavailable",
+        error_message="Task failed because the node it was running on is dead or unavailable",
     )
 
 
@@ -234,40 +242,6 @@ def test_failed_task_unschedulable(shutdown_only):
     )
 
 
-# TODO(rickyx): Make this work.
-# def test_failed_task_removed_placement_group(shutdown_only, monkeypatch):
-#     ray.init(num_cpus=2, _system_config=_SYSTEM_CONFIG)
-#     from ray.util.placement_group import placement_group, remove_placement_group
-#     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-#
-#     pg = placement_group([{"CPU": 2}])
-#     ray.get(pg.ready())
-#
-#     @ray.remote(num_cpus=2)
-#     def sleep():
-#         time.sleep(999)
-#
-#     with monkeypatch.context() as m:
-#         m.setenv(
-#             "RAY_testing_asio_delay_us",
-#             "NodeManagerService.grpc_server.RequestWorkerLease=3000000:3000000",
-#         )
-#
-#         sleep.options(
-#             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
-#             name="task-pg-removed",
-#             max_retries=0,
-#         ).remote()
-#
-#     remove_placement_group(pg)
-#
-#     wait_for_condition(
-#         verify_failed_task,
-#         name="task-pg-removed",
-#         error_type="TASK_PLACEMENT_GROUP_REMOVED",
-#     )
-
-
 def test_failed_task_runtime_env_setup(shutdown_only):
     import conda
 
@@ -275,7 +249,12 @@ def test_failed_task_runtime_env_setup(shutdown_only):
     def f():
         pass
 
-    bad_env = RuntimeEnv(conda={"dependencies": ["_this_does_not_exist"]})
+    bad_env = RuntimeEnv(
+        conda={
+            "channels": ["defaults"],
+            "dependencies": ["_this_does_not_exist"],
+        }
+    )
     with pytest.raises(
         RuntimeEnvSetupError,
     ):
@@ -432,7 +411,10 @@ def test_parent_task_id_concurrent_actor(shutdown_only, actor_concurrency):
 
 
 def test_is_debugger_paused(shutdown_only):
-    ray.init(num_cpus=1, _system_config=_SYSTEM_CONFIG)
+    ray_context = ray.init(num_cpus=1, _system_config=_SYSTEM_CONFIG)
+    address = ray_context.address_info["address"]
+    node_id = ray_context.address_info["node_id"]
+    wait_for_aggregator_agent_if_enabled(address, node_id)
 
     @ray.remote(max_retries=0)
     def f():

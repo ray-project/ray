@@ -14,11 +14,12 @@
 #pragma once
 
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/core_worker/experimental_mutable_object_manager.h"
-#include "ray/raylet_client/raylet_client_interface.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/rpc/client_call.h"
 
 namespace ray {
@@ -144,7 +145,7 @@ class MutableObjectProvider : public MutableObjectProviderInterface {
   using RayletFactory =
       std::function<std::shared_ptr<RayletClientInterface>(const NodeID &)>;
 
-  MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
+  MutableObjectProvider(std::shared_ptr<plasma::PlasmaClientInterface> plasma,
                         RayletFactory raylet_client_factory,
                         std::function<Status(void)> check_signals);
 
@@ -204,7 +205,7 @@ class MutableObjectProvider : public MutableObjectProviderInterface {
   void RunIOContext(instrumented_io_context &io_context);
 
   // The plasma store.
-  plasma::PlasmaClientInterface &plasma_;
+  std::shared_ptr<plasma::PlasmaClientInterface> plasma_;
 
   // Object manager for the mutable objects.
   std::shared_ptr<ray::experimental::MutableObjectManager> object_manager_;
@@ -214,7 +215,7 @@ class MutableObjectProvider : public MutableObjectProviderInterface {
   // Maps the remote node object ID (i.e., the object ID that the remote node writes to)
   // to the corresponding local object ID (i.e., the object ID that the local node reads
   // from) and the number of readers.
-  std::unordered_map<ObjectID, LocalReaderInfo> remote_writer_object_to_local_reader_
+  absl::flat_hash_map<ObjectID, LocalReaderInfo> remote_writer_object_to_local_reader_
       ABSL_GUARDED_BY(remote_writer_object_to_local_reader_lock_);
 
   // Creates a Raylet client for each mutable object. When the polling thread detects a
@@ -243,7 +244,7 @@ class MutableObjectProvider : public MutableObjectProviderInterface {
   // For objects larger than the gRPC max payload size *that this node receives from a
   // writer node*, this map tracks how many bytes have been received so far for a single
   // object write.
-  std::unordered_map<ObjectID, uint64_t> written_so_far_
+  absl::flat_hash_map<ObjectID, uint64_t> written_so_far_
       ABSL_GUARDED_BY(written_so_far_lock_);
 
   friend class MutableObjectProvider_MutableObjectBufferReadRelease_Test;

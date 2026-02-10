@@ -4,6 +4,8 @@ import pytest
 
 import ray
 from ray import runtime_context
+from ray._common import utils as ray_utils
+from ray.cluster_utils import Cluster
 from ray.train.v2._internal.constants import (
     ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
 )
@@ -16,6 +18,27 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
+@pytest.fixture()
+def ray_start_4_cpus_2_gpus():
+    ray.init(num_cpus=4, num_gpus=2)
+    yield
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_2x2_gpu_cluster():
+    cluster = Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=4, num_gpus=2)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
+
+
 @pytest.fixture(autouse=True)
 def setup_logging():
     logger = logging.getLogger("ray.train")
@@ -23,6 +46,13 @@ def setup_logging():
     logger.setLevel(logging.INFO)
     yield
     logger.setLevel(orig_level)
+
+
+@pytest.fixture(autouse=True)
+def reset_ray_address(monkeypatch):
+    ray_utils.reset_ray_address()
+    yield
+    ray_utils.reset_ray_address()
 
 
 @pytest.fixture

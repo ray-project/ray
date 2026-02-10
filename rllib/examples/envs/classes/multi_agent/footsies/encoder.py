@@ -3,6 +3,7 @@ import copy
 from typing import Any, Optional, Union
 
 import numpy as np
+
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game import constants
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
     footsies_service_pb2 as footsies_pb2,

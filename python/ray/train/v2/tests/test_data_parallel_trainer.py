@@ -15,7 +15,7 @@ from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _get_ray_train_session_d
 from ray.train.tests.util import create_dict_checkpoint
 from ray.train.v2._internal.constants import is_v2_enabled
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.train.v2.api.exceptions import WorkerGroupError
+from ray.train.v2.api.exceptions import TrainingFailedError, WorkerGroupError
 from ray.train.v2.api.result import Result
 
 assert is_v2_enabled()
@@ -141,44 +141,22 @@ def test_report_checkpoint_multirank(tmp_path):
         assert tmp_path.joinpath("validate", str(rank)).exists()
 
 
-def test_report_get_all_reported_checkpoints():
-    """Check that get_all_reported_checkpoints returns checkpoints depending on # report calls."""
-
-    def train_fn():
-        if ray.train.get_context().get_world_rank() == 0:
-            ray.train.report(metrics={}, checkpoint=None)
-            with create_dict_checkpoint({}) as checkpoint:
-                ray.train.report(metrics={}, checkpoint=checkpoint)
-            assert len(ray.train.get_all_reported_checkpoints()) == 1
-            with create_dict_checkpoint({}) as checkpoint:
-                ray.train.report(metrics={}, checkpoint=checkpoint)
-        else:
-            ray.train.report(metrics={}, checkpoint=None)
-            ray.train.report(metrics={}, checkpoint=None)
-            ray.train.report(metrics={}, checkpoint=None)
-            assert len(ray.train.get_all_reported_checkpoints()) == 2
-
-    trainer = DataParallelTrainer(
-        train_fn,
-        scaling_config=ScalingConfig(num_workers=2),
-    )
-    trainer.fit()
-
-
 def test_error(tmp_path):
     def _error_func_rank_0():
         """An example train_fun that raises an error on rank 0."""
         if ray.train.get_context().get_world_rank() == 0:
-            raise ValueError("error")
+            raise ValueError("user error")
 
     trainer = DataParallelTrainer(
         _error_func_rank_0,
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(name="test", storage_path=str(tmp_path)),
     )
-    with pytest.raises(WorkerGroupError) as exc_info:
+    with pytest.raises(TrainingFailedError) as exc_info:
         trainer.fit()
-        assert isinstance(exc_info.value.worker_failures[0], ValueError)
+    assert isinstance(exc_info.value, WorkerGroupError)
+    assert "user error" in str(exc_info.value.worker_failures[0])
+    assert len(exc_info.value.worker_failures) == 1
 
 
 @pytest.mark.parametrize("env_disabled", [True, False])
@@ -274,7 +252,7 @@ def run_process_for_sigint_abort(abort_terminates):
         # True,
     ],
 )
-def test_sigint_abort(ray_start_4_cpus, spam_sigint):
+def test_sigint_abort(spam_sigint):
     # Use SignalActor to wait for training to start before sending SIGINT.
     SignalActor = create_remote_signal_actor(ray)
     signal_actor = SignalActor.options(

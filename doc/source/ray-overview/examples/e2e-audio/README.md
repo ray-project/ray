@@ -47,7 +47,7 @@ import ray
 import torch
 import torchaudio
 import torchaudio.transforms as T
-from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
+from ray.data.llm import build_processor, vLLMEngineProcessorConfig
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
 
 TRANSCRIPTION_MODEL = "openai/whisper-tiny"
@@ -124,7 +124,7 @@ class WhisperPreprocessor:
         return {"input_features": [arr for arr in extracted_features], "id": batch["id"]}
 
 
-ds = ds.map_batches(WhisperPreprocessor, batch_size=2, batch_format="pandas", concurrency=1)
+ds = ds.map_batches(WhisperPreprocessor, batch_size=2, batch_format="pandas", compute=ray.data.ActorPoolStrategy(size=1))
 # ds.show(1)
 ```
 
@@ -166,12 +166,12 @@ class Transcriber:
 
 # Transcribe audio to text tokens using Whisper.
 # Use 2 workers using 1 GPU each.
-ds = ds.map_batches(Transcriber, batch_size=2, batch_format="numpy", concurrency=2, num_gpus=1)
+ds = ds.map_batches(Transcriber, batch_size=2, batch_format="numpy", compute=ray.data.ActorPoolStrategy(size=2), num_gpus=1)
 ```
 
 Now decode the tokens into actual transcriptions. This step decouples from the previous step to prevent GPU blocks on CPU work and avoid idle time. This approach also allows independent scaling of the number of decoders from the number of Whisper replicas.
 
-Separating the GPU work from CPU work eliminates GPU idle. The `concurrency=5` and `batch_size=32` parameters show how to use more CPU workers and bigger batch sizes than GPU workers.
+Separating the GPU work from CPU work eliminates GPU idle. The `compute=ray.data.ActorPoolStrategy(size=5)` and `batch_size=32` parameters show how to use more CPU workers and bigger batch sizes than GPU workers.
 
 
 ```python
@@ -186,7 +186,7 @@ class Decoder:
         return batch
 
 
-ds = ds.map_batches(Decoder, batch_size=16, concurrency=5, batch_format="pandas")  # CPU only
+ds = ds.map_batches(Decoder, batch_size=16, compute=ray.data.ActorPoolStrategy(size=5), batch_format="pandas")  # CPU only
 
 # ds.take(1)
 ```
@@ -208,14 +208,14 @@ judge_config = vLLMEngineProcessorConfig(
         "enable_chunked_prefill": True,
         "max_num_batched_tokens": 1028,
         "max_model_len": 4096,
-        "guided_decoding_backend": "xgrammar",
+        "structured_outputs_config": {"backend": "xgrammar"},
         "dtype": torch.float16,
     },
     concurrency=3,
     batch_size=2,
 )
 
-processor = build_llm_processor(
+processor = build_processor(
     judge_config,
     preprocess=lambda row: dict(
         messages=[
@@ -226,7 +226,7 @@ processor = build_llm_processor(
             {"role": "user", "content": row["transcription"]},
         ],
         sampling_params=dict(
-            guided_decoding={"choice": ["1", "2", "3", "4", "5"]},
+            structured_outputs={"choice": ["1", "2", "3", "4", "5"]},
         ),
     ),
     postprocess=lambda row: dict(

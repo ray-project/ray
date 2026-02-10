@@ -66,7 +66,7 @@ cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common:task_common",
         "//src/ray/core_worker:core_worker_lib",
-        "//src/ray/gcs/gcs_client:global_state_accessor_lib",
+        "//src/ray/gcs_rpc_client:global_state_accessor_lib",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:network_util",
         "//src/ray/util:process",
@@ -140,11 +140,6 @@ pkg_files(
     name = "example_files",
     srcs = glob(["example/*"]),
     prefix = "ray/cpp/example/",
-    renames = {
-        "example/_WORKSPACE": "WORKSPACE",
-        "example/_BUILD.bazel": "BUILD.bazel",
-        "example/_.bazelrc": ".bazelrc",
-    },
     visibility = ["//visibility:private"],
 )
 
@@ -278,7 +273,10 @@ cc_test(
         "//java:libio_ray_ray_test.jar",
     ],
     linkstatic = True,
-    tags = ["team:core"],
+    tags = [
+        "no_macos",
+        "team:core",
+    ],
     deps = [
         "ray_api_lib",
         "@com_google_googletest//:gtest_main",
@@ -469,5 +467,9 @@ py_test(
         "SIMPLE_DRIVER_SO_PATH": "$(location simple_job.so)",
         "SIMPLE_DRIVER_MAIN_PATH": "$(location simple_job)",
     },
-    tags = ["team:core"],
+    tags = [
+        # TODO(ray-core): fix this test on apple silicon macos.
+        "no_macos",
+        "team:core",
+    ],
 )

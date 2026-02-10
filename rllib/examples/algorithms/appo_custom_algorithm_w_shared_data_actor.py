@@ -81,11 +81,10 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.algorithms.classes.appo_w_shared_data_actor import (
     APPOWithSharedDataActor,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-
 
 parser = add_rllib_example_script_args(
     default_reward=450.0,

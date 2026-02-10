@@ -153,6 +153,7 @@ class BaseTrainer(abc.ABC):
     method, and optionally ``setup``.
 
     .. testcode::
+        :skipif: True
 
         import torch
 
@@ -207,11 +208,6 @@ class BaseTrainer(abc.ABC):
             [{"x": i, "y": i} for i in range(10)])
         my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
         result = my_trainer.fit()
-
-    .. testoutput::
-            :hide:
-
-            ...
 
     Args:
         scaling_config: Configuration for how to scale training.
@@ -308,6 +304,7 @@ class BaseTrainer(abc.ABC):
         attempt to resume on both experiment-level and trial-level failures:
 
         .. testcode::
+            :skipif: True
 
             import os
             import ray
@@ -342,11 +339,6 @@ class BaseTrainer(abc.ABC):
                 )
 
             result = trainer.fit()
-
-        .. testoutput::
-            :hide:
-
-            ...
 
         Args:
             path: The path to the experiment directory of the training run to restore.
@@ -467,7 +459,14 @@ class BaseTrainer(abc.ABC):
         for parameter, default_value in default_values.items():
             value = getattr(self, parameter)
             if value != default_value:
-                non_default_arguments.append(f"{parameter}={value!r}")
+                # 'Dataset.__repr__' returns a table rather than a regular Python object
+                # representation. So, we need to special case the 'datasets' parameter.
+                if parameter == "datasets":
+                    value_repr = format_datasets_for_repr(value)
+                else:
+                    value_repr = repr(value)
+
+                non_default_arguments.append(f"{parameter}={value_repr}")
 
         if non_default_arguments:
             return f"<{self.__class__.__name__} {' '.join(non_default_arguments)}>"
@@ -546,6 +545,20 @@ class BaseTrainer(abc.ABC):
         constructors to avoid logging incorrect deprecation warnings when
         `ray.train.RunConfig` is passed to Ray Tune.
         """
+        from ray.train.v2._internal.constants import V2_ENABLED_ENV_VAR, is_v2_enabled
+
+        if is_v2_enabled():
+            raise DeprecationWarning(
+                f"Detected use of a deprecated Trainer import from `{self.__class__.__module__}`. "
+                "This Trainer class is not compatible with Ray Train V2.\n"
+                "To fix this:\n"
+                "  - Update to use the new import path. For example, "
+                "`from ray.train.torch.torch_trainer import TorchTrainer` -> "
+                "`from ray.train.torch import TorchTrainer`\n"
+                f"  - Or, explicitly disable V2 by setting: {V2_ENABLED_ENV_VAR}=0\n"
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
 
         if not _v2_migration_warnings_enabled():
             return
@@ -747,9 +760,7 @@ class BaseTrainer(abc.ABC):
             raise RuntimeError
 
         if datasets:
-            param_dict["datasets"] = {
-                dataset_name: raise_fn for dataset_name in datasets
-            }
+            param_dict["datasets"] = dict.fromkeys(datasets, raise_fn)
 
         cls_and_param_dict = (self.__class__, param_dict)
 
@@ -909,3 +920,25 @@ class BaseTrainer(abc.ABC):
 
         # Wrap with `tune.with_parameters` to handle very large values in base_config
         return tune.with_parameters(trainable_cls, **base_config)
+
+
+@DeveloperAPI
+def format_datasets_for_repr(datasets: Optional[Dict[str, GenDataset]]) -> str:
+    """Format datasets for BaseTrainer repr using plan strings.
+
+    The Dataset.__repr__ returns a table rather than a conventional Python object
+    reprentation. To ensure the BaseTrainer representation still looks reasonable, we
+    need to special-case datasets.
+    """
+    from ray.data import Dataset
+
+    assert datasets is not None, "Expected caller to pass in non-None argument"
+
+    formatted = {}
+    for key, dataset in datasets.items():
+        if isinstance(dataset, Dataset):
+            formatted[key] = dataset._plan.get_plan_as_string(type(dataset))
+        else:
+            formatted[key] = dataset
+
+    return "{" + ", ".join(f"'{key}': {formatted[key]}" for key in datasets) + "}"

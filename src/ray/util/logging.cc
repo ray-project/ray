@@ -116,9 +116,9 @@ void TerminateHandler() {
       std::rethrow_exception(e_ptr);
     } catch (std::exception &e) {
       RAY_LOG(ERROR) << "Unhandled exception: " << typeid(e).name()
-                     << ". what(): " << e.what();
+                     << ". what(): " << e.what() << " " << ray::StackTrace();
     } catch (...) {
-      RAY_LOG(ERROR) << "Unhandled unknown exception.";
+      RAY_LOG(ERROR) << "Unhandled unknown exception. " << ray::StackTrace();
     }
   }
 

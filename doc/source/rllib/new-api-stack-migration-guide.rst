@@ -278,7 +278,7 @@ AlgorithmConfig.env_runners()
     If you want to IDE-debug what's going on inside your `EnvRunners`, set `num_env_runners=0`
     and make sure you are running your experiment locally and not through Ray Tune.
     In order to do this with any of RLlib's `example <https://github.com/ray-project/ray/tree/master/rllib/examples>`__
-    or `tuned_example <https://github.com/ray-project/ray/tree/master/rllib/tuned_examples>`__ scripts,
+    or `tuned_example <https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms>`__ scripts,
     simply set the command line args: `--no-tune --num-env-runners=0`.
 
 In case you were using the `observation_filter` setting, perform the following translations:
@@ -530,6 +530,7 @@ customizations inside the old stack's Policy class, you need to move the logic i
 See :ref:`Learner <learner-guide>` for details on how to write a custom Learner .
 
 The following example scripts show how to write:
+
 - `a simple custom loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__
 - `a custom Learner with 2 optimizers and different learning rates for each <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/separate_vf_lr_and_optimizer.py>`__.
 

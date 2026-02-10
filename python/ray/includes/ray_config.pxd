@@ -23,8 +23,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int64_t raylet_client_connect_timeout_milliseconds() const
 
-        int64_t raylet_fetch_timeout_milliseconds() const
-
         int64_t kill_worker_timeout_milliseconds() const
 
         int64_t worker_register_timeout_seconds() const
@@ -86,3 +84,5 @@ cdef extern from "ray/common/ray_config.h" nogil:
         int maximum_gcs_destroyed_actor_cached_count() const
 
         c_bool record_task_actor_creation_sites() const
+
+        c_bool start_python_gc_manager_thread() const

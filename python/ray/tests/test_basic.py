@@ -11,11 +11,11 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._common.test_utils import SignalActor
-from ray._private.test_utils import (
-    client_test_enabled,
+from ray._common.test_utils import (
+    SignalActor,
     run_string_as_driver,
 )
+from ray._private.test_utils import client_test_enabled
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 import psutil
@@ -256,6 +256,7 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
     # Set the environment variables used by the raylet and worker
     monkeypatch.setenv("RAY_worker_num_grpc_internal_threads", "1")
     monkeypatch.setenv("RAY_num_server_call_thread", "1")
+    monkeypatch.setenv("RAY_core_worker_num_server_call_thread", "1")
 
     # TODO(#55215): The for loop and the 'assert ... in {..,..}' complicates this
     # test unnecessarily. We should only need to call the assert after
@@ -267,7 +268,7 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
         ray.get(actor.get_thread_count.remote())
     # Lowering these numbers in this assert should be celebrated,
     # increasing these numbers should be scrutinized
-    assert ray.get(actor.get_thread_count.remote()) in {24, 25}
+    assert ray.get(actor.get_thread_count.remote()) in {21, 22, 23}
 
 
 # https://github.com/ray-project/ray/issues/7287
@@ -472,16 +473,6 @@ def test_invalid_arguments():
         with pytest.raises(ValueError, match=template2.format(keyword)):
             ray.remote(**{keyword: random.randint(-100, -2)})(A)
 
-    metadata_type_err = (
-        "The type of keyword '_metadata' "
-        + f"must be {(dict, type(None))}, but received type {float}"
-    )
-    with pytest.raises(TypeError, match=re.escape(metadata_type_err)):
-        ray.remote(_metadata=3.14)(A)
-
-    ray.remote(_metadata={"data": 1})(f)
-    ray.remote(_metadata={"data": 1})(A)
-
     # Check invalid resource quantity
     with pytest.raises(
         ValueError,
@@ -551,92 +542,24 @@ def test_options():
         with pytest.raises(TypeError):
             v.validate(k, unique_object)
 
-    # test updating each namespace of "_metadata" independently
-    assert ray_option_utils.update_options(
-        {
-            "_metadata": {"ns1": {"a1": 1, "b1": 2, "c1": 3}, "ns2": {"a2": 1}},
-            "num_cpus": 1,
-            "xxx": {"x": 2},
-            "zzz": 42,
-        },
-        {
-            "_metadata": {"ns1": {"b1": 22}, "ns3": {"b3": 2}},
-            "num_cpus": 2,
-            "xxx": {"y": 2},
-            "yyy": 3,
-        },
-    ) == {
-        "_metadata": {
-            "ns1": {"a1": 1, "b1": 22, "c1": 3},
-            "ns2": {"a2": 1},
-            "ns3": {"b3": 2},
-        },
-        "num_cpus": 2,
-        "xxx": {"y": 2},
-        "yyy": 3,
-        "zzz": 42,
-    }
-
-    # test options for other Ray libraries.
-    namespace = "namespace"
-
-    class mock_options:
-        def __init__(self, **options):
-            self.options = {"_metadata": {namespace: options}}
-
-        def keys(self):
-            return ("_metadata",)
-
-        def __getitem__(self, key):
-            return self.options[key]
-
-        def __call__(self, f):
-            f._default_options.update(self.options)
-            return f
-
-    @mock_options(a=1, b=2)
     @ray.remote(num_gpus=2)
     def foo():
         pass
 
     assert foo._default_options == {
-        "_metadata": {"namespace": {"a": 1, "b": 2}},
         "max_calls": 1,
         "num_gpus": 2,
     }
 
-    f2 = foo.options(num_cpus=1, num_gpus=1, **mock_options(a=11, c=3))
+    f2 = foo.options(num_cpus=1, num_gpus=1)
 
     # TODO(suquark): The current implementation of `.options()` is so bad that we
     # cannot even access its options from outside. Here we hack the closures to
     # achieve our goal. Need futher efforts to clean up the tech debt.
     assert f2.remote.__closure__[2].cell_contents == {
-        "_metadata": {"namespace": {"a": 11, "b": 2, "c": 3}},
         "num_cpus": 1,
         "num_gpus": 1,
     }
-
-    class mock_options2(mock_options):
-        def __init__(self, **options):
-            self.options = {"_metadata": {namespace + "2": options}}
-
-    f3 = foo.options(num_cpus=1, num_gpus=1, **mock_options2(a=11, c=3))
-
-    assert f3.remote.__closure__[2].cell_contents == {
-        "_metadata": {"namespace": {"a": 1, "b": 2}, "namespace2": {"a": 11, "c": 3}},
-        "num_cpus": 1,
-        "num_gpus": 1,
-    }
-
-    with pytest.raises(TypeError):
-        # Ensure only a single "**option" per ".options()".
-        # Otherwise it would be confusing.
-        foo.options(
-            num_cpus=1,
-            num_gpus=1,
-            **mock_options(a=11, c=3),
-            **mock_options2(a=11, c=3),
-        )
 
 
 # https://github.com/ray-project/ray/issues/17842
@@ -836,7 +759,7 @@ def test_fetch_local(ray_start_cluster_head):
     assert (1, 0) == (len(ready_ref), len(remaining_ref))
 
 
-def test_nested_functions(ray_start_shared_local_modes):
+def test_nested_functions(ray_start_regular_shared):
     # Make sure that remote functions can use other values that are defined
     # after the remote function but before the first function invocation.
     @ray.remote
@@ -853,7 +776,7 @@ def test_nested_functions(ray_start_shared_local_modes):
     assert ray.get(f.remote()) == (1, 2)
 
 
-def test_recursive_remote_call(ray_start_shared_local_modes):
+def test_recursive_remote_call(ray_start_regular_shared):
     # Test a remote function that recursively calls itself.
     @ray.remote
     def factorial(n):
@@ -869,7 +792,7 @@ def test_recursive_remote_call(ray_start_shared_local_modes):
     assert ray.get(factorial.remote(5)) == 120
 
 
-def test_mutually_recursive_functions(ray_start_shared_local_modes):
+def test_mutually_recursive_functions(ray_start_regular_shared):
     # Test remote functions that recursively call each other.
     @ray.remote
     def factorial_even(n):
@@ -887,7 +810,7 @@ def test_mutually_recursive_functions(ray_start_shared_local_modes):
     assert ray.get(factorial_odd.remote(5)) == 120
 
 
-def test_ray_recursive_objects(ray_start_shared_local_modes):
+def test_ray_recursive_objects(ray_start_regular_shared):
     class ClassA:
         pass
 
@@ -913,7 +836,7 @@ def test_ray_recursive_objects(ray_start_shared_local_modes):
         ray.put(obj)
 
 
-def test_passing_arguments_by_value_out_of_the_box(ray_start_shared_local_modes):
+def test_passing_arguments_by_value_out_of_the_box(ray_start_regular_shared):
     @ray.remote
     def f(x):
         return x
@@ -945,7 +868,7 @@ def test_passing_arguments_by_value_out_of_the_box(ray_start_shared_local_modes)
     ray.get(ray.put(Foo))
 
 
-def test_putting_object_that_closes_over_object_ref(ray_start_shared_local_modes):
+def test_putting_object_that_closes_over_object_ref(ray_start_regular_shared):
     # This test is here to prevent a regression of
     # https://github.com/ray-project/ray/issues/1317.
 
@@ -960,7 +883,7 @@ def test_putting_object_that_closes_over_object_ref(ray_start_shared_local_modes
     ray.put(f)
 
 
-def test_keyword_args(ray_start_shared_local_modes):
+def test_keyword_args(ray_start_regular_shared):
     @ray.remote
     def keyword_fct1(a, b="hello"):
         return "{} {}".format(a, b)
@@ -1045,7 +968,7 @@ def test_keyword_args(ray_start_shared_local_modes):
     assert ray.get(f3.remote(4)) == 4
 
 
-def test_args_starkwargs(ray_start_shared_local_modes):
+def test_args_starkwargs(ray_start_regular_shared):
     def starkwargs(a, b, **kwargs):
         return a, b, kwargs
 
@@ -1073,7 +996,7 @@ def test_args_starkwargs(ray_start_shared_local_modes):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-def test_args_named_and_star(ray_start_shared_local_modes):
+def test_args_named_and_star(ray_start_regular_shared):
     def hello(a, x="hello", **kwargs):
         return a, x, kwargs
 
@@ -1111,7 +1034,7 @@ def test_args_named_and_star(ray_start_shared_local_modes):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-def test_oversized_function(ray_start_shared_local_modes):
+def test_oversized_function(ray_start_regular_shared):
     bar = bytearray(800 * 1024 * 125)
 
     @ray.remote
@@ -1130,7 +1053,7 @@ def test_oversized_function(ray_start_shared_local_modes):
         Actor.remote()
 
 
-def test_args_stars_after(ray_start_shared_local_modes):
+def test_args_stars_after(ray_start_regular_shared):
     def star_args_after(a="hello", b="heo", *args, **kwargs):
         return a, b, args, kwargs
 
@@ -1161,7 +1084,7 @@ def test_args_stars_after(ray_start_shared_local_modes):
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
-def test_object_id_backward_compatibility(ray_start_shared_local_modes):
+def test_object_id_backward_compatibility(ray_start_regular_shared):
     # We've renamed Python's `ObjectID` to `ObjectRef`, and added a type
     # alias for backward compatibility.
     # This test is to make sure legacy code can still use `ObjectID`.
@@ -1176,7 +1099,7 @@ def test_object_id_backward_compatibility(ray_start_shared_local_modes):
     assert isinstance(object_ref, ray.ObjectRef)
 
 
-def test_nonascii_in_function_body(ray_start_shared_local_modes):
+def test_nonascii_in_function_body(ray_start_regular_shared):
     @ray.remote
     def return_a_greek_char():
         return "φ"
@@ -1184,7 +1107,7 @@ def test_nonascii_in_function_body(ray_start_shared_local_modes):
     assert ray.get(return_a_greek_char.remote()) == "φ"
 
 
-def test_failed_task(ray_start_shared_local_modes, error_pubsub):
+def test_failed_task(ray_start_regular_shared, error_pubsub):
     @ray.remote
     def throw_exception_fct1():
         raise Exception("Test function 1 intentionally failed.")
@@ -1246,7 +1169,7 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
         assert False
 
 
-def test_base_exception_raised(ray_start_shared_local_modes):
+def test_base_exception_raised(ray_start_regular_shared):
     @ray.remote
     def f():
         raise BaseException("rip")

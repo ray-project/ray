@@ -2,8 +2,7 @@ import os
 import time
 from pathlib import Path
 
-from ray import train, tune
-from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray import tune
 from ray.tune.search import BasicVariantGenerator
 
 # Hang full script until this marker is deleted
@@ -48,28 +47,17 @@ def train_func(config):
         time.sleep(0.1)
 
     # Finish trial
-    train.report({"param": config["param"], "fixed": config["fixed"]})
+    tune.report({"param": config["param"], "fixed": config["fixed"]})
 
 
 if __name__ == "__main__":
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=train_func,
-        train_loop_config={
-            "fixed": FIXED_VAL,
-        },
-        scaling_config=train.ScalingConfig(
-            num_workers=1, trainer_resources={"CPU": 0}, resources_per_worker={"CPU": 2}
-        ),
-    )
-
     tuner = tune.Tuner(
-        trainer,
+        tune.with_resources(train_func, {"CPU": 2}),
         param_space={
-            "train_loop_config": {
-                "param": tune.grid_search(VALS),
-                "delete_marker": DELETE_TRIAL_MARKER,
-                "hang_marker": HANG_TRIAL_MARKER,
-            }
+            "fixed": FIXED_VAL,
+            "param": tune.grid_search(VALS),
+            "delete_marker": DELETE_TRIAL_MARKER,
+            "hang_marker": HANG_TRIAL_MARKER,
         },
         tune_config=tune.TuneConfig(search_alg=BasicVariantGenerator(max_concurrent=1)),
     )

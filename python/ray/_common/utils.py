@@ -3,17 +3,52 @@ import binascii
 import errno
 import importlib
 import inspect
-from inspect import signature
 import os
-import psutil
 import random
 import string
 import sys
 import tempfile
-from typing import Any, Coroutine, Dict, Optional
+import time
+from abc import ABC, abstractmethod
+from inspect import signature
+from types import ModuleType
+from typing import Any, Coroutine, Dict, Optional, Tuple
+
+import psutil
 
 
-def import_attr(full_path: str, *, reload_module: bool = False):
+def import_module_and_attr(
+    full_path: str, *, reload_module: bool = False
+) -> Tuple[ModuleType, Any]:
+    """Given a full import path to a module attr, return the imported module and attr.
+
+    If `reload_module` is set, the module will be reloaded using `importlib.reload`.
+
+    Args:
+        full_path: The full import path to the module and attr.
+        reload_module: Whether to reload the module.
+
+    Returns:
+        A tuple of the imported module and attr.
+    """
+    if ":" in full_path:
+        if full_path.count(":") > 1:
+            raise ValueError(
+                f'Got invalid import path "{full_path}". An '
+                "import path may have at most one colon."
+            )
+        module_name, attr_name = full_path.split(":")
+    else:
+        last_period_idx = full_path.rfind(".")
+        module_name = full_path[:last_period_idx]
+        attr_name = full_path[last_period_idx + 1 :]
+    module = importlib.import_module(module_name)
+    if reload_module:
+        importlib.reload(module)
+    return module, getattr(module, attr_name)
+
+
+def import_attr(full_path: str, *, reload_module: bool = False) -> Any:
     """Given a full import path to a module attr, return the imported attr.
 
     If `reload_module` is set, the module will be reloaded using `importlib.reload`.
@@ -26,25 +61,7 @@ def import_attr(full_path: str, *, reload_module: bool = False):
     Returns:
         Imported attr
     """
-    if full_path is None:
-        raise TypeError("import path cannot be None")
-
-    if ":" in full_path:
-        if full_path.count(":") > 1:
-            raise ValueError(
-                f'Got invalid import path "{full_path}". An '
-                "import path may have at most one colon."
-            )
-        module_name, attr_name = full_path.split(":")
-    else:
-        last_period_idx = full_path.rfind(".")
-        module_name = full_path[:last_period_idx]
-        attr_name = full_path[last_period_idx + 1 :]
-
-    module = importlib.import_module(module_name)
-    if reload_module:
-        importlib.reload(module)
-    return getattr(module, attr_name)
+    return import_module_and_attr(full_path, reload_module=reload_module)[1]
 
 
 def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
@@ -75,7 +92,15 @@ def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
             # No running loop, relying on the error message as for now to
             # differentiate runtime errors.
             assert "no running event loop" in str(e)
-            return asyncio.get_event_loop_policy().get_event_loop()
+            try:
+                loop = asyncio.get_event_loop_policy().get_event_loop()
+                return loop
+            except RuntimeError:
+                # Python 3.14+: get_event_loop() no longer creates a loop automatically
+                # See: https://docs.python.org/3.14/library/asyncio-eventloop.html
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                return loop
 
     return asyncio.get_event_loop()
 
@@ -351,3 +376,15 @@ def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
     if not isinstance(byte_str, bytes):
         raise ValueError(f"The argument {byte_str} must be a bytes object.")
     return byte_str.decode(encode_type)
+
+
+class TimerBase(ABC):
+    @abstractmethod
+    def time(self) -> float:
+        """Return the current time."""
+        raise NotImplementedError
+
+
+class Timer(TimerBase):
+    def time(self) -> float:
+        return time.time()

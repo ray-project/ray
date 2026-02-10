@@ -11,7 +11,7 @@ from ray.rllib.algorithms.dreamerv3.torch.models.components import (
     dreamerv3_normal_initializer,
 )
 from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
-from ray.rllib.algorithms.dreamerv3.utils import get_gru_units, get_dense_hidden_units
+from ray.rllib.algorithms.dreamerv3.utils import get_dense_hidden_units, get_gru_units
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()

@@ -5,6 +5,7 @@ import threading
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
+from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.usage import usage_lib
 from ray._private.ray_constants import env_bool
 from ray.actor import ActorHandle
@@ -26,8 +27,7 @@ from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
 from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
     BackendSetupCallback,
-    DatasetsSetupCallback,
-    TPUReservationCallback,
+    DatasetsCallback,
     WorkingDirectorySetupCallback,
 )
 from ray.train.v2._internal.callbacks.env_callback import _initialize_env_callbacks
@@ -35,21 +35,28 @@ from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
+from ray.train.v2._internal.callbacks.placement_group_callback import (
+    PlacementGroupCleanerCallback,
+)
 from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import (
+    DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE,
     METRICS_ENABLED_ENV_VAR,
+    V2_ENABLED_ENV_VAR,
     get_env_vars_to_propagate,
+    is_v2_enabled,
 )
 from ray.train.v2._internal.data_integration.interfaces import GenDataset
 from ray.train.v2._internal.execution.callback import RayTrainCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import create_failure_policy
-from ray.train.v2._internal.execution.local_mode_utils import LocalController
+from ray.train.v2._internal.execution.local_mode.utils import LocalController
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
+from ray.train.v2.api.validation_config import ValidationConfig
 from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -78,9 +85,11 @@ class DataParallelTrainer:
         # TODO: [Deprecated] Remove in future release
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        validation_config: Optional[ValidationConfig] = None,
     ):
         self.run_config = run_config or RunConfig()
         self.train_loop_per_worker = train_loop_per_worker
+        self.validation_config = validation_config
         self.train_loop_config = train_loop_config
         self.scaling_config = scaling_config or ScalingConfig()
         self.backend_config = backend_config or BackendConfig()
@@ -104,8 +113,38 @@ class DataParallelTrainer:
         if metadata is not None:
             raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
 
+        self._validate_configs()
+
         usage_lib.record_library_usage("train")
         tag_train_v2_trainer(self)
+
+    def _validate_configs(self):
+        if not is_v2_enabled():
+            raise ValueError(
+                f"Ray Train V2 must be enabled with `{V2_ENABLED_ENV_VAR}=1` "
+                "when using this V2 Trainer API."
+            )
+
+        from ray.train.v2.api.config import (
+            RunConfig as RunConfigV2,
+            ScalingConfig as ScalingConfigV2,
+        )
+
+        if not isinstance(self.run_config, RunConfigV2):
+            raise ValueError(
+                f"Invalid `RunConfig` type: {self.run_config.__class__}. "
+                "Use `ray.train.RunConfig` instead. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
+
+        if not isinstance(self.scaling_config, ScalingConfigV2):
+            raise ValueError(
+                f"Invalid `ScalingConfig` type: {self.scaling_config.__class__}. "
+                "Use `ray.train.ScalingConfig` instead. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
 
     def _get_train_func(self) -> Callable[[], None]:
         return construct_train_func(
@@ -122,8 +161,11 @@ class DataParallelTrainer:
             A Result object containing the training result.
 
         Raises:
-            ray.train.v2.api.exceptions.ControllerError: If a non-retryable error occurs in the Ray Train controller itself, or if the number of retries configured in `FailureConfig` is exhausted.
-            ray.train.v2.api.exceptions.WorkerGroupError: If one or more workers fail during training and the number of retries configured in `FailureConfig` is exhausted.
+            ray.train.TrainingFailedError: This is a union of the ControllerError and WorkerGroupError.
+                This returns a :class:`ray.train.ControllerError` if internal Ray Train controller logic
+                encounters a non-retryable error or reaches the controller failure limit configured in `FailureConfig`.
+                This returns a :class:`ray.train.WorkerGroupError` if one or more workers fail during
+                training and reaches the worker group failure limit configured in `FailureConfig(max_failures)`.
         """
         train_fn = self._get_train_func()
         if self.running_in_local_mode:
@@ -137,6 +179,7 @@ class DataParallelTrainer:
                 failure_policy=create_failure_policy(self.run_config.failure_config),
                 train_run_context=self.train_run_context,
                 callbacks=self._create_default_callbacks(),
+                validation_config=self.validation_config,
             )
 
             if result.error:
@@ -163,16 +206,14 @@ class DataParallelTrainer:
             self.backend_config, self.scaling_config
         )
         backend_setup_callback = BackendSetupCallback(self.backend_config)
-        datasets_setup_callback = DatasetsSetupCallback(
-            train_run_context=self.train_run_context
-        )
-        tpu_reservation_setup_callback = TPUReservationCallback()
+        datasets_callback = DatasetsCallback(train_run_context=self.train_run_context)
+        placement_group_cleaner_callback = PlacementGroupCleanerCallback()
         callbacks.extend(
             [
                 accelerator_setup_callback,
-                tpu_reservation_setup_callback,
                 backend_setup_callback,
-                datasets_setup_callback,
+                placement_group_cleaner_callback,
+                datasets_callback,
             ]
         )
         if env_bool(RAY_CHDIR_TO_TRIAL_DIR, True):
@@ -213,6 +254,12 @@ class DataParallelTrainer:
         return self._get_local_controller().run(train_func)
 
     def _initialize_and_run_controller(self, **controller_init_kwargs) -> Result:
+        env_vars = get_env_vars_to_propagate()
+        env_vars.setdefault(
+            RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
+            DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE,
+        )
+
         # Attach the controller to the node running the driver script.
         controller_actor_cls = ray.remote(
             num_cpus=0,
@@ -221,7 +268,7 @@ class DataParallelTrainer:
             ),
             # TODO: Extract env variables that affect controller behavior
             # and pass them as explicit args
-            runtime_env={"env_vars": get_env_vars_to_propagate()},
+            runtime_env={"env_vars": env_vars},
         )(TrainController)
 
         controller = controller_actor_cls.remote(**controller_init_kwargs)

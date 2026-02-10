@@ -23,6 +23,10 @@ from packaging import version
 
 import ray
 import ray.cloudpickle as pickle
+from ray._common.deprecation import (
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.actor import ActorHandle
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
@@ -39,10 +43,6 @@ from ray.rllib.utils.checkpoints import (
     CHECKPOINT_VERSION,
     get_checkpoint_info,
     try_import_msgpack,
-)
-from ray.rllib.utils.deprecation import (
-    DEPRECATED_VALUE,
-    deprecation_warning,
 )
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -909,7 +909,7 @@ class Policy(metaclass=ABCMeta):
         """Whether this Policy holds a recurrent Model.
 
         Returns:
-            True if this Policy has-a RNN-based Model.
+            True if this Policy has an RNN-based Model.
         """
         return False
 
@@ -1213,13 +1213,7 @@ class Policy(metaclass=ABCMeta):
         worker_idx = self.config.get("worker_index", 0)
         fake_gpus = self.config.get("_fake_gpus", False)
 
-        if (
-            ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-            and not fake_gpus
-        ):
-            # If in local debugging mode, and _fake_gpus is not on.
-            num_gpus = 0
-        elif worker_idx == 0:
+        if worker_idx == 0:
             # If head node, take num_gpus.
             num_gpus = self.config["num_gpus"]
         else:

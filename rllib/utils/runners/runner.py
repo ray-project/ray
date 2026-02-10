@@ -1,7 +1,6 @@
 import abc
 import logging
-
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Union
 
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -30,7 +29,10 @@ class Runner(FaultAwareApply, metaclass=abc.ABCMeta):
         self._weights_seq_no = 0
 
         # Create a MetricsLogger object for logging custom stats.
-        self.metrics: MetricsLogger = MetricsLogger()
+        self.metrics: MetricsLogger = MetricsLogger(
+            stats_cls_lookup=config.stats_cls_lookup,
+            root=False,
+        )
 
         # Initialize the `FaultAwareApply`.
         super().__init__()
@@ -87,8 +89,8 @@ class Runner(FaultAwareApply, metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def _device(self) -> DeviceType:
-        """Returns the device of this `Runner`."""
+    def _device(self) -> Union[DeviceType, None]:
+        """Returns the device of this `Runner`. None if framework is not supported."""
         pass
 
     @abc.abstractmethod

@@ -159,9 +159,10 @@ void RedisStoreClient::AsyncPut(const std::string &table_name,
   SendRedisCmdWithKeys({key}, std::move(command), std::move(write_callback));
 }
 
-void RedisStoreClient::AsyncGet(const std::string &table_name,
-                                const std::string &key,
-                                ToPostable<OptionalItemCallback<std::string>> callback) {
+void RedisStoreClient::AsyncGet(
+    const std::string &table_name,
+    const std::string &key,
+    ToPostable<rpc::OptionalItemCallback<std::string>> callback) {
   auto redis_callback = [callback = std::move(callback)](
                             const std::shared_ptr<CallbackReply> &reply) mutable {
     std::optional<std::string> result;
@@ -540,14 +541,26 @@ bool RedisDelKeyPrefixSync(const std::string &host,
 
   // Delete all such keys by using empty table name.
   RedisKey redis_key{external_storage_namespace, /*table_name=*/""};
-  std::vector<std::string> cmd{"KEYS",
-                               RedisMatchPattern::Prefix(redis_key.ToString()).escaped_};
-  std::promise<std::shared_ptr<CallbackReply>> promise;
-  context->RunArgvAsync(cmd, [&promise](const std::shared_ptr<CallbackReply> &reply) {
-    promise.set_value(reply);
-  });
-  auto reply = promise.get_future().get();
-  const auto &keys = reply->ReadAsStringArray();
+  std::string match_pattern = RedisMatchPattern::Prefix(redis_key.ToString()).escaped_;
+  std::vector<std::optional<std::string>> keys;
+  size_t cursor = 0;
+
+  do {
+    std::vector<std::string> cmd{"SCAN", std::to_string(cursor), "MATCH", match_pattern};
+    std::promise<std::shared_ptr<CallbackReply>> promise;
+    context->RunArgvAsync(cmd, [&promise](const std::shared_ptr<CallbackReply> &reply) {
+      promise.set_value(reply);
+    });
+
+    auto reply = promise.get_future().get();
+    std::vector<std::string> scan_result;
+    cursor = reply->ReadAsScanArray(&scan_result);
+
+    keys.insert(keys.end(),
+                std::make_move_iterator(scan_result.begin()),
+                std::make_move_iterator(scan_result.end()));
+  } while (cursor != 0);
+
   if (keys.empty()) {
     RAY_LOG(INFO) << "No keys found for external storage namespace "
                   << external_storage_namespace;

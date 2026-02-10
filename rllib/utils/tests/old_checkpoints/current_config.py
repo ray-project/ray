@@ -11,7 +11,6 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.tune import register_env
 
-
 register_env("multi_agent_cartpole", lambda cfg: MultiAgentCartPole(config=cfg))
 
 config = (

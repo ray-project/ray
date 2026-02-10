@@ -93,7 +93,8 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
                              /*max_retries=*/0,
                              /*retry_exceptions=*/false,
                              /*serialized_retry_exception_allowlist=*/"",
-                             invocation.sequence_number);
+                             invocation.sequence_number,
+                             /*tensor_transport=*/std::nullopt);
   } else {
     throw RayException("unknown task type");
   }

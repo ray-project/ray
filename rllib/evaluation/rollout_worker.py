@@ -3,6 +3,7 @@ import importlib.util
 import logging
 import os
 import platform
+import socket
 import threading
 from collections import defaultdict
 from types import FunctionType
@@ -23,8 +24,7 @@ from typing import (
 from gymnasium.spaces import Space
 
 import ray
-from ray import ObjectRef
-from ray import cloudpickle as pickle
+from ray import ObjectRef, cloudpickle as pickle
 from ray.rllib.connectors.util import (
     create_connectors_for_policy,
     maybe_get_filters_for_syncing,
@@ -74,8 +74,10 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.policy import create_policy_for_framework
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
-from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
-from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
+from ray.rllib.utils.tf_utils import (
+    get_gpu_devices as get_tf_gpu_devices,
+    get_tf_eager_cls_if_necessary,
+)
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,
@@ -479,11 +481,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         )
 
         # Error if we don't find enough GPUs.
-        if (
-            ray.is_initialized()
-            and ray._private.worker._mode() != ray._private.worker.LOCAL_MODE
-            and not config._fake_gpus
-        ):
+        if ray.is_initialized() and not config._fake_gpus:
             devices = []
             if self.config.framework_str in ["tf2", "tf"]:
                 devices = get_tf_gpu_devices()
@@ -494,20 +492,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 raise RuntimeError(
                     ERR_MSG_NO_GPUS.format(len(devices), devices) + HOWTO_CHANGE_CONFIG
                 )
-        # Warn, if running in local-mode and actual GPUs (not faked) are
-        # requested.
-        elif (
-            ray.is_initialized()
-            and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-            and num_gpus > 0
-            and not self.config._fake_gpus
-        ):
-            logger.warning(
-                "You are running ray with `local_mode=True`, but have "
-                f"configured {num_gpus} GPUs to be used! In local mode, "
-                f"Policies are placed on the CPU and the `num_gpus` setting "
-                f"is ignored."
-            )
 
         self.filters: Dict[PolicyID, Filter] = defaultdict(NoFilter)
 
@@ -1684,9 +1668,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
     def find_free_port(self) -> int:
         """Finds a free port on the node that this worker runs on."""
-        from ray.air._internal.util import find_free_port
+        from ray._common.network_utils import find_free_port
 
-        return find_free_port()
+        return find_free_port(socket.AF_INET)
 
     def _update_policy_map(
         self,

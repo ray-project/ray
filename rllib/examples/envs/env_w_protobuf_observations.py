@@ -50,7 +50,7 @@ from ray.rllib.examples.connectors.classes.protobuf_cartpole_observation_decoder
 from ray.rllib.examples.envs.classes.cartpole_with_protobuf_observation_space import (
     CartPoleWithProtobufObservationSpace,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )

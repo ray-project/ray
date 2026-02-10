@@ -15,8 +15,8 @@ from packaging import version
 from starlette.types import Receive
 
 import ray
+from ray._common.filters import CoreContextFilter
 from ray._common.utils import get_or_create_event_loop
-from ray._private.ray_logging.filters import CoreContextFilter
 from ray.serve._private.common import (
     DeploymentID,
     EndpointInfo,
@@ -43,6 +43,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import get_proxy_handle
+from ray.serve._private.event_loop_monitoring import EventLoopMonitor
 from ray.serve._private.grpc_util import (
     get_grpc_response_status,
     set_grpc_code_and_details,
@@ -72,11 +73,13 @@ from ray.serve._private.proxy_request_response import (
     ResponseHandlerInfo,
     ResponseStatus,
     gRPCProxyRequest,
+    gRPCStreamingType,
 )
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
+    asyncio_grpc_exception_handler,
     generate_request_id,
     get_head_node_id,
     is_grpc_enabled,
@@ -375,14 +378,17 @@ class GenericProxy(ABC):
                 if version.parse(starlette.__version__) < version.parse("0.33.0"):
                     proxy_request.set_path(route_path.replace(route_prefix, "", 1))
 
-            # NOTE(edoakes): we use the route_prefix instead of the full HTTP path
-            # for logs & metrics to avoid high cardinality.
-            # See: https://github.com/ray-project/ray/issues/47999
-            logs_and_metrics_route = (
-                route_prefix
-                if self.protocol == RequestProtocol.HTTP
-                else handle.deployment_id.app_name
-            )
+            # NOTE(abrar): we try to match to a specific route pattern (e.g., /api/{user_id})
+            # for logs & metrics when available. If no pattern matches, we fall back to the
+            # route_prefix to avoid high cardinality.
+            # See: https://github.com/ray-project/ray/issues/47999 and
+            # https://github.com/ray-project/ray/issues/52212
+            if self.protocol == RequestProtocol.HTTP:
+                logs_and_metrics_route = self.proxy_router.match_route_pattern(
+                    route_prefix, proxy_request.scope
+                )
+            else:
+                logs_and_metrics_route = handle.deployment_id.app_name
             internal_request_id = generate_request_id()
             handle, request_id = self.setup_request_context_and_handle(
                 app_name=handle.deployment_id.app_name,
@@ -580,7 +586,9 @@ class gRPCProxy(GenericProxy):
             is_error=not healthy,
         )
 
-    def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
+    def service_handler_factory(
+        self, service_method: str, streaming_type: gRPCStreamingType
+    ) -> Callable:
         async def unary_unary(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
         ) -> bytes:
@@ -635,7 +643,25 @@ class gRPCProxy(GenericProxy):
 
             set_grpc_code_and_details(context, status)
 
-        return unary_stream if stream else unary_unary
+        async def stream_unary(
+            request_proto_iterator: Any,
+            context: grpc._cython.cygrpc._ServicerContext,
+        ) -> bytes:
+            raise NotImplementedError("stream_unary not implemented.")
+
+        async def stream_stream(
+            request_proto_iterator: Any,
+            context: grpc._cython.cygrpc._ServicerContext,
+        ) -> Generator[bytes, None, None]:
+            raise NotImplementedError("stream_stream not implemented.")
+
+        handler_map = {
+            gRPCStreamingType.UNARY_UNARY: unary_unary,
+            gRPCStreamingType.UNARY_STREAM: unary_stream,
+            gRPCStreamingType.STREAM_UNARY: stream_unary,
+            gRPCStreamingType.STREAM_STREAM: stream_stream,
+        }
+        return handler_map[streaming_type]
 
     def setup_request_context_and_handle(
         self,
@@ -1016,8 +1042,138 @@ class HTTPProxy(GenericProxy):
         yield status
 
 
+class ProxyActorInterface(ABC):
+    """Abstract interface for proxy actors in Ray Serve.
+
+    This interface defines the contract that all proxy actor implementations must follow,
+    allowing for different proxy backends (Ray HTTP/gRPC proxies, HAProxy, etc.).
+    """
+
+    def __init__(
+        self,
+        *,
+        node_id: NodeId,
+        node_ip_address: str,
+        logging_config: LoggingConfig,
+        log_buffer_size: int = RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
+    ):
+        """Initialize the proxy actor.
+
+        Args:
+            node_id: ID of the node this proxy is running on
+            node_ip_address: IP address of the node
+            logging_config: Logging configuration
+            log_buffer_size: Size of the log buffer
+        """
+        self._node_id = node_id
+        self._node_ip_address = node_ip_address
+        self._logging_config = logging_config
+        self._log_buffer_size = log_buffer_size
+
+        self._update_logging_config(logging_config)
+
+    @abstractmethod
+    async def ready(self) -> str:
+        """Blocks until the proxy is ready to serve requests.
+
+        Returns:
+            JSON-serialized metadata containing proxy information (worker ID, log file path, etc.)
+        """
+        pass
+
+    @abstractmethod
+    async def serving(self, wait_for_applications_running: bool = True) -> None:
+        """Wait for the proxy to be ready to serve requests.
+
+        Args:
+            wait_for_applications_running: Whether to wait for the applications to be running
+
+        Returns:
+            None
+        """
+        pass
+
+    @abstractmethod
+    async def update_draining(
+        self, draining: bool, _after: Optional[Any] = None
+    ) -> None:
+        """Update the draining status of the proxy.
+
+        Args:
+            draining: Whether the proxy should be draining
+            _after: Optional ObjectRef for scheduling dependency
+        """
+        pass
+
+    @abstractmethod
+    async def is_drained(self, _after: Optional[Any] = None) -> bool:
+        """Check whether the proxy is drained.
+
+        Args:
+            _after: Optional ObjectRef for scheduling dependency
+
+        Returns:
+            True if the proxy is drained, False otherwise
+        """
+        pass
+
+    @abstractmethod
+    async def check_health(self) -> bool:
+        """Check the health of the proxy.
+
+        Returns:
+            True if the proxy is healthy, False otherwise
+        """
+        pass
+
+    @abstractmethod
+    def pong(self) -> str:
+        """Respond to ping from replicas.
+
+        Returns:
+            A response string
+        """
+        pass
+
+    @abstractmethod
+    async def receive_asgi_messages(self, request_metadata: RequestMetadata) -> bytes:
+        """Handle ASGI messages for HTTP requests.
+
+        Args:
+            request_metadata: Metadata about the request
+
+        Returns:
+            Serialized ASGI messages
+        """
+        pass
+
+    # Testing and debugging methods
+    @abstractmethod
+    def _get_http_options(self) -> HTTPOptions:
+        """Get HTTP options used by the proxy."""
+        pass
+
+    @abstractmethod
+    def _get_logging_config(self) -> Optional[str]:
+        """Get the file path for the logger (for testing purposes)."""
+        pass
+
+    @abstractmethod
+    def _dump_ingress_replicas_for_testing(self, route: str) -> Set:
+        """Get replicas for a route (for testing)."""
+        pass
+
+    def _update_logging_config(self, logging_config: LoggingConfig):
+        configure_component_logger(
+            component_name="proxy",
+            component_id=self._node_ip_address,
+            logging_config=logging_config,
+            buffer_size=self._log_buffer_size,
+        )
+
+
 @ray.remote(num_cpus=0)
-class ProxyActor:
+class ProxyActor(ProxyActorInterface):
     def __init__(
         self,
         http_options: HTTPOptions,
@@ -1028,12 +1184,15 @@ class ProxyActor:
         logging_config: LoggingConfig,
         long_poll_client: Optional[LongPollClient] = None,
     ):  # noqa: F821
-        self._node_id = node_id
-        self._node_ip_address = node_ip_address
-        self._http_options = configure_http_middlewares(http_options)
-        self._grpc_options = grpc_options
-        grpc_enabled = is_grpc_enabled(self._grpc_options)
+        super().__init__(
+            node_id=node_id,
+            node_ip_address=node_ip_address,
+            logging_config=logging_config,
+        )
 
+        self._grpc_options = grpc_options
+        self._http_options = configure_http_middlewares(http_options)
+        grpc_enabled = is_grpc_enabled(self._grpc_options)
         event_loop = get_or_create_event_loop()
         self.long_poll_client = long_poll_client or LongPollClient(
             ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
@@ -1042,13 +1201,6 @@ class ProxyActor:
                 LongPollNamespace.ROUTE_TABLE: self._update_routes_in_proxies,
             },
             call_in_event_loop=event_loop,
-        )
-
-        configure_component_logger(
-            component_name="proxy",
-            component_id=node_ip_address,
-            logging_config=logging_config,
-            buffer_size=RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
         )
 
         startup_msg = f"Proxy starting on node {self._node_id} (HTTP port: {self._http_options.port}"
@@ -1115,6 +1267,10 @@ class ProxyActor:
             if grpc_enabled
             else None
         )
+        if self.grpc_proxy:
+            get_or_create_event_loop().set_exception_handler(
+                asyncio_grpc_exception_handler
+            )
 
         # Start a task to initialize the HTTP server.
         # The result of this task is checked in the `ready` method.
@@ -1148,15 +1304,16 @@ class ProxyActor:
 
         _configure_gc_options()
 
+        # Start event loop monitoring for the proxy's main event loop.
+        self._event_loop_monitor = EventLoopMonitor(
+            component=EventLoopMonitor.COMPONENT_PROXY,
+            loop_type=EventLoopMonitor.LOOP_TYPE_MAIN,
+            actor_id=ray.get_runtime_context().get_actor_id(),
+        )
+        self._event_loop_monitor.start(event_loop)
+
     def _update_routes_in_proxies(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.proxy_router.update_routes(endpoints)
-
-    def _update_logging_config(self, logging_config: LoggingConfig):
-        configure_component_logger(
-            component_name="proxy",
-            component_id=self._node_ip_address,
-            logging_config=logging_config,
-        )
 
     def _get_logging_config(self) -> Tuple:
         """Get the logging configuration (for testing purposes)."""
@@ -1169,6 +1326,17 @@ class ProxyActor:
     def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
         _, handle, _ = self.http_proxy.proxy_router.match_route(route)
         return handle._router._asyncio_router._request_router._replica_id_set
+
+    def _dump_ingress_cache_for_testing(self, route: str) -> Set[ReplicaID]:
+        """Get replica IDs that have entries in the queue length cache (for testing)."""
+        _, handle, _ = self.http_proxy.proxy_router.match_route(route)
+        request_router = handle._router._asyncio_router._request_router
+        cache = request_router.replica_queue_len_cache
+        return {
+            replica_id
+            for replica_id in request_router._replica_id_set
+            if cache.get(replica_id) is not None
+        }
 
     async def ready(self) -> str:
         """Blocks until the proxy HTTP (and optionally gRPC) servers are running.
@@ -1201,6 +1369,10 @@ class ProxyActor:
             ]
         )
 
+    async def serving(self, wait_for_applications_running: bool = True) -> None:
+        """Wait for the proxy to be ready to serve requests."""
+        return
+
     async def update_draining(self, draining: bool, _after: Optional[Any] = None):
         """Update the draining status of the HTTP and gRPC proxies.
 
@@ -1223,12 +1395,13 @@ class ProxyActor:
             self.grpc_proxy is None or self.grpc_proxy.is_drained()
         )
 
-    async def check_health(self):
+    async def check_health(self) -> bool:
         """No-op method to check on the health of the HTTP Proxy.
 
         Make sure the async event loop is not blocked.
         """
         logger.debug("Received health check.", extra={"log_to_stderr": False})
+        return True
 
     def pong(self):
         """Called by the replica to initialize its handle to the proxy."""

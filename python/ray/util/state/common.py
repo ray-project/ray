@@ -9,9 +9,13 @@ from enum import Enum, unique
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray.dashboard.utils as dashboard_utils
-from ray._private.ray_constants import env_integer
-from ray.core.generated.common_pb2 import TaskStatus, TaskType
-from ray.core.generated.gcs_pb2 import TaskEvents
+
+# TODO(aguo): Instead of a version check, modify the below models
+# to use pydantic BaseModel instead of dataclass.
+# In pydantic 2, dataclass no longer needs the `init=True` kwarg to
+# generate an __init__ method. Additionally, it will raise an error if
+# it detects `init=True` to be set.
+from ray._common.pydantic_compat import IS_PYDANTIC_2
 from ray._private.custom_types import (
     TypeActorStatus,
     TypeNodeStatus,
@@ -22,15 +26,11 @@ from ray._private.custom_types import (
     TypeWorkerExitType,
     TypeWorkerType,
 )
-from ray.util.state.exception import RayStateApiException
+from ray._private.ray_constants import env_integer
+from ray.core.generated.common_pb2 import TaskStatus, TaskType
+from ray.core.generated.gcs_pb2 import TaskEvents
 from ray.dashboard.modules.job.pydantic_models import JobDetails
-
-# TODO(aguo): Instead of a version check, modify the below models
-# to use pydantic BaseModel instead of dataclass.
-# In pydantic 2, dataclass no longer needs the `init=True` kwarg to
-# generate an __init__ method. Additionally, it will raise an error if
-# it detects `init=True` to be set.
-from ray._common.pydantic_compat import IS_PYDANTIC_2
+from ray.util.state.exception import RayStateApiException
 
 try:
     from pydantic.dataclasses import dataclass
@@ -169,7 +169,7 @@ class ListApiOptions:
         # Check the filters in the ListApiOptions conflicts. Specifically for:
         # - multiple '=' filters with the same key but different values.
         # TODO(myan): More conflicts situation can be added for further optimization.
-        # For exmaple, 2 filters with same key and same value but one with '=' predicate
+        # For example, 2 filters with same key and same value but one with '=' predicate
         # and ther other with '!=' predicate
         equal_filters = {}
         for filter in self.filters:
@@ -1335,7 +1335,7 @@ class TaskSummaries:
             task_groups.sort(key=lambda x: 0 if x.type == "ACTOR_CREATION_TASK" else 1)
             task_groups.sort(key=lambda x: x.timestamp or sys.maxsize)
             task_groups.sort(
-                key=lambda x: x.state_counts.get("FAIELD", 0), reverse=True
+                key=lambda x: x.state_counts.get("FAILED", 0), reverse=True
             )
             task_groups.sort(key=get_pending_tasks_count, reverse=True)
             task_groups.sort(key=get_running_tasks_count, reverse=True)

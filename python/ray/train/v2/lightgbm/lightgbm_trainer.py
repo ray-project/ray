@@ -6,6 +6,7 @@ from ray.train import Checkpoint
 from ray.train.trainer import GenDataset
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.validation_config import ValidationConfig
 from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
@@ -21,13 +22,14 @@ class LightGBMTrainer(DataParallelTrainer):
     -------
 
     .. testcode::
+        :skipif: True
 
         import lightgbm as lgb
 
         import ray.data
         import ray.train
         from ray.train.lightgbm import RayTrainReportCallback
-        from ray.train.lightgbm.v2 import LightGBMTrainer
+        from ray.train.lightgbm import LightGBMTrainer
 
 
         def train_fn_per_worker(config: dict):
@@ -52,8 +54,10 @@ class LightGBMTrainer(DataParallelTrainer):
             # to set up the data parallel training worker group on your Ray cluster.
             params = {
                 "objective": "regression",
-                # Adding the line below is the only change needed
+                # Adding the lines below are the only changes needed
                 # for your `lgb.train` call!
+                "tree_learner": "data_parallel",
+                "pre_partition": True,
                 **ray.train.lightgbm.get_network_params(),
             }
             lgb.train(
@@ -61,6 +65,7 @@ class LightGBMTrainer(DataParallelTrainer):
                 train_set,
                 valid_sets=[eval_set],
                 valid_names=["eval"],
+                num_boost_round=1,
                 # To access the checkpoint from trainer, you need this callback.
                 callbacks=[RayTrainReportCallback()],
             )
@@ -72,15 +77,10 @@ class LightGBMTrainer(DataParallelTrainer):
         trainer = LightGBMTrainer(
             train_fn_per_worker,
             datasets={"train": train_ds, "validation": eval_ds},
-            scaling_config=ray.train.ScalingConfig(num_workers=4),
+            scaling_config=ray.train.ScalingConfig(num_workers=2),
         )
         result = trainer.fit()
         booster = RayTrainReportCallback.get_model(result.checkpoint)
-
-    .. testoutput::
-        :hide:
-
-        ...
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
@@ -108,12 +108,12 @@ class LightGBMTrainer(DataParallelTrainer):
         dataset_config: The configuration for ingesting the input ``datasets``.
             By default, all the Ray Dataset are split equally across workers.
             See :class:`~ray.train.DataConfig` for more details.
-        resume_from_checkpoint: A checkpoint to resume training from.
-            This checkpoint can be accessed from within ``train_loop_per_worker``
-            by calling ``ray.train.get_checkpoint()``.
-        metadata: Dict that should be made available via
-            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
-            for checkpoints saved from this Trainer. Must be JSON-serializable.
+        validation_config: [Alpha] Configuration for checkpoint validation.
+            If provided and ``ray.train.report`` is called with the ``validation``
+            argument, Ray Train will validate the reported checkpoint using
+            the validation function specified in this config.
+        resume_from_checkpoint: [Deprecated]
+        metadata: [Deprecated]
     """
 
     def __init__(
@@ -126,6 +126,7 @@ class LightGBMTrainer(DataParallelTrainer):
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         dataset_config: Optional[ray.train.DataConfig] = None,
+        validation_config: Optional[ValidationConfig] = None,
         # TODO: [Deprecated]
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
@@ -158,6 +159,7 @@ class LightGBMTrainer(DataParallelTrainer):
             datasets=datasets,
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
+            validation_config=validation_config,
         )
 
     @classmethod

@@ -14,7 +14,6 @@
 
 #include "ray/stats/metric_exporter.h"
 
-#include <future>
 #include <string_view>
 
 namespace ray {
@@ -24,36 +23,46 @@ namespace {
 inline constexpr std::string_view kGrpcIoMetricsNamePrefix = "grpc.io/";
 }
 
-OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
-                                                 instrumented_io_context &io_service,
-                                                 const std::string address,
-                                                 const WorkerID &worker_id,
-                                                 size_t report_batch_size,
-                                                 size_t max_grpc_payload_size)
-    : client_call_manager_(
-          std::make_unique<rpc::ClientCallManager>(io_service, /*record_stats=*/true)),
-      worker_id_(worker_id),
-      report_batch_size_(report_batch_size),
-      // To make sure we're not overflowing Agent's set gRPC max message size, we will be
-      // tracking target payload binary size and make sure it stays w/in 95% of the
-      // threshold
-      proto_payload_size_threshold_bytes_((size_t)(max_grpc_payload_size * .95f)) {
-  absl::MutexLock l(&mu_);
-  client_ = std::make_shared<rpc::MetricsAgentClientImpl>(
-      address, port, io_service, *client_call_manager_);
-}
-
 OpenCensusProtoExporter::OpenCensusProtoExporter(
     std::shared_ptr<rpc::MetricsAgentClient> agent_client,
     const WorkerID &worker_id,
     size_t report_batch_size,
     size_t max_grpc_payload_size)
-
-    : worker_id_(worker_id),
+    : client_(std::move(agent_client)),
+      worker_id_(worker_id),
       report_batch_size_(report_batch_size),
-      proto_payload_size_threshold_bytes_((size_t)(max_grpc_payload_size * .95f)) {
+      proto_payload_size_threshold_bytes_(
+          static_cast<size_t>(max_grpc_payload_size * .95f)) {}
+
+// Creates exporter without connecting to agent.
+// Call Connect() later when the port becomes available.
+OpenCensusProtoExporter::OpenCensusProtoExporter(instrumented_io_context &io_service,
+                                                 const WorkerID &worker_id,
+                                                 size_t report_batch_size,
+                                                 size_t max_grpc_payload_size)
+    : io_service_(&io_service),
+      worker_id_(worker_id),
+      report_batch_size_(report_batch_size),
+      // To make sure we're not overflowing Agent's set gRPC max message size, we will be
+      // tracking target payload binary size and make sure it stays w/in 95% of the
+      // threshold
+      proto_payload_size_threshold_bytes_(
+          static_cast<size_t>(max_grpc_payload_size * .95f)) {}
+
+void OpenCensusProtoExporter::Connect(int port) {
   absl::MutexLock l(&mu_);
-  client_ = std::move(agent_client);
+  if (client_) {
+    RAY_LOG(WARNING) << "OpenCensusProtoExporter already connected";
+    return;
+  }
+  RAY_CHECK(io_service_ != nullptr)
+      << "Cannot Connect without io_service. Use the lazy loading constructor.";
+  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
+      *io_service_, /*record_stats=*/true, /*local_address=*/"always local");
+  // The MetricsAgentClient is always started with 127.0.0.1 so we don't need to pass
+  // the local address to this client call manager to tell it's local.
+  client_ = std::make_shared<rpc::MetricsAgentClientImpl>(
+      "127.0.0.1", port, *io_service_, *client_call_manager_);
 }
 
 /// Hack. We want to add GlobalTags to all our metrics, but gRPC OpenCencus plugin is not
@@ -103,6 +112,11 @@ void OpenCensusProtoExporter::SendData(const rpc::ReportOCMetricsRequest &reques
   RAY_LOG(DEBUG) << "Exporting metrics, metrics: " << request.metrics_size()
                  << ", payload size: " << request.ByteSizeLong();
   absl::MutexLock l(&mu_);
+  if (client_ == nullptr) {
+    RAY_LOG_EVERY_N(WARNING, 10000)
+        << "Metrics agent client is not connected yet. Dropping metrics.";
+    return;
+  }
   client_->ReportOCMetrics(
       request, [](const Status &status, const rpc::ReportOCMetricsReply &reply) {
         RAY_UNUSED(reply);
@@ -121,6 +135,8 @@ rpc::ReportOCMetricsRequest OpenCensusProtoExporter::createRequestProtoPayload()
   return request_proto;
 }
 
+namespace {
+
 opencensus::proto::metrics::v1::Metric *addMetricProtoPayload(
     const opencensus::stats::ViewDescriptor &view_descriptor,
     rpc::ReportOCMetricsRequest &request_proto) {
@@ -135,7 +151,7 @@ opencensus::proto::metrics::v1::Metric *addMetricProtoPayload(
   metric_descriptor_proto->set_unit(measure_descriptor.units());
 
   auto descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::UNSPECIFIED;
-  auto view_aggregation = view_descriptor.aggregation();
+  const auto &view_aggregation = view_descriptor.aggregation();
   switch (view_aggregation.type()) {
   case opencensus::stats::Aggregation::Type::kCount:
     descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::CUMULATIVE_INT64;
@@ -161,6 +177,8 @@ opencensus::proto::metrics::v1::Metric *addMetricProtoPayload(
 
   return metric_proto;
 }
+
+}  // namespace
 
 bool OpenCensusProtoExporter::handleBatchOverflows(
     const rpc::ReportOCMetricsRequest &request_proto,
@@ -216,8 +234,7 @@ void OpenCensusProtoExporter::ProcessMetricsData(
     if (flushed) {
       request_proto = createRequestProtoPayload();
       // NOTE: We have to also overwrite current metric_proto_ptr to point to a new Metric
-      // proto
-      //       payload inside new proto request payload
+      // proto payload inside new proto request payload
       metric_proto_ptr = addMetricProtoPayload(view_descriptor, request_proto);
       cur_batch_size = 0;
       next_payload_size_check_at = nextPayloadSizeCheckAt(cur_batch_size);
@@ -281,8 +298,8 @@ void OpenCensusProtoExporter::ProcessMetricsData(
     RAY_LOG(FATAL) << "Unknown view data type.";
     break;
   }
-  // NOTE: We add global tags at the end to make sure these are not overridden by
-  //       the emitter
+  // NOTE: We add global tags at the end to make sure these are not overridden by the
+  //       emitter
   addGlobalTagsToGrpcMetric(*metric_proto_ptr);
 }
 

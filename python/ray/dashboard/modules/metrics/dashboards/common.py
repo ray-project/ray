@@ -1,8 +1,11 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
+
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 @dataclass
 class GridPos:
     x: int
@@ -29,12 +32,25 @@ HEATMAP_TARGET_TEMPLATE = {
     "useBackend": False,
 }
 
+HISTOGRAM_BAR_CHART_TARGET_TEMPLATE = {
+    "exemplar": True,
+    "format": "heatmap",
+    "fullMetaSearch": False,
+    "includeNullMetadata": True,
+    "instant": True,
+    "range": False,
+    "useBackend": False,
+}
 
+
+@DeveloperAPI
 class TargetTemplate(Enum):
     GRAPH = GRAPH_TARGET_TEMPLATE
     HEATMAP = HEATMAP_TARGET_TEMPLATE
+    HISTOGRAM_BAR_CHART = HISTOGRAM_BAR_CHART_TARGET_TEMPLATE
 
 
+@DeveloperAPI
 @dataclass
 class Target:
     """Defines a Grafana target (time-series query) within a panel.
@@ -76,7 +92,7 @@ HEATMAP_TEMPLATE = {
         "exemplars": {"color": "rgba(255,0,255,0.7)"},
         "filterValues": {"le": 1e-9},
         "legend": {"show": True},
-        "rowsFrame": {"layout": "auto", "value": "Request count"},
+        "rowsFrame": {"layout": "auto", "value": "Value"},
         "tooltip": {"mode": "single", "showColorScale": False, "yHistogram": True},
         "yAxis": {"axisPlacement": "left", "reverse": False, "unit": "none"},
     },
@@ -122,11 +138,11 @@ GRAPH_PANEL_TEMPLATE = {
     "id": 26,
     "legend": {
         "alignAsTable": True,
-        "avg": False,
+        "avg": True,
         "current": True,
         "hideEmpty": False,
         "hideZero": True,
-        "max": False,
+        "max": True,
         "min": False,
         "rightSide": False,
         "show": True,
@@ -359,15 +375,135 @@ PIE_CHART_TEMPLATE = {
     ],
 }
 
+BAR_CHART_PANEL_TEMPLATE = {
+    "aliasColors": {},
+    "dashLength": 10,
+    "dashes": False,
+    "datasource": r"${datasource}",
+    "description": "<Description>",
+    "fieldConfig": {"defaults": {}, "overrides": []},
+    # Setting height and width is important here to ensure the default panel has some size to it.
+    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+    "hiddenSeries": False,
+    "id": 26,
+    "legend": {
+        "alignAsTable": True,
+        "avg": False,
+        "current": True,
+        "hideEmpty": False,
+        "hideZero": True,
+        "max": False,
+        "min": False,
+        "rightSide": False,
+        "show": False,
+        "sort": "current",
+        "sortDesc": True,
+        "total": False,
+        "values": True,
+    },
+    "lines": False,
+    "linewidth": 1,
+    "bars": True,
+    "nullPointMode": None,
+    "options": {
+        "alertThreshold": True,
+        "legend": {
+            "showLegend": False,
+            "displayMode": "table",
+            "placement": "bottom",
+        },
+    },
+    "percentage": False,
+    "pluginVersion": "7.5.17",
+    "pointradius": 2,
+    "points": False,
+    "renderer": "flot",
+    "spaceLength": 10,
+    "stack": True,
+    "steppedLine": False,
+    "targets": [],
+    "thresholds": [],
+    "timeFrom": None,
+    "timeRegions": [],
+    "timeShift": None,
+    "title": "<Title>",
+    "tooltip": {"shared": True, "sort": 0, "value_type": "individual"},
+    "type": "graph",
+    "xaxis": {
+        "buckets": None,
+        "mode": "series",
+        "name": None,
+        "show": True,
+        "values": [
+            "total",
+        ],
+    },
+    "yaxes": [
+        {
+            "$$hashKey": "object:628",
+            "format": "units",
+            "label": "",
+            "logBase": 1,
+            "max": None,
+            "min": "0",
+            "show": True,
+        },
+        {
+            "$$hashKey": "object:629",
+            "format": "short",
+            "label": None,
+            "logBase": 1,
+            "max": None,
+            "min": None,
+            "show": True,
+        },
+    ],
+    "yaxis": {"align": False, "alignLevel": None},
+}
 
+TABLE_PANEL_TEMPLATE = {
+    "datasource": r"${datasource}",
+    "description": "<Description>",
+    "fieldConfig": {
+        "defaults": {
+            "custom": {
+                "align": "auto",
+                "displayMode": "auto",
+            },
+            "mappings": [],
+        },
+        "overrides": [],
+    },
+    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+    "id": 26,
+    "options": {
+        "showHeader": True,
+        "footer": {
+            "show": False,
+            "reducer": ["sum"],
+            "fields": "",
+        },
+    },
+    "pluginVersion": "7.5.17",
+    "targets": [],
+    "title": "<Title>",
+    "type": "table",
+    "transformations": [{"id": "organize", "options": {}}],
+}
+
+
+@DeveloperAPI
 class PanelTemplate(Enum):
     GRAPH = GRAPH_PANEL_TEMPLATE
     HEATMAP = HEATMAP_TEMPLATE
     PIE_CHART = PIE_CHART_TEMPLATE
     STAT = STAT_PANEL_TEMPLATE
     GAUGE = GAUGE_PANEL_TEMPLATE
+    BAR_CHART = BAR_CHART_PANEL_TEMPLATE
+    TABLE = TABLE_PANEL_TEMPLATE
 
 
+@DeveloperAPI
 @dataclass
 class Panel:
     """Defines a Grafana panel (graph) for the Ray dashboard page.
@@ -383,6 +519,26 @@ class Panel:
         targets: List of query targets.
         fill: Whether or not the graph will be filled by a color.
         stack: Whether or not the lines in the graph will be stacked.
+        linewidth: Width of the lines in the graph.
+        grid_pos: Grid position of the panel.
+        template: The panel template to use.
+        hideXAxis: Whether to hide the x-axis.
+        thresholds: Custom threshold configuration for stat/gauge panels.
+            Example: [
+                {"color": "green", "value": None},
+                {"color": "yellow", "value": 70},
+                {"color": "red", "value": 90}
+            ]
+        value_mappings: Value mappings for displaying text instead of numbers.
+            Used for status panels.
+        color_mode: Color mode for stat panels ("value", "background", "none").
+        legend_mode: Legend display mode ("list", "table", "hidden").
+        min_val: Minimum value for gauge/graph y-axis.
+        max_val: Maximum value for gauge/graph y-axis.
+        reduce_calc: Reduce calculation method for stat panels (default: "lastNotNull").
+        heatmap_color_scheme: Color scheme for heatmap panels (e.g., "Spectral", "RdYlGn").
+        heatmap_color_reverse: Whether to reverse the heatmap color scheme.
+        heatmap_yaxis_label: Y-axis label for heatmap panels.
     """
 
     title: str
@@ -395,8 +551,20 @@ class Panel:
     linewidth: int = 1
     grid_pos: Optional[GridPos] = None
     template: Optional[PanelTemplate] = PanelTemplate.GRAPH
+    hideXAxis: bool = False
+    thresholds: Optional[List[Dict[str, Any]]] = None
+    value_mappings: Optional[List[Dict[str, Any]]] = None
+    color_mode: Optional[str] = None
+    legend_mode: Optional[str] = None
+    min_val: Optional[float] = None
+    max_val: Optional[float] = None
+    reduce_calc: Optional[str] = None
+    heatmap_color_scheme: Optional[str] = None
+    heatmap_color_reverse: Optional[bool] = None
+    heatmap_yaxis_label: Optional[str] = None
 
 
+@DeveloperAPI
 @dataclass
 class Row:
     """Defines a Grafana row that can contain multiple panels.
@@ -413,6 +581,7 @@ class Row:
     collapsed: bool = False
 
 
+@DeveloperAPI
 @dataclass
 class DashboardConfig:
     # This dashboard name is an internal key used to determine which env vars

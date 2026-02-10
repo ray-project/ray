@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional, Type
 
 from pydantic import Field
 
+from ray.data import ActorPoolStrategy
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.processor.base import (
     Processor,
@@ -30,15 +31,23 @@ class ServeDeploymentProcessorConfig(ProcessorConfig):
         description="A dictionary mapping data type names to their corresponding request classes for the serve deployment.",
         default=None,
     )
+    should_continue_on_error: bool = Field(
+        default=False,
+        description="If True, continue processing when inference fails for a row "
+        "instead of raising an exception. Failed rows will have a non-null "
+        "'__inference_error__' column containing the error message. Error rows "
+        "bypass postprocess. If False (default), any inference error raises.",
+    )
 
 
 def build_serve_deployment_processor(
     config: ServeDeploymentProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
+    preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+    postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Processor:
-    """
-    Construct a processor that runs a serve deployment.
+    """Construct a processor that runs a serve deployment.
 
     Args:
         config: The configuration for the processor.
@@ -47,6 +56,10 @@ def build_serve_deployment_processor(
             required fields for the following processing stages.
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict).
+        preprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            preprocess stage (e.g., num_cpus, memory, concurrency).
+        postprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            postprocess stage (e.g., num_cpus, memory, concurrency).
 
     Returns:
         The constructed processor.
@@ -57,9 +70,12 @@ def build_serve_deployment_processor(
                 deployment_name=config.deployment_name,
                 app_name=config.app_name,
                 dtype_mapping=config.dtype_mapping,
+                should_continue_on_error=config.should_continue_on_error,
             ),
             map_batches_kwargs=dict(
-                concurrency=config.concurrency,
+                compute=ActorPoolStrategy(
+                    **config.get_concurrency(autoscaling_enabled=False),
+                )
             ),
         )
     ]
@@ -69,6 +85,8 @@ def build_serve_deployment_processor(
         stages,
         preprocess=preprocess,
         postprocess=postprocess,
+        preprocess_map_kwargs=preprocess_map_kwargs,
+        postprocess_map_kwargs=postprocess_map_kwargs,
     )
     return processor
 

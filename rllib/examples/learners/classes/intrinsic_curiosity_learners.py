@@ -9,11 +9,11 @@ from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import 
     AddObservationsFromEpisodesToBatch,
 )
 from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
+from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
     AddNextObservationsFromEpisodesToTrainBatch,
 )
-from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.core import Columns, DEFAULT_MODULE_ID
+from ray.rllib.core import DEFAULT_MODULE_ID, Columns
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.typing import EpisodeType

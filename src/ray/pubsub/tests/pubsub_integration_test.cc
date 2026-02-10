@@ -20,9 +20,7 @@
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/io_service_pool.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/grpc_util.h"
@@ -67,23 +65,26 @@ class SubscriberServiceImpl final : public rpc::SubscriberService::CallbackServi
     const auto subscriber_id = UniqueID::FromBinary(request->subscriber_id());
     auto *reactor = context->DefaultReactor();
     for (const auto &command : request->commands()) {
+      RAY_CHECK(command.has_unsubscribe_message() || command.has_subscribe_message())
+          << absl::StrFormat(
+                 "Unexpected pubsub command has been received: %s."
+                 "Expected either unsubscribe or subscribe message",
+                 command.DebugString());
       if (command.has_unsubscribe_message()) {
         publisher_->UnregisterSubscription(command.channel_type(),
                                            subscriber_id,
                                            command.key_id().empty()
                                                ? std::nullopt
                                                : std::make_optional(command.key_id()));
-      } else if (command.has_subscribe_message()) {
-        publisher_->RegisterSubscription(command.channel_type(),
-                                         subscriber_id,
-                                         command.key_id().empty()
-                                             ? std::nullopt
-                                             : std::make_optional(command.key_id()));
-      } else {
-        RAY_LOG(FATAL)
-            << "Invalid command has received, "
-            << static_cast<int>(command.command_message_one_of_case())
-            << ". If you see this message, please file an issue to Ray Github.";
+      } else {  // subscribe_message case
+        RAY_CHECK(publisher_
+                      ->RegisterSubscription(command.channel_type(),
+                                             subscriber_id,
+                                             command.key_id().empty()
+                                                 ? std::nullopt
+                                                 : std::make_optional(command.key_id()))
+                      .ok())
+            << "Register subscription for a valid channel type should succeed.";
       }
     }
     reactor->Finish(grpc::Status::OK);
@@ -107,7 +108,7 @@ class CallbackSubscriberClient final : public pubsub::SubscriberClientInterface 
   ~CallbackSubscriberClient() final = default;
 
   void PubsubLongPolling(
-      const rpc::PubsubLongPollingRequest &request,
+      rpc::PubsubLongPollingRequest &&request,
       const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) final {
     auto *context = new grpc::ClientContext;
     auto *reply = new rpc::PubsubLongPollingReply;
@@ -120,7 +121,7 @@ class CallbackSubscriberClient final : public pubsub::SubscriberClientInterface 
   }
 
   void PubsubCommandBatch(
-      const rpc::PubsubCommandBatchRequest &request,
+      rpc::PubsubCommandBatchRequest &&request,
       const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) final {
     auto *context = new grpc::ClientContext;
     auto *reply = new rpc::PubsubCommandBatchReply;

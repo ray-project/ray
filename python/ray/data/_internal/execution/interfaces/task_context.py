@@ -2,10 +2,9 @@ import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from ray.data._internal.progress_bar import ProgressBar
-
 if TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_transformer import MapTransformer
+    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 
 _thread_local = threading.local()
@@ -25,7 +24,7 @@ class TaskContext:
     # The dictionary of sub progress bar to update. The key is name of sub progress
     # bar. Note this is only used on driver side.
     # TODO(chengsu): clean it up from TaskContext with new optimizer framework.
-    sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
+    sub_progress_bar_dict: Optional[Dict[str, "BaseProgressBar"]] = None
 
     # NOTE(hchen): `upstream_map_transformer` and `upstream_map_ray_remote_args`
     # are only used for `RandomShuffle`. DO NOT use them for other operators.
@@ -44,8 +43,8 @@ class TaskContext:
     # This should be set if upstream_map_transformer is set.
     upstream_map_ray_remote_args: Optional[Dict[str, Any]] = None
 
-    # The target maximum number of bytes to include in the task's output block.
-    target_max_block_size: Optional[int] = None
+    # Override of the target max-block-size for the task
+    target_max_block_size_override: Optional[int] = None
 
     # Additional keyword arguments passed to the task.
     kwargs: Dict[str, Any] = field(default_factory=dict)

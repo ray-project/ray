@@ -12,7 +12,8 @@ from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.interfaces.operator import Operator
-from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators import Read
+from ray.data._internal.logical.optimizers import get_plan_conversion_fns
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockMetadataWithSchema, _take_first_non_empty_schema
 from ray.data.context import DataContext
@@ -113,19 +114,32 @@ class ExecutionPlan:
 
     def explain(self) -> str:
         """Return a string representation of the logical and physical plan."""
-        from ray.data._internal.logical.optimizers import get_execution_plan
 
-        logical_plan = self._logical_plan
-        logical_plan_str, _ = self.generate_plan_string(logical_plan.dag)
-        logical_plan_str = "-------- Logical Plan --------\n" + logical_plan_str
+        convert_fns = [lambda x: x] + get_plan_conversion_fns()
+        titles: List[str] = [
+            "Logical Plan",
+            "Logical Plan (Optimized)",
+            "Physical Plan",
+            "Physical Plan (Optimized)",
+        ]
 
-        physical_plan = get_execution_plan(self._logical_plan)
-        physical_plan_str, _ = self.generate_plan_string(
-            physical_plan.dag, show_op_repr=True
-        )
-        physical_plan_str = "-------- Physical Plan --------\n" + physical_plan_str
+        # 1. Set initial plan
+        plan = self._logical_plan
 
-        return logical_plan_str + physical_plan_str
+        sections = []
+        for title, convert_fn in zip(titles, convert_fns):
+
+            # 2. Convert plan to new plan
+            plan = convert_fn(plan)
+
+            # 3. Generate plan str from new plan.
+            plan_str, _ = self.generate_plan_string(plan.dag, show_op_repr=True)
+
+            banner = f"\n-------- {title} --------\n"
+            section = f"{banner}{plan_str}"
+            sections.append(section)
+
+        return "".join(sections)
 
     @staticmethod
     def generate_plan_string(
@@ -622,10 +636,9 @@ class ExecutionPlan:
 
     def require_preserve_order(self) -> bool:
         """Whether this plan requires to preserve order."""
-        from ray.data._internal.logical.operators.all_to_all_operator import Sort
-        from ray.data._internal.logical.operators.n_ary_operator import Zip
+        from ray.data._internal.logical.operators import Zip
 
         for op in self._logical_plan.dag.post_order_iter():
-            if isinstance(op, (Zip, Sort)):
+            if isinstance(op, Zip):
                 return True
         return False

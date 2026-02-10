@@ -12,12 +12,10 @@ models, including highly complex multi-network setups often found in multi-agent
 
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is the main neural network class and exposes
 three public methods, each corresponding to a distinct phase in the reinforcement learning cycle:
-- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` handles the computation of actions during data collection
-if RLlib uses the data for a succeeding training step, balancing exploration and exploitation.
+
+- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` handles the computation of actions during data collection if RLlib uses the data for a succeeding training step, balancing exploration and exploitation.
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` computes actions for evaluation and production, which often need to be greedy or less stochastic.
-- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` manages the training phase, performing calculations required to
-compute losses, such as Q-values in a DQN model, value function predictions in a PG-style setup,
-or world-model predictions in model-based algorithms.
+- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` manages the training phase, performing calculations required to compute losses, such as Q-values in a DQN model, value function predictions in a PG-style setup, or world-model predictions in model-based algorithms.
 
 
 .. figure:: images/rl_modules/rl_module_overview.svg
@@ -215,7 +213,7 @@ see :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig
     ``DefaultModelConfig.use_lstm`` setting in combination with the
     ``DefaultModelConfig.lstm_cell_size`` and ``DefaultModelConfig.max_seq_len`` settings.
     See here for a tuned
-    `example that uses a default RLModule with an LSTM layer <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/stateless_cartpole_ppo.py>`__.
+    `example that uses a default RLModule with an LSTM layer <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/stateless_cartpole_ppo.py>`__.
 
 .. TODO: mention attention example once done
 

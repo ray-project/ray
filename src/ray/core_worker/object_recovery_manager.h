@@ -22,11 +22,11 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
-#include "ray/raylet_client/raylet_client_interface.h"
-#include "ray/raylet_client/raylet_client_pool.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 
 namespace ray {
 namespace core {
@@ -46,7 +46,7 @@ class ObjectRecoveryManager {
       std::function<void(const ObjectID &object_id, const ObjectLookupCallback &callback)>
           object_lookup,
       TaskManagerInterface &task_manager,
-      ReferenceCounter &reference_counter,
+      ReferenceCounterInterface &reference_counter,
       CoreWorkerMemoryStore &in_memory_store,
       ObjectRecoveryFailureCallback recovery_failure_callback)
       : task_manager_(task_manager),
@@ -84,12 +84,12 @@ class ObjectRecoveryManager {
   /// plasma arguments to the task. The recovery operation will succeed once
   /// the task completes and stores a new value for its return object.
   ///
-  /// \return True if recovery for the object has successfully started, false
-  /// if the object is not recoverable because we do not have any metadata
-  /// about the object. If this returns true, then eventually recovery will
+  /// \return std::nullopt if recovery for the object has successfully started,
+  /// or a specific ErrorType if the object is not recoverable (e.g., out of scope,
+  /// borrowed). If this returns std::nullopt, then eventually recovery will
   /// either succeed (a value will be put into the memory store) or fail (the
   /// reconstruction failure callback will be called for this object).
-  bool RecoverObject(const ObjectID &object_id);
+  std::optional<rpc::ErrorType> RecoverObject(const ObjectID &object_id);
 
  private:
   /// Pin a new copy for a lost object from the given locations or, if that
@@ -111,7 +111,7 @@ class ObjectRecoveryManager {
   TaskManagerInterface &task_manager_;
 
   /// Used to check whether we own an object.
-  ReferenceCounter &reference_counter_;
+  ReferenceCounterInterface &reference_counter_;
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;

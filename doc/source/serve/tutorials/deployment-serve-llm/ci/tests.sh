@@ -12,7 +12,8 @@ for nb in \
   "large-size-llm/notebook" \
   "vision-llm/notebook" \
   "reasoning-llm/notebook" \
-  "hybrid-reasoning-llm/notebook"
+  "hybrid-reasoning-llm/notebook" \
+  "gpt-oss/notebook" 
 do
   python ci/nb2py.py "${nb}.ipynb" "${nb}.py" --ignore-cmds
   python "${nb}.py"

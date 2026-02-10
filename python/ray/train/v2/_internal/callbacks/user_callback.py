@@ -1,11 +1,11 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from ray.train import Checkpoint
 from ray.train.v2._internal.execution.callback import (
     ReportCallback,
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
+from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2._internal.execution.worker_group import WorkerGroupPollStatus
 from ray.train.v2.api.callback import UserCallback
 
@@ -26,13 +26,15 @@ class UserCallbackHandler(WorkerGroupCallback, ReportCallback):
     # --------------------------
 
     def after_report(
-        self, metrics: List[Dict[str, Any]], checkpoint: Optional[Checkpoint]
+        self,
+        training_report: _TrainingReport,
+        metrics: List[Dict[str, Any]],
     ):
         for user_callback in self._user_callbacks:
             user_callback.after_report(
                 run_context=self._train_run_context,
                 metrics=metrics,
-                checkpoint=checkpoint,
+                checkpoint=training_report.checkpoint,
             )
 
     # --------------------------

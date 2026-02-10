@@ -13,12 +13,12 @@ class TorchPredictor:
 
     def __call__(self, batch, device="cuda"):
         self.model.to(device)
-        batch["prediction"] = self.model.predict(collate_fn(batch))
+        batch["prediction"] = self.model.predict(collate_fn(batch, device=device))
         return batch
 
     def predict_probabilities(self, batch, device="cuda"):
         self.model.to(device)
-        predicted_probabilities = self.model.predict_probabilities(collate_fn(batch))
+        predicted_probabilities = self.model.predict_probabilities(collate_fn(batch, device=device))
         batch["probabilities"] = [
             {
                 self.preprocessor.label_to_class[i]: float(prob)

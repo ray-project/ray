@@ -1,9 +1,10 @@
 import uuid
-import gymnasium as gym
 from typing import Optional
 
-from ray.rllib.utils.annotations import override, OldAPIStack
+import gymnasium as gym
+
 from ray.rllib.env.external_env import ExternalEnv, _ExternalEnvEpisode
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.typing import MultiAgentDict
 
 

@@ -138,8 +138,14 @@ class RayTrainWorker:
             logger.error(f"Error deserializing the training function: {e}")
             raise
 
+        def train_fn_with_final_checkpoint_flush():
+            train_fn()
+            get_train_context().checkpoint_upload_threadpool.shutdown()
+
         # Create and start the training thread.
-        get_train_context().execution_context.training_thread_runner.run(train_fn)
+        get_train_context().execution_context.training_thread_runner.run(
+            train_fn_with_final_checkpoint_flush
+        )
 
     def get_metadata(self) -> ActorMetadata:
         return ActorMetadata(
@@ -156,10 +162,10 @@ class RayTrainWorker:
         # TODO: We can implement two phase commit here.
         # Only mark the task done when the result has been processed by the controller.
         try:
-            training_result = execution_context.result_queue.get_nowait()
+            training_report = execution_context.result_queue.get_nowait()
             execution_context.result_queue.task_done()
         except queue.Empty:
-            training_result = None
+            training_report = None
 
         error = execution_context.training_thread_runner.get_error()
 
@@ -168,11 +174,11 @@ class RayTrainWorker:
         # This relies on `worker_group_status.finished` returning False
         # until all training results have been flushed.
         running = execution_context.training_thread_runner.is_running() or bool(
-            training_result
+            training_report
         )
 
         return WorkerStatus(
-            running=running, error=error, training_result=training_result
+            running=running, error=error, training_report=training_report
         )
 
     def shutdown(self):
@@ -197,6 +203,8 @@ class RayTrainWorker:
         controller_actor: ActorHandle,
         dataset_shard_provider: Optional["DatasetShardProvider"] = None,
         checkpoint: Optional[Checkpoint] = None,
+        has_validation_fn: Optional[bool] = None,
+        current_report_index: int = 0,
     ):
         self._callbacks = [c for c in worker_callbacks if isinstance(c, WorkerCallback)]
         context_callbacks_to_propagate = [
@@ -217,6 +225,8 @@ class RayTrainWorker:
             controller_actor=controller_actor,
             checkpoint=checkpoint,
             dataset_shard_provider=dataset_shard_provider,
+            has_validation_fn=has_validation_fn,
+            current_report_index=current_report_index,
         )
         # Configure the train and root logger for the worker processes.
         if ray_constants.env_bool(

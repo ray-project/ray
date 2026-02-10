@@ -17,9 +17,6 @@
 #include <algorithm>
 #include <string>
 
-#include "ray/common/bundle_spec.h"
-#include "ray/common/scheduling/resource_set.h"
-
 namespace ray {
 
 /// Convert a map of resources to a ResourceRequest data structure.
@@ -27,7 +24,7 @@ ResourceRequest ResourceMapToResourceRequest(
     const absl::flat_hash_map<std::string, double> &resource_map,
     bool requires_object_store_memory) {
   ResourceRequest res({}, requires_object_store_memory);
-  for (auto entry : resource_map) {
+  for (const auto &entry : resource_map) {
     res.Set(ResourceID(entry.first), FixedPoint(entry.second));
   }
   return res;
@@ -116,7 +113,7 @@ bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
 
 bool NodeResources::HasRequiredLabels(const LabelSelector &label_selector) const {
   // Check if node labels satisfy all label constraints
-  const auto constraints = label_selector.GetConstraints();
+  const auto &constraints = label_selector.GetConstraints();
   for (const auto &constraint : constraints) {
     if (!NodeLabelMatchesConstraint(constraint)) {
       return false;
@@ -175,7 +172,7 @@ std::string NodeResources::DebugString() const {
 
 std::string NodeResources::DictString() const { return DebugString(); }
 
-bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
+bool NodeResourceInstances::operator==(const NodeResourceInstances &other) const {
   return this->total == other.total && this->available == other.available;
 }
 

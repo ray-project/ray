@@ -1,5 +1,4 @@
 import errno
-import io
 import logging
 import os
 import pathlib
@@ -23,13 +22,15 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12), (3, 13)]
+SUPPORTED_PYTHONS = [(3, 10), (3, 11), (3, 12), (3, 13), (3, 14)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
 ROOT_DIR = os.path.dirname(__file__)
-BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
+BUILD_CORE = os.getenv("RAY_BUILD_CORE", "1") == "1"
+BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA", "0") == "1"
 BUILD_CPP = os.getenv("RAY_DISABLE_EXTRA_CPP") != "1"
+BUILD_REDIS = os.getenv("RAY_BUILD_REDIS", "1") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
@@ -38,7 +39,7 @@ THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "runtime_env", "agent", "thirdparty_files"
 )
-DEPS_ONLY_VERSION = "100.0.0-dev"
+DEPS_ONLY_VERSION = "100.0.0.dev0"
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
 # replaced with junctions in Windows. This variable is set in our conda-forge
@@ -134,10 +135,6 @@ else:
         "universal API for building distributed applications.",
         BUILD_TYPE,
     )
-    RAY_EXTRA_CPP = True
-    # Disable extra cpp for the development versions.
-    if "dev" in setup_spec.version or not BUILD_CPP:
-        RAY_EXTRA_CPP = False
 
 # Ideally, we could include these files by putting them in a
 # MANIFEST.in or using the package_data argument to setup, but the
@@ -173,8 +170,6 @@ generated_python_directories = [
     "ray/core/generated",
     "ray/serve/generated",
 ]
-
-ray_files.append("ray/nightly-wheels.yaml")
 
 # Autoscaler files.
 ray_files += [
@@ -228,7 +223,7 @@ if setup_spec.type == SetupType.RAY:
     pyarrow_deps = [
         "pyarrow >= 9.0.0",
     ]
-    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3"
+    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,!=2.10.*,!=2.11.*,<3"
     setup_spec.extras = {
         "cgraph": [
             "cupy-cuda12x; sys_platform != 'darwin'",
@@ -248,14 +243,13 @@ if setup_spec.type == SetupType.RAY:
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
             # please add it to python/ray/dashboard/optional_deps.py as well.
-            "aiohttp >= 3.7",
+            "aiohttp >= 3.13.3",
             "aiohttp_cors",
             "colorful",
-            "py-spy >= 0.2.0; python_version < '3.12'",  # noqa:E501
-            "py-spy >= 0.4.0; python_version >= '3.12'",  # noqa:E501
+            "py-spy >= 0.2.0; python_version < '3.12'",
+            "py-spy >= 0.4.0; python_version >= '3.12'",
             "requests",
-            "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
-            "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+            "grpcio >= 1.42.0",
             "opencensus",
             "opentelemetry-sdk >= 1.30.0",
             "opentelemetry-exporter-prometheus",
@@ -277,6 +271,8 @@ if setup_spec.type == SetupType.RAY:
         ],
         "tune": [
             "pandas",
+            # TODO: Remove pydantic dependency from tune once tune doesn't import train
+            pydantic_dep,
             "tensorboardX>=1.9",
             "requests",
             *pyarrow_deps,
@@ -298,8 +294,7 @@ if setup_spec.type == SetupType.RAY:
         set(
             setup_spec.extras["serve"]
             + [
-                "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
-                "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+                "grpcio >= 1.42.0",
                 "pyOpenSSL",
             ]
         )
@@ -316,14 +311,13 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
-    if RAY_EXTRA_CPP:
-        setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
+    setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gymnasium==1.1.1",
+        "gymnasium==1.2.2",
         "lz4",
-        "ormsgpack==1.7.0",
+        "ormsgpack>=1.7.0",
         "pyyaml",
         "scipy",
     ]
@@ -355,10 +349,9 @@ if setup_spec.type == SetupType.RAY:
             chain.from_iterable([v for k, v in setup_spec.extras.items() if k != "cpp"])
         )
     )
-    if RAY_EXTRA_CPP:
-        setup_spec.extras["all-cpp"] = list(
-            set(setup_spec.extras["all"] + setup_spec.extras["cpp"])
-        )
+    setup_spec.extras["all-cpp"] = list(
+        set(setup_spec.extras["all"] + setup_spec.extras["cpp"])
+    )
 
     # "llm" is not included in all, by design. vllm's dependency set is very
     # large and specific, will likely run into dependency conflicts with other
@@ -372,13 +365,18 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm>=0.10.0",
+                "vllm[audio]>=0.15.0",
+                "nixl>=0.6.1",
+                # TODO(llm): remove after next vLLM version bump
+                "transformers>=4.57.3",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
                 # async-timeout is a backport of asyncio.timeout for python < 3.11
                 "async-timeout; python_version < '3.11'",
                 "typer",
+                "meson",
+                "pybind11",
                 "hf_transfer",
             ]
             + setup_spec.extras["data"]
@@ -395,11 +393,11 @@ if setup_spec.type == SetupType.RAY:
 # new releases candidates.
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        "click >= 7.0",
+        "click>=7.0",
         "filelock",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
-        "packaging",
+        "packaging>=24.2",
         "protobuf>=3.20.3",
         "pyyaml",
         "requests",
@@ -530,7 +528,7 @@ if is_conda_forge_build and is_native_windows_or_msys():
     replace_symlinks_with_junctions()
 
 
-def build(build_python, build_java, build_cpp):
+def build(build_python, build_java, build_cpp, build_redis):
     if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
         msg = (
             "Detected Python version {}, which is not supported. "
@@ -549,30 +547,10 @@ def build(build_python, build_java, build_cpp):
         )
         raise OSError(msg)
 
-    bazel_env = os.environ.copy()
-    bazel_env["PYTHON3_BIN_PATH"] = sys.executable
-
-    if is_native_windows_or_msys():
-        SHELL = bazel_env.get("SHELL")
-        if SHELL:
-            bazel_env.setdefault("BAZEL_SH", os.path.normpath(SHELL))
-        BAZEL_SH = bazel_env.get("BAZEL_SH", "")
-        SYSTEMROOT = os.getenv("SystemRoot")
-        wsl_bash = os.path.join(SYSTEMROOT, "System32", "bash.exe")
-        if (not BAZEL_SH) and SYSTEMROOT and os.path.isfile(wsl_bash):
-            msg = (
-                "You appear to have Bash from WSL,"
-                " which Bazel may invoke unexpectedly. "
-                "To avoid potential problems,"
-                " please explicitly set the {name!r}"
-                " environment variable for Bazel."
-            ).format(name="BAZEL_SH")
-            raise RuntimeError(msg)
-
-    # Note: We are passing in sys.executable so that we use the same
-    # version of Python to build packages inside the build.sh script. Note
-    # that certain flags will not be passed along such as --user or sudo.
-    # TODO(rkn): Fix this.
+    # Vendor thirdparty packages.
+    #
+    # TODO(ray-core, ray-ci): the version of these vendored packages should be
+    # pinned, so that the build is reproducible.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL_CONDA_FORGE"):
         pip_packages = ["psutil", "colorama"]
         subprocess.check_call(
@@ -602,6 +580,39 @@ def build(build_python, build_java, build_cpp):
             ]
             + runtime_env_agent_pip_packages
         )
+
+    bazel_targets = []
+    if build_python:
+        bazel_targets.append("//:gen_ray_pkg")
+    if build_cpp:
+        bazel_targets.append("//cpp:gen_ray_cpp_pkg")
+    if build_java:
+        bazel_targets.append("//java:gen_ray_java_pkg")
+    if build_redis:
+        bazel_targets.append("//:gen_redis_pkg")
+
+    if not bazel_targets:
+        return
+
+    bazel_env = os.environ.copy()
+    bazel_env["PYTHON3_BIN_PATH"] = sys.executable
+
+    if is_native_windows_or_msys():
+        SHELL = bazel_env.get("SHELL")
+        if SHELL:
+            bazel_env.setdefault("BAZEL_SH", os.path.normpath(SHELL))
+        BAZEL_SH = bazel_env.get("BAZEL_SH", "")
+        SYSTEMROOT = os.getenv("SystemRoot")
+        wsl_bash = os.path.join(SYSTEMROOT, "System32", "bash.exe")
+        if (not BAZEL_SH) and SYSTEMROOT and os.path.isfile(wsl_bash):
+            msg = (
+                "You appear to have Bash from WSL,"
+                " which Bazel may invoke unexpectedly. "
+                "To avoid potential problems,"
+                " please explicitly set the {name!r}"
+                " environment variable for Bazel."
+            ).format(name="BAZEL_SH")
+            raise RuntimeError(msg)
 
     bazel_flags = ["--verbose_failures"]
     if BAZEL_ARGS:
@@ -640,11 +651,6 @@ def build(build_python, build_java, build_cpp):
         bazel_precmd_flags = []
         if sys.platform == "win32":
             bazel_precmd_flags = ["--output_user_root=C:/tmp"]
-
-    bazel_targets = []
-    bazel_targets += ["//:gen_ray_pkg"] if build_python else []
-    bazel_targets += ["//cpp:gen_ray_cpp_pkg"] if build_cpp else []
-    bazel_targets += ["//java:gen_ray_java_pkg"] if build_java else []
 
     if setup_spec.build_type == BuildType.DEBUG:
         bazel_flags.append("--config=debug")
@@ -707,9 +713,9 @@ def copy_file(target_dir, filename, rootdir):
 
 def pip_run(build_ext):
     if SKIP_BAZEL_BUILD or setup_spec.build_type == BuildType.DEPS_ONLY:
-        build(False, False, False)
+        build(False, False, False, False)
     else:
-        build(True, BUILD_JAVA, BUILD_CPP)
+        build(BUILD_CORE, BUILD_JAVA, BUILD_CPP, BUILD_REDIS)
 
     if setup_spec.type == SetupType.RAY:
         if setup_spec.build_type == BuildType.DEPS_ONLY:
@@ -745,6 +751,13 @@ if __name__ == "__main__":
     import setuptools
     import setuptools.command.build_ext
 
+    # bdist_wheel location varies: setuptools>=70.1 has it built-in,
+    # older versions require the wheel package
+    try:
+        from setuptools.command.bdist_wheel import bdist_wheel
+    except ImportError:
+        from wheel.bdist_wheel import bdist_wheel
+
     class build_ext(setuptools.command.build_ext.build_ext):
         def run(self):
             return pip_run(self)
@@ -753,10 +766,43 @@ if __name__ == "__main__":
         def has_ext_modules(self):
             return True
 
+    class RayCppBdistWheel(bdist_wheel):
+        """Build a Python-agnostic wheel for ray-cpp.
+
+        The wheel contains platform-specific C++ binaries, so we keep a platform
+        tag (e.g., manylinux2014_x86_64) but force the Python/ABI tags to py3-none.
+        """
+
+        def finalize_options(self):
+            super().finalize_options()
+            # Wheel contains C++ binaries, so force a real platform tag, not "any".
+            self.root_is_pure = False
+
+        def get_tag(self):
+            _, _, platform_tag = super().get_tag()
+            return "py3", "none", platform_tag
+
     # Ensure no remaining lib files.
     build_dir = os.path.join(ROOT_DIR, "build")
     if os.path.isdir(build_dir):
         shutil.rmtree(build_dir)
+
+    with open(
+        os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
+    ) as f:
+        long_readme = f.read()
+
+    with open(os.path.join(ROOT_DIR, "LICENSE.txt"), "r", encoding="utf-8") as f:
+        license_text = f.read().strip()
+    if "\n" in license_text:
+        # If the license text has multiple lines, add an ending endline.
+        license_text += "\n"
+
+    # Build cmdclass dict. Use RayCppBdistWheel for ray-cpp to produce
+    # Python-agnostic wheels. See RayCppBdistWheel docstring for details.
+    cmdclass = {"build_ext": build_ext}
+    if setup_spec.type == SetupType.RAY_CPP:
+        cmdclass["bdist_wheel"] = RayCppBdistWheel
 
     setuptools.setup(
         name=setup_spec.name,
@@ -764,26 +810,25 @@ if __name__ == "__main__":
         author="Ray Team",
         author_email="ray-dev@googlegroups.com",
         description=(setup_spec.description),
-        long_description=io.open(
-            os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
-        ).read(),
+        long_description=long_readme,
         url="https://github.com/ray-project/ray",
         keywords=(
             "ray distributed parallel machine-learning hyperparameter-tuning"
             "reinforcement-learning deep-learning serving python"
         ),
-        python_requires=">=3.9",
+        python_requires=">=3.10",
         classifiers=[
-            "Programming Language :: Python :: 3.9",
             "Programming Language :: Python :: 3.10",
             "Programming Language :: Python :: 3.11",
             "Programming Language :: Python :: 3.12",
             "Programming Language :: Python :: 3.13",
+            "Programming Language :: Python :: 3.14",
         ],
         packages=setup_spec.get_packages(),
-        cmdclass={"build_ext": build_ext},
-        # The BinaryDistribution argument triggers build_ext.
-        distclass=BinaryDistribution,
+        cmdclass=cmdclass,
+        distclass=(  # Avoid building extensions for deps-only builds.
+            BinaryDistribution if setup_spec.build_type != BuildType.DEPS_ONLY else None
+        ),
         install_requires=setup_spec.install_requires,
         setup_requires=["cython >= 3.0.12", "pip", "wheel"],
         extras_require=setup_spec.extras,
@@ -805,8 +850,8 @@ if __name__ == "__main__":
         exclude_package_data={
             # Empty string means "any package".
             # Therefore, exclude BUILD from every package:
-            "": ["BUILD"],
+            "": ["BUILD", "BUILD.bazel"],
         },
         zip_safe=False,
-        license="Apache 2.0",
+        license=license_text,
     )

@@ -8,14 +8,14 @@ import torch
 
 import ray
 import ray.train.torch
-from ray.air._internal.torch_utils import (
-    arrow_batch_to_tensors,
-    convert_ndarray_batch_to_torch_tensor_batch,
-)
 from ray.data.iterator import (
     ArrowBatchCollateFn,
     NumpyBatchCollateFn,
     PandasBatchCollateFn,
+)
+from ray.data.util.torch_utils import (
+    arrow_batch_to_tensors,
+    convert_ndarray_batch_to_torch_tensor_batch,
 )
 
 
@@ -281,6 +281,7 @@ def test_custom_batch_collate_fn(
     # Set the device that's returned by device="auto" -> get_device()
     # This is used in `finalize_fn` to move the tensors to the correct device.
     device = torch.device(device)
+    monkeypatch.setattr(ray.train.utils, "_in_ray_train_worker", lambda: True)
     monkeypatch.setattr(ray.train.torch, "get_device", lambda: device)
 
     ds = ray.data.from_items(

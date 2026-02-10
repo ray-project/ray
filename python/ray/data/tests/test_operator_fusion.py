@@ -1,33 +1,34 @@
 from unittest.mock import MagicMock
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import ray
-from ray.data import Dataset
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
     BlockMapTransformFn,
-    BlocksToBatchesMapTransformFn,
-    BuildOutputBlocksMapTransformFn,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.map_operator import (
+from ray.data._internal.logical.operators import (
     Filter,
     FlatMap,
+    InputData,
     MapBatches,
     MapRows,
     Project,
+    Read,
 )
-from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
+from ray.data._internal.util import rows_same
 from ray.data.context import DataContext
+from ray.data.dataset import Dataset
+from ray.data.expressions import star
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values
@@ -56,10 +57,6 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared_2_cpus):
     input = physical_op.input_dependencies[0]
     assert isinstance(input, InputDataBuffer)
     assert physical_op in input.output_dependencies, input.output_dependencies
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
     assert physical_op._logical_operators == [read_op, op]
 
 
@@ -72,7 +69,7 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared_2_cpus):
     map1 = MapRows(read_op, lambda x: x)
     map2 = MapBatches(map1, lambda x: x)
     map3 = FlatMap(map2, lambda x: x)
-    map4 = Filter(map3, lambda x: x)
+    map4 = Filter(map3, fn=lambda x: x)
     logical_plan = LogicalPlan(map4, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -86,10 +83,6 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared_2_cpus):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
     assert physical_op._logical_operators == [read_op, map1, map2, map3, map4]
 
 
@@ -268,7 +261,8 @@ def test_read_with_map_batches_fused_successfully(
 
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
-    ds = ray.data.read_parquet(temp_dir)
+    n = 10
+    ds = ray.data.range(n)
 
     mapped_ds = ds.map_batches(lambda x: x).map_batches(lambda x: x)
 
@@ -282,17 +276,12 @@ def test_read_with_map_batches_fused_successfully(
     # All Map ops are fused with Read
     assert (
         "InputDataBuffer[Input] -> "
-        "TaskPoolMapOperator[ReadParquet->MapBatches(<lambda>)->MapBatches(<lambda>)]"
+        "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)->MapBatches(<lambda>)]"
         == actual_plan_str
     )
 
     # # Target min-rows requirement is not set
     assert physical_op._block_ref_bundler._min_rows_per_bundle is None
-
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
 
 
 @pytest.mark.parametrize(
@@ -306,13 +295,12 @@ def test_read_with_map_batches_fused_successfully(
                     get_read_tasks=lambda _: [MagicMock()]
                 ),
                 parallelism=1,
-                mem_size=1,
             ),
             False,
         ),
         (
             # No fusion (could drastically reduce dataset)
-            Filter(InputData([]), lambda x: False),
+            Filter(InputData([]), fn=lambda x: False),
             False,
         ),
         (
@@ -332,7 +320,7 @@ def test_read_with_map_batches_fused_successfully(
         ),
         (
             # Fusion
-            Project(InputData([])),
+            Project(InputData([]), exprs=[star()]),
             True,
         ),
     ],
@@ -351,9 +339,8 @@ def test_map_batches_batch_size_fusion(
         LogicalPlan(input_op, context),
     )
 
-    mapped_ds = ds.map_batches(lambda x: x, batch_size=2,).map_batches(
-        lambda x: x,
-        batch_size=5,
+    mapped_ds = ds.map_batches(lambda x: x, batch_size=2).map_batches(
+        lambda x: x, batch_size=5
     )
 
     physical_plan = get_execution_plan(mapped_ds._logical_plan)
@@ -380,8 +367,6 @@ def test_map_batches_batch_size_fusion(
     assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
     assert len(physical_op.input_dependencies) == 1
 
-    assert physical_op.actual_target_max_block_size == context.target_max_block_size
-
 
 @pytest.mark.parametrize("upstream_batch_size", [None, 1, 2])
 @pytest.mark.parametrize("downstream_batch_size", [None, 1, 2])
@@ -393,7 +378,8 @@ def test_map_batches_with_batch_size_specified_fusion(
 ):
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
-    ds = ray.data.read_parquet(temp_dir)
+    n = 10
+    ds = ray.data.range(n)
 
     mapped_ds = ds.map_batches(
         lambda x: x,
@@ -414,14 +400,14 @@ def test_map_batches_with_batch_size_specified_fusion(
         expected_min_rows_per_bundle = None
         expected_plan_str = (
             "InputDataBuffer[Input] -> "
-            "TaskPoolMapOperator[ReadParquet->MapBatches(<lambda>)->MapBatches(<lambda>)]"
+            "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)->MapBatches(<lambda>)]"
         )
     else:
         expected_min_rows_per_bundle = max(
             upstream_batch_size or 0, downstream_batch_size or 0
         )
         expected_plan_str = (
-            "InputDataBuffer[Input] -> TaskPoolMapOperator[ReadParquet] -> "
+            "InputDataBuffer[Input] -> TaskPoolMapOperator[ReadRange] -> "
             "TaskPoolMapOperator[MapBatches(<lambda>)->MapBatches(<lambda>)]"
         )
 
@@ -446,8 +432,16 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
     ds = ds.randomize_block_order()
     ds = ds.map_batches(fn, batch_size=None)
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
-    assert "ReadRange->MapBatches(fn)->RandomizeBlockOrder" not in ds.stats()
-    assert "ReadRange->MapBatches(fn)" in ds.stats()
+    stats = ds.stats()
+    # Ensure RandomizeBlockOrder and MapBatches are not fused.
+    assert "RandomizeBlockOrder->MapBatches(fn)" not in stats
+    assert "ReadRange" in stats
+    assert "RandomizeBlockOrder" in stats
+    assert "MapBatches(fn)" in stats
+    # Regression tests ensuring RandomizeBlockOrder is never bypassed in the future
+    assert "ReadRange->MapBatches(fn)->RandomizeBlockOrder" not in stats
+    assert "ReadRange->MapBatches(fn)" not in stats
+    # Ensure all three operators are also present in usage record
     _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlockOrder"])
 
 
@@ -593,7 +587,7 @@ def test_read_map_chain_operator_fusion_e2e(
     ray_start_regular_shared_2_cpus,
 ):
     ds = ray.data.range(10, override_num_blocks=2)
-    ds = ds.filter(lambda x: x["id"] % 2 == 0)
+    ds = ds.filter(fn=lambda x: x["id"] % 2 == 0)
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.map_batches(
         lambda batch: {"id": [2 * x for x in batch["id"]]}, batch_size=None
@@ -687,7 +681,9 @@ def test_map_fusion_with_concurrency_arg(
         ds = ds.map(Map, num_cpus=0, concurrency=down_concurrency)
         down_name = "Map(Map)"
 
-    assert extract_values("id", ds.take_all()) == list(range(10))
+    actual_data = ds.to_pandas()
+    expected_data = pd.DataFrame({"id": list(range(10))})
+    assert rows_same(actual_data, expected_data)
 
     name = f"{up_name}->{down_name}"
     stats = ds.stats()
@@ -724,9 +720,7 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
     check_transform_fns(
         map_op,
         [
-            BlocksToBatchesMapTransformFn,
             BatchMapTransformFn,
-            BuildOutputBlocksMapTransformFn,
         ],
     )
     read_op = map_op.input_dependencies[0]
@@ -734,7 +728,6 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
         read_op,
         [
             BlockMapTransformFn,
-            BuildOutputBlocksMapTransformFn,
         ],
     )
 
@@ -747,8 +740,173 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
         fused_op,
         [
             BlockMapTransformFn,
-            BlocksToBatchesMapTransformFn,
             BatchMapTransformFn,
-            BuildOutputBlocksMapTransformFn,
         ],
     )
+
+
+@pytest.mark.parametrize(
+    "order,target_num_rows,batch_size,should_fuse",
+    [
+        # map_batches -> streaming_repartition: fuse when batch_size is a multiple of target_num_rows
+        ("map_then_sr", 20, 20, True),
+        ("map_then_sr", 20, 10, False),
+        ("map_then_sr", 20, 40, True),
+        ("map_then_sr", 20, None, False),
+        # streaming_repartition -> map_batches: not fused
+        ("sr_then_map", 20, 20, False),
+    ],
+)
+def test_streaming_repartition_map_batches_fusion_order_and_params(
+    ray_start_regular_shared_2_cpus,
+    order,
+    target_num_rows,
+    batch_size,
+    should_fuse,
+):
+    """Test fusion of streaming_repartition and map_batches with different orders
+    and different target_num_rows/batch_size values."""
+    n = 100
+    ds = ray.data.range(n, override_num_blocks=2)
+
+    if order == "map_then_sr":
+        ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
+        expected_fused_name = f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_num_rows}]"
+    else:  # sr_then_map
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
+        ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+        expected_fused_name = f"StreamingRepartition[num_rows_per_block={target_num_rows}]->MapBatches(<lambda>)"
+
+    assert len(ds.take_all()) == n
+
+    stats = ds.stats()
+    if should_fuse:
+        assert (
+            expected_fused_name in stats
+        ), f"Expected '{expected_fused_name}' in stats: {stats}"
+    else:
+        assert (
+            expected_fused_name not in stats
+        ), f"Did not expect '{expected_fused_name}' in stats: {stats}"
+
+
+def test_streaming_repartition_no_further_fuse(
+    ray_start_regular_shared_2_cpus,
+):
+    """Test that fused streaming_repartition operators don't fuse further.
+
+    Case 1: map_batches -> map_batches -> streaming_repartition -> map_batches -> map_batches
+            Result: map -> (map -> s_r)-> (map -> map)
+            The fused (map -> s_r) doesn't fuse further with surrounding maps.
+    """
+    n = 100
+    target_rows = 20
+
+    # Case 1: map_batches -> map_batches -> streaming_repartition -> map_batches -> map_batches
+    # Result: map -> (map -> s_r)-> (map -> map)
+    ds1 = ray.data.range(n, override_num_blocks=2)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+    ds1 = ds1.repartition(target_num_rows_per_block=target_rows)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+
+    assert len(ds1.take_all()) == n
+    stats1 = ds1.stats()
+
+    assert (
+        f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows}]"
+        in stats1
+    ), stats1
+    assert "MapBatches(<lambda>)->MapBatches(<lambda>)" in stats1
+
+
+def test_filter_operator_no_upstream_fusion(ray_start_regular_shared_2_cpus, capsys):
+    """Test that fused filter operators doesn't fuse further with upstream maps
+    that specify batch_size (since it filter can change the # of rows.)
+
+    Case 1: map_batches -> filter -> map_batchess
+            Result: (map -> filter) -> map
+            The fused (map -> filter) doesn't fuse with upstream maps.
+    """
+    n = 100
+    target_rows = 20
+
+    ds1 = ray.data.range(n, override_num_blocks=2)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+    ds1 = ds1.filter(lambda x: True)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+
+    ds1.explain()
+    captured = capsys.readouterr().out.strip()
+    assert "TaskPoolMapOperator[MapBatches(<lambda>)]" in captured
+    assert "TaskPoolMapOperator[MapBatches(<lambda>)->Filter(<lambda>)]" in captured
+
+
+def test_combine_repartition_aggregate(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method, capsys
+):
+    ds = ray.data.range(100)
+    # Apply repartition with shuffle
+    ds = ds.repartition(5, shuffle=True)
+    # Apply groupby aggregate (creates Aggregate operator)
+    ds = ds.groupby("id").count()
+
+    ds.explain()
+
+    captured = capsys.readouterr().out
+    # Verify the first shuffle (Repartition) was dropped and Aggregate connects directly to Read
+    expected_optimized_plan = (
+        "-------- Logical Plan (Optimized) --------\n"
+        "Aggregate[Aggregate]\n"
+        "+- Read[ReadRange]"
+    )
+    assert expected_optimized_plan in captured
+
+
+def test_combine_streaming_repartition_to_shuffle_repartition(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method, capsys
+):
+    ds = ray.data.range(100, override_num_blocks=10)
+    # Apply StreamingRepartition (local repartition)
+    ds = ds.repartition(target_num_rows_per_block=20)
+    # Apply shuffle Repartition (global repartition)
+    ds = ds.repartition(num_blocks=3, shuffle=True)
+
+    ds.explain()
+
+    captured = capsys.readouterr().out
+    # Verify the first shuffle (StreamingRepartition) was dropped and Repartition connects directly to Read
+    expected_optimized_plan = (
+        "-------- Logical Plan (Optimized) --------\n"
+        "Repartition[Repartition]\n"
+        "+- Read[ReadRange]"
+    )
+    assert expected_optimized_plan in captured
+
+
+def test_combine_sort_sort(ray_start_regular_shared_2_cpus, capsys):
+    data = [{"a": i, "b": 100 - i} for i in range(50)]
+    ds = ray.data.from_items(data)
+    # Apply first sort on column 'a'
+    ds = ds.sort("a")
+    # Apply second sort on column 'b'
+    ds = ds.sort("b")
+
+    ds.explain()
+
+    captured = capsys.readouterr().out
+    # Verify the first shuffle (first Sort) was dropped and only the second Sort remains
+    expected_optimized_plan = (
+        "-------- Logical Plan (Optimized) --------\n"
+        "Sort[Sort]\n"
+        "+- FromItems[FromItems]"
+    )
+    assert expected_optimized_plan in captured
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

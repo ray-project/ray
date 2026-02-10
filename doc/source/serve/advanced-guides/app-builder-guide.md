@@ -77,6 +77,10 @@ Notice that the "Hello from config" message is printed from within the deploymen
 (typed-app-builders)=
 ### Typing arguments with Pydantic
 
+:::{warning}
+**Pydantic v1 Deprecation Notice:** Pydantic v1 is deprecated and Ray will drop support for it in version 2.56. If you're using Pydantic v1, upgrade to Pydantic v2 by running `pip install -U pydantic`. See [GitHub issue #58876](https://github.com/ray-project/ray/issues/58876) for more details.
+:::
+
 To avoid writing logic to parse and validate the arguments by hand, define a [Pydantic model](https://pydantic-docs.helpmanual.io/usage/models/) as the single input parameter's type to your application builder function (the parameter must be type annotated).
 Arguments are passed the same way, but the resulting dictionary is used to construct the Pydantic model using `model.parse_obj(args_dict)`.
 
@@ -87,8 +91,8 @@ Arguments are passed the same way, but the resulting dictionary is used to const
 ```
 
 ```bash
-% serve run hello:app_builder message="Hello from CLI"
-2023-05-16 10:47:31,641 INFO scripts.py:404 -- Running import path: 'hello:app_builder'.
+% serve run hello:typed_app_builder message="Hello from CLI"
+2023-05-16 10:47:31,641 INFO scripts.py:404 -- Running import path: 'hello:typed_app_builder'.
 2023-05-16 10:47:33,344 INFO worker.py:1615 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 (ServeController pid=56826) INFO 2023-05-16 10:47:35,115 controller 56826 deployment_state.py:1244 - Deploying new version of deployment default_HelloWorld.
 (ServeController pid=56826) INFO 2023-05-16 10:47:35,141 controller 56826 deployment_state.py:1483 - Adding 1 replica to deployment default_HelloWorld.

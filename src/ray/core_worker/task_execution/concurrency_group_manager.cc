@@ -15,7 +15,6 @@
 #include "ray/core_worker/task_execution/concurrency_group_manager.h"
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>

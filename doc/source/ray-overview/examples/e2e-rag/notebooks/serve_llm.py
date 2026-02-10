@@ -13,10 +13,7 @@ llm_config = LLMConfig(
     },
     accelerator_type="A10G",
     deployment_config={
-        "autoscaling_config": {
-            "target_ongoing_requests": 32,
-            "target_num_ongoing_requests_per_replica": 32,
-        },
+        "autoscaling_config": {"target_ongoing_requests": 32},
         "max_ongoing_requests": 64,
     },
 )

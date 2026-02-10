@@ -29,12 +29,16 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager_interface.h"
 #include "ray/core_worker/task_submission/dependency_resolver.h"
-#include "ray/raylet_client/raylet_client_interface.h"
-#include "ray/raylet_client/raylet_client_pool.h"
-#include "ray/rpc/worker/core_worker_client.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 
 namespace ray {
+
+namespace gcs {
+class GcsClient;
+}  // namespace gcs
+
 namespace core {
 
 // The task queues are keyed on resource shape & function descriptor
@@ -71,7 +75,7 @@ class ClusterSizeBasedLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
  public:
   explicit ClusterSizeBasedLeaseRequestRateLimiter(size_t min_concurrent_lease_limit);
   size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override;
-  void OnNodeChanges(const rpc::GcsNodeInfo &data);
+  void OnNodeChanges(const rpc::GcsNodeAddressAndLiveness &data);
 
  private:
   const size_t min_concurrent_lease_cap_;
@@ -86,6 +90,7 @@ class NormalTaskSubmitter {
       std::shared_ptr<RayletClientInterface> local_raylet_client,
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
       std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
+      std::shared_ptr<gcs::GcsClient> gcs_client,
       std::unique_ptr<LeasePolicyInterface> lease_policy,
       std::shared_ptr<CoreWorkerMemoryStore> store,
       TaskManagerInterface &task_manager,
@@ -96,10 +101,12 @@ class NormalTaskSubmitter {
       const JobID &job_id,
       std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
       const TensorTransportGetter &tensor_transport_getter,
-      boost::asio::steady_timer cancel_timer)
+      instrumented_io_context &io_service,
+      ray::observability::MetricInterface &scheduler_placement_time_ms_histogram)
       : rpc_address_(std::move(rpc_address)),
         local_raylet_client_(std::move(local_raylet_client)),
         raylet_client_pool_(std::move(raylet_client_pool)),
+        gcs_client_(std::move(gcs_client)),
         lease_policy_(std::move(lease_policy)),
         resolver_(*store, task_manager, *actor_creator, tensor_transport_getter),
         task_manager_(task_manager),
@@ -110,7 +117,8 @@ class NormalTaskSubmitter {
         core_worker_client_pool_(std::move(core_worker_client_pool)),
         job_id_(job_id),
         lease_request_rate_limiter_(std::move(lease_request_rate_limiter)),
-        cancel_retry_timer_(std::move(cancel_timer)) {}
+        io_service_(io_service),
+        scheduler_placement_time_ms_histogram_(scheduler_placement_time_ms_histogram) {}
 
   /// Schedule a task for direct submission to a worker.
   void SubmitTask(TaskSpecification task_spec);
@@ -125,10 +133,10 @@ class NormalTaskSubmitter {
   /// It is used when a object ID is not owned by the current process.
   /// We cannot cancel the task in this case because we don't have enough
   /// information to cancel a task.
-  void CancelRemoteTask(const ObjectID &object_id,
-                        const rpc::Address &worker_addr,
-                        bool force_kill,
-                        bool recursive);
+  void RequestOwnerToCancelTask(const ObjectID &object_id,
+                                const rpc::Address &worker_addr,
+                                bool force_kill,
+                                bool recursive);
 
   /// Queue the streaming generator up for resubmission.
   /// \return true if the task is still executing and the submitter agrees to resubmit
@@ -193,8 +201,8 @@ class NormalTaskSubmitter {
 
   /// Set up client state for newly granted worker lease.
   void AddWorkerLeaseClient(
-      const rpc::Address &addr,
-      std::shared_ptr<RayletClientInterface> raylet_client,
+      const rpc::Address &worker_address,
+      const rpc::Address &raylet_address,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
       const SchedulingKey &scheduling_key,
       const LeaseID &lease_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -243,6 +251,9 @@ class NormalTaskSubmitter {
   /// Raylet client pool for producing new clients to request leases from remote nodes.
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
 
+  /// GCS client for checking node liveness.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+
   /// Provider of worker leasing decisions for the first lease request (not on
   /// spillback).
   std::unique_ptr<LeasePolicyInterface> lease_policy_;
@@ -276,14 +287,14 @@ class NormalTaskSubmitter {
   const JobID job_id_;
 
   /// A LeaseEntry struct is used to condense the metadata about a single executor:
-  /// (1) The lease client through which the worker should be returned
+  /// (1) The address of the raylet that leased the worker.
   /// (2) The expiration time of a worker's lease.
   /// (3) Whether the worker has assigned task to do.
-  /// (5) The resources assigned to the worker
-  /// (6) The SchedulingKey assigned to tasks that will be sent to the worker
-  /// (7) The task id used to obtain the worker lease.
+  /// (4) The resources assigned to the worker
+  /// (5) The SchedulingKey assigned to tasks that will be sent to the worker
+  /// (6) The task id used to obtain the worker lease.
   struct LeaseEntry {
-    std::shared_ptr<RayletClientInterface> raylet_client;
+    rpc::Address addr;
     int64_t lease_expiration_time;
     google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources;
     SchedulingKey scheduling_key;
@@ -362,7 +373,9 @@ class NormalTaskSubmitter {
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
 
   // Retries cancelation requests if they were not successful.
-  boost::asio::steady_timer cancel_retry_timer_ ABSL_GUARDED_BY(mu_);
+  instrumented_io_context &io_service_;
+
+  ray::observability::MetricInterface &scheduler_placement_time_ms_histogram_;
 };
 
 }  // namespace core

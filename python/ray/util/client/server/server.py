@@ -10,7 +10,6 @@ import queue
 import threading
 import time
 from collections import defaultdict
-from concurrent import futures
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 import grpc
@@ -20,14 +19,14 @@ import ray._private.state
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray import cloudpickle
+from ray._common.network_utils import build_address, is_localhost
 from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
-from ray._raylet import GcsClient
 from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
 from ray._private.services import canonicalize_bootstrap_address_or_die
 from ray._private.tls_utils import add_port_to_grpc_server
-from ray._common.network_utils import build_address, is_localhost
+from ray._raylet import GcsClient
 from ray.job_config import JobConfig
 from ray.util.client.common import (
     CLIENT_SERVER_MAX_THREADS,
@@ -135,7 +134,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                     logger.exception("Running Ray Init failed:")
                     return ray_client_pb2.InitResponse(
                         ok=False,
-                        msg="Call to `ray.init()` on the server " f"failed with: {e}",
+                        msg=f"Call to `ray.init()` on the server failed with: {e}",
                     )
         if job_config is None:
             return ray_client_pb2.InitResponse(ok=True)
@@ -271,6 +270,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 )
                 ctx.gcs_address = rtc.gcs_address
                 ctx.runtime_env = rtc.get_runtime_env_string()
+                ctx.session_name = rtc.get_session_name()
             resp.runtime_context.CopyFrom(ctx)
         else:
             with disable_client_hook():
@@ -378,8 +378,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 return_exception_in_context(e, context)
         else:
             raise RuntimeError(
-                "Client requested termination without providing a valid "
-                "terminate_type"
+                "Client requested termination without providing a valid terminate_type"
             )
         return ray_client_pb2.TerminateResponse(ok=True)
 
@@ -397,7 +396,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         """
         if len(request.ids) != 1:
             raise ValueError(
-                "Async get() must have exactly 1 Object ID. " f"Actual: {request}"
+                f"Async get() must have exactly 1 Object ID. Actual: {request}"
             )
         rid = request.ids[0]
         ref = self.object_refs[client_id].get(rid, None)
@@ -479,8 +478,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                     valid=False,
                     error=cloudpickle.dumps(
                         ValueError(
-                            f"ClientObjectRef {rid} is not found for client "
-                            f"{client_id}"
+                            f"ClientObjectRef {rid} is not found for client {client_id}"
                         )
                     ),
                 )
@@ -773,13 +771,14 @@ def serve(host: str, port: int, ray_connect_handler=None):
             if not ray.is_initialized():
                 return ray.init(job_config=job_config, **ray_init_kwargs)
 
+    from ray._private.grpc_utils import create_grpc_server_with_interceptors
+
     ray_connect_handler = ray_connect_handler or default_connect_handler
-    server = grpc.server(
-        futures.ThreadPoolExecutor(
-            max_workers=CLIENT_SERVER_MAX_THREADS,
-            thread_name_prefix="ray_client_server",
-        ),
+    server = create_grpc_server_with_interceptors(
+        max_workers=CLIENT_SERVER_MAX_THREADS,
+        thread_name_prefix="ray_client_server",
         options=GRPC_OPTIONS,
+        asynchronous=False,
     )
     task_servicer = RayletServicer(ray_connect_handler)
     data_servicer = DataServicer(task_servicer)
@@ -887,6 +886,13 @@ def main():
         default=None,
         help="The port to use for connecting to the runtime_env_agent.",
     )
+    parser.add_argument(
+        "--node-id",
+        required=False,
+        type=str,
+        default=None,
+        help="The hex ID of this node.",
+    )
     args, _ = parser.parse_known_args()
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
 
@@ -907,6 +913,7 @@ def main():
             redis_username=args.redis_username,
             redis_password=args.redis_password,
             runtime_env_agent_address=args.runtime_env_agent_address,
+            node_id=args.node_id,
         )
     else:
         server = serve(args.host, args.port, ray_connect_handler)
@@ -929,7 +936,7 @@ def main():
                 )
             except Exception as e:
                 logger.error(
-                    f"[{args.mode}] Failed to put health check " f"on {args.address}"
+                    f"[{args.mode}] Failed to put health check on {args.address}"
                 )
                 logger.exception(e)
 

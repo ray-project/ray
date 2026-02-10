@@ -15,17 +15,16 @@
 #pragma once
 
 #include <memory>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/fallback_strategy.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_set.h"
-#include "ray/common/task/task_spec.h"
+#include "ray/common/scheduling/scheduling_class_util.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -55,6 +54,7 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   const ResourceSet &GetRequiredResources() const;
   const ResourceSet &GetRequiredPlacementResources() const;
   const LabelSelector &GetLabelSelector() const;
+  const std::vector<FallbackOption> &GetFallbackStrategy() const;
   const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
   bool IsNodeAffinitySchedulingStrategy() const;
   NodeID GetNodeAffinitySchedulingStrategyNodeId() const;
@@ -75,7 +75,7 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   bool IsDetachedActor() const;
   std::string DebugString() const;
   int GetRuntimeEnvHash() const;
-  Language GetLanguage() const;
+  rpc::Language GetLanguage() const;
   bool HasRuntimeEnv() const;
   const rpc::RuntimeEnvInfo &RuntimeEnvInfo() const;
   const std::string &SerializedRuntimeEnv() const;
@@ -84,7 +84,7 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   ray::FunctionDescriptor FunctionDescriptor() const;
   int64_t MaxActorRestarts() const;
   int32_t MaxRetries() const;
-  uint64_t AttemptNumber() const;
+  int32_t AttemptNumber() const;
   bool IsRetry() const;
   std::string GetTaskName() const;
   std::string GetFunctionOrActorName() const;
@@ -105,6 +105,7 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   std::shared_ptr<ResourceSet> required_resources_;
   std::shared_ptr<ResourceSet> required_placement_resources_;
   std::shared_ptr<LabelSelector> label_selector_;
+  std::shared_ptr<std::vector<FallbackOption>> fallback_strategy_;
 
   std::vector<rpc::ObjectReference> dependencies_;
 

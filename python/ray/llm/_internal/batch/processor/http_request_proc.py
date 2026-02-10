@@ -14,7 +14,12 @@ from ray.llm._internal.batch.processor.base import (
     ProcessorBuilder,
     ProcessorConfig,
 )
+from ray.llm._internal.batch.processor.utils import build_cpu_stage_map_kwargs
 from ray.llm._internal.batch.stages import HttpRequestStage
+from ray.llm._internal.batch.stages.configs import (
+    HttpRequestStageConfig,
+    resolve_stage_config,
+)
 
 
 class HttpRequestProcessorConfig(ProcessorConfig):
@@ -53,12 +58,18 @@ class HttpRequestProcessorConfig(ProcessorConfig):
         # exclude from JSON serialization since `session_factory` is a callable
         exclude=True,
     )
+    http_request_stage: Any = Field(
+        default=True,
+        description="Http request stage config (bool | dict | HttpRequestStageConfig).",
+    )
 
 
 def build_http_request_processor(
     config: HttpRequestProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
+    preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+    postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Processor:
     """Construct a Processor and configure stages.
 
@@ -69,10 +80,33 @@ def build_http_request_processor(
             required fields for the following processing stages.
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict).
+        preprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            preprocess stage (e.g., num_cpus, memory, concurrency).
+        postprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            postprocess stage (e.g., num_cpus, memory, concurrency).
 
     Returns:
         The constructed processor.
     """
+
+    # Prepare processor defaults for merging into stage configs
+    processor_defaults = {
+        "batch_size": config.batch_size,
+        "concurrency": config.concurrency,
+    }
+
+    # Resolve and build HttpRequestStage if enabled
+    http_request_stage_cfg = resolve_stage_config(
+        config.http_request_stage,
+        HttpRequestStageConfig,
+        processor_defaults,
+    )
+
+    if not http_request_stage_cfg.enabled:
+        raise ValueError(
+            "The HTTP request stage is required and cannot be disabled in HttpRequestProcessorConfig."
+        )
+
     stages = [
         HttpRequestStage(
             fn_constructor_kwargs=dict(
@@ -83,9 +117,7 @@ def build_http_request_processor(
                 base_retry_wait_time_in_s=config.base_retry_wait_time_in_s,
                 session_factory=config.session_factory,
             ),
-            map_batches_kwargs=dict(
-                concurrency=config.concurrency,
-            ),
+            map_batches_kwargs=build_cpu_stage_map_kwargs(http_request_stage_cfg),
         )
     ]
     telemetry_agent = get_or_create_telemetry_agent()
@@ -100,6 +132,8 @@ def build_http_request_processor(
         stages,
         preprocess=preprocess,
         postprocess=postprocess,
+        preprocess_map_kwargs=preprocess_map_kwargs,
+        postprocess_map_kwargs=postprocess_map_kwargs,
     )
     return processor
 

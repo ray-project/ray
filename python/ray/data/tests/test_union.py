@@ -38,6 +38,32 @@ def test_union_with_preserve_order(ray_start_10_cpus_shared, restore_data_contex
     assert [row["id"] for row in ds.take_all()] == [0, 1, 2]
 
 
+def test_union_with_filter(ray_start_10_cpus_shared):
+    """Test that filters are pushed through union to both branches."""
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+    from ray.data.expressions import col
+
+    ds1 = ray.data.from_items([{"id": 0}, {"id": 1}, {"id": 2}])
+    ds2 = ray.data.from_items([{"id": 3}, {"id": 4}, {"id": 5}])
+    ds = ds1.union(ds2).filter(expr=col("id") > 2)
+
+    # Verify the filter was pushed through the union
+    optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+    actual_plan_str = optimized_plan.dag.dag_str
+
+    # After optimization, filter should be pushed to both union branches
+    # So we should see: Filter(Read), Filter(Read) -> Union
+    # Not: Read, Read -> Union -> Filter
+    assert "Union" in actual_plan_str
+    assert "Filter" in actual_plan_str
+    # Ensure Filter is before Union (pushed down), not after
+    assert actual_plan_str.index("Filter") < actual_plan_str.index("Union")
+
+    # Verify correctness
+    result = sorted(row["id"] for row in ds.take_all())
+    assert result == [3, 4, 5]
+
+
 if __name__ == "__main__":
     import sys
 

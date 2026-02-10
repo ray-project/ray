@@ -5,7 +5,6 @@ import tempfile
 import unittest
 
 import ray
-import ray.train
 from ray import tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all

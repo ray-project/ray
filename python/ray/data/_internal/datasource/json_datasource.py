@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import pandas as pd
 
-from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data._internal.pandas_block import PandasBlockAccessor
+from ray.data._internal.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
@@ -171,6 +171,9 @@ class PandasJSONDatasource(FileBasedDatasource):
     # reads bigger blocks at once.
     _BUFFER_SIZE = 1024**2
 
+    # In the case of zipped json files, we cannot infer the chunk_size.
+    _DEFAULT_CHUNK_SIZE = 10000
+
     def __init__(
         self,
         paths: Union[str, List[str]],
@@ -200,6 +203,9 @@ class PandasJSONDatasource(FileBasedDatasource):
 
         This is necessary to avoid OOMs while reading the file.
         """
+
+        if not f.seekable():
+            return self._DEFAULT_CHUNK_SIZE
         assert f.tell() == 0, "File pointer must be at the beginning"
 
         if self._target_output_size_bytes is None:
@@ -230,10 +236,14 @@ class PandasJSONDatasource(FileBasedDatasource):
         path: str,
         **open_args,
     ) -> "pyarrow.NativeFile":
-        # Use seekable file so we can reset the file after sampling the first row.
-        file = filesystem.open_input_file(path, **open_args)
-        assert file.seekable(), "File must be seekable"
-        return file
+
+        compression = self.resolve_compression(path, open_args)
+
+        if compression is None:
+            # We use a seekable file to estimate chunksize.
+            return filesystem.open_input_file(path)
+
+        return super()._open_input_source(filesystem, path, **open_args)
 
 
 def _cast_range_index_to_string(df: pd.DataFrame):

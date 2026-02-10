@@ -1,23 +1,22 @@
 # coding: utf-8
-import logging
-import torch
-import ray.cloudpickle as pickle
 import io
+import json
+import logging
+import os
+import socket
+import time
+
 import cupy
 import numpy as np
-import time
-import os
-import json
-import socket
+import torch
 
 import ray
-from ray.air._internal import torch_utils
+import ray.cloudpickle as pickle
 import ray.cluster_utils
-from ray.dag import InputNode, DAGContext
-from ray.util.collective.collective_group import nccl_util
-
 from ray._private.ray_microbenchmark_helpers import timeit
-
+from ray.air._internal import torch_utils
+from ray.dag import DAGContext, InputNode
+from ray.util.collective.collective_group import nccl_util
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +104,7 @@ class NcclWorker:
                 input_buffer = torch.ones(shape, dtype=dtype, device=self.device) * i
                 self._send(input_buffer, input_buffer.numel(), other_rank)
             else:
-                input_buffer = torch.zeros(shape, dtype=dtype, device=self.device)
+                input_buffer = torch.empty(shape, dtype=dtype, device=self.device)
                 self._recv(input_buffer, input_buffer.numel(), other_rank)
 
             torch.cuda.synchronize()

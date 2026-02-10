@@ -205,6 +205,7 @@ message ClusterInfoResponse {
     string runtime_env = 4;
     bool capture_client_tasks = 5;
     string gcs_address = 6;
+    string session_name = 7;
   }
 
   ClusterInfoType.TypeEnum type = 1;

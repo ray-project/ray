@@ -5,6 +5,7 @@ from typing import Dict, Optional
 
 import gymnasium as gym
 import numpy as np
+
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import RLlibCallback
 from ray.rllib.core.rl_module import RLModuleSpec
@@ -109,14 +110,12 @@ class MetricsLoggerCallback(RLlibCallback):
             value=1,
             reduce="sum",
             window=100,
-            clear_on_reduce=True,
         )
         metrics_logger.log_value(
             key=f"footsies/{stage}/actions/{p2_module}/{p2_action_str}",
             value=1,
             reduce="sum",
             window=100,
-            clear_on_reduce=True,
         )
 
     def on_episode_end(
@@ -165,7 +164,6 @@ class MetricsLoggerCallback(RLlibCallback):
                 value=1,
                 reduce="mean",
                 window=100,
-                clear_on_reduce=True,
             )
         elif not p1_dead and not p2_dead:
             metrics_logger.log_value(
@@ -173,7 +171,6 @@ class MetricsLoggerCallback(RLlibCallback):
                 value=1,
                 reduce="mean",
                 window=100,
-                clear_on_reduce=True,
             )
         else:
             # log the win rate against the opponent with an 'opponent_id'
@@ -182,7 +179,6 @@ class MetricsLoggerCallback(RLlibCallback):
                 value=int(main_policy_win),
                 reduce="mean",
                 window=100,
-                clear_on_reduce=True,
             )
 
             # log the win rate, without specifying the opponent
@@ -194,7 +190,6 @@ class MetricsLoggerCallback(RLlibCallback):
                 value=int(main_policy_win),
                 reduce="mean",
                 window=100,
-                clear_on_reduce=True,
             )
 
 

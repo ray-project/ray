@@ -21,13 +21,13 @@
 #include "absl/functional/bind_front.h"
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/object_manager/plasma/client.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/client.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
 
 namespace ray {
 namespace core {
@@ -74,7 +74,7 @@ class TestPlasma : public plasma::MockPlasmaClient {
   std::unordered_set<ObjectID> objects_;
 };
 
-class MockRayletClient : public FakeRayletClient {
+class MockRayletClient : public rpc::FakeRayletClient {
  public:
   virtual ~MockRayletClient() {}
 
@@ -109,11 +109,11 @@ std::shared_ptr<RayletClientInterface> GetMockRayletClient(
 TEST(MutableObjectProvider, RegisterWriterChannel) {
   ObjectID object_id = ObjectID::FromRandom();
   NodeID node_id = NodeID::FromRandom();
-  auto plasma = std::make_unique<TestPlasma>();
+  auto plasma = std::make_shared<TestPlasma>();
   auto interface = std::make_shared<MockRayletClient>();
 
   MutableObjectProvider provider(
-      *plasma,
+      plasma,
       /*factory=*/absl::bind_front(GetMockRayletClient, interface),
       nullptr);
   provider.RegisterWriterChannel(object_id, {node_id});
@@ -139,8 +139,8 @@ TEST(MutableObjectProvider, RegisterWriterChannel) {
 
 TEST(MutableObjectProvider, MutableObjectBufferReadRelease) {
   ObjectID object_id = ObjectID::FromRandom();
-  auto plasma = std::make_unique<TestPlasma>();
-  MutableObjectProvider provider(*plasma,
+  auto plasma = std::make_shared<TestPlasma>();
+  MutableObjectProvider provider(plasma,
                                  /*factory=*/nullptr,
                                  nullptr);
   provider.RegisterWriterChannel(object_id, {});
@@ -176,11 +176,11 @@ TEST(MutableObjectProvider, MutableObjectBufferReadRelease) {
 TEST(MutableObjectProvider, HandlePushMutableObject) {
   ObjectID object_id = ObjectID::FromRandom();
   ObjectID local_object_id = ObjectID::FromRandom();
-  auto plasma = std::make_unique<TestPlasma>();
+  auto plasma = std::make_shared<TestPlasma>();
   auto interface = std::make_shared<MockRayletClient>();
 
   MutableObjectProvider provider(
-      *plasma,
+      plasma,
       /*factory=*/absl::bind_front(GetMockRayletClient, interface),
       nullptr);
   provider.HandleRegisterMutableObject(object_id, /*num_readers=*/1, local_object_id);
@@ -201,8 +201,8 @@ TEST(MutableObjectProvider, HandlePushMutableObject) {
 
 TEST(MutableObjectProvider, MutableObjectBufferSetError) {
   ObjectID object_id = ObjectID::FromRandom();
-  auto plasma = std::make_unique<TestPlasma>();
-  MutableObjectProvider provider(*plasma,
+  auto plasma = std::make_shared<TestPlasma>();
+  MutableObjectProvider provider(plasma,
                                  /*factory=*/nullptr,
                                  nullptr);
   provider.RegisterWriterChannel(object_id, {});
@@ -257,8 +257,8 @@ TEST(MutableObjectProvider, MutableObjectBufferSetError) {
 
 TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeWriteRelease) {
   ObjectID object_id = ObjectID::FromRandom();
-  auto plasma = std::make_unique<TestPlasma>();
-  MutableObjectProvider provider(*plasma,
+  auto plasma = std::make_shared<TestPlasma>();
+  MutableObjectProvider provider(plasma,
                                  /*factory=*/nullptr,
                                  nullptr);
   provider.RegisterWriterChannel(object_id, {});
@@ -313,8 +313,8 @@ TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeWriteRelease) {
 
 TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeReadRelease) {
   ObjectID object_id = ObjectID::FromRandom();
-  auto plasma = std::make_unique<TestPlasma>();
-  MutableObjectProvider provider(*plasma,
+  auto plasma = std::make_shared<TestPlasma>();
+  MutableObjectProvider provider(plasma,
                                  /*factory=*/nullptr,
                                  nullptr);
   provider.RegisterWriterChannel(object_id, {});

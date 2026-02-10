@@ -1,4 +1,4 @@
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.core.distribution.distribution import Distribution  # noqa
 
 deprecation_warning(

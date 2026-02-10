@@ -176,7 +176,7 @@ BraveSearch = build_mcp_deployment(
     autoscaling_config={
         "min_replicas": 1,
         "max_replicas": 5,
-        "target_num_ongoing_requests_per_replica": 10,
+        "target_num_ongoing_requests": 10,
     },
 )
 

@@ -1,9 +1,9 @@
-import numpy as np
 import gymnasium as gym
+import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import OldAPIStack
-from ray.rllib.utils.typing import TensorType, List, Union, ModelConfigDict
+from ray.rllib.utils.typing import List, ModelConfigDict, TensorType, Union
 
 
 @OldAPIStack

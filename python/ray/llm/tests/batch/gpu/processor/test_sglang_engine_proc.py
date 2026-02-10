@@ -5,10 +5,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import ray
+from ray.data.llm import SGLangEngineProcessorConfig
+from ray.llm._internal.batch.constants import SGLangTaskType
 from ray.llm._internal.batch.processor import ProcessorBuilder
-from ray.llm._internal.batch.processor.sglang_engine_proc import (
-    SGLangEngineProcessorConfig,
-)
 
 
 def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
@@ -52,8 +51,9 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
             "dp_size": 2,
             "disable_cuda_graph": True,
             "dtype": "half",
+            "task": SGLangTaskType.GENERATE,
         },
-        "task_type": "generate",
+        "task_type": SGLangTaskType.GENERATE,
         "max_pending_requests": 111,
     }
 
@@ -67,7 +67,6 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
         "max_concurrency": 4,
         "accelerator_type": gpu_type,
         "num_gpus": 4,  # Based on tp_size=2, dp_size=2 in engine_kwargs
-        "resources": None,
     }
 
 

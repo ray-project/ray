@@ -15,7 +15,7 @@ from ray.llm._internal.common.utils.lora_utils import get_lora_model_ids
 from ray.llm._internal.serve.observability.logging import get_logger
 
 if TYPE_CHECKING:
-    from ray.llm._internal.serve.configs.server_models import LLMConfig
+    from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 
 LLM_SERVE_TELEMETRY_NAMESPACE = "llm_serve_telemetry"
 LLM_SERVE_TELEMETRY_ACTOR_NAME = "llm_serve_telemetry"
@@ -255,7 +255,7 @@ class HardwareUsage:
         ray-compatible accelerator as the GPU type used for the deployment. If not, return
         `UNSPECIFIED` as the default GPU type.
         """
-        from ray.llm._internal.serve.configs.server_models import GPUType
+        from ray.llm._internal.serve.core.configs.llm_config import GPUType
 
         all_accelerator_types = [t.value for t in GPUType]
         gcs_client = ray.experimental.internal_kv.internal_kv_get_gcs_client()

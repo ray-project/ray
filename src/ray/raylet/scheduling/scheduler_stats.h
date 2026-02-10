@@ -16,10 +16,6 @@
 
 #include <string>
 
-#include "absl/container/flat_hash_map.h"
-#include "ray/common/ray_config.h"
-#include "ray/common/task/task_spec.h"
-#include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_lease_manager_interface.h"
 #include "ray/stats/metric.h"
 
@@ -79,19 +75,6 @@ class SchedulerStats {
   int64_t num_leases_to_schedule_ = 0;
   /// Number of leases to grant.
   int64_t num_leases_to_grant_ = 0;
-
-  /// Ray metrics
-  ray::stats::Gauge ray_metric_num_spilled_tasks_{
-      /*name=*/"internal_num_spilled_tasks",
-      /*description=*/
-      "The cumulative number of lease requeusts that this raylet has spilled to other "
-      "raylets.",
-      /*unit=*/"tasks"};
-
-  ray::stats::Gauge ray_metric_num_infeasible_scheduling_classes_{
-      /*name=*/"internal_num_infeasible_scheduling_classes",
-      /*description=*/"The number of unique scheduling classes that are infeasible.",
-      /*unit=*/"tasks"};
 };
 
 }  // namespace raylet

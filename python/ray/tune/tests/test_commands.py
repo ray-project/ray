@@ -9,7 +9,6 @@ import click
 import pytest
 
 import ray
-import ray.train
 from ray import tune
 from ray.train.tests.util import create_dict_checkpoint
 from ray.tune.cli import commands
@@ -37,7 +36,7 @@ class Capturing:
 
 @pytest.fixture
 def start_ray():
-    ray.init(log_to_driver=False, local_mode=True)
+    ray.init(log_to_driver=False)
     yield
     ray.shutdown()
 

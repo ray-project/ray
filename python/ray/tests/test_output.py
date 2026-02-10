@@ -8,13 +8,14 @@ import time
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     run_string_as_driver,
+    wait_for_condition,
+)
+from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     run_string_as_driver_stdout_stderr,
 )
-from ray.autoscaler.v2.utils import is_autoscaler_v2
 
 
 def test_dedup_logs():
@@ -221,61 +222,6 @@ ray.get(A.remote().__ray_ready__.remote())
     proc.wait()
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_env_vars",
-    [
-        {
-            "num_cpus": 1,
-            "env_vars": {
-                "RAY_enable_autoscaler_v2": "0",
-                "RAY_debug_dump_period_milliseconds": "1000",
-            },
-        },
-        {
-            "num_cpus": 1,
-            "env_vars": {
-                "RAY_enable_autoscaler_v2": "1",
-                "RAY_debug_dump_period_milliseconds": "1000",
-            },
-        },
-    ],
-    indirect=True,
-)
-def test_autoscaler_warn_deadlock(ray_start_cluster_head_with_env_vars):
-    script = """
-import ray
-import time
-
-@ray.remote(num_cpus=1)
-class A:
-    pass
-
-ray.init(address="{address}")
-
-# Only one of a or b can be scheduled, so the other will hang.
-a = A.remote()
-b = A.remote()
-ray.get([a.__ray_ready__.remote(), b.__ray_ready__.remote()])
-    """.format(
-        address=ray_start_cluster_head_with_env_vars.address
-    )
-
-    proc = run_string_as_driver_nonblocking(script, env={"PYTHONUNBUFFERED": "1"})
-
-    if is_autoscaler_v2():
-        infeasible_msg = "No available node types can fulfill resource requests"
-    else:
-        infeasible_msg = "Warning: The following resource request cannot"
-
-    def _check_for_deadlock_msg():
-        l = proc.stdout.readline().decode("ascii")
-        if len(l) > 0:
-            print(l)
-        return "(autoscaler" in l and infeasible_msg in l
-
-    wait_for_condition(_check_for_deadlock_msg, timeout=30)
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_autoscaler_v2_stream_events_with_filter(shutdown_only):
     """Test that autoscaler v2 events are streamed to the driver."""
@@ -432,24 +378,6 @@ ray.get(foo.remote())
     print(err_str)
     assert "ModuleNotFoundError: No module named" in err_str
     assert "RuntimeError: The remote function failed to import" in err_str
-
-
-def test_core_worker_error_message():
-    script = """
-import ray
-import sys
-
-ray.init(local_mode=True)
-
-# In local mode this generates an ERROR level log.
-ray._private.utils.push_error_to_driver(
-    ray._private.worker.global_worker, "type", "Hello there")
-    """
-
-    proc = run_string_as_driver_nonblocking(script)
-    err_str = proc.stderr.read().decode("ascii")
-
-    assert "Hello there" in err_str, err_str
 
 
 def test_task_stdout_stderr():

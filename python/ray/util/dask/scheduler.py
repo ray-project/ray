@@ -1,10 +1,8 @@
-import warnings
-
 import atexit
 import threading
 import time
-from collections import defaultdict
-from collections import OrderedDict
+import warnings
+from collections import OrderedDict, defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from multiprocessing.pool import ThreadPool
@@ -12,22 +10,22 @@ from pprint import pprint
 from typing import Optional
 
 import dask
-from dask.core import istask, ishashable
+from dask.core import ishashable, istask
 
 try:
-    from dask._task_spec import Task, Alias, DataNode, TaskRef, convert_legacy_graph
+    from dask._task_spec import Alias, DataNode, Task, TaskRef, convert_legacy_graph
 except ImportError:
     warnings.warn(
         "Dask on Ray is available only on dask>=2024.11.0, "
         f"you are on version {dask.__version__}."
     )
 from dask.system import CPU_COUNT
-from dask.threaded import pack_exception, _thread_get_id
+from dask.threaded import _thread_get_id, pack_exception
 
 import ray
 from ray.util.dask.callbacks import local_ray_callbacks, unpack_ray_callbacks
 from ray.util.dask.common import unpack_object_refs
-from ray.util.dask.scheduler_utils import get_async, apply_sync
+from ray.util.dask.scheduler_utils import apply_sync, get_async
 
 main_thread = threading.current_thread()
 default_pool = None

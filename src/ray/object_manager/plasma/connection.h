@@ -22,7 +22,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/ipc/client_connection.h"
+#include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/util/compat.h"
 
 namespace plasma {
@@ -41,7 +41,7 @@ using PlasmaStoreConnectionErrorHandler =
 
 class ClientInterface {
  public:
-  virtual ~ClientInterface() {}
+  virtual ~ClientInterface() = default;
 
   virtual ray::Status SendFd(MEMFD_TYPE fd) = 0;
   virtual const std::unordered_set<ray::ObjectID> &GetObjectIDs() = 0;

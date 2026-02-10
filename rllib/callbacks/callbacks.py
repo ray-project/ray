@@ -17,9 +17,9 @@ from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
     OldAPIStack,
-    override,
     OverrideToImplementCustomLogic,
     PublicAPI,
+    override,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.typing import AgentID, EnvType, EpisodeType, PolicyID

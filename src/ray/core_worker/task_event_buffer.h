@@ -17,6 +17,7 @@
 #include <boost/circular_buffer.hpp>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -28,7 +29,7 @@
 #include "ray/common/id.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
@@ -41,13 +42,19 @@ namespace core {
 namespace worker {
 
 using TaskAttempt = std::pair<TaskID, int32_t>;
-/// A pair of rpc::events::RayEvent.
-/// When converting the TaskStatusEvent, the pair will be populated with the
-/// rpc::events::TaskDefinitionEvent and rpc::events::TaskExecutionEvent respectively.
-/// When converting the TaskProfileEvent, only the first element of the pair will be
-/// populated with rpc::events::TaskProfileEvents
-using RayEventsPair =
-    std::pair<std::optional<rpc::events::RayEvent>, std::optional<rpc::events::RayEvent>>;
+
+/// A struct containing a tuple of rpc::events::RayEvent.
+/// When converting the TaskStatusEvent, task_definition_event and task_lifecycle_event
+/// will be populated with rpc::events::TaskDefinitionEvent and
+/// rpc::events::TaskLifecycleEvent respectively. When converting the TaskProfileEvent,
+/// task_profile_event will be populated with rpc::events::TaskProfileEvent. A struct is
+/// needed because the TaskProfileEvent, TaskDefinitionEvent and TaskLifecycleEvent all
+/// can share the same task_id and attempt_number.
+struct RayEventsTuple {
+  std::optional<rpc::events::RayEvent> task_definition_event;
+  std::optional<rpc::events::RayEvent> task_lifecycle_event;
+  std::optional<rpc::events::RayEvent> task_profile_event;
+};
 
 /// A wrapper class that will be converted to protobuf task events representation.
 ///
@@ -66,7 +73,10 @@ using RayEventsPair =
 class TaskEvent {
  public:
   /// Constructor for Profile events
-  explicit TaskEvent(TaskID task_id, JobID job_id, int32_t attempt_number);
+  explicit TaskEvent(TaskID task_id,
+                     JobID job_id,
+                     int32_t attempt_number,
+                     const NodeID &node_id = NodeID::Nil());
 
   virtual ~TaskEvent() = default;
 
@@ -83,8 +93,9 @@ class TaskEvent {
 
   /// Convert itself to a pair of RayEvent.
   ///
-  /// \param[out] ray_events The pair of rpc::events::RayEvent
-  virtual void ToRpcRayEvents(RayEventsPair &ray_events) = 0;
+  /// \param[out] ray_events_tuple The struct containing a tuple of rpc::events::RayEvent
+  /// to be filled.
+  virtual void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) = 0;
 
   /// If it is a profile event.
   virtual bool IsProfileEvent() const = 0;
@@ -100,6 +111,8 @@ class TaskEvent {
   JobID job_id_ = JobID::Nil();
   /// Attempt number
   int32_t attempt_number_ = -1;
+  /// Node ID.
+  NodeID node_id_ = NodeID::Nil();
 };
 
 /// TaskStatusEvent is generated when a task changes its status.
@@ -153,6 +166,7 @@ class TaskStatusEvent : public TaskEvent {
       int64_t timestamp,
       bool is_actor_task_event,
       std::string session_name,
+      const NodeID &node_id,
       const std::shared_ptr<const TaskSpecification> &task_spec = nullptr,
       std::optional<const TaskStateUpdate> state_update = std::nullopt);
 
@@ -163,15 +177,15 @@ class TaskStatusEvent : public TaskEvent {
 
   /// The function to convert the TaskStatusEvent class to a pair of
   /// rpc::events::RayEvent with rpc::events::TaskDefinitionEvent and
-  /// rpc::events::TaskExecutionEvent respectively. The TaskExecutionEvent will always
+  /// rpc::events::TaskLifecycleEvent respectively. The TaskLifecycleEvent will always
   /// be populated. The TaskDefinitionEvent will be populated only when the task_spec_
   /// is not null.
   /// NOTE: this method will modify internal states by moving fields of task_spec_ to
   /// the rpc::events::RayEvent.
   ///
-  /// \param[out] ray_events The pair of rpc::events::RayEvent protobuf messages to be
-  /// filled.
-  void ToRpcRayEvents(RayEventsPair &ray_events) override;
+  /// \param[out] ray_events_tuple The struct containing a tuple of rpc::events::RayEvent
+  /// to be filled.
+  void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) override;
 
   bool IsProfileEvent() const override { return false; }
 
@@ -181,9 +195,9 @@ class TaskStatusEvent : public TaskEvent {
   template <typename T>
   void PopulateRpcRayTaskDefinitionEvent(T &definition_event_data);
 
-  // Helper functions to populate the task execution event of rpc::events::RayEvent
-  void PopulateRpcRayTaskExecutionEvent(
-      rpc::events::TaskExecutionEvent &execution_event_data,
+  // Helper functions to populate the task lifecycle event of rpc::events::RayEvent
+  void PopulateRpcRayTaskLifecycleEvent(
+      rpc::events::TaskLifecycleEvent &lifecycle_event_data,
       google::protobuf::Timestamp timestamp);
 
   // Helper functions to populate the base fields of rpc::events::RayEvent
@@ -216,7 +230,8 @@ class TaskProfileEvent : public TaskEvent {
                    std::string node_ip_address,
                    std::string event_name,
                    int64_t start_time,
-                   std::string session_name);
+                   std::string session_name,
+                   const NodeID &node_id);
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
@@ -224,8 +239,7 @@ class TaskProfileEvent : public TaskEvent {
       std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
   /// Note: The extra data will be moved when this is called and will no longer be usable.
-  /// Second element of the RayEventsPair will always be empty for TaskProfileEvent.
-  void ToRpcRayEvents(RayEventsPair &ray_events) override;
+  void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) override;
 
   bool IsProfileEvent() const override { return true; }
 
@@ -364,6 +378,9 @@ class TaskEventBuffer {
 
   /// Return the current Ray session name.
   virtual std::string GetSessionName() const = 0;
+
+  /// Return the node ID.
+  virtual NodeID GetNodeID() const = 0;
 };
 
 /// Implementation of TaskEventBuffer.
@@ -381,7 +398,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   explicit TaskEventBufferImpl(
       std::unique_ptr<gcs::GcsClient> gcs_client,
       std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
-      std::string session_name);
+      std::string session_name,
+      const NodeID &node_id);
 
   TaskEventBufferImpl(const TaskEventBufferImpl &) = delete;
   TaskEventBufferImpl &operator=(const TaskEventBufferImpl &) = delete;
@@ -411,6 +429,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::string DebugString() override;
 
   std::string GetSessionName() const override { return session_name_; }
+
+  NodeID GetNodeID() const override { return node_id_; }
 
  private:
   /// Add a task status event to be reported.
@@ -464,7 +484,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   ///        status events being dropped.
   /// \return data The ray event data to be sent.
   std::unique_ptr<rpc::events::RayEventsData> CreateRayEventsDataToSend(
-      absl::flat_hash_map<TaskAttempt, RayEventsPair> &&agg_task_events,
+      absl::flat_hash_map<TaskAttempt, RayEventsTuple> &&agg_task_events,
       const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send);
 
   /// Reset the metrics counters for flush.
@@ -574,13 +594,22 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Stats counter map.
   CounterMapThreadSafe<TaskEventBufferCounter> stats_counter_;
 
-  /// True if there's a pending gRPC call. It's a simple way to prevent overloading
+  /// Number of in-flight gRPC calls to GCS. It's a simple way to prevent overloading
   /// GCS with too many calls. There is no point sending more events if GCS could not
   /// process them quick enough.
-  std::atomic<bool> gcs_grpc_in_progress_ = false;
+  std::atomic<int> gcs_grpc_in_progress_ = 0;
 
-  /// True if there's a pending gRPC call to the event aggregator.
-  std::atomic<bool> event_aggregator_grpc_in_progress_ = false;
+  /// Number of in-flight gRPC calls to the event aggregator.
+  std::atomic<int> event_aggregator_grpc_in_progress_ = 0;
+
+  /// Mutex and condition variable for waiting on gRPC completion during shutdown.
+  absl::Mutex grpc_completion_mutex_;
+  absl::CondVar grpc_completion_cv_;
+
+  /// True during shutdown to allow final flush without re-enabling event ingestion.
+  /// This prevents the race where new events could be added during the brief window
+  /// when enabled_ would otherwise be set back to true for flushing.
+  std::atomic<bool> stopping_ = false;
 
   /// If true, task events are exported for Export API
   bool export_event_write_enabled_ = false;
@@ -593,6 +622,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// The current Ray session name. Passed in from the core worker
   std::string session_name_ = "";
+
+  /// The node id of the worker.
+  const NodeID node_id_;
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend);
@@ -607,7 +639,13 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   FRIEND_TEST(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask);
   FRIEND_TEST(TaskEventTestWriteExport, TestWriteTaskExportEvents);
   FRIEND_TEST(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents);
-  FRIEND_TEST(TaskEventBufferTest, TestMixedStatusAndProfileEventsToRayEvents);
+  FRIEND_TEST(TaskEventBufferTestDifferentDestination,
+              TestMixedStatusAndProfileEventsToRayEvents);
+  FRIEND_TEST(TaskEventBufferTestDifferentDestination, TestStopFlushesEvents);
+  FRIEND_TEST(TaskEventBufferTestDifferentDestination,
+              TestStopWaitsForInflightThenFlushes);
+  FRIEND_TEST(TaskEventBufferTestDroppedAttemptsOnly,
+              TestFlushSendsDroppedAttemptsWithoutEvents);
 };
 
 }  // namespace worker

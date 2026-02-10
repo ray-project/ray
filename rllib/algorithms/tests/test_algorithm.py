@@ -1,15 +1,17 @@
-import gymnasium as gym
-import numpy as np
 import os
+import time
+import unittest
 from pathlib import Path
 from random import choice
-import unittest
+
+import gymnasium as gym
+import numpy as np
 
 import ray
-from ray.rllib.algorithms.algorithm import Algorithm
 import ray.rllib.algorithms.dqn as dqn
-from ray.rllib.algorithms.bc import BCConfig
 import ray.rllib.algorithms.ppo as ppo
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
@@ -514,7 +516,7 @@ class TestAlgorithm(unittest.TestCase):
         """Tests whether no env on workers, but env on eval workers works ok."""
         script_path = Path(__file__)
         input_file = os.path.join(
-            script_path.parent.parent.parent, "tests/data/cartpole/small.json"
+            script_path.parent.parent.parent, "offline/tests/data/cartpole/small.json"
         )
 
         env = gym.make("CartPole-v1")
@@ -613,9 +615,52 @@ class TestAlgorithm(unittest.TestCase):
         self.assertTrue(all(f"p{i}" in mapped_pols for i in mapped))
         self.assertTrue(not any(f"p{i}" in mapped_pols for i in not_mapped))
 
+    def test_evaluation_in_parallel_to_training(self):
+        SECONDS_TO_SLEEP = 2
+
+        class SluggishEnv(gym.Env):
+            def __init__(self, config):
+                self.action_space = gym.spaces.Discrete(2)
+                self.observation_space = gym.spaces.Box(-1, 1, dtype=np.float32)
+
+            def step(self, action):
+                time.sleep(SECONDS_TO_SLEEP)
+                return self.observation_space.sample(), 1, True, False, {}
+
+            def reset(self, *, seed=None, options=None):
+                super().reset(seed=seed)
+                return self.observation_space.sample(), {}
+
+        config = (
+            ppo.PPOConfig()
+            .environment(env=SluggishEnv)
+            .evaluation(
+                evaluation_parallel_to_training=True,
+                evaluation_interval=1,
+                evaluation_num_env_runners=1,
+                evaluation_duration=1,
+                evaluation_duration_unit="timesteps",
+            )
+            .training(train_batch_size=1, minibatch_size=1)  # Speed things up
+        )
+        algo = config.build()
+        metrics = algo.train()
+        # This can only be true if we do not execute training and evaluation in sequence
+        assert metrics["time_this_iter_s"] < SECONDS_TO_SLEEP * 2
+        assert metrics["time_this_iter_s"] > SECONDS_TO_SLEEP
+        algo.stop()
+
+        config.evaluation(evaluation_parallel_to_training=False)
+        algo_2 = config.build()
+        metrics_2 = algo_2.train()
+        # This must be true if we execute training and evaluation in sequence
+        assert metrics_2["time_this_iter_s"] > SECONDS_TO_SLEEP * 2
+        algo_2.stop()
+
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

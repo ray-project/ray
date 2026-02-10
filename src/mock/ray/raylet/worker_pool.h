@@ -62,7 +62,7 @@ class MockWorkerPool : public WorkerPoolInterface {
               (override));
   MOCK_METHOD((std::vector<std::shared_ptr<WorkerInterface>>),
               GetAllRegisteredDrivers,
-              (bool filter_dead_drivers),
+              (bool filter_dead_drivers, bool filter_system_drivers),
               (const, override));
   MOCK_METHOD(Status,
               RegisterDriver,
@@ -74,7 +74,6 @@ class MockWorkerPool : public WorkerPoolInterface {
               RegisterWorker,
               (const std::shared_ptr<WorkerInterface> &worker,
                pid_t pid,
-               StartupToken worker_startup_token,
                std::function<void(Status, int)> send_reply_callback),
               (override));
   MOCK_METHOD(void,

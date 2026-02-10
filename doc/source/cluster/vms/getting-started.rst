@@ -43,6 +43,13 @@ Before we start, you will need to install some Python dependencies as follows:
 
                 $ pip install -U "ray[default]" boto3
 
+         .. tab-item:: Azure
+            :sync: Azure
+
+            .. code-block:: shell
+
+                $ pip install -U "ray[default]" azure-cli azure-core
+
          .. tab-item:: GCP
             :sync: GCP
 
@@ -54,13 +61,6 @@ Before we start, you will need to install some Python dependencies as follows:
       :sync: Community Supported
 
       .. tab-set::
-
-         .. tab-item:: Azure
-            :sync: Azure
-
-            .. code-block:: shell
-
-                $ pip install -U "ray[default]" azure-cli azure-core
 
          .. tab-item:: Aliyun
             :sync: Aliyun
@@ -76,9 +76,9 @@ Before we start, you will need to install some Python dependencies as follows:
 
             .. code-block:: shell
 
-                $ pip install -U "ray[default]" "git+https://github.com/vmware/vsphere-automation-sdk-python.git"
+                $ pip install -U "ray[default]"
 
-            vSphere Cluster Launcher Maintainers (GitHub handles): @LaynePeng, @roshankathawate, @JingChen23
+            vSphere Cluster Launcher Maintainers (GitHub handles): @roshankathawate, @ankitasonawane30, @VamshikShetty
 
 
 Next, if you're not set up to use your cloud provider from the command line, you'll have to configure your credentials:
@@ -95,6 +95,11 @@ Next, if you're not set up to use your cloud provider from the command line, you
 
             Configure your credentials in ``~/.aws/credentials`` as described in `the AWS docs <https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html>`_.
 
+         .. tab-item:: Azure
+            :sync: Azure
+
+            Log in using ``az login``, then configure your credentials with ``az account set -s <subscription_id>``.
+
          .. tab-item:: GCP
             :sync: GCP
 
@@ -104,11 +109,6 @@ Next, if you're not set up to use your cloud provider from the command line, you
       :sync: Community Supported
 
       .. tab-set::
-
-         .. tab-item:: Azure
-            :sync: Azure
-
-            Log in using ``az login``, then configure your credentials with ``az account set -s <subscription_id>``.
 
          .. tab-item:: Aliyun
             :sync: Aliyun
@@ -121,11 +121,7 @@ Next, if you're not set up to use your cloud provider from the command line, you
          .. tab-item:: vSphere
             :sync: vSphere
 
-            .. code-block:: shell
-
-                $ export VSPHERE_SERVER=192.168.0.1 # Enter your vSphere vCenter Address
-                $ export VSPHERE_USER=user # Enter your username
-                $ export VSPHERE_PASSWORD=password # Enter your password
+            Make sure Ray supervisor service is up and running as per `the Ray-on-VCF docs <https://github-vcf.devops.broadcom.net/vcf/vmray>`
 
 
 Create a (basic) Python application
@@ -232,24 +228,6 @@ A minimal sample cluster configuration file looks as follows:
             .. literalinclude:: ../../../../python/ray/autoscaler/aws/example-minimal.yaml
                :language: yaml
 
-         .. tab-item:: GCP
-            :sync: GCP
-
-            .. code-block:: yaml
-
-                # A unique identifier for the head node and workers of this cluster.
-                cluster_name: minimal
-
-                # Cloud-provider specific configuration.
-                provider:
-                    type: gcp
-                    region: us-west1
-
-   .. tab-item:: Community Supported
-      :sync: Community Supported
-
-      .. tab-set::
-
          .. tab-item:: Azure
             :sync: Azure
 
@@ -272,6 +250,24 @@ A minimal sample cluster configuration file looks as follows:
                     ssh_private_key: ~/.ssh/id_rsa
                     # changes to this should match what is specified in file_mounts
                     ssh_public_key: ~/.ssh/id_rsa.pub
+
+         .. tab-item:: GCP
+            :sync: GCP
+
+            .. code-block:: yaml
+
+                # A unique identifier for the head node and workers of this cluster.
+                cluster_name: minimal
+
+                # Cloud-provider specific configuration.
+                provider:
+                    type: gcp
+                    region: us-west1
+
+   .. tab-item:: Community Supported
+      :sync: Community Supported
+
+      .. tab-set::
 
          .. tab-item:: Aliyun
             :sync: Aliyun

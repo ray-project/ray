@@ -344,7 +344,7 @@ def assign_value(spec: Dict, path: Tuple, value: Any):
     """Assigns a value to a nested dictionary.
 
     Handles the special case of tuples, in which case the tuples
-    will be re-constructed to accomodate the updated value.
+    will be re-constructed to accommodate the updated value.
     """
     parent_spec = None
     parent_key = None

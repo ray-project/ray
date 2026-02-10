@@ -88,6 +88,13 @@ message ExportDatasetMetadata {
     PENDING = 4;
   }
 
+  message DashboardPanelMetadata {
+    // Unique identifier for the panel
+    string id = 1;
+    // Display name of the panel
+    string title = 2;
+  }
+
   // The operator DAG structure
   Topology topology = 1;
 
@@ -111,4 +118,8 @@ message ExportDatasetMetadata {
 
   // The state of the dataset
   DatasetState state = 8;
+
+  // List of metric panels to show for operators
+  // When showing these panels, it is expected to filter the metrics by operator ID.
+  repeated DashboardPanelMetadata operator_panels = 9;
 }

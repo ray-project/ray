@@ -1,9 +1,10 @@
-import gymnasium as gym
-import numpy as np
 import shutil
 import tempfile
-import tree
 import unittest
+
+import gymnasium as gym
+import numpy as np
+import tree
 
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -11,15 +12,14 @@ from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.rl_module.multi_rl_module import (
-    MultiRLModuleSpec,
     MultiRLModule,
+    MultiRLModuleSpec,
 )
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.numpy import convert_to_numpy
-
+from ray.rllib.utils.test_utils import check
 
 NUM_AGENTS = 2
 
@@ -329,7 +329,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

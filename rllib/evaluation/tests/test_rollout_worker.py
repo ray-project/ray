@@ -1,19 +1,21 @@
-import gymnasium as gym
-from gymnasium.spaces import Box, Discrete
-import numpy as np
 import os
 import random
 import time
 import unittest
+
+import gymnasium as gym
+import numpy as np
+from gymnasium.spaces import Box, Discrete
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.examples.envs.classes.mock_env import (
     MockEnv,
     MockEnv2,
@@ -22,7 +24,6 @@ from ray.rllib.examples.envs.classes.mock_env import (
 )
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
-from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
@@ -32,9 +33,9 @@ from ray.rllib.policy.sample_batch import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
+    EPISODE_RETURN_MEAN,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
-    EPISODE_RETURN_MEAN,
 )
 from ray.rllib.utils.test_utils import check
 from ray.tune.registry import register_env
@@ -218,14 +219,10 @@ class TestRolloutWorker(unittest.TestCase):
         results = algo.env_runner_group.foreach_env_runner(
             lambda w: w.total_rollout_fragment_length
         )
-        results2 = algo.env_runner_group.foreach_env_runner_with_id(
-            lambda i, w: (i, w.total_rollout_fragment_length)
-        )
         results3 = algo.env_runner_group.foreach_env_runner(
             lambda w: w.foreach_env(lambda env: 1)
         )
         self.assertEqual(results, [10, 10, 10])
-        self.assertEqual(results2, [(0, 10), (1, 10), (2, 10)])
         self.assertEqual(results3, [[1, 1], [1, 1], [1, 1]])
         algo.stop()
 
@@ -915,7 +912,8 @@ class TestRolloutWorker(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

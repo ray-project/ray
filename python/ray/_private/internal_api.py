@@ -4,7 +4,6 @@ from typing import List, Tuple
 import ray
 import ray._private.profiling as profiling
 import ray._private.services as services
-import ray._private.utils as utils
 import ray._private.worker
 from ray._common.network_utils import build_address
 from ray._private.state import GlobalState
@@ -57,6 +56,7 @@ def memory_summary(
 def get_memory_info_reply(state, node_manager_address=None, node_manager_port=None):
     """Returns global memory info."""
 
+    from ray._private.grpc_utils import init_grpc_channel
     from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 
     # We can ask any Raylet for the global memory info, that Raylet internally
@@ -75,7 +75,7 @@ def get_memory_info_reply(state, node_manager_address=None, node_manager_port=No
     else:
         raylet_address = build_address(node_manager_address, node_manager_port)
 
-    channel = utils.init_grpc_channel(
+    channel = init_grpc_channel(
         raylet_address,
         options=[
             ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
@@ -96,12 +96,13 @@ def node_stats(
 ):
     """Returns NodeStats object describing memory usage in the cluster."""
 
+    from ray._private.grpc_utils import init_grpc_channel
     from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 
     # We can ask any Raylet for the global memory info.
     assert node_manager_address is not None and node_manager_port is not None
     raylet_address = build_address(node_manager_address, node_manager_port)
-    channel = utils.init_grpc_channel(
+    channel = init_grpc_channel(
         raylet_address,
         options=[
             ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),

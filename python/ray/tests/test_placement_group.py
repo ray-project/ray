@@ -167,8 +167,16 @@ def test_placement_group_invalid_resource_request(shutdown_only):
     placement_group_assert_no_leak([pg])
 
 
-@pytest.mark.parametrize("gcs_actor_scheduling_enabled", [False, True])
-def test_placement_group_pack(ray_start_cluster, gcs_actor_scheduling_enabled):
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "include_dashboard": True,
+        }
+    ],
+    indirect=True,
+)
+def test_placement_group_pack(ray_start_cluster):
     @ray.remote(num_cpus=2)
     class Actor(object):
         def __init__(self):
@@ -180,14 +188,7 @@ def test_placement_group_pack(ray_start_cluster, gcs_actor_scheduling_enabled):
     cluster = ray_start_cluster
     num_nodes = 2
     for i in range(num_nodes):
-        cluster.add_node(
-            num_cpus=4,
-            _system_config={
-                "gcs_actor_scheduling_enabled": gcs_actor_scheduling_enabled
-            }
-            if i == 0
-            else {},
-        )
+        cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
     placement_group = ray.util.placement_group(
@@ -213,21 +214,27 @@ def test_placement_group_pack(ray_start_cluster, gcs_actor_scheduling_enabled):
     ray.get(actor_1.value.remote())
     ray.get(actor_2.value.remote())
 
-    # Get all actors.
-    actor_infos = ray._private.state.actors()
-
     # Make sure all actors in counter_list are collocated in one node.
-    actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
-    actor_info_2 = actor_infos.get(actor_2._actor_id.hex())
+    actor_info_1 = ray.util.state.get_actor(id=actor_1._actor_id.hex())
+    actor_info_2 = ray.util.state.get_actor(id=actor_2._actor_id.hex())
 
     assert actor_info_1 and actor_info_2
 
-    node_of_actor_1 = actor_info_1["Address"]["NodeID"]
-    node_of_actor_2 = actor_info_2["Address"]["NodeID"]
+    node_of_actor_1 = actor_info_1.node_id
+    node_of_actor_2 = actor_info_2.node_id
     assert node_of_actor_1 == node_of_actor_2
     placement_group_assert_no_leak([placement_group])
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "include_dashboard": True,
+        }
+    ],
+    indirect=True,
+)
 def test_placement_group_strict_pack(ray_start_cluster):
     @ray.remote(num_cpus=2)
     class Actor(object):
@@ -271,24 +278,29 @@ def test_placement_group_strict_pack(ray_start_cluster):
     ray.get(actor_1.value.remote())
     ray.get(actor_2.value.remote())
 
-    # Get all actors.
-    actor_infos = ray._private.state.actors()
-
     # Make sure all actors in counter_list are collocated in one node.
-    actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
-    actor_info_2 = actor_infos.get(actor_2._actor_id.hex())
+    actor_info_1 = ray.util.state.get_actor(id=actor_1._actor_id.hex())
+    actor_info_2 = ray.util.state.get_actor(id=actor_2._actor_id.hex())
 
     assert actor_info_1 and actor_info_2
 
-    node_of_actor_1 = actor_info_1["Address"]["NodeID"]
-    node_of_actor_2 = actor_info_2["Address"]["NodeID"]
+    node_of_actor_1 = actor_info_1.node_id
+    node_of_actor_2 = actor_info_2.node_id
     assert node_of_actor_1 == node_of_actor_2
 
     placement_group_assert_no_leak([placement_group])
 
 
-@pytest.mark.parametrize("gcs_actor_scheduling_enabled", [False, True])
-def test_placement_group_spread(ray_start_cluster, gcs_actor_scheduling_enabled):
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "include_dashboard": True,
+        }
+    ],
+    indirect=True,
+)
+def test_placement_group_spread(ray_start_cluster):
     @ray.remote
     class Actor(object):
         def __init__(self):
@@ -300,14 +312,7 @@ def test_placement_group_spread(ray_start_cluster, gcs_actor_scheduling_enabled)
     cluster = ray_start_cluster
     num_nodes = 2
     for i in range(num_nodes):
-        cluster.add_node(
-            num_cpus=4,
-            _system_config={
-                "gcs_actor_scheduling_enabled": gcs_actor_scheduling_enabled
-            }
-            if i == 0
-            else {},
-        )
+        cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
     placement_group = ray.util.placement_group(
@@ -328,20 +333,25 @@ def test_placement_group_spread(ray_start_cluster, gcs_actor_scheduling_enabled)
 
     [ray.get(actor.value.remote()) for actor in actors]
 
-    # Get all actors.
-    actor_infos = ray._private.state.actors()
-
     # Make sure all actors in counter_list are located in separate nodes.
-    actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
-    assert are_pairwise_unique(
-        [info_obj["Address"]["NodeID"] for info_obj in actor_info_objs]
-    )
+    actor_info_objs = [
+        ray.util.state.get_actor(id=actor._actor_id.hex()) for actor in actors
+    ]
+    assert are_pairwise_unique([info_obj.node_id for info_obj in actor_info_objs])
 
     placement_group_assert_no_leak([placement_group])
 
 
-@pytest.mark.parametrize("gcs_actor_scheduling_enabled", [False, True])
-def test_placement_group_strict_spread(ray_start_cluster, gcs_actor_scheduling_enabled):
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "include_dashboard": True,
+        }
+    ],
+    indirect=True,
+)
+def test_placement_group_strict_spread(ray_start_cluster):
     @ray.remote
     class Actor(object):
         def __init__(self):
@@ -353,14 +363,7 @@ def test_placement_group_strict_spread(ray_start_cluster, gcs_actor_scheduling_e
     cluster = ray_start_cluster
     num_nodes = 3
     for i in range(num_nodes):
-        cluster.add_node(
-            num_cpus=4,
-            _system_config={
-                "gcs_actor_scheduling_enabled": gcs_actor_scheduling_enabled
-            }
-            if i == 0
-            else {},
-        )
+        cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
     placement_group = ray.util.placement_group(
@@ -381,14 +384,11 @@ def test_placement_group_strict_spread(ray_start_cluster, gcs_actor_scheduling_e
 
     [ray.get(actor.value.remote()) for actor in actors]
 
-    # Get all actors.
-    actor_infos = ray._private.state.actors()
-
     # Make sure all actors in counter_list are located in separate nodes.
-    actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
-    assert are_pairwise_unique(
-        [info_obj["Address"]["NodeID"] for info_obj in actor_info_objs]
-    )
+    actor_info_objs = [
+        ray.util.state.get_actor(id=actor._actor_id.hex()) for actor in actors
+    ]
+    assert are_pairwise_unique([info_obj.node_id for info_obj in actor_info_objs])
 
     actors_no_special_bundle = [
         Actor.options(

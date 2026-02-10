@@ -19,6 +19,7 @@
 #include <string>
 
 #include "ray/common/event_stats.h"
+#include "ray/common/metrics.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 
@@ -56,7 +57,10 @@ class instrumented_io_context : public boost::asio::io_context {
   /// for the provided handler.
   void dispatch(std::function<void()> handler, std::string name);
 
-  EventTracker &stats() const { return *event_stats_; };
+  std::shared_ptr<EventTracker> stats() const { return event_stats_; };
+
+  ray::stats::Gauge io_context_event_loop_lag_ms_gauge_metric{
+      ray::GetIoContextEventLoopLagMsGaugeMetric()};
 
  private:
   /// The event stats tracker to use to record asio handler stats to.

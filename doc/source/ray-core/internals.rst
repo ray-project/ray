@@ -10,3 +10,9 @@ For the high level architecture overview, please refer to the `whitepaper <https
     :maxdepth: 1
 
     internals/task-lifecycle.rst
+    internals/autoscaler-v2.rst
+    internals/rpc-fault-tolerance.rst
+    internals/token-authentication.rst
+    internals/metric-exporter.rst
+    internals/ray-event-exporter.rst
+    internals/port-service-discovery.rst

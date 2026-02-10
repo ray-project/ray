@@ -29,9 +29,11 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
+    RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S,
     RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
     RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
     RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
@@ -216,17 +218,23 @@ class MultiplexMixin:
         self,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> Optional[PendingRequest]:
-        """Matching pending request based on the request metadata."""
+        """Matching pending request based on the request metadata.
+
+        Uses dict index for O(1) lookup by multiplexed_model_id.
+        Also performs lazy cleanup of done futures to prevent memory leaks.
+        """
         if request_metadata is None or not request_metadata.multiplexed_model_id:
             return None
 
-        for pr in self._pending_requests_to_fulfill:
-            if (
-                not pr.future.done()
-                and pr.metadata.multiplexed_model_id
-                == request_metadata.multiplexed_model_id
-            ):
+        model_id = request_metadata.multiplexed_model_id
+        candidates = self._pending_requests_by_model_id.get(model_id)
+        while candidates:
+            pr = candidates[0]
+            if not pr.future.done():
                 return pr
+            candidates.popleft()
+        self._pending_requests_by_model_id.pop(model_id, None)
+        return None
 
     def _update_multiplexed_model_ids_with_replicas(
         self, replicas: List[RunningReplica]
@@ -411,12 +419,15 @@ class FIFOMixin:
         and not assigned.
         """
         # First try to match a pending request based on the request metadata.
+        # Uses O(1) dict lookup instead of O(n) deque scan.
         matched_pending_request = self._get_pending_request_matching_metadata(
             request_metadata
         )
         if matched_pending_request is not None:
+            self._record_queue_wait_time(matched_pending_request)
             matched_pending_request.future.set_result(replica)
-            self._pending_requests_to_fulfill.remove(matched_pending_request)
+            # O(1) removal from dict indices. Don't remove from deque - use lazy cleanup.
+            self._remove_pending_request_from_indices(matched_pending_request)
             return
 
         # If no pending request matches the request metadata, fulfill the next in the
@@ -424,7 +435,9 @@ class FIFOMixin:
         while len(self._pending_requests_to_fulfill) > 0:
             pr = self._pending_requests_to_fulfill.popleft()
             if not pr.future.done():
+                self._record_queue_wait_time(pr)
                 pr.future.set_result(replica)
+                self._remove_pending_request_from_indices(pr)
                 break
 
 
@@ -473,14 +486,22 @@ class RequestRouter(ABC):
         self._self_actor_handle = self_actor_handle
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
         self._create_replica_wrapper_func = create_replica_wrapper_func
+        self._get_curr_time_s = get_curr_time_s if get_curr_time_s else time.time
 
         # Current replicas available to be routed.
         # Updated via `update_replicas`.
         self._replica_id_set: Set[ReplicaID] = set()
         self._replicas: Dict[ReplicaID, RunningReplica] = {}
+        # Cached list of replicas to avoid O(n) dict-to-list conversion on every
+        # routing iteration. Updated only when replicas change via `update_replicas`.
+        self._replicas_list: List[RunningReplica] = []
         self._replica_queue_len_cache = ReplicaQueueLengthCache(
             get_curr_time_s=get_curr_time_s,
         )
+
+        # Throttle state for router queue length gauge updates.
+        # Maps replica_id -> last update timestamp to avoid excessive metric updates.
+        self._queue_len_gauge_last_update: Dict[ReplicaID, float] = {}
 
         # NOTE(edoakes): Python 3.10 removed the `loop` parameter to `asyncio.Event`.
         # Now, the `asyncio.Event` will call `get_running_loop` in its constructor to
@@ -505,16 +526,28 @@ class RequestRouter(ABC):
         self._pending_requests_to_fulfill: Deque[PendingRequest] = deque()
         self._pending_requests_to_route: Deque[PendingRequest] = deque()
 
+        # Dict indices for O(1) lookups of pending requests.
+        # Maps internal_request_id -> PendingRequest for fast lookup by request ID.
+        self._pending_requests_by_id: Dict[str, PendingRequest] = {}
+        # Maps multiplexed_model_id -> deque of PendingRequests for fast lookup by model.
+        # Using deque allows O(1) popleft for cleaning done entries at the front.
+        self._pending_requests_by_model_id: DefaultDict[
+            str, Deque[PendingRequest]
+        ] = defaultdict(deque)
+
         # Prepare request router metrics.
         self.num_routing_tasks_gauge = metrics.Gauge(
             "serve_num_scheduling_tasks",
             description="The number of request routing tasks in the router.",
-            tag_keys=("app", "deployment", "actor_id"),
+            tag_keys=("app", "deployment", "actor_id", "application", "handle_source"),
         ).set_default_tags(
             {
+                # TODO(abrar): Remove "app" in future.
                 "app": self._deployment_id.app_name,
+                "application": self._deployment_id.app_name,
                 "deployment": self._deployment_id.name,
                 "actor_id": self_actor_id if self_actor_id else "",
+                "handle_source": self._handle_source.value,
             }
         )
         self.num_routing_tasks_gauge.set(0)
@@ -526,15 +559,84 @@ class RequestRouter(ABC):
                 "The number of request routing tasks in the router "
                 "that are undergoing backoff."
             ),
-            tag_keys=("app", "deployment", "actor_id"),
+            tag_keys=("app", "deployment", "actor_id", "application", "handle_source"),
         ).set_default_tags(
             {
+                # TODO(abrar): Remove "app" in future.
                 "app": self._deployment_id.app_name,
+                "application": self._deployment_id.app_name,
                 "deployment": self._deployment_id.name,
                 "actor_id": self_actor_id if self_actor_id else "",
+                "handle_source": self._handle_source.value,
             }
         )
         self.num_routing_tasks_in_backoff_gauge.set(self.num_routing_tasks_in_backoff)
+
+        # Queue wait time histogram: time request spent waiting in queue
+        # before being assigned to a replica.
+        self.queue_wait_time_ms_histogram = metrics.Histogram(
+            "serve_request_router_fulfillment_time_ms",
+            description=(
+                "Time in milliseconds that a request spent waiting in the "
+                "queue before being assigned to a replica."
+            ),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("deployment", "actor_id", "application", "handle_source"),
+        ).set_default_tags(
+            {
+                "application": self._deployment_id.app_name,
+                "deployment": self._deployment_id.name,
+                "actor_id": self_actor_id if self_actor_id else "",
+                "handle_source": self._handle_source.value,
+            }
+        )
+
+        self.router_queue_len_gauge = metrics.Gauge(
+            "serve_request_router_queue_len",
+            description=(
+                "The number of requests currently running on a replica "
+                "as tracked by the router's queue length cache."
+            ),
+            tag_keys=(
+                "deployment",
+                "replica_id",
+                "actor_id",
+                "application",
+                "handle_source",
+            ),
+        ).set_default_tags(
+            {
+                "application": self._deployment_id.app_name,
+                "deployment": self._deployment_id.name,
+                "actor_id": self_actor_id if self_actor_id else "",
+                "handle_source": self._handle_source.value,
+            }
+        )
+
+    def _update_router_queue_len_gauge(
+        self, replica_id: ReplicaID, queue_len: int, *, force: bool = False
+    ) -> None:
+        """Update the router queue length gauge for a specific replica.
+
+        Updates are throttled to reduce metrics overhead on the hot path.
+        Set RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S=0 to disable throttling.
+
+        Args:
+            replica_id: The replica to update the gauge for.
+            queue_len: The current queue length.
+            force: If True, bypass throttling and always update.
+        """
+        if not force and RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S > 0:
+            curr_time = self._get_curr_time_s()
+            last_update = self._queue_len_gauge_last_update.get(replica_id, 0)
+            if curr_time - last_update < RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S:
+                return
+            self._queue_len_gauge_last_update[replica_id] = curr_time
+
+        self.router_queue_len_gauge.set(
+            queue_len,
+            tags={"replica_id": replica_id.unique_id},
+        )
 
     def initialize_state(self, **kwargs):
         """
@@ -563,7 +665,16 @@ class RequestRouter(ABC):
 
     @property
     def num_pending_requests(self) -> int:
-        """Current number of requests pending assignment."""
+        """Current number of requests pending assignment.
+
+        This uses the deque length rather than the dict length because the deque
+        uses lazy cleanup - fulfilled requests are only removed from the front
+        of the deque, not immediately when fulfilled. This intentionally keeps
+        the count higher, which keeps routing tasks alive longer to handle
+        incoming requests without the overhead of constantly stopping/restarting
+        tasks. Maybe it is possible to use the dict length instead, but it would
+        require rethinking the routing task termination logic.
+        """
         return len(self._pending_requests_to_fulfill)
 
     @property
@@ -607,13 +718,59 @@ class RequestRouter(ABC):
     def on_replica_actor_died(self, replica_id: ReplicaID):
         """Drop replica from replica set so it's not considered for future requests."""
         self._replicas.pop(replica_id, None)
+        self._replicas_list = list(self._replicas.values())
         self._replica_id_set.discard(replica_id)
+        self._queue_len_gauge_last_update.pop(replica_id, None)
         if hasattr(self, "_discard_colocated_replica_ids_on_replica_actor_died"):
             self._discard_colocated_replica_ids_on_replica_actor_died(replica_id)
 
     def on_replica_actor_unavailable(self, replica_id: ReplicaID):
         """Invalidate cache entry so active probing is required for the next request."""
         self._replica_queue_len_cache.invalidate_key(replica_id)
+        self._queue_len_gauge_last_update.pop(replica_id, None)
+
+    def _add_pending_request_to_indices(self, pending_request: PendingRequest):
+        """Add a pending request to the dict indices for O(1) lookups."""
+        internal_id = pending_request.metadata.internal_request_id
+        if internal_id in self._pending_requests_by_id:
+            # Retry path: avoid duplicating entries (especially for model_id lists).
+            return
+        self._pending_requests_by_id[internal_id] = pending_request
+        model_id = pending_request.metadata.multiplexed_model_id
+        if model_id:
+            self._pending_requests_by_model_id[model_id].append(pending_request)
+
+    def _remove_pending_request_from_indices(self, pending_request: PendingRequest):
+        """Remove a pending request from the dict indices."""
+        internal_id = pending_request.metadata.internal_request_id
+        self._pending_requests_by_id.pop(internal_id, None)
+        # Note: We don't eagerly remove from _pending_requests_by_model_id here
+        # because finding the item in the list would be O(n). Instead, we use lazy
+        # cleanup in _get_pending_request_matching_multiplexed_model_id() which
+        # removes done entries during lookup, amortizing the cleanup cost.
+
+    def _insert_pending_request_sorted(
+        self, queue: Deque[PendingRequest], pending_request: PendingRequest
+    ):
+        """Insert a pending request into the queue maintaining sorted order by created_at.
+
+        Optimized for the common case where retries have recent timestamps and belong
+        near the end of the queue. Uses O(1) append when possible, otherwise O(n) insert.
+        """
+        # Fast path: if queue is empty or request is newer than the last item, append.
+        # This is O(1) and handles the common case where retries are recent.
+        if len(queue) == 0 or pending_request.created_at >= queue[-1].created_at:
+            queue.append(pending_request)
+            return
+
+        # Slow path: linear scan to find insertion point. This is O(n) but retries
+        # requiring mid-queue insertion are rare, so we keep the simple approach.
+        index = 0
+        for pr in queue:
+            if pending_request.created_at < pr.created_at:
+                break
+            index += 1
+        queue.insert(index, pending_request)
 
     def on_new_queue_len_info(
         self, replica_id: ReplicaID, queue_len_info: ReplicaQueueLengthInfo
@@ -623,12 +780,17 @@ class RequestRouter(ABC):
             self._replica_queue_len_cache.update(
                 replica_id, queue_len_info.num_ongoing_requests
             )
+            self._update_router_queue_len_gauge(
+                replica_id, queue_len_info.num_ongoing_requests
+            )
 
     def on_send_request(self, replica_id: ReplicaID):
         """Increment queue length cache when a request is sent to a replica."""
         if self._use_replica_queue_len_cache:
             num_ongoing_requests = self._replica_queue_len_cache.get(replica_id) or 0
-            self._replica_queue_len_cache.update(replica_id, num_ongoing_requests + 1)
+            new_queue_len = num_ongoing_requests + 1
+            self._replica_queue_len_cache.update(replica_id, new_queue_len)
+            self._update_router_queue_len_gauge(replica_id, new_queue_len)
 
     def update_replicas(self, replicas: List[RunningReplica]):
         """Update the set of available replicas to be considered for routing.
@@ -669,10 +831,15 @@ class RequestRouter(ABC):
         replicas_to_ping = [new_replicas.get(id) for id in new_ids]
 
         self._replicas = new_replicas
+        self._replicas_list = list(new_replicas.values())
         self._replica_id_set = new_replica_id_set
         self._replica_queue_len_cache.remove_inactive_replicas(
             active_replica_ids=new_replica_id_set
         )
+        # Clean up throttle state for removed replicas.
+        for replica_id in list(self._queue_len_gauge_last_update.keys()):
+            if replica_id not in new_replica_id_set:
+                del self._queue_len_gauge_last_update[replica_id]
         # Populate cache for new replicas
         self._event_loop.create_task(self._probe_queue_lens(replicas_to_ping, 0))
         self._replicas_updated_event.set()
@@ -777,6 +944,7 @@ class RequestRouter(ABC):
                 queue_len = t.result()
                 result.append((replica, queue_len))
                 self._replica_queue_len_cache.update(replica.replica_id, queue_len)
+                self._update_router_queue_len_gauge(replica.replica_id, queue_len)
 
         assert len(result) == len(replicas)
         return result
@@ -845,21 +1013,24 @@ class RequestRouter(ABC):
     ) -> Optional[PendingRequest]:
         """Get the pending request that matches on the internal request id.
 
+        Uses dict index for O(1) lookup by internal_request_id.
+
         If no request metadata is provided or no request is found that matches
         the internal request ID, return None.
         """
         if request_metadata is None:
             return None
 
-        for pr in self._pending_requests_to_fulfill:
-            if (
-                not pr.future.done()
-                and pr.metadata.internal_request_id
-                == request_metadata.internal_request_id
-            ):
-                return pr
+        pr = self._pending_requests_by_id.get(request_metadata.internal_request_id)
+        if pr is not None and not pr.future.done():
+            return pr
 
         return None
+
+    def _record_queue_wait_time(self, pending_request: PendingRequest):
+        """Records the time a request spent in the queue."""
+        queue_wait_time_ms = (time.time() - pending_request.created_at) * 1000
+        self.queue_wait_time_ms_histogram.observe(queue_wait_time_ms)
 
     def _fulfill_next_pending_request(
         self,
@@ -872,13 +1043,15 @@ class RequestRouter(ABC):
         If a pending request has been cancelled, it will be popped from the queue
         and not assigned.
         """
-        # Find the pending request that matches exactly.
+        # Find the pending request that matches exactly using O(1) dict lookup.
         matched_pending_request = (
             self._get_pending_request_matching_internal_request_id(request_metadata)
         )
         if matched_pending_request is not None:
+            self._record_queue_wait_time(matched_pending_request)
             matched_pending_request.future.set_result(replica)
-            self._pending_requests_to_fulfill.remove(matched_pending_request)
+            # O(1) removal from dict indices. Don't remove from deque - use lazy cleanup.
+            self._remove_pending_request_from_indices(matched_pending_request)
             return
 
     def _get_next_pending_request_to_route(
@@ -923,11 +1096,10 @@ class RequestRouter(ABC):
                         extra={"log_to_stderr": False},
                     )
 
-                replica_ranks = list(self._replicas.values())
                 chosen_replicas: List[
                     List[RunningReplica]
                 ] = await self.choose_replicas(
-                    candidate_replicas=replica_ranks,
+                    candidate_replicas=self._replicas_list,
                     pending_request=pending_request,
                 )
                 for replicas in chosen_replicas:
@@ -940,7 +1112,10 @@ class RequestRouter(ABC):
                 # replica is found. These sequence should only help to reduce the
                 # latency of the request. No backoff and sleep should be applied, until
                 # we have fall into the case trying on all available replicas.
-                if not pending_request.routing_context.should_backoff:
+                if (
+                    pending_request
+                    and not pending_request.routing_context.should_backoff
+                ):
                     continue
 
                 if not entered_backoff:
@@ -979,46 +1154,52 @@ class RequestRouter(ABC):
                 backoff_index = 0
                 pending_request = self._get_next_pending_request_to_route()
                 request_metadata = pending_request.metadata if pending_request else None
-                async for candidates in self._choose_replicas_with_backoff(
+                gen_choose_replicas_with_backoff = self._choose_replicas_with_backoff(
                     pending_request
-                ):
-                    # Clear out pending requests at the front of the
-                    # queue that have been cancelled, then reevaluate
-                    # if we need to continue this routing task.
-                    while (
-                        len(self._pending_requests_to_fulfill) > 0
-                        and self._pending_requests_to_fulfill[0].future.done()
-                    ):
-                        self._pending_requests_to_fulfill.popleft()
+                )
+                try:
+                    async for candidates in gen_choose_replicas_with_backoff:
+                        # Clear out pending requests at the front of the
+                        # queue that have been cancelled, then reevaluate
+                        # if we need to continue this routing task.
+                        while (
+                            len(self._pending_requests_to_fulfill) > 0
+                            and self._pending_requests_to_fulfill[0].future.done()
+                        ):
+                            self._pending_requests_to_fulfill.popleft()
 
-                    if len(self._routing_tasks) > self.target_num_routing_tasks:
-                        break
+                        if len(self._routing_tasks) > self.target_num_routing_tasks:
+                            break
 
-                    replica = await self._select_from_candidate_replicas(
-                        candidates, backoff_index
-                    )
-                    if replica is not None:
-                        self._fulfill_next_pending_request(replica, request_metadata)
-                        break
-
-                    backoff_index += 1
-                    if backoff_index >= 50 and backoff_index % 50 == 0:
-                        routing_time_elapsed = time.time() - start_time
-                        warning_log = (
-                            "Failed to route request after "
-                            f"{backoff_index} attempts over "
-                            f"{routing_time_elapsed:.2f}s. Retrying."
+                        replica = await self._select_from_candidate_replicas(
+                            candidates, backoff_index
                         )
-                        if request_metadata is not None:
-                            warning_log += (
-                                f" Request ID: {request_metadata.request_id}."
+                        if replica is not None:
+                            self._fulfill_next_pending_request(
+                                replica, request_metadata
                             )
-                            if request_metadata.multiplexed_model_id:
+                            break
+
+                        backoff_index += 1
+                        if backoff_index >= 50 and backoff_index % 50 == 0:
+                            routing_time_elapsed = time.time() - start_time
+                            warning_log = (
+                                "Failed to route request after "
+                                f"{backoff_index} attempts over "
+                                f"{routing_time_elapsed:.2f}s. Retrying."
+                            )
+                            if request_metadata is not None:
                                 warning_log += (
-                                    " Multiplexed model ID: "
-                                    f"{request_metadata.multiplexed_model_id}."
+                                    f" Request ID: {request_metadata.request_id}."
                                 )
-                        logger.warning(warning_log)
+                                if request_metadata.multiplexed_model_id:
+                                    warning_log += (
+                                        " Multiplexed model ID: "
+                                        f"{request_metadata.multiplexed_model_id}."
+                                    )
+                            logger.warning(warning_log)
+                finally:
+                    await gen_choose_replicas_with_backoff.aclose()
 
         except Exception:
             logger.exception("Unexpected error in _fulfill_pending_requests.")
@@ -1057,29 +1238,23 @@ class RequestRouter(ABC):
                 self._pending_requests_to_fulfill.append(pending_request)
                 self._pending_requests_to_route.append(pending_request)
             else:
+                # Retry path: insert at correct position to maintain sorted order by
+                # created_at. Uses optimized helper that is O(1) for common case (recent
+                # retries) and O(n) for older retries requiring mid-queue insertion.
                 pending_request.reset_future()
-                index = 0
-                for pr in self._pending_requests_to_fulfill:
-                    if pending_request.created_at < pr.created_at:
-                        break
+                self._insert_pending_request_sorted(
+                    self._pending_requests_to_fulfill, pending_request
+                )
+                self._insert_pending_request_sorted(
+                    self._pending_requests_to_route, pending_request
+                )
 
-                    index += 1
-
-                self._pending_requests_to_fulfill.insert(index, pending_request)
-
-                index = 0
-                for pr in self._pending_requests_to_route:
-                    if pending_request.created_at < pr.created_at:
-                        break
-
-                    index += 1
-
-                self._pending_requests_to_route.insert(index, pending_request)
-
+            self._add_pending_request_to_indices(pending_request)
             self._maybe_start_routing_tasks()
             replica = await pending_request.future
         except asyncio.CancelledError as e:
             pending_request.future.cancel()
+            self._remove_pending_request_from_indices(pending_request)
 
             raise e from None
 
@@ -1087,9 +1262,22 @@ class RequestRouter(ABC):
 
     def _update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         """Compatibility shim for RunningReplicaInfo datatype."""
-        return self.update_replicas(
-            [self.create_replica_wrapper(r) for r in running_replicas]
-        )
+        replica_wrappers = []
+        for r in running_replicas:
+            try:
+                replica_wrappers.append(self.create_replica_wrapper(r))
+            except ValueError:
+                # NOTE(abrar): ValueError is raised when the actor handle is not found
+                # by ray.get_actor.
+
+                # Actor has died (e.g., due to node failure) but controller hasn't
+                # detected it yet. Skip this replica; controller will send an update
+                # when it detects the failure.
+                logger.warning(
+                    f"Failed to get handle to replica {r.replica_id} during router "
+                    "update. The replica actor may have died. Skipping this replica."
+                )
+        return self.update_replicas(replica_wrappers)
 
     def select_available_replicas(
         self, candidates: Optional[List[RunningReplica]] = None
@@ -1104,7 +1292,7 @@ class RequestRouter(ABC):
         If input candidates is `None`, all replicas are considered.
         """
         if candidates is None:
-            candidates = list(self._replicas.values())
+            candidates = self._replicas_list
 
         available_replicas = []
         for r in candidates:

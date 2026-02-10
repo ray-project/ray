@@ -2,9 +2,9 @@ import logging
 import os
 import time
 
-from ray.util.debug import log_once
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_tf
+from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -82,8 +82,7 @@ def _run_timeline(sess, ops, debug_name, feed_dict=None, timeline_dir=None):
             # In local mode, tf1.RunOptions is not available, see #26511
             if log_once("tf1.RunOptions_not_available"):
                 logger.exception(
-                    "Can not access tf.RunOptions.FULL_TRACE. This may be because "
-                    "you have used `ray.init(local_mode=True)`. RLlib will use "
+                    "Can not access tf.RunOptions.FULL_TRACE. RLlib will use "
                     "timeline without `options=tf.RunOptions.FULL_TRACE`."
                 )
         run_metadata = tf1.RunMetadata()

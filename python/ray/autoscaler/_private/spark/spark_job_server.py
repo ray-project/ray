@@ -221,7 +221,7 @@ class SparkJobServer(ThreadingHTTPServer):
 
     def shutdown(self) -> None:
         super().shutdown()
-        for spark_job_group_id in self.task_status_dict:
+        for spark_job_group_id in list(self.task_status_dict.keys()):
             self.spark.sparkContext.cancelJobGroup(spark_job_group_id)
         # Sleep 1 second to wait for all spark job cancellation
         # The spark job cancellation will do things asyncly in a background thread,

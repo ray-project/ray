@@ -4,8 +4,10 @@
 # Mainly for use on Anyscale.
 
 ARG BASE_IMAGE
-FROM ${BASE_IMAGE}
-ARG PYTHON_VERSION
+FROM ${BASE_IMAGE} AS main-build
+ARG PYTHON_VERSION="3.10"
+ARG PYTHON_DEPSET="python/deplocks/base_slim/ray_base_slim_py${PYTHON_VERSION}.lock"
+ARG CONSTRAINTS_FILE="python/requirements_compiled_py${PYTHON_VERSION}.txt"
 
 RUN <<EOF
 #!/bin/bash
@@ -29,6 +31,10 @@ APT_PKGS=(
     gdb
     vim-tiny
     less
+
+    # For HAProxy
+    socat
+    liblua5.3-0
 )
 
 apt-get update
@@ -98,7 +104,8 @@ USER ray
 ENV HOME=/home/ray
 WORKDIR /home/ray
 
-COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
+COPY "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
+COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 RUN <<EOF
 #!/bin/bash
@@ -119,29 +126,67 @@ eval "$(/home/ray/anaconda3/bin/conda shell.bash activate)"
 /home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}"
 /home/ray/anaconda3/bin/conda clean -a
 
-# Install python packages
-PIP_PKGS=(
-    anyscale
-    packaging
-    azure-identity
-    "adlfs[abfs]"
-    boto3
-    google-cloud-storage
-    jupyterlab
-    ipywidgets
-    supervisor
-    "smart_open[s3,gcs,azure,http]"
-)
+uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
+    -r $HOME/python_depset.lock
 
-uv pip install --system --no-cache-dir --index-strategy unsafe-best-match \
-    -c /home/ray/requirements_compiled.txt \
-    "${PIP_PKGS[@]}"
 anyscale --version
 
 mkdir -p /tmp/supervisord
 
 EOF
 
-ENV PATH="/home/ray/anaconda3/bin:$PATH"
+ENV PATH="/home/ray/.local/bin:/home/ray/anaconda3/bin:$PATH"
+
+# --- HAProxy Build Stage ---
+FROM $BASE_IMAGE AS haproxy-builder
+
+RUN <<EOF
+#!/bin/bash
+set -euo pipefail
+
+apt-get update -y
+apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    curl \
+    libc6-dev \
+    liblua5.3-dev \
+    libpcre3-dev \
+    libssl-dev \
+    zlib1g-dev
+rm -rf /var/lib/apt/lists/*
+
+# Install HAProxy from source
+HAPROXY_VERSION="2.8.12"
+BUILD_DIR=$(mktemp -d)
+curl -sSfL -o "${BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
+tar -xzf "${BUILD_DIR}/haproxy.tar.gz" -C "${BUILD_DIR}" --strip-components=1
+make -C "${BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc)
+make -C "${BUILD_DIR}" install SBINDIR=/usr/local/bin
+rm -rf "${BUILD_DIR}"
+
+EOF
+
+# --- Return to main image ---
+FROM main-build AS main
+
+# Switch to root for system-level HAProxy setup
+USER root
+
+# Copy HAProxy binary from builder stage
+COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
+
+# Install HAProxy runtime dependency and setup
+RUN <<EOF
+#!/bin/bash
+set -euo pipefail
+
+mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
+chown -R ray:"$(id -gn ray)" /run/haproxy
+
+EOF
+
+USER ray
+WORKDIR /home/ray
 
 CMD ["bash"]

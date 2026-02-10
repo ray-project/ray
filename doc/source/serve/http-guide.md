@@ -110,6 +110,16 @@ Query the deployment using the `websockets` package (`pip install websockets`):
 :language: python
 ```
 
+### FastAPI factory pattern
+
+Ray Serve's object-based pattern, shown previously, requires FastAPI objects to be serializable via cloudpickle, which prevents the use of some standard libraries like `FastAPIInstrumentor` due to their reliance on non-serializable components such as thread locks. The factory pattern create the object of FastAPI directly on each replica, avoiding the need for FastAPI object serialization.
+
+```{literalinclude} doc_code/http_guide/http_guide.py
+:start-after: __begin_fastapi_factory_pattern__
+:end-before: __end_fastapi_factory_pattern__
+:language: python
+```
+
 (serve-http-streaming-response)=
 ## Streaming Responses
 
@@ -196,7 +206,4 @@ Serve uses a Uvicorn HTTP server internally to serve HTTP requests. By default, 
 keeps HTTP connections alive for 5 seconds between requests. Modify the keep-alive
 timeout by setting the `keep_alive_timeout_s` in the `http_options` field of the Serve
 config files. This config is global to your Ray cluster, and you can't update it during
-runtime. You can also set the `RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S` environment variable to
-set the keep alive timeout. `RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S` takes
-precedence over the `keep_alive_timeout_s` config if both are set. See
-Uvicorn's keep alive timeout [guide](https://www.uvicorn.org/server-behavior/#timeouts) for more information.
+runtime. See Uvicorn's keep alive timeout [guide](https://www.uvicorn.org/server-behavior/#timeouts) for more information.

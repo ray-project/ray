@@ -1,12 +1,14 @@
 import os
+import time
+
+import tqdm
+from many_nodes_tests.dashboard_test import DashboardTestAtScale
+
 import ray
 import ray._common.test_utils
 import ray._private.test_utils as test_utils
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from many_nodes_tests.dashboard_test import DashboardTestAtScale
-import time
-import tqdm
 
 is_smoke_test = True
 if "SMOKE_TEST" in os.environ:
@@ -104,7 +106,6 @@ results = {
     "pgs_per_second": rate,
     "num_pgs": MAX_PLACEMENT_GROUPS,
     "time": end_time - start_time,
-    "success": "1",
     "_peak_memory": round(used_gb, 2),
     "_peak_process_memory": usage,
 }

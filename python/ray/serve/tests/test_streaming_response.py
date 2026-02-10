@@ -11,7 +11,11 @@ from starlette.responses import StreamingResponse
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor
-from ray.serve._private.test_utils import get_application_url, get_application_urls
+from ray.serve._private.test_utils import (
+    get_application_url,
+    get_application_urls,
+    send_signal_on_cancellation,
+)
 from ray.serve.handle import DeploymentHandle
 
 
@@ -31,13 +35,19 @@ class StreamingRequester:
 @pytest.mark.parametrize("use_fastapi", [False, True])
 @pytest.mark.parametrize("use_async", [False, True])
 def test_basic(serve_instance, use_async: bool, use_fastapi: bool):
+    signal_actor = SignalActor.remote()
+
     async def hi_gen_async():
         for i in range(10):
             yield f"hi_{i}"
+            # to avoid coalescing chunks
+            await signal_actor.wait.remote()
 
     def hi_gen_sync():
         for i in range(10):
             yield f"hi_{i}"
+            # to avoid coalescing chunks
+            ray.get(signal_actor.wait.remote())
 
     if use_fastapi:
         app = FastAPI()
@@ -65,6 +75,7 @@ def test_basic(serve_instance, use_async: bool, use_fastapi: bool):
         r.raise_for_status()
         for i, chunk in enumerate(r.iter_text()):
             assert chunk == f"hi_{i}"
+            ray.get(signal_actor.send.remote())
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
@@ -252,15 +263,21 @@ def test_exception_in_generator(serve_instance, use_async: bool, use_fastapi: bo
 def test_proxy_from_streaming_handle(
     serve_instance, use_async: bool, use_fastapi: bool
 ):
+    signal_actor = SignalActor.remote()
+
     @serve.deployment
     class Streamer:
         async def hi_gen_async(self):
             for i in range(10):
                 yield f"hi_{i}"
+                # to avoid coalescing chunks
+                await signal_actor.wait.remote()
 
         def hi_gen_sync(self):
             for i in range(10):
                 yield f"hi_{i}"
+                # to avoid coalescing chunks
+                ray.get(signal_actor.wait.remote())
 
     if use_fastapi:
         app = FastAPI()
@@ -302,6 +319,7 @@ def test_proxy_from_streaming_handle(
         r.raise_for_status()
         for i, chunk in enumerate(r.iter_text()):
             assert chunk == f"hi_{i}"
+            ray.get(signal_actor.send.remote())
 
 
 def test_http_disconnect(serve_instance):
@@ -312,12 +330,9 @@ def test_http_disconnect(serve_instance):
     class SimpleGenerator:
         def __call__(self, request: Request) -> StreamingResponse:
             async def wait_for_disconnect():
-                try:
-                    yield "hi"
-                    await asyncio.sleep(100)
-                except asyncio.CancelledError:
-                    print("Cancelled!")
-                    signal_actor.send.remote()
+                yield "hi"
+                async with send_signal_on_cancellation(signal_actor):
+                    pass
 
             return StreamingResponse(wait_for_disconnect())
 

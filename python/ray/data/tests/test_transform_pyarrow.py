@@ -1,4 +1,5 @@
 import os
+import re
 import types
 from typing import Iterable
 
@@ -6,12 +7,8 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
-from ray.data import DataContext
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
@@ -21,7 +18,13 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     try_combine_chunked_columns,
     unify_schemas,
 )
+from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    _extension_array_concat_supported,
+)
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
+from ray.data.context import DataContext
 from ray.data.extensions import (
     ArrowConversionError,
     ArrowPythonObjectArray,
@@ -289,10 +292,6 @@ def test_arrow_concat_with_objects(object_concat_blocks, object_concat_expected)
     assert t3.column("b").to_pylist() == object_concat_expected["content"]["b"]
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
 def test_struct_with_different_field_names(
     struct_different_field_names_blocks, struct_different_field_names_expected
 ):
@@ -320,10 +319,6 @@ def test_struct_with_different_field_names(
     )
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
 def test_nested_structs(nested_structs_blocks, nested_structs_expected):
     # Checks that deeply nested structs (3 levels of nesting) are handled properly
     # during concatenation and the resulting table preserves the correct nesting
@@ -423,10 +418,6 @@ def test_struct_with_empty_arrays(
     assert result == expected, f"Expected {expected}, but got {result}"
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
 def test_struct_with_arrow_variable_shaped_tensor_type(
     struct_variable_shaped_tensor_blocks, struct_variable_shaped_tensor_expected
 ):
@@ -480,6 +471,64 @@ def test_struct_with_arrow_variable_shaped_tensor_type(
             np.testing.assert_array_equal(
                 struct["tensor"], np.zeros((2, 1), dtype=np.float32)
             )
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    reason="Requires PyArrow >= 14.0.0 for type promotion in nested struct fields",
+)
+def test_struct_with_diverging_primitive_types():
+    """Test concatenating tables with struct fields that have diverging primitive types.
+
+    This tests the scenario where struct fields have the same name but different
+    primitive types (e.g., int64 vs float64), which requires type promotion.
+    """
+    import pyarrow as pa
+
+    # Table 1: struct with (a: int64, b: string)
+    t1 = pa.table(
+        {
+            "data": pa.array(
+                [{"a": 1, "b": "hello"}, {"a": 2, "b": "world"}],
+                type=pa.struct([pa.field("a", pa.int64()), pa.field("b", pa.string())]),
+            )
+        }
+    )
+
+    # Table 2: struct with (a: float64, c: int32)
+    # Field 'a' has different type, field 'b' missing, field 'c' new
+    t2 = pa.table(
+        {
+            "data": pa.array(
+                [{"a": 1.5, "c": 100}, {"a": 2.5, "c": 200}],
+                type=pa.struct(
+                    [pa.field("a", pa.float64()), pa.field("c", pa.int32())]
+                ),
+            )
+        }
+    )
+
+    # Concatenate with type promotion
+    result = concat([t1, t2], promote_types=True)
+
+    # Verify schema: field 'a' should be promoted to float64
+    expected_struct_type = pa.struct(
+        [
+            pa.field("a", pa.float64()),
+            pa.field("b", pa.string()),
+            pa.field("c", pa.int32()),
+        ]
+    )
+    assert result.schema == pa.schema([pa.field("data", expected_struct_type)])
+
+    # Verify data: int64 values should be cast to float64, missing fields filled with None
+    expected_data = [
+        {"a": 1.0, "b": "hello", "c": None},
+        {"a": 2.0, "b": "world", "c": None},
+        {"a": 1.5, "b": None, "c": 100},
+        {"a": 2.5, "b": None, "c": 200},
+    ]
+    assert result.column("data").to_pylist() == expected_data
 
 
 def test_arrow_concat_object_with_tensor_fails(object_with_tensor_fails_blocks):
@@ -572,22 +621,6 @@ def test_unify_schemas(unify_schemas_basic_schemas, unify_schemas_multicol_schem
     )
 
 
-def test_unify_schemas_null_typed_lists(unify_schemas_null_typed_lists_schemas):
-    """Test handling of null-typed lists (cols_with_null_list functionality)."""
-    schemas = unify_schemas_null_typed_lists_schemas
-
-    # Should find valid value_type from schema2 and override
-    result = unify_schemas([schemas["null_list"], schemas["int_list"]])
-    assert result == schemas["expected"]
-
-    # Test with multiple schemas, some with null types
-    result = unify_schemas(
-        [schemas["null_list"], schemas["int_list"], schemas["string_list"]]
-    )
-    # Should use the first non-null type found (int32)
-    assert result == schemas["expected"]
-
-
 def test_unify_schemas_object_types(unify_schemas_object_types_schemas):
     """Test handling of object types (columns_with_objects functionality)."""
     schemas = unify_schemas_object_types_schemas
@@ -603,10 +636,6 @@ def test_unify_schemas_object_types(unify_schemas_object_types_schemas):
     assert result == schemas["expected"]
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
 def test_unify_schemas_incompatible_tensor_dtypes(
     unify_schemas_incompatible_tensor_schemas,
 ):
@@ -615,7 +644,9 @@ def test_unify_schemas_incompatible_tensor_dtypes(
 
     with pytest.raises(
         pa.lib.ArrowTypeError,
-        match="Unable to merge: Field tensor has incompatible types",
+        match=re.escape(
+            "Can't unify tensor types with divergent scalar types: [ArrowTensorType(shape=(2, 2), dtype=int32), ArrowTensorType(shape=(2, 2), dtype=float)]"
+        ),
     ):
         unify_schemas(unify_schemas_incompatible_tensor_schemas)
 
@@ -945,10 +976,6 @@ def test_pyarrow_conversion_error_handling(
         ]
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
 def test_mixed_tensor_types_same_dtype(
     mixed_tensor_types_same_dtype_blocks, mixed_tensor_types_same_dtype_expected
 ):
@@ -981,10 +1008,6 @@ def test_mixed_tensor_types_same_dtype(
         np.testing.assert_array_equal(result_tensor, expected_tensor)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
 def test_mixed_tensor_types_fixed_shape_different(
     mixed_tensor_types_fixed_shape_blocks, mixed_tensor_types_fixed_shape_expected
 ):
@@ -1017,10 +1040,6 @@ def test_mixed_tensor_types_fixed_shape_different(
         np.testing.assert_array_equal(result_tensor, expected_tensor)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
 def test_mixed_tensor_types_variable_shaped(
     mixed_tensor_types_variable_shaped_blocks,
     mixed_tensor_types_variable_shaped_expected,
@@ -1055,8 +1074,8 @@ def test_mixed_tensor_types_variable_shaped(
 
 
 @pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
+    not _extension_array_concat_supported(),
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
 )
 def test_mixed_tensor_types_in_struct(
     struct_with_mixed_tensor_types_blocks, struct_with_mixed_tensor_types_expected
@@ -1090,8 +1109,8 @@ def test_mixed_tensor_types_in_struct(
 
 
 @pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
+    not _extension_array_concat_supported(),
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
 )
 def test_nested_struct_with_mixed_tensor_types(
     nested_struct_with_mixed_tensor_types_blocks,
@@ -1125,8 +1144,8 @@ def test_nested_struct_with_mixed_tensor_types(
 
 
 @pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
+    not _extension_array_concat_supported(),
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
 )
 def test_multiple_tensor_fields_in_struct(
     multiple_tensor_fields_struct_blocks, multiple_tensor_fields_struct_expected
@@ -1156,25 +1175,38 @@ def test_multiple_tensor_fields_in_struct(
             assert field in row
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
-)
-def test_struct_with_incompatible_tensor_dtypes_fails(
-    incompatible_tensor_dtypes_blocks,
-):
+def test_struct_with_incompatible_tensor_dtypes_fails():
     """Test that concatenating structs with incompatible tensor dtypes fails gracefully."""
 
-    t1, t2 = incompatible_tensor_dtypes_blocks
+    # Block 1: Struct with float32 fixed-shape tensor
+    tensor_data1 = np.ones((2, 2), dtype=np.float32)
+
+    # Block 2: Struct with int64 variable-shaped tensor (different dtype)
+    tensor_data2 = np.array(
+        [
+            np.ones((3, 3), dtype=np.int64),
+            np.zeros((1, 4), dtype=np.int64),
+        ],
+        dtype=object,
+    )
+
+    t1, t2 = _create_struct_tensor_blocks(
+        tensor_data1, tensor_data2, "fixed", "variable"
+    )
 
     # This should fail because of incompatible tensor dtypes
-    with pytest.raises(pa.ArrowInvalid):
+    with pytest.raises(
+        ArrowConversionError,
+        match=re.escape(
+            "Can't unify tensor types with divergent scalar types: [ArrowTensorTypeV2(shape=(2,), dtype=float), ArrowVariableShapedTensorType(ndim=2, dtype=int64)]"
+        ),
+    ):
         concat([t1, t2])
 
 
 @pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
+    not _extension_array_concat_supported(),
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
 )
 def test_struct_with_additional_fields(
     struct_with_additional_fields_blocks, struct_with_additional_fields_expected
@@ -1210,8 +1242,8 @@ def test_struct_with_additional_fields(
 
 
 @pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("17.0.0"),
-    reason="Requires PyArrow version 17 or higher",
+    not _extension_array_concat_supported(),
+    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
 )
 def test_struct_with_null_tensor_values(
     struct_with_null_tensor_values_blocks, struct_with_null_tensor_values_expected
@@ -1879,9 +1911,12 @@ def mixed_tensor_types_same_dtype_expected():
     """Fixture for expected results from mixed tensor types with same dtype."""
     expected_schema = _create_tensor_schema(struct_name="tensor")
     expected_tensors = [
-        np.ones((2,), dtype=np.float32),  # First 2 converted to variable-shaped
-        np.ones((2,), dtype=np.float32),
-        np.ones((3, 3), dtype=np.float32),  # Last 2 variable-shaped
+        # First 2 were converted to var-shaped with their shape expanded
+        # with singleton axis: from (2,) to (1, 2)
+        np.ones((1, 2), dtype=np.float32),
+        np.ones((1, 2), dtype=np.float32),
+        # Last 2 were left intact
+        np.ones((3, 3), dtype=np.float32),
         np.zeros((1, 4), dtype=np.float32),
     ]
 
@@ -1905,7 +1940,7 @@ def mixed_tensor_types_fixed_shape_blocks():
 @pytest.fixture
 def mixed_tensor_types_fixed_shape_expected():
     """Fixture for expected results from mixed tensor types with different fixed shapes."""
-    expected_schema = _create_tensor_schema(struct_name="tensor")
+    expected_schema = _create_tensor_schema(struct_name="tensor", ndim=1)
     expected_tensors = [
         np.ones((2,), dtype=np.float32),  # First 2 converted to variable-shaped
         np.ones((2,), dtype=np.float32),
@@ -2142,24 +2177,6 @@ def multiple_tensor_fields_struct_expected():
 
 
 @pytest.fixture
-def incompatible_tensor_dtypes_blocks():
-    """Fixture for struct blocks with incompatible tensor dtypes."""
-    # Block 1: Struct with float32 fixed-shape tensor
-    tensor_data1 = np.ones((2, 2), dtype=np.float32)
-
-    # Block 2: Struct with int64 variable-shaped tensor (different dtype)
-    tensor_data2 = np.array(
-        [
-            np.ones((3, 3), dtype=np.int64),
-            np.zeros((1, 4), dtype=np.int64),
-        ],
-        dtype=object,
-    )
-
-    return _create_struct_tensor_blocks(tensor_data1, tensor_data2, "fixed", "variable")
-
-
-@pytest.fixture
 def struct_with_additional_fields_blocks():
     """Fixture for struct blocks where some have additional fields."""
     # Block 1: Struct with tensor field and basic fields
@@ -2224,7 +2241,7 @@ def struct_with_null_tensor_values_expected():
                 "struct",
                 pa.struct(
                     [
-                        ("tensor", ArrowVariableShapedTensorType(pa.float32(), 2)),
+                        ("tensor", ArrowTensorTypeV2((2,), pa.float32())),
                         ("value", pa.int64()),
                     ]
                 ),
@@ -2751,23 +2768,9 @@ def struct_variable_shaped_tensor_expected():
 
 
 @pytest.fixture
-def unify_schemas_null_typed_lists_schemas():
-    """Fixture for null typed lists unify schemas test data."""
-    schema1 = pa.schema([("list_col", pa.list_(pa.null()))])
-    schema2 = pa.schema([("list_col", pa.list_(pa.int32()))])
-    schema3 = pa.schema([("list_col", pa.list_(pa.string()))])
-    return {
-        "null_list": schema1,
-        "int_list": schema2,
-        "string_list": schema3,
-        "expected": pa.schema([("list_col", pa.list_(pa.int32()))]),
-    }
-
-
-@pytest.fixture
 def unify_schemas_object_types_schemas():
     """Fixture for object types unify schemas test data."""
-    from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 
     schema1 = pa.schema([("obj_col", ArrowPythonObjectType())])
     schema2 = pa.schema([("obj_col", pa.int32())])
@@ -2793,7 +2796,7 @@ def unify_schemas_incompatible_tensor_schemas():
 @pytest.fixture
 def unify_schemas_objects_and_tensors_schemas():
     """Fixture for objects and tensors unify schemas test data."""
-    from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 
     schema1 = pa.schema([("col", ArrowPythonObjectType())])
     schema2 = pa.schema([("col", ArrowTensorType((2, 2), pa.int32()))])
@@ -2825,7 +2828,7 @@ def unify_schemas_missing_tensor_fields_schemas():
                 "struct",
                 pa.struct(
                     [
-                        ("tensor", ArrowVariableShapedTensorType(pa.int32(), 2)),
+                        ("tensor", ArrowTensorType((2, 2), pa.int32())),
                         ("value", pa.int64()),
                     ]
                 ),
@@ -2887,7 +2890,7 @@ def unify_schemas_nested_struct_tensors_schemas():
                                 [
                                     (
                                         "tensor",
-                                        ArrowVariableShapedTensorType(pa.float32(), 2),
+                                        ArrowTensorType((3, 3), pa.float32()),
                                     ),
                                     ("data", pa.string()),
                                 ]
@@ -2900,6 +2903,62 @@ def unify_schemas_nested_struct_tensors_schemas():
         ]
     )
     return {"with_tensor": schema1, "without_tensor": schema2, "expected": expected}
+
+
+@pytest.mark.parametrize("use_arrow_tensor_v2", [True, False])
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    reason="Requires Arrow version of at least 14.0.0",
+)
+def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(
+    use_arrow_tensor_v2, restore_data_context
+):
+    DataContext.get_current().use_arrow_tensor_v2 = use_arrow_tensor_v2
+
+    num_rows = 1024
+
+    # Block A: int is uint64; tensor = Ray tensor extension
+    t_uint = pa.table(
+        {
+            "int": pa.array(np.zeros(num_rows // 2, dtype=np.uint64), type=pa.uint64()),
+            "tensor": ArrowTensorArray.from_numpy(
+                np.zeros((num_rows // 2, 3, 3), dtype=np.float32)
+            ),
+        }
+    )
+
+    # Block B: int is float64 with NaNs; tensor = same extension type
+    f = np.ones(num_rows // 2, dtype=np.float64)
+    f[::8] = np.nan
+    t_float = pa.table(
+        {
+            "int": pa.array(f, type=pa.float64()),
+            "tensor": ArrowTensorArray.from_numpy(
+                np.zeros((num_rows // 2, 3, 3), dtype=np.float32)
+            ),
+        }
+    )
+
+    # Two input blocks with different Arrow dtypes for "int"
+    ds = ray.data.from_arrow([t_uint, t_float])
+
+    # Force a concat across blocks
+    ds = ds.repartition(1)
+
+    # This should not raise: RuntimeError: Types mismatch: double != uint64
+    ds.materialize()
+
+    # Ensure that the result is correct
+    # Determine expected tensor type based on current DataContext setting
+    if use_arrow_tensor_v2:
+        expected_tensor_type = ArrowTensorTypeV2((3, 3), pa.float32())
+    else:
+        expected_tensor_type = ArrowTensorType((3, 3), pa.float32())
+
+    assert ds.schema().base_schema == pa.schema(
+        [("int", pa.float64()), ("tensor", expected_tensor_type)]
+    )
+    assert ds.count() == num_rows
 
 
 @pytest.fixture

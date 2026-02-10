@@ -1,40 +1,40 @@
 import abc
 import dataclasses
-from dataclasses import dataclass, field
 import logging
-from typing import Any, Collection, Dict, Optional, Type, TYPE_CHECKING, Union
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Collection, Dict, Optional, Type, Union
 
 import gymnasium as gym
 
-from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.core.distribution.distribution import Distribution
-from ray.rllib.utils.annotations import (
-    override,
-    OverrideToImplementCustomLogic,
-)
-from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import (
-    Deprecated,
+from ray._common.deprecation import (
     DEPRECATED_VALUE,
+    Deprecated,
     deprecation_warning,
 )
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.distribution.distribution import Distribution
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.utils.annotations import (
+    OverrideToImplementCustomLogic,
+    override,
+)
+from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.serialization import (
+    deserialize_type,
     gym_space_from_dict,
     gym_space_to_dict,
     serialize_type,
-    deserialize_type,
 )
 from ray.rllib.utils.typing import StateDict
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
+    from ray.rllib.core.models.catalog import Catalog
     from ray.rllib.core.rl_module.multi_rl_module import (
         MultiRLModule,
         MultiRLModuleSpec,
     )
-    from ray.rllib.core.models.catalog import Catalog
 
 logger = logging.getLogger("ray.rllib")
 torch, _ = try_import_torch()
@@ -63,8 +63,12 @@ class RLModuleSpec:
             Note that `inference_only=True` AND `learner_only=True` is not allowed.
         model_config: The model config dict or default RLlib dataclass to use.
         catalog_class: The Catalog class to use.
-        load_state_path: The path to the module state to load from. NOTE: This must be
-            an absolute path.
+        load_state_path: The path to the RLModule state to load from.
+            Deprecated. This field will be removed in the future Ray release.
+            To restore RLModule state use
+            `Algorithm.restore_from_path(path=..., component=...)` instead.
+            See docs for more details: :
+            https://docs.ray.io/en/latest/rllib/rl-modules.html#checkpointing-rlmodules
     """
 
     module_class: Optional[Type["RLModule"]] = None
@@ -485,6 +489,8 @@ class RLModule(Checkpointable, abc.ABC):
         except AttributeError as e:
             if "'NoneType' object has no attribute " in e.args[0]:
                 raise (self._catalog_ctor_error or e)
+            raise e
+
         self._is_setup = True
         # Cache value for returning from `is_stateful` so we don't have to call
         # the module's `get_initial_state()` method all the time (might be expensive).

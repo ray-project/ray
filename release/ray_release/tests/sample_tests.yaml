@@ -1,0 +1,29 @@
+- name: hello_world
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+  cluster:
+    byod: {}
+    cluster_compute: hello_world_compute_config.yaml
+  run:
+    timeout: 1800
+    script: python hello_world.py
+  variations:
+    - __suffix__: aws
+
+- name: hello_world_custom
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_hello_world.sh
+    cluster_compute: hello_world_compute_config.yaml
+  run:
+    timeout: 1800
+    script: python hello_world.py
+  variations:
+    - __suffix__: aws

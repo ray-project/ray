@@ -55,6 +55,7 @@ class ClusterResourceScheduler {
                            scheduling::NodeID local_node_id,
                            const NodeResources &local_node_resources,
                            std::function<bool(scheduling::NodeID)> is_node_available_fn,
+                           ray::observability::MetricInterface &resource_usage_gauge,
                            bool is_local_node_with_raylet = true);
 
   ClusterResourceScheduler(
@@ -62,6 +63,7 @@ class ClusterResourceScheduler {
       scheduling::NodeID local_node_id,
       const absl::flat_hash_map<std::string, double> &local_node_resources,
       std::function<bool(scheduling::NodeID)> is_node_available_fn,
+      ray::observability::MetricInterface &resource_usage_gauge,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully =
@@ -119,8 +121,9 @@ class ClusterResourceScheduler {
   /// Check whether a task request is schedulable on a given node. A node is
   /// schedulable if it has the available resources needed to execute the task.
   ///
-  /// \param node_name Name of the node.
+  /// \param node_id Id of the node.
   /// \param label_selector: label requirements to schedule on a node.
+  /// \param requires_object_store_memory
   /// \param shape The resource demand's shape.
   bool IsSchedulableOnNode(scheduling::NodeID node_id,
                            const absl::flat_hash_map<std::string, double> &shape,
@@ -140,7 +143,8 @@ class ClusterResourceScheduler {
             const NodeResources &local_node_resources,
             std::function<int64_t(void)> get_used_object_store_memory,
             std::function<bool(void)> get_pull_manager_at_capacity,
-            std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
+            std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+            ray::observability::MetricInterface &resource_usage_gauge);
 
   bool NodeAvailable(scheduling::NodeID node_id) const;
 
@@ -248,6 +252,9 @@ class ClusterResourceScheduler {
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, ScheduleWithFallbackStrategyTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, FallbackStrategyWithUnavailableNodesTest);
 };
 
 }  // end namespace ray

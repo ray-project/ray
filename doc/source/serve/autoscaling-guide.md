@@ -40,7 +40,12 @@ Setting `num_replicas="auto"` is equivalent to the following deployment configur
     max_replicas: 100
 ```
 :::{note}
-You can set `num_replicas="auto"` and override its default values (shown above) by specifying `autoscaling_config`, or you can omit `num_replicas="auto"` and fully configure autoscaling yourself.
+When you set `num_replicas="auto"`, Ray Serve applies the defaults shown above,
+including `max_replicas: 100`. However, if you configure autoscaling manually
+without using `num_replicas="auto"`, the base default for `max_replicas` is 1,
+which means autoscaling won't occur unless you explicitly set a higher value.
+You can override any of these defaults by specifying `autoscaling_config` even
+when using `num_replicas="auto"`.
 :::
 
 Let's dive into what each of these parameters do.

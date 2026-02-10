@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union
 import ray
 from ray._private import ray_constants
 from ray._private.label_utils import (
+    validate_fallback_strategy,
     validate_label_selector,
 )
 from ray._private.utils import get_ray_doc_version
@@ -127,6 +128,9 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
 
 _common_options = {
     "label_selector": Option((dict, type(None)), lambda x: validate_label_selector(x)),
+    "fallback_strategy": Option(
+        (list, type(None)), lambda x: validate_fallback_strategy(x)
+    ),
     "accelerator_type": Option((str, type(None))),
     "memory": _resource_option("memory"),
     "name": Option((str, type(None))),
@@ -152,7 +156,6 @@ _common_options = {
             NodeLabelSchedulingStrategy,
         )
     ),
-    "_metadata": Option((dict, type(None))),
     "enable_task_events": Option(bool, default_value=True),
     "_labels": Option((dict, type(None))),
 }
@@ -378,19 +381,4 @@ def update_options(
     The returned updated options contain shallow copy of original options.
     """
 
-    updated_options = {**original_options, **new_options}
-    # Ensure we update each namespace in "_metadata" independently.
-    # "_metadata" is a dict like {namespace1: config1, namespace2: config2}
-    if (
-        original_options.get("_metadata") is not None
-        and new_options.get("_metadata") is not None
-    ):
-        # make a shallow copy to avoid messing up the metadata dict in
-        # the original options.
-        metadata = original_options["_metadata"].copy()
-        for namespace, config in new_options["_metadata"].items():
-            metadata[namespace] = {**metadata.get(namespace, {}), **config}
-
-        updated_options["_metadata"] = metadata
-
-    return updated_options
+    return {**original_options, **new_options}

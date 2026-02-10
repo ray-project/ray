@@ -16,12 +16,10 @@ from pathlib import Path
 from subprocess import list2cmdline
 from typing import (
     TYPE_CHECKING,
-    Any,
     Dict,
     List,
     Mapping,
     Optional,
-    Sequence,
     Tuple,
     Union,
 )
@@ -421,7 +419,8 @@ def _get_docker_cpus(
 
 def get_num_cpus(
     override_docker_cpu_warning: bool = ENV_DISABLE_DOCKER_CPU_WARNING,
-) -> int:
+    truncate: bool = True,
+) -> float:
     """
     Get the number of CPUs available on this node.
     Depending on the situation, use multiprocessing.cpu_count() or cgroups.
@@ -432,6 +431,7 @@ def get_num_cpus(
             RAY_DISABLE_DOCKER_CPU_WARNING. By default, whether or not to log
             the warning is determined by the env variable
             RAY_DISABLE_DOCKER_CPU_WARNING.
+        truncate: truncates the return value and drops the decimal part.
     """
     cpu_count = multiprocessing.cpu_count()
     if os.environ.get("RAY_USE_MULTIPROCESSING_CPU_COUNT"):
@@ -473,7 +473,8 @@ def get_num_cpus(
                     f"truncated from {docker_count} to "
                     f"{int(docker_count)}."
                 )
-            docker_count = int(docker_count)
+            if truncate:
+                docker_count = int(docker_count)
             cpu_count = docker_count
 
     except Exception:
@@ -517,6 +518,64 @@ def get_cgroup_used_memory(
         return None
 
     return cgroup_usage_in_bytes - inactive_file_bytes - active_file_bytes
+
+
+def resolve_object_store_memory(
+    available_memory_bytes: int,
+    object_store_memory: Optional[int] = None,
+) -> int:
+    """Resolve the object store memory size.
+
+    This function determines the appropriate object store memory size based on
+    the provided value or calculates a default based on available system memory.
+
+    Args:
+        available_memory_bytes: The memory available for this node.
+        object_store_memory: The user-specified object store memory size in bytes.
+            If None, a default size will be calculated.
+
+    Returns:
+        The resolved object store memory size in bytes.
+    """
+    # Derive default object store memory if not specified
+    if object_store_memory is None:
+        object_store_memory_cap = ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
+
+        # Cap by shm size by default to avoid low performance, but don't
+        # go lower than REQUIRE_SHM_SIZE_THRESHOLD.
+        if sys.platform == "linux" or sys.platform == "linux2":
+            # Multiple by 0.95 to give a bit of wiggle-room.
+            # https://github.com/ray-project/ray/pull/23034/files
+            shm_avail = get_shared_memory_bytes() * 0.95
+            shm_cap = max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail)
+
+            object_store_memory_cap = min(object_store_memory_cap, shm_cap)
+
+        object_store_memory = int(
+            available_memory_bytes
+            * ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+        )
+
+        # Set the object_store_memory size to 2GB on Mac
+        # to avoid degraded performance.
+        # (https://github.com/ray-project/ray/issues/20388)
+        if sys.platform == "darwin":
+            object_store_memory = min(
+                object_store_memory, ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT
+            )
+
+        # Cap memory to avoid memory waste and perf issues on large nodes
+        if object_store_memory > object_store_memory_cap:
+            logger.debug(
+                "Warning: Capping object memory store to {}GB. ".format(
+                    object_store_memory_cap // 1e9
+                )
+                + "To increase this further, specify `object_store_memory` "
+                "when calling ray.init() or ray start."
+            )
+            object_store_memory = object_store_memory_cap
+
+    return object_store_memory
 
 
 def get_used_memory():
@@ -947,28 +1006,25 @@ def get_wheel_filename(
 
     architecture = architecture or platform.processor()
 
-    if py_version_str in ["311", "310", "39", "38"] and architecture == "arm64":
-        darwin_os_string = "macosx_12_0_arm64"
-    else:
-        darwin_os_string = "macosx_12_0_x86_64"
+    assert sys_platform in ["darwin", "linux", "win32"], sys_platform
 
-    if architecture == "aarch64":
-        linux_os_string = "manylinux2014_aarch64"
-    else:
-        linux_os_string = "manylinux2014_x86_64"
-
-    os_strings = {
-        "darwin": darwin_os_string,
-        "linux": linux_os_string,
-        "win32": "win_amd64",
-    }
-
-    assert sys_platform in os_strings, sys_platform
+    if sys_platform == "darwin":
+        if architecture == "x86_64":
+            os_string = "macosx_12_0_x86_64"
+        else:
+            os_string = "macosx_12_0_arm64"
+    elif sys_platform == "linux":
+        if architecture == "aarch64" or architecture == "arm64":
+            os_string = "manylinux2014_aarch64"
+        else:
+            os_string = "manylinux2014_x86_64"
+    elif sys_platform == "win32":
+        os_string = "win_amd64"
 
     wheel_filename = (
         f"ray-{ray_version}-cp{py_version_str}-"
         f"cp{py_version_str}{'m' if py_version_str in ['37'] else ''}"
-        f"-{os_strings[sys_platform]}.whl"
+        f"-{os_string}.whl"
     )
 
     return wheel_filename
@@ -1016,42 +1072,6 @@ def validate_namespace(namespace: str):
         raise ValueError(
             '"" is not a valid namespace. ' "Pass None to not specify a namespace."
         )
-
-
-def init_grpc_channel(
-    address: str,
-    options: Optional[Sequence[Tuple[str, Any]]] = None,
-    asynchronous: bool = False,
-):
-    import grpc
-    from grpc import aio as aiogrpc
-
-    from ray._private.tls_utils import load_certs_from_env
-
-    grpc_module = aiogrpc if asynchronous else grpc
-
-    options = options or []
-    options_dict = dict(options)
-    options_dict["grpc.keepalive_time_ms"] = options_dict.get(
-        "grpc.keepalive_time_ms", ray._config.grpc_client_keepalive_time_ms()
-    )
-    options_dict["grpc.keepalive_timeout_ms"] = options_dict.get(
-        "grpc.keepalive_timeout_ms", ray._config.grpc_client_keepalive_timeout_ms()
-    )
-    options = options_dict.items()
-
-    if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
-        server_cert_chain, private_key, ca_cert = load_certs_from_env()
-        credentials = grpc.ssl_channel_credentials(
-            certificate_chain=server_cert_chain,
-            private_key=private_key,
-            root_certificates=ca_cert,
-        )
-        channel = grpc_module.secure_channel(address, credentials, options=options)
-    else:
-        channel = grpc_module.insecure_channel(address, options=options)
-
-    return channel
 
 
 def get_dashboard_dependency_error() -> Optional[ImportError]:
@@ -1249,7 +1269,7 @@ def check_version_info(
     cluster_metadata,
     this_process_address,
     raise_on_mismatch=True,
-    python_version_match_level="patch",
+    python_version_match_level=None,
 ):
     """Check if the Python and Ray versions stored in GCS matches this process.
     Args:
@@ -1259,7 +1279,8 @@ def check_version_info(
         raise_on_mismatch: Raise an exception on True, log a warning otherwise.
         python_version_match_level: "minor" or "patch". To which python version level we
             try to match. Note if "minor" and the patch is different, we will still log
-            a warning.
+            a warning. Default value is `RAY_DEFAULT_PYTHON_VERSION_MATCH_LEVEL` if it
+            exists, otherwise "patch"
 
     Behavior:
         - We raise or log a warning, based on raise_on_mismatch, if:
@@ -1273,9 +1294,15 @@ def check_version_info(
             - Python patch versions do not match, AND
             - python_version_match_level == 'minor' AND
             - raise_on_mismatch == False.
+
     Raises:
         Exception: An exception is raised if there is a version mismatch.
     """
+    if python_version_match_level is None:
+        python_version_match_level = os.environ.get(
+            "RAY_DEFAULT_PYTHON_VERSION_MATCH_LEVEL", "patch"
+        )
+
     cluster_version_info = (
         cluster_metadata["ray_version"],
         cluster_metadata["python_version"],

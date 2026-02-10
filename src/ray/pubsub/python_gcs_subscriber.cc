@@ -21,7 +21,8 @@
 #include <utility>
 #include <vector>
 
-#include "ray/rpc/gcs/gcs_rpc_client.h"
+#include "ray/gcs_rpc_client/rpc_client.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 
 namespace ray {
 namespace pubsub {

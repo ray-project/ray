@@ -1,17 +1,16 @@
-from typing import Dict, List, Optional, Union
 import threading
 import uuid
+from typing import Dict, List, Optional, Union
 
 import ray
-from ray.experimental.collective.communicator import CommunicatorHandle
-from ray.experimental.collective.util import get_address_and_port
 import ray.experimental.internal_kv as internal_kv
-from ray.util.collective.types import Backend
+from ray.experimental.collective.communicator import CommunicatorHandle
+from ray.util.annotations import PublicAPI
+from ray.util.collective.collective import get_address_and_port
 from ray.util.collective.collective_group.torch_gloo_collective_group import (
     get_master_address_metadata_key,
 )
-from ray.util.annotations import PublicAPI
-
+from ray.util.collective.types import Backend
 
 _remote_communicator_manager: "Optional[RemoteCommunicatorManager]" = None
 _remote_communicator_manager_lock = threading.Lock()
@@ -44,7 +43,7 @@ class RemoteCommunicatorManager:
     def get_collective_groups(
         self,
         actors: Optional[List[ray.actor.ActorHandle]] = None,
-        backend: Optional[str] = None,
+        backend: Optional[Backend] = None,
     ):
         """
         Get the collective groups that the given actors are a subset of. Filter by
@@ -61,28 +60,6 @@ class RemoteCommunicatorManager:
                 if backend is None or collective.backend == backend:
                     collectives.append(collective)
         return collectives
-
-
-def _do_init_collective_group(
-    self,
-    world_size: int,
-    rank: int,
-    backend: str = Backend.NCCL,
-    name: str = "default",
-):
-    """Helper method that runs as a task on a remote actor to create a
-    collective group.
-    """
-    ray.util.collective.init_collective_group(
-        world_size, rank, backend, group_name=name
-    )
-
-
-def _do_destroy_collective_group(self, name):
-    """Helper method that runs as a task on a remote actor to destroy a
-    collective group.
-    """
-    ray.util.collective.destroy_collective_group(name)
 
 
 @PublicAPI(stability="alpha")
@@ -103,6 +80,7 @@ def get_collective_groups(
         A list of communicator handles that the actors are a subset of.
     """
     manager = RemoteCommunicatorManager.get()
+    backend = Backend(backend) if backend is not None else None
     return manager.get_collective_groups(actors, backend)
 
 
@@ -151,7 +129,7 @@ def create_collective_group(
         raise ValueError(f"All actors must be unique, got: {actors}")
 
     metadata_key = None
-    if backend == Backend.TORCH_GLOO:
+    if backend == Backend.GLOO:
         # Perform extra setup for torch.distributed.
         # torch.distributed requires a master address and port. Find a suitable
         # port on one of the actors.
@@ -164,10 +142,16 @@ def create_collective_group(
         metadata_key = get_master_address_metadata_key(name)
         internal_kv._internal_kv_put(metadata_key, f"{master_addr}:{master_port}")
 
+    def _do_init_collective_group(self, rank: int):
+        ray.util.collective.init_collective_group(
+            world_size, rank, backend, group_name=name
+        )
+
     try:
         init_tasks = [
             actor.__ray_call__.remote(
-                _do_init_collective_group, world_size, rank, backend, name
+                _do_init_collective_group,
+                rank,
             )
             for rank, actor in enumerate(actors)
         ]
@@ -205,11 +189,20 @@ def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
     manager = RemoteCommunicatorManager.get()
     group = manager.remove_remote_communicator(name)
     if group is not None:
+
+        def _do_destroy_collective_group(self):
+            ray.util.collective.destroy_collective_group(name)
+
         destroy_tasks = [
-            actor.__ray_call__.remote(_do_destroy_collective_group, name)
+            actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                _do_destroy_collective_group
+            )
             for actor in group.actors
         ]
-        ray.get(destroy_tasks)
+        try:
+            ray.get(destroy_tasks)
+        except ray.exceptions.ActorDiedError:
+            pass
     else:
         raise ValueError(f"No group with name {name} found.")
 

@@ -11,14 +11,13 @@ from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
     DefaultPPOTorchRLModule,
 )
-from ray.rllib.core.models.configs import MLPHeadConfig
+from ray.rllib.core.models.configs import ActorCriticEncoderConfig, MLPHeadConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.examples.envs.classes.random_env import RandomEnv
 from ray.rllib.examples._old_api_stack.models.mobilenet_v2_encoder import (
-    MobileNetV2EncoderConfig,
     MOBILENET_INPUT_SHAPE,
+    MobileNetV2EncoderConfig,
 )
-from ray.rllib.core.models.configs import ActorCriticEncoderConfig
+from ray.rllib.examples.envs.classes.random_env import RandomEnv
 
 
 class MobileNetTorchPPORLModule(DefaultPPOTorchRLModule):

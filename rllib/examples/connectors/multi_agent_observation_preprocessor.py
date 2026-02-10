@@ -63,20 +63,20 @@ collision can occur any longer), the maximum return per agent is under 10.0.
 |          41.5389 | 19998 |            23.072 |      11.418 |      11.654 |
 +------------------+-------+-------------------+-------------+-------------+
 """
-from ray.rllib.examples.envs.classes.multi_agent.double_row_corridor_env import (
-    DoubleRowCorridorEnv,
+from ray.rllib.connectors.env_to_module.flatten_observations import (
+    FlattenObservations,
 )
 from ray.rllib.examples.connectors.classes.add_other_agents_row_index_to_xy_pos import (
     AddOtherAgentsRowIndexToXYPos,
 )
-from ray.rllib.connectors.env_to_module.flatten_observations import (
-    FlattenObservations,
+from ray.rllib.examples.envs.classes.multi_agent.double_row_corridor_env import (
+    DoubleRowCorridorEnv,
 )
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.framework import try_import_torch
 from ray.tune.registry import get_trainable_cls
 
 torch, _ = try_import_torch()

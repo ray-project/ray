@@ -4,6 +4,7 @@ from ray.train import Checkpoint, DataConfig
 from ray.train.trainer import GenDataset
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.validation_config import ValidationConfig
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
@@ -118,7 +119,7 @@ class TensorflowTrainer(DataParallelTrainer):
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
         trainer = TensorflowTrainer(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=3, use_gpu=True),
+            scaling_config=ScalingConfig(num_workers=3, use_gpu=False),
             datasets={"train": train_dataset},
             train_loop_config={"num_epochs": 2},
         )
@@ -156,10 +157,12 @@ class TensorflowTrainer(DataParallelTrainer):
             by calling ``ray.train.get_dataset_shard(name)``.
             Sharding and additional configuration can be done by
             passing in a ``dataset_config``.
-        resume_from_checkpoint: A checkpoint to resume training from.
-        metadata: Dict that should be made available via
-            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
-            for checkpoints saved from this Trainer. Must be JSON-serializable.
+        validation_config: [Alpha] Configuration for checkpoint validation.
+            If provided and ``ray.train.report`` is called with the ``validation``
+            argument, Ray Train will validate the reported checkpoint using
+            the validation function specified in this config.
+        resume_from_checkpoint: [Deprecated]
+        metadata: [Deprecated]
     """
 
     def __init__(
@@ -172,6 +175,7 @@ class TensorflowTrainer(DataParallelTrainer):
         dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
+        validation_config: Optional[ValidationConfig] = None,
         # TODO: [Deprecated]
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
@@ -188,4 +192,5 @@ class TensorflowTrainer(DataParallelTrainer):
             datasets=datasets,
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
+            validation_config=validation_config,
         )

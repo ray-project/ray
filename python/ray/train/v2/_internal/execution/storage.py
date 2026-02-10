@@ -120,7 +120,8 @@ def _pyarrow_fs_copy_files(
 # TODO(justinvyu): Add unit tests for all these utils.
 
 
-def _delete_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str):
+def delete_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str):
+    """Deletes (fs, fs_path) or raises FileNotFoundError if it doesn't exist."""
     is_dir = _is_directory(fs, fs_path)
 
     try:

@@ -6,15 +6,13 @@ from pathlib import Path
 import pytest
 
 import ray
+from ray._common.test_utils import run_string_as_driver
 from ray._private.runtime_env.packaging import (
     GCS_STORAGE_MAX_SIZE,
     get_uri_for_directory,
     upload_package_if_needed,
 )
-from ray._private.test_utils import (
-    chdir,
-    run_string_as_driver,
-)
+from ray._private.test_utils import chdir
 from ray._private.utils import get_directory_size_bytes
 from ray.exceptions import RuntimeEnvSetupError
 
@@ -161,10 +159,12 @@ def test_concurrent_downloads(shutdown_only):
         with filepath.open("w") as file:
             file.write("F" * 100)
 
-        uri = get_uri_for_directory(dir_to_upload)
+        uri = get_uri_for_directory(dir_to_upload, include_gitignore=True)
         assert get_directory_size_bytes(dir_to_upload) > 0
 
-        uploaded = upload_package_if_needed(uri, tmpdir, dir_to_upload)
+        uploaded = upload_package_if_needed(
+            uri, tmpdir, dir_to_upload, include_gitignore=True
+        )
         assert uploaded
         return uri
 

@@ -13,7 +13,7 @@ from ray.cluster_utils import Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import (
-    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -176,12 +176,21 @@ def test_replica_startup_status_transitions(ray_cluster):
         )
         return replicas.get([replica_state])
 
-    # wait for serve to start the replica, and catch a reference to it.
+    # wait for serve to start the replica
     wait_for_condition(lambda: len(get_replicas(ReplicaState.STARTING)) > 0)
-    replica = get_replicas(ReplicaState.STARTING)[0]
 
     # currently there are no resources to allocate the replica
-    assert replica.check_started()[0] == ReplicaStartupStatus.PENDING_ALLOCATION
+    def get_starting_replica():
+        replicas = get_replicas(ReplicaState.STARTING)
+        return replicas[0] if replicas else None
+
+    def is_pending_allocation():
+        replica = get_starting_replica()
+        if replica is None:
+            return False
+        return replica.check_started()[0] == ReplicaStartupStatus.PENDING_ALLOCATION
+
+    wait_for_condition(is_pending_allocation)
 
     # add the necessary resources to allocate the replica
     cluster.add_node(num_cpus=4)
@@ -189,17 +198,34 @@ def test_replica_startup_status_transitions(ray_cluster):
     wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) >= 2))
 
     def is_replica_pending_initialization():
+        replica = get_starting_replica()
+        if replica is None:
+            return False
         status, _ = replica.check_started()
-        print(status)
         return status == ReplicaStartupStatus.PENDING_INITIALIZATION
 
     wait_for_condition(is_replica_pending_initialization, timeout=25)
 
     # send signal to complete replica initialization
-    signal.send.remote()
-    wait_for_condition(
-        lambda: replica.check_started()[0] == ReplicaStartupStatus.SUCCEEDED
-    )
+    ray.get(signal.send.remote())
+
+    def check_succeeded():
+        # After initialization succeeds, replica transitions to RUNNING state
+        # So check both STARTING and RUNNING states
+        replica = get_starting_replica()
+        if replica:
+            status, _ = replica.check_started()
+            if status == ReplicaStartupStatus.SUCCEEDED:
+                return True
+
+        # Check if replica has moved to RUNNING state (which means it succeeded)
+        running_replicas = get_replicas(ReplicaState.RUNNING)
+        if running_replicas and len(running_replicas) > 0:
+            return True
+
+        return False
+
+    wait_for_condition(check_succeeded)
 
 
 @serve.deployment
@@ -254,7 +280,7 @@ def test_intelligent_scale_down(ray_cluster):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.skipif(
-    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY, reason="Needs spread strategy."
+    RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs spread strategy."
 )
 def test_replica_spread(ray_cluster):
     cluster = ray_cluster

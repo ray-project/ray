@@ -1,5 +1,7 @@
-from typing import Optional
+import logging
+from typing import Any, Dict, Optional
 
+from ray._common.deprecation import Deprecated
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.processor import (
     HttpRequestProcessorConfig as _HttpRequestProcessorConfig,
@@ -9,7 +11,17 @@ from ray.llm._internal.batch.processor import (
     SGLangEngineProcessorConfig as _SGLangEngineProcessorConfig,
     vLLMEngineProcessorConfig as _vLLMEngineProcessorConfig,
 )
+from ray.llm._internal.batch.stages.configs import (
+    ChatTemplateStageConfig as _ChatTemplateStageConfig,
+    DetokenizeStageConfig as _DetokenizeStageConfig,
+    HttpRequestStageConfig as _HttpRequestStageConfig,
+    PrepareImageStageConfig as _PrepareImageStageConfig,
+    PrepareMultimodalStageConfig as _PrepareMultimodalStageConfig,
+    TokenizerStageConfig as _TokenizerStageConfig,
+)
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
@@ -28,6 +40,11 @@ class ProcessorConfig(_ProcessorConfig):
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
+            If ``concurrency`` is a ``tuple`` ``(m, n)``, Ray creates an autoscaling
+            actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
+            If ``concurrency`` is an ``int`` ``n``, Ray uses either a fixed pool of ``n``
+            workers or an autoscaling pool from ``1`` to ``n`` workers, depending on
+            the processor and stage.
     """
 
     pass
@@ -41,21 +58,24 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
         batch_size: The batch size to send to the HTTP request.
         url: The URL to send the HTTP request to.
         headers: The headers to send with the HTTP request.
-        concurrency: The number of concurrent requests to send.
+        concurrency: The number of concurrent requests to send. Default to 1.
+            If ``concurrency`` is an ``int`` ``n``, a fixed pool of ``n`` workers is used.
+            If ``concurrency`` is a ``tuple`` ``(m, n)``, autoscaling strategy
+            is used (``1 <= m <= n``).
 
     Examples:
         .. testcode::
             :skipif: True
 
             import ray
-            from ray.data.llm import HttpRequestProcessorConfig, build_llm_processor
+            from ray.data.llm import HttpRequestProcessorConfig, build_processor
 
             config = HttpRequestProcessorConfig(
                 url="https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": "Bearer sk-..."},
                 concurrency=1,
             )
-            processor = build_llm_processor(
+            processor = build_processor(
                 config,
                 preprocess=lambda row: dict(
                     payload=dict(
@@ -106,16 +126,36 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             each batch. The default value may not be optimal when the batch size
             or the batch processing latency is too small, but it should be good
             enough for batch size >= 64.
-        apply_chat_template: Whether to apply chat template.
-        chat_template: The chat template to use. This is usually not needed if the
-            model checkpoint already contains the chat template.
-        tokenize: Whether to tokenize the input before passing it to the vLLM engine.
-            If not, vLLM will tokenize the prompt in the engine.
-        detokenize: Whether to detokenize the output.
-        has_image: Whether the input messages have images.
+        should_continue_on_error: If True, continue processing when inference fails for a row
+            instead of raising an exception. Failed rows will have a non-empty
+            ``__inference_error__`` column containing the error message, and other
+            output columns will be empty strings. Error rows bypass postprocess. If False
+            (default), any inference error will raise an exception.
+        chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, and memory. Legacy ``apply_chat_template``
+            and ``chat_template`` fields are deprecated but still supported.
+        tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
+            ``tokenize`` field is deprecated but still supported.
+        detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
+            ``detokenize`` field is deprecated but still supported.
+        prepare_image_stage: Prepare image stage config (bool | dict | PrepareImageStageConfig).
+            Defaults to False. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, and memory. Both the legacy ``has_image`` field
+            and ``prepare_image_stage`` are deprecated but still supported. Prefer to use multimodal
+            processor to process multimodal data instead.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
+            If ``concurrency`` is a tuple ``(m, n)``, Ray creates an autoscaling
+            actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
+            If ``concurrency`` is an ``int`` ``n``, CPU stages use an autoscaling
+            pool from ``(1, n)``, while GPU stages use a fixed pool of ``n`` workers.
+            Stage-specific concurrency can be set via nested stage configs.
 
     Examples:
 
@@ -123,7 +163,7 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             :skipif: True
 
             import ray
-            from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+            from ray.data.llm import vLLMEngineProcessorConfig, build_processor
 
             config = vLLMEngineProcessorConfig(
                 model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
@@ -135,7 +175,7 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
                 concurrency=1,
                 batch_size=64,
             )
-            processor = build_llm_processor(
+            processor = build_processor(
                 config,
                 preprocess=lambda row: dict(
                     messages=[
@@ -177,7 +217,7 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
 
     Args:
         model_source: The model source to use for the SGLang engine.
-        batch_size: The batch size to send to the vLLM engine. Large batch sizes are
+        batch_size: The batch size to send to the SGLang engine. Large batch sizes are
             likely to saturate the compute resources and could achieve higher throughput.
             On the other hand, small batch sizes are more fault-tolerant and could
             reduce bubbles in the data pipeline. You can tune the batch size to balance
@@ -194,22 +234,33 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
             each batch. The default value may not be optimal when the batch size
             or the batch processing latency is too small, but it should be good
             enough for batch size >= 64.
-        apply_chat_template: Whether to apply chat template.
-        chat_template: The chat template to use. This is usually not needed if the
-            model checkpoint already contains the chat template.
-        tokenize: Whether to tokenize the input before passing it to the vLLM engine.
-            If not, vLLM will tokenize the prompt in the engine.
-        detokenize: Whether to detokenize the output.
+        chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, and memory. Legacy ``apply_chat_template``
+            and ``chat_template`` fields are deprecated but still supported.
+        tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
+            ``tokenize`` field is deprecated but still supported.
+        detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
+            ``detokenize`` field is deprecated but still supported.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
+            If ``concurrency`` is a tuple ``(m, n)``, Ray creates an autoscaling
+            actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
+            If ``concurrency`` is an ``int`` ``n``, CPU stages use an autoscaling
+            pool from ``(1, n)``, while GPU stages use a fixed pool of ``n`` workers.
+            Stage-specific concurrency can be set via nested stage configs.
 
     Examples:
         .. testcode::
             :skipif: True
 
             import ray
-            from ray.data.llm import SGLangEngineProcessorConfig, build_llm_processor
+            from ray.data.llm import SGLangEngineProcessorConfig, build_processor
 
             config = SGLangEngineProcessorConfig(
                 model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
@@ -219,7 +270,7 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
                 concurrency=1,
                 batch_size=64,
             )
-            processor = build_llm_processor(
+            processor = build_processor(
                 config,
                 preprocess=lambda row: dict(
                     messages=[
@@ -264,6 +315,9 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
             not provided, the serve deployment is expected to accept a dict as the request.
         concurrency: The number of workers for data parallelism. Default to 1. Note that this is
             not the concurrency of the underlying serve deployment.
+            If ``concurrency`` is an ``int`` ``n``, a fixed pool of ``n`` workers is used.
+            If ``concurrency`` is a ``tuple`` ``(m, n)``, autoscaling strategy
+            is used (``1 <= m <= n``).
 
     Examples:
 
@@ -272,7 +326,7 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
 
             import ray
             from ray import serve
-            from ray.data.llm import ServeDeploymentProcessorConfig, build_llm_processor
+            from ray.data.llm import ServeDeploymentProcessorConfig, build_processor
             from ray.serve.llm import (
                 LLMConfig,
                 ModelLoadingConfig,
@@ -318,7 +372,7 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
                 concurrency=1,
                 batch_size=64,
             )
-            processor = build_llm_processor(
+            processor = build_processor(
                 config,
                 preprocess=lambda row: dict(
                     method="completions",
@@ -349,34 +403,233 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
 
 
 @PublicAPI(stability="alpha")
+class ChatTemplateStageConfig(_ChatTemplateStageConfig):
+    """The configuration for the chat template stage.
+
+    Args:
+        enabled: Whether this stage is enabled. Defaults to True.
+        model_source: Model source/identifier for this stage. If not specified,
+            will use the processor-level model_source.
+        chat_template: The chat template in Jinja template format. This is
+            usually not needed if the model checkpoint already contains the
+            chat template.
+        chat_template_kwargs: Optional kwargs to pass to apply_chat_template.
+        batch_size: Rows per batch. If not specified, will use the processor-level
+            batch_size.
+        concurrency: Actor pool size or range for this stage. If not specified,
+            will use the processor-level concurrency. If ``concurrency`` is a
+            tuple ``(m, n)``, Ray creates an autoscaling actor pool that scales
+            between ``m`` and ``n`` workers (``1 <= m <= n``). If ``concurrency``
+            is an ``int`` ``n``, CPU stages use an autoscaling pool from ``(1, n)``.
+        runtime_env: Optional runtime environment for this stage. If not specified,
+            will use the processor-level runtime_env. See
+            :ref:`this doc <handling_dependencies>` for more details.
+        num_cpus: Number of CPUs to reserve for each map worker in this stage.
+        memory: Heap memory in bytes to reserve for each map worker in this stage.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class DetokenizeStageConfig(_DetokenizeStageConfig):
+    """The configuration for the detokenize stage.
+
+    Args:
+        enabled: Whether this stage is enabled. Defaults to True.
+        model_source: Model source/identifier for this stage. If not specified,
+            will use the processor-level model_source.
+        batch_size: Rows per batch. If not specified, will use the processor-level
+            batch_size.
+        concurrency: Actor pool size or range for this stage. If not specified,
+            will use the processor-level concurrency. If ``concurrency`` is a
+            tuple ``(m, n)``, Ray creates an autoscaling actor pool that scales
+            between ``m`` and ``n`` workers (``1 <= m <= n``). If ``concurrency``
+            is an ``int`` ``n``, CPU stages use an autoscaling pool from ``(1, n)``.
+        runtime_env: Optional runtime environment for this stage. If not specified,
+            will use the processor-level runtime_env. See
+            :ref:`this doc <handling_dependencies>` for more details.
+        num_cpus: Number of CPUs to reserve for each map worker in this stage.
+        memory: Heap memory in bytes to reserve for each map worker in this stage.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class PrepareMultimodalStageConfig(_PrepareMultimodalStageConfig):
+    """The configuration for the prepare multimodal stage.
+
+    Args:
+        enabled: Whether this stage is enabled. Defaults to True.
+        model_config_kwargs: Optional kwargs to pass to the model config.
+            See available model config kwargs at
+            https://docs.vllm.ai/en/latest/api/vllm/config/#vllm.config.ModelConfig.
+        chat_template_content_format: The content format to use for the chat
+            template. This is used to format the chat template content according
+            to a specific model. Choices are "string" or "openai". Defaults to
+            "string".
+        apply_sys_msg_formatting: Whether to apply formatting system messages.
+            Defaults to False.
+        batch_size: Rows per batch. If not specified, will use the processor-level
+            batch_size.
+        concurrency: Actor pool size or range for this stage. If not specified,
+            will use the processor-level concurrency. If ``concurrency`` is a
+            tuple ``(m, n)``, Ray creates an autoscaling actor pool that scales
+            between ``m`` and ``n`` workers (``1 <= m <= n``). If ``concurrency``
+            is an ``int`` ``n``, CPU stages use an autoscaling pool from ``(1, n)``.
+        runtime_env: Optional runtime environment for this stage. If not specified,
+            will use the processor-level runtime_env. See
+            :ref:`this doc <handling_dependencies>` for more details.
+        num_cpus: Number of CPUs to reserve for each map worker in this stage.
+        memory: Heap memory in bytes to reserve for each map worker in this stage.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class TokenizerStageConfig(_TokenizerStageConfig):
+    """The configuration for the tokenizer stage.
+
+    Args:
+        enabled: Whether this stage is enabled. Defaults to True.
+        model_source: Model source/identifier for this stage. If not specified,
+            will use the processor-level model_source.
+        batch_size: Rows per batch. If not specified, will use the processor-level
+            batch_size.
+        concurrency: Actor pool size or range for this stage. If not specified,
+            will use the processor-level concurrency. If ``concurrency`` is a
+            tuple ``(m, n)``, Ray creates an autoscaling actor pool that scales
+            between ``m`` and ``n`` workers (``1 <= m <= n``). If ``concurrency``
+            is an ``int`` ``n``, CPU stages use an autoscaling pool from ``(1, n)``.
+        runtime_env: Optional runtime environment for this stage. If not specified,
+            will use the processor-level runtime_env. See
+            :ref:`this doc <handling_dependencies>` for more details.
+        num_cpus: Number of CPUs to reserve for each map worker in this stage.
+        memory: Heap memory in bytes to reserve for each map worker in this stage.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class HttpRequestStageConfig(_HttpRequestStageConfig):
+    """The configuration for the http request stage.
+
+    Args:
+        enabled: Whether this stage is enabled. Defaults to True.
+        batch_size: Rows per batch. If not specified, will use the processor-level
+            batch_size.
+        concurrency: Actor pool size or range for this stage. If not specified,
+            will use the processor-level concurrency. If ``concurrency`` is a
+            tuple ``(m, n)``, Ray creates an autoscaling actor pool that scales
+            between ``m`` and ``n`` workers (``1 <= m <= n``). If ``concurrency``
+            is an ``int`` ``n``, CPU stages use an autoscaling pool from ``(1, n)``.
+        runtime_env: Optional runtime environment for this stage. If not specified,
+            will use the processor-level runtime_env. See
+            :ref:`this doc <handling_dependencies>` for more details.
+        num_cpus: Number of CPUs to reserve for each map worker in this stage.
+        memory: Heap memory in bytes to reserve for each map worker in this stage.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class PrepareImageStageConfig(_PrepareImageStageConfig):
+    """The configuration for the prepare image stage.
+
+    Args:
+        enabled: Whether this stage is enabled. Defaults to True.
+        batch_size: Rows per batch. If not specified, will use the processor-level
+            batch_size.
+        concurrency: Actor pool size or range for this stage. If not specified,
+            will use the processor-level concurrency. If ``concurrency`` is a
+            tuple ``(m, n)``, Ray creates an autoscaling actor pool that scales
+            between ``m`` and ``n`` workers (``1 <= m <= n``). If ``concurrency``
+            is an ``int`` ``n``, CPU stages use an autoscaling pool from ``(1, n)``.
+        runtime_env: Optional runtime environment for this stage. If not specified,
+            will use the processor-level runtime_env. See
+            :ref:`this doc <handling_dependencies>` for more details.
+        num_cpus: Number of CPUs to reserve for each map worker in this stage.
+        memory: Heap memory in bytes to reserve for each map worker in this stage.
+    """
+
+    pass
+
+
+@Deprecated(new="build_processor", error=False)
 def build_llm_processor(
     config: ProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
+    preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+    postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+    builder_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Processor:
-    """Build a LLM processor using the given config.
+    """
+    [DEPRECATED] Prefer build_processor. Build a LLM processor using the given config.
+    """
+    return build_processor(
+        config,
+        preprocess,
+        postprocess,
+        preprocess_map_kwargs,
+        postprocess_map_kwargs,
+        builder_kwargs,
+    )
+
+
+@PublicAPI(stability="alpha")
+def build_processor(
+    config: ProcessorConfig,
+    preprocess: Optional[UserDefinedFunction] = None,
+    postprocess: Optional[UserDefinedFunction] = None,
+    preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+    postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+    builder_kwargs: Optional[Dict[str, Any]] = None,
+) -> Processor:
+    """Build a processor using the given config.
 
     Args:
-        config: The processor config.
+        config: The processor config. Supports nested stage configs for per-stage
+            control over batch_size, concurrency, runtime_env, num_cpus, and memory
+            (e.g., ``chat_template_stage=ChatTemplateStageConfig(batch_size=128)``
+            or ``tokenize_stage={"batch_size": 256, "concurrency": 2}``). Legacy
+            boolean flags (``apply_chat_template``, ``tokenize``, ``detokenize``,
+            ``has_image``) are deprecated but still supported with deprecation warnings.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages. Each row
-            can contain a `sampling_params` field which will be used by the
-            engine for row-specific sampling parameters.
+            can contain a `sampling_params` or `pooling_params` field which will be used
+            by the engine for row-specific sampling or pooling parameters respectively.
             Note that all columns will be carried over until the postprocess stage.
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict). To keep all the original columns,
             you can use the `**row` syntax to return all the original columns.
+        preprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            preprocess stage. Useful for controlling resources (e.g., num_cpus=0.5)
+            and concurrency independently of the main LLM stage.
+        postprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            postprocess stage. Useful for controlling resources (e.g., num_cpus=0.25)
+            and concurrency independently of the main LLM stage.
+        builder_kwargs: Optional additional kwargs to pass to the processor builder
+            function. These will be passed through to the registered builder and
+            should match the signature of the specific builder being used.
+            For example, vLLM and SGLang processors support `chat_template_kwargs`.
 
     Returns:
         The built processor.
 
-    Example:
+    Examples:
+        Basic usage:
+
         .. testcode::
             :skipif: True
 
             import ray
-            from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+            from ray.data.llm import vLLMEngineProcessorConfig, build_processor
 
             config = vLLMEngineProcessorConfig(
                 model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
@@ -389,7 +642,7 @@ def build_llm_processor(
                 batch_size=64,
             )
 
-            processor = build_llm_processor(
+            processor = build_processor(
                 config,
                 preprocess=lambda row: dict(
                     messages=[
@@ -412,14 +665,89 @@ def build_llm_processor(
             ds = processor(ds)
             for row in ds.take_all():
                 print(row)
+
+        Using map_kwargs to control preprocess/postprocess resources:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            from ray.data.llm import vLLMEngineProcessorConfig, build_processor
+
+            config = vLLMEngineProcessorConfig(
+                model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
+                concurrency=1,
+                batch_size=64,
+            )
+
+            processor = build_processor(
+                config,
+                preprocess=lambda row: dict(
+                    messages=[{"role": "user", "content": row["prompt"]}],
+                    sampling_params=dict(temperature=0.3, max_tokens=20),
+                ),
+                postprocess=lambda row: dict(resp=row["generated_text"]),
+                preprocess_map_kwargs={"num_cpus": 0.5},
+                postprocess_map_kwargs={"num_cpus": 0.25},
+            )
+
+            ds = ray.data.range(300)
+            ds = processor(ds)
+            for row in ds.take_all():
+                print(row)
+
+        Using builder_kwargs to pass chat_template_kwargs:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            from ray.data.llm import vLLMEngineProcessorConfig, build_processor
+
+            config = vLLMEngineProcessorConfig(
+                model_source="Qwen/Qwen3-0.6B",
+                chat_template_stage={"enabled": True},
+                concurrency=1,
+                batch_size=64,
+            )
+
+            processor = build_processor(
+                config,
+                preprocess=lambda row: dict(
+                    messages=[
+                        {"role": "user", "content": row["prompt"]},
+                    ],
+                    sampling_params=dict(
+                        temperature=0.6,
+                        max_tokens=100,
+                    ),
+                ),
+                builder_kwargs=dict(
+                    chat_template_kwargs={"enable_thinking": True},
+                ),
+            )
+
+            ds = ray.data.from_items([{"prompt": "What is 2+2?"}])
+            ds = processor(ds)
+            for row in ds.take_all():
+                print(row)
     """
     from ray.llm._internal.batch.processor import ProcessorBuilder
 
-    return ProcessorBuilder.build(
-        config,
+    ProcessorBuilder.validate_builder_kwargs(builder_kwargs)
+
+    build_kwargs = dict(
         preprocess=preprocess,
         postprocess=postprocess,
+        preprocess_map_kwargs=preprocess_map_kwargs,
+        postprocess_map_kwargs=postprocess_map_kwargs,
     )
+
+    # Pass through any additional builder kwargs
+    if builder_kwargs is not None:
+        build_kwargs.update(builder_kwargs)
+
+    return ProcessorBuilder.build(config, **build_kwargs)
 
 
 __all__ = [
@@ -429,5 +757,12 @@ __all__ = [
     "vLLMEngineProcessorConfig",
     "SGLangEngineProcessorConfig",
     "ServeDeploymentProcessorConfig",
+    "ChatTemplateStageConfig",
+    "DetokenizeStageConfig",
+    "PrepareMultimodalStageConfig",
+    "TokenizerStageConfig",
+    "HttpRequestStageConfig",
+    "PrepareImageStageConfig",
     "build_llm_processor",
+    "build_processor",
 ]

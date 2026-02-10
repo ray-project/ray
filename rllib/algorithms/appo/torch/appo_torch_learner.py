@@ -12,9 +12,9 @@ https://arxiv.org/pdf/1912.00167
 from typing import Dict
 
 from ray.rllib.algorithms.appo.appo import (
-    APPOConfig,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_KL_KEY,
+    APPOConfig,
 )
 from ray.rllib.algorithms.appo.appo_learner import APPOLearner
 from ray.rllib.algorithms.impala.torch.impala_torch_learner import IMPALATorchLearner
@@ -23,7 +23,7 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
+from ray.rllib.core.learner.learner import ENTROPY_KEY, POLICY_LOSS_KEY, VF_LOSS_KEY
 from ray.rllib.core.rl_module.apis import (
     TARGET_NETWORK_ACTION_DIST_INPUTS,
     TargetNetworkAPI,

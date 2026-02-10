@@ -1,7 +1,10 @@
 import enum
 import os
+import traceback
 from dataclasses import dataclass
-from typing import Optional, Dict, Tuple
+from typing import Dict, Optional
+
+from ray_release.exception import ExitCode, ReleaseTestError
 
 
 class ResultStatus(enum.Enum):
@@ -32,54 +35,18 @@ class Result:
     smoke_test: bool = False
 
     buildkite_url: Optional[str] = None
-    cluster_url: Optional[str] = None
 
     # Anyscale Jobs specific
     job_url: Optional[str] = None
     job_id: Optional[str] = None
 
     buildkite_job_id: Optional[str] = None
-    cluster_id: Optional[str] = None
 
     prometheus_metrics: Optional[Dict] = None
     extra_tags: Optional[Dict] = None
 
 
-class ExitCode(enum.Enum):
-    # If you change these, also change the `retry` section
-    # in `build_pipeline.py` and the `reason()` function in `run_e2e.sh`
-    SUCCESS = 0  # Do not set/return this manually
-    UNCAUGHT = 1  # Do not set/return this manually
-
-    UNSPECIFIED = 2
-    UNKNOWN = 3
-
-    # Hard infra errors (non-retryable)
-    CLI_ERROR = 10
-    CONFIG_ERROR = 11
-    SETUP_ERROR = 12
-    CLUSTER_RESOURCE_ERROR = 13
-    CLUSTER_ENV_BUILD_ERROR = 14
-    CLUSTER_STARTUP_ERROR = 15
-    LOCAL_ENV_SETUP_ERROR = 16
-    REMOTE_ENV_SETUP_ERROR = 17
-    FETCH_RESULT_ERROR = 18
-    ANYSCALE_ERROR = 19
-
-    # Infra timeouts (retryable)
-    RAY_WHEELS_TIMEOUT = 30
-    CLUSTER_ENV_BUILD_TIMEOUT = 31
-    CLUSTER_STARTUP_TIMEOUT = 32
-    CLUSTER_WAIT_TIMEOUT = 33
-
-    # Command errors - these are considered application errors
-    COMMAND_ERROR = 40
-    COMMAND_ALERT = 41
-    COMMAND_TIMEOUT = 42
-    PREPARE_ERROR = 43
-
-
-def _is_transient_error(result_status: ResultStatus, runtime: int) -> bool:
+def _is_transient_error(runtime: int) -> bool:
     """
     Classify whether an infra-failure issue is a transient issue. This is based on
     the status of its previous retries, and its runtime.
@@ -89,39 +56,44 @@ def _is_transient_error(result_status: ResultStatus, runtime: int) -> bool:
     if retry_count >= max_retry:
         # Already reach retry limit
         return False
-    if runtime > int(os.environ.get("BUILDKITE_TIME_LIMIT_FOR_RETRY", 0)):
-        # Take too long to run
-        return False
-    return True
+    return runtime <= int(os.environ.get("BUILDKITE_TIME_LIMIT_FOR_RETRY", 0))
 
 
-def handle_exception(
-    e: Exception, run_duration: int
-) -> Tuple[ExitCode, ResultStatus, Optional[int]]:
-    from ray_release.exception import ReleaseTestError
+def update_result_from_exception(
+    result: Result, e: Exception, with_last_logs: bool = False
+):
+    if with_last_logs and result.last_logs is None:
+        result.last_logs = "".join(traceback.format_exception(e))
 
     if not isinstance(e, ReleaseTestError):
-        return ExitCode.UNKNOWN, ResultStatus.UNKNOWN, 0
+        result.return_code = ExitCode.UNKNOWN.value
+        result.status = ResultStatus.UNKNOWN.value
+        result.runtime = 0
+        return
+
+    # Used for transient error detection.
+    # The logic does not really make sense.. but it is the same as the logic
+    # before refactoring.. and there are tests depends on the behavior..a
+    # TODO(aslonnie): clean up the logic...
+    original_runtime = result.runtime or 0
+
     exit_code = e.exit_code
     if 1 <= exit_code.value < 10:
-        result_status = ResultStatus.RUNTIME_ERROR
-        runtime = None
+        result.status = ResultStatus.RUNTIME_ERROR.value
     elif 10 <= exit_code.value < 20:
-        result_status = ResultStatus.INFRA_ERROR
-        runtime = None
+        result.status = ResultStatus.INFRA_ERROR.value
     elif 30 <= exit_code.value < 40:
-        result_status = ResultStatus.INFRA_TIMEOUT
-        runtime = None
+        result.status = ResultStatus.INFRA_TIMEOUT.value
     elif exit_code == ExitCode.COMMAND_TIMEOUT:
-        result_status = ResultStatus.TIMEOUT
-        runtime = 0
+        result.status = ResultStatus.TIMEOUT.value
+        result.runtime = 0
     elif 40 <= exit_code.value:
-        result_status = ResultStatus.ERROR
-        runtime = 0
+        result.status = ResultStatus.ERROR.value
+        result.runtime = 0
 
     # if this result is to be retried, mark its status as transient
     # this logic should be in-sync with run_release_test.sh
-    if _is_transient_error(result_status, run_duration):
-        result_status = ResultStatus.TRANSIENT_INFRA_ERROR
+    if _is_transient_error(original_runtime):
+        result.status = ResultStatus.TRANSIENT_INFRA_ERROR.value
 
-    return exit_code, result_status, runtime
+    result.return_code = exit_code.value

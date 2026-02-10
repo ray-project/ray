@@ -1,52 +1,73 @@
-from typing import List, Optional, Dict
-
 import os
 import subprocess
 import sys
+import tempfile
+from typing import Dict, List, Optional
 
+from ray_release.byod.build_context import BuildContext, fill_build_context_dir
 from ray_release.config import RELEASE_PACKAGE_DIR
 from ray_release.logger import logger
 from ray_release.test import (
     Test,
 )
+from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX, AZURE_REGISTRY_NAME
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
-RELEASE_BYOD_DIR = (
-    os.path.join(bazel_workspace_dir, "release/ray_release/byod")
-    if bazel_workspace_dir
-    else os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
-)
-
 
 def build_anyscale_custom_byod_image(
-    image: str, base_image: str, post_build_script: str
+    image: str,
+    base_image: str,
+    build_context: BuildContext,
+    release_byod_dir: Optional[str] = None,
 ) -> None:
     if _image_exist(image):
         logger.info(f"Image {image} already exists")
         return
 
-    env = os.environ.copy()
-    env["DOCKER_BUILDKIT"] = "1"
-    subprocess.check_call(
-        [
-            "docker",
-            "build",
-            "--progress=plain",
-            "--build-arg",
-            f"BASE_IMAGE={base_image}",
-            "--build-arg",
-            f"POST_BUILD_SCRIPT={post_build_script}",
-            "-t",
-            image,
-            "-f",
-            os.path.join(RELEASE_BYOD_DIR, "byod.custom.Dockerfile"),
-            RELEASE_BYOD_DIR,
-        ],
-        stdout=sys.stderr,
-        env=env,
-    )
-    _validate_and_push(image)
+    if not release_byod_dir:
+        if bazel_workspace_dir:
+            release_byod_dir = os.path.join(
+                bazel_workspace_dir, "release/ray_release/byod"
+            )
+        else:
+            release_byod_dir = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
+
+    with tempfile.TemporaryDirectory() as build_dir:
+        fill_build_context_dir(build_context, release_byod_dir, build_dir)
+
+        docker_build_cmd = "docker build --progress=plain .".split()
+        docker_build_cmd += ["--build-arg", f"BASE_IMAGE={base_image}"]
+        docker_build_cmd += ["-t", image]
+
+        env = os.environ.copy()
+        env["DOCKER_BUILDKIT"] = "1"
+
+        subprocess.check_call(
+            docker_build_cmd,
+            stdout=sys.stderr,
+            cwd=build_dir,
+            env=env,
+        )
+
+    if not base_image.startswith(ANYSCALE_RAY_IMAGE_PREFIX):
+        _check_ray_commit_in_image(image)
+
+    _push_image(image)
+    if os.environ.get("BUILDKITE"):
+        subprocess.run(
+            [
+                "buildkite-agent",
+                "annotate",
+                "--style=info",
+                "--context=custom-images",
+                "--append",
+                f"{image}<br/>",
+            ],
+        )
+    tag_without_registry = image.split("/")[-1]
+    azure_tag = f"{AZURE_REGISTRY_NAME}.azurecr.io/{tag_without_registry}"
+    _tag_and_push(source=image, target=azure_tag)
 
 
 def build_anyscale_base_byod_images(tests: List[Test]) -> List[str]:
@@ -65,6 +86,40 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> List[str]:
             raise RuntimeError(f"Image {image} not found")
 
     return image_list
+
+
+def _check_ray_commit_in_image(byod_image: str) -> None:
+    docker_ray_commit = (
+        subprocess.check_output(
+            [
+                "docker",
+                "run",
+                "-ti",
+                "--entrypoint",
+                "python",
+                byod_image,
+                "-c",
+                "import ray; print(ray.__commit__)",
+            ],
+        )
+        .decode("utf-8")
+        .strip()
+    )
+    if os.environ.get("RAY_IMAGE_TAG"):
+        logger.info(f"Ray commit from image: {docker_ray_commit}")
+    else:
+        expected_ray_commit = _get_ray_commit()
+        assert (
+            docker_ray_commit == expected_ray_commit
+        ), f"Expected ray commit {expected_ray_commit}, found {docker_ray_commit}"
+
+
+def _push_image(byod_image: str) -> None:
+    logger.info(f"Pushing image to registry: {byod_image}")
+    subprocess.check_call(
+        ["docker", "push", byod_image],
+        stdout=sys.stderr,
+    )
 
 
 def _validate_and_push(byod_image: str) -> None:
@@ -125,3 +180,14 @@ def _image_exist(image: str) -> bool:
         stderr=sys.stderr,
     )
     return p.returncode == 0
+
+
+def _tag_and_push(source: str, target: str) -> None:
+    subprocess.check_call(
+        ["docker", "tag", source, target],
+        stdout=sys.stderr,
+    )
+    subprocess.check_call(
+        ["docker", "push", target],
+        stdout=sys.stderr,
+    )

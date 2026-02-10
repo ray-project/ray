@@ -3,24 +3,23 @@ import datetime
 import json
 import logging
 import os
-import requests
 import socket
 import sys
 import traceback
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple
 
+import requests
+from grpc.aio import ServicerContext
 from opencensus.stats import stats as stats_module
-from prometheus_client.core import REGISTRY
-from prometheus_client.parser import text_string_to_metric_families
 from opentelemetry.proto.collector.metrics.v1 import (
     metrics_service_pb2,
     metrics_service_pb2_grpc,
 )
 from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric
-from grpc.aio import ServicerContext
-
+from prometheus_client.core import REGISTRY
+from prometheus_client.parser import text_string_to_metric_families
 
 import ray
 import ray._private.prometheus_exporter as prometheus_exporter
@@ -29,13 +28,6 @@ import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import (
     get_or_create_event_loop,
     get_user_temp_dir,
-)
-from ray._common.network_utils import parse_address
-from ray._private.utils import get_system_memory
-from ray.dashboard.modules.reporter.gpu_providers import (
-    GpuMetricProvider,
-    GpuUtilizationInfo,
-    TpuUtilizationInfo,
 )
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
@@ -47,7 +39,14 @@ from ray._private.ray_constants import (
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
-from ray._raylet import GCS_PID_KEY, WorkerID
+from ray._private.utils import get_system_memory
+from ray._raylet import (
+    GCS_PID_KEY,
+    METRICS_EXPORT_PORT_NAME,
+    RayletClient,
+    WorkerID,
+    persist_port,
+)
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
@@ -56,13 +55,25 @@ from ray.dashboard.consts import (
     COMPONENT_METRICS_TAG_KEYS,
     GCS_RPC_TIMEOUT_SECONDS,
     GPU_TAG_KEYS,
-    TPU_TAG_KEYS,
     NODE_TAG_KEYS,
+    TPU_TAG_KEYS,
 )
 from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManager
+from ray.dashboard.modules.reporter.gpu_providers import (
+    GpuMetricProvider,
+    GpuUtilizationInfo,
+    TpuUtilizationInfo,
+)
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
+)
+from ray.dashboard.modules.reporter.reporter_models import (
+    StatsPayload,
+)
+from ray.exceptions import (
+    GetTimeoutError,
+    RpcError,
 )
 
 import psutil
@@ -368,20 +379,15 @@ METRICS_GAUGES = {
     ),
 }
 
-PSUTIL_PROCESS_ATTRS = (
-    [
-        "pid",
-        "create_time",
-        "cpu_percent",
-        "cpu_times",
-        "cmdline",
-        "memory_info",
-        "memory_full_info",
-    ]
-    + ["num_fds"]
-    if sys.platform != "win32"
-    else []
-)
+PSUTIL_PROCESS_ATTRS = [
+    "pid",
+    "create_time",
+    "cpu_percent",
+    "cpu_times",
+    "cmdline",
+    "memory_info",
+    "memory_full_info",
+] + (["num_fds"] if sys.platform != "win32" else [])
 
 
 class ReporterAgent(
@@ -393,9 +399,10 @@ class ReporterAgent(
 
     Attributes:
         dashboard_agent: The DashboardAgent object contains global config
+        raylet_client: The RayletClient object to access raylet server
     """
 
-    def __init__(self, dashboard_agent):
+    def __init__(self, dashboard_agent, raylet_client=None):
         """Initialize the reporter object."""
         super().__init__(dashboard_agent)
 
@@ -417,7 +424,7 @@ class ReporterAgent(
         self._gcs_client = dashboard_agent.gcs_client
         self._ip = dashboard_agent.ip
         self._log_dir = dashboard_agent.log_dir
-        self._is_head_node = self._ip == parse_address(dashboard_agent.gcs_address)[0]
+        self._is_head_node = dashboard_agent.is_head
         self._hostname = socket.gethostname()
         # (pid, created_time) -> psutil.Process
         self._workers = {}
@@ -437,23 +444,14 @@ class ReporterAgent(
         self._open_telemetry_metric_recorder = None
         self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
-            try:
-                stats_exporter = prometheus_exporter.new_stats_exporter(
-                    prometheus_exporter.Options(
-                        namespace="ray",
-                        port=dashboard_agent.metrics_export_port,
-                        address="127.0.0.1" if self._ip == "127.0.0.1" else "",
-                    )
+            stats_exporter = prometheus_exporter.new_stats_exporter(
+                prometheus_exporter.Options(
+                    namespace="ray",
+                    port=dashboard_agent.metrics_export_port,
+                    address="127.0.0.1" if self._ip == "127.0.0.1" else "",
                 )
-            except Exception:
-                # TODO(SongGuyang): Catch the exception here because there is
-                # port conflict issue which brought from static port. We should
-                # remove this after we find better port resolution.
-                logger.exception(
-                    "Failed to start prometheus stats exporter. Agent will stay "
-                    "alive but disable the stats."
-                )
-                stats_exporter = None
+            )
+            dashboard_agent.metrics_export_port = stats_exporter.port
 
             self._metrics_agent = MetricsAgent(
                 stats_module.stats.view_manager,
@@ -465,6 +463,18 @@ class ReporterAgent(
                 # proxy_exporter_collector is None
                 # if Prometheus server is not started.
                 REGISTRY.register(self._metrics_agent.proxy_exporter_collector)
+
+        # Metrics collection is disabled, write -1 to indicate the port is not in use.
+        persist_port(
+            dashboard_agent.session_dir,
+            self._dashboard_agent.node_id,
+            METRICS_EXPORT_PORT_NAME,
+            (
+                dashboard_agent.metrics_export_port
+                if not self._metrics_collection_disabled
+                else -1
+            ),
+        )
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
         )
@@ -483,6 +493,13 @@ class ReporterAgent(
 
         # Create GPU metric provider instance
         self._gpu_metric_provider = GpuMetricProvider()
+
+        if raylet_client:
+            self._raylet_client = raylet_client
+        else:
+            self._raylet_client = RayletClient(
+                ip_address=self._ip, port=self._dashboard_agent.node_manager_port
+            )
 
     async def GetTraceback(self, request, context):
         pid = request.pid
@@ -592,27 +609,25 @@ class ReporterAgent(
             metric.description,
             data_points[0].explicit_bounds,
         )
+        # Collect all data points and record using a single call
+        batch_data_points = []
         for data_point in data_points:
             if data_point.count == 0:
                 continue
 
-            bucket_midpoints = (
-                self._open_telemetry_metric_recorder.get_histogram_bucket_midpoints(
-                    metric.name
-                )
-            )
-            assert len(bucket_midpoints) == len(data_point.bucket_counts)
             tags = {tag.key: tag.value.string_value for tag in data_point.attributes}
-            for i, bucket_count in enumerate(data_point.bucket_counts):
-                if bucket_count == 0:
-                    continue
-                bucket_midpoint = bucket_midpoints[i]
-                for _ in range(bucket_count):
-                    self._open_telemetry_metric_recorder.set_metric_value(
-                        metric.name,
-                        tags,
-                        bucket_midpoint,
-                    )
+            batch_data_points.append(
+                {
+                    "tags": tags,
+                    "bucket_counts": list(data_point.bucket_counts),
+                }
+            )
+
+        if batch_data_points:
+            self._open_telemetry_metric_recorder.record_histogram_aggregated_batch(
+                metric.name,
+                batch_data_points,
+            )
 
     def _export_number_data(
         self,
@@ -858,9 +873,9 @@ class ReporterAgent(
     def _get_disk_usage():
         if IN_KUBERNETES_POD and not ENABLE_K8S_DISK_USAGE:
             # If in a K8s pod, disable disk display by passing in dummy values.
-            return {
-                "/": psutil._common.sdiskusage(total=1, used=0, free=1, percent=0.0)
-            }
+            sdiskusage = namedtuple("sdiskusage", ["total", "used", "free", "percent"])
+            return {"/": sdiskusage(total=1, used=0, free=1, percent=0.0)}
+
         if sys.platform == "win32":
             root = psutil.disk_partitions()[0].mountpoint
         else:
@@ -886,35 +901,67 @@ class ReporterAgent(
                 stats.write_count,
             )
 
+    async def _async_get_worker_pids_from_raylet(self) -> List[int]:
+        try:
+            # Get worker pids from raylet via gRPC.
+            return await self._raylet_client.async_get_worker_pids()
+        except (GetTimeoutError, RpcError):
+            logger.exception("Failed to get worker pids from raylet")
+            return []
+
+    async def _async_get_agent_pids_from_raylet(self) -> List[int]:
+        try:
+            # Get agents pids from raylet via gRPC.
+            return await self._raylet_client.async_get_agent_pids()
+        except (GetTimeoutError, RpcError):
+            logger.exception("Failed to get agents pids from raylet")
+            return []
+
     def _get_agent_proc(self) -> psutil.Process:
         # Agent is the current process.
         # This method is not necessary, but we have it for mock testing.
         return psutil.Process()
 
-    def _generate_worker_key(self, proc: psutil.Process) -> Tuple[int, float]:
+    def _generate_proc_key(self, proc: psutil.Process) -> Tuple[int, float]:
         return (proc.pid, proc.create_time())
 
-    def _get_worker_processes(self):
-        raylet_proc = self._get_raylet_proc()
-        if raylet_proc is None:
-            return []
-        else:
-            workers = {}
-            if sys.platform == "win32":
-                # windows, get the child process not the runner
-                for child in raylet_proc.children():
-                    if child.children():
-                        child = child.children()[0]
-                    workers[self._generate_worker_key(child)] = child
-            else:
-                workers = {
-                    self._generate_worker_key(proc): proc
-                    for proc in raylet_proc.children()
-                }
-            return workers
+    async def _async_get_worker_processes(self):
+        pids = await self._async_get_worker_pids_from_raylet()
+        logger.debug(f"Worker PIDs from raylet: {pids}")
+        if not pids:
+            return {}
+        workers = {}
+        for pid in pids:
+            try:
+                proc = psutil.Process(pid)
+                workers[self._generate_proc_key(proc)] = proc
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                logger.error(f"Failed to access worker process {pid}")
+                continue
+        return workers
 
-    def _get_workers(self, gpus: Optional[List[GpuUtilizationInfo]] = None):
-        workers = self._get_worker_processes()
+    async def _async_get_agent_processes(self):
+        pids = await self._async_get_agent_pids_from_raylet()
+        logger.debug(f"Agent PIDs from raylet: {pids}")
+        if not pids:
+            return {}
+        agents = {}
+        for pid in pids:
+            try:
+                proc = psutil.Process(pid)
+                agents[self._generate_proc_key(proc)] = proc
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                logger.error(f"Failed to access agent process {pid}")
+                continue
+        return agents
+
+    async def _async_get_workers_and_agents(
+        self, gpus: Optional[List[GpuUtilizationInfo]] = None
+    ):
+        workers, agents = await asyncio.gather(
+            self._async_get_worker_processes(), self._async_get_agent_processes()
+        )
+        workers.update(agents)
         if not workers:
             return []
         else:
@@ -934,9 +981,6 @@ class ReporterAgent(
             for k in keys_to_pop:
                 self._workers.pop(k)
 
-            # Remove the current process (reporter agent), which is also a child of
-            # the Raylet.
-            self._workers.pop(self._generate_worker_key(self._get_agent_proc()))
             # Build process ID -> GPU info mapping for faster lookups
             gpu_pid_mapping = defaultdict(list)
             if gpus is not None:
@@ -1015,7 +1059,7 @@ class ReporterAgent(
     def _get_raylet(self):
         raylet_proc = self._get_raylet_proc()
         if raylet_proc is None:
-            return {}
+            return None
         else:
             return raylet_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
 
@@ -1056,7 +1100,7 @@ class ReporterAgent(
             return None
         return mem.shared
 
-    def _collect_stats(self):
+    async def _async_collect_stats(self):
         now = dashboard_utils.to_posix_time(datetime.datetime.utcnow())
         network_stats = self._get_network_stats()
         self._network_stats_hist.append((now, network_stats))
@@ -1067,6 +1111,7 @@ class ReporterAgent(
         disk_speed_stats = self._compute_speed_from_hist(self._disk_io_stats_hist)
 
         gpus = self._get_gpu_usage()
+        raylet = self._get_raylet()
         stats = {
             "now": now,
             "hostname": self._hostname,
@@ -1076,8 +1121,8 @@ class ReporterAgent(
             "mem": self._get_mem_usage(),
             # Unit is in bytes. None if
             "shm": self._get_shm_usage(),
-            "workers": self._get_workers(gpus),
-            "raylet": self._get_raylet(),
+            "workers": await self._async_get_workers_and_agents(gpus),
+            "raylet": raylet,
             "agent": self._get_agent(),
             "bootTime": self._get_boot_time(),
             "loadAvg": self._get_load_avg(),
@@ -1089,7 +1134,7 @@ class ReporterAgent(
             "network": network_stats,
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.
-            "cmdline": self._get_raylet().get("cmdline", []),
+            "cmdline": raylet.get("cmdline", []) if raylet else [],
         }
         if self._is_head_node:
             stats["gcs"] = self._get_gcs()
@@ -1296,8 +1341,8 @@ class ReporterAgent(
 
         for stat in worker_stats:
             cmdline = stat.get("cmdline")
-            # All ray processes start with ray::
-            if cmdline and len(cmdline) > 0 and cmdline[0].startswith("ray::"):
+            # collect both worker and driver stats
+            if cmdline:
                 proc_name = cmdline[0]
                 proc_name_to_stats[proc_name].append(stat)
 
@@ -1307,9 +1352,6 @@ class ReporterAgent(
                     or stat.get("gpu_utilization", 0) > 0
                 ):
                     gpu_worker_proc_names.add(proc_name)
-            # We will lose worker stats that don't follow the ray worker proc
-            # naming convention. Theoretically, there should be no data loss here
-            # because all worker processes are renamed to ray::.
 
         records = []
 
@@ -1723,7 +1765,7 @@ class ReporterAgent(
                 #       executor (TPE) to avoid blocking the Agent's event-loop
                 json_payload = await loop.run_in_executor(
                     self._executor,
-                    self._compose_stats_payload,
+                    self._run_in_executor,
                     autoscaler_status_json_bytes,
                 )
 
@@ -1736,10 +1778,15 @@ class ReporterAgent(
 
             await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 
-    def _compose_stats_payload(
+    def _run_in_executor(self, cluster_autoscaling_stats_json: Optional[bytes]) -> str:
+        return asyncio.run(
+            self._async_compose_stats_payload(cluster_autoscaling_stats_json)
+        )
+
+    async def _async_compose_stats_payload(
         self, cluster_autoscaling_stats_json: Optional[bytes]
     ) -> str:
-        stats = self._collect_stats()
+        stats = await self._async_collect_stats()
 
         # Report stats only when metrics collection is enabled.
         if not self._metrics_collection_disabled:
@@ -1770,16 +1817,23 @@ class ReporterAgent(
 
             self._metrics_agent.clean_all_dead_worker_metrics()
 
+        return self._generate_stats_payload(stats)
+
+    def _generate_stats_payload(self, stats: dict) -> str:
         # Convert processes_pids back to a list of dictionaries to maintain backwards-compatibility
         for gpu in stats["gpus"]:
             if isinstance(gpu.get("processes_pids"), dict):
                 gpu["processes_pids"] = list(gpu["processes_pids"].values())
 
-        # TODO(aguo): Add a pydantic model for this dict to maintain compatibility
-        # with the Ray Dashboard API and UI code.
+        if StatsPayload is not None:
+            stats_dict = dashboard_utils.to_google_style(recursive_asdict(stats))
 
-        # NOTE: This converts keys to "Google style", (e.g: "processes_pids" -> "processesPids")
-        return jsonify_asdict(stats)
+            parsed_stats = StatsPayload.parse_obj(stats_dict)
+            out = json.dumps(parsed_stats.dict())
+            return out
+        else:
+            # NOTE: This converts keys to "Google style", (e.g: "processes_pids" -> "processesPids")
+            return jsonify_asdict(stats)
 
     async def run(self, server):
         if server:

@@ -1,5 +1,6 @@
+import time
 from collections import OrderedDict
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -17,6 +18,7 @@ from ray.train.v2._internal.execution.controller.state import (
     RestartingState,
     RunningState,
     SchedulingState,
+    ShuttingDownState,
 )
 from ray.train.v2._internal.execution.scaling_policy import ResizeDecision
 from ray.train.v2._internal.execution.worker_group import (
@@ -366,6 +368,37 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
     }
 
 
+@patch("ray.train.v2._internal.state.util.get_actor", autospec=True)
+def test_train_state_actor_abort_dead_controller_live_runs_server_unavailable(
+    mock_get_actor,
+):
+    mock_get_actor.side_effect = ray.util.state.exception.ServerUnavailable
+    actor = TrainStateActor(
+        enable_state_actor_reconciliation=True,
+        reconciliation_interval_s=0,
+    )
+    actor.create_or_update_train_run(
+        create_mock_train_run(
+            status=RunStatus.RUNNING,
+            controller_actor_id="controller_actor_id",
+            id="run_id",
+        )
+    )
+
+    # Still RUNNING after ServerUnavailable
+    while mock_get_actor.call_count == 0:
+        time.sleep(0.01)
+    assert actor.get_train_runs()["run_id"].status == RunStatus.RUNNING
+
+    # ABORTED after detecting dead controller
+    mock_get_actor.side_effect = lambda actor_id, timeout: create_mock_actor_state(
+        state="DEAD"
+    )
+    while actor.get_train_runs()["run_id"].status != RunStatus.ABORTED:
+        time.sleep(0.01)
+    assert actor.get_train_runs()["run_id"].status == RunStatus.ABORTED
+
+
 def test_train_state_manager_run_lifecycle(ray_start_regular):
     """Test the complete lifecycle of a training run through the state manager."""
     manager = TrainStateManager()
@@ -505,6 +538,7 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
         ),
         RunningState(),
+        ShuttingDownState(next_state=FinishedState()),
         FinishedState(),
     ]
     expected_statuses = [
@@ -519,6 +553,7 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
         RunStatus.SCHEDULING,  # Rescheduling
         RunStatus.SCHEDULING,
         RunStatus.RUNNING,
+        RunStatus.RUNNING,  # Shutting down
         RunStatus.FINISHED,
     ]
 

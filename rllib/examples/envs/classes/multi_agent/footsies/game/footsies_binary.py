@@ -9,13 +9,14 @@ from pathlib import Path
 
 import grpc
 import requests
+from filelock import FileLock
+
 from ray.rllib.env import EnvContext
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
     footsies_service_pb2 as footsies_pb2,
-)
-from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
     footsies_service_pb2_grpc as footsies_pb2_grpc,
 )
+from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ class FootsiesBinary:
         self.config = config
         self.port = port
         self.binary_to_download = config["binary_to_download"]
+
         if self.binary_to_download == "linux_server":
             self.url = self._urls.URL_LINUX_SERVER_BINARIES
         elif self.binary_to_download == "linux_windowed":
@@ -91,11 +93,29 @@ class FootsiesBinary:
             self._add_executable_permission(game_binary_path)
         logger.info(f"Game binary path: {game_binary_path}")
 
+        # The underlying game can be quite spammy. So when we are not debugging it, we can suppress the output.
+        log_output = self.config.get("log_unity_output")
+        if log_output is None:
+            if log_once("log_unity_output_not_set"):
+                logger.warning(
+                    "`log_unity_output` not set in environment config, not logging output by default"
+                )
+            log_output = False
+
+        if not log_output:
+            stdout_dest = stderr_dest = subprocess.DEVNULL
+        else:
+            stdout_dest = stderr_dest = None  # Use parent's stdout/stderr
+
         if (
             self.binary_to_download == "linux_server"
             or self.binary_to_download == "linux_windowed"
         ):
-            process = subprocess.Popen([game_binary_path, "--port", str(self.port)])
+            process = subprocess.Popen(
+                [game_binary_path, "--port", str(self.port)],
+                stdout=stdout_dest,
+                stderr=stderr_dest,
+            )
         else:
             process = subprocess.Popen(
                 [
@@ -105,6 +125,8 @@ class FootsiesBinary:
                     "--port",
                     str(self.port),
                 ],
+                stdout=stdout_dest,
+                stderr=stderr_dest,
             )
 
         # check if the game server is running correctly
@@ -155,41 +177,51 @@ class FootsiesBinary:
         return process.pid
 
     def _download_game_binary(self):
+        # As multiple actors might try to download all at the same time.
+        # The file lock should force only one actor to download
         chunk_size = 1024 * 1024  # 1MB
 
-        if Path(self.full_download_path).exists():
-            logger.info(
-                f"Game binary already exists at {self.full_download_path}, skipping download."
-            )
-
-        else:
-            try:
-                with requests.get(self.url, stream=True) as response:
-                    response.raise_for_status()
-                    self.full_download_dir.mkdir(parents=True, exist_ok=True)
-                    with open(self.full_download_path, "wb") as f:
-                        for chunk in response.iter_content(chunk_size=chunk_size):
-                            if chunk:
-                                f.write(chunk)
+        lock_path = self.full_download_path.parent / ".footsies-download.lock"
+        with FileLock(lock_path, timeout=300):
+            if self.full_download_path.exists():
                 logger.info(
-                    f"Downloaded game binary to {self.full_download_path}\n"
-                    f"Binary size: {self.full_download_path.stat().st_size / 1024 / 1024:.1f} MB\n"
+                    f"Game binary already exists at {self.full_download_path}, skipping download."
                 )
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Failed to download binary from {self.url}: {e}")
+
+            else:
+                try:
+                    with requests.get(self.url, stream=True) as response:
+                        response.raise_for_status()
+                        self.full_download_dir.mkdir(parents=True, exist_ok=True)
+                        with open(self.full_download_path, "wb") as f:
+                            for chunk in response.iter_content(chunk_size=chunk_size):
+                                if chunk:
+                                    f.write(chunk)
+                    logger.info(
+                        f"Downloaded game binary to {self.full_download_path}\n"
+                        f"Binary size: {self.full_download_path.stat().st_size / 1024 / 1024:.1f} MB\n"
+                    )
+                except requests.exceptions.RequestException as e:
+                    logger.error(f"Failed to download binary from {self.url}: {e}")
 
     def _unzip_game_binary(self):
-        if Path(self.renamed_path).exists():
-            logger.info(
-                f"Game binary already extracted at {self.renamed_path}, skipping extraction."
-            )
-        else:
-            self.full_extract_dir.mkdir(parents=True, exist_ok=True)
-            with zipfile.ZipFile(self.full_download_path, mode="r") as zip_ref:
-                zip_ref.extractall(self.full_extract_dir)
-
-            if self.binary_to_download == "mac_windowed":
-                self.full_download_path.with_suffix(".app").rename(self.renamed_path)
+        # As multiple actors might try to unzip or rename the paths at the same time.
+        # The file lock should force this function to be sequential
+        lock_path = self.full_download_path.parent / ".footsies-unzip.lock"
+        with FileLock(lock_path, timeout=300):
+            if self.renamed_path.exists():
+                logger.info(
+                    f"Game binary already extracted at {self.renamed_path}, skipping extraction."
+                )
             else:
-                self.full_download_path.with_suffix("").rename(self.renamed_path)
-            logger.info(f"Extracted game binary to {self.renamed_path}")
+                self.full_extract_dir.mkdir(parents=True, exist_ok=True)
+                with zipfile.ZipFile(self.full_download_path, mode="r") as zip_ref:
+                    zip_ref.extractall(self.full_extract_dir)
+
+                if self.binary_to_download == "mac_windowed":
+                    self.full_download_path.with_suffix(".app").rename(
+                        self.renamed_path
+                    )
+                else:
+                    self.full_download_path.with_suffix("").rename(self.renamed_path)
+                logger.info(f"Extracted game binary to {self.renamed_path}")

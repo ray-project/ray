@@ -44,7 +44,7 @@ situation.
   in the FIFO order.
 - Last commands win. The state of the publisher / subscriber is equivalent to
   the last command that's called.
-- Publisher failiure detection. The publisher failure is detected by
+- Publisher failure detection. The publisher failure is detected by
   subscribers.
 - Subscriber failure detection. The subscriber failure is tracked by
   publishers.
@@ -137,8 +137,6 @@ Note that this section ignores fault tolerance.
 
 Both pubsub RPC's will be retried by the client on transient network failures using the
 retryable grpc client used by other RPC's throughout.
-
-TODO(dayshah): Only the GCS client currently retries the requests, the core worker clients will in the future.
 
 Subscribing and unsubscribing are idempotent so the `PubsubCommandBatchRequest` can be resent.
 Since we restrict it to one in-flight request, the commands will be ordered even with retries.

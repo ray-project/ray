@@ -1,7 +1,7 @@
 from typing import Optional
 
-import numpy as np
 import gymnasium as gym
+import numpy as np
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.utils import try_import_pyspiel

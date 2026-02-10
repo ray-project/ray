@@ -89,7 +89,7 @@ Run it in the background with the following command:
 Launching Ray Jobs
 ------------------
 
-The Ray cluster now ready to handle workloads. Initiate the data preparation and fine-tuning Ray jobs:
+The Ray cluster is now ready to handle workloads. Initiate the data preparation and fine-tuning Ray jobs:
 
 1. Launch the Ray job for downloading the dolly-15k dataset and the Llama3.1 8B model artifacts:
 

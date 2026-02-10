@@ -6,8 +6,6 @@ from functools import partial
 from unittest.mock import patch
 
 import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
 import pytest
 from pyarrow.fs import LocalFileSystem
 from pytest_lazy_fixtures import lf as lazy_fixture
@@ -15,9 +13,7 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
-    FastFileMetadataProvider,
     FileMetadataProvider,
-    ParquetMetadataProvider,
 )
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
@@ -27,7 +23,6 @@ from ray.data.datasource.file_meta_provider import (
     _get_file_infos_parallel,
     _get_file_infos_serial,
 )
-from ray.data.datasource.parquet_meta_provider import _get_total_bytes
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
     _unwrap_protocol,
@@ -63,57 +58,6 @@ def test_file_metadata_providers_not_implemented():
         meta_provider(["/foo/bar.csv"], rows_per_file=None, file_sizes=[None])
     with pytest.raises(NotImplementedError):
         meta_provider.expand_paths(["/foo/bar.csv"], None)
-
-
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
-        ),  # Path contains space.
-        (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
-        ),
-    ],
-)
-def test_default_parquet_metadata_provider(fs, data_path):
-    path_module = os.path if urllib.parse.urlparse(data_path).scheme else posixpath
-    paths = [
-        path_module.join(data_path, "test1.parquet"),
-        path_module.join(data_path, "test2.parquet"),
-    ]
-    paths, fs = _resolve_paths_and_filesystem(paths, fs)
-
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    table = pa.Table.from_pandas(df1)
-    pq.write_table(table, paths[0], filesystem=fs)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    table = pa.Table.from_pandas(df2)
-    pq.write_table(table, paths[1], filesystem=fs)
-
-    meta_provider = ParquetMetadataProvider()
-    pq_ds = pq.ParquetDataset(paths, filesystem=fs)
-    fragment_file_metas = meta_provider.prefetch_file_metadata(pq_ds.fragments)
-
-    meta = meta_provider(
-        [p.path for p in pq_ds.fragments],
-        num_fragments=len(pq_ds.fragments),
-        prefetched_metadata=fragment_file_metas,
-    )
-
-    expected_meta_size_bytes = sum(
-        [_get_total_bytes(f.metadata) for f in pq_ds.fragments]
-    )
-
-    assert meta.size_bytes == expected_meta_size_bytes
-    assert meta.num_rows == 6
-    assert len(paths) == 2
-    assert all(path in meta.input_files for path in paths)
 
 
 @pytest.mark.parametrize(
@@ -420,70 +364,6 @@ def test_default_file_metadata_provider_many_files_diff_dirs(
                 list, zip(*meta_provider.expand_paths(dir_paths, fs))
             )
         assert len(file_paths) == len(paths) * num_dfs
-
-
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-        (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
-            lazy_fixture("s3_server"),
-        ),  # Path contains space.
-        (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
-            lazy_fixture("s3_server"),
-        ),
-    ],
-)
-def test_fast_file_metadata_provider(
-    propagate_logs, caplog, fs, data_path, endpoint_url
-):
-    storage_options = (
-        {}
-        if endpoint_url is None
-        else dict(client_kwargs=dict(endpoint_url=endpoint_url))
-    )
-
-    path_module = os.path if urllib.parse.urlparse(data_path).scheme else posixpath
-    path1 = path_module.join(data_path, "test1.csv")
-    path2 = path_module.join(data_path, "test2.csv")
-    paths = [path1, path2]
-    paths, fs = _resolve_paths_and_filesystem(paths, fs)
-
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df1.to_csv(path1, index=False, storage_options=storage_options)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    df2.to_csv(path2, index=False, storage_options=storage_options)
-
-    meta_provider = FastFileMetadataProvider()
-    with caplog.at_level(logging.WARNING):
-        file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
-    assert "meta_provider=DefaultFileMetadataProvider()" in caplog.text
-    assert file_paths == paths
-    assert len(file_sizes) == len(file_paths)
-
-    meta = meta_provider(
-        paths,
-        rows_per_file=3,
-        file_sizes=file_sizes,
-    )
-    assert meta.size_bytes is None
-    assert meta.num_rows == 6
-    assert len(paths) == 2
-    assert all(path in meta.input_files for path in paths)
-
-
-def test_fast_file_metadata_provider_ignore_missing():
-    meta_provider = FastFileMetadataProvider()
-    with pytest.raises(ValueError):
-        paths = meta_provider.expand_paths([], None, ignore_missing_paths=True)
-        for _ in paths:
-            pass
 
 
 if __name__ == "__main__":

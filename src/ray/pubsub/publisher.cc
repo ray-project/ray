@@ -255,6 +255,7 @@ std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState(
   case rpc::ChannelType::GCS_ACTOR_CHANNEL:
   case rpc::ChannelType::GCS_JOB_CHANNEL:
   case rpc::ChannelType::GCS_NODE_INFO_CHANNEL:
+  case rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL:
   case rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL:
     // Critical if messages are dropped.
     return std::make_unique<EntityState>(RayConfig::instance().max_grpc_message_size(),
@@ -389,10 +390,18 @@ void Publisher::ConnectToSubscriber(
       request, publisher_id, pub_messages, std::move(send_reply_callback));
 }
 
-void Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
-                                     const UniqueID &subscriber_id,
-                                     const std::optional<std::string> &key_id) {
+StatusSet<StatusT::InvalidArgument> Publisher::RegisterSubscription(
+    const rpc::ChannelType channel_type,
+    const UniqueID &subscriber_id,
+    const std::optional<std::string> &key_id) {
   absl::MutexLock lock(&mutex_);
+  auto subscription_index_it = subscription_index_map_.find(channel_type);
+  if (subscription_index_it == subscription_index_map_.end()) {
+    return StatusT::InvalidArgument(
+        absl::StrFormat("Invalid channel type: %s, expected channel types: %s",
+                        rpc::ChannelType_Name(channel_type),
+                        possible_channel_types));
+  }
   auto it = subscribers_.find(subscriber_id);
   if (it == subscribers_.end()) {
     it = subscribers_
@@ -405,9 +414,8 @@ void Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
              .first;
   }
   SubscriberState *subscriber = it->second.get();
-  auto subscription_index_it = subscription_index_map_.find(channel_type);
-  RAY_CHECK(subscription_index_it != subscription_index_map_.end());
   subscription_index_it->second.AddEntry(key_id.value_or(""), subscriber);
+  return StatusT::OK();
 }
 
 void Publisher::Publish(rpc::PubMessage pub_message) {

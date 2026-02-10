@@ -22,18 +22,25 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, find_free_port
 from ray._common.test_utils import wait_for_condition
+from ray._private.authentication_test_utils import (
+    authentication_env_guard,
+    clear_auth_token_sources,
+    reset_auth_token_state,
+    set_auth_mode,
+    set_env_auth_token,
+)
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env import virtualenv_utils
 from ray._private.test_utils import (
     RayletKiller,
     external_redis_test_enabled,
-    find_free_port,
     get_and_run_resource_killer,
     get_redis_cli,
     init_error_pubsub,
     init_log_pubsub,
+    kill_processes,
     redis_replicas,
     redis_sentinel_replicas,
     reset_autoscaler_v2_enabled_cache,
@@ -402,6 +409,13 @@ def start_redis(db_dir):
 
 
 def kill_all_redis_server():
+    """
+    Find all redis server processes running on this host via cmdline
+    and kill them.
+    Note: killed redis process will raise ResourceWarning
+          when the python Subprocess tracking the
+          underlying process is garbage collected.
+    """
     import psutil
 
     # Find Redis server processes
@@ -449,9 +463,7 @@ def _setup_redis(request, with_sentinel=False):
         else:
             del os.environ["RAY_external_storage_namespace"]
 
-        for proc in processes:
-            proc.process.kill()
-        kill_all_redis_server()
+        kill_processes(processes)
 
 
 @pytest.fixture
@@ -617,13 +629,6 @@ def ray_start_regular_shared_2_cpus(request):
         yield res
 
 
-@pytest.fixture(scope="module", params=[{"local_mode": True}, {"local_mode": False}])
-def ray_start_shared_local_modes(request):
-    param = getattr(request, "param", {})
-    with _ray_start(**param) as res:
-        yield res
-
-
 @pytest.fixture
 def ray_start_2_cpus(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
@@ -737,10 +742,12 @@ def ray_start_cluster_head_with_env_vars(
     request, maybe_setup_external_redis, monkeypatch
 ):
     param = getattr(request, "param", {})
-    env_vars = param.pop("env_vars", {})
+    env_vars = param.get("env_vars", {})
+    # Create a copy of param without env_vars to pass to _ray_start_cluster
+    cluster_param = {k: v for k, v in param.items() if k != "env_vars"}
     for k, v in env_vars.items():
         monkeypatch.setenv(k, v)
-    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+    with _ray_start_cluster(do_init=True, num_nodes=1, **cluster_param) as res:
         yield res
 
 
@@ -821,27 +828,6 @@ def call_ray_start_context(request):
     ray.shutdown()
     # Kill the Ray cluster.
     subprocess.check_call(["ray", "stop"], env=env)
-    # Delete the cluster address just in case.
-    ray._common.utils.reset_ray_address()
-
-
-@pytest.fixture
-def call_ray_start_with_external_redis(request):
-    ports = getattr(request, "param", "6379")
-    port_list = ports.split(",")
-    for port in port_list:
-        temp_dir = ray._common.utils.get_ray_temp_dir()
-        start_redis_instance(temp_dir, int(port), password="123")
-    address_str = ",".join(map(lambda x: build_address("localhost", x), port_list))
-    cmd = f"ray start --head --address={address_str} --redis-password=123"
-    subprocess.call(cmd.split(" "))
-
-    yield address_str.split(",")[0]
-
-    # Disconnect from the Ray cluster.
-    ray.shutdown()
-    # Kill the Ray cluster.
-    subprocess.check_call(["ray", "stop"])
     # Delete the cluster address just in case.
     ray._common.utils.reset_ray_address()
 
@@ -1505,3 +1491,111 @@ def make_httpserver(httpserver_listen_address, httpserver_ssl_context):
     server.clear()
     if server.is_running():
         server.stop()
+
+
+@pytest.fixture(scope="function")
+def event_routing_config(request, monkeypatch):
+    """
+    fixture to toggle event routing modes.
+    Modes:
+      - "default": Uses the existing core_worker to gcs code path.
+      - "aggregator": Enable publishing events to GCS through the Aggregator agent.
+    """
+    mode = getattr(request, "param", "default")
+    # clear envs to ensure default behavior
+    monkeypatch.delenv(
+        "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", raising=False
+    )
+    monkeypatch.delenv("RAY_enable_core_worker_ray_event_to_aggregator", raising=False)
+
+    if mode == "aggregator":
+        print("using aggregator mode")
+        # Enable aggregator path in core worker
+        monkeypatch.setenv("RAY_enable_core_worker_ray_event_to_aggregator", "1")
+        # Explicitly disable core worker to GCS so that all events are only sent to GCS once (through the aggregator pathway)
+        monkeypatch.setenv("RAY_enable_core_worker_task_event_to_gcs", "0")
+        # Ensure aggregator agent publishes to GCS
+        monkeypatch.setenv(
+            "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", "True"
+        )
+    yield
+
+
+@pytest.fixture
+def cleanup_auth_token_env():
+    """Reset authentication environment variables, files, and caches."""
+
+    with authentication_env_guard():
+        clear_auth_token_sources(remove_default=True)
+        reset_auth_token_state()
+        yield
+        reset_auth_token_state()
+
+
+@pytest.fixture
+def setup_cluster_with_token_auth(cleanup_auth_token_env):
+    """Spin up a Ray cluster with token authentication enabled."""
+
+    test_token = "test_token_12345678901234567890123456789012"
+    set_auth_mode("token")
+    set_env_auth_token(test_token)
+    reset_auth_token_state()
+
+    cluster = Cluster()
+    # Use dynamic port to avoid port conflicts on Windows where sockets
+    # linger in TIME_WAIT state between tests
+    cluster.add_node(dashboard_agent_listen_port=find_free_port())
+
+    try:
+        context = ray.init(address=cluster.address)
+        dashboard_url = context.address_info["webui_url"]
+        yield {
+            "cluster": cluster,
+            "dashboard_url": f"http://{dashboard_url}",
+            "token": test_token,
+        }
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+@pytest.fixture
+def setup_cluster_without_token_auth(cleanup_auth_token_env):
+    """Spin up a Ray cluster with authentication disabled."""
+
+    set_auth_mode("disabled")
+    clear_auth_token_sources(remove_default=True)
+    reset_auth_token_state()
+
+    cluster = Cluster()
+    # Use dynamic port to avoid port conflicts on Windows where sockets
+    # linger in TIME_WAIT state between tests
+    cluster.add_node(dashboard_agent_listen_port=find_free_port())
+
+    try:
+        context = ray.init(address=cluster.address)
+        dashboard_url = context.address_info["webui_url"]
+        yield {
+            "cluster": cluster,
+            "dashboard_url": f"http://{dashboard_url}",
+        }
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+@pytest.fixture
+def ray_start_cluster_with_zero_copy_tensors(monkeypatch):
+    """Start a Ray cluster with zero-copy PyTorch tensors enabled."""
+    with monkeypatch.context() as m:
+        # Enable zero-copy sharing of PyTorch tensors in Ray
+        m.setenv("RAY_ENABLE_ZERO_COPY_TORCH_TENSORS", "1")
+
+        # Initialize Ray with the required environment variable.
+        ray.init(runtime_env={"env_vars": {"RAY_ENABLE_ZERO_COPY_TORCH_TENSORS": "1"}})
+
+        # Yield control to the test session
+        yield
+
+        # Shutdown Ray after tests complete
+        ray.shutdown()

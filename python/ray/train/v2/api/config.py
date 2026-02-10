@@ -2,12 +2,11 @@ import logging
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
 
 import pyarrow.fs
 
 from ray.air.config import (
-    CheckpointConfig,
     FailureConfig as FailureConfigV1,
     ScalingConfig as ScalingConfigV1,
 )
@@ -20,6 +19,7 @@ from ray.train.v2._internal.migration_utils import (
 )
 from ray.train.v2._internal.util import date_str
 from ray.util.annotations import PublicAPI
+from ray.util.tpu import get_tpu_worker_resources
 
 if TYPE_CHECKING:
     from ray.train import UserCallback
@@ -49,6 +49,9 @@ class ScalingConfig(ScalingConfigV1):
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
+        label_selector: A list of label selectors for Ray Train worker placement.
+            If a single label selector is provided, it will be applied to all Ray Train workers.
+            If a list is provided, it must be the same length as the max number of Ray Train workers.
         accelerator_type: [Experimental] If specified, Ray Train will launch the
             training coordinator and workers on the nodes with the specified type
             of accelerators.
@@ -65,27 +68,12 @@ class ScalingConfig(ScalingConfigV1):
             auto-detected for TPUs and added as Ray node labels. This arg enables
             SPMD execution of the training workload. This field is required
             when `use_tpu` is True and `num_workers` is greater than 1.
-
-    Example:
-
-        .. testcode::
-
-            from ray.train import ScalingConfig
-            scaling_config = ScalingConfig(
-                # Number of distributed workers.
-                num_workers=2,
-                # Turn on/off GPU.
-                use_gpu=True,
-            )
-
-        .. testoutput::
-            :hide:
-
-            ...
-
     """
 
     trainer_resources: Optional[dict] = None
+    label_selector: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
+
+    # Accelerator specific fields.
     use_tpu: Union[bool] = False
     topology: Optional[str] = None
 
@@ -93,17 +81,43 @@ class ScalingConfig(ScalingConfigV1):
         if self.trainer_resources is not None:
             raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
 
+        self._validate_tpu_config()
+
+        if (
+            isinstance(self.label_selector, list)
+            and isinstance(self.num_workers, int)
+            and len(self.label_selector) != self.num_workers
+        ):
+            raise ValueError(
+                "If `label_selector` is a list, it must be the same length as `num_workers`."
+            )
+
+        if self.num_workers == 0:
+            logger.info(
+                "Running in local mode. The training function will run in the same process. "
+                "If you are using it and running into issues please file a report at "
+                "https://github.com/ray-project/ray/issues."
+            )
+
+        super().__post_init__()
+
+    def _validate_tpu_config(self):
+        """Validates configuration specifically for TPU usage."""
+
         if self.use_gpu and self.use_tpu:
             raise ValueError("Cannot specify both `use_gpu=True` and `use_tpu=True`.")
 
-        if not self.use_tpu and self.num_tpus_per_worker > 0:
-            raise ValueError(
-                "`use_tpu` is False but `TPU` was found in "
-                "`resources_per_worker`. Either set `use_tpu` to True or "
-                "remove `TPU` from `resources_per_worker."
-            )
+        if not self.use_tpu:
+            if self.num_tpus_per_worker > 0:
+                raise ValueError(
+                    "`use_tpu` is False but `TPU` was found in "
+                    "`resources_per_worker`. Either set `use_tpu` to True or "
+                    "remove `TPU` from `resources_per_worker."
+                )
+            # If not using TPU, we are done validating TPU-specific logic.
+            return
 
-        if self.use_tpu and self.num_tpus_per_worker == 0:
+        if self.num_tpus_per_worker == 0:
             raise ValueError(
                 "`use_tpu` is True but `TPU` is set to 0 in "
                 "`resources_per_worker`. Either set `use_tpu` to False or "
@@ -111,7 +125,7 @@ class ScalingConfig(ScalingConfigV1):
                 "`resources_per_worker."
             )
 
-        if self.use_tpu and self.num_workers > 1:
+        if self.num_workers > 1:
             if not self.topology:
                 raise ValueError(
                     "`topology` must be specified in ScalingConfig when `use_tpu=True` "
@@ -122,15 +136,38 @@ class ScalingConfig(ScalingConfigV1):
                     "`accelerator_type` must be specified in ScalingConfig when "
                     "`use_tpu=True` and `num_workers` > 1."
                 )
+            if self.label_selector:
+                raise ValueError(
+                    "Cannot set `label_selector` when `use_tpu=True` because "
+                    "Ray Train automatically reserves a TPU slice with a predefined label."
+                )
 
-        if self.num_workers == 0:
-            logger.info(
-                "Running in local mode. The training function will run in the same process. "
-                "If you are using it and running into issues please file a report at "
-                "https://github.com/ray-project/ray/issues."
-            )
+        # Validate TPU resources when both topology and accelerator type are specified.
+        if self.topology and self.accelerator_type:
+            try:
+                workers_per_slice, tpu_resources = get_tpu_worker_resources(
+                    topology=self.topology,
+                    accelerator_type=self.accelerator_type,
+                    resources_per_unit=self.resources_per_worker,
+                    num_slices=1,
+                )
+            except Exception as e:
+                raise ValueError(
+                    f"Could not parse TPU topology details for "
+                    f"type={self.accelerator_type}, "
+                    f"topology={self.topology}. Error: {e}"
+                )
 
-        super().__post_init__()
+            if workers_per_slice > 0 and self.num_workers % workers_per_slice != 0:
+                raise ValueError(
+                    f"The configured `num_workers` ({self.num_workers}) must be a "
+                    f"multiple of {workers_per_slice} for the specified topology ({self.topology}). "
+                    "TPU workloads typically require symmetric resource distribution "
+                    "across all slices to function correctly."
+                )
+
+            if self.resources_per_worker is None:
+                self.resources_per_worker = tpu_resources
 
     @property
     def _resources_per_worker_not_none(self):
@@ -151,6 +188,66 @@ class ScalingConfig(ScalingConfigV1):
 
 
 @dataclass
+@PublicAPI(stability="stable")
+class CheckpointConfig:
+    """Configuration for checkpointing.
+
+    Default behavior is to persist all checkpoints reported with
+    :meth:`ray.train.report` to disk. If ``num_to_keep`` is set,
+    the default retention policy is to keep the most recent checkpoints.
+
+    Args:
+        num_to_keep: The maximum number of checkpoints to keep.
+            If you report more checkpoints than this, the oldest
+            (or lowest-scoring, if ``checkpoint_score_attribute`` is set)
+            checkpoint will be deleted.
+            If this is ``None`` then all checkpoints will be kept. Must be >= 1.
+        checkpoint_score_attribute: The attribute that will be used to
+            score checkpoints to determine which checkpoints should be kept.
+            This attribute must be a key from the metrics dictionary
+            attached to the checkpoint. This attribute must have a numerical value.
+        checkpoint_score_order: Either "max" or "min".
+            If "max"/"min", then checkpoints with highest/lowest values of
+            the ``checkpoint_score_attribute`` will be kept. Defaults to "max".
+        checkpoint_frequency: [Deprecated]
+        checkpoint_at_end: [Deprecated]
+    """
+
+    num_to_keep: Optional[int] = None
+    checkpoint_score_attribute: Optional[str] = None
+    checkpoint_score_order: Literal["max", "min"] = "max"
+    checkpoint_frequency: Union[Optional[int], Literal[_DEPRECATED]] = _DEPRECATED
+    checkpoint_at_end: Union[Optional[bool], Literal[_DEPRECATED]] = _DEPRECATED
+
+    def __post_init__(self):
+        if self.checkpoint_frequency != _DEPRECATED:
+            raise DeprecationWarning(
+                "`checkpoint_frequency` is deprecated since it does not "
+                "apply to user-defined training functions. "
+                "Please remove this argument from your CheckpointConfig."
+            )
+
+        if self.checkpoint_at_end != _DEPRECATED:
+            raise DeprecationWarning(
+                "`checkpoint_at_end` is deprecated since it does not "
+                "apply to user-defined training functions. "
+                "Please remove this argument from your CheckpointConfig."
+            )
+
+        if self.num_to_keep is not None and self.num_to_keep <= 0:
+            raise ValueError(
+                f"Received invalid num_to_keep: {self.num_to_keep}. "
+                "Must be None or an integer >= 1."
+            )
+
+        if self.checkpoint_score_order not in ("max", "min"):
+            raise ValueError(
+                f"Received invalid checkpoint_score_order: {self.checkpoint_score_order}. "
+                "Must be 'max' or 'min'."
+            )
+
+
+@dataclass
 class FailureConfig(FailureConfigV1):
     """Configuration related to failure handling of each training run.
 
@@ -168,7 +265,6 @@ class FailureConfig(FailureConfigV1):
     controller_failure_limit: int = -1
 
     def __post_init__(self):
-        # TODO(justinvyu): Add link to migration guide.
         if self.fail_fast != _DEPRECATED:
             raise DeprecationWarning(FAIL_FAST_DEPRECATION_MESSAGE)
 
@@ -181,12 +277,12 @@ class RunConfig:
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
             from the Trainable.
-        storage_path: [Beta] Path where all results and checkpoints are persisted.
+        storage_path: Path where all results and checkpoints are persisted.
             Can be a local directory or a destination on cloud storage.
             For multi-node training/tuning runs, this must be set to a
             shared storage location (e.g., S3, NFS).
             This defaults to the local ``~/ray_results`` directory.
-        storage_filesystem: [Beta] A custom filesystem to use for storage.
+        storage_filesystem: A custom filesystem to use for storage.
             If this is provided, `storage_path` should be a path with its
             prefix stripped (e.g., `s3://bucket/path` -> `bucket/path`).
         failure_config: Failure mode configuration.
@@ -226,7 +322,6 @@ class RunConfig:
         if isinstance(self.storage_path, Path):
             self.storage_path = self.storage_path.as_posix()
 
-        # TODO(justinvyu): Add link to migration guide.
         run_config_deprecation_message = (
             "`RunConfig({})` is deprecated. This configuration was a "
             "Ray Tune API that did not support Ray Train usage well, "
@@ -260,6 +355,22 @@ class RunConfig:
             raise ValueError(
                 "All callbacks must be instances of `ray.train.UserCallback`. "
                 "Passing in a Ray Tune callback is no longer supported. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
+
+        if not isinstance(self.checkpoint_config, CheckpointConfig):
+            raise ValueError(
+                f"Invalid `CheckpointConfig` type: {self.checkpoint_config.__class__}. "
+                "Use `ray.train.CheckpointConfig` instead. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
+
+        if not isinstance(self.failure_config, FailureConfig):
+            raise ValueError(
+                f"Invalid `FailureConfig` type: {self.failure_config.__class__}. "
+                "Use `ray.train.FailureConfig` instead. "
                 "See this issue for more context: "
                 "https://github.com/ray-project/ray/issues/49454"
             )

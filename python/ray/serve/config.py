@@ -2,6 +2,7 @@ import json
 import logging
 import warnings
 from enum import Enum
+from functools import cached_property
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray import cloudpickle
@@ -15,7 +16,10 @@ from ray._common.pydantic_compat import (
     PrivateAttr,
     validator,
 )
-from ray._common.utils import import_attr
+from ray._common.utils import import_attr, import_module_and_attr
+
+# Import types needed for AutoscalingContext
+from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
@@ -32,6 +36,141 @@ from ray.serve._private.utils import validate_ssl_config
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+@PublicAPI(stability="alpha")
+class AutoscalingContext:
+    """Rich context provided to custom autoscaling policies.
+
+    This class provides comprehensive information about a deployment's current state,
+    metrics, and configuration that can be used by custom autoscaling policies to
+    make intelligent scaling decisions.
+
+    The context includes deployment metadata, current replica state, built-in and
+    custom metrics, capacity bounds, policy state, and timing information.
+
+    Note: The aggregated_metrics and raw_metrics fields support lazy evaluation.
+    You can pass callables that will be evaluated only when accessed, with results
+    cached for subsequent accesses.
+    """
+
+    def __init__(
+        self,
+        deployment_id: DeploymentID,
+        deployment_name: str,
+        app_name: Optional[str],
+        current_num_replicas: int,
+        target_num_replicas: int,
+        running_replicas: List[ReplicaID],
+        total_num_requests: Union[float, Callable[[], float]],
+        total_queued_requests: Optional[Union[float, Callable[[], float]]],
+        aggregated_metrics: Optional[
+            Union[
+                Dict[str, Dict[ReplicaID, float]],
+                Callable[[], Dict[str, Dict[ReplicaID, float]]],
+            ]
+        ],
+        raw_metrics: Optional[
+            Union[
+                Dict[str, Dict[ReplicaID, TimeSeries]],
+                Callable[[], Dict[str, Dict[ReplicaID, TimeSeries]]],
+            ]
+        ],
+        capacity_adjusted_min_replicas: int,
+        capacity_adjusted_max_replicas: int,
+        policy_state: Dict[str, Any],
+        last_scale_up_time: Optional[float],
+        last_scale_down_time: Optional[float],
+        current_time: Optional[float],
+        config: Optional[Any],
+        total_pending_async_requests: int,
+    ):
+        # Deployment information
+        self.deployment_id = deployment_id  #: Unique identifier for the deployment.
+        self.deployment_name = deployment_name  #: Name of the deployment.
+        self.app_name = app_name  #: Name of the application containing this deployment.
+
+        # Current state
+        self.current_num_replicas = (
+            current_num_replicas  #: Current number of running replicas.
+        )
+        self.target_num_replicas = (
+            target_num_replicas  #: Target number of replicas set by the autoscaler.
+        )
+        self.running_replicas = (
+            running_replicas  #: List of currently running replica IDs.
+        )
+
+        # Built-in metrics
+        self._total_num_requests_value = (
+            total_num_requests  #: Total number of requests across all replicas.
+        )
+        self._total_queued_requests_value = (
+            total_queued_requests  #: Number of requests currently queued.
+        )
+
+        # Custom metrics - store potentially lazy callables privately
+        self._aggregated_metrics_value = aggregated_metrics
+        self._raw_metrics_value = raw_metrics
+
+        # Capacity and bounds
+        self.capacity_adjusted_min_replicas = capacity_adjusted_min_replicas  #: Minimum replicas adjusted for cluster capacity.
+        self.capacity_adjusted_max_replicas = capacity_adjusted_max_replicas  #: Maximum replicas adjusted for cluster capacity.
+
+        # Policy state
+        self.policy_state = (
+            policy_state  #: Persistent state dictionary for the autoscaling policy.
+        )
+
+        # Timing
+        self.last_scale_up_time = (
+            last_scale_up_time  #: Timestamp of last scale-up action.
+        )
+        self.last_scale_down_time = (
+            last_scale_down_time  #: Timestamp of last scale-down action.
+        )
+        self.current_time = current_time  #: Current timestamp.
+
+        # Config
+        self.config = config  #: Autoscaling configuration for this deployment.
+
+        # Async inference task queue length (from QueueMonitor)
+        self._total_pending_async_requests = total_pending_async_requests
+
+    @cached_property
+    def aggregated_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, float]]]:
+        if callable(self._aggregated_metrics_value):
+            return self._aggregated_metrics_value()
+        return self._aggregated_metrics_value
+
+    @cached_property
+    def raw_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, TimeSeries]]]:
+        if callable(self._raw_metrics_value):
+            return self._raw_metrics_value()
+        return self._raw_metrics_value
+
+    @cached_property
+    def total_num_requests(self) -> float:
+        if callable(self._total_num_requests_value):
+            return self._total_num_requests_value()
+        return self._total_num_requests_value
+
+    @cached_property
+    def total_queued_requests(self) -> float:
+        if callable(self._total_queued_requests_value):
+            return self._total_queued_requests_value()
+        return self._total_queued_requests_value
+
+    @property
+    def total_running_requests(self) -> float:
+        # NOTE: for non-additive aggregation functions, total_running_requests is not
+        # accurate, consider this is an approximation.
+        return self.total_num_requests - self.total_queued_requests
+
+    @property
+    def total_pending_async_requests(self) -> int:
+        """Broker task queue length for async inference autoscaling."""
+        return self._total_pending_async_requests
 
 
 @PublicAPI(stability="alpha")
@@ -132,8 +271,30 @@ class RequestRouterConfig(BaseModel):
         Args:
             **kwargs: Keyword arguments to pass to BaseModel.
         """
+        serialized_request_router_cls = kwargs.pop(
+            "_serialized_request_router_cls", None
+        )
         super().__init__(**kwargs)
-        self._serialize_request_router_cls()
+        if serialized_request_router_cls:
+            self._serialized_request_router_cls = serialized_request_router_cls
+        else:
+            self._serialize_request_router_cls()
+
+    def set_serialized_request_router_cls(
+        self, serialized_request_router_cls: bytes
+    ) -> None:
+        self._serialized_request_router_cls = serialized_request_router_cls
+
+    @classmethod
+    def from_serialized_request_router_cls(
+        cls, request_router_config: dict, serialized_request_router_cls: bytes
+    ) -> "RequestRouterConfig":
+        config = request_router_config.copy()
+        config["_serialized_request_router_cls"] = serialized_request_router_cls
+        return cls(**config)
+
+    def get_serialized_request_router_cls(self) -> Optional[bytes]:
+        return self._serialized_request_router_cls
 
     def _serialize_request_router_cls(self) -> None:
         """Import and serialize request router class with cloudpickle.
@@ -149,27 +310,124 @@ class RequestRouterConfig(BaseModel):
             )
 
         request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
-        request_router_class = import_attr(request_router_path)
+        request_router_module, request_router_class = import_module_and_attr(
+            request_router_path
+        )
+        cloudpickle.register_pickle_by_value(request_router_module)
+        self.set_serialized_request_router_cls(cloudpickle.dumps(request_router_class))
+        cloudpickle.unregister_pickle_by_value(request_router_module)
 
-        self._serialized_request_router_cls = cloudpickle.dumps(request_router_class)
         # Update the request_router_class field to be the string path
         self.request_router_class = request_router_path
 
     def get_request_router_class(self) -> Callable:
         """Deserialize the request router from cloudpickled bytes."""
-        return cloudpickle.loads(self._serialized_request_router_cls)
+        try:
+            return cloudpickle.loads(self._serialized_request_router_cls)
+        except (ModuleNotFoundError, ImportError) as e:
+            raise ImportError(
+                f"Failed to deserialize custom request router: {e}\n\n"
+                "This typically happens when the router depends on external modules "
+                "that aren't available in the current environment. To fix this:\n"
+                "  - Ensure all dependencies are installed in your Docker image or environment\n"
+                "  - Package your router as a Python package and install it\n"
+                "  - Place the router module in PYTHONPATH\n\n"
+                "For more details, see: https://docs.ray.io/en/latest/serve/advanced-guides/"
+                "custom-request-router.html#gotchas-and-limitations"
+            ) from e
 
 
 DEFAULT_METRICS_INTERVAL_S = 10.0
 
 
 @PublicAPI(stability="alpha")
+class AggregationFunction(str, Enum):
+    MEAN = "mean"
+    MAX = "max"
+    MIN = "min"
+
+
+@PublicAPI(stability="alpha")
 class AutoscalingPolicy(BaseModel):
-    name: Union[str, Callable] = Field(
+    # Cloudpickled policy definition.
+    _serialized_policy_def: bytes = PrivateAttr(default=b"")
+    # Cached deserialized policy to avoid repeated cloudpickle.loads() calls.
+    _cached_policy: Optional[Callable] = PrivateAttr(default=None)
+
+    policy_function: Union[str, Callable] = Field(
         default=DEFAULT_AUTOSCALING_POLICY_NAME,
-        description="Name of the policy function or the import path of the policy. "
-        "Will be the concatenation of the policy module and the policy name if user passed a callable.",
+        description="Policy function can be a string import path or a function callable. "
+        "If it's a string import path, it must be of the form `path.to.module:function_name`. ",
     )
+
+    def __init__(self, **kwargs):
+        serialized_policy_def = kwargs.pop("_serialized_policy_def", None)
+        super().__init__(**kwargs)
+        if serialized_policy_def:
+            self._serialized_policy_def = serialized_policy_def
+        else:
+            self.serialize_policy()
+
+    def set_serialized_policy_def(self, serialized_policy_def: bytes) -> None:
+        self._serialized_policy_def = serialized_policy_def
+        self._cached_policy = None
+
+    @classmethod
+    def from_serialized_policy_def(
+        cls, policy_config: dict, serialized_policy_def: bytes
+    ) -> "AutoscalingPolicy":
+        config = policy_config.copy()
+        config["_serialized_policy_def"] = serialized_policy_def
+        return cls(**config)
+
+    def get_serialized_policy_def(self) -> Optional[bytes]:
+        return self._serialized_policy_def
+
+    def serialize_policy(self) -> None:
+        """Serialize policy with cloudpickle.
+
+        Import the policy if it's passed in as a string import path. Then cloudpickle
+        the policy and set `serialized_policy_def` if it's empty.
+        """
+        policy_path = self.policy_function
+
+        if isinstance(policy_path, Callable):
+            policy_path = f"{policy_path.__module__}.{policy_path.__name__}"
+
+        if not self._serialized_policy_def:
+            policy_module, policy_function = import_module_and_attr(policy_path)
+            cloudpickle.register_pickle_by_value(policy_module)
+            self.set_serialized_policy_def(cloudpickle.dumps(policy_function))
+            cloudpickle.unregister_pickle_by_value(policy_module)
+
+        self.policy_function = policy_path
+
+    def is_default_policy_function(self) -> bool:
+        return self.policy_function == DEFAULT_AUTOSCALING_POLICY_NAME
+
+    def get_policy(self) -> Callable:
+        """Deserialize policy from cloudpickled bytes.
+
+        The result is cached to avoid repeated cloudpickle deserialization on
+        every call (e.g. on every autoscaling tick).
+        """
+        if self._cached_policy is not None:
+            return self._cached_policy
+        try:
+            policy = cloudpickle.loads(self._serialized_policy_def)
+        except (ModuleNotFoundError, ImportError) as e:
+            raise ImportError(
+                f"Failed to deserialize custom autoscaling policy: {e}\n\n"
+                "This typically happens when the policy depends on external modules "
+                "that aren't available in the current environment. To fix this:\n"
+                "  - Ensure all dependencies are installed in your Docker image or environment\n"
+                "  - Package your policy as a Python package and install it\n"
+                "  - Place the policy module in PYTHONPATH\n\n"
+                "For more details, see: https://docs.ray.io/en/latest/serve/advanced-guides/"
+                "advanced-autoscaling.html#gotchas-and-limitations"
+            ) from e
+        self._cached_policy = policy
+        return policy
 
 
 @PublicAPI(stability="stable")
@@ -223,21 +481,28 @@ class AutoscalingConfig(BaseModel):
     # How frequently to make autoscaling decisions
     # loop_period_s: float = CONTROL_LOOP_PERIOD_S
     downscale_delay_s: NonNegativeFloat = Field(
-        default=600.0, description="How long to wait before scaling down replicas."
+        default=600.0,
+        description="How long to wait before scaling down replicas to a value greater than 0.",
+    )
+    # Optionally set for 1->0 transition
+    downscale_to_zero_delay_s: Optional[NonNegativeFloat] = Field(
+        default=None,
+        description="How long to wait before scaling down replicas from 1 to 0. If not set, the value of `downscale_delay_s` will be used.",
     )
     upscale_delay_s: NonNegativeFloat = Field(
         default=30.0, description="How long to wait before scaling up replicas."
     )
 
-    # Cloudpickled policy definition.
-    _serialized_policy_def: bytes = PrivateAttr(default=b"")
+    aggregation_function: Union[str, AggregationFunction] = Field(
+        default=AggregationFunction.MEAN,
+        description="Function used to aggregate metrics across a time window.",
+    )
 
     # Autoscaling policy. This policy is deployment scoped. Defaults to the request-based autoscaler.
-    _policy: AutoscalingPolicy = Field(default_factory=AutoscalingPolicy)
-
-    # This is to make `_policy` a normal field until its GA ready.
-    class Config:
-        underscore_attrs_are_private = True
+    policy: AutoscalingPolicy = Field(
+        default_factory=AutoscalingPolicy,
+        description="The autoscaling policy for the deployment. This option is experimental.",
+    )
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
@@ -275,33 +540,27 @@ class AutoscalingConfig(BaseModel):
             )
         return v
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.serialize_policy()
+    @validator("look_back_period_s", always=True)
+    def look_back_period_s_valid(cls, v: PositiveFloat, values):
+        # Get metrics_interval_s from values, or use default if not set
+        metrics_interval_s = values.get(
+            "metrics_interval_s", DEFAULT_METRICS_INTERVAL_S
+        )
+        if v <= metrics_interval_s:
+            # Warns currently, will raise an exception in a future release
+            warnings.warn(
+                f"`look_back_period_s` ({v}) must be greater than `metrics_interval_s` "
+                f"({metrics_interval_s}). This will raise an exception in a future "
+                f"release. Please set `look_back_period_s` > `metrics_interval_s`.",
+                FutureWarning,
+            )
+        return v
 
-    def serialize_policy(self) -> None:
-        """Serialize policy with cloudpickle.
-
-        Import the policy if it's passed in as a string import path. Then cloudpickle
-        the policy and set `serialized_policy_def` if it's empty.
-        """
-        values = self.dict()
-        policy = values.get("_policy")
-
-        policy_name = None
-        if isinstance(policy, dict):
-            policy_name = policy.get("name")
-
-        if isinstance(policy_name, Callable):
-            policy_name = f"{policy_name.__module__}.{policy_name.__name__}"
-
-        if not policy_name:
-            policy_name = DEFAULT_AUTOSCALING_POLICY_NAME
-
-        if not self._serialized_policy_def:
-            self._serialized_policy_def = cloudpickle.dumps(import_attr(policy_name))
-
-        self._policy = AutoscalingPolicy(name=policy_name)
+    @validator("aggregation_function", always=True)
+    def aggregation_function_valid(cls, v: Union[str, AggregationFunction]):
+        if isinstance(v, AggregationFunction):
+            return v
+        return AggregationFunction(str(v).lower())
 
     @classmethod
     def default(cls):
@@ -310,10 +569,6 @@ class AutoscalingConfig(BaseModel):
             min_replicas=1,
             max_replicas=100,
         )
-
-    def get_policy(self) -> Callable:
-        """Deserialize policy from cloudpickled bytes."""
-        return cloudpickle.loads(self._serialized_policy_def)
 
     def get_upscaling_factor(self) -> PositiveFloat:
         if self.upscaling_factor:

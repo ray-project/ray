@@ -30,7 +30,7 @@ Where can I deploy Ray clusters?
 
 Ray provides native cluster deployment support on the following technology stacks:
 
-* On :ref:`AWS and GCP <cloud-vm-index>`. Community-supported Azure, Aliyun and vSphere integrations also exist.
+* On :ref:`AWS, GCP, and Azure <cloud-vm-index>`. Community-supported Aliyun and vSphere integrations also exist.
 * On :ref:`Kubernetes <kuberay-index>`, via the officially supported KubeRay project.
 * On `Anyscale <https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=ray-cluster-deployment>`_, a fully managed Ray platform by the creators of Ray. You can either bring an existing AWS, GCP, Azure and Kubernetes clusters, or use the Anyscale hosted compute layer.
 

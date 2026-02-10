@@ -1,11 +1,11 @@
 import copy
 import hashlib
+from collections import deque
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 import numpy as np
 import scipy
-
-from collections import deque
 from numpy.typing import NDArray
-from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray.rllib.core import DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode

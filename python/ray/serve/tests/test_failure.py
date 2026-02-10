@@ -75,7 +75,7 @@ def _get_worker_handles(deployment_name: str, app_name: str = SERVE_DEFAULT_APP_
     controller = serve.context._global_client._controller
     deployment_dict = ray.get(controller._all_running_replicas.remote())
 
-    return [replica.actor_handle for replica in deployment_dict[id]]
+    return [replica.get_actor_handle() for replica in deployment_dict[id]]
 
 
 # Test that a worker dying unexpectedly causes it to restart and continue

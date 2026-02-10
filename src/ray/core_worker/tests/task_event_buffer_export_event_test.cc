@@ -21,13 +21,10 @@
 #include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
-#include "ray/common/task/task_spec.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/util/event.h"
@@ -71,7 +68,8 @@ class TaskEventTestWriteExport : public ::testing::Test {
     task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
         std::make_unique<ray::gcs::MockGcsClient>(),
         std::make_unique<MockEventAggregatorClient>(),
-        "test_session_name");
+        "test_session_name",
+        NodeID::Nil());
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
@@ -102,6 +100,7 @@ class TaskEventTestWriteExport : public ::testing::Test {
                                              running_ts,
                                              /*is_actor_task_event=*/false,
                                              "test_session_name",
+                                             NodeID::Nil(),
                                              nullptr,
                                              state_update);
   }

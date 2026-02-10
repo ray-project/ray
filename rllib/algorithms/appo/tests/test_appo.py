@@ -11,9 +11,9 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.test_utils import (
+    check_compute_single_action,
     check_train_results,
     check_train_results_new_api_stack,
-    check_compute_single_action,
 )
 
 

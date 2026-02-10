@@ -1,24 +1,25 @@
-import gymnasium as gym
-import numpy as np
 import tempfile
 import unittest
+
+import gymnasium as gym
+import numpy as np
 import pytest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.core import (
-    Columns,
     COMPONENT_LEARNER,
     COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
+    Columns,
 )
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 from ray.rllib.core.testing.torch.bc_learner import BCTorchLearner
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
-from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
@@ -26,7 +27,6 @@ from ray.rllib.utils.metrics import ALL_MODULES, LEARNER_CONNECTOR
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import check
 from ray.util.timer import _Timer
-
 
 REMOTE_CONFIGS = {
     "remote-cpu": AlgorithmConfig.overrides(num_learners=1),

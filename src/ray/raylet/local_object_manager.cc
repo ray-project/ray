@@ -20,8 +20,9 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/stats/metric_defs.h"
+#include "ray/stats/tag_defs.h"
 
 namespace ray {
 
@@ -64,17 +65,17 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     }
 
     // Create a object eviction subscription message.
-    auto wait_request = std::make_unique<rpc::WorkerObjectEvictionSubMessage>();
-    wait_request->set_object_id(object_id.Binary());
-    wait_request->set_intended_worker_id(owner_address.worker_id());
+    rpc::WorkerObjectEvictionSubMessage wait_request;
+    wait_request.set_object_id(object_id.Binary());
+    wait_request.set_intended_worker_id(owner_address.worker_id());
     if (!generator_id.IsNil()) {
-      wait_request->set_generator_id(generator_id.Binary());
+      wait_request.set_generator_id(generator_id.Binary());
     }
     rpc::Address subscriber_address;
     subscriber_address.set_node_id(self_node_id_.Binary());
     subscriber_address.set_ip_address(self_node_address_);
     subscriber_address.set_port(self_node_port_);
-    wait_request->mutable_subscriber_address()->CopyFrom(subscriber_address);
+    *wait_request.mutable_subscriber_address() = std::move(subscriber_address);
 
     // If the subscription succeeds, register the subscription callback.
     // Callback is invoked when the owner publishes the object to evict.
@@ -95,7 +96,7 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
-    sub_message->mutable_worker_object_eviction_message()->Swap(wait_request.get());
+    *sub_message->mutable_worker_object_eviction_message() = std::move(wait_request);
 
     core_worker_subscriber_->Subscribe(std::move(sub_message),
                                        rpc::ChannelType::WORKER_OBJECT_EVICTION,
@@ -187,16 +188,23 @@ bool LocalObjectManager::TryToSpillObjects() {
     return false;
   }
 
-  RAY_LOG(DEBUG) << "Choosing objects to spill with minimum total size "
-                 << min_spilling_size_
-                 << " or with total # of objects = " << max_fused_object_count_;
   int64_t bytes_to_spill = 0;
   std::vector<ObjectID> objects_to_spill;
   int64_t num_to_spill = 0;
   size_t idx = 0;
   for (const auto &[object_id, ray_object] : pinned_objects_) {
     if (is_plasma_object_spillable_(object_id)) {
-      bytes_to_spill += ray_object->GetSize();
+      const int64_t object_size = ray_object->GetSize();
+
+      // If the max file size limit is enabled, avoid fusing more objects once we'd exceed
+      // it. Always allow spilling at least one object, even if it's larger than the
+      // limit.
+      if (max_spilling_file_size_bytes_ > 0 && !objects_to_spill.empty() &&
+          bytes_to_spill + object_size > max_spilling_file_size_bytes_) {
+        break;
+      }
+
+      bytes_to_spill += object_size;
       objects_to_spill.push_back(object_id);
       ++num_to_spill;
       if (num_to_spill == max_fused_object_count_) {
@@ -354,7 +362,7 @@ void LocalObjectManager::SpillObjectsInternal(
           io_worker_pool_.PushSpillWorker(io_worker);
           size_t num_objects_spilled = status.ok() ? r.spilled_objects_url_size() : 0;
           // Object spilling is always done in the order of the request.
-          // For example, if an object succeeded, it'll guarentee that all objects
+          // For example, if an object succeeded, it'll guarantee that all objects
           // before this will succeed.
           RAY_CHECK(num_objects_spilled <= requested_objects_to_spill.size());
           for (size_t i = num_objects_spilled; i != requested_objects_to_spill.size();
@@ -620,38 +628,42 @@ void LocalObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) con
 void LocalObjectManager::RecordMetrics() const {
   /// Record Metrics.
   if (spilled_bytes_total_ != 0 && spill_time_total_s_ != 0) {
-    ray::stats::STATS_spill_manager_throughput_mb.Record(
-        spilled_bytes_total_ / 1024 / 1024 / spill_time_total_s_, "Spilled");
+    spill_manager_metrics_.spill_manager_throughput_mb_gauge.Record(
+        spilled_bytes_total_ / 1024 / 1024 / spill_time_total_s_, {{"Type", "Spilled"}});
   }
   if (restored_bytes_total_ != 0 && restore_time_total_s_ != 0) {
-    ray::stats::STATS_spill_manager_throughput_mb.Record(
-        restored_bytes_total_ / 1024 / 1024 / restore_time_total_s_, "Restored");
+    spill_manager_metrics_.spill_manager_throughput_mb_gauge.Record(
+        restored_bytes_total_ / 1024 / 1024 / restore_time_total_s_,
+        {{"Type", "Restored"}});
   }
-  ray::stats::STATS_spill_manager_objects.Record(pinned_objects_.size(), "Pinned");
-  ray::stats::STATS_spill_manager_objects.Record(objects_pending_restore_.size(),
-                                                 "PendingRestore");
-  ray::stats::STATS_spill_manager_objects.Record(objects_pending_spill_.size(),
-                                                 "PendingSpill");
+  spill_manager_metrics_.spill_manager_objects_gauge.Record(pinned_objects_.size(),
+                                                            {{"State", "Pinned"}});
+  spill_manager_metrics_.spill_manager_objects_gauge.Record(
+      objects_pending_restore_.size(), {{"State", "PendingRestore"}});
+  spill_manager_metrics_.spill_manager_objects_gauge.Record(objects_pending_spill_.size(),
+                                                            {{"State", "PendingSpill"}});
 
-  ray::stats::STATS_spill_manager_objects_bytes.Record(pinned_objects_size_, "Pinned");
-  ray::stats::STATS_spill_manager_objects_bytes.Record(num_bytes_pending_spill_,
-                                                       "PendingSpill");
-  ray::stats::STATS_spill_manager_objects_bytes.Record(num_bytes_pending_restore_,
-                                                       "PendingRestore");
-  ray::stats::STATS_spill_manager_objects_bytes.Record(spilled_bytes_total_, "Spilled");
-  ray::stats::STATS_spill_manager_objects_bytes.Record(restored_objects_total_,
-                                                       "Restored");
+  spill_manager_metrics_.spill_manager_objects_bytes_gauge.Record(pinned_objects_size_,
+                                                                  {{"State", "Pinned"}});
+  spill_manager_metrics_.spill_manager_objects_bytes_gauge.Record(
+      num_bytes_pending_spill_, {{"State", "PendingSpill"}});
+  spill_manager_metrics_.spill_manager_objects_bytes_gauge.Record(
+      num_bytes_pending_restore_, {{"State", "PendingRestore"}});
+  spill_manager_metrics_.spill_manager_objects_bytes_gauge.Record(spilled_bytes_total_,
+                                                                  {{"State", "Spilled"}});
+  spill_manager_metrics_.spill_manager_objects_bytes_gauge.Record(
+      restored_objects_total_, {{"State", "Restored"}});
 
-  ray::stats::STATS_spill_manager_request_total.Record(spilled_objects_total_, "Spilled");
-  ray::stats::STATS_spill_manager_request_total.Record(restored_objects_total_,
-                                                       "Restored");
+  spill_manager_metrics_.spill_manager_request_total_gauge.Record(spilled_objects_total_,
+                                                                  {{"Type", "Spilled"}});
+  spill_manager_metrics_.spill_manager_request_total_gauge.Record(restored_objects_total_,
+                                                                  {{"Type", "Restored"}});
 
-  ray::stats::STATS_object_store_memory.Record(
-      spilled_bytes_current_,
-      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocSpilled}});
+  object_store_memory_gauge_.Record(spilled_bytes_current_,
+                                    {{stats::LocationKey, "SPILLED"}});
 
-  ray::stats::STATS_spill_manager_request_total.Record(num_failed_deletion_requests_,
-                                                       "FailedDeletion");
+  spill_manager_metrics_.spill_manager_request_total_gauge.Record(
+      num_failed_deletion_requests_, {{"Type", "FailedDeletion"}});
 }
 
 int64_t LocalObjectManager::GetPrimaryBytes() const {

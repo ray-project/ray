@@ -5,9 +5,9 @@ from google.protobuf.json_format import Parse
 
 from ray.core.generated.gcs_pb2 import JobsAPIInfo
 from ray.dashboard.modules.job.common import (
+    JobErrorType,
     JobInfo,
     JobStatus,
-    JobErrorType,
     JobSubmitRequest,
     http_uri_components_to_uri,
     uri_to_http_components,
@@ -87,6 +87,41 @@ class TestJobSubmitRequestValidation:
         with pytest.raises(TypeError, match="values must be strings"):
             validate_request_type(
                 {"entrypoint": "abc", "metadata": {"hi": 1}}, JobSubmitRequest
+            )
+
+    def test_validate_entrypoint_label_selector(self):
+        r = validate_request_type(
+            {
+                "entrypoint": "abc",
+                "entrypoint_label_selector": {"fragile_node": "!1"},
+            },
+            JobSubmitRequest,
+        )
+        assert r.entrypoint_label_selector == {"fragile_node": "!1"}
+
+        with pytest.raises(TypeError, match="must be a dict"):
+            validate_request_type(
+                {"entrypoint": "abc", "entrypoint_label_selector": "bad"},
+                JobSubmitRequest,
+            )
+
+        with pytest.raises(TypeError, match="keys must be strings"):
+            validate_request_type(
+                {"entrypoint": "abc", "entrypoint_label_selector": {1: "bad"}},
+                JobSubmitRequest,
+            )
+
+        with pytest.raises(TypeError, match="values must be strings"):
+            validate_request_type(
+                {"entrypoint": "abc", "entrypoint_label_selector": {"k": 1}},
+                JobSubmitRequest,
+            )
+
+    def test_entrypoint_resources_disallow_strings(self):
+        with pytest.raises(TypeError, match="values must be numbers"):
+            validate_request_type(
+                {"entrypoint": "abc", "entrypoint_resources": {"Custom": "1"}},
+                JobSubmitRequest,
             )
 
 

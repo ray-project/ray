@@ -207,7 +207,7 @@ class PlasmaStore {
   ///
   /// \param client The client whose connection the error occurred on.
   /// \param error The error details.
-  void HandleClientConnectionError(std::shared_ptr<Client> client,
+  void HandleClientConnectionError(const std::shared_ptr<Client> &client,
                                    const boost::system::error_code &error)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -216,7 +216,7 @@ class PlasmaStore {
   /// \param client The client that the message is from.
   /// \param type The message type.
   /// \param message The message data.
-  Status ProcessClientMessage(std::shared_ptr<Client> client,
+  Status ProcessClientMessage(const std::shared_ptr<Client> &client,
                               plasma::flatbuf::MessageType type,
                               const std::vector<uint8_t> &message)
       ABSL_LOCKS_EXCLUDED(mutex_);

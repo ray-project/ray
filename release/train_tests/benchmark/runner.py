@@ -201,6 +201,7 @@ class TrainLoopRunner:
             self._metrics["validation/rows_processed"].add(
                 self.benchmark_config.dataloader_config.validation_batch_size
             )
+        assert num_rows > 0, "Validation dataset yielded no batches."
 
         return {"validation/loss": total_loss.item() / num_rows}
 
@@ -342,8 +343,8 @@ class TrainLoopRunner:
         train_time = (
             metrics["train/dataset_creation_time"]
             + self._metrics["train/step"].get()
-            # Exclude the time it takes to get the first batch.
-            # + self._metrics["train/iter_first_batch"].get()
+            # Include the time it takes to get the first batch.
+            + self._metrics["train/iter_first_batch"].get()
             + self._metrics["train/iter_batch"].get()
         )
         if train_time > 0:
@@ -354,8 +355,8 @@ class TrainLoopRunner:
         validation_time = (
             metrics["validation/dataset_creation_time"]
             + self._metrics["validation/step"].get()
-            # Exclude the time it takes to get the first batch.
-            # + self._metrics["validation/iter_first_batch"].get()
+            # Include the time it takes to get the first batch.
+            + self._metrics["validation/iter_first_batch"].get()
             + self._metrics["validation/iter_batch"].get()
         )
         if validation_time > 0:

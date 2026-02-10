@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import gymnasium as gym
 import numpy as np
-from packaging import version
 import tree  # pip install dm_tree
+from packaging import version
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
@@ -41,8 +41,8 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import (
-    convert_to_torch_tensor,
     TORCH_COMPILE_REQUIRED_VERSION,
+    convert_to_torch_tensor,
 )
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
@@ -106,7 +106,7 @@ class TorchPolicyV2(Policy):
 
         # Place on one or more CPU(s) when either:
         # - Fake GPU mode.
-        # - num_gpus=0 (either set by user or we are in local_mode=True).
+        # - num_gpus=0 (set by user).
         # - No GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
             self.device = torch.device("cpu")
@@ -122,7 +122,6 @@ class TorchPolicyV2(Policy):
             self.model = model
         # Place on one or more actual GPU(s), when:
         # - num_gpus > 0 (set by user) AND
-        # - local_mode=False AND
         # - actual GPUs available AND
         # - non-fake GPU mode.
         else:

@@ -5,6 +5,7 @@ import os
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
 import pandas as pd
+import ray
 import xgboost
 from sklearn.metrics import confusion_matrix
 
@@ -66,7 +67,7 @@ def main():
     test_predictions = test_dataset.map_batches(
         Validator,
         fn_constructor_kwargs={"loader": load_model_and_preprocessor},
-        concurrency=4,  # Number of model replicas
+        compute=ray.data.ActorPoolStrategy(size=4),  # Number of model replicas
         batch_format="pandas",
     )
 

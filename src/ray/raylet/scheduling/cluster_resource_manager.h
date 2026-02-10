@@ -26,6 +26,8 @@
 #include "ray/common/bundle_location_index.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
+#include "ray/observability/metric_interface.h"
+#include "ray/raylet/metrics.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
 #include "ray/util/container_util.h"
 #include "ray/util/logging.h"
@@ -130,10 +132,25 @@ class ClusterResourceManager {
     return node.GetLocalView().is_draining;
   }
 
+  /// Set the draining state of a node.
+  /// This is called when the autoscaler commits to draining a node, ensuring
+  /// the scheduler immediately sees the node as unavailable for scheduling.
+  ///
+  /// \param node_id The ID of the node.
+  /// \param is_draining Whether the node is draining.
+  /// \param draining_deadline_timestamp_ms The deadline for the drain operation.
+  /// \return true if the node exists and was updated, false otherwise.
+  bool SetNodeDraining(const scheduling::NodeID &node_id,
+                       bool is_draining,
+                       int64_t draining_deadline_timestamp_ms);
+
   /// @param max_num_nodes_to_include Max number of nodes to include in the debug string.
   ///   If not specified, all nodes will be included.
   std::string DebugString(
       std::optional<size_t> max_num_nodes_to_include = std::nullopt) const;
+
+  /// Record metrics for the cluster resource manager.
+  void RecordMetrics() const;
 
   BundleLocationIndex &GetBundleLocationIndex();
 
@@ -178,6 +195,8 @@ class ClusterResourceManager {
   /// Timer to revert local changes to the resources periodically.
   std::shared_ptr<PeriodicalRunner> timer_;
 
+  mutable ray::stats::Gauge local_resource_view_node_count_gauge_;
+
   friend class ClusterResourceSchedulerTest;
   friend struct ClusterResourceManagerTest;
   friend class raylet::ClusterLeaseManagerTest;
@@ -203,6 +222,14 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, ScheduleWithFallbackStrategyTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, FallbackStrategyWithUnavailableNodesTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest,
+              FallbackSchedulesAvailableNodeOverUnavailablePrimary);
+  FRIEND_TEST(ClusterResourceSchedulerTest, FallbackWaitsOnUnavailableHighestPriority);
+  FRIEND_TEST(ClusterResourceSchedulerTest,
+              FallbackReturnsNilForGCSIfAllNodesUnavailable);
 
   friend class raylet::SchedulingPolicyTest;
   friend class raylet_scheduling_policy::HybridSchedulingPolicyTest;

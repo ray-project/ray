@@ -1,5 +1,5 @@
 import copy
-from typing import Dict, Any
+from typing import Any, Dict
 
 from pettingzoo import AECEnv
 from pettingzoo.classic.connect_four_v3 import raw_env as connect_four_v3

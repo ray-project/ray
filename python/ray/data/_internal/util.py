@@ -9,13 +9,14 @@ import sys
 import threading
 import time
 import urllib.parse
-from collections import Counter
+import uuid
 from queue import Empty, Full, Queue
 from types import ModuleType
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Dict,
     Generator,
     Iterable,
     Iterator,
@@ -24,18 +25,25 @@ from typing import (
     Tuple,
     TypeVar,
     Union,
+    overload,
 )
 
 import numpy as np
 import pandas as pd
+
+# NOTE: pyarrow.fs module needs to be explicitly imported!
 import pyarrow
-from packaging.version import parse as parse_version
+import pyarrow.fs
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
+from ray._common.retry import call_with_retry
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
+from ray.util.annotations import DeveloperAPI
 
 import psutil
+
+# TypeVar for preserving function/class signatures through decorators
+F = TypeVar("F", bound=Callable[..., Any])
 
 if TYPE_CHECKING:
     import pandas
@@ -63,12 +71,6 @@ GiB = 1024 * MiB
 SENTINEL = object()
 
 
-# NOTE: Make sure that these lower and upper bounds stay in sync with version
-# constraints given in python/setup.py.
-# Inclusive minimum pyarrow version.
-MIN_PYARROW_VERSION = "6.0.1"
-RAY_DISABLE_PYARROW_VERSION_CHECK = "RAY_DISABLE_PYARROW_VERSION_CHECK"
-_VERSION_VALIDATED = False
 _LOCAL_SCHEME = "local"
 _EXAMPLE_SCHEME = "example"
 
@@ -126,34 +128,7 @@ def _lazy_import_pyarrow_dataset() -> LazyModule:
 
 
 def _check_pyarrow_version():
-    """Check that pyarrow's version is within the supported bounds."""
-    global _VERSION_VALIDATED
-
-    if not _VERSION_VALIDATED:
-        if os.environ.get(RAY_DISABLE_PYARROW_VERSION_CHECK, "0") == "1":
-            _VERSION_VALIDATED = True
-            return
-
-        version = get_pyarrow_version()
-        if version is not None:
-            if version < parse_version(MIN_PYARROW_VERSION):
-                raise ImportError(
-                    f"Dataset requires pyarrow >= {MIN_PYARROW_VERSION}, but "
-                    f"{version} is installed. Reinstall with "
-                    f'`pip install -U "pyarrow"`. '
-                    "If you want to disable this pyarrow version check, set the "
-                    f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
-                )
-        else:
-            logger.warning(
-                "You are using the 'pyarrow' module, but the exact version is unknown "
-                "(possibly carried as an internal component by another module). Please "
-                f"make sure you are using pyarrow >= {MIN_PYARROW_VERSION} to ensure "
-                "compatibility with Ray Dataset. "
-                "If you want to disable this pyarrow version check, set the "
-                f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
-            )
-        _VERSION_VALIDATED = True
+    ray.data._internal.utils.arrow_utils._check_pyarrow_version()
 
 
 def _autodetect_parallelism(
@@ -490,9 +465,9 @@ def _consumption_api(
     datasource_metadata: Optional[str] = None,
     extra_condition: Optional[str] = None,
     delegate: Optional[str] = None,
-    pattern="Examples:",
-    insert_after=False,
-):
+    pattern: str = "Examples:",
+    insert_after: bool = False,
+) -> Callable[[F], F]:
     """Annotate the function with an indication that it's a consumption API, and that it
     will trigger Dataset execution.
     """
@@ -515,7 +490,7 @@ def _consumption_api(
             condition += extra_condition + ", "
         message = condition + "then this operation" + base
 
-    def wrap(obj):
+    def wrap(obj: F) -> F:
         _insert_doc_at_pattern(
             obj,
             message=message,
@@ -528,6 +503,22 @@ def _consumption_api(
     return wrap
 
 
+@overload
+def ConsumptionAPI(obj: F) -> F:
+    ...
+
+
+@overload
+def ConsumptionAPI(
+    *,
+    if_more_than_read: bool = False,
+    datasource_metadata: Optional[str] = None,
+    extra_condition: Optional[str] = None,
+    delegate: Optional[str] = None,
+) -> Callable[[F], F]:
+    ...
+
+
 def ConsumptionAPI(*args, **kwargs):
     """Annotate the function with an indication that it's a consumption API, and that it
     will trigger Dataset execution.
@@ -537,12 +528,12 @@ def ConsumptionAPI(*args, **kwargs):
     return _consumption_api(*args, **kwargs)
 
 
-def _all_to_all_api(*args, **kwargs):
+def _all_to_all_api() -> Callable[[F], F]:
     """Annotate the function with an indication that it's a all to all API, and that it
     is an operation that requires all inputs to be materialized in-memory to execute.
     """
 
-    def wrap(obj):
+    def wrap(obj: F) -> F:
         _insert_doc_at_pattern(
             obj,
             message=(
@@ -558,6 +549,11 @@ def _all_to_all_api(*args, **kwargs):
     return wrap
 
 
+@overload
+def AllToAllAPI(obj: F) -> F:
+    ...
+
+
 def AllToAllAPI(*args, **kwargs):
     """Annotate the function with an indication that it's a all to all API, and that it
     is an operation that requires all inputs to be materialized in-memory to execute.
@@ -571,7 +567,7 @@ def get_compute_strategy(
     fn: "UserDefinedFunction",
     fn_constructor_args: Optional[Iterable[Any]] = None,
     compute: Optional[Union[str, "ComputeStrategy"]] = None,
-    concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+    concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
 ) -> "ComputeStrategy":
     """Get `ComputeStrategy` based on the function or class, and concurrency
     information.
@@ -604,51 +600,61 @@ def get_compute_strategy(
             )
 
     if compute is not None:
-        # Legacy code path to support `compute` argument.
-        logger.warning(
-            "The argument ``compute`` is deprecated in Ray 2.9. Please specify "
-            "argument ``concurrency`` instead. For more information, see "
-            "https://docs.ray.io/en/master/data/transforming-data.html#"
-            "stateful-transforms."
-        )
         if is_callable_class and (
             compute == "tasks" or isinstance(compute, TaskPoolStrategy)
         ):
             raise ValueError(
-                "``compute`` must specify an actor compute strategy when using a "
-                f"callable class, but got: {compute}. For example, use "
-                "``compute=ray.data.ActorPoolStrategy(size=n)``."
+                f"You specified the callable class {fn} as your UDF with the compute "
+                f"{compute}, but Ray Data can't schedule callable classes with the task "
+                f"pool strategy. To fix this error, pass an ActorPoolStrategy to compute or "
+                f"None to use the default compute strategy."
             )
         elif not is_callable_class and (
             compute == "actors" or isinstance(compute, ActorPoolStrategy)
         ):
             raise ValueError(
-                f"``compute`` is specified as the actor compute strategy: {compute}, "
-                f"but ``fn`` is not a callable class: {fn}. Pass a callable class or "
-                "use the default ``compute`` strategy."
+                f"You specified the function {fn} as your UDF with the compute "
+                f"{compute}, but Ray Data can't schedule regular functions with the actor "
+                f"pool strategy. To fix this error, pass a TaskPoolStrategy to compute or "
+                f"None to use the default compute strategy."
             )
         return compute
     elif concurrency is not None:
+        # Legacy code path to support `concurrency` argument.
+        logger.warning(
+            "The argument ``concurrency`` is deprecated in Ray 2.51. Please specify "
+            "argument ``compute`` instead. For more information, see "
+            "https://docs.ray.io/en/master/data/transforming-data.html#"
+            "stateful-transforms."
+        )
         if isinstance(concurrency, tuple):
-            if (
-                len(concurrency) == 2
-                and isinstance(concurrency[0], int)
-                and isinstance(concurrency[1], int)
+            # Validate tuple length and that all elements are integers
+            if len(concurrency) not in (2, 3) or not all(
+                isinstance(c, int) for c in concurrency
             ):
-                if is_callable_class:
-                    return ActorPoolStrategy(
-                        min_size=concurrency[0], max_size=concurrency[1]
-                    )
-                else:
-                    raise ValueError(
-                        "``concurrency`` is set as a tuple of integers, but ``fn`` "
-                        f"is not a callable class: {fn}. Use ``concurrency=n`` to "
-                        "control maximum number of workers to use."
-                    )
-            else:
                 raise ValueError(
                     "``concurrency`` is expected to be set as a tuple of "
                     f"integers, but got: {concurrency}."
+                )
+
+            # Check if function is callable class (common validation)
+            if not is_callable_class:
+                raise ValueError(
+                    "``concurrency`` is set as a tuple of integers, but ``fn`` "
+                    f"is not a callable class: {fn}. Use ``concurrency=n`` to "
+                    "control maximum number of workers to use."
+                )
+
+            # Create ActorPoolStrategy based on tuple length
+            if len(concurrency) == 2:
+                return ActorPoolStrategy(
+                    min_size=concurrency[0], max_size=concurrency[1]
+                )
+            else:  # len(concurrency) == 3
+                return ActorPoolStrategy(
+                    min_size=concurrency[0],
+                    max_size=concurrency[1],
+                    initial_size=concurrency[2],
                 )
         elif isinstance(concurrency, int):
             if is_callable_class:
@@ -662,10 +668,7 @@ def get_compute_strategy(
             )
     else:
         if is_callable_class:
-            raise ValueError(
-                "``concurrency`` must be specified when using a callable class. "
-                "For example, use ``concurrency=n`` for a pool of ``n`` workers."
-            )
+            return ActorPoolStrategy(min_size=1, max_size=None)
         else:
             return TaskPoolStrategy()
 
@@ -1406,46 +1409,6 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
         )
 
 
-def call_with_retry(
-    f: Callable[[], Any],
-    description: str,
-    *,
-    match: Optional[List[str]] = None,
-    max_attempts: int = 10,
-    max_backoff_s: int = 32,
-) -> Any:
-    """Retry a function with exponential backoff.
-
-    Args:
-        f: The function to retry.
-        match: A list of strings to match in the exception message. If ``None``, any
-            error is retried.
-        description: An imperitive description of the function being retried. For
-            example, "open the file".
-        max_attempts: The maximum number of attempts to retry.
-        max_backoff_s: The maximum number of seconds to backoff.
-    """
-    assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
-
-    for i in range(max_attempts):
-        try:
-            return f()
-        except Exception as e:
-            is_retryable = match is None or any(pattern in str(e) for pattern in match)
-            if is_retryable and i + 1 < max_attempts:
-                # Retry with binary expoential backoff with random jitter.
-                backoff = min((2 ** (i + 1)), max_backoff_s) * (random.random())
-                logger.debug(
-                    f"Retrying {i+1} attempts to {description} after {backoff} seconds."
-                )
-                time.sleep(backoff)
-            else:
-                logger.debug(
-                    f"Did not find a match for {str(e)}. Raising after {i+1} attempts."
-                )
-                raise e from None
-
-
 def iterate_with_retry(
     iterable_factory: Callable[[], Iterable],
     description: str,
@@ -1730,6 +1693,41 @@ def unzip(data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
     return tuple(map(list, zip(*data)))
 
 
+def _sort_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Sort DataFrame by columns and rows, and also handle unhashable types."""
+    df = df.copy()
+
+    def to_sortable(x):
+        if isinstance(x, (list, np.ndarray)):
+            return tuple(to_sortable(i) for i in x)
+        if isinstance(x, dict):
+            return tuple(sorted((k, to_sortable(v)) for k, v in x.items()))
+        return x
+
+    sort_cols = []
+    temp_cols = []
+    # Sort by all columns to ensure deterministic order.
+    columns = sorted(df.columns)
+
+    for col in columns:
+        if df[col].dtype == "object":
+            # Create a temporary column for sorting to handle unhashable types.
+            # Use UUID to avoid collisions with existing column names.
+            temp_col = f"__sort_proxy_{uuid.uuid4().hex}_{col}__"
+            df[temp_col] = df[col].map(to_sortable)
+            sort_cols.append(temp_col)
+            temp_cols.append(temp_col)
+        else:
+            sort_cols.append(col)
+
+    sorted_df = df.sort_values(sort_cols)
+
+    if temp_cols:
+        sorted_df = sorted_df.drop(columns=temp_cols)
+
+    return sorted_df
+
+
 def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     """Check if two DataFrames have the same rows.
 
@@ -1737,10 +1735,60 @@ def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     order of rows. This is useful for testing Ray Data because its interface doesn't
     usually guarantee the order of rows.
     """
-    actual_rows = actual.to_dict(orient="records")
-    expected_rows = expected.to_dict(orient="records")
+    if len(actual) != len(expected):
+        return False
 
-    actual_items_counts = Counter(frozenset(row.items()) for row in actual_rows)
-    expected_items_counts = Counter(frozenset(row.items()) for row in expected_rows)
+    if len(actual) == 0:
+        return True
 
-    return actual_items_counts == expected_items_counts
+    pd.testing.assert_frame_equal(
+        _sort_df(actual).reset_index(drop=True),
+        _sort_df(expected).reset_index(drop=True),
+        check_dtype=False,
+    )
+    return True
+
+
+def merge_resources_to_ray_remote_args(
+    num_cpus: Optional[int],
+    num_gpus: Optional[int],
+    memory: Optional[int],
+    ray_remote_args: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Convert the given resources to Ray remote args.
+
+    Args:
+        num_cpus: The number of CPUs to be added to the Ray remote args.
+        num_gpus: The number of GPUs to be added to the Ray remote args.
+        memory: The memory to be added to the Ray remote args.
+        ray_remote_args: The Ray remote args to be merged.
+
+    Returns:
+        The converted arguments.
+    """
+    ray_remote_args = ray_remote_args.copy()
+    if num_cpus is not None:
+        ray_remote_args["num_cpus"] = num_cpus
+    if num_gpus is not None:
+        ray_remote_args["num_gpus"] = num_gpus
+    if memory is not None:
+        ray_remote_args["memory"] = memory
+    return ray_remote_args
+
+
+@DeveloperAPI
+def infer_compression(path: str) -> Optional[str]:
+    import pyarrow as pa
+
+    compression = None
+    try:
+        # Try to detect compression codec from path.
+        compression = pa.Codec.detect(path).name
+    except (ValueError, TypeError):
+        # Arrow's compression inference on the file path doesn't work for Snappy, so we double-check ourselves.
+        import pathlib
+
+        suffix = pathlib.Path(path).suffix
+        if suffix and suffix[1:] == "snappy":
+            compression = "snappy"
+    return compression

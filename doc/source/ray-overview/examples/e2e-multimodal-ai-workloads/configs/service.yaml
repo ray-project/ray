@@ -6,7 +6,7 @@ name: doggos-app
 # like anyscale/ray:2.43.0-slim-py312-cu125, a user-provided base image (provided
 # that it meets certain specs), or you can build new images using the Anyscale
 # image builder at https://console.anyscale-staging.com/v2/container-images.
-image_uri:  anyscale/ray:2.48.0-slim-py312-cu128
+image_uri:  anyscale/ray:2.51.0-slim-py312-cu128
 # containerfile: /home/ray/default/containerfile
 
 # When empty, Anyscale will auto-select the instance types. You can also specify
@@ -64,6 +64,6 @@ py_executable: python  # uv run  # remove the requirements and py_modules
 # When empty, this uses the default Anyscale Cloud in your organization.
 cloud:
 
-# Speciy the Ray Serve app to deploy.
+# Specify the Ray Serve app to deploy.
 applications:
 - import_path: doggos.serve:app

@@ -19,10 +19,12 @@
 
 namespace ray {
 
+using SchedulingClass = int;
+
 LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec)
     : MessageWrapper(std::make_shared<rpc::LeaseSpec>()) {
-  RAY_CHECK(task_spec.type() == TaskType::NORMAL_TASK ||
-            task_spec.type() == TaskType::ACTOR_CREATION_TASK);
+  RAY_CHECK(task_spec.type() == rpc::TaskType::NORMAL_TASK ||
+            task_spec.type() == rpc::TaskType::ACTOR_CREATION_TASK);
   message_->set_job_id(task_spec.job_id());
   message_->mutable_caller_address()->CopyFrom(task_spec.caller_address());
   message_->mutable_required_resources()->insert(task_spec.required_resources().begin(),
@@ -31,8 +33,8 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec)
       task_spec.required_placement_resources().begin(),
       task_spec.required_placement_resources().end());
   message_->mutable_scheduling_strategy()->CopyFrom(task_spec.scheduling_strategy());
-  message_->mutable_label_selector()->insert(task_spec.label_selector().begin(),
-                                             task_spec.label_selector().end());
+  message_->mutable_label_selector()->CopyFrom(task_spec.label_selector());
+  message_->mutable_fallback_strategy()->CopyFrom(task_spec.fallback_strategy());
   message_->set_depth(task_spec.depth());
   message_->set_parent_task_id(task_spec.parent_task_id());
   message_->mutable_dependencies()->Reserve(task_spec.args_size());
@@ -73,14 +75,14 @@ const rpc::Address &LeaseSpecification::CallerAddress() const {
   return message_->caller_address();
 }
 
-Language LeaseSpecification::GetLanguage() const { return message_->language(); }
+rpc::Language LeaseSpecification::GetLanguage() const { return message_->language(); }
 
 bool LeaseSpecification::IsNormalTask() const {
-  return message_->type() == TaskType::NORMAL_TASK;
+  return message_->type() == rpc::TaskType::NORMAL_TASK;
 }
 
 bool LeaseSpecification::IsActorCreationTask() const {
-  return message_->type() == TaskType::ACTOR_CREATION_TASK;
+  return message_->type() == rpc::TaskType::ACTOR_CREATION_TASK;
 }
 
 bool LeaseSpecification::IsNodeAffinitySchedulingStrategy() const {
@@ -154,7 +156,7 @@ bool LeaseSpecification::IsRetriable() const {
   return true;
 }
 
-uint64_t LeaseSpecification::AttemptNumber() const { return message_->attempt_number(); }
+int32_t LeaseSpecification::AttemptNumber() const { return message_->attempt_number(); }
 
 bool LeaseSpecification::IsRetry() const { return AttemptNumber() > 0; }
 
@@ -271,6 +273,10 @@ const LabelSelector &LeaseSpecification::GetLabelSelector() const {
   return *label_selector_;
 }
 
+const std::vector<FallbackOption> &LeaseSpecification::GetFallbackStrategy() const {
+  return *fallback_strategy_;
+}
+
 ray::FunctionDescriptor LeaseSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
@@ -301,6 +307,9 @@ void LeaseSpecification::ComputeResources() {
   // from proto to LabelSelector data type.
   label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 
+  // Parse fallback strategy from proto to list of FallbackOption if specified.
+  fallback_strategy_ = ParseFallbackStrategy(message_->fallback_strategy().options());
+
   // Copy dependencies from message
   dependencies_.reserve(message_->dependencies_size());
   for (int i = 0; i < message_->dependencies_size(); ++i) {
@@ -317,11 +326,16 @@ void LeaseSpecification::ComputeResources() {
                                  : GetRequiredResources();
   auto depth = GetDepth();
   auto label_selector = GetLabelSelector();
+  auto fallback_strategy = GetFallbackStrategy();
   const auto &function_descriptor = FunctionDescriptor();
-  auto sched_cls_desc = SchedulingClassDescriptor(
-      resource_set, label_selector, function_descriptor, depth, GetSchedulingStrategy());
+  auto sched_cls_desc = SchedulingClassDescriptor(resource_set,
+                                                  label_selector,
+                                                  function_descriptor,
+                                                  depth,
+                                                  GetSchedulingStrategy(),
+                                                  fallback_strategy);
   // Map the scheduling class descriptor to an integer for performance.
-  sched_cls_id_ = TaskSpecification::GetSchedulingClass(sched_cls_desc);
+  sched_cls_id_ = SchedulingClassToIds::GetSchedulingClass(sched_cls_desc);
   RAY_CHECK_GT(sched_cls_id_, 0);
 
   runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());

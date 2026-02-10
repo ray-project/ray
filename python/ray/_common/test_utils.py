@@ -6,21 +6,39 @@ _common/ (not in tests/) to be accessible in the Ray package distribution.
 """
 
 import asyncio
-from collections.abc import Awaitable
-from contextlib import contextmanager
 import inspect
+import logging
 import os
+import subprocess
+import sys
+import threading
 import time
 import traceback
-from typing import Any, Callable, Dict, Iterator, List, Optional, Set
 import uuid
+from collections import defaultdict
+from collections.abc import Awaitable
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from enum import Enum
-
+from typing import Any, Callable, Dict, Iterator, List, Optional, Set
 
 import ray
-from ray._common.network_utils import build_address
-import ray._private.utils
 import ray._common.usage.usage_lib as ray_usage_lib
+import ray._private.utils
+from ray._common.network_utils import build_address
+from ray._common.utils import decode
+
+logger = logging.getLogger(__name__)
+
+try:
+    from prometheus_client.core import Metric
+    from prometheus_client.parser import Sample, text_string_to_metric_families
+except (ImportError, ModuleNotFoundError):
+    Metric = None
+    Sample = None
+
+    def text_string_to_metric_families(*args, **kwargs):
+        raise ModuleNotFoundError("`prometheus_client` not found")
 
 
 @ray.remote(num_cpus=0)
@@ -248,3 +266,259 @@ def check_library_usage_telemetry(
         assert all(
             [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
         ), extra_usage_tags
+
+
+class FakeTimer:
+    def __init__(self, start_time: Optional[float] = None):
+        self._lock = threading.Lock()
+        self.reset(start_time=start_time)
+
+    def reset(self, start_time: Optional[float] = None):
+        with self._lock:
+            if start_time is None:
+                start_time = time.time()
+            self._curr = start_time
+
+    def time(self) -> float:
+        return self._curr
+
+    def advance(self, by: float):
+        with self._lock:
+            self._curr += by
+
+    def realistic_sleep(self, amt: float):
+        with self._lock:
+            self._curr += amt + 0.001
+
+
+def is_named_tuple(cls):
+    """Return True if cls is a namedtuple and False otherwise."""
+    b = cls.__bases__
+    if len(b) != 1 or b[0] is not tuple:
+        return False
+    f = getattr(cls, "_fields", None)
+    if not isinstance(f, tuple):
+        return False
+    return all(type(n) is str for n in f)
+
+
+def assert_tensors_equivalent(obj1, obj2):
+    """
+    Recursively compare objects with special handling for torch.Tensor.
+
+    Tensors are considered equivalent if:
+      - Same dtype and shape
+      - Same device type (e.g., both 'cpu' or both 'cuda'), index ignored
+      - Values are equal (or close for floats)
+    """
+    import torch
+
+    if isinstance(obj1, torch.Tensor) and isinstance(obj2, torch.Tensor):
+        # 1. dtype
+        assert obj1.dtype == obj2.dtype, f"dtype mismatch: {obj1.dtype} vs {obj2.dtype}"
+        # 2. shape
+        assert obj1.shape == obj2.shape, f"shape mismatch: {obj1.shape} vs {obj2.shape}"
+        # 3. device type must match (cpu/cpu or cuda/cuda), ignore index
+        assert (
+            obj1.device.type == obj2.device.type
+        ), f"Device type mismatch: {obj1.device} vs {obj2.device}"
+
+        # 4. Compare values safely on CPU
+        t1_cpu = obj1.cpu()
+        t2_cpu = obj2.cpu()
+        if obj1.dtype.is_floating_point or obj1.dtype.is_complex:
+            assert torch.allclose(
+                t1_cpu, t2_cpu, atol=1e-6, rtol=1e-5
+            ), "Floating-point tensors not close"
+        else:
+            assert torch.equal(t1_cpu, t2_cpu), "Integer/bool tensors not equal"
+        return
+
+    # Type must match
+    if type(obj1) is not type(obj2):
+        raise AssertionError(f"Type mismatch: {type(obj1)} vs {type(obj2)}")
+
+    # Handle namedtuples
+    if is_named_tuple(type(obj1)):
+        assert len(obj1) == len(obj2)
+        for a, b in zip(obj1, obj2):
+            assert_tensors_equivalent(a, b)
+    elif isinstance(obj1, dict):
+        assert obj1.keys() == obj2.keys()
+        for k in obj1:
+            assert_tensors_equivalent(obj1[k], obj2[k])
+    elif isinstance(obj1, (list, tuple)):
+        assert len(obj1) == len(obj2)
+        for a, b in zip(obj1, obj2):
+            assert_tensors_equivalent(a, b)
+    elif hasattr(obj1, "__dict__") and hasattr(obj2, "__dict__"):
+        # Compare user-defined objects by their public attributes
+        keys1 = {
+            k
+            for k in obj1.__dict__.keys()
+            if not k.startswith("_ray_") and k != "_pytype_"
+        }
+        keys2 = {
+            k
+            for k in obj2.__dict__.keys()
+            if not k.startswith("_ray_") and k != "_pytype_"
+        }
+        assert keys1 == keys2, f"Object attribute keys differ: {keys1} vs {keys2}"
+        for k in keys1:
+            assert_tensors_equivalent(obj1.__dict__[k], obj2.__dict__[k])
+    else:
+        # Fallback for primitives: int, float, str, bool, etc.
+        assert obj1 == obj2, f"Non-tensor values differ: {obj1} vs {obj2}"
+
+
+def run_string_as_driver(
+    driver_script: str, env: Dict = None, encode: str = "utf-8"
+) -> str:
+    """Run a driver as a separate process.
+
+    Args:
+        driver_script: A string to run as a Python script.
+        env: The environment variables for the driver.
+        encode: The encoding to use for the driver script.
+
+    Returns:
+        The script's output.
+    """
+    proc = subprocess.Popen(
+        [sys.executable, "-"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=env,
+    )
+    with proc:
+        output = proc.communicate(driver_script.encode(encoding=encode))[0]
+        if proc.returncode:
+            print(decode(output, encode_type=encode))
+            logger.error(proc.stderr)
+            raise subprocess.CalledProcessError(
+                proc.returncode, proc.args, output, proc.stderr
+            )
+        out = decode(output, encode_type=encode)
+    return out
+
+
+@dataclass
+class MetricSamplePattern:
+    name: Optional[str] = None
+    value: Optional[str] = None
+    partial_label_match: Optional[Dict[str, str]] = None
+
+    def matches(self, sample: "Sample"):
+        if self.name is not None:
+            if self.name != sample.name:
+                return False
+
+        if self.value is not None:
+            if self.value != sample.value:
+                return False
+
+        if self.partial_label_match is not None:
+            for label, value in self.partial_label_match.items():
+                if sample.labels.get(label) != value:
+                    return False
+
+        return True
+
+
+@dataclass
+class PrometheusTimeseries:
+    """A collection of timeseries from multiple addresses. Each timeseries is a
+    collection of samples with the same metric name and labels. Concretely:
+    - components_dict: a dictionary of addresses to the Component labels
+    - metric_descriptors: a dictionary of metric names to the Metric object
+    - metric_samples: the latest value of each label
+    """
+
+    components_dict: Dict[str, Set[str]] = field(default_factory=dict)
+    metric_descriptors: Dict[str, "Metric"] = field(default_factory=dict)
+    metric_samples: Dict[frozenset, "Sample"] = field(default_factory=dict)
+
+    def flush(self):
+        self.components_dict.clear()
+        self.metric_descriptors.clear()
+        self.metric_samples.clear()
+
+
+def fetch_raw_prometheus(prom_addresses):
+    # Local import so minimal dependency tests can run without requests
+    import requests
+
+    for address in prom_addresses:
+        try:
+            response = requests.get(f"http://{address}/metrics")
+            yield address, response.text
+        except requests.exceptions.ConnectionError:
+            continue
+
+
+def fetch_prometheus(prom_addresses):
+    components_dict = {}
+    metric_descriptors = {}
+    metric_samples = []
+
+    for address in prom_addresses:
+        if address not in components_dict:
+            components_dict[address] = set()
+
+    for address, response in fetch_raw_prometheus(prom_addresses):
+        for metric in text_string_to_metric_families(response):
+            for sample in metric.samples:
+                metric_descriptors[sample.name] = metric
+                metric_samples.append(sample)
+                if "Component" in sample.labels:
+                    components_dict[address].add(sample.labels["Component"])
+    return components_dict, metric_descriptors, metric_samples
+
+
+def fetch_prometheus_timeseries(
+    prom_addreses: List[str],
+    result: PrometheusTimeseries,
+) -> PrometheusTimeseries:
+    components_dict, metric_descriptors, metric_samples = fetch_prometheus(
+        prom_addreses
+    )
+    for address, components in components_dict.items():
+        if address not in result.components_dict:
+            result.components_dict[address] = set()
+        result.components_dict[address].update(components)
+    result.metric_descriptors.update(metric_descriptors)
+    for sample in metric_samples:
+        # udpate sample to the latest value
+        result.metric_samples[
+            frozenset(list(sample.labels.items()) + [("_metric_name_", sample.name)])
+        ] = sample
+    return result
+
+
+def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
+    """Return prometheus metrics from the given addresses.
+
+    Args:
+        prom_addresses: List of metrics_agent addresses to collect metrics from.
+
+    Returns:
+        Dict mapping from metric name to list of samples for the metric.
+    """
+    _, _, samples = fetch_prometheus(prom_addresses)
+    samples_by_name = defaultdict(list)
+    for sample in samples:
+        samples_by_name[sample.name].append(sample)
+    return samples_by_name
+
+
+def fetch_prometheus_metric_timeseries(
+    prom_addresses: List[str], result: PrometheusTimeseries
+) -> Dict[str, List[Any]]:
+    samples = fetch_prometheus_timeseries(
+        prom_addresses, result
+    ).metric_samples.values()
+    samples_by_name = defaultdict(list)
+    for sample in samples:
+        samples_by_name[sample.name].append(sample)
+    return samples_by_name

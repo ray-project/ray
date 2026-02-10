@@ -26,7 +26,7 @@
 #include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
-#include "ray/core_worker/actor_handle.h"
+#include "ray/core_worker/actor_management/actor_handle.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/util/time.h"
 
@@ -118,10 +118,10 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
                                                       jobject gcsClientOptions,
                                                       jstring logDir,
                                                       jbyteArray jobConfig,
-                                                      jint startupToken,
+                                                      jbyteArray workerId,
                                                       jint runtimeEnvHash) {
   auto task_execution_callback =
-      [](const rpc::Address &caller_address,
+      [](const rpc::Address &owner_address,
          TaskType task_type,
          const std::string task_name,
          const RayFunction &ray_function,
@@ -135,6 +135,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
          std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
          std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb,
          bool *is_retryable_error,
+         std::string *actor_repr_name,
          std::string *application_error,
          const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
          const std::string name_of_concurrency_group_to_execute,
@@ -142,7 +143,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
          bool is_streaming_generator,
          bool should_retry_exceptions,
          int64_t generator_backpressure_num_objects,
-         const rpc::TensorTransport &tensor_transport) {
+         const std::optional<std::string> &tensor_transport) {
         // These 3 parameters are used for Python only, and Java worker
         // will not use them.
         RAY_UNUSED(defined_concurrency_groups);
@@ -236,7 +237,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
                 data_size,
                 metadata,
                 contained_object_ids,
-                caller_address,
+                owner_address,
                 &task_output_inlined_bytes,
                 result_ptr));
 
@@ -251,7 +252,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
             }
 
             RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
-                result_id, result, ObjectID::Nil(), caller_address));
+                result_id, result, ObjectID::Nil(), owner_address));
           }
         }
 
@@ -261,16 +262,12 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
         return Status::OK();
       };
 
-  auto gc_collect = [](bool triggered_by_global_gc) {
+  auto gc_collect = []() {
     // A Java worker process usually contains more than one worker.
     // A LocalGC request is likely to be received by multiple workers in a short time.
     // Here we ensure that the 1 second interval of `System.gc()` execution is
     // guaranteed no matter how frequent the requests are received and how many workers
     // the process has.
-    if (!triggered_by_global_gc) {
-      RAY_LOG(DEBUG) << "Skipping non-global GC.";
-      return;
-    }
 
     static absl::Mutex mutex;
     static int64_t last_gc_time_ms = 0;
@@ -308,7 +305,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
   options.gc_collect = gc_collect;
   options.serialized_job_config = serialized_job_config;
   options.metrics_agent_port = -1;
-  options.startup_token = startupToken;
+  options.worker_id = JavaByteArrayToId<WorkerID>(env, workerId);
   options.runtime_env_hash = runtimeEnvHash;
   options.object_allocator =
       [](const ray::RayObject &object,

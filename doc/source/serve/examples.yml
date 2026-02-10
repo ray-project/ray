@@ -74,7 +74,7 @@ examples:
       - natural language processing
     link: tutorials/serve-deepseek
     related_technology: llm applications
-  - title: Deploying a small-sized LLM
+  - title: Deploy a small-sized LLM
     skill_level: beginner
     use_cases:
       - generative ai
@@ -82,7 +82,7 @@ examples:
       - natural language processing
     link: tutorials/deployment-serve-llm/small-size-llm/README
     related_technology: llm applications
-  - title: Deploying a medium-sized LLM
+  - title: Deploy a medium-sized LLM
     skill_level: beginner
     use_cases:
       - generative ai
@@ -90,7 +90,7 @@ examples:
       - natural language processing
     link: tutorials/deployment-serve-llm/medium-size-llm/README
     related_technology: llm applications
-  - title: Deploying a large-sized LLM
+  - title: Deploy a large-sized LLM
     skill_level: beginner
     use_cases:
       - generative ai
@@ -98,7 +98,7 @@ examples:
       - natural language processing
     link: tutorials/deployment-serve-llm/large-size-llm/README
     related_technology: llm applications
-  - title: Deploying a vision LLM
+  - title: Deploy a vision LLM
     skill_level: beginner
     use_cases:
       - generative ai
@@ -106,7 +106,7 @@ examples:
       - natural language processing
     link: tutorials/deployment-serve-llm/vision-llm/README
     related_technology: llm applications
-  - title: Deploying a reasoning LLM
+  - title: Deploy a reasoning LLM
     skill_level: beginner
     use_cases:
       - generative ai
@@ -114,13 +114,21 @@ examples:
       - natural language processing
     link: tutorials/deployment-serve-llm/reasoning-llm/README
     related_technology: llm applications
-  - title: Deploying a hybrid reasoning LLM
+  - title: Deploy a hybrid reasoning LLM
     skill_level: beginner
     use_cases:
       - generative ai
       - large language models
       - natural language processing
     link: tutorials/deployment-serve-llm/hybrid-reasoning-llm/README
+    related_technology: llm applications
+  - title: Deploy gpt-oss
+    skill_level: beginner
+    use_cases:
+      - generative ai
+      - large language models
+      - natural language processing
+    link: tutorials/deployment-serve-llm/gpt-oss/README
     related_technology: llm applications
   - title: Serve a Chatbot with Request and Response Streaming
     skill_level: intermediate
@@ -140,4 +148,32 @@ examples:
   - title: Serve a Java App
     skill_level: advanced
     link: tutorials/java
+    related_technology: integrations
+  - title: Model Multiplexing with Forecasting Models
+    skill_level: intermediate
+    use_cases:
+      - time series forecasting
+    link: tutorials/model_multiplexing_forecast/content/README
+    related_technology: deployment patterns
+  - title: Model Composition for Recommendation Systems
+    skill_level: intermediate
+    use_cases:
+      - recommendation systems
+    link: tutorials/model_composition_recsys/content/README
+    related_technology: deployment patterns
+  - title: Asynchronous Inference using Ray Serve
+    skill_level: advanced
+    use_cases:
+      - generative ai
+    link: tutorials/asynchronous-inference/content/asynchronous-inference
+    related_technology: integrations
+  - title: Video Analysis Inference Pipeline
+    skill_level: advanced
+    use_cases:
+      - computer vision
+    link: tutorials/video-analysis/README
+    related_technology: ml applications
+  - title: Integrate with MLflow Model Registry
+    skill_level: intermediate
+    link: model-registries
     related_technology: integrations

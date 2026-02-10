@@ -19,6 +19,7 @@ from ray.autoscaler._private.kuberay.node_provider import (
     KubernetesHttpApiClient,
     _worker_group_index,
     _worker_group_max_replicas,
+    _worker_group_num_of_hosts,
     _worker_group_replicas,
     worker_delete_patch,
     worker_replica_patch,
@@ -117,61 +118,68 @@ class KubeRayProvider(ICloudInstanceProvider):
             # This request is already processed.
             logger.warning(f"Request {request_id} is already processed for: {ids}")
             return
-        self._requests.add(request_id)
+
         logger.info("Terminating worker pods: {}".format(ids))
-
-        scale_request = self._initialize_scale_request(
-            to_launch={}, to_delete_instances=ids
-        )
-        if scale_request.worker_groups_with_pending_deletes:
-            errors_msg = (
-                "There are workers to be deleted from: "
-                f"{scale_request.worker_groups_with_pending_deletes}. "
-                "Waiting for them to be deleted before adding new workers "
-                " to be deleted"
-            )
-            logger.warning(errors_msg)
-            self._add_terminate_errors(
-                ids,
-                request_id,
-                details=errors_msg,
-            )
-            return
-
+        scale_request = None
         try:
+            scale_request = self._initialize_scale_request(
+                to_launch={}, to_delete_instances=ids
+            )
+
+            if scale_request.worker_groups_with_pending_deletes:
+                errors_msg = (
+                    "There are workers to be deleted from: "
+                    f"{scale_request.worker_groups_with_pending_deletes}. "
+                    "Waiting for them to be deleted before adding new workers "
+                    " to be deleted"
+                )
+                logger.warning(errors_msg)
+                self._add_terminate_errors(
+                    ids,
+                    request_id,
+                    details=errors_msg,
+                )
+                return
+
             self._submit_scale_request(scale_request)
+            # Only add to processed requests if successful
+            self._requests.add(request_id)
+
         except Exception as e:
-            logger.exception(f"Error terminating nodes: {scale_request}")
+            logger.exception(f"Error terminating nodes: {scale_request or 'N/A'}")
             self._add_terminate_errors(ids, request_id, details=str(e), e=e)
 
     def launch(self, shape: Dict[NodeType, int], request_id: str) -> None:
         if request_id in self._requests:
             # This request is already processed.
             return
-        self._requests.add(request_id)
 
-        scale_request = self._initialize_scale_request(
-            to_launch=shape, to_delete_instances=[]
-        )
-
-        if scale_request.worker_groups_with_pending_deletes:
-            error_msg = (
-                "There are workers to be deleted from: "
-                f"{scale_request.worker_groups_with_pending_deletes}. "
-                "Waiting for them to be deleted before creating new workers."
-            )
-            logger.warning(error_msg)
-            self._add_launch_errors(
-                shape,
-                request_id,
-                details=error_msg,
-            )
-            return
-
+        scale_request = None
         try:
+            scale_request = self._initialize_scale_request(
+                to_launch=shape, to_delete_instances=[]
+            )
+
+            if scale_request.worker_groups_with_pending_deletes:
+                error_msg = (
+                    "There are workers to be deleted from: "
+                    f"{scale_request.worker_groups_with_pending_deletes}. "
+                    "Waiting for them to be deleted before creating new workers."
+                )
+                logger.warning(error_msg)
+                self._add_launch_errors(
+                    shape,
+                    request_id,
+                    details=error_msg,
+                )
+                return
+
             self._submit_scale_request(scale_request)
+            # Only add to processed requests if successful
+            self._requests.add(request_id)
+
         except Exception as e:
-            logger.exception(f"Error launching nodes: {scale_request}")
+            logger.exception(f"Error launching nodes: {scale_request or 'N/A'}")
             self._add_launch_errors(shape, request_id, details=str(e), e=e)
 
     def poll_errors(self) -> List[CloudInstanceProviderError]:
@@ -215,6 +223,14 @@ class KubeRayProvider(ICloudInstanceProvider):
             worker_to_delete_set,
         ) = self._get_workers_delete_info(ray_cluster, set(cur_instances.keys()))
 
+        observed_workers_dict = defaultdict(int)
+        for instance in cur_instances.values():
+            if instance.node_kind != NodeKind.WORKER:
+                continue
+            if instance.cloud_instance_id in worker_to_delete_set:
+                continue
+            observed_workers_dict[instance.node_type] += 1
+
         # Calculate the desired number of workers by type.
         num_workers_dict = defaultdict(int)
         worker_groups = ray_cluster["spec"].get("workerGroupSpecs", [])
@@ -226,9 +242,20 @@ class KubeRayProvider(ICloudInstanceProvider):
             # num_workers_dict should account for multi-host replicas when
             # `numOfHosts`` is set.
             num_of_hosts = worker_group.get("numOfHosts", 1)
-            num_workers_dict[node_type] = (
+            replicas = (
                 max(worker_group["replicas"], worker_group["minReplicas"])
                 * num_of_hosts
+            )
+
+            # The `replicas` field in worker group specs can be updated by users at any time.
+            # However, users should only increase the field (manually upscaling the worker group), not decrease it,
+            # because downscaling the worker group requires specifying which workers to delete explicitly in the `workersToDelete` field.
+            # Since we don't have a way to enforce this, we need to fix unexpected decreases on the `replicas` field by using actual observations.
+            # For example, if the user manually decreases the `replicas` field to 0 without specifying which workers to delete,
+            # we should fix the `replicas` field back to the number of observed workers excluding the workers to be deleted,
+            # otherwise, we won't have a correct `replicas` matches the actual number of workers eventually.
+            num_workers_dict[node_type] = max(
+                replicas, observed_workers_dict[node_type]
             )
 
         # Add to launch nodes.
@@ -289,9 +316,12 @@ class KubeRayProvider(ICloudInstanceProvider):
         raycluster = self.ray_cluster
 
         # Collect patches for replica counts.
-        for node_type, target_replicas in scale_request.desired_num_workers.items():
+        for node_type, num_workers in scale_request.desired_num_workers.items():
             group_index = _worker_group_index(raycluster, node_type)
             group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
+            group_num_of_hosts = _worker_group_num_of_hosts(raycluster, group_index)
+            # the num_workers from the scale request is multiplied by numOfHosts, so we need to divide it back.
+            target_replicas = num_workers // group_num_of_hosts
             # Cap the replica count to maxReplicas.
             if group_max_replicas is not None and group_max_replicas < target_replicas:
                 logger.warning(

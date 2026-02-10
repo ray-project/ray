@@ -17,6 +17,7 @@
 #include <opentelemetry/exporters/otlp/otlp_grpc_metric_exporter.h>
 #include <opentelemetry/metrics/provider.h>
 #include <opentelemetry/nostd/variant.h>
+#include <opentelemetry/sdk/common/global_log_handler.h>
 #include <opentelemetry/sdk/metrics/aggregation/histogram_aggregation.h>
 #include <opentelemetry/sdk/metrics/export/periodic_exporting_metric_reader.h>
 #include <opentelemetry/sdk/metrics/instruments.h>
@@ -28,6 +29,10 @@
 #include <cassert>
 #include <utility>
 
+#include "ray/common/constants.h"
+#include "ray/rpc/authentication/authentication_mode.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
+#include "ray/rpc/common.h"
 #include "ray/util/logging.h"
 
 // Anonymous namespace that contains the private callback functions for the
@@ -35,8 +40,8 @@
 namespace {
 using ray::observability::OpenTelemetryMetricRecorder;
 
-static void _DoubleGaugeCallback(opentelemetry::metrics::ObserverResult observer,
-                                 void *state) {
+static void DoubleGaugeCallback(opentelemetry::metrics::ObserverResult observer,
+                                void *state) {
   const std::string *name_ptr = static_cast<const std::string *>(state);
   const std::string &name = *name_ptr;
   OpenTelemetryMetricRecorder &recorder = OpenTelemetryMetricRecorder::GetInstance();
@@ -46,6 +51,25 @@ static void _DoubleGaugeCallback(opentelemetry::metrics::ObserverResult observer
       observer);
   recorder.CollectGaugeMetricValues(name, obs);
 }
+
+class OpenTelemetryMetricExporter
+    : public opentelemetry::exporter::otlp::OtlpGrpcMetricExporter {
+ public:
+  explicit OpenTelemetryMetricExporter(
+      const opentelemetry::exporter::otlp::OtlpGrpcMetricExporterOptions &options)
+      : opentelemetry::exporter::otlp::OtlpGrpcMetricExporter(options) {}
+
+  opentelemetry::sdk::common::ExportResult Export(
+      const opentelemetry::sdk::metrics::ResourceMetrics &data) noexcept override {
+    const opentelemetry::sdk::common::ExportResult result =
+        opentelemetry::exporter::otlp::OtlpGrpcMetricExporter::Export(data);
+    if (result != opentelemetry::sdk::common::ExportResult::kSuccess) {
+      RAY_LOG(WARNING) << "Failed to export metrics to the metrics agent. Result: "
+                       << static_cast<int>(result);
+    }
+    return result;
+  }
+};
 
 }  // anonymous namespace
 
@@ -61,10 +85,9 @@ OpenTelemetryMetricRecorder &OpenTelemetryMetricRecorder::GetInstance() {
   return *instance;
 }
 
-void OpenTelemetryMetricRecorder::RegisterGrpcExporter(
-    const std::string &endpoint,
-    std::chrono::milliseconds interval,
-    std::chrono::milliseconds timeout) {
+void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
+                                        std::chrono::milliseconds interval,
+                                        std::chrono::milliseconds timeout) {
   // Create an OTLP exporter
   opentelemetry::exporter::otlp::OtlpGrpcMetricExporterOptions exporter_options;
   exporter_options.endpoint = endpoint;
@@ -74,8 +97,68 @@ void OpenTelemetryMetricRecorder::RegisterGrpcExporter(
   // counting.
   exporter_options.aggregation_temporality =
       opentelemetry::exporter::otlp::PreferredAggregationTemporality::kDelta;
-  auto exporter = std::make_unique<opentelemetry::exporter::otlp::OtlpGrpcMetricExporter>(
-      exporter_options);
+  // Add authentication token to metadata if auth is enabled
+  if (rpc::GetAuthenticationMode() == rpc::AuthenticationMode::TOKEN) {
+    auto token = rpc::AuthenticationTokenLoader::instance().GetToken();
+    if (token && !token->empty()) {
+      exporter_options.metadata.insert(
+          {std::string(kAuthTokenKey), token->ToAuthorizationHeaderValue()});
+    }
+  }
+  // Configure TLS/SSL credentials to match how Ray's gRPC servers are configured.
+  // When USE_TLS is enabled, the dashboard agent's gRPC server uses SSL, so the
+  // OpenTelemetry exporter must also use SSL to connect successfully.
+  // See https://github.com/ray-project/ray/issues/59968
+  if (RayConfig::instance().USE_TLS()) {
+    exporter_options.use_ssl_credentials = true;
+
+    // Load CA certificate for server verification.
+    // Reuse ReadCert from ray/rpc/common.h for consistency with other TLS code paths.
+    std::string ca_cert_file = std::string(RayConfig::instance().TLS_CA_CERT());
+    if (!ca_cert_file.empty()) {
+      std::string ca_cert = rpc::ReadCert(ca_cert_file);
+      RAY_CHECK(!ca_cert.empty())
+          << "Failed to read CA certificate file: " << ca_cert_file;
+      exporter_options.ssl_credentials_cacert_as_string = std::move(ca_cert);
+    }
+
+#ifdef ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW
+    // Load client certificate and key for mutual TLS (mTLS).
+    // Ray's gRPC server requires client authentication when CA cert is configured.
+    // Note: mTLS support requires the OpenTelemetry SDK to be built with
+    // ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW defined.
+    //
+    // We reuse TLS_SERVER_CERT and TLS_SERVER_KEY for the client certificate because
+    // Ray components (raylet, gcs_server, etc.) act as both servers and clients,
+    // using the same certificate for bidirectional mTLS communication. This is
+    // consistent with how other Ray gRPC clients are configured.
+    std::string client_cert_file = std::string(RayConfig::instance().TLS_SERVER_CERT());
+    std::string client_key_file = std::string(RayConfig::instance().TLS_SERVER_KEY());
+    if (!client_cert_file.empty()) {
+      std::string client_cert = rpc::ReadCert(client_cert_file);
+      RAY_CHECK(!client_cert.empty())
+          << "Failed to read client certificate file: " << client_cert_file;
+      exporter_options.ssl_client_cert_string = std::move(client_cert);
+    }
+    if (!client_key_file.empty()) {
+      std::string client_key = rpc::ReadCert(client_key_file);
+      RAY_CHECK(!client_key.empty())
+          << "Failed to read client key file: " << client_key_file;
+      exporter_options.ssl_client_key_string = std::move(client_key);
+    }
+    RAY_LOG(INFO) << "OpenTelemetry metric exporter configured with TLS and mTLS enabled";
+#else
+    // Ray's gRPC server requires client certificates (mTLS) when TLS is enabled.
+    // Without mTLS support, the OpenTelemetry exporter will fail to connect.
+    // This is a fatal error because metric export will silently fail otherwise.
+    RAY_LOG(FATAL)
+        << "OpenTelemetry metric exporter cannot be configured: TLS is enabled "
+        << "but mTLS support is not available (SDK built without "
+        << "ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW). Ray's gRPC servers require "
+        << "client certificates when TLS is enabled.";
+#endif
+  }
+  auto exporter = std::make_unique<OpenTelemetryMetricExporter>(exporter_options);
 
   // Initialize the OpenTelemetry SDK and create a Meter
   opentelemetry::sdk::metrics::PeriodicExportingMetricReaderOptions reader_options;
@@ -84,11 +167,24 @@ void OpenTelemetryMetricRecorder::RegisterGrpcExporter(
   auto reader =
       std::make_unique<opentelemetry::sdk::metrics::PeriodicExportingMetricReader>(
           std::move(exporter), reader_options);
+  // Reset the is_shutdown_ flag to false to ensure the newly added metric reader will
+  // be shut down correctly.
+  //
+  // In most cases, OpenTelemetryMetricRecorder is initialized and shut down only once
+  // per process, so setting this to false is effectively a no-op. However, in the driver
+  // process, the recorder may be initialized and shut down multiple times (e.g., repeated
+  // calls to ray.init() and ray.shutdown()). In such cases, is_shutdown_ may already be
+  // true when we reach this point (leaking from the previous ray cluster). Resetting it
+  // to false ensures that the newly added metric reader will be shut down correctly.
+  is_shutdown_ = false;
   meter_provider_->AddMetricReader(std::move(reader));
 }
 
 OpenTelemetryMetricRecorder::OpenTelemetryMetricRecorder() {
-  // Default constructor
+  if (RayConfig::instance().disable_open_telemetry_sdk_log()) {
+    opentelemetry::sdk::common::internal_log::GlobalLogHandler::SetLogLevel(
+        opentelemetry::sdk::common::internal_log::LogLevel::None);
+  }
   meter_provider_ = std::make_shared<opentelemetry::sdk::metrics::MeterProvider>();
   opentelemetry::metrics::Provider::SetMeterProvider(
       opentelemetry::nostd::shared_ptr<opentelemetry::metrics::MeterProvider>(
@@ -116,6 +212,7 @@ void OpenTelemetryMetricRecorder::CollectGaugeMetricValues(
   for (const auto &observation : it->second) {
     observer->Observe(observation.second, observation.first);
   }
+  it->second.clear();
 }
 
 void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,
@@ -149,7 +246,7 @@ void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,
   // a potential deadlock.
   //
   // To avoid this, ensure the callback is registered *after* releasing mutex_ (A).
-  instrument->AddCallback(&_DoubleGaugeCallback, static_cast<void *>(name_ptr));
+  instrument->AddCallback(&DoubleGaugeCallback, static_cast<void *>(name_ptr));
 }
 
 bool OpenTelemetryMetricRecorder::IsMetricRegistered(const std::string &name) {
