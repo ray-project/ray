@@ -2058,7 +2058,7 @@
       --num-env-runners=4 \
       --num-learners=0
 
-- name: rllib_stateless_cartpole_gpu
+- name: rllib_appo_stateless_cartpole_single_gpu
   python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
