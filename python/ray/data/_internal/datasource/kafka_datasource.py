@@ -13,6 +13,7 @@ Requires:
 import logging
 import time
 from dataclasses import dataclass, fields
+from datetime import datetime
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -31,7 +32,7 @@ if TYPE_CHECKING:
     from kafka import KafkaConsumer, TopicPartition
 
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
-from ray.data._internal.util import _check_import
+from ray.data._internal.util import _check_import, datetime_to_ms
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
@@ -179,16 +180,20 @@ def _build_consumer_config_for_read(
 def _resolve_offsets(
     consumer: "KafkaConsumer",
     topic_partition: "TopicPartition",
-    start_offset: Union[int, Literal["earliest"]],
-    end_offset: Union[int, Literal["latest"]],
+    start_offset: Union[int, datetime, Literal["earliest"]],
+    end_offset: Union[int, datetime, Literal["latest"]],
 ) -> Tuple[int, int]:
     """Resolve start and end offsets to actual integer offsets.
+
+    Handles int offsets, "earliest"/"latest" strings, and datetime objects.
+    For datetime objects, uses ``consumer.offsets_for_times()`` to find the
+    earliest offset whose timestamp is >= the given datetime.
 
     Args:
         consumer: Kafka consumer instance.
         topic_partition: TopicPartition to resolve offsets for.
-        start_offset: Start offset (int or "earliest").
-        end_offset: End offset (int or "latest").
+        start_offset: Start offset (int, datetime, or "earliest").
+        end_offset: End offset (int, datetime, or "latest").
 
     Returns:
         Tuple of (resolved_start_offset, resolved_end_offset).
@@ -202,8 +207,27 @@ def _resolve_offsets(
 
     if start_offset == "earliest" or start_offset is None:
         start_offset = earliest_offset
+    elif isinstance(start_offset, datetime):
+        timestamp_ms = datetime_to_ms(start_offset)
+        result = consumer.offsets_for_times({topic_partition: timestamp_ms})
+        offset_and_ts = result.get(topic_partition)
+        if offset_and_ts is None:
+            # No messages with timestamp >= start_offset; nothing to read
+            start_offset = latest_offset
+        else:
+            start_offset = offset_and_ts.offset
+
     if end_offset == "latest" or end_offset is None:
         end_offset = latest_offset
+    elif isinstance(end_offset, datetime):
+        timestamp_ms = datetime_to_ms(end_offset)
+        result = consumer.offsets_for_times({topic_partition: timestamp_ms})
+        offset_and_ts = result.get(topic_partition)
+        if offset_and_ts is None:
+            # No messages with timestamp >= end_offset; read everything
+            end_offset = latest_offset
+        else:
+            end_offset = offset_and_ts.offset
 
     if start_offset > end_offset:
         start_str = (
@@ -233,8 +257,8 @@ class KafkaDatasource(Datasource):
         self,
         topics: Union[str, List[str]],
         bootstrap_servers: Union[str, List[str]],
-        start_offset: Union[int, Literal["earliest"]] = "earliest",
-        end_offset: Union[int, Literal["latest"]] = "latest",
+        start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
+        end_offset: Union[int, datetime, Literal["latest"]] = "latest",
         kafka_auth_config: Optional[KafkaAuthConfig] = None,
         timeout_ms: int = 10000,
     ):
@@ -245,9 +269,13 @@ class KafkaDatasource(Datasource):
             bootstrap_servers: Kafka broker addresses (string or list of strings).
             start_offset: Starting position. Can be:
                 - int: Offset number
+                - datetime: Read from the first message at or after this time.
+                  Naive datetimes are treated as UTC.
                 - str: "earliest"
-            end_offset: Ending position. Can be:
+            end_offset: Ending position (exclusive). Can be:
                 - int: Offset number
+                - datetime: Read up to (but not including) the first message
+                  at or after this time. Naive datetimes are treated as UTC.
                 - str: "latest"
             kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
             timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).
@@ -270,6 +298,10 @@ class KafkaDatasource(Datasource):
             raise ValueError("timeout_ms must be positive")
 
         if isinstance(start_offset, int) and isinstance(end_offset, int):
+            if start_offset > end_offset:
+                raise ValueError("start_offset must be less than end_offset")
+
+        if isinstance(start_offset, datetime) and isinstance(end_offset, datetime):
             if start_offset > end_offset:
                 raise ValueError("start_offset must be less than end_offset")
 
@@ -384,8 +416,12 @@ class KafkaDatasource(Datasource):
                 topic_name: str = topic_name,
                 partition_id: int = partition_id,
                 bootstrap_servers: List[str] = bootstrap_servers,
-                start_offset: Optional[Union[int, Literal["earliest"]]] = start_offset,
-                end_offset: Optional[Union[int, Literal["latest"]]] = end_offset,
+                start_offset: Optional[
+                    Union[int, datetime, Literal["earliest"]]
+                ] = start_offset,
+                end_offset: Optional[
+                    Union[int, datetime, Literal["latest"]]
+                ] = end_offset,
                 kafka_auth_config: Optional[KafkaAuthConfig] = kafka_auth_config,
                 timeout_ms: int = timeout_ms,
                 target_max_block_size: int = target_max_block_size,

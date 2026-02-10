@@ -1,6 +1,7 @@
 import collections
 import logging
 import warnings
+from datetime import datetime
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -4357,8 +4358,8 @@ def read_kafka(
     *,
     bootstrap_servers: Union[str, List[str]],
     trigger: Literal["once"] = "once",
-    start_offset: Union[int, Literal["earliest"]] = "earliest",
-    end_offset: Union[int, Literal["latest"]] = "latest",
+    start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
+    end_offset: Union[int, datetime, Literal["latest"]] = "latest",
     kafka_auth_config: Optional[KafkaAuthConfig] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -4389,6 +4390,15 @@ def read_kafka(
                 end_offset=1000,
             )
 
+            # Read from a topic using datetime range
+            from datetime import datetime
+            ds = ray.data.read_kafka(
+                topics="my-topic",
+                bootstrap_servers="localhost:9092",
+                start_offset=datetime(2025, 1, 1),
+                end_offset=datetime(2025, 1, 2),
+            )
+
 
     Args:
         topics: Kafka topic name(s) to read from. Can be a single topic name
@@ -4399,9 +4409,13 @@ def read_kafka(
             performs a single bounded read.
         start_offset: Starting position for reading. Can be:
             - int: Offset number
+            - datetime: Read from the first message at or after this time.
+              Naive datetimes are treated as UTC.
             - str: "earliest"
         end_offset: Ending position for reading (exclusive). Can be:
             - int: Offset number
+            - datetime: Read up to (but not including) the first message
+              at or after this time. Naive datetimes are treated as UTC.
             - str: "latest"
         kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
