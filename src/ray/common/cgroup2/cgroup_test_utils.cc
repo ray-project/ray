@@ -104,7 +104,6 @@ ray::StatusOr<std::unique_ptr<TempDirectory>> TempDirectory::Create() {
 
 TempDirectory::~TempDirectory() {
   std::error_code error_code;
-  RAY_LOG(INFO) << "[Kunchd] Deleting temp directory at path: " << path_;
   auto removed = std::filesystem::remove_all(path_, error_code);
   RAY_CHECK(removed != static_cast<std::uintmax_t>(-1)) << absl::StrFormat(
       "Failed to delete temp directory at %s with error %s. Please manually "
