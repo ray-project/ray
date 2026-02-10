@@ -848,9 +848,7 @@ class OpBufferQueueTest(unittest.TestCase):
             consumed = consumed_splits[split_idx]
             expected = ref_bundles[split_idx::num_splits]
             assert len(consumed) == num_per_split
-            assert consumed == expected, (
-                f"Split {split_idx}: FIFO order violated"
-            )
+            assert consumed == expected, f"Split {split_idx}: FIFO order violated"
 
         # Verify queue is fully drained
         assert len(q) == 0

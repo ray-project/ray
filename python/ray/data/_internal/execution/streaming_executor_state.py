@@ -4,7 +4,6 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 """
 
 import logging
-import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -13,7 +12,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.bundle_queue import (
-    BaseBundleQueue,
     ThreadSafeBundleQueue,
     create_bundle_queue,
 )
@@ -114,9 +112,7 @@ class OpBufferQueue:
         for q in self._queues:
             q.clear()
 
-    def _get_queue_for(
-        self, output_split_idx: Optional[int]
-    ) -> ThreadSafeBundleQueue:
+    def _get_queue_for(self, output_split_idx: Optional[int]) -> ThreadSafeBundleQueue:
         target_output_split_idx = output_split_idx or 0
 
         assert target_output_split_idx < len(self._queues), (
