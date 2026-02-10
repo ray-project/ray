@@ -186,8 +186,10 @@ async def google_search(query: str, num_results: int = 10) -> str:
         try:
             text, _ = await _http_get_text(url, user_agent=USER_AGENT)
             data = json.loads(text)
-        except Exception as e:
-            return f"Google search request failed: {e!r}"
+        except httpx.HTTPStatusError as e:
+            return f"Google search request failed: HTTP {e.response.status_code}"
+        except Exception:
+            return "Google search request failed. Check server logs for details."
 
         items = data.get("items") or []
         if not items:
