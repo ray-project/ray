@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 
 
 class BundleQueue(abc.ABC):
-
     @abc.abstractmethod
     def estimate_size_bytes(self) -> int:
         """Returns the estimated size in bytes of all bundles."""

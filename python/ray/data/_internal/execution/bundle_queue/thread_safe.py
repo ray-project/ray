@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 from typing import TYPE_CHECKING, Any, Optional
 
-from .base import BaseBundleQueue, BundleQueue
+from .base import BundleQueue
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
