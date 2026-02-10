@@ -635,6 +635,20 @@ py_test(
 )
 
 py_test(
+    name = "test_turbopuffer_datasink",
+    size = "small",
+    srcs = ["tests/datasource/test_turbopuffer_datasink.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hash_shuffle",
     size = "medium",
     srcs = ["tests/test_hash_shuffle.py"],
