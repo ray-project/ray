@@ -407,12 +407,13 @@ class WorkerGroup(BaseWorkerGroup):
             f"Started training worker group of size {len(workers)}: \n{workers_info}"
         )
 
-        cb_start = time_monotonic()
+        after_training_start_cb_start = time_monotonic()
         for callback in self._callbacks:
             callback.after_worker_group_training_start(self)
         logger.debug(
             "[Train Worker Initialization] after_worker_group_training_start "
-            f"callbacks completed in {time_monotonic() - cb_start:.2f}s."
+            f"callbacks completed in {time_monotonic() - after_training_start_cb_start:.2f}s."
+        )
         )
 
         logger.debug(
