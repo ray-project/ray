@@ -491,7 +491,8 @@
   group: Tune tests
   working_dir: ml_user_tests
 
-  frequency: nightly-3x
+  # TODO(rllib): https://github.com/anyscale/ray/issues/581
+  frequency: manual
   team: ml
 
   cluster:
@@ -863,7 +864,8 @@
   group: Long running tests
   working_dir: long_running_tests
 
-  frequency: weekly
+  # TODO(rllib): https://github.com/anyscale/ray/issues/568
+  frequency: manual
   team: rllib
 
   cluster:
@@ -875,7 +877,7 @@
     long_running: true
 
   smoke_test:
-    frequency: nightly
+    frequency: manual
 
     run:
       timeout: 3600
@@ -979,7 +981,8 @@
   group: Long running tests
   working_dir: long_running_tests
 
-  frequency: weekly
+  # TODO(rllib): https://github.com/anyscale/ray/issues/571
+  frequency: manual
   team: ml
 
   cluster:
@@ -997,7 +1000,7 @@
 
 
   smoke_test:
-    frequency: nightly
+    frequency: manual
 
     run:
       timeout: 3600
