@@ -261,6 +261,73 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     df[df["int_field"] < 3].equals(ds.drop_columns(["_id"]).to_pandas())
 
 
+def test_mongo_estimate_inmemory_data_size(ray_start_regular_shared, start_mongo):
+    """Test MongoDB datasource memory size estimation."""
+    from pymongoarrow.api import Schema
+    from ray.data._internal.datasource.mongo_datasource import MongoDatasource
+
+    client, mongo_url = start_mongo
+    test_db = "test-db-size-estimation"
+    test_collection = "test-collection"
+
+    # Create database and collection
+    db = client[test_db]
+    coll = db[test_collection]
+    coll.delete_many({})
+
+    # Insert test documents with known size
+    test_docs = [{"value": i, "data": "x" * 100} for i in range(1000)]
+    coll.insert_many(test_docs)
+
+    # Create datasource
+    schema = Schema({"value": pa.int64(), "data": pa.string()})
+    ds_source = MongoDatasource(
+        uri=mongo_url, database=test_db, collection=test_collection, schema=schema
+    )
+
+    # Test estimation
+    estimated_size = ds_source.estimate_inmemory_data_size()
+
+    # Verify estimation is reasonable
+    assert estimated_size is not None, "Estimation should not be None"
+    assert estimated_size > 0, "Estimated size should be positive"
+
+    # Get actual stats for comparison
+    stats = db.command("collStats", test_collection)
+    actual_size = stats["size"]
+    avg_obj_size = stats["avgObjSize"]
+
+    # Estimated size should be within reasonable range
+    # (actual * 1.2 accounting for PyArrow overhead and some variance)
+    expected_min = actual_size * 0.5  # 50% lower bound
+    expected_max = actual_size * 2.5  # 250% upper bound (conservative)
+
+    assert expected_min < estimated_size < expected_max, (
+        f"Estimated size {estimated_size} outside expected range "
+        f"[{expected_min}, {expected_max}]. "
+        f"Actual size: {actual_size}, avg_obj_size: {avg_obj_size}"
+    )
+
+    # Test with filtered pipeline
+    ds_source_filtered = MongoDatasource(
+        uri=mongo_url,
+        database=test_db,
+        collection=test_collection,
+        pipeline=[{"$match": {"value": {"$lt": 100}}}],
+        schema=schema,
+    )
+
+    estimated_size_filtered = ds_source_filtered.estimate_inmemory_data_size()
+    assert estimated_size_filtered is not None
+    # Filtered size should be smaller than full collection
+    assert (
+        estimated_size_filtered < estimated_size
+    ), "Filtered estimation should be smaller"
+
+    # Cleanup
+    coll.drop()
+
+
 if __name__ == "__main__":
     import sys
 
