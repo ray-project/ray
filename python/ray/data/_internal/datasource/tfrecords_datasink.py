@@ -122,8 +122,12 @@ def _value_to_feature(
                 "the tensorflow-metadata package."
             )
         specified_feature_type = {
+            # We default anything that is not a string or tensor to be
+            # a byte array, mostly to deal with the case when we have
+            # null input, but we specify a schema.
             "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES
-            and underlying_value_type["bytes"],
+            and not underlying_value_type["string"]
+            and not underlying_value_type["tensor"],
             "string": schema_feature_type == schema_pb2.FeatureType.BYTES
             and underlying_value_type["string"],
             "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
