@@ -103,13 +103,6 @@ RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS = env_integer(
 # TPU device plugin metric address should be in the format "{HOST_IP}:2112"
 TPU_DEVICE_PLUGIN_ADDR = os.environ.get("TPU_DEVICE_PLUGIN_ADDR", None)
 
-# Whether to use psutil.memory_full_info to collect uss metric.
-# memory_full_info is most accurate but sometime very expensive and end up degrading main application
-# due to the page lock it introduced. See https://github.com/ray-project/ray/issues/55117 for more detail.
-USE_MEMORY_FULL_INFO_FOR_USS_METRIC = (
-    os.environ.get("USE_MEMORY_FULL_INFO_FOR_USS_METRIC", "1") == "1"
-)
-
 
 def recursive_asdict(o):
     if isinstance(o, tuple) and hasattr(o, "_asdict"):
@@ -396,7 +389,8 @@ PSUTIL_PROCESS_ATTRS = (
         "memory_info",
     ]
     + (["num_fds"] if sys.platform != "win32" else [])
-    + (["memory_full_info"] if USE_MEMORY_FULL_INFO_FOR_USS_METRIC else [])
+    # Only collect memory_full_info in Mac OS X
+    + (["memory_full_info"] if sys.platform == "darwin" else [])
 )
 
 
@@ -1237,9 +1231,10 @@ class ReporterAgent(
                     total_shm += float(memory_info.shared)
             mem_full_info = stat.get("memory_full_info")
             if mem_full_info is not None:
+                # For Mac OS X, directly get USS metric from memory_full_info
                 total_uss += float(mem_full_info.uss) / 1.0e6
             elif memory_info is not None:
-                # If memory_full_info is not collected, approximated USS from memory_info
+                # For linux or windows, memory_full_info is not collected. Approximated USS from memory_info
                 if hasattr(memory_info, "shared"):
                     # Linux: USS ≈ RSS - shared
                     total_uss += float(memory_info.rss - memory_info.shared) / 1.0e6
