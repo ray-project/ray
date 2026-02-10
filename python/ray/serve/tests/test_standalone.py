@@ -15,10 +15,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
-    run_string_as_driver,
-)
+from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve._private.constants import (
