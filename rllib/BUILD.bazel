@@ -254,6 +254,7 @@ py_test(
     ],
 )
 
+# (ToDo Mark & Kamil) test is temporarily commented out, due to increased flakiness
 # py_test(
 #     name = "learning_test_appo_atari_single_gpu",
 #     size = "enormous",
