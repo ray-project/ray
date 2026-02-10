@@ -88,7 +88,7 @@ def test_dedupe_schema_divergence(
         None,  # Null Schema
     ],
 )
-def test_dedupe_schema_empty_warning(incoming_schema: Optional["Schema"]):
+def test_build_mismatch_warning_empty(incoming_schema: Optional["Schema"]):
     old_schema = pa.schema(
         [
             pa.field("foo", pa.int32()),
@@ -110,7 +110,7 @@ This may lead to unexpected behavior."""
 
 
 @pytest.mark.parametrize("truncation_length", [20, 4, 3, 2])
-def test_dedupe_schema_truncation_warning(truncation_length: int):
+def test_build_mismatch_warning_truncation(truncation_length: int):
     old_schema = pa.schema(
         [
             pa.field("foo", pa.int32()),
@@ -182,7 +182,7 @@ This may lead to unexpected behavior."""
         )
 
 
-def test_dedupe_schema_disordered_warning():
+def test_build_mismatch_warning_disordered():
     old_schema = pa.schema(
         [
             pa.field("foo", pa.int32()),
