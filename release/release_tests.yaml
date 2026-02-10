@@ -2086,7 +2086,7 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: rllib
 
   cluster:
