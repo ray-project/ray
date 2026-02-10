@@ -53,8 +53,7 @@ apt-get update
 apt-get install -y \
   awscli nodejs build-essential python-is-python3 \
   python3-pip openjdk-8-jre wget jq \
-  "docker-ce-cli=5:28.5.2-1~ubuntu.22.04~jammy" \
-  azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
+  docker-ce-cli azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
 
 # Install uv
 curl -fsSL https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
@@ -100,6 +99,25 @@ if [[ "$(uname -i)" == "x86_64" ]]; then
   bash install-k8s-tools.sh
 fi
 
+# Install crane (container registry tool)
+CRANE_VERSION=0.19.0
+case "$(uname -m)" in
+  x86_64|amd64)
+    CRANE_ARCH="x86_64"
+    ;;
+  aarch64|arm64)
+    CRANE_ARCH="arm64"
+    ;;
+  *)
+    echo "Unsupported architecture: $(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+curl -fsSL "https://github.com/google/go-containerregistry/releases/download/v${CRANE_VERSION}/go-containerregistry_Linux_${CRANE_ARCH}.tar.gz" \
+  | tar -xzf - -C /usr/local/bin crane
+
+chmod +x /usr/local/bin/crane
 EOF
 
 USER forge
@@ -117,7 +135,9 @@ set -euo pipefail
 
 EOF
 
+ENV DOCKER_API_VERSION=1.43
+
 CMD ["echo", "ray forge"]
 
 
-# last update: 2025-11-12
+# last update: 2026-01-13

@@ -1,6 +1,3 @@
----
-orphan: true
----
 # Asynchronous Inference with Ray Serve
 
 **⏱️ Time to complete:** 30 minutes
@@ -57,14 +54,14 @@ Redis serves as both the message broker (task queue) and result backend.
 **Install and start Redis (Google Colab compatible):**
 
 
-```bash
+```python
 # Install and start Redis server
-sudo apt-get update -qq
-sudo apt-get install -y redis-server
-redis-server --port 6399 --save "" --appendonly no --daemonize yes
+!sudo apt-get update -qq
+!sudo apt-get install -y redis-server
+!redis-server --port 6399 --save "" --appendonly no --daemonize yes
 
 # Verify Redis is running
-redis-cli -p 6399 ping
+!redis-cli -p 6399 ping
 ```
 
 **Alternative methods:**
@@ -73,11 +70,16 @@ redis-cli -p 6399 ping
 - **Docker:** `docker run -d -p 6379:6379 redis:latest`
 - **Other platforms:** [Official Redis Installation Guide](https://redis.io/docs/getting-started/installation/)
 
+If you're using a hosted Redis instance, ensure that your Ray Serve cluster can access it. For example, when using AWS ElastiCache for Redis:
+
+- Launch the ElastiCache instance in the same VPC that's attached to your Anyscale cloud.
+- Attach IAM roles with read/write access to ElastiCache to your cluster instances.
+
 ## Step 2: Install Dependencies
 
 
 ```python
-pip install -q ray[serve-async-inference]>=2.50.0 requests>=2.31.0 PyPDF2>=3.0.0 celery[redis]
+!pip install -q ray[serve-async-inference]>=2.50.0 requests>=2.31.0 PyPDF2>=3.0.0 celery[redis]
 ```
 
 ## Step 3: Start the Ray Serve Application
@@ -368,15 +370,28 @@ def get_task_status(task_id: str) -> Dict[str, Any]:
     response.raise_for_status()
     return response.json()
 
+def wait_for_task_completion(task_id: str, timeout: int = 120, poll_interval: float = 2.0) -> Dict[str, Any]:
+    """Poll for task completion with timeout."""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        result = get_task_status(task_id)
+        status = result.get("status")
+        if status in ("SUCCESS", "FAILURE"):
+            return result
+        print(f"   ⏳ Status: {status}, waiting...")
+        time.sleep(poll_interval)
+    raise TimeoutError(f"Task {task_id} did not complete within {timeout} seconds")
+
 for i, (task_id, url) in enumerate(task_ids, 1):
         print(f"\nTask {i} ({url.split('/')[-1]}):")
-        result = get_task_status(task_id)
+        result = wait_for_task_completion(task_id)
         res = result.get("result")
         if res:
             print(f"   ✓ Complete: {res.get('page_count')} pages, {res.get('word_count')} words")
             print(f"   ✓ Processing time: {res.get('processing_time_seconds')}s")
         else:
-            print("   ✗ No result payload found in response.")
+            error = result.get("error")
+            print(f"   ✗ Task failed: {error}" if error else "   ✗ No result payload found in response.")
 ```
 
 ## Deploy to Anyscale

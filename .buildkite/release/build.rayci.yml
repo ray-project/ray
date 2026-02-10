@@ -7,10 +7,10 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
-      REQUIREMENTS_FILE: "ray_base_extra_testdeps_py{{matrix}}.lock"
     depends_on:
       - raycpubaseextra
 
@@ -23,13 +23,13 @@ steps:
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
         cuda:
           - "12.3.2-cudnn9"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
-      REQUIREMENTS_FILE: "ray_base_extra_testdeps_cuda_py{{matrix.python}}.lock"
     depends_on:
       - raycudabaseextra
 
@@ -46,7 +46,6 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-llm"
-      REQUIREMENTS_FILE: "requirements_llm_byod_{{matrix.python}}.txt"
     depends_on:
       - ray-llmbaseextra
 
@@ -63,7 +62,6 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-ml"
-      REQUIREMENTS_FILE: "ray_ml_base_extra_testdeps_cuda_py{{matrix.python}}.lock"
     depends_on:
       - ray-mlcudabaseextra
 
@@ -90,6 +88,7 @@ steps:
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
         platform:
           - cu12.3.2-cudnn9
           - cpu

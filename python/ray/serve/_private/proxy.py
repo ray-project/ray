@@ -73,11 +73,13 @@ from ray.serve._private.proxy_request_response import (
     ResponseHandlerInfo,
     ResponseStatus,
     gRPCProxyRequest,
+    gRPCStreamingType,
 )
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
+    asyncio_grpc_exception_handler,
     generate_request_id,
     get_head_node_id,
     is_grpc_enabled,
@@ -584,7 +586,9 @@ class gRPCProxy(GenericProxy):
             is_error=not healthy,
         )
 
-    def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
+    def service_handler_factory(
+        self, service_method: str, streaming_type: gRPCStreamingType
+    ) -> Callable:
         async def unary_unary(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
         ) -> bytes:
@@ -639,7 +643,25 @@ class gRPCProxy(GenericProxy):
 
             set_grpc_code_and_details(context, status)
 
-        return unary_stream if stream else unary_unary
+        async def stream_unary(
+            request_proto_iterator: Any,
+            context: grpc._cython.cygrpc._ServicerContext,
+        ) -> bytes:
+            raise NotImplementedError("stream_unary not implemented.")
+
+        async def stream_stream(
+            request_proto_iterator: Any,
+            context: grpc._cython.cygrpc._ServicerContext,
+        ) -> Generator[bytes, None, None]:
+            raise NotImplementedError("stream_stream not implemented.")
+
+        handler_map = {
+            gRPCStreamingType.UNARY_UNARY: unary_unary,
+            gRPCStreamingType.UNARY_STREAM: unary_stream,
+            gRPCStreamingType.STREAM_UNARY: stream_unary,
+            gRPCStreamingType.STREAM_STREAM: stream_stream,
+        }
+        return handler_map[streaming_type]
 
     def setup_request_context_and_handle(
         self,
@@ -1245,6 +1267,10 @@ class ProxyActor(ProxyActorInterface):
             if grpc_enabled
             else None
         )
+        if self.grpc_proxy:
+            get_or_create_event_loop().set_exception_handler(
+                asyncio_grpc_exception_handler
+            )
 
         # Start a task to initialize the HTTP server.
         # The result of this task is checked in the `ready` method.
@@ -1300,6 +1326,17 @@ class ProxyActor(ProxyActorInterface):
     def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
         _, handle, _ = self.http_proxy.proxy_router.match_route(route)
         return handle._router._asyncio_router._request_router._replica_id_set
+
+    def _dump_ingress_cache_for_testing(self, route: str) -> Set[ReplicaID]:
+        """Get replica IDs that have entries in the queue length cache (for testing)."""
+        _, handle, _ = self.http_proxy.proxy_router.match_route(route)
+        request_router = handle._router._asyncio_router._request_router
+        cache = request_router.replica_queue_len_cache
+        return {
+            replica_id
+            for replica_id in request_router._replica_id_set
+            if cache.get(replica_id) is not None
+        }
 
     async def ready(self) -> str:
         """Blocks until the proxy HTTP (and optionally gRPC) servers are running.

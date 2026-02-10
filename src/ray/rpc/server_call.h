@@ -351,10 +351,10 @@ class ServerCallImpl : public ServerCall {
   /// Returns false if authentication is required but fails.
   bool ValidateAuthenticationToken() {
     // If auth token is empty, we assume auth is not required.
-    // The only exception is when auth mode is 'k8s' where the server
+    // The only exception is when ENABLE_K8S_TOKEN_AUTH is true where the server
     // auth token can be empty.
     if ((!auth_token_ || auth_token_->empty()) &&
-        GetAuthenticationMode() != AuthenticationMode::K8S) {
+        !::RayConfig::instance().ENABLE_K8S_TOKEN_AUTH()) {
       return true;
     }
 

@@ -49,8 +49,7 @@ def export_test(
         test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
 
     export_dir = os.path.join(
-        ray._common.utils.get_default_ray_temp_dir(),
-        "export_dir_%s" % alg_name,
+        ray._common.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
     )
 
     print("Exporting policy checkpoint", alg_name, export_dir)

@@ -4,12 +4,12 @@ from typing import TYPE_CHECKING, Dict, Optional, Union
 import numpy as np
 import torch
 
-from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
+from ray.data.util.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.train.predictor import DataBatchType
 from ray.train.torch import TorchCheckpoint
 from ray.util import log_once
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class TorchPredictor(DLPredictor):
     """A predictor for PyTorch models.
 

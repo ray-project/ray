@@ -26,6 +26,7 @@ from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
+    from ray.data.namespace_expressions.arr_namespace import _ArrayNamespace
     from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
     from ray.data.namespace_expressions.list_namespace import _ListNamespace
     from ray.data.namespace_expressions.string_namespace import _StringNamespace
@@ -49,6 +50,7 @@ class Operation(Enum):
         SUB: Subtraction operation (-)
         MUL: Multiplication operation (*)
         DIV: Division operation (/)
+        MOD: Modulo operation (%)
         FLOORDIV: Floor division operation (//)
         GT: Greater than comparison (>)
         LT: Less than comparison (<)
@@ -577,12 +579,83 @@ class Expr(ABC):
         """
         return _create_pyarrow_compute_udf(pc.abs_checked)(self)
 
+    def cast(self, target_type: DataType, *, safe: bool = True) -> "UDFExpr":
+        """Cast the expression to a specified type.
+
+        This method allows you to convert the expression result to a different
+        data type using PyArrow's cast function. By default, it uses safe casting
+        which raises errors on overflow or invalid conversions.
+
+        Args:
+            target_type: The Ray Data :class:`~ray.data.datatype.DataType` to cast to,
+                for example ``DataType.int64()``, ``DataType.float64()``,
+                or ``DataType.string()``.
+            safe: If True (default), raise errors on overflow or invalid conversions.
+                If False, allow unsafe conversions (which may result in data loss).
+
+        Returns:
+            A UDFExpr that casts the expression to the target type.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> from ray.data.datatype import DataType
+            >>> import ray
+            >>>
+            >>> ds = ray.data.range(10)
+            >>> # Cast float result to int64
+            >>> ds = ds.with_column("part", (col("id") % 2).cast(DataType.int64()))
+            >>> # Cast to float64
+            >>> ds = ds.with_column("id_float", col("id").cast(DataType.float64()))
+            >>> # Cast to string
+            >>> ds = ds.with_column("id_str", col("id").cast(DataType.string()))
+        """
+
+        # Only Ray Data's DataType is supported to keep the API surface small.
+        if not isinstance(target_type, DataType):
+            raise TypeError(
+                f"target_type must be a ray.data.datatype.DataType, got: "
+                f"{type(target_type).__name__}. "
+                "Use the DataType factories (e.g., DataType.int64(), DataType.string())."
+            )
+
+        # Python-type-backed DataTypes (e.g., DataType(int)) require values to infer
+        # the Arrow type, which isn't available in the expression context. Provide
+        # a clear error instead of a confusing failure later.
+        if target_type.is_python_type():
+            raise TypeError(
+                "Python-type-backed DataType (e.g., DataType(int), DataType(str)) "
+                "requires values to infer the Arrow type, which is not available in "
+                "the cast() context. Please use an Arrow-backed DataType instead, "
+                "such as DataType.int64(), DataType.float64(), or DataType.string()."
+            )
+
+        # Convert the target DataType to its Arrow representation.
+        pa_target_type = target_type.to_arrow_dtype()
+
+        # The expression result uses the provided DataType as its logical type.
+        ray_target_dtype = target_type
+
+        # Create UDF that performs the cast
+        @pyarrow_udf(return_dtype=ray_target_dtype)
+        def cast_udf(arr: pyarrow.Array) -> pyarrow.Array:
+            return pc.cast(arr, pa_target_type, safe=safe)
+
+        return cast_udf(self)
+
+    @property
+    def arr(self) -> "_ArrayNamespace":
+        """Access array operations for this expression."""
+        from ray.data.namespace_expressions.arr_namespace import _ArrayNamespace
+
+        return _ArrayNamespace(self)
+
     @property
     def list(self) -> "_ListNamespace":
         """Access list operations for this expression.
 
         Returns:
-            A _ListNamespace that provides list-specific operations.
+            A _ListNamespace that provides list-specific operations for both
+            PyArrow ``List`` and ``FixedSizeList`` columns.
 
         Example:
             >>> from ray.data.expressions import col
@@ -812,14 +885,39 @@ class _CallableClassSpec:
         cls: The original callable class type
         args: Positional arguments for the constructor
         kwargs: Keyword arguments for the constructor
+        _cached_key: Pre-computed key that survives serialization
     """
 
     cls: type
     args: Tuple[Any, ...] = ()
     kwargs: Dict[str, Any] = field(default_factory=dict)
+    _cached_key: Optional[Tuple] = field(default=None, compare=False, repr=False)
+
+    def __post_init__(self):
+        """Pre-compute and cache the key at construction time.
+
+        This ensures the same key survives serialization, since the cached
+        key tuple (containing the already-computed repr strings) gets pickled
+        and unpickled as-is.
+        """
+        if self._cached_key is None:
+            class_id = f"{self.cls.__module__}.{self.cls.__qualname__}"
+            try:
+                key = (
+                    class_id,
+                    self.args,
+                    tuple(sorted(self.kwargs.items())),
+                )
+                # Verify the key is actually hashable (args may contain lists)
+                hash(key)
+            except TypeError:
+                # Fallback for unhashable args/kwargs - use repr for comparison
+                key = (class_id, repr(self.args), repr(self.kwargs))
+            # Use object.__setattr__ since dataclass is frozen
+            object.__setattr__(self, "_cached_key", key)
 
     def make_key(self) -> Tuple:
-        """Create a hashable key for UDF instance lookup.
+        """Return the pre-computed hashable key for UDF instance lookup.
 
         The key uniquely identifies a UDF by its class and constructor arguments.
         This ensures that the same class with different constructor args
@@ -828,18 +926,7 @@ class _CallableClassSpec:
         Returns:
             A hashable tuple that uniquely identifies this UDF configuration.
         """
-        try:
-            key = (
-                id(self.cls),
-                self.args,
-                tuple(sorted(self.kwargs.items())),
-            )
-            # Verify the key is actually hashable (args may contain lists)
-            hash(key)
-            return key
-        except TypeError:
-            # Fallback for unhashable args/kwargs - use repr for comparison
-            return (id(self.cls), repr(self.args), repr(self.kwargs))
+        return self._cached_key
 
 
 class _CallableClassUDF:
@@ -1295,6 +1382,7 @@ class DownloadExpr(Expr):
     """Expression that represents a download operation."""
 
     uri_column_name: str
+    filesystem: "pyarrow.fs.FileSystem" = None
     data_type: DataType = field(default_factory=lambda: DataType.binary(), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
@@ -1332,7 +1420,7 @@ class AliasExpr(Expr):
             isinstance(other, AliasExpr)
             and self.expr.structurally_equals(other.expr)
             and self.name == other.name
-            and self._is_rename == self._is_rename
+            and self._is_rename == other._is_rename
         )
 
 
@@ -1439,7 +1527,11 @@ def star() -> StarExpr:
 
 
 @PublicAPI(stability="alpha")
-def download(uri_column_name: str) -> DownloadExpr:
+def download(
+    uri_column_name: str,
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+) -> DownloadExpr:
     """
     Create a download expression that downloads content from URIs.
 
@@ -1449,6 +1541,8 @@ def download(uri_column_name: str) -> DownloadExpr:
 
     Args:
         uri_column_name: The name of the column containing URIs to download from
+        filesystem: PyArrow filesystem to use for reading remote files.
+            If None, the filesystem is auto-detected from the path scheme.
     Returns:
         A DownloadExpr that will download content from the specified URI column
 
@@ -1463,7 +1557,7 @@ def download(uri_column_name: str) -> DownloadExpr:
         >>> # Add downloaded bytes column
         >>> ds_with_bytes = ds.with_column("bytes", download("uri"))
     """
-    return DownloadExpr(uri_column_name=uri_column_name)
+    return DownloadExpr(uri_column_name=uri_column_name, filesystem=filesystem)
 
 
 # ──────────────────────────────────────
@@ -1490,6 +1584,7 @@ __all__ = [
     "lit",
     "download",
     "star",
+    "_ArrayNamespace",
     "_ListNamespace",
     "_StringNamespace",
     "_StructNamespace",
@@ -1499,7 +1594,11 @@ __all__ = [
 
 def __getattr__(name: str):
     """Lazy import of namespace classes to avoid circular imports."""
-    if name == "_ListNamespace":
+    if name == "_ArrayNamespace":
+        from ray.data.namespace_expressions.arr_namespace import _ArrayNamespace
+
+        return _ArrayNamespace
+    elif name == "_ListNamespace":
         from ray.data.namespace_expressions.list_namespace import _ListNamespace
 
         return _ListNamespace
