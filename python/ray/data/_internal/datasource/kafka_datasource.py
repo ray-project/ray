@@ -302,7 +302,7 @@ class KafkaDatasource(Datasource):
                 raise ValueError("start_offset must be less than end_offset")
 
         if isinstance(start_offset, datetime) and isinstance(end_offset, datetime):
-            if start_offset > end_offset:
+            if datetime_to_ms(start_offset) > datetime_to_ms(end_offset):
                 raise ValueError("start_offset must be less than end_offset")
 
         if isinstance(start_offset, str) and start_offset == "latest":
