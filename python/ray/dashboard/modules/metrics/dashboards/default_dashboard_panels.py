@@ -570,7 +570,7 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
         stack=False,
     ),
     Panel(
-        id=57,
+        id=62,
         title="Node GPU Power",
         description="Current GPU power draw per node. Reported in milliwatts; displayed in watts. Supported on NVIDIA and AMD GPUs.",
         unit="watts",
@@ -584,7 +584,7 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
         stack=False,
     ),
     Panel(
-        id=58,
+        id=63,
         title="Node GPU Temperature",
         description="Current GPU temperature per node in Celsius. Supported on NVIDIA GPUs.",
         unit="celsius",
