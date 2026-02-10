@@ -238,27 +238,25 @@ def test_union_operator_throttling_disabled(ray_start_regular_shared):
     assert union_op.throttling_disabled() is True
 
 
-def test_union_operator_not_allocated_resources(ray_start_regular_shared):
+def test_union_operator_not_allocated_resources(
+    ray_start_regular_shared, restore_data_context
+):
     ctx = DataContext.get_current()
-    original_enabled = ctx.op_resource_reservation_enabled
-    try:
-        ctx.op_resource_reservation_enabled = True
-        input_op1 = InputDataBuffer(ctx, make_ref_bundles([[1, 2, 3]]))
-        input_op2 = InputDataBuffer(ctx, make_ref_bundles([[4, 5, 6]]))
-        union_op = UnionOperator(ctx, input_op1, input_op2)
+    ctx.op_resource_reservation_enabled = True
+    input_op1 = InputDataBuffer(ctx, make_ref_bundles([[1, 2, 3]]))
+    input_op2 = InputDataBuffer(ctx, make_ref_bundles([[4, 5, 6]]))
+    union_op = UnionOperator(ctx, input_op1, input_op2)
 
-        topo = build_streaming_topology(union_op, ExecutionOptions())
-        resource_manager = ResourceManager(topo, ExecutionOptions(), MagicMock(), ctx)
-        allocator = create_resource_allocator(resource_manager, ctx)
-        assert allocator is not None
+    topo = build_streaming_topology(union_op, ExecutionOptions())
+    resource_manager = ResourceManager(topo, ExecutionOptions(), MagicMock(), ctx)
+    allocator = create_resource_allocator(resource_manager, ctx)
+    assert allocator is not None
 
-        allocator.update_budgets(
-            limits=ExecutionResources(cpu=4, gpu=0, object_store_memory=1000)
-        )
-        allocation = allocator.get_allocation(union_op)
-        assert allocation is None
-    finally:
-        ctx.op_resource_reservation_enabled = original_enabled
+    allocator.update_budgets(
+        limits=ExecutionResources(cpu=1, gpu=0, object_store_memory=1000)
+    )
+    allocation = allocator.get_allocation(union_op)
+    assert allocation is None
 
 
 if __name__ == "__main__":

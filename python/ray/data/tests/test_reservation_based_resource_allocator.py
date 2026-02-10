@@ -1048,7 +1048,6 @@ class TestReservationOpResourceAllocator:
 
         """
         UnionOperator (o6) has throttling disabled, so only o8 gets budget allocation.
-        However, o6 still consumes resources when running.
         global_limits (20 CPU, 2000 mem) - o2 usage (2 CPU, 150 mem) - o3 usage (2 CPU, 50 mem) - o5 usage (3 CPU, 100 mem) - o7 usage (1 CPU, 100 mem) = remaining (12 CPU, 1600 mem)
         +-----+------------------+------------------+--------------+
         |     | _op_reserved     | _reserved_for    | used shared  |
@@ -1082,8 +1081,7 @@ class TestReservationOpResourceAllocator:
         )
 
         # Test when resources are used.
-        # Note: o6 still consumes resources even though it doesn't get budget allocation
-        op_usages[o6] = ExecutionResources(2, 0, 500)
+        op_usages[o6] = ExecutionResources.zero()
         op_internal_usage[o6] = 300
         op_outputs_usages[o6] = 200
         op_usages[o8] = ExecutionResources(2, 0, 100)
@@ -1091,7 +1089,7 @@ class TestReservationOpResourceAllocator:
         op_outputs_usages[o8] = 50
 
         """
-        global_limits (20 CPU, 2000 mem) - o2 usage (2 CPU, 150 mem) - o3 usage (2 CPU, 50 mem) - o5 usage (3 CPU, 100 mem) - o6 usage (2 CPU, 500 mem) - o7 usage (1 CPU, 100 mem) = remaining (10 CPU, 1100 mem)
+        global_limits (20 CPU, 2000 mem) - o2 usage (2 CPU, 150 mem) - o3 usage (2 CPU, 50 mem) - o5 usage (3 CPU, 100 mem) - o7 usage (1 CPU, 100 mem) = remaining (12 CPU, 1600 mem)
         +-----+------------------+------------------+--------------+
         |     | _op_reserved     | _reserved_for    | used shared  |
         |     | (used/remaining) | _op_outputs      | resources    |
@@ -1121,7 +1119,7 @@ class TestReservationOpResourceAllocator:
         resource_manager._update_allocated_budgets()
 
         """
-        global_limits (20 CPU, 2000 mem) - o2 usage (2 CPU, 150 mem) - o3 usage (2 CPU, 50 mem) - o5 usage (0 CPU, 0 mem) - o6 usage (2 CPU, 500 mem) - o7 usage (1 CPU, 100 mem) = remaining (13 CPU, 1200 mem)
+        global_limits (20 CPU, 2000 mem) - o2 usage (2 CPU, 150 mem) - o3 usage (2 CPU, 50 mem) - o5 usage (0 CPU, 0 mem) - o7 usage (1 CPU, 100 mem) = remaining (15 CPU, 1700 mem)
         +-----+------------------+------------------+--------------+
         |     | _op_reserved     | _reserved_for    | used shared  |
         |     | (used/remaining) | _op_outputs      | resources    |
