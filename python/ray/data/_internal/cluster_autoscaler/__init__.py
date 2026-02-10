@@ -1,4 +1,5 @@
 import enum
+import logging
 import os
 from typing import TYPE_CHECKING
 
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
     from ray.data.context import DataContext
 
+logger = logging.getLogger(__name__)
 
 CLUSTER_AUTOSCALER_ENV_KEY = "RAY_DATA_CLUSTER_AUTOSCALER"
 DEFAULT_CLUSTER_AUTOSCALER_VERSION = "V2"
@@ -41,6 +43,7 @@ def create_cluster_autoscaler(
     cluster_autoscaler_version = os.environ.get(
         CLUSTER_AUTOSCALER_ENV_KEY, DEFAULT_CLUSTER_AUTOSCALER_VERSION
     )
+    logger.debug(f"Using cluster autoscaler version: {cluster_autoscaler_version!r}")
 
     if cluster_autoscaler_version == ClusterAutoscalerVersion.V2:
         return DefaultClusterAutoscalerV2(
