@@ -77,22 +77,3 @@ def load_llm_config(
             os.getenv("ANYSCALE_VERSION", ""),
         ).strip(),
     )
-
-
-# Pre-configured MCP endpoints for known services
-def weather_mcp_endpoint() -> MCPEndpoint:
-    """Load Weather MCP endpoint configuration from environment."""
-    return MCPEndpoint(
-        name="weather",
-        base_url=os.getenv("WEATHER_MCP_BASE_URL", "").strip(),
-        token=os.getenv("WEATHER_MCP_TOKEN", "").strip(),
-    )
-
-
-def web_search_mcp_endpoint() -> MCPEndpoint:
-    """Load Web Search MCP endpoint configuration from environment."""
-    return MCPEndpoint(
-        name="web_search",
-        base_url=os.getenv("WEB_SEARCH_MCP_BASE_URL", "").strip(),
-        token=os.getenv("WEB_SEARCH_MCP_TOKEN", "").strip(),
-    )
