@@ -330,7 +330,7 @@ py_test(
 #     args = [
 #         "--as-test",
 #         "--num-aggregator-actors-per-learner=2",
-#         "--num-cpus=16",
+#         "--num-cpus=15",
 #         "--num-env-runners=8",
 #         "--num-gpus-per-learner=1",
 #         "--num-learners=2",
