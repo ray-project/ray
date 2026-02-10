@@ -153,7 +153,7 @@ class MiniBatchEpisodeRayDataIterator(MiniBatchRayDataIterator):
 class OfflinePolicyPreEvaluator(OfflinePreLearner):
     def __call__(self, batch: Dict[str, numpy.ndarray]) -> Dict[str, numpy.ndarray]:
         # If we directly read in episodes we just convert to list.
-        if self.input_read_episodes:
+        if self.config.input_read_episodes:
             # Import `msgpack` for decoding.
             import msgpack
             import msgpack_numpy as mnp
@@ -184,7 +184,7 @@ class OfflinePolicyPreEvaluator(OfflinePreLearner):
                 to_numpy=True,
             )
         # Else, if we have old stack `SampleBatch`es.
-        elif self.input_read_sample_batches:
+        elif self.config.input_read_sample_batches:
             episodes: List[
                 SingleAgentEpisode
             ] = OfflinePreLearner._map_sample_batch_to_episode(
