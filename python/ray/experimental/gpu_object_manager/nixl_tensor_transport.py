@@ -249,14 +249,12 @@ class NixlTensorTransport(TensorTransportManager):
 
             if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
                 if remote_name in self._remote_agents:
-                    self._remote_agents[remote_name] = remote_agent_meta_version
                     self._remote_agents.move_to_end(remote_name)
-                else:
-                    if len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE:
-                        evicted_agent_name, _ = self._remote_agents.popitem(last=False)
-                        nixl_agent.remove_remote_agent(evicted_agent_name)
+                elif len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE:
+                    evicted_agent_name, _ = self._remote_agents.popitem(last=False)
+                    nixl_agent.remove_remote_agent(evicted_agent_name)
 
-                    self._remote_agents[remote_name] = remote_agent_meta_version
+                self._remote_agents[remote_name] = remote_agent_meta_version
 
             xfer_handle = nixl_agent.initialize_xfer(
                 # "UUID" here is just a placeholder, can be any bytes, but without it,
