@@ -1,4 +1,5 @@
 import os
+import random
 import threading
 import time
 import unittest
@@ -767,40 +768,67 @@ def test_configure_output_locality(mock_scale_up, ray_start_regular_shared):
 class OpBufferQueueTest(unittest.TestCase):
     def test_multi_threading(self):
         num_blocks = 10_000
-        num_splits = 8
+        num_splits = 4
         num_per_split = num_blocks // num_splits
         ref_bundles = make_ref_bundles([[[i]] for i in range(num_blocks)])
 
         queue = OpBufferQueue(num_splits=num_splits)
+
+        start = threading.Event()
         done = threading.Event()
 
         def produce():
-            for i, ref_bundle in enumerate(ref_bundles):
-                ref_bundle.output_split_idx = i % num_splits
-                queue.append(ref_bundle)
+            # Sync producers and consumers
+            start.wait()
+
+            try:
+                for i, ref_bundle in enumerate(ref_bundles):
+                    if i % 10 == 1:
+                        print(f">>> Queue size {len(queue)}")
+                        time.sleep(random.random() * 0.001)
+
+                    ref_bundle.output_split_idx = i % num_splits
+                    queue.append(ref_bundle)
+            except Exception as e:
+                print(f">>> Caught exception: {e}")
+                raise
 
             done.set()
             return True
 
         def consume(output_split_idx):
+            # Sync producers and consumers
+            start.wait()
+
             count = 0
-            while True:
-                if queue.has_next(output_split_idx):
-                    ref_bundle = queue.pop(output_split_idx)
-                    if ref_bundle is not None:
-                        count += 1
-                        assert ref_bundle.output_split_idx == output_split_idx
-                elif done.is_set():
-                    break
+
+            try:
+                while True:
+                    if queue.has_next(output_split_idx):
+                        ref_bundle = queue.pop(output_split_idx)
+                        if ref_bundle is not None:
+                            count += 1
+                            assert ref_bundle.output_split_idx == output_split_idx
+                    elif done.is_set():
+                        break
+            except Exception as e:
+                print(f">>> Caught exception: {e}")
+                raise
+
             assert count == num_per_split
             return True
 
         with ThreadPoolExecutor(max_workers=num_splits + 1) as executor:
             futures = [
-                executor.submit(consume, i) for i in range(num_splits)
-            ] + [
                 executor.submit(produce)
+            ] + [
+                executor.submit(consume, i) for i in range(num_splits)
             ]
+
+            # Start the test
+            start.set()
+
+            print(">>> Test started")
 
         for f in futures:
             assert f.result() is True, f.result()
