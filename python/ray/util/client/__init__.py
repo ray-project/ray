@@ -37,16 +37,16 @@ def _apply_uv_hook_for_client(
         if not ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV:
             return runtime_env
 
-        from ray._private.runtime_env.uv_runtime_env_hook import (
-            _get_uv_run_cmdline,
-            hook,
-        )
+        from ray._private.runtime_env.uv_runtime_env_hook import hook
 
-        cmdline = _get_uv_run_cmdline()
-        if cmdline:
-            # UV environment detected on client side
-            logger.debug(f"UV environment detected: {cmdline}")
-            return hook(runtime_env)
+        result = hook(runtime_env)
+        if "py_executable" in result:
+            # UV environment was detected and applied by the hook
+            logger.debug(
+                f"UV environment detected for Ray Client: "
+                f"py_executable={result['py_executable']}"
+            )
+            return result
     except Exception as e:
         # Log warning but don't fail connection
         logger.warning(
@@ -115,14 +115,10 @@ class _ClientContext:
         if ray_init_kwargs is None:
             ray_init_kwargs = {}
 
-        # Apply UV hook client-side before connection (if UV detected).
-        # This allows UV environments to work with Ray Client by detecting
-        # the UV configuration on the client machine and propagating it to
-        # the cluster workers. See: https://github.com/ray-project/ray/issues/57991
+        # Apply UV hook client-side before connection.
+        # See: https://github.com/ray-project/ray/issues/57991
         runtime_env = ray_init_kwargs.get("runtime_env")
         if runtime_env is None and job_config and job_config.runtime_env:
-            # Fall back to job_config runtime_env if ray_init_kwargs
-            # doesn't specify one (explicit empty dict {} takes precedence)
             runtime_env = job_config.runtime_env
 
         runtime_env = _apply_uv_hook_for_client(runtime_env)
