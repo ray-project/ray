@@ -129,8 +129,15 @@ class OpBufferQueue:
             self._num_blocks = 0
 
     def _get_queue_for(self, output_split_idx: Optional[int]) -> "BaseBundleQueue":
+        target_output_split_idx = output_split_idx or 0
+
+        assert target_output_split_idx < len(self._queues), (
+            f"Output split index is out of range (got {target_output_split_idx}, "
+            f"but only {list(range(len(self._queues)))} splits are available)"
+        )
+
         # If output split idx is null, fallback to the first queue
-        return self._queues[output_split_idx or 0]
+        return self._queues[target_output_split_idx]
 
 
 @dataclass
