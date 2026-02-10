@@ -8,7 +8,6 @@ if TYPE_CHECKING:
     from ray.data.expressions import Expr
 
 
-@DeveloperAPI
 def get_setting_with_copy_warning() -> Optional[type]:
     """Get the SettingWithCopyWarning class from pandas, if available.
 
@@ -31,7 +30,6 @@ def get_setting_with_copy_warning() -> Optional[type]:
         return None
 
 
-@DeveloperAPI
 def create_callable_class_udf_init_fn(
     exprs: List["Expr"],
 ) -> Optional[Callable[[], None]]:
