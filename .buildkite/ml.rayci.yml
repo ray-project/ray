@@ -31,8 +31,14 @@ steps:
     tags: cibase
 
   - name: mllightning2gpubuild
-    wanda: ci/docker/mllightning2gpu.build.wanda.yaml
-    depends_on: oss-ci-base_gpu-multipy
+    wanda: ci/docker/ml.build.wanda.yaml
+    env:
+      PYTHON: "3.10"
+      BASE_TYPE: "gpu"
+      BUILD_VARIANT: "lightninggpubuild"
+      RAYCI_IS_GPU_BUILD: "true"
+      RAYCI_LIGHTNING_2: "true"
+    tags: cibase
 
   - name: mlgpubuild-multipy
     label: "wanda: mlgpubuild-py{{matrix}}"
