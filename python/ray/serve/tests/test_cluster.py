@@ -232,7 +232,7 @@ def test_replica_startup_status_transitions(ray_cluster):
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_gang_replica_startup_status_transitions(ray_cluster):
     cluster = ray_cluster
-    # Start with only 1 CPU — not enough for a gang of 2 replicas each needing 2 CPUs.
+    # Start with only 1 CPU — not enough for a gang of 2 replicas each needing 0.75 CPUs.
     cluster.add_node(num_cpus=1)
     cluster.connect(namespace=SERVE_NAMESPACE)
     serve.start()
@@ -242,7 +242,7 @@ def test_gang_replica_startup_status_transitions(ray_cluster):
 
     @serve.deployment(
         version="1",
-        ray_actor_options={"num_cpus": 2},
+        ray_actor_options={"num_cpus": 0.75},
         num_replicas=2,
         gang_scheduling_config=GangSchedulingConfig(gang_size=2),
     )
@@ -264,7 +264,7 @@ def test_gang_replica_startup_status_transitions(ray_cluster):
     # Wait for replicas to be created in STARTING state.
     wait_for_condition(lambda: len(get_replicas(ReplicaState.STARTING)) > 0)
 
-    # With only 1 CPU available and each replica needing 2, replicas should
+    # With only 1 CPU available and each replica needing 0.75, replicas should
     # be stuck in PENDING_ALLOCATION.
     def is_pending_allocation():
         replicas = get_replicas(ReplicaState.STARTING)
@@ -278,8 +278,8 @@ def test_gang_replica_startup_status_transitions(ray_cluster):
     wait_for_condition(is_pending_allocation)
 
     # Add enough resources for the gang
-    cluster.add_node(num_cpus=4)
-    wait_for_condition(lambda: ray.cluster_resources().get("CPU", 0) >= 4)
+    cluster.add_node(num_cpus=1)
+    wait_for_condition(lambda: ray.cluster_resources().get("CPU", 0) == 2)
 
     # Replicas should transition to PENDING_INITIALIZATION
     def is_pending_initialization():
