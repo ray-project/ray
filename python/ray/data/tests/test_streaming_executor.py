@@ -819,9 +819,7 @@ class OpBufferQueueTest(unittest.TestCase):
             return True
 
         with ThreadPoolExecutor(max_workers=num_splits + 1) as executor:
-            futures = [
-                executor.submit(produce)
-            ] + [
+            futures = [executor.submit(produce)] + [
                 executor.submit(consume, i) for i in range(num_splits)
             ]
 
