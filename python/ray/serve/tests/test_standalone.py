@@ -2,6 +2,7 @@
 The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
+
 import logging
 import os
 import random
@@ -14,10 +15,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
-    run_string_as_driver,
-)
+from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve._private.constants import (
@@ -338,6 +336,47 @@ async def test_multi_app_shutdown_actors_async(ray_shutdown):
     wait_for_condition(check_dead)
 
 
+def test_registered_cleanup_actors_killed_on_shutdown(ray_shutdown):
+    """Test that actors registered via _register_shutdown_cleanup_actor are killed.
+
+    This tests the internal actor registration API that allows deployments to register
+    auxiliary actors (like caches, coordinators, etc.) for cleanup on serve.shutdown().
+    """
+    ray.init(num_cpus=4)
+    serve.start()
+
+    # Create a detached actor that we'll register for cleanup
+    @ray.remote
+    class DummyActor:
+        def ping(self):
+            return "pong"
+
+    dummy_actor_name = "test_registered_cleanup_dummy"
+    dummy = DummyActor.options(
+        name=dummy_actor_name, namespace=SERVE_NAMESPACE, lifetime="detached"
+    ).remote()
+
+    # Verify actor is alive
+    assert ray.get(dummy.ping.remote()) == "pong"
+
+    # Register the actor with the controller for cleanup
+    controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    ray.get(controller._register_shutdown_cleanup_actor.remote(dummy))
+
+    # Shutdown serve
+    serve.shutdown()
+
+    # Verify the registered actor is killed
+    def check_actor_dead():
+        try:
+            ray.get_actor(dummy_actor_name, namespace=SERVE_NAMESPACE)
+            return False
+        except ValueError:
+            return True
+
+    wait_for_condition(check_actor_dead)
+
+
 def test_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
@@ -587,7 +626,7 @@ def test_no_http(ray_shutdown):
 
     address = ray.init(num_cpus=8)["address"]
     for i, option in enumerate(options):
-        print(f"[{i+1}/{len(options)}] Running with {option}")
+        print(f"[{i + 1}/{len(options)}] Running with {option}")
         serve.start(**option)
 
         # Only controller actor should exist
