@@ -13,7 +13,101 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
 
 
-class BaseBundleQueue:
+class BundleQueue(abc.ABC):
+
+    @abc.abstractmethod
+    def estimate_size_bytes(self) -> int:
+        """Returns the estimated size in bytes of all bundles."""
+        ...
+
+    @abc.abstractmethod
+    def num_blocks(self) -> int:
+        """Returns the total # of blocks across all bundles."""
+        ...
+
+    @abc.abstractmethod
+    def num_bundles(self) -> int:
+        """Returns the total # of bundles."""
+        ...
+
+    @abc.abstractmethod
+    def num_rows(self) -> int:
+        """Return the total # of rows across all bundles."""
+        ...
+
+    def add(self, bundle: RefBundle, **kwargs: Any):
+        """Add a bundle to the tail(end) of the queue. Base classes should override
+        the `_add_inner` method for simple use cases. For more complex metrics tracking,
+        they can override this method.
+
+        Args:
+            bundle: The bundle to add.
+            **kwargs: Additional queue-specific parameters (e.g., `key` for ordered queues).
+                This is used for `finalize`.
+        """
+        self._on_enqueue_bundle(bundle)
+        self._add_inner(bundle, **kwargs)
+
+    def get_next(self) -> RefBundle:
+        """Remove and return the head of the queue. Base classes should override
+        the `_get_next_inner` method for simple use cases. For more complex metrics tracking,
+        they can override this method.
+
+        Raises:
+            IndexError: If the queue is empty.
+
+        Returns:
+            The `RefBundle` at the head of the queue.
+        """
+        bundle = self._get_next_inner()
+        self._on_dequeue_bundle(bundle)
+        return bundle
+
+    @abc.abstractmethod
+    def peek_next(self) -> Optional[RefBundle]:
+        """Return the head of the queue. The only invariant is
+        that the # of blocks, rows, and bytes must remain unchanged
+        before and after this method call.
+
+        If queue.has_next() == False, return `None`.
+        """
+        ...
+
+    @abc.abstractmethod
+    def has_next(self) -> bool:
+        """Check if the queue has a valid bundle."""
+        ...
+
+    @abc.abstractmethod
+    def clear(self):
+        """Remove all bundles from the queue."""
+        ...
+
+    @abc.abstractmethod
+    def finalize(self, **kwargs: Any):
+        """Signal that no additional bundles will be added to the bundler so
+        the bundler can be finalized. The keys of kwargs provided should be the same
+        as the ones passed into the `add()` method. This is important for ordered
+        queues."""
+        ...
+
+    def __len__(self) -> int:
+        """Return the total # bundles."""
+        return self.num_bundles()
+
+    def __repr__(self) -> str:
+        """Return a string representation showing queue metrics."""
+        nbytes = memory_string(self.estimate_size_bytes())
+        return (
+            f"{self.__class__.__name__}("
+            f"num_bundles={len(self)}, "
+            f"num_blocks={self.num_blocks()}, "
+            f"num_rows={self.num_rows()}, "
+            f"nbytes={nbytes})"
+        )
+
+
+class BaseBundleQueue(BundleQueue):
     """Base class for storing bundles. Here and subclasses should adhere to the mental
     model that "first", "front", or "head" is the next bundle to be dequeued. Consequently,
     "last", "back", or "tail" is the last bundle to be dequeued.
@@ -60,21 +154,6 @@ class BaseBundleQueue:
         self._num_blocks = 0
         self._num_bundles = 0
         self._nbytes = 0
-
-    def __len__(self) -> int:
-        """Return the total # bundles."""
-        return self._num_bundles
-
-    def __repr__(self) -> str:
-        """Return a string representation showing queue metrics."""
-        nbytes = memory_string(self.estimate_size_bytes())
-        return (
-            f"{self.__class__.__name__}("
-            f"num_bundles={len(self)}, "
-            f"num_blocks={self.num_blocks()}, "
-            f"num_rows={self.num_rows()}, "
-            f"nbytes={nbytes})"
-        )
 
     def add(self, bundle: RefBundle, **kwargs: Any):
         """Add a bundle to the tail(end) of the queue. Base classes should override
