@@ -12,20 +12,24 @@ import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Set, TypeVar, Union
 
 import requests
 
 import ray
 import ray.util.serialization_addons
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
-from ray._common.utils import get_random_alphanumeric_string, import_attr
+from ray._common.utils import binary_to_hex, get_random_alphanumeric_string, import_attr
+from ray._private.state import state
+from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
+from ray.core.generated import gcs_pb2
 from ray.serve._private.common import RequestMetadata, ServeComponentType
 from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
+from ray._common.utils import binary_to_hex
 
 try:
     import pandas as pd
@@ -517,6 +521,34 @@ def get_all_live_placement_group_names() -> List[str]:
             live_pg_names.append(pg_name)
 
     return live_pg_names
+
+
+def get_active_placement_group_ids() -> Set[str]:
+    """Retrieve the set of placement group IDs referenced by alive actors.
+
+    Queries the GCS actor table for all ``ALIVE`` actors and extracts their
+    ``placement_group_id`` fields.
+    """
+    try:
+        accessor = state._connect_and_get_accessor()
+        raw_actors = accessor.get_actor_table(None, "ALIVE")
+    except Exception:
+        logger.warning(
+            "Failed to query actor table for placement group leak detection. "
+            "Assuming no active placement groups."
+        )
+        return set()
+
+    occupied: Set[str] = set()
+    for raw_actor_bytes in raw_actors:
+        try:
+            actor_data = gcs_pb2.ActorTableData.FromString(raw_actor_bytes)
+            if actor_data.HasField("placement_group_id"):
+                occupied.add(binary_to_hex(actor_data.placement_group_id))
+        except Exception:
+            continue
+
+    return occupied
 
 
 def get_current_actor_id() -> str:

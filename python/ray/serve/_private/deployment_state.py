@@ -22,6 +22,7 @@ from ray.serve._private import default_impl
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
+    GANG_PG_NAME_PREFIX,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
@@ -69,6 +70,7 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     JavaActorHandleProxy,
     check_obj_ref_ready_nowait,
+    get_active_placement_group_ids,
     get_capacity_adjusted_num_replicas,
     get_random_string,
     msgpack_deserialize,
@@ -3981,7 +3983,8 @@ class DeploymentStateManager:
     ):
         """Detect and remove any placement groups not associated with a replica.
 
-        This can happen under certain rare circumstances:
+        For per-replica PGs, a PG is leaked if no actor with that name exists. This
+        can happen under certain rare circumstances:
             - The controller creates a placement group then crashes before creating
             the associated replica actor.
             - While the controller is down, a replica actor crashes but its placement
@@ -3989,6 +3992,10 @@ class DeploymentStateManager:
 
         In both of these (or any other unknown cases), we simply need to remove the
         leaked placement groups.
+
+        For gang PGs, a PG is leaked only if no alive actor references its placement
+        group ID. Gang PGs that still have live actors are preserved to avoid releasing
+        their resource reservations.
         """
         leaked_pg_names = []
         for pg_name in all_current_placement_group_names:
@@ -3997,6 +4004,25 @@ class DeploymentStateManager:
                 and pg_name not in all_current_actor_names
             ):
                 leaked_pg_names.append(pg_name)
+
+        gang_pg_names_in_cluster = [
+            name
+            for name in all_current_placement_group_names
+            if name.startswith(GANG_PG_NAME_PREFIX)
+        ]
+        if gang_pg_names_in_cluster:
+            pg_table = ray.util.placement_group_table()
+            gang_pg_name_to_id: Dict[str, str] = {}
+            for pg_id_hex, entry in pg_table.items():
+                name = entry.get("name", "")
+                if name.startswith(GANG_PG_NAME_PREFIX):
+                    gang_pg_name_to_id[name] = pg_id_hex
+
+            occupied_pg_ids = get_active_placement_group_ids()
+            for gang_pg_name in gang_pg_names_in_cluster:
+                pg_id = gang_pg_name_to_id.get(gang_pg_name)
+                if pg_id is not None and pg_id not in occupied_pg_ids:
+                    leaked_pg_names.append(gang_pg_name)
 
         if len(leaked_pg_names) > 0:
             logger.warning(

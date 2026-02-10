@@ -17,6 +17,7 @@ import ray
 from ray._raylet import node_labels_match_selector
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
+    GANG_PG_NAME_PREFIX,
     CreatePlacementGroupRequest,
     DeploymentID,
     GangPlacementGroupRequest,
@@ -1097,7 +1098,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             bundles = [request.replica_resource_dict.copy() for _ in range(gang_size)]
 
             pg_name = (
-                f"gang_{deployment_id.app_name}_{deployment_id.name}"
+                f"{GANG_PG_NAME_PREFIX}{deployment_id.app_name}"
+                f"_{deployment_id.name}"
                 f"_{gang_index}_{uuid.uuid4().hex[:8]}"
             )
 
