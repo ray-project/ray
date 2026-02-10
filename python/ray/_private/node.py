@@ -807,21 +807,16 @@ class Node:
         raise FileExistsError(errno.EEXIST, "No usable temporary filename found")
 
     def should_redirect_logs(self):
-        # Preferred: thread the setting explicitly via RayParams.log_to_stderr.
-        # This avoids relying on process-global environment variables.
-        if getattr(self._ray_params, "log_to_stderr", None) is not None:
-            return not self._ray_params.log_to_stderr
-
-        # Deprecated (kept for backward compatibility): RayParams.redirect_output.
         redirect_output = self._ray_params.redirect_output
-        if redirect_output is not None:
-            return redirect_output
-
-        # Fall back to stderr redirect environment variable.
-        return (
-            os.environ.get(ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE)
-            != "1"
-        )
+        if redirect_output is None:
+            # Fall back to stderr redirect environment variable.
+            redirect_output = (
+                os.environ.get(
+                    ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE
+                )
+                != "1"
+            )
+        return redirect_output
 
     # TODO(hjiang): Re-implement the logic in C++, and expose via cython.
     def get_log_file_names(
@@ -989,9 +984,7 @@ class Node:
         assert (
             not self.kernel_fate_share
         ), "a reaper should not be used with kernel fate-sharing"
-        process_info = ray._private.services.start_reaper(
-            fate_share=False, temp_dir=self._temp_dir
-        )
+        process_info = ray._private.services.start_reaper(fate_share=False)
         assert ray_constants.PROCESS_TYPE_REAPER not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_REAPER] = [
@@ -1013,7 +1006,6 @@ class Node:
             backup_count=self.backup_count,
             stdout_filepath=stdout_log_fname,
             stderr_filepath=stderr_log_fname,
-            temp_dir=self._temp_dir,
         )
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
@@ -1089,7 +1081,6 @@ class Node:
             node_ip_address=self._node_ip_address,
             session_dir=self._session_dir,
             node_id=self._node_id,
-            temp_dir=self._temp_dir,
         )
         assert ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
@@ -1232,7 +1223,6 @@ class Node:
             backup_count=self.backup_count,
             monitor_ip=self._node_ip_address,
             autoscaler_v2=is_autoscaler_v2(fetch_from_server=True),
-            temp_dir=self._temp_dir,
         )
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
@@ -1253,7 +1243,6 @@ class Node:
             fate_share=self.kernel_fate_share,
             runtime_env_agent_address=self.runtime_env_agent_address,
             node_id=self._node_id,
-            temp_dir=self._temp_dir,
         )
         assert ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [

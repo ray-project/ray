@@ -893,13 +893,6 @@ def main():
         default=None,
         help="The hex ID of this node.",
     )
-    parser.add_argument(
-        "--temp-dir",
-        required=False,
-        type=str,
-        default=None,
-        help="The temporary directory for this Ray session.",
-    )
     args, _ = parser.parse_known_args()
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
 

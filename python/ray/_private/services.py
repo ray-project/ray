@@ -1039,17 +1039,13 @@ def start_ray_process(
     )
 
 
-def start_reaper(fate_share=None, temp_dir: Optional[str] = None):
+def start_reaper(fate_share=None):
     """Start the reaper process.
 
     This is a lightweight process that simply
     waits for its parent process to die and then terminates its own
     process group. This allows us to ensure that ray processes are always
     terminated properly so long as that process itself isn't SIGKILLed.
-
-    Args:
-        fate_share: Whether to share fate between reaper and this process.
-        temp_dir: The temporary directory for this Ray session.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1075,8 +1071,6 @@ def start_reaper(fate_share=None, temp_dir: Optional[str] = None):
 
     reaper_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR, "ray_process_reaper.py")
     command = [sys.executable, "-u", reaper_filepath]
-    if temp_dir:
-        command.append(f"--temp-dir={temp_dir}")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REAPER,
@@ -1096,7 +1090,6 @@ def start_log_monitor(
     backup_count: int = 0,
     stdout_filepath: Optional[str] = None,
     stderr_filepath: Optional[str] = None,
-    temp_dir: Optional[str] = None,
 ):
     """Start a log monitor process.
 
@@ -1115,8 +1108,6 @@ def start_log_monitor(
             If None, stdout is not redirected.
         stderr_filepath: The file path to dump log monitor stderr.
             If None, stderr is not redirected.
-        temp_dir: The temporary directory for this Ray session.
-            Used for process identification only.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1134,8 +1125,6 @@ def start_log_monitor(
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
     ]
-    if temp_dir:
-        command.append(f"--temp-dir={temp_dir}")
 
     if stdout_filepath:
         command.append(f"--stdout-filepath={stdout_filepath}")
@@ -1476,7 +1465,6 @@ def start_gcs_server(
     node_ip_address: Optional[str] = None,
     session_dir: Optional[str] = None,
     node_id: Optional[str] = None,
-    temp_dir: Optional[str] = None,
 ):
     """Start a gcs server.
 
@@ -1497,7 +1485,6 @@ def start_gcs_server(
         node_ip_address: IP Address of a node where gcs server starts.
         session_dir: Session directory path. Used to write the bound GCS port to a file.
         node_id: The unique ID of this node.
-        temp_dir: The temporary directory for this Ray session.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1516,8 +1503,6 @@ def start_gcs_server(
         f"--session-dir={session_dir}",
         f"--node-id={node_id}",
     ]
-    if temp_dir:
-        command.append(f"--temp_dir={temp_dir}")
 
     if stdout_filepath:
         command += [f"--stdout_filepath={stdout_filepath}"]
@@ -2281,7 +2266,6 @@ def start_monitor(
     backup_count: int = 0,
     monitor_ip: Optional[str] = None,
     autoscaler_v2: bool = False,
-    temp_dir: Optional[str] = None,
 ):
     """Run a process to monitor the other processes.
 
@@ -2293,17 +2277,12 @@ def start_monitor(
         stderr_filepath: The file path to dump monitor stderr.
             If None, stderr is not redirected.
         autoscaling_config: path to autoscaling config file.
-        fate_share: Whether to share fate between monitor and this process.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
         monitor_ip: IP address of the machine that the monitor will be
             run on. Can be excluded, but required for autoscaler metrics.
-        autoscaler_v2: Whether to use the v2 autoscaler.
-        temp_dir: The temporary directory for this Ray session.
-            Used for process identification only.
-
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -2341,8 +2320,6 @@ def start_monitor(
         command.append("--autoscaling-config=" + str(autoscaling_config))
     if monitor_ip:
         command.append("--monitor-ip=" + monitor_ip)
-    if temp_dir:
-        command.append(f"--temp-dir={temp_dir}")
 
     stdout_file = None
     if stdout_filepath:
@@ -2375,7 +2352,6 @@ def start_ray_client_server(
     node_id: Optional[str] = None,
     server_type: str = "proxy",
     serialized_runtime_env_context: Optional[str] = None,
-    temp_dir: Optional[str] = None,
 ):
     """Run the server process of the Ray client.
 
@@ -2395,7 +2371,6 @@ def start_ray_client_server(
         server_type: Whether to start the proxy version of Ray Client.
         serialized_runtime_env_context (str|None): If specified, the serialized
             runtime_env_context to start the client server in.
-        temp_dir: The temporary directory for this Ray session.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -2431,8 +2406,6 @@ def start_ray_client_server(
         command.append(f"--runtime-env-agent-address={runtime_env_agent_address}")
     if node_id:
         command.append(f"--node-id={node_id}")
-    if temp_dir:
-        command.append(f"--temp-dir={temp_dir}")
 
     process_info = start_ray_process(
         command,

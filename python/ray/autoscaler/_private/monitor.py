@@ -687,13 +687,6 @@ if __name__ == "__main__":
         default="",
         help="The filepath to dump monitor stderr.",
     )
-    parser.add_argument(
-        "--temp-dir",
-        required=False,
-        type=str,
-        default=None,
-        help="The temporary directory for this Ray session (for identification only).",
-    )
 
     args = parser.parse_args()
 

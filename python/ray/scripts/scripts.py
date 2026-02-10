@@ -1207,49 +1207,6 @@ def start(
         # not-reachable
 
 
-def matches_temp_dir_path(cmdline: list, target_temp_dir: str) -> bool:
-    """Check if any argument in cmdline matches the target temp directory path.
-
-    Uses os.path.normcase and os.path.normpath for cross-platform compatibility:
-    - Handles trailing slashes (/tmp/ray/ vs /tmp/ray)
-    - Handles path separators (/ vs \\ on Windows)
-    - Handles case-insensitivity on Windows
-    - Handles setproctitle format where --temp-dir is embedded in process title
-
-    Args:
-        cmdline: List of command line arguments from psutil.Process.cmdline()
-        target_temp_dir: The temp directory path to match
-
-    Returns:
-        True if a matching --temp-dir or --temp_dir argument is found
-    """
-    # Use realpath to:
-    # 1. Convert relative paths to absolute paths
-    # 2. Resolve symlinks (e.g., /var -> /private/var on macOS)
-    target = os.path.normcase(os.path.realpath(target_temp_dir))
-    for arg in cmdline:
-        for prefix in ("--temp-dir=", "--temp_dir="):
-            path = None
-            if arg.startswith(prefix):
-                # Normal case: --temp-dir=/tmp/ray
-                path = arg.split("=", 1)[1]
-            elif prefix in arg:
-                # setproctitle case: "ray::DashboardAgent --temp-dir=/tmp/ray"
-                # In our setproctitle format, --temp-dir is the last argument,
-                # so we take everything after the prefix (handles paths with spaces)
-                idx = arg.find(prefix)
-                path = arg[idx + len(prefix) :]
-
-            if path is not None:
-                # Remove any trailing quotes from setproctitle format
-                path = path.rstrip("\"'")
-                # Use realpath to resolve symlinks for consistent comparison
-                normalized = os.path.normcase(os.path.realpath(path))
-                if normalized == target:
-                    return True
-    return False
-
-
 @cli.command()
 @click.option(
     "-f",
@@ -1267,28 +1224,14 @@ def matches_temp_dir_path(cmdline: list, target_temp_dir: str) -> bool:
         "they are forcefully terminated after the grace period. "
     ),
 )
-@click.option(
-    "--temp-dir",
-    "stop_temp_dir",
-    default=None,
-    type=str,
-    help=(
-        "If set, only stop Ray processes that were started with this temp directory. "
-        "This is useful when multiple Ray clusters run on the same node with "
-        "different --temp-dir values."
-    ),
-)
 @add_click_logging_options
 @PublicAPI
-def stop(force: bool, grace_period: int, stop_temp_dir: str):
+def stop(force: bool, grace_period: int):
     """Stop Ray processes manually on the local machine."""
     is_linux = sys.platform.startswith("linux")
     total_procs_found = 0
     total_procs_stopped = 0
     procs_not_gracefully_killed = []
-
-    if stop_temp_dir is not None:
-        cli_logger.print(f"Stopping only Ray processes with temp-dir={stop_temp_dir}")
 
     def kill_procs(
         force: bool, grace_period: int, processes_to_kill: List[str]
@@ -1331,17 +1274,7 @@ def stop(force: bool, grace_period: int, stop_temp_dir: str):
                     proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_args)
                 )
                 if keyword in corpus:
-                    # If stop_temp_dir is set, only include processes whose
-                    # command line contains the exact temp directory path
-                    if stop_temp_dir is not None:
-                        try:
-                            # Use exact path matching for cross-platform compatibility
-                            if matches_temp_dir_path(proc_args, stop_temp_dir):
-                                found.append(candidate)
-                        except psutil.Error:
-                            pass
-                    else:
-                        found.append(candidate)
+                    found.append(candidate)
             for proc, proc_cmd, proc_args in found:
                 proc_string = str(subprocess.list2cmdline(proc_args))
                 try:
