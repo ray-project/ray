@@ -257,7 +257,15 @@ class TrainController:
             return failure_result
 
         if self._worker_group:
-            self._shutdown_worker_group()
+            try:
+                self._shutdown_worker_group()
+            except Exception as e:
+                controller_error = ControllerError(e)
+                failure_decision = self._make_failure_decision(controller_error)
+                return self._execute_failure_decision(
+                    failure_decision,
+                    training_failed_error=controller_error,
+                )
 
         optional_controller_error = self._start_worker_group(
             num_workers=decision.num_workers,
