@@ -5,22 +5,16 @@ emit events to dashboard-agents aggregator agent service.
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
 
 from ray._raylet import RayEvent
-
-if TYPE_CHECKING:
-    from ray._raylet import RayEvent
+from ray.core.generated.events_base_event_pb2 import RayEvent
 
 
 class InternalEventBuilder(ABC):
     """Abstract base class for building internal Ray events.
 
-    Subclasses implement specific event types (submission job, data operator, etc.)
+    Subclasses implement specific event types
     and must implement get_entity_id() and serialize_event_data().
-
-    The source_type, event_type, and severity should use the proto enum values from
-    ray.core.generated.events_base_event_pb2.RayEvent.
 
     Note:
         The event_id and timestamp fields are NOT set here. They are automatically
@@ -33,7 +27,8 @@ class InternalEventBuilder(ABC):
         self,
         source_type: int,
         event_type: int,
-        severity: int = 3,  # INFO = 3 (default)
+        nested_event_field_number: int,
+        severity: int = RayEvent.Severity.INFO,
         message: str = "",
         session_name: str = "",
     ):
@@ -42,12 +37,16 @@ class InternalEventBuilder(ABC):
         Args:
             source_type: RayEvent.SourceType enum value (e.g., JOBS = 6).
             event_type: RayEvent.EventType enum value.
-            severity: RayEvent.Severity enum value (default INFO = 3).
+            nested_event_field_number: The field number in RayEvent proto for the
+                nested event message. Use RayEvent.<FIELD>_FIELD_NUMBER constants
+                (e.g., RayEventProto.SUBMISSION_JOB_DEFINITION_EVENT_FIELD_NUMBER).
+            severity: RayEvent.Severity enum value (default INFO).
             message: Optional message associated with the event.
             session_name: The Ray session name.
         """
         self._source_type = source_type
         self._event_type = event_type
+        self._nested_event_field_number = nested_event_field_number
         self._severity = severity
         self._message = message
         self._session_name = session_name
@@ -88,4 +87,5 @@ class InternalEventBuilder(ABC):
             message=self._message,
             session_name=self._session_name,
             serialized_data=self.serialize_event_data(),
+            nested_event_field_number=self._nested_event_field_number,
         )

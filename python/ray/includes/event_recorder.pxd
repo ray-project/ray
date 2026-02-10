@@ -6,12 +6,6 @@ cdef extern from "ray/observability/ray_event_interface.h" namespace "ray::obser
     cdef cppclass CRayEventInterface "ray::observability::RayEventInterface":
         pass
 
-cdef extern from "ray/observability/ray_event_recorder_interface.h" namespace "ray::observability" nogil:
-    cdef cppclass CRayEventRecorderInterface "ray::observability::RayEventRecorderInterface":
-        void AddEvents(c_vector[unique_ptr[CRayEventInterface]] &&data_list)
-        void StartExportingEvents()
-        void StopExportingEvents()
-
 cdef extern from "ray/observability/python_event_interface.h" namespace "ray::observability" nogil:
     unique_ptr[CRayEventInterface] CreatePythonRayEvent(
         int source_type,
@@ -20,4 +14,14 @@ cdef extern from "ray/observability/python_event_interface.h" namespace "ray::ob
         const c_string &entity_id,
         const c_string &message,
         const c_string &session_name,
-        const c_string &serialized_event_data)
+        const c_string &serialized_event_data,
+        int nested_event_field_number)
+
+    cdef cppclass CPythonEventRecorder "ray::observability::PythonEventRecorder":
+        CPythonEventRecorder(const c_string &aggregator_address,
+                             int aggregator_port,
+                             const c_string &node_ip,
+                             const c_string &node_id_hex,
+                             size_t max_buffer_size)
+        void AddEvents(c_vector[unique_ptr[CRayEventInterface]] &&data_list)
+        void Shutdown()

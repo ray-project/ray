@@ -14,11 +14,13 @@
 
 #include "ray/observability/python_event_interface.h"
 
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/message.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
+#include "ray/observability/metric_constants.h"
+#include "ray/observability/metrics.h"
 #include "ray/util/logging.h"
-#include "src/ray/protobuf/public/events_submission_job_definition_event.pb.h"
-#include "src/ray/protobuf/public/events_submission_job_lifecycle_event.pb.h"
 
 namespace ray {
 namespace observability {
@@ -29,7 +31,8 @@ PythonRayEvent::PythonRayEvent(rpc::events::RayEvent::SourceType source_type,
                                std::string entity_id,
                                std::string message,
                                std::string session_name,
-                               std::string serialized_event_data)
+                               std::string serialized_event_data,
+                               int nested_event_field_number)
     : source_type_(source_type),
       event_type_(event_type),
       severity_(severity),
@@ -37,15 +40,16 @@ PythonRayEvent::PythonRayEvent(rpc::events::RayEvent::SourceType source_type,
       message_(std::move(message)),
       session_name_(std::move(session_name)),
       serialized_event_data_(std::move(serialized_event_data)),
+      nested_event_field_number_(nested_event_field_number),
       event_timestamp_(absl::Now()) {}
 
 std::string PythonRayEvent::GetEntityId() const { return entity_id_; }
 
+bool PythonRayEvent::SupportsMerge() const { return false; }
+
 void PythonRayEvent::Merge(RayEventInterface &&other) {
-  // For Python events, we don't support merging. Each event is independent.
-  // This is because the serialized_event_data_ is opaque to us and we cannot
-  // merge two serialized protobufs without knowing their structure.
-  RAY_LOG(WARNING) << "Merge is not supported for Python-created events.";
+  RAY_LOG(FATAL) << "Merge should never be called on PythonRayEvent. "
+                 << "The recorder should skip grouping for non-mergeable events.";
 }
 
 rpc::events::RayEvent PythonRayEvent::Serialize() && {
@@ -61,27 +65,19 @@ rpc::events::RayEvent PythonRayEvent::Serialize() && {
   event.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
       absl::ToInt64Nanoseconds(event_timestamp_ - absl::UnixEpoch())));
 
-  // Parse and set the nested event message based on event type
-  switch (event_type_) {
-    case rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT: {
-      auto *nested_event = event.mutable_submission_job_definition_event();
-      if (!nested_event->ParseFromString(serialized_event_data_)) {
-        RAY_LOG(ERROR) << "Failed to parse SubmissionJobDefinitionEvent from serialized "
-                          "data";
-      }
-      break;
+  // Use protobuf reflection to set the nested event message by field number.
+  // Adding new Python event types requires no C++ changes.
+  const auto *descriptor = event.GetDescriptor();
+  const auto *field = descriptor->FindFieldByNumber(nested_event_field_number_);
+  if (field != nullptr &&
+      field->type() == google::protobuf::FieldDescriptor::TYPE_MESSAGE) {
+    auto *nested = event.GetReflection()->MutableMessage(&event, field);
+    if (!nested->ParseFromString(serialized_event_data_)) {
+      RAY_LOG(ERROR) << "Failed to parse nested event data for field " << field->name();
+      event.GetReflection()->ClearField(&event, field);
     }
-    case rpc::events::RayEvent::SUBMISSION_JOB_LIFECYCLE_EVENT: {
-      auto *nested_event = event.mutable_submission_job_lifecycle_event();
-      if (!nested_event->ParseFromString(serialized_event_data_)) {
-        RAY_LOG(ERROR)
-            << "Failed to parse SubmissionJobLifecycleEvent from serialized data";
-      }
-      break;
-    }
-    default:
-      RAY_LOG(ERROR) << "Unsupported event type for Python event: " << event_type_;
-      break;
+  } else {
+    RAY_LOG(ERROR) << "Invalid nested event field number: " << nested_event_field_number_;
   }
 
   return event;
@@ -98,7 +94,8 @@ std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
     const std::string &entity_id,
     const std::string &message,
     const std::string &session_name,
-    const std::string &serialized_event_data) {
+    const std::string &serialized_event_data,
+    int nested_event_field_number) {
   return std::make_unique<PythonRayEvent>(
       static_cast<rpc::events::RayEvent::SourceType>(source_type),
       static_cast<rpc::events::RayEvent::EventType>(event_type),
@@ -106,7 +103,65 @@ std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
       entity_id,
       message,
       session_name,
-      serialized_event_data);
+      serialized_event_data,
+      nested_event_field_number);
+}
+
+PythonEventRecorder::PythonEventRecorder(const std::string &aggregator_address,
+                                         int aggregator_port,
+                                         const std::string &node_ip,
+                                         const std::string &node_id_hex,
+                                         size_t max_buffer_size)
+    : dropped_events_counter_(GetRayEventRecorderDroppedEventsCounterMetric()) {
+  io_context_ = std::make_unique<instrumented_io_context>(
+      /*emit_metrics=*/false, /*running_on_single_thread=*/true);
+
+  work_guard_ = std::make_unique<
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
+      io_context_->get_executor());
+
+  io_thread_ = std::make_unique<std::thread>([this]() { io_context_->run(); });
+
+  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
+      *io_context_, /*record_stats=*/false, node_ip);
+
+  event_aggregator_client_ =
+      std::make_unique<rpc::EventAggregatorClientImpl>(*client_call_manager_);
+  event_aggregator_client_->Connect(aggregator_port);
+
+  recorder_ = std::make_unique<RayEventRecorder>(*event_aggregator_client_,
+                                                 *io_context_,
+                                                 max_buffer_size,
+                                                 kMetricSourcePython,
+                                                 dropped_events_counter_,
+                                                 NodeID::FromHex(node_id_hex));
+  recorder_->StartExportingEvents();
+}
+
+PythonEventRecorder::~PythonEventRecorder() { Shutdown(); }
+
+void PythonEventRecorder::Shutdown() {
+  if (recorder_) {
+    recorder_->StopExportingEvents();
+    recorder_.reset();
+  }
+  event_aggregator_client_.reset();
+  client_call_manager_.reset();
+  work_guard_.reset();
+  if (io_context_) {
+    io_context_->stop();
+  }
+  if (io_thread_ && io_thread_->joinable()) {
+    io_thread_->join();
+  }
+  io_thread_.reset();
+  io_context_.reset();
+}
+
+void PythonEventRecorder::AddEvents(
+    std::vector<std::unique_ptr<RayEventInterface>> &&data_list) {
+  RAY_CHECK(recorder_) << "PythonEventRecorder has been shut down.";
+  recorder_->AddEvents(std::move(data_list));
 }
 
 }  // namespace observability

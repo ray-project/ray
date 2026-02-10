@@ -118,6 +118,11 @@ void RayEventRecorder::ExportEvents() {
                       std::list<std::unique_ptr<RayEventInterface>>::iterator>
       event_key_to_iterator;
   for (auto &event : buffer_) {
+    if (!event->SupportsMerge()) {
+      // Non-mergeable events (e.g. those sent from Python) are sent individually.
+      grouped_events.push_back(std::move(event));
+      continue;
+    }
     auto key = std::make_pair(event->GetEntityId(), event->GetEventType());
     auto [it, inserted] = event_key_to_iterator.try_emplace(key);
     if (inserted) {

@@ -58,6 +58,12 @@ class RayEventInterface {
   virtual ray::rpc::events::RayEvent Serialize() && = 0;
 
   virtual ray::rpc::events::RayEvent::EventType GetEventType() const = 0;
+
+  // Whether this event type supports merging. Events that return false will be
+  // sent individually by the recorder without grouping by (entity_id, event_type).
+  // This function should be overridden by subclasses that do not support merging (events
+  // sent from Python currently do not support merging).
+  virtual bool SupportsMerge() const { return true; }
 };
 
 }  // namespace observability
