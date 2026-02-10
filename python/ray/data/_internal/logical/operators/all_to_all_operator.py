@@ -49,8 +49,8 @@ class AbstractAllToAll(LogicalOperator):
             ray_remote_args: Args to provide to :func:`ray.remote`.
         """
         super().__init__(name, [input_op], num_outputs=num_outputs)
-        self._ray_remote_args = ray_remote_args or {}
-        self._sub_progress_bar_names = sub_progress_bar_names
+        self.ray_remote_args = ray_remote_args or {}
+        self.sub_progress_bar_names = sub_progress_bar_names
 
 
 class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
@@ -65,7 +65,7 @@ class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThro
             "RandomizeBlockOrder",
             input_op,
         )
-        self._seed = seed
+        self.seed = seed
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -103,7 +103,7 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
             ],
             ray_remote_args=ray_remote_args,
         )
-        self._seed = seed
+        self.seed = seed
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -148,9 +148,9 @@ class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough)
             num_outputs=num_outputs,
             sub_progress_bar_names=sub_progress_bar_names,
         )
-        self._shuffle = shuffle
-        self._keys = keys
-        self._sort = sort
+        self.shuffle = shuffle
+        self.keys = keys
+        self.sort = sort
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -187,8 +187,8 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
-        self._sort_key = sort_key
-        self._batch_format = batch_format
+        self.sort_key = sort_key
+        self.batch_format = batch_format
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -227,7 +227,7 @@ class Aggregate(AbstractAllToAll):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
-        self._key = key
-        self._aggs = aggs
-        self._num_partitions = num_partitions
-        self._batch_format = batch_format
+        self.key = key
+        self.aggs = aggs
+        self.num_partitions = num_partitions
+        self.batch_format = batch_format
