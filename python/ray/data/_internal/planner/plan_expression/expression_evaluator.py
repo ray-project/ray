@@ -26,6 +26,7 @@ from ray.data.expressions import (
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UnresolvedExpr,
     _ExprVisitor,
     col,
 )
@@ -674,6 +675,23 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         raise TypeError(
             "StarExpr cannot be evaluated as a regular expression. "
             "It should only be used in Project operations."
+        )
+
+    def visit_unresolved(self, expr: UnresolvedExpr) -> Union[BlockColumn, ScalarType]:
+        """Visit an unresolved expression.
+
+        Args:
+            expr: The unresolved expression.
+
+        Returns:
+            This method does not return; it always raises TypeError.
+
+        Raises:
+            TypeError: UnresolvedExpr cannot be evaluated.
+        """
+        raise TypeError(
+            "UnresolvedExpr cannot be evaluated. "
+            "Resolve it to a concrete expression before evaluation."
         )
 
     def visit_download(self, expr: DownloadExpr) -> Union[BlockColumn, ScalarType]:

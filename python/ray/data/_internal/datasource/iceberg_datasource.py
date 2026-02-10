@@ -25,6 +25,7 @@ from ray.data.expressions import (
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UnresolvedExpr,
 )
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
@@ -174,6 +175,14 @@ class _IcebergExpressionVisitor(
         """Star expressions cannot be converted to Iceberg expressions."""
         raise TypeError(
             "Star expressions cannot be converted to Iceberg filter expressions."
+        )
+
+    def visit_unresolved(
+        self, expr: "UnresolvedExpr"
+    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+        """Unresolved expressions cannot be converted to Iceberg expressions."""
+        raise TypeError(
+            "Unresolved expressions cannot be converted to Iceberg filter expressions."
         )
 
 

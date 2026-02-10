@@ -12,6 +12,7 @@ from ray.data.expressions import (
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UnresolvedExpr,
     _CallableClassUDF,
     _ExprVisitor,
 )
@@ -78,6 +79,10 @@ class _ExprVisitorBase(_ExprVisitor[None]):
         """Visit a download expression (no columns to collect)."""
         pass
 
+    def visit_unresolved(self, expr: UnresolvedExpr) -> None:
+        """Visit an unresolved expression (no columns to collect)."""
+        pass
+
 
 class _ColumnReferenceCollector(_ExprVisitorBase):
     """Visitor that collects all column references from expression trees.
@@ -104,6 +109,10 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
         Returns:
             None (only collects columns as a side effect).
         """
+        self._col_refs[expr.name] = None
+
+    def visit_unresolved(self, expr: UnresolvedExpr) -> None:
+        """Visit an unresolved expression and collect its name."""
         self._col_refs[expr.name] = None
 
     def visit_alias(self, expr: AliasExpr) -> None:
@@ -196,6 +205,11 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
             The original literal expression.
         """
         return expr
+
+    def visit_unresolved(self, expr: UnresolvedExpr) -> Expr:
+        """Visit an unresolved expression and substitute it if possible."""
+        substitution = self._col_ref_substitutions.get(expr.name)
+        return substitution if substitution is not None else expr
 
     def visit_binary(self, expr: BinaryExpr) -> Expr:
         """Visit a binary expression and rewrite its operands.
@@ -413,6 +427,9 @@ class _TreeReprVisitor(_ExprVisitor[str]):
     def visit_star(self, expr: "StarExpr") -> str:
         return self._make_tree_lines("COL(*)", expr=expr)
 
+    def visit_unresolved(self, expr: "UnresolvedExpr") -> str:
+        return self._make_tree_lines(f"UNRESOLVED({expr.name!r})", expr=expr)
+
 
 class _InlineExprReprVisitor(_ExprVisitor[str]):
     """Visitor that generates concise inline string representations of expressions.
@@ -501,6 +518,10 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
     def visit_star(self, expr: "StarExpr") -> str:
         """Visit a star expression and return its inline representation."""
         return "col(*)"
+
+    def visit_unresolved(self, expr: "UnresolvedExpr") -> str:
+        """Visit an unresolved expression and return its inline representation."""
+        return f"unresolved({expr.name!r})"
 
 
 def get_column_references(expr: Expr) -> List[str]:

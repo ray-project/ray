@@ -34,6 +34,7 @@ from ray.data.expressions import (
     BinaryExpr,
     Operation,
     UDFExpr,
+    UnresolvedExpr,
     col,
     download,
     lit,
@@ -303,6 +304,13 @@ class TestToPyArrow:
         with pytest.raises(TypeError, match="Star expressions cannot be converted"):
             star().to_pyarrow()
 
+    def test_unresolved_expression_raises(self):
+        """Test that unresolved expressions raise TypeError."""
+        with pytest.raises(
+            TypeError, match="Unresolved expressions cannot be converted"
+        ):
+            UnresolvedExpr("pending").to_pyarrow()
+
 
 # ──────────────────────────────────────
 # Iceberg Conversion Tests
@@ -537,6 +545,14 @@ class TestIcebergExpressionVisitor:
             TypeError, match="Star expressions cannot be converted to Iceberg"
         ):
             visitor.visit(star())
+
+    def test_unresolved_expression_raises(self):
+        """Test that unresolved expressions raise TypeError."""
+        visitor = _IcebergExpressionVisitor()
+        with pytest.raises(
+            TypeError, match="Unresolved expressions cannot be converted to Iceberg"
+        ):
+            visitor.visit(UnresolvedExpr("pending"))
 
     def test_is_in_requires_literal_list(self):
         """Test that IN/NOT_IN operations require literal lists."""
