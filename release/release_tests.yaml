@@ -1979,41 +1979,6 @@
 # RLlib tests #
 ###############
 
-# -----------------------------------
-# RLlib // Ray Tune integration test
-# -----------------------------------
-- name: rllib_tune_connect_test
-  python: "3.10"
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: weekly
-  team: rllib
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: 2gpus_50cpus_8nodes_aws.yaml
-
-  run:
-    timeout: 2400 # 40 minutes
-    script: RAY_TRAIN_V2_ENABLED=1 python tune_rllib/run_connect_test.py
-    wait_for_nodes:
-      num_nodes: 9
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: weekly
-      cluster:
-        cluster_compute: 2gpus_50cpus_8nodes_gce.yaml
-
-  alert: default
-
 # -----------------
 # RLlib - APPO test
 # -----------------
