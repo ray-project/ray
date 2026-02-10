@@ -30,7 +30,6 @@ class SpillMetricsMonitor:
 
     def __init__(self, poll_interval_s: float = 60.0):
         self._poll_interval_s = poll_interval_s
-        self._stop_event = threading.Event()
         self._spill_rates_gb_s: List[float] = []
         self._lock = threading.Lock()
 
@@ -51,7 +50,8 @@ class SpillMetricsMonitor:
             logger.warning(f"SpillMetricsMonitor: failed initial poll: {e}")
             return
 
-        while not self._stop_event.wait(self._poll_interval_s):
+        while True:
+            time.sleep(self._poll_interval_s)
             try:
                 current_bytes = self._get_spilled_bytes()
                 current_time = time.monotonic()
