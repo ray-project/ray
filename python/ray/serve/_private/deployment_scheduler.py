@@ -758,6 +758,11 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                     - scheduling_request.required_resources
                 )
 
+            # Initialize the node to running replicas if it doesn't exist
+            if target_node and target_node not in node_to_running_replicas:
+                node_to_running_replicas[target_node] = set()
+                node_to_running_replicas[target_node].add(scheduling_request.replica_id)
+
     def _schedule_with_spread_strategy(self):
         """Tries to schedule pending replicas using the SPREAD strategy."""
         for pending_replicas in self._pending_replicas.values():
