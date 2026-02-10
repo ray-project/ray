@@ -1204,7 +1204,7 @@
       post_build_script: build_getenv_preload.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-        - LD_PRELOAD=/opt/ray/getenv_trace_preload.so
+        - LD_PRELOAD=/home/ray/getenv_trace_preload.so
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -3056,11 +3056,11 @@
 # To trace getenv() from all libraries (e.g. debug SIGSEGV in getenv from Python/grpc):
 # 1. Add post_build_script so the image builds the preload .so:
 #    cluster.byod.post_build_script: build_getenv_preload.sh
-# 2. Add or extend runtime_env with LD_PRELOAD (path from that script):
+# 2. Add or extend runtime_env with LD_PRELOAD (path = container home, usually /home/ray):
 #    cluster.byod.runtime_env:
-#      - LD_PRELOAD=/opt/ray/getenv_trace_preload.so
+#      - LD_PRELOAD=/home/ray/getenv_trace_preload.so
 #    If the test already has LD_PRELOAD (e.g. jemalloc), use one line with both paths:
-#      - LD_PRELOAD=/opt/ray/getenv_trace_preload.so:/usr/lib/x86_64-linux-gnu/libjemalloc.so
+#      - LD_PRELOAD=/home/ray/getenv_trace_preload.so:/usr/lib/x86_64-linux-gnu/libjemalloc.so
 
 # - name: scheduling_test_many_5s_tasks_single_node
 #   group: core-scalability-test

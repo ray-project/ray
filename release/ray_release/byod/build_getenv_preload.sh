@@ -1,15 +1,15 @@
 #!/bin/bash
-# Builds getenv_trace_preload.so and installs to /opt/ray/ for use with
+# Builds getenv_trace_preload.so and installs to container home for use with
 # LD_PRELOAD in runtime_env (to trace getenv calls from all libraries).
 # Use with: cluster.byod.post_build_script: build_getenv_preload.sh
-#           cluster.byod.runtime_env: [ "LD_PRELOAD=/opt/ray/getenv_trace_preload.so" ]
+#           cluster.byod.runtime_env: [ "LD_PRELOAD=/home/ray/getenv_trace_preload.so" ]
 # For tests that also use jemalloc: use a single LD_PRELOAD with both paths
-# separated by colon, e.g. LD_PRELOAD=/opt/ray/getenv_trace_preload.so:/usr/lib/x86_64-linux-gnu/libjemalloc.so
+# separated by colon, e.g. LD_PRELOAD=/home/ray/getenv_trace_preload.so:/usr/lib/x86_64-linux-gnu/libjemalloc.so
 
 set -euo pipefail
 
-mkdir -p /opt/ray
-cd /tmp
+INSTALL_DIR="${HOME:-/home/ray}"
+cd "$INSTALL_DIR"
 
 # Embed getenv_preload.c (from src/ray/util/getenv_preload.c)
 cat > getenv_preload.c << 'GETENV_EOF'
@@ -78,6 +78,5 @@ GETENV_EOF
 
 # Linux only (release BYOD images are Linux)
 gcc -shared -fPIC -o getenv_trace_preload.so getenv_preload.c -ldl -Wall
-cp getenv_trace_preload.so /opt/ray/getenv_trace_preload.so
-rm -f getenv_preload.c getenv_trace_preload.so
-echo "Installed /opt/ray/getenv_trace_preload.so"
+rm -f getenv_preload.c
+echo "Installed $INSTALL_DIR/getenv_trace_preload.so"
