@@ -69,13 +69,15 @@ AuthenticationTokenLoader::GetJWTTokenExpiration(const std::string &token) {
     auto json = nlohmann::json::parse(payload);
     if (json.contains("exp") && json["exp"].is_number()) {
       int64_t exp = json["exp"].get<int64_t>();
-      return std::chrono::system_clock::from_time_t(exp);
+      return std::chrono::system_clock::from_time_t(exp) -
+             std::chrono::seconds(kRaySATokenExpirationBufferSeconds);
     }
   } catch (...) {
     return std::nullopt;
   }
 
-  return std::nullopt;
+  return std::chrono::system_clock::now() +
+         std::chrono::seconds(kRaySATokenDefaultTTLSeconds);
 }
 
 AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
@@ -91,7 +93,7 @@ std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
   // will expire and auto rotate new service account tokens every hour by default.
   // Use 5 minutes as a default as users can configure the expiration time.
   if (IsK8sTokenAuthEnabled()) {
-    if (cached_token_ &&
+    if (cached_token_ && cached_token_expiration_time_ &&
         std::chrono::system_clock::now() >= cached_token_expiration_time_) {
       cached_token_ = nullptr;
     }
@@ -121,15 +123,7 @@ std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
   if (has_token) {
     cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
     if (IsK8sTokenAuthEnabled()) {
-      auto exp = GetJWTTokenExpiration(cached_token_->GetRawValue());
-      if (exp) {
-        cached_token_expiration_time_ =
-            *exp - std::chrono::seconds(kRaySATokenExpirationBufferSeconds);
-      } else {
-        cached_token_expiration_time_ =
-            std::chrono::system_clock::now() +
-            std::chrono::seconds(kRaySATokenDefaultTTLSeconds);
-      }
+      cached_token_expiration_time_ = GetJWTTokenExpiration(cached_token_->GetRawValue());
     }
   }
   return cached_token_;
@@ -143,7 +137,7 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
   // will expire and auto rotate new service account tokens every hour by default.
   // Use 5 minutes as a default as users can configure the expiration time.
   if (IsK8sTokenAuthEnabled()) {
-    if (cached_token_ &&
+    if (cached_token_ && cached_token_expiration_time_ &&
         std::chrono::system_clock::now() >= cached_token_expiration_time_) {
       cached_token_ = nullptr;
     }
@@ -178,14 +172,7 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
   // Cache and return success
   cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
   if (IsK8sTokenAuthEnabled()) {
-    auto exp = GetJWTTokenExpiration(cached_token_->GetRawValue());
-    if (exp) {
-      cached_token_expiration_time_ =
-          *exp - std::chrono::seconds(kRaySATokenExpirationBufferSeconds);
-    } else {
-      cached_token_expiration_time_ = std::chrono::system_clock::now() +
-                                      std::chrono::seconds(kRaySATokenDefaultTTLSeconds);
-    }
+    cached_token_expiration_time_ = GetJWTTokenExpiration(cached_token_->GetRawValue());
   }
   result.token = *cached_token_;  // Copy back for return
   return result;

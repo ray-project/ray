@@ -93,7 +93,7 @@ class AuthenticationTokenLoader {
 
   absl::Mutex token_mutex_;
   std::shared_ptr<const AuthenticationToken> cached_token_;
-  std::chrono::system_clock::time_point cached_token_expiration_time_;
+  std::optional<std::chrono::system_clock::time_point> cached_token_expiration_time_;
 };
 
 }  // namespace rpc
