@@ -21,21 +21,22 @@ The following diagram shows the high-level architecture and data flow:
 
 ```mermaid
 flowchart TD
-    A["User Application<br/>ray.put() / task return"] --> B["CoreWorker<br/>Creates object in Plasma Store"]
-    B --> C["Plasma Store<br/>(store thread)"]
-    B --> D["Raylet Main Thread<br/>(main_service)"]
+    A["User Application<br/>ray.put() / task return"] --> B["CoreWorker"]
+
+    B -- "1. Create(object_id, size)" --> C["PlasmaStore"]
+    B -- "2. PinObjectIDs RPC" --> NM["NodeManager"]
 
     subgraph PlasmaThread["Plasma Store Thread"]
-        C --> E["CreateRequestQueue"]
+        C --> E["CreateRequestQueue<br/>ProcessRequests()"]
     end
 
     subgraph RayletThread["Raylet Main Thread"]
-        D --> F["LocalObjectManager"]
+        NM -- "PinObjectsAndWaitForFree()" --> F["LocalObjectManager"]
         F --> G["WorkerPool<br/>(IO Worker Pool)"]
     end
 
-    E -- "spill_objects_callback_()" --> F
-    F -. "IsSpillingInProgress()<br/>(std::atomic)" .-> E
+    E -- "OOM: spill_objects_callback_()<br/>main_service.post()" --> F
+    F -. "IsSpillingInProgress()<br/>(std::atomic, cross-thread)" .-> E
 
     G -- "gRPC" --> H["Python IO Worker<br/>external_storage.py"]
     H --> I["External Storage<br/>(Filesystem / S3)"]
