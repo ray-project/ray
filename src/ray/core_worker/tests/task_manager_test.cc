@@ -514,11 +514,11 @@ TEST_F(TaskManagerTest, TestResubmitCanceledTask) {
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
 
   // Check that resubmitting a canceled task does not crash and returns
-  // FAILED_TASK_CANCELED.
+  // OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED.
   manager_.MarkTaskCanceled(spec.TaskId());
   std::vector<ObjectID> task_deps;
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &task_deps),
-            rpc::ErrorType::TASK_CANCELLED);
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED);
 
   // Final cleanup.
   reference_counter_->RemoveLocalReference(return_id, nullptr);
@@ -2790,7 +2790,7 @@ TEST_F(TaskManagerLineageTest, RecoverIntermediateObjectInStreamingGenerator) {
       spec2.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec2.TaskId()));
   ASSERT_EQ(manager_.ResubmitTask(spec2.TaskId(), &task_deps),
-            rpc::ErrorType::TASK_CANCELLED);
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED);
   ASSERT_TRUE(task_deps.empty());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec2.TaskId()));
 

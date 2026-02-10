@@ -5,6 +5,7 @@ import copy
 import dataclasses
 import logging
 import math
+import os
 import time
 import uuid
 from collections import Counter
@@ -26,7 +27,10 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
+from ray.llm._internal.batch.stages.common import (
+    maybe_convert_ndarray_to_list,
+    truncate_str,
+)
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
     STREAMING_LOAD_FORMATS,
@@ -62,7 +66,8 @@ class vLLMEngineRequest(BaseModel):
     # The index of the request in the batch.
     idx_in_batch: int
     # The full prompt string (with chat template applied if any).
-    prompt: str
+    # Either prompt or prompt_token_ids must be provided.
+    prompt: Optional[str] = None
     # DEPRECATED: The images inputs for the multimodal model. Use Any to avoid importing PIL.
     images: List[Any]
     # The multimodal data for the multimodal model.
@@ -78,6 +83,12 @@ class vLLMEngineRequest(BaseModel):
     params: Any
     # LoRA request.
     lora_request: Optional[Any] = None
+
+    @root_validator(pre=True)
+    def validate_prompt_or_prompt_token_ids(cls, values):
+        if not values.get("prompt") and not values.get("prompt_token_ids"):
+            raise ValueError("Either 'prompt' or 'prompt_token_ids' must be provided.")
+        return values
 
     class Config:
         validate_assignment = True
@@ -341,7 +352,7 @@ class vLLMEngineWrapper:
         Returns:
             A single vLLMEngineRequest.
         """
-        prompt = row.pop("prompt")
+        prompt = row.pop("prompt", None)
 
         if "tokenized_prompt" in row:
             tokenized_prompt = maybe_convert_ndarray_to_list(
@@ -522,7 +533,9 @@ class vLLMEngineWrapper:
         async for request_output in stream:
             if request_output.finished:
                 # Bypass the original full prompt.
-                request_output.prompt = request.prompt
+                request_output.prompt = (
+                    request.prompt if request.prompt is not None else ""
+                )
                 return request_output
 
         raise RuntimeError(
@@ -683,12 +696,30 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 "batch_uuid": batch_uuid.hex,
                 "time_taken_llm": time_taken_llm,
                 "params": str(request.params),
-                "__inference_error__": None,
+                "__inference_error__": "",
             }
-        except _VLLM_FATAL_ERRORS:
-            # Fatal engine errors (e.g., EngineDeadError) must always propagate.
-            # The engine is dead and all subsequent requests would fail.
-            raise
+        except _VLLM_FATAL_ERRORS as e:
+            # Fatal engine errors (e.g., EngineDeadError) indicate the vLLM
+            # engine subprocess is dead, but the Ray actor is still alive.
+            #
+            # Simply re-raising would cause task retries to go to the SAME
+            # actor (actor methods are bound to specific instances), creating
+            # an infinite retry loop on the broken actor.
+            #
+            # The fix: exit the actor so Ray can restart it with a fresh
+            # engine. Ray Data's max_restarts=-1 (default) will create a
+            # replacement actor, and task retries will go to healthy actors.
+            #
+            # NOTE: We use os._exit(1) instead of ray.actor.exit_actor() because:
+            # - os._exit(1) -> SYSTEM_ERROR -> raises RaySystemError -> task IS retried
+            # - ray.actor.exit_actor() -> INTENDED_USER_EXIT -> raises ActorDiedError
+            #   -> task is NOT retried (ActorDiedError is not a RaySystemError)
+            #
+            # See: https://github.com/ray-project/ray/issues/59522
+            logger.error(
+                f"[vLLM] Fatal engine error, exiting actor to trigger restart: {e}"
+            )
+            os._exit(1)
         except Exception as e:
             if not self.should_continue_on_error:
                 raise
@@ -699,15 +730,23 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 batch_uuid.hex,
                 error_msg,
             )
-            # Include snippet of failed prompt
-            prompt = row.get("prompt", "")
-            if len(prompt) > _MAX_PROMPT_LENGTH_IN_ERROR:
-                prompt = prompt[:_MAX_PROMPT_LENGTH_IN_ERROR] + "...[truncated]"
+            # Include snippet of failed prompt for debuggability
+            prompt = truncate_str(row.get("prompt", ""), _MAX_PROMPT_LENGTH_IN_ERROR)
+
+            # Construct default vLLMOutputData for schema consistency with success rows
+            default_output = vLLMOutputData(
+                prompt=prompt,
+                prompt_token_ids=None,
+                num_input_tokens=0,
+            )
             return {
+                **default_output.model_dump(),
+                "request_id": -1,
                 self.IDX_IN_BATCH_COLUMN: idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
+                "time_taken_llm": -1,
+                "params": "",
                 "__inference_error__": error_msg,
-                "prompt": prompt,
             }
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
@@ -831,8 +870,17 @@ class vLLMEngineStage(StatefulStage):
         pp_size = engine_kwargs.get("pipeline_parallel_size", 1)
         num_bundles_per_replica = tp_size * pp_size
 
-        # Use the MP backend by default.
-        engine_kwargs.setdefault("distributed_executor_backend", "mp")
+        # Select distributed executor backend:
+        # - "uni": Single-process executor for single-GPU inference. Avoids unnecessary
+        #   process spawning and IPC overhead which is noticeable for small models
+        #   or short decode lengths.
+        # - "ray": Ray-based executor for multi-GPU (TP/PP > 1) with better resource
+        #   cleanup, unification with multi-node pipeline parallelism, and advanced control
+        #   over the placement group.
+        engine_kwargs.setdefault(
+            "distributed_executor_backend",
+            "uni" if num_bundles_per_replica == 1 else "ray",
+        )
         executor_backend = engine_kwargs.get("distributed_executor_backend")
 
         # When Ray is used in the vLLM engine, we set num_devices to 0 so that
@@ -884,7 +932,7 @@ class vLLMEngineStage(StatefulStage):
 
     def get_required_input_keys(self) -> Dict[str, str]:
         """The required input keys of the stage and their descriptions."""
-        ret = {"prompt": "The text prompt (str)."}
+        ret = {}
         if self._get_task_type() == vLLMTaskType.GENERATE:
             ret["sampling_params"] = (
                 "The sampling parameters. See "
@@ -896,7 +944,8 @@ class vLLMEngineStage(StatefulStage):
     def get_optional_input_keys(self) -> Dict[str, str]:
         """The optional input keys of the stage and their descriptions."""
         ret = {
-            "tokenized_prompt": "The tokenized prompt. If provided, the prompt will not be tokenized by the vLLM engine.",
+            "prompt": "The text prompt (str). Required if tokenized_prompt is not provided. Either prompt or tokenized_prompt must be provided.",
+            "tokenized_prompt": "The tokenized prompt. Required if prompt is not provided. Either prompt or tokenized_prompt must be provided.",
             "image": "The image(s) for multimodal input. Accepts a single image or list of images.",
             "model": "The model to use for this request. If the model is different from the "
             "model set in the stage, then this is a LoRA request.",

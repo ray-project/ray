@@ -31,8 +31,8 @@
 #include "ray/common/asio/fake_periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_config.h"
-#include "ray/core_worker/actor_creator.h"
-#include "ray/core_worker/actor_manager.h"
+#include "ray/core_worker/actor_management/actor_creator.h"
+#include "ray/core_worker/actor_management/actor_manager.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
 #include "ray/core_worker/future_resolver.h"
@@ -85,6 +85,7 @@ class CoreWorkerTest : public ::testing::Test {
            std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
            std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
            bool *is_retryable_error,
+           std::string *actor_repr_name,
            std::string *application_error,
            const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
            const std::string name_of_concurrency_group_to_execute,
@@ -353,7 +354,13 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusIdempotency) {
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   memory_store_->Put(*ray_object, object_id, reference_counter_->HasReference(object_id));
 
@@ -403,7 +410,13 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectPutAfterFirstRequest) {
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
@@ -458,7 +471,13 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectFreedBetweenRequests) {
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   memory_store_->Put(*ray_object, object_id, reference_counter_->HasReference(object_id));
 
@@ -508,7 +527,13 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectOutOfScope) {
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   memory_store_->Put(*ray_object, object_id, reference_counter_->HasReference(object_id));
 
@@ -568,13 +593,14 @@ ObjectID CreateInlineObjectInMemoryStoreAndRefCounter(
                                 /*metadata=*/nullptr,
                                 std::vector<rpc::ObjectReference>(),
                                 /*copy_data=*/true);
-  reference_counter.AddOwnedObject(inlined_dependency_id,
-                                   /*contained_ids=*/{},
-                                   rpc_address,
-                                   "call_site",
-                                   /*object_size=*/100,
-                                   /*is_reconstructable=*/false,
-                                   /*add_local_ref=*/true);
+  reference_counter.AddOwnedObject(
+      inlined_dependency_id,
+      /*contained_ids=*/{},
+      rpc_address,
+      "call_site",
+      /*object_size=*/100,
+      /*lineage_eligibility=*/LineageReconstructionEligibility::INELIGIBLE_PUT,
+      /*add_local_ref=*/true);
   memory_store.Put(memory_store_object,
                    inlined_dependency_id,
                    reference_counter.HasReference(inlined_dependency_id));
@@ -704,7 +730,13 @@ TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest, HandlePubsubCommandBatch
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   rpc::PubsubCommandBatchRequest command_batch_request;
   command_batch_request.set_subscriber_id(subscriber_id.Binary());
@@ -787,6 +819,93 @@ INSTANTIATE_TEST_SUITE_P(WorkerObjectEvictionChannel,
                          CoreWorkerPubsubWorkerObjectEvictionChannelTest,
                          ::testing::Values(true, false));
 
+TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidChannelType) {
+  // Test that HandlePubsubCommandBatch returns InvalidArgument for an invalid channel
+  // type. The publisher was created with only:
+  // - WORKER_OBJECT_EVICTION
+  // - WORKER_REF_REMOVED_CHANNEL
+  // - WORKER_OBJECT_LOCATIONS_CHANNEL
+  // Using a channel type that was not registered should return InvalidArgument.
+  auto subscriber_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+
+  rpc::PubsubCommandBatchRequest command_batch_request;
+  command_batch_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_batch_request.add_commands();
+  // Use GCS_ACTOR_CHANNEL which is not registered with the core worker's publisher.
+  command->set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
+  command->set_key_id(object_id.Binary());
+  command->mutable_subscribe_message();
+
+  rpc::PubsubCommandBatchReply command_reply;
+  bool callback_invoked = false;
+  Status received_status;
+
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply,
+      [&callback_invoked, &received_status](
+          const Status &status, std::function<void()>, std::function<void()>) {
+        callback_invoked = true;
+        received_status = status;
+      });
+
+  ASSERT_TRUE(callback_invoked);
+  ASSERT_FALSE(received_status.ok());
+  ASSERT_TRUE(received_status.IsInvalidArgument());
+  EXPECT_TRUE(received_status.message().find("Invalid channel type") !=
+              std::string::npos);
+}
+
+TEST_F(CoreWorkerTest,
+       HandlePubsubCommandBatchMissingSubscribeOrUnsubscribeReturnsInvalidArgument) {
+  auto subscriber_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+
+  rpc::PubsubCommandBatchRequest command_batch_request;
+  command_batch_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_batch_request.add_commands();
+  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_key_id(object_id.Binary());
+
+  rpc::PubsubCommandBatchReply command_reply;
+  Status received_status;
+
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply,
+      [&received_status](const Status &status,
+                         std::function<void()>,
+                         std::function<void()>) { received_status = status; });
+
+  ASSERT_TRUE(received_status.IsInvalidArgument());
+}
+
+TEST_F(CoreWorkerTest,
+       HandlePubsubCommandBatchInvalidSubscribeMessageTypeReturnsInvalidArgument) {
+  auto subscriber_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+
+  rpc::PubsubCommandBatchRequest command_batch_request;
+  command_batch_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_batch_request.add_commands();
+  command->set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+  command->set_key_id(object_id.Binary());
+  command->mutable_subscribe_message();
+
+  rpc::PubsubCommandBatchReply command_reply;
+  Status received_status;
+
+  core_worker_->HandlePubsubCommandBatch(
+      command_batch_request,
+      &command_reply,
+      [&received_status](const Status &status,
+                         std::function<void()>,
+                         std::function<void()>) { received_status = status; });
+
+  ASSERT_TRUE(received_status.IsInvalidArgument());
+}
+
 class CoreWorkerPubsubWorkerRefRemovedChannelTest
     : public CoreWorkerTest,
       public ::testing::WithParamInterface<bool> {};
@@ -807,7 +926,13 @@ TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchRetr
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   rpc::PubsubCommandBatchRequest command_batch_request;
   command_batch_request.set_subscriber_id(subscriber_id.Binary());
@@ -895,8 +1020,13 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(
-      object_id, {}, owner_address, "", object_size, false, true);
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     object_size,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
   // NOTE: this triggers a publish to no subscribers so its not stored in any mailbox but
   // bumps the sequence id by 1
   reference_counter_->AddObjectLocation(object_id, node_id);
@@ -997,8 +1127,13 @@ TEST_P(HandleWaitForActorRefDeletedRetriesTest, ActorRefDeletedForRegisteredActo
 
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
-  reference_counter_->AddOwnedObject(
-      actor_creation_return_id, {}, owner_address, "test", 0, false, true);
+  reference_counter_->AddOwnedObject(actor_creation_return_id,
+                                     {},
+                                     owner_address,
+                                     "test",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   rpc::WaitForActorRefDeletedRequest request;
   request.set_actor_id(actor_id.Binary());
@@ -1069,8 +1204,13 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
   rpc::Address owner_address;
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
 
-  reference_counter_->AddOwnedObject(
-      actor_creation_return_id, {}, owner_address, "test", 0, false, true);
+  reference_counter_->AddOwnedObject(actor_creation_return_id,
+                                     {},
+                                     owner_address,
+                                     "test",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
 
   rpc::TaskSpec task_spec_msg;
   task_spec_msg.set_type(rpc::TaskType::ACTOR_CREATION_TASK);

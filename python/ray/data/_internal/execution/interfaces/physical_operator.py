@@ -75,20 +75,23 @@ class OpTask(ABC):
         ...
 
     def _cancel(self, force: bool):
+
+        is_actor_task = not self.get_task_id().actor_id().is_nil()
+
+        ray.cancel(
+            self.get_waitable(),
+            recursive=True,
+            # NOTE: Actor tasks can't be force-cancelled
+            force=force and not is_actor_task,
+        )
+
+    def get_task_id(self) -> ray.TaskID:
         object_ref = self.get_waitable()
 
         # Get generator's `ObjectRef`
         if isinstance(object_ref, ObjectRefGenerator):
             object_ref = object_ref._generator_ref
-
-        is_actor_task = not object_ref.task_id().actor_id().is_nil()
-
-        ray.cancel(
-            object_ref,
-            recursive=True,
-            # NOTE: Actor tasks can't be force-cancelled
-            force=force and not is_actor_task,
-        )
+        return object_ref.task_id()
 
 
 class DataOpTask(OpTask):
@@ -421,7 +424,6 @@ class PhysicalOperator(Operator):
         #       - All input blocks have been ingested
         #       - Internal queue is empty
         #       - There are no active or pending tasks
-
         return self._is_execution_marked_finished or (
             self._inputs_complete
             and self.num_active_tasks() == 0
@@ -442,13 +444,14 @@ class PhysicalOperator(Operator):
             internal_output_queue_num_blocks = self.internal_output_queue_num_blocks()
 
         # NOTE: We check for (internal_output_queue_size == 0) and
-        # (not self.has_next()) because _OrderedOutputQueue can
+        # (not self.has_next()) because ReorderingBundleQueue can
         # return False for self.has_next(), but have a non-empty queue size.
         # Draining the internal output queue is important to free object refs.
         return (
             self.has_execution_finished()
-            and not self.has_next()
             and internal_output_queue_num_blocks == 0
+            # TODO following check is redundant; remove
+            and not self.has_next()
         )
 
     def get_stats(self) -> StatsDict:
@@ -550,7 +553,7 @@ class PhysicalOperator(Operator):
         """
         self._started = True
 
-    def should_add_input(self) -> bool:
+    def can_add_input(self) -> bool:
         """Return whether it is desirable to add input to this operator right now.
 
         Operators can customize the implementation of this method to apply additional

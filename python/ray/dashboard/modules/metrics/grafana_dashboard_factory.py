@@ -9,15 +9,13 @@ import ray
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     Panel,
+    PanelTemplate,
 )
 from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
     data_dashboard_config,
 )
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
     default_dashboard_config,
-)
-from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
-    serve_dashboard_config,
 )
 from ray.dashboard.modules.metrics.dashboards.serve_deployment_dashboard_panels import (
     serve_deployment_dashboard_config,
@@ -28,11 +26,13 @@ from ray.dashboard.modules.metrics.dashboards.serve_llm_dashboard_panels import 
 from ray.dashboard.modules.metrics.dashboards.train_dashboard_panels import (
     train_dashboard_config,
 )
+from ray.dashboard.modules.metrics.default_impl import get_serve_dashboard_config
 
 GRAFANA_DASHBOARD_UID_OVERRIDE_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_DASHBOARD_UID"
 GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
     "RAY_GRAFANA_{name}_DASHBOARD_GLOBAL_FILTERS"
 )
+GRAFANA_DASHBOARD_LOG_LINK_URL_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_LOG_LINK_URL"
 
 # Grafana dashboard layout constants
 # Dashboard uses a 24-column grid with 2-column panels
@@ -45,13 +45,13 @@ ROW_HEIGHT = 1  # Height of row container
 
 def _read_configs_for_dashboard(
     dashboard_config: DashboardConfig,
-) -> Tuple[str, List[str]]:
+) -> Tuple[str, List[str], str]:
     """
-    Reads environment variable configs for overriding uid or global_filters for a given
-    dashboard.
+    Reads environment variable configs for overriding uid, global_filters,
+    and the log link URL for a given dashboard.
 
     Returns:
-      Tuple with format uid, global_filters
+      Tuple with format uid, global_filters, log_link_url
     """
     uid = (
         os.environ.get(
@@ -74,7 +74,16 @@ def _read_configs_for_dashboard(
     else:
         global_filters = global_filters_str.split(",")
 
-    return uid, global_filters
+    log_link_url = (
+        os.environ.get(
+            GRAFANA_DASHBOARD_LOG_LINK_URL_ENV_VAR_TEMPLATE.format(
+                name=dashboard_config.name
+            )
+        )
+        or ""
+    )
+
+    return uid, global_filters, log_link_url
 
 
 def generate_default_grafana_dashboard() -> Tuple[str, str]:
@@ -96,7 +105,7 @@ def generate_serve_grafana_dashboard() -> Tuple[str, str]:
     Returns:
       Tuple with format content, uid
     """
-    return _generate_grafana_dashboard(serve_dashboard_config)
+    return _generate_grafana_dashboard(get_serve_dashboard_config())
 
 
 def generate_serve_deployment_grafana_dashboard() -> Tuple[str, str]:
@@ -148,8 +157,8 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
     Returns:
       Tuple with format dashboard_content, uid
     """
-    uid, global_filters = _read_configs_for_dashboard(dashboard_config)
-    panels = _generate_grafana_panels(dashboard_config, global_filters)
+    uid, global_filters, log_link_url = _read_configs_for_dashboard(dashboard_config)
+    panels = _generate_grafana_panels(dashboard_config, global_filters, log_link_url)
     base_file_name = dashboard_config.base_json_file_name
 
     base_json = json.load(
@@ -185,6 +194,7 @@ def _generate_panel_template(
     panel_global_filters: List[str],
     panel_index: int,
     base_y_position: int,
+    log_link_url: str,
 ) -> dict:
     """
     Helper method to generate a panel template with common configuration.
@@ -194,6 +204,7 @@ def _generate_panel_template(
         panel_global_filters: List of global filters to apply
         panel_index: The index of the panel within its row (0-based)
         base_y_position: The base y-coordinate for the row in the dashboard grid
+        log_link_url: The URL to the log link for the panel
 
     Returns:
         dict: The configured panel template
@@ -224,17 +235,127 @@ def _generate_panel_template(
             "y": base_y_position + (row_number * PANEL_HEIGHT),
         }
 
-    template["yaxes"][0]["format"] = panel.unit
-    template["fill"] = panel.fill
-    template["stack"] = panel.stack
-    template["linewidth"] = panel.linewidth
+    # Set unit format for legacy graph-style panels (GRAPH, HEATMAP, STAT, GAUGE, PIE_CHART, BAR_CHART)
+    if panel.template in (
+        PanelTemplate.GRAPH,
+        PanelTemplate.HEATMAP,
+        PanelTemplate.STAT,
+        PanelTemplate.GAUGE,
+        PanelTemplate.PIE_CHART,
+        PanelTemplate.BAR_CHART,
+    ):
+        template["yaxes"][0]["format"] = panel.unit
+
+    # Set fieldConfig unit (for newer panel types with fieldConfig.defaults)
+    if panel.template in (
+        PanelTemplate.STAT,
+        PanelTemplate.GAUGE,
+        PanelTemplate.HEATMAP,
+        PanelTemplate.PIE_CHART,
+        PanelTemplate.BAR_CHART,
+        PanelTemplate.TABLE,
+        PanelTemplate.GRAPH,
+    ):
+        template["fieldConfig"]["defaults"]["unit"] = panel.unit
+
+    # Set fill, stack, linewidth, nullPointMode (only for GRAPH panels)
+    if panel.template == PanelTemplate.GRAPH:
+        template["fill"] = panel.fill
+        template["stack"] = panel.stack
+        template["linewidth"] = panel.linewidth
+        if panel.stack is True:
+            template["nullPointMode"] = "connected"
 
     if panel.hideXAxis:
         template.setdefault("xaxis", {})["show"] = False
 
-    # Handle stacking visualization
-    if panel.stack is True:
-        template["nullPointMode"] = "connected"
+    # Handle optional panel customization fields
+
+    # Thresholds (for panels with fieldConfig.defaults.thresholds)
+    if panel.thresholds is not None:
+        if panel.template in (PanelTemplate.STAT, PanelTemplate.GAUGE):
+            template["fieldConfig"]["defaults"]["thresholds"][
+                "steps"
+            ] = panel.thresholds
+
+    # Value mappings (for panels with fieldConfig.defaults.mappings)
+    if panel.value_mappings is not None:
+        if panel.template in (
+            PanelTemplate.STAT,
+            PanelTemplate.GAUGE,
+            PanelTemplate.TABLE,
+        ):
+            template["fieldConfig"]["defaults"]["mappings"] = panel.value_mappings
+
+    # Color mode (for STAT panels with options.colorMode)
+    if panel.color_mode is not None:
+        if panel.template == PanelTemplate.STAT:
+            template["options"]["colorMode"] = panel.color_mode
+
+    # Legend mode
+    if panel.legend_mode is not None:
+        if panel.template in (PanelTemplate.GRAPH, PanelTemplate.BAR_CHART):
+            # For graph panels (legacy format with top-level legend object)
+            template["legend"]["show"] = panel.legend_mode != "hidden"
+            template["legend"]["alignAsTable"] = panel.legend_mode == "table"
+        elif panel.template == PanelTemplate.PIE_CHART:
+            # For PIE_CHART (options.legend.displayMode)
+            template["options"]["legend"]["displayMode"] = panel.legend_mode
+
+    # Min/max values (for panels with fieldConfig.defaults)
+    if panel.min_val is not None or panel.max_val is not None:
+        if panel.template in (
+            PanelTemplate.STAT,
+            PanelTemplate.GAUGE,
+            PanelTemplate.HEATMAP,
+            PanelTemplate.PIE_CHART,
+            PanelTemplate.BAR_CHART,
+            PanelTemplate.TABLE,
+            PanelTemplate.GRAPH,
+        ):
+            if panel.min_val is not None:
+                template["fieldConfig"]["defaults"]["min"] = panel.min_val
+            if panel.max_val is not None:
+                template["fieldConfig"]["defaults"]["max"] = panel.max_val
+
+    # Reduce calculation (for panels with options.reduceOptions)
+    if panel.reduce_calc is not None:
+        if panel.template in (
+            PanelTemplate.STAT,
+            PanelTemplate.GAUGE,
+            PanelTemplate.PIE_CHART,
+        ):
+            template["options"]["reduceOptions"]["calcs"] = [panel.reduce_calc]
+
+    # Handle heatmap-specific options
+    if panel.heatmap_color_scheme is not None:
+        if panel.template == PanelTemplate.HEATMAP:
+            template["options"]["color"]["scheme"] = panel.heatmap_color_scheme
+
+    if panel.heatmap_color_reverse is not None:
+        if panel.template == PanelTemplate.HEATMAP:
+            template["options"]["color"]["reverse"] = panel.heatmap_color_reverse
+
+    if panel.heatmap_yaxis_label is not None:
+        if panel.template in (
+            PanelTemplate.GRAPH,
+            PanelTemplate.HEATMAP,
+            PanelTemplate.STAT,
+            PanelTemplate.GAUGE,
+            PanelTemplate.PIE_CHART,
+            PanelTemplate.BAR_CHART,
+        ):
+            template["yaxes"][0]["label"] = panel.heatmap_yaxis_label
+
+    # Add log link if URL is provided via environment variable.
+    if log_link_url:
+        template["links"] = [
+            {
+                "targetBlank": True,
+                "title": "View Logs",
+                "url": log_link_url,
+            }
+        ]
 
     return template
 
@@ -276,7 +397,7 @@ def _calculate_panel_heights(num_panels: int) -> int:
 
 
 def _generate_grafana_panels(
-    config: DashboardConfig, global_filters: List[str]
+    config: DashboardConfig, global_filters: List[str], log_link_url: str
 ) -> List[dict]:
     """
     Generates Grafana panel configurations for a dashboard.
@@ -291,6 +412,8 @@ def _generate_grafana_panels(
     Args:
         config: Dashboard configuration containing panels and rows
         global_filters: List of filters to apply to all panels
+        log_link_url: Optional URL for panel log links. When set, each panel
+            gets a "View Logs" link pointing to this URL.
 
     Returns:
         List of Grafana panel configurations for the dashboard
@@ -302,7 +425,7 @@ def _generate_grafana_panels(
     # Add top-level panels in 2-column grid
     for panel_index, panel in enumerate(config.panels):
         panel_template = _generate_panel_template(
-            panel, panel_global_filters, panel_index, current_y_position
+            panel, panel_global_filters, panel_index, current_y_position, log_link_url
         )
         panels.append(panel_template)
 
@@ -322,7 +445,11 @@ def _generate_grafana_panels(
         # Add panels within row using 2-column grid
         for panel_index, panel in enumerate(row.panels):
             panel_template = _generate_panel_template(
-                panel, panel_global_filters, panel_index, current_y_position
+                panel,
+                panel_global_filters,
+                panel_index,
+                current_y_position,
+                log_link_url,
             )
 
             # Add panel to row if collapsed, otherwise to main dashboard

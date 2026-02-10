@@ -28,13 +28,11 @@ namespace gcs {
 GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
                                        ClusterResourceManager &cluster_resource_manager,
                                        GcsNodeManager &gcs_node_manager,
-                                       NodeID local_node_id,
-                                       raylet::ClusterLeaseManager *cluster_lease_manager)
+                                       NodeID local_node_id)
     : io_context_(io_context),
       cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
-      local_node_id_(std::move(local_node_id)),
-      cluster_lease_manager_(cluster_lease_manager) {}
+      local_node_id_(std::move(local_node_id)) {}
 
 void GcsResourceManager::ConsumeSyncMessage(
     std::shared_ptr<const rpc::syncer::RaySyncMessage> message) {
@@ -92,26 +90,11 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     rpc::AvailableResources resource;
     resource.set_node_id(node_resources_entry.first.Binary());
     const auto &node_resources = node_resources_entry.second.GetLocalView();
-    const auto node_id = NodeID::FromBinary(node_resources_entry.first.Binary());
-    bool using_resource_reports = RayConfig::instance().gcs_actor_scheduling_enabled() &&
-                                  node_resource_usages_.contains(node_id);
     for (const auto &resource_id : node_resources.available.ExplicitResourceIds()) {
       const auto &resource_name = resource_id.Binary();
-      // Because gcs scheduler does not directly update the available resources of
-      // `cluster_resource_manager_`, use the record from resource reports (stored in
-      // `node_resource_usages_`) instead.
-      if (using_resource_reports) {
-        auto resource_iter =
-            node_resource_usages_[node_id].resources_available().find(resource_name);
-        if (resource_iter != node_resource_usages_[node_id].resources_available().end()) {
-          resource.mutable_resources_available()->insert(
-              {resource_name, resource_iter->second});
-        }
-      } else {
-        const auto &resource_value = node_resources.available.Get(resource_id);
-        resource.mutable_resources_available()->insert(
-            {resource_name, resource_value.Double()});
-      }
+      const auto &resource_value = node_resources.available.Get(resource_id);
+      resource.mutable_resources_available()->insert(
+          {resource_name, resource_value.Double()});
     }
     reply->add_resources_list()->CopyFrom(resource);
   }
@@ -151,17 +134,12 @@ void GcsResourceManager::UpdateFromResourceView(
   if (node_id == local_node_id_) {
     return;
   }
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    // TODO(jjyao) This is currently an no-op and is broken.
-    // UpdateNodeNormalTaskResources(node_id, data);
-  } else {
-    // We will only update the node's resources if it's from resource view reports.
-    if (!cluster_resource_manager_.UpdateNode(scheduling::NodeID(node_id.Binary()),
-                                              resource_view_sync_message)) {
-      RAY_LOG(INFO)
-          << "[UpdateFromResourceView]: received resource usage from unknown node id "
-          << node_id;
-    }
+  // We will only update the node's resources if it's from resource view reports.
+  if (!cluster_resource_manager_.UpdateNode(scheduling::NodeID(node_id.Binary()),
+                                            resource_view_sync_message)) {
+    RAY_LOG(INFO)
+        << "[UpdateFromResourceView]: received resource usage from unknown node id "
+        << node_id;
   }
   UpdateNodeResourceUsage(node_id, resource_view_sync_message);
 }
@@ -194,14 +172,6 @@ void GcsResourceManager::HandleGetAllResourceUsage(
       // Aggregate the load reported by each raylet.
       FillAggregateLoad(usage.second, &aggregate_load);
       batch.add_batch()->CopyFrom(usage.second);
-    }
-
-    if (cluster_lease_manager_ != nullptr) {
-      // Fill the gcs info when gcs actor scheduler is enabled.
-      rpc::ResourcesData gcs_resources_data;
-      cluster_lease_manager_->FillPendingActorInfo(gcs_resources_data);
-      // Aggregate the load (pending actor info) of gcs.
-      FillAggregateLoad(gcs_resources_data, &aggregate_load);
     }
 
     for (const auto &demand : aggregate_load) {
@@ -293,6 +263,13 @@ void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
   node_resource_usages_.erase(node_id);
   cluster_resource_manager_.RemoveNode(scheduling::NodeID(node_id.Binary()));
   num_alive_nodes_--;
+}
+
+void GcsResourceManager::SetNodeDraining(const NodeID &node_id,
+                                         bool is_draining,
+                                         int64_t draining_deadline_timestamp_ms) {
+  cluster_resource_manager_.SetNodeDraining(
+      scheduling::NodeID(node_id.Binary()), is_draining, draining_deadline_timestamp_ms);
 }
 
 void GcsResourceManager::UpdatePlacementGroupLoad(

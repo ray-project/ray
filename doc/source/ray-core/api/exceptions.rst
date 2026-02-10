@@ -30,8 +30,6 @@ Exceptions
     ray.exceptions.PendingCallsLimitExceeded
     ray.exceptions.PlasmaObjectNotAvailable
     ray.exceptions.ObjectReconstructionFailedError
-    ray.exceptions.ObjectReconstructionFailedMaxAttemptsExceededError
-    ray.exceptions.ObjectReconstructionFailedLineageEvictedError
     ray.exceptions.RayChannelError
     ray.exceptions.RayChannelTimeoutError
     ray.exceptions.RayCgraphCapacityExceeded
