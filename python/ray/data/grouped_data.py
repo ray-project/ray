@@ -84,30 +84,54 @@ class GroupedData:
 
                     # If there are input files, attempt a per-file partition check (conservative).
                     if input_files:
-                        per_file_partitions = []
-                        from ray.data._internal.partition_aware import (
-                            extract_partition_values_from_paths,
-                        )
+                        # Conservative safety: ensure the datasource will not split files
+                        # into multiple read tasks. We require datasource.get_read_tasks()
+                        # to return one read task per input file. If this is true, then
+                        # each file maps to a single read task (and typically a single
+                        # block), and the per-file uniqueness check is safe.
+                        can_use_per_file_heuristic = False
+                        try:
+                            datasource = getattr(dag, "datasource", None)
+                            if datasource is not None and hasattr(datasource, "get_read_tasks"):
+                                # Request read tasks; pass len(input_files) as a hint.
+                                read_tasks = datasource.get_read_tasks(len(input_files))
+                                if read_tasks and len(read_tasks) == len(input_files):
+                                    # Verify each read_task.metadata corresponds to a single input file
+                                    mapping_ok = True
+                                    per_file_partitions = []
+                                    from ray.data._internal.partition_aware import (
+                                        extract_partition_values_from_paths,
+                                    )
+                                    for rt in read_tasks:
+                                        meta = getattr(rt, "metadata", None)
+                                        if meta is None or not getattr(meta, "input_files", None):
+                                            mapping_ok = False
+                                            break
+                                        # Require each read task to reference exactly one input file
+                                        if len(meta.input_files) != 1:
+                                            mapping_ok = False
+                                            break
+                                        f = meta.input_files[0]
+                                        partitions = extract_partition_values_from_paths([f], groupby_cols)
+                                        if partitions is None:
+                                            mapping_ok = False
+                                            break
+                                        per_file_partitions.append(tuple(sorted(partitions.items())))
+                                    if mapping_ok and per_file_partitions:
+                                        if len(set(per_file_partitions)) == len(per_file_partitions):
+                                            can_use_per_file_heuristic = True
+                        except Exception:
+                            # Any failure in datasource introspection disables the heuristic.
+                            can_use_per_file_heuristic = False
 
-                        for f in input_files:
-                            partitions = extract_partition_values_from_paths(
-                                [f], groupby_cols
+                        if can_use_per_file_heuristic:
+                            logger = logging.getLogger(__name__)
+                            logger.info(
+                                "Skipping shuffle for groupby on %s based on Read metadata (one read task per file).",
+                                self._key,
                             )
-                            if partitions is None:
-                                # If any file is missing partition info, fallback to bundle-based check.
-                                per_file_partitions = []
-                                break
-                            per_file_partitions.append(tuple(sorted(partitions.items())))
-
-                        if per_file_partitions:
-                            # If each file corresponds to a unique partition tuple, it's safe to skip shuffle
-                            if len(set(per_file_partitions)) == len(per_file_partitions):
-                                logger = logging.getLogger(__name__)
-                                logger.info(
-                                    f"Skipping shuffle for groupby on {self._key} based on Read metadata (per-file partition uniqueness)."
-                                )
-                                return True, None
-                            # Otherwise, conservative fallback to shuffle
+                            return True, None
+                        # Otherwise, conservative fallback to shuffle
                 except Exception:
                     # If read metadata introspection fails, proceed to bundle-based check below
                     pass

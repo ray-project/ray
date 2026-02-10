@@ -189,6 +189,23 @@ class TestPartitionAwareGroupBy:
             def __init__(self, input_files):
                 self._meta = FakeMeta(input_files)
                 self.input_dependencies = []
+                # Fake datasource with get_read_tasks to indicate one task per file
+                class FakeReadTaskMeta:
+                    def __init__(self, input_file):
+                        self.metadata = type("M", (), {"input_files": [input_file]})
+
+                class FakeDatasource:
+                    def __init__(self, files):
+                        self._files = files
+
+                    def get_read_tasks(self, hint: int):
+                        # Return one fake read-task per file
+                        tasks = []
+                        for f in self._files:
+                            tasks.append(FakeReadTaskMeta(f))
+                        return tasks
+
+                self.datasource = FakeDatasource(input_files)
 
             def infer_metadata(self):
                 return self._meta
