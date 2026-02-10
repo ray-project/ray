@@ -1955,13 +1955,13 @@
 
   alert: default
 
-########################
-# RLlib tests
-########################
+###############
+# RLlib tests #
+###############
 
-# --------------------------
-# Ray Tune // RLlib Integration Tests
-# --------------------------
+# -----------------------------------
+# RLlib // Ray Tune integration test
+# -----------------------------------
 - name: rllib_tune_connect_test
   python: "3.10"
   group: RLlib tests
@@ -1994,9 +1994,9 @@
 
   alert: default
 
-# --------------------------
-# APPO
-# --------------------------
+# -----------------
+# RLlib - APPO test
+# -----------------
 - name: rllib_learning_tests_pong_appo_torch
   python: "3.10"
   group: RLlib tests
