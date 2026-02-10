@@ -269,7 +269,7 @@ class OpState:
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
 
-        ref, diverged = dedupe_schemas_with_validation(
+        out_ref, diverged = dedupe_schemas_with_validation(
             self._schema,
             ref,
             enforce_schemas=self.op.data_context.enforce_schemas,
@@ -282,6 +282,8 @@ class OpState:
         ):
             warning_message = _build_schemas_mismatch_warning(self._schema, ref.schema)
             logger.warning(warning_message)
+
+        ref = out_ref
 
         self._schema = ref.schema
         self._warned_on_schema_divergence |= diverged

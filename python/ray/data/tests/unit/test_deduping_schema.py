@@ -235,8 +235,18 @@ def test_add_output_emits_warning(enforce_schemas, caplog, propagate_logs):
     op = _DummyOp(enforce_schemas=enforce_schemas)
     state = OpState(op, [])
 
-    old_schema = pa.schema([pa.field("foo", pa.int32())])
-    new_schema = pa.schema([pa.field("foo", pa.int64())])
+    old_schema = pa.schema(
+        [
+            pa.field("foo", pa.int32()),
+            pa.field("bar", pa.bool8()),
+        ]
+    )
+    new_schema = pa.schema(
+        [
+            pa.field("foo", pa.int64()),
+            pa.field("baz", pa.uint32()),
+        ]
+    )
 
     # First output seeds schema (no warning)
     state.add_output(RefBundle([], owns_blocks=False, schema=old_schema))
@@ -247,10 +257,20 @@ def test_add_output_emits_warning(enforce_schemas, caplog, propagate_logs):
     with caplog.at_level(logging.WARNING):
         state.add_output(RefBundle([], owns_blocks=False, schema=new_schema))
 
+    assert not (enforce_schemas ^ len(caplog.messages))
+
     if enforce_schemas:
-        assert any(
-            "Operator produced a RefBundle with a different schema" in m
-            for m in caplog.messages
+        msg = "\n".join(caplog.messages)
+        assert (
+            msg
+            == """Operator produced a RefBundle with a different schema than the previous one.
+Fields exclusive to the incoming schema (1 total):
+    baz: uint32
+Fields exclusive to the old schema (1 total):
+    bar: extension<arrow.bool8>
+Fields that have different types across the old and the incoming schemas (1 total):
+    foo: int32 => int64
+This may lead to unexpected behavior."""
         )
 
 
