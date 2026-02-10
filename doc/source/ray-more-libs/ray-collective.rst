@@ -266,7 +266,7 @@ and must successfully rendezvous with each other to proceed. See the code exampl
    B = Worker.remote()
 
    # Put A and B in a collective group
-   col.create_collective_group([A, B], backend="nccl", group_name="8")
+   col.create_collective_group([A, B], backend="nccl")
 
    # let A to send a message to B; a send/recv has to be specified once at each worker
    ray.get([A.do_send.remote(target_rank=1), B.do_recv.remote(src_rank=0)])

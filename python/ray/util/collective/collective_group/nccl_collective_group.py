@@ -1226,19 +1226,17 @@ class NCCLGroup(BaseGroup):
         self._check_gpu_tensor_on_current_device(input_tensor)
         self._check_gpu_tensor_on_current_device(output_tensor)
 
-        self._sync_current_stream(self._device, self._stream)
-
         if preprocess_fn:
             preprocess_fn()
 
+        self._sync_current_stream(self._device, self._stream)
         nccl_util.groupStart()
         collective_fn(input_tensor, output_tensor, self._comm, self._stream)
         nccl_util.groupEnd()
+        self._sync_comm_stream(self._device, self._stream)
 
         if postprocess_fn:
             postprocess_fn()
-
-        self._sync_comm_stream(self._device, self._stream)
 
     def _point2point(
         self, tensor: cupy.ndarray | torch.Tensor, p2p_fn: Any, peer_rank: int

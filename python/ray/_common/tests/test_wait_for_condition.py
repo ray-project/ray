@@ -273,8 +273,12 @@ class TestEdgeCases:
     async def test_async_zero_timeout(self):
         """Test async behavior with zero timeout."""
 
+        start = time.time()
+
         async def slow_condition():
-            await asyncio.sleep(0.1)
+            # Return False until 0.1s has elapsed since start
+            if time.time() < start + 0.1:
+                return False
             return True
 
         with pytest.raises(RuntimeError):
