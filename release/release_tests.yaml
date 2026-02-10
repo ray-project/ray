@@ -2102,7 +2102,7 @@
       --num-env-runners=4 \
       --num-learners=0
 
-- name: rllib_tictactoe_single_cpu
+- name: rllib_appo_tictactoe_single_cpu
   python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
