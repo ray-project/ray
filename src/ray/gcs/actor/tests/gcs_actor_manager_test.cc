@@ -1861,12 +1861,12 @@ TEST_F(GcsActorManagerTest, TestDestroyWhileRegistering) {
 }
 
 TEST_F(GcsActorManagerTest, TestNodeFailureDestroysAllOwnedActors) {
-  auto job_id = JobID::FromInt(1);
+  JobID job_id = JobID::FromInt(1);
 
   // Create a shared owner
   rpc::Address owner_address;
-  auto owner_node_id = NodeID::FromRandom();
-  auto owner_worker_id = WorkerID::FromRandom();
+  NodeID owner_node_id = NodeID::FromRandom();
+  WorkerID owner_worker_id = WorkerID::FromRandom();
   owner_address.set_node_id(owner_node_id.Binary());
   owner_address.set_ip_address("1234");
   owner_address.set_port(5678);
@@ -1875,25 +1875,26 @@ TEST_F(GcsActorManagerTest, TestNodeFailureDestroysAllOwnedActors) {
   // Register 3 actors all owned by the same worker (non-detached)
   std::vector<std::shared_ptr<gcs::GcsActor>> actors;
   for (int i = 0; i < 3; i++) {
-    auto actor_creation_task_spec = GenActorCreationTask(job_id,
-                                                         /*max_restarts=*/0,
-                                                         /*detached=*/false,
-                                                         /*name=*/"",
-                                                         /*ray_namespace=*/"test",
-                                                         owner_address);
+    TaskSpecification actor_creation_task_spec =
+        GenActorCreationTask(job_id,
+                             /*max_restarts=*/0,
+                             /*detached=*/false,
+                             /*name=*/"",
+                             /*ray_namespace=*/"test",
+                             owner_address);
     rpc::RegisterActorRequest register_request;
     register_request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
 
     Status status =
         gcs_actor_manager_->RegisterActor(register_request, [](const Status &) {});
-    ASSERT_TRUE(status.ok());
-    io_service_.run_one();
-    io_service_.run_one();
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    drain_io_context();
 
-    auto actor_id = ActorID::FromBinary(
+    ActorID actor_id = ActorID::FromBinary(
         register_request.task_spec().actor_creation_task_spec().actor_id());
     ASSERT_TRUE(gcs_actor_manager_->registered_actors_.contains(actor_id));
-    auto actor = gcs_actor_manager_->registered_actors_[actor_id];
+    std::shared_ptr<gcs::GcsActor> actor =
+        gcs_actor_manager_->registered_actors_[actor_id];
 
     rpc::CreateActorRequest create_request;
     create_request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
@@ -1903,14 +1904,14 @@ TEST_F(GcsActorManagerTest, TestNodeFailureDestroysAllOwnedActors) {
         }));
 
     ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-    auto scheduled_actor = mock_actor_scheduler_->actors.back();
+    std::shared_ptr<gcs::GcsActor> scheduled_actor = mock_actor_scheduler_->actors.back();
     mock_actor_scheduler_->actors.pop_back();
 
     // Make the actor alive on a different node (not the owner's node)
-    auto actor_address = RandomAddress();
+    rpc::Address actor_address = RandomAddress();
     scheduled_actor->UpdateAddress(actor_address);
     gcs_actor_manager_->OnActorCreationSuccess(scheduled_actor, rpc::PushTaskReply());
-    io_service_.run_one();
+    drain_io_context();
 
     ASSERT_EQ(scheduled_actor->GetState(), rpc::ActorTableData::ALIVE);
     actors.push_back(scheduled_actor);
