@@ -25,6 +25,7 @@ from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
     OpResourceAllocator,
     ResourceManager,
+    create_resource_allocator,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
@@ -586,12 +587,13 @@ class TestResourceManager:
         resource_manager.update_usages()
 
         # Task cannot be submitted because it exceeds memory limit
-        allocator = resource_manager._op_resource_allocator
-        if allocator is not None:
-            can_submit = allocator.can_submit_new_task(o2)
-            assert not can_submit, (
-                "Task should be blocked: requires 2000 bytes but only 1000 bytes memory available"
-            )
+        allocator = create_resource_allocator(resource_manager, DataContext.get_current())
+        assert allocator is not None
+        allocator.update_budgets(limits=resource_manager.get_global_limits())
+        can_submit = allocator.can_submit_new_task(o2)
+        assert not can_submit, (
+            "Task should be blocked: requires 2000 bytes but only 1000 bytes memory available"
+        )
 
 
 class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
