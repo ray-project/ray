@@ -29,7 +29,6 @@ from ray.serve._private.common import RequestMetadata, ServeComponentType
 from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
-from ray._common.utils import binary_to_hex
 
 try:
     import pandas as pd
