@@ -11,10 +11,10 @@ import gymnasium as gym
 
 import ray
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.connectors.env_to_module.frame_stacking import \
-    FrameStackingEnvToModule
+from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
 from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
+from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, EPISODE_RETURN_MEAN
 from ray.tune import CLIReporter, RunConfig, Tuner
 from ray.tune.registry import register_env
 
@@ -85,7 +85,7 @@ if __name__ == "__main__":
             progress_reporter=CLIReporter(
                 metric_columns={
                     "training_iteration": "training_iteration",
-                    "env_runners/episode_return_mean": "episode_return_mean",
+                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": f"{EPISODE_RETURN_MEAN}",
                 },
                 max_report_frequency=30,
             ),
@@ -97,7 +97,7 @@ if __name__ == "__main__":
 
     result = {
         "time_taken": end_time - start_time,
-        "trial_states": {t.config["framework"]: t.status for t in exp_analysis.trials},
+        "trial_state": [trial.status for trial in exp_analysis.trials],
     }
 
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/release_test_out.json")
