@@ -18,6 +18,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
+    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
     RAY_SERVE_PROXY_USE_GRPC,
@@ -66,6 +67,7 @@ def _default_create_placement_group(
         _soft_target_node_id=request.target_node_id,
         name=request.name,
         lifetime="detached",
+        bundle_label_selector=request.bundle_label_selector,
     )
 
 
@@ -254,3 +256,16 @@ def get_controller_impl():
     )(ServeController)
 
     return controller_impl
+
+
+def get_proxy_actor_class():
+    # These imports are lazy to avoid circular imports
+
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        from ray.serve._private.haproxy import HAProxyManager
+
+        return HAProxyManager
+    else:
+        from ray.serve._private.proxy import ProxyActor
+
+        return ProxyActor

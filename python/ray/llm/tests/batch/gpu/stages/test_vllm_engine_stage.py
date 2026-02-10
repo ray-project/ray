@@ -348,7 +348,7 @@ async def test_vllm_wrapper_embed(model_opt_125m):
     [
         ({}, True),
         ({"truncate_prompt_tokens": 3}, False),
-        ({"normalize": True}, False),
+        ({"use_activation": True}, False),
     ],
 )
 async def test_vllm_wrapper_embed_pooling_params(
@@ -726,6 +726,11 @@ async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
         idx = row["__idx_in_batch"]
         if idx == 1:
             raise ValueError("prompt too long")
+        output_data = vLLMOutputData(
+            prompt=row["prompt"],
+            prompt_token_ids=None,
+            num_input_tokens=0,
+        )
         return (
             MagicMock(
                 request_id=idx,
@@ -733,10 +738,7 @@ async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
                 params=row["sampling_params"],
                 idx_in_batch=idx,
             ),
-            {
-                "prompt": row["prompt"],
-                "generated_text": f"Response to: {row['prompt']}",
-            },
+            output_data.model_dump(),
             0.1,
         )
 
@@ -767,12 +769,17 @@ async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
 
     assert len(results) == 3
 
-    errors = [r for r in results if r.get("__inference_error__") is not None]
-    successes = [r for r in results if r.get("__inference_error__") is None]
+    errors = [r for r in results if r.get("__inference_error__", "") != ""]
+    successes = [r for r in results if r.get("__inference_error__", "") == ""]
 
     assert len(errors) == 1
     assert len(successes) == 2
     assert "ValueError" in errors[0]["__inference_error__"]
+
+    # Verify schema consistency
+    error_keys = set(errors[0].keys())
+    success_keys = set(successes[0].keys())
+    assert error_keys == success_keys
 
 
 @pytest.mark.asyncio
