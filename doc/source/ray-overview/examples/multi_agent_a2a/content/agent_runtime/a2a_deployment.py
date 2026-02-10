@@ -228,8 +228,8 @@ def create_a2a_app(
             a = await _ensure_agent()
             user_text = context.get_user_input() or ""
 
-            task_id = context.task_id or context.message.task_id if context.message else None
-            context_id = context.context_id or context.message.context_id if context.message else None
+            task_id = context.task_id or (context.message.task_id if context.message else None)
+            context_id = context.context_id or (context.message.context_id if context.message else None)
             task_id = (task_id or "").strip() or "unknown-task"
             context_id = (context_id or "").strip() or task_id
 
@@ -254,8 +254,8 @@ def create_a2a_app(
                 raise
 
         async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
-            task_id = context.task_id or context.message.task_id if context.message else None
-            context_id = context.context_id or context.message.context_id if context.message else None
+            task_id = context.task_id or (context.message.task_id if context.message else None)
+            context_id = context.context_id or (context.message.context_id if context.message else None)
             task_id = (task_id or "").strip() or "unknown-task"
             context_id = (context_id or "").strip() or task_id
             updater = TaskUpdater(event_queue=event_queue, task_id=task_id, context_id=context_id)
