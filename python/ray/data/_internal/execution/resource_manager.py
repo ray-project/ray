@@ -692,12 +692,14 @@ class OpResourceAllocator(ABC):
     def _should_unblock_streaming_output_backpressure(
         self, op: PhysicalOperator
     ) -> bool:
+        downstream_eligible_ops = list(self._get_downstream_eligible_ops(op))
+
         # NOTE: If this operator is a terminal one, extracting outputs from it
         #       should not be throttled
-        if not op.output_dependencies:
+        if not downstream_eligible_ops:
             return True
 
-        for downstream_op in self._get_downstream_eligible_ops(op):
+        for downstream_op in downstream_eligible_ops:
             # To maintain liveness of the pipeline, we relax output backpressure
             # in one of the following cases
             if downstream_op.num_active_tasks() == 0:
@@ -865,8 +867,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         return (
             op.incremental_resource_usage().satisfies_limit(budget)
             and
-            # Avoid scheduling if there's no more Object Store budget (for task outputs)
-            budget.object_store_memory > 0
+            # Avoid scheduling if there's no more Object Store budget (for
+            # task outputs)
+            budget.object_store_memory
+            >= (op.metrics.obj_store_mem_max_pending_output_per_task or 0)
         )
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
@@ -963,12 +967,12 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         for i, op in enumerate(reversed(eligible_ops)):
             # By default, divide the remaining shared resources equally.
             op_shared = remaining_shared.scale(1.0 / (len(eligible_ops) - i))
-            # But if the op's budget is less than `incremental_resource_usage`,
+            # But if the op's budget is less than `min_scheduling_resources`,
             # it will be useless. So we'll let the downstream operator
             # borrow some resources from the upstream operator, if remaining_shared
             # is still enough.
             to_borrow = (
-                op.incremental_resource_usage()
+                op.min_scheduling_resources()
                 .subtract(self._op_budgets[op].add(op_shared))
                 .max(ExecutionResources.zero())
             )

@@ -83,6 +83,7 @@ class AutoscalingContext:
         last_scale_down_time: Optional[float],
         current_time: Optional[float],
         config: Optional[Any],
+        total_pending_async_requests: int,
     ):
         # Deployment information
         self.deployment_id = deployment_id  #: Unique identifier for the deployment.
@@ -133,6 +134,9 @@ class AutoscalingContext:
         # Config
         self.config = config  #: Autoscaling configuration for this deployment.
 
+        # Async inference task queue length (from QueueMonitor)
+        self._total_pending_async_requests = total_pending_async_requests
+
     @cached_property
     def aggregated_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, float]]]:
         if callable(self._aggregated_metrics_value):
@@ -162,6 +166,11 @@ class AutoscalingContext:
         # NOTE: for non-additive aggregation functions, total_running_requests is not
         # accurate, consider this is an approximation.
         return self.total_num_requests - self.total_queued_requests
+
+    @property
+    def total_pending_async_requests(self) -> int:
+        """Broker task queue length for async inference autoscaling."""
+        return self._total_pending_async_requests
 
 
 @PublicAPI(stability="alpha")
@@ -342,6 +351,8 @@ class AggregationFunction(str, Enum):
 class AutoscalingPolicy(BaseModel):
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
+    # Cached deserialized policy to avoid repeated cloudpickle.loads() calls.
+    _cached_policy: Optional[Callable] = PrivateAttr(default=None)
 
     policy_function: Union[str, Callable] = Field(
         default=DEFAULT_AUTOSCALING_POLICY_NAME,
@@ -359,6 +370,7 @@ class AutoscalingPolicy(BaseModel):
 
     def set_serialized_policy_def(self, serialized_policy_def: bytes) -> None:
         self._serialized_policy_def = serialized_policy_def
+        self._cached_policy = None
 
     @classmethod
     def from_serialized_policy_def(
@@ -394,9 +406,15 @@ class AutoscalingPolicy(BaseModel):
         return self.policy_function == DEFAULT_AUTOSCALING_POLICY_NAME
 
     def get_policy(self) -> Callable:
-        """Deserialize policy from cloudpickled bytes."""
+        """Deserialize policy from cloudpickled bytes.
+
+        The result is cached to avoid repeated cloudpickle deserialization on
+        every call (e.g. on every autoscaling tick).
+        """
+        if self._cached_policy is not None:
+            return self._cached_policy
         try:
-            return cloudpickle.loads(self._serialized_policy_def)
+            policy = cloudpickle.loads(self._serialized_policy_def)
         except (ModuleNotFoundError, ImportError) as e:
             raise ImportError(
                 f"Failed to deserialize custom autoscaling policy: {e}\n\n"
@@ -408,6 +426,8 @@ class AutoscalingPolicy(BaseModel):
                 "For more details, see: https://docs.ray.io/en/latest/serve/advanced-guides/"
                 "advanced-autoscaling.html#gotchas-and-limitations"
             ) from e
+        self._cached_policy = policy
+        return policy
 
 
 @PublicAPI(stability="stable")
