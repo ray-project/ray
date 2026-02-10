@@ -1812,10 +1812,11 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr;
   runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>();
 
-  auto serialized_runtime_env_info_str = std::string(serialized_runtime_env_info);  // Convert once for reuse
+  auto serialized_runtime_env_info_str =
+      std::string(serialized_runtime_env_info);  // Convert once for reuse
   if (!IsRuntimeEnvInfoEmpty(serialized_runtime_env_info_str)) {
-    RAY_CHECK(google::protobuf::util::JsonStringToMessage(
-                  serialized_runtime_env_info_str, runtime_env_info.get())
+    RAY_CHECK(google::protobuf::util::JsonStringToMessage(serialized_runtime_env_info_str,
+                                                          runtime_env_info.get())
                   .ok());
   }
 
