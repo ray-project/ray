@@ -30,6 +30,7 @@ def main(args):
         # Join region with nation
         nation_region = region_filtered.join(
             nation,
+            num_partitions=8,
             join_type="inner",
             on=("r_regionkey",),
             right_on=("n_regionkey",),
@@ -38,6 +39,7 @@ def main(args):
         # Join customer with nation (use suffix to avoid conflicts)
         customer_nation = customer.join(
             nation_region,
+            num_partitions=8,
             join_type="inner",
             on=("c_nationkey",),
             right_on=("n_nationkey",),
@@ -47,6 +49,7 @@ def main(args):
 
         supplier_nation = supplier.join(
             nation,
+            num_partitions=8,
             join_type="inner",
             on=("s_nationkey",),
             right_on=("n_nationkey",),
@@ -63,6 +66,7 @@ def main(args):
         )
         orders_customer = orders_filtered.join(
             customer_nation,
+            num_partitions=8,
             join_type="inner",
             on=("o_custkey",),
             right_on=("c_custkey",),
@@ -71,6 +75,7 @@ def main(args):
         # Join lineitem with orders
         lineitem_orders = lineitem.join(
             orders_customer,
+            num_partitions=8,
             join_type="inner",
             on=("l_orderkey",),
             right_on=("o_orderkey",),
@@ -79,6 +84,7 @@ def main(args):
         # Join with part
         lineitem_part = lineitem_orders.join(
             part_filtered,
+            num_partitions=8,
             join_type="inner",
             on=("l_partkey",),
             right_on=("p_partkey",),
@@ -87,6 +93,7 @@ def main(args):
         # Join with supplier (use suffix to avoid conflicts with customer nation columns)
         ds = lineitem_part.join(
             supplier_nation,
+            num_partitions=8,
             join_type="inner",
             on=("l_suppkey",),
             right_on=("s_suppkey",),
