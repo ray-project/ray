@@ -32,11 +32,11 @@ flowchart TD
     A2 -- "ray.put()" --> B2
 
     %% Main Logic paths (Parallel)
-    B1 -- "Step 1. Create" --> C["PlasmaStore"]
-    B2 -- "Step 1. Create" --> C
+    B1 -- "Step 1. Create(object_id, size)" --> C["PlasmaStore"]
+    B2 -- "Step 1. Create(object_id, size)" --> C
 
-    B1 -- "Step 2. Pin RPC" --> NM["NodeManager"]
-    B2 -- "Step 2. Pin RPC" --> NM
+    B1 -- "Step 2. PinObjectIDs RPC" --> NM["NodeManager"]
+    B2 -- "Step 2. PinObjectIDs RPC" --> NM
 
     %% Alignment constraint
     C ~~~ NM
@@ -49,12 +49,11 @@ flowchart TD
     %% Right: Scheduling & Management
     subgraph RayletThread["Raylet Main Thread"]
         NM -- "PinObjectsAndWaitForFree()" --> F["LocalObjectManager"]
-        F --> G["WorkerPool<br/>(IO Worker Pool)"]
+        F -- "TryToSpillObjects()<br/>→ PopSpillWorker()" --> G["WorkerPool<br/>(IO Worker Pool)"]
     end
 
     %% Spilling Link (Cross-thread callback)
     E -- "OOM: spill_objects_callback()<br/>→ main_service.post()" --> F
-    F -. "IsSpillingInProgress()<br/>(std::atomic, cross-thread)" .-> E
 
     %% Parallel IO Workers
     subgraph IOWorkerProcesses["Python IO Worker Processes"]
