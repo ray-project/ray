@@ -708,7 +708,9 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         ), "TaskContext is required for monotonically_increasing_id()"
 
         # Key the counter by expression instance ID so that multiple expressions
-        # in the same projection will have isolated row count state
+        # in the same projection will have isolated row count state.
+        # This is required because a single task may process multiple blocks if
+        # the upstream data source does not compress the data into a single block.
         counter_key = f"_mono_id_{expr._instance_id}_counter"
 
         start_idx = ctx.kwargs.get(counter_key, 0)
@@ -716,14 +718,15 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         end_idx = start_idx + num_rows
         ctx.kwargs[counter_key] = end_idx
 
-        # int64 (signed): upper 30 bits = task ID, lower 33 bits = row number
+        # int64 (signed): upper 30 bits = task ID, lower 33 bits = row number.
+        # Note end_idx is an exclusive upper bound, as the max row ID is end_idx - 1.
         ROW_BITS = 33
         TASK_BITS = 30
-        if end_idx.bit_length() > ROW_BITS:
+        if end_idx > (1 << ROW_BITS):
             raise ValueError(
                 f"Cannot generate monotonically increasing IDs: row count for this task exceeds the maximum allowed value of {(1<<ROW_BITS)-1}"
             )
-        elif ctx.task_idx.bit_length() > TASK_BITS:
+        if ctx.task_idx >= (1 << TASK_BITS):
             raise ValueError(
                 f"Cannot generate monotonically increasing IDs: number of tasks exceeds the maximum allowed value of {(1<<TASK_BITS)-1}"
             )

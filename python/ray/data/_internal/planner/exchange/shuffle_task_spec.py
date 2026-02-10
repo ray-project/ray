@@ -60,8 +60,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
             # Create a local TaskContext for the upstream map function.
             # May be used by expressions that depend on task-level state.
             local_ctx = TaskContext(task_idx=idx, op_name="shuffle_map")
-            TaskContext.set_current(local_ctx)
-            try:
+            with TaskContext.current(local_ctx):
                 # TODO: Support dynamic block splitting in
                 # all-to-all ops, to avoid having to re-fuse
                 # upstream blocks together.
@@ -74,8 +73,6 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
                 # Drop the upstream inputs to reduce memory usage.
                 del mapped_block
                 block = builder.build()
-            finally:
-                TaskContext.reset_current()
 
         block = BlockAccessor.for_block(block)
         if (

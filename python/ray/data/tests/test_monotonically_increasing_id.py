@@ -50,6 +50,26 @@ def test_monotonically_increasing_id_multiple_expressions(ray_start_regular_shar
     assert list(result["uid1"]) == list(result["uid2"])
 
 
+def test_monotonically_increasing_id_multi_block_per_task(ray_start_regular_shared):
+    """Test that IDs are unique when a single task processes multiple blocks."""
+    ctx = ray.data.DataContext.get_current()
+    original_max_block_size = ctx.target_max_block_size
+    try:
+        # Set max block size to 32 bytes ~ 4 int64 rows per block.
+        # With 5 read tasks of 20 rows each every task should see 5 blocks.
+        ctx.target_max_block_size = 32
+
+        ds = ray.data.range(100, override_num_blocks=5)
+        ds = ds.with_column("uid", monotonically_increasing_id())
+        result = ds.take_all()
+
+        uids = [row["uid"] for row in result]
+        assert len(uids) == 100, f"expected 100 rows, got {len(uids)}"
+        assert len(uids) == len(set(uids)), "IDs are not unique across blocks"
+    finally:
+        ctx.target_max_block_size = original_max_block_size
+
+
 def test_monotonically_increasing_id_structurally_equals_always_false():
     """Test that structurally_equals() is False for monotonically_increasing_id() expressions."""
     expr1 = monotonically_increasing_id()
