@@ -1,9 +1,11 @@
+import copy
 import logging
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 import gymnasium as gym
 import numpy as np
+import tree
 
 from ray._common.deprecation import deprecation_warning
 from ray.rllib.core.columns import Columns
@@ -201,11 +203,10 @@ class OfflinePreLearner:
             episodes = self._postprocess_and_sample(episodes)
 
         elif self.config.input_read_sample_batches:
-            episodes: List[
-                SingleAgentEpisode
-            ] = OfflinePreLearner._map_sample_batch_to_episode(batch, to_numpy=True,)[
-                "episodes"
-            ]
+            episodes: List[SingleAgentEpisode] = self._map_sample_batch_to_episode(
+                batch,
+                to_numpy=True,
+            )["episodes"]
             episodes = self._postprocess_and_sample(episodes)
         else:
             episodes: List[SingleAgentEpisode] = self._map_to_episodes(
@@ -354,11 +355,17 @@ class OfflinePreLearner:
                     else obs
                 )
 
-                unpacked_next_obs = (
-                    unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i])
-                    if Columns.OBS in input_compress_columns
-                    else batch[schema[Columns.NEXT_OBS]][i]
-                )
+                if self.config.ignore_final_observation:
+                    unpacked_next_obs = tree.map_structure(
+                        lambda x: np.zeros_like(x), copy.deepcopy(unpacked_obs)
+                    )
+                else:
+                    unpacked_next_obs = (
+                        unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i])
+                        if Columns.OBS in input_compress_columns
+                        else batch[schema[Columns.NEXT_OBS]][i]
+                    )
+
                 # Build a single-agent episode with a single row of the batch.
                 episode = SingleAgentEpisode(
                     id_=str(batch[schema[Columns.EPS_ID]][i])
