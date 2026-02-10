@@ -334,12 +334,12 @@ def should_stop(
     """Checks stopping criteria on `ResultDict`
 
     Args:
-        stop: Dictionary of stopping criteria. Each criterium is a mapping of
-            a metric in the `ResultDict` of the algorithm to a certain criterium.
+        stop: Dictionary of stopping criteria. Each criterion is a mapping of
+            a metric in the `ResultDict` of the algorithm to a certain criterion.
         results: An RLlib `ResultDict` containing all results from a training step.
-        keep_ray_up: Optionally shutting down the runnin Ray instance.
+        keep_ray_up: Optionally shutting down the running Ray instance.
 
-    Returns: True, if any stopping criterium is fulfilled. Otherwise, False.
+    Returns: True, if any stopping criterion is fulfilled. Otherwise, False.
     """
     for key, threshold in stop.items():
         val = results
@@ -412,7 +412,7 @@ def run_rllib_example_script_experiment(
         base_config: The AlgorithmConfig object to use for this experiment. This base
             config will be automatically "extended" based on some of the provided
             `args`. For example, `args.num_env_runners` is used to set
-            `config.num_env_runners`, etc..
+            `config.num_env_runners`, etc.
         args: A argparse.Namespace object, ideally returned by calling
             `args = add_rllib_example_script_args()`. It must have the following
             properties defined: `stop_iters`, `stop_reward`, `stop_timesteps`,
@@ -430,11 +430,11 @@ def run_rllib_example_script_experiment(
         success_metric: Only relevant if `args.as_test` is True.
             A dict mapping a single(!) ResultDict key string (using "/" in
             case of nesting, e.g. "env_runners/episode_return_mean" for referring
-            to `result_dict['env_runners']['episode_return_mean']` to a single(!)
+            to `result_dict['env_runners']['episode_return_mean']`) to a single(!)
             minimum value to be reached in order for the experiment to count as
             successful. If `args.as_test` is True AND this `success_metric` is not
             reached with the bounds defined by `stop`, will raise an Exception.
-        trainable: The Trainable sub-class to run in the tune.Tuner. If None (default),
+        trainable: The Trainable subclass to run in the tune.Tuner. If None (default),
             use the registered RLlib Algorithm class specified by args.algo.
         tune_callbacks: A list of Tune callbacks to configure with the tune.Tuner.
             In case `args.wandb_key` is provided, appends a WandB logger to this
@@ -628,7 +628,7 @@ def run_rllib_example_script_experiment(
                         val = None
                         break
                 if val is not None and not np.isnan(val) and val >= threshold:
-                    print(f"Stop criterium ({key}={threshold}) fulfilled!")
+                    print(f"Stop criterion ({key}={threshold}) fulfilled!")
                     if not keep_ray_up:
                         ray.shutdown()
                     return results
@@ -657,7 +657,7 @@ def run_rllib_example_script_experiment(
             )
         )
 
-    # Auto-configure a tune.CLIReporter (to log the results to the console).
+    # Autoconfigure a tune.CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
     if progress_reporter is None:
         if args.num_agents == 0:
