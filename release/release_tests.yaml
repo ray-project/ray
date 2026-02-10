@@ -2170,7 +2170,7 @@
       --num-gpus-per-learner=1 \
       --num-learners=2
 
-- name: rllib_atari_multi_gpu_multi_node
+- name: rllib_appo_atari_multi_gpu_multi_node
   python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
