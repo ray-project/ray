@@ -64,7 +64,6 @@ class OpBufferQueue:
     def __init__(self, num_splits: int):
         assert num_splits >= 1, f"n_splits must be >= 1, got {num_splits}"
 
-        self._num_blocks = 0
         self._queues: List[BaseBundleQueue] = [
             create_bundle_queue() for _ in range(num_splits)
         ]
@@ -81,7 +80,7 @@ class OpBufferQueue:
     def num_blocks(self) -> int:
         """The total number of blocks in the queue."""
         with self._lock:
-            return self._num_blocks
+            return sum(q.num_blocks() for q in self._queues)
 
     def __len__(self):
         with self._lock:
@@ -101,7 +100,6 @@ class OpBufferQueue:
         """Append a RefBundle to the queue."""
         with self._lock:
             self._get_queue_for(bundle.output_split_idx).add(bundle)
-            self._num_blocks += len(bundle.blocks)
 
     def pop(self, output_split_idx: Optional[int] = None) -> Optional[RefBundle]:
         """Pop a RefBundle from the queue.
@@ -115,18 +113,14 @@ class OpBufferQueue:
         """
         with self._lock:
             try:
-                ret = self._get_queue_for(output_split_idx).get_next()
+                return self._get_queue_for(output_split_idx).get_next()
             except IndexError:
                 return None
-
-            self._num_blocks -= len(ret.blocks)
-            return ret
 
     def clear(self):
         with self._lock:
             for q in self._queues:
                 q.clear()
-            self._num_blocks = 0
 
     def _get_queue_for(self, output_split_idx: Optional[int]) -> "BaseBundleQueue":
         target_output_split_idx = output_split_idx or 0
