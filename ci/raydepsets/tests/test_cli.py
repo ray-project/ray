@@ -974,6 +974,88 @@ class TestCli(unittest.TestCase):
             rf2 = parse_lock_file(str(output_file))
             assert rf.dumps() == rf2.dumps()
 
+    def test_parse_large_lock_file(self):
+        """Parse a large lock file with many packages, multiple hashes,
+        environment markers, extra index URLs, and comment annotations."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            lock_file = Path(tmpdir) / "requirements_compiled_large_test.txt"
+            rf = parse_lock_file(str(lock_file))
+
+            # Verify total package count (40 packages)
+            names = sorted([req.name for req in rf.requirements])
+            assert len(rf.requirements) == 40
+
+            # Verify all expected packages are present
+            expected_packages = [
+                "absl-py",
+                "aiohappyeyeballs",
+                "aiohttp",
+                "aiohttp-cors",
+                "aiosignal",
+                "attrs",
+                "cachetools",
+                "certifi",
+                "charset-normalizer",
+                "click",
+                "cloudpickle",
+                "colorama",
+                "cupy-cuda12x",
+                "dm-tree",
+                "fastrlock",
+                "filelock",
+                "frozenlist",
+                "google-auth",
+                "grpcio",
+                "idna",
+                "jinja2",
+                "jsonschema",
+                "markupsafe",
+                "msgpack",
+                "multidict",
+                "numpy",
+                "packaging",
+                "protobuf",
+                "psutil",
+                "pyarrow",
+                "pydantic",
+                "pyyaml",
+                "requests",
+                "six",
+                "smart-open",
+                "torch",
+                "typing-extensions",
+                "urllib3",
+                "wrapt",
+                "yarl",
+            ]
+            for pkg in expected_packages:
+                assert pkg in names, f"Expected package {pkg} not found"
+
+            # Verify options (--index-url and --extra-index-url)
+            assert len(rf.options) >= 1
+
+            # Verify packages with environment markers are parsed
+            marker_packages = {req.name: req for req in rf.requirements if req.marker}
+            assert "cupy-cuda12x" in marker_packages
+            assert "fastrlock" in marker_packages
+            assert "jinja2" in marker_packages
+            assert "torch" in marker_packages
+
+            # Verify specific version pinning
+            versions = {req.name: str(req.specifier) for req in rf.requirements}
+            assert versions["numpy"] == "==2.2.3"
+            assert versions["aiohttp"] == "==3.13.3"
+            assert versions["protobuf"] == "==5.29.4"
+
+            # Round-trip: parse -> write -> parse preserves all packages
+            output_file = Path(tmpdir) / "large_output.txt"
+            write_lock_file(rf, str(output_file))
+            rf2 = parse_lock_file(str(output_file))
+            names2 = sorted([req.name for req in rf2.requirements])
+            assert names == names2
+            assert len(rf2.requirements) == len(rf.requirements)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vvv", __file__]))

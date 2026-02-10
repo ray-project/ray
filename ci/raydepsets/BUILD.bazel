@@ -39,6 +39,7 @@ py_test(
         "tests/test_data/pre-hook-error-test.sh",
         "tests/test_data/pre-hook-test.sh",
         "tests/test_data/requirement_constraints_test.txt",
+        "tests/test_data/requirements_compiled_large_test.txt",
         "tests/test_data/requirements_compiled_test.txt",
         "tests/test_data/requirements_compiled_test_expand.txt",
         "tests/test_data/requirements_compiled_test_update.txt",
