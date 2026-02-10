@@ -2,7 +2,6 @@
 
 This template provides a hands-on introduction to **Ray Tune** — a scalable hyperparameter tuning library built on [Ray](https://docs.ray.io/en/latest/). You will learn what Ray Tune is, why it matters, and how to use its core APIs to efficiently search for the best hyperparameters for your models.
 
-**Assumed knowledge:** You should be comfortable with PyTorch, standard training loops, and common hyperparameters (learning rate, batch size, etc.).
 
 **Here is the roadmap for this template:**
 
@@ -15,7 +14,6 @@ This template provides a hands-on introduction to **Ray Tune** — a scalable hy
 - **Part 7:** Checkpointing, Storage, and Fault Tolerance
 - **Part 8:** Monitoring with the Ray Dashboard
 - **Part 9:** Advanced Patterns
-- **Part 10:** Ray Tune in Production
 - **Summary and Next Steps**
 
 ## Imports
@@ -35,10 +33,10 @@ from torch.optim import Adam
 from torch.nn import CrossEntropyLoss
 
 import ray
-from ray import tune, train
+from ray import tune
+from ray.tune import Checkpoint, Stopper
 from ray.tune.search.optuna import OptunaSearch
 from ray.tune.schedulers import ASHAScheduler
-from ray.tune import Stopper
 ```
 
 ### Note on Storage
@@ -125,9 +123,9 @@ We start with a minimal toy example to learn the core Ray Tune API.
 
 ### Step 1: Define the training function
 
-A Ray Tune training function must accept a `config` dictionary and report metrics back using `train.report()`.
+A Ray Tune training function must accept a `config` dictionary and report metrics back using `tune.report()`.
 
-> **API Note:** Use `train.report()` from `ray.train` to report metrics. The older `tune.report()` API is deprecated.
+> **API Note:** Use `tune.report()` to report metrics back to Tune. You can also `return` or `yield` a metrics dictionary from your trainable function.
 
 ```python
 def my_simple_model(distance: np.ndarray, a: float) -> np.ndarray:
@@ -141,7 +139,7 @@ def train_my_simple_model(config: dict[str, Any]) -> None:
     predictions = my_simple_model(distances, a)
     rmse = np.sqrt(np.mean((total_amts - predictions) ** 2))
 
-    train.report({"rmse": rmse})  # Report metrics to Ray Tune
+    tune.report({"rmse": rmse})  # Report metrics to Ray Tune
 ```
 
 ### Step 2: Set up the Tuner
@@ -245,7 +243,7 @@ We follow the same four steps, now applied to our ResNet18/MNIST model.
 
 ### Step 1: Refactor the training function
 
-We move the PyTorch code into a Tune-compatible function that accepts `config` and reports metrics via `train.report()`:
+We move the PyTorch code into a Tune-compatible function that accepts `config` and reports metrics via `tune.report()`:
 
 ```python
 def train_pytorch(config):
@@ -270,7 +268,7 @@ def train_pytorch(config):
             optimizer.step()
 
         # Report metrics at the end of each epoch
-        train.report({"loss": loss.item()})
+        tune.report({"loss": loss.item()})
 ```
 
 ### Step 2: Set up the Tuner
@@ -425,15 +423,15 @@ For production-grade experiments, you need persistent storage, checkpointing, an
 
 ### Persistent Storage
 
-On a distributed cluster, Ray Tune needs a persistent storage location accessible from all nodes to save checkpoints and experiment state. Configure it via `train.RunConfig(storage_path="/mnt/cluster_storage")`.
+On a distributed cluster, Ray Tune needs a persistent storage location accessible from all nodes to save checkpoints and experiment state. Configure it via `tune.RunConfig(storage_path="/mnt/cluster_storage")`.
 
 <img src="https://docs.ray.io/en/latest/_images/checkpoint_lifecycle.png" alt="Checkpoint Lifecycle" width="700"/>
 
-The checkpoint lifecycle: saved locally → uploaded to persistent storage via `train.report()`.
+The checkpoint lifecycle: saved locally → uploaded to persistent storage via `tune.report()`.
 
 ### Checkpointing Trials
 
-To make trials resumable, save model state as a `Checkpoint` inside `train.report()`. Here is the pattern for PyTorch:
+To make trials resumable, save model state as a `Checkpoint` inside `tune.report()`. Here is the pattern for PyTorch:
 
 ```python
 def train_pytorch_with_checkpoints(config):
@@ -446,7 +444,7 @@ def train_pytorch_with_checkpoints(config):
     start_epoch = 0
 
     # Resume from checkpoint if available
-    checkpoint = train.get_checkpoint()
+    checkpoint = tune.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as ckpt_dir:
             state = torch.load(os.path.join(ckpt_dir, "model.pt"), weights_only=False)
@@ -468,9 +466,9 @@ def train_pytorch_with_checkpoints(config):
                 {"model": model.state_dict(), "optimizer": optimizer.state_dict(), "epoch": epoch},
                 os.path.join(tmp_dir, "model.pt"),
             )
-            train.report(
+            tune.report(
                 {"loss": loss.item()},
-                checkpoint=train.Checkpoint.from_directory(tmp_dir),
+                checkpoint=Checkpoint.from_directory(tmp_dir),
             )
 ```
 
@@ -478,7 +476,7 @@ def train_pytorch_with_checkpoints(config):
 
 Ray Tune provides two mechanisms for handling failures:
 
-**1. Automatic trial retries** — Configure `FailureConfig` to retry failed trials automatically. For example, `train.FailureConfig(max_failures=3)` will retry each trial up to 3 times.
+**1. Automatic trial retries** — Configure `FailureConfig` to retry failed trials automatically. For example, `tune.FailureConfig(max_failures=3)` will retry each trial up to 3 times.
 
 **2. Experiment recovery** — If the entire experiment fails (e.g., driver crash), you can resume it with `tune.Tuner.restore(path=..., trainable=..., restart_errored=True)`. This picks up where the experiment left off, skipping completed trials and restarting errored ones.
 
@@ -497,10 +495,10 @@ tuner = tune.Tuner(
         mode="min",
         num_samples=4,
     ),
-    run_config=train.RunConfig(
+    run_config=tune.RunConfig(
         storage_path="/mnt/cluster_storage",
         name="resnet18_fault_tolerant",
-        failure_config=train.FailureConfig(max_failures=2),
+        failure_config=tune.FailureConfig(max_failures=2),
     ),
 )
 results = tuner.fit()
@@ -549,30 +547,40 @@ See the [Tune FAQ on data passing](https://docs.ray.io/en/latest/tune/faq.html) 
 
 ### Integrating with Ray Train
 
-For distributed multi-GPU training combined with hyperparameter tuning, pass a Ray Train `Trainer` directly to `tune.Tuner`. This allows each trial to use multiple GPUs (via `ScalingConfig`), while Tune manages the hyperparameter search across trials:
+For distributed multi-GPU training combined with hyperparameter tuning, wrap your Ray Train `Trainer` creation in a driver function that Tune calls with different hyperparameter configurations. Each Tune trial launches a full Ray Train distributed training run.
+
+> **API Note:** The older `Tuner(trainer)` API that directly accepts a Trainer instance is deprecated since Ray 2.43. Use the function-based driver pattern shown below instead.
 
 ```
-trainer = TorchTrainer(
-    train_loop_per_worker=...,
-    scaling_config=train.ScalingConfig(num_workers=2, use_gpu=True),
-)
+from ray.train.torch import TorchTrainer
+from ray.tune.integration.ray_train import TuneReportCallback
+
+def train_driver_fn(config):
+    trainer = TorchTrainer(
+        train_loop_per_worker=...,
+        train_loop_config=config["train_loop_config"],
+        scaling_config=ray.train.ScalingConfig(num_workers=2, use_gpu=True),
+        run_config=ray.train.RunConfig(
+            name=f"train-trial_id={tune.get_context().get_trial_id()}",
+            callbacks=[TuneReportCallback()],
+        ),
+    )
+    trainer.fit()
 
 tuner = tune.Tuner(
-    trainer,
+    train_driver_fn,
     param_space={"train_loop_config": {"lr": tune.loguniform(1e-4, 1e-1)}},
-    tune_config=tune.TuneConfig(num_samples=4, metric="loss", mode="min"),
+    tune_config=tune.TuneConfig(num_samples=4, max_concurrent_trials=2),
 )
 results = tuner.fit()
 ```
 
-See the [Ray Train + Tune guide](https://docs.ray.io/en/latest/train/getting-started-pytorch.html) for full details.
+Key details:
+- **`TuneReportCallback`** propagates metrics reported by Ray Train workers back to Tune, so the `Tuner` can track and compare trial results.
+- **`tune.get_context().get_trial_id()`** ensures each Train run gets a unique name tied to the Tune trial, which is required for proper fault tolerance.
+- **`max_concurrent_trials`** limits how many Train runs compete for cluster resources at once. Set this based on your GPU budget (e.g., `total_gpus // gpus_per_trial`).
 
-## Part 10: Ray Tune in Production
-
-Ray Tune is used in production at leading companies:
-
-- **Uber** — Built an internal autotune service on Ray Tune for their generative AI workloads. [Read their blog post](https://www.uber.com/blog/from-predictive-to-generative-ai/).
-- **Spotify** — Uses Ray Tune for hyperparameter tuning at scale across their ML platform. [Read their engineering blog](https://engineering.atspotify.com/2023/02/unleashing-ml-innovation-at-spotify-with-ray/).
+See the [Ray Train + Tune guide](https://docs.ray.io/en/latest/train/user-guides/hyperparameter-optimization.html) for full details.
 
 ## Summary and Next Steps
 
@@ -580,7 +588,7 @@ In this template, you learned:
 
 - **What** Ray Tune is — a scalable, distributed hyperparameter tuning library
 - **Why** to use it — parallel trial execution, smart search algorithms, early stopping, fault tolerance, and ecosystem integration
-- **How** to use it — defining trainable functions with `train.report()`, configuring `tune.Tuner` with search spaces and `TuneConfig`, running experiments with `tuner.fit()`, and retrieving best results
+- **How** to use it — defining trainable functions with `tune.report()`, configuring `tune.Tuner` with search spaces and `TuneConfig`, running experiments with `tuner.fit()`, and retrieving best results
 - **Core concepts** — resources (`tune.with_resources`), search algorithms (random, grid, Optuna), schedulers (FIFO, ASHA), stopping criteria
 - **Operational features** — checkpointing, persistent storage, fault tolerance, experiment recovery, monitoring
 
@@ -588,15 +596,15 @@ In this template, you learned:
 
 | **Deprecated** | **Use Instead** |
 |---------------|----------------|
-| `tune.report()` | `train.report()` from `ray.train` |
 | `tune.run()` | `tune.Tuner` + `tuner.fit()` |
+| `tune.Tuner(trainer)` (passing a Trainer directly) | Function-based driver pattern (see Part 9) |
 
 ### Next Steps
 
 1. **[Ray Tune User Guide](https://docs.ray.io/en/latest/tune/getting-started.html)** — Complete guide to Ray Tune
 2. **[Search Algorithm Reference](https://docs.ray.io/en/latest/tune/api/suggestion.html)** — All supported search algorithms
 3. **[Scheduler Reference](https://docs.ray.io/en/latest/tune/api/schedulers.html)** — All supported schedulers including ASHA and PBT
-4. **[Ray Train + Tune Integration](https://docs.ray.io/en/latest/train/getting-started-pytorch.html)** — Combining distributed training with HPO
+4. **[Ray Train + Tune Integration](https://docs.ray.io/en/latest/train/user-guides/hyperparameter-optimization.html)** — Combining distributed training with HPO
 5. **[Tune Examples Gallery](https://docs.ray.io/en/latest/tune/examples/index.html)** — End-to-end examples with popular frameworks
 
 ## Cleanup
