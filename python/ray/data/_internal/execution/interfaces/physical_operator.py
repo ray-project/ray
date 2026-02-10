@@ -686,7 +686,7 @@ class PhysicalOperator(Operator):
         This method is called by the executor to decide how to allocate processors
         between different operators.
         """
-        return ExecutionResources(0, 0, 0, 0)
+        return ExecutionResources.zero()
 
     def running_logical_usage(self) -> ExecutionResources:
         """Returns the estimated running CPU, GPU, and memory usage of this operator,
@@ -712,7 +712,7 @@ class PhysicalOperator(Operator):
         executor to display the number of currently pending actors in the
         progress bar.
         """
-        return ExecutionResources(0, 0, 0, 0)
+        return ExecutionResources.zero()
 
     def min_max_resource_requirements(
         self,
