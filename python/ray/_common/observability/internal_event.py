@@ -7,7 +7,7 @@ emit events to dashboard-agents aggregator agent service.
 from abc import ABC, abstractmethod
 
 from ray._raylet import RayEvent
-from ray.core.generated.events_base_event_pb2 import RayEvent
+from ray.core.generated.events_base_event_pb2 import RayEvent as RayEventProto
 
 
 class InternalEventBuilder(ABC):
@@ -28,7 +28,7 @@ class InternalEventBuilder(ABC):
         source_type: int,
         event_type: int,
         nested_event_field_number: int,
-        severity: int = RayEvent.Severity.INFO,
+        severity: int = RayEventProto.Severity.INFO,
         message: str = "",
         session_name: str = "",
     ):
@@ -38,7 +38,7 @@ class InternalEventBuilder(ABC):
             source_type: RayEvent.SourceType enum value (e.g., JOBS = 6).
             event_type: RayEvent.EventType enum value.
             nested_event_field_number: The field number in RayEvent proto for the
-                nested event message. Use RayEvent.<FIELD>_FIELD_NUMBER constants
+                nested event message. Use RayEventProto.<FIELD>_FIELD_NUMBER constants
                 (e.g., RayEventProto.SUBMISSION_JOB_DEFINITION_EVENT_FIELD_NUMBER).
             severity: RayEvent.Severity enum value (default INFO).
             message: Optional message associated with the event.
