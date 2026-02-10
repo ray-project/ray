@@ -704,15 +704,9 @@ class DeploymentAutoscalingState:
         else:
             time_since_last_collected_metrics_s = None
 
-        if target_replicas > current_replicas:
-            scaling_status_raw = AutoscalingStatus.UPSCALE
-        elif target_replicas < current_replicas:
-            scaling_status_raw = AutoscalingStatus.DOWNSCALE
-        else:
-            scaling_status_raw = AutoscalingStatus.STABLE
-
-        scaling_status = AutoscalingStatus.format_scaling_status(scaling_status_raw)
-
+        scaling_status = AutoscalingStatus.get_formatted_status(
+            target_replicas, current_replicas
+        )
         look_back_period_s = self._config.look_back_period_s
         metrics_health = DeploymentSnapshot.format_metrics_health_text(
             time_since_last_collected_metrics_s=time_since_last_collected_metrics_s,
@@ -900,14 +894,9 @@ class ApplicationAutoscalingState:
         )
         total_target = sum(decisions.values())
 
-        if total_target > total_current:
-            scaling_status_raw = AutoscalingStatus.UPSCALE
-        elif total_target < total_current:
-            scaling_status_raw = AutoscalingStatus.DOWNSCALE
-        else:
-            scaling_status_raw = AutoscalingStatus.STABLE
-
-        scaling_status = AutoscalingStatus.format_scaling_status(scaling_status_raw)
+        scaling_status = AutoscalingStatus.get_formatted_status(
+            total_target, total_current
+        )
 
         errors: List[str] = []
 

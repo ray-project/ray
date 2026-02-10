@@ -882,6 +882,16 @@ class AutoscalingStatus(str, Enum):
         }
         return mapping.get(trigger, str(trigger).lower())
 
+    @classmethod
+    def get_formatted_status(cls, target: int, current: int) -> str:
+        if target > current:
+            status = cls.UPSCALE
+        elif target < current:
+            status = cls.DOWNSCALE
+        else:
+            status = cls.STABLE
+        return cls.format_scaling_status(status)
+
 
 class DeploymentSnapshot(BaseModel):
     snapshot_type: str = "deployment"
