@@ -225,6 +225,8 @@ void ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                       } else {
                         fail_or_retry_task = true;
                         actor_submit_queue->MarkDependencyFailed(send_pos);
+                        queue->second.cur_pending_calls_--;
+                        SendPendingTasks(actor_id);
                       }
                     }
                   }
