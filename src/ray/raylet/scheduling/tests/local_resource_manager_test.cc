@@ -502,10 +502,6 @@ TEST_F(LocalResourceManagerTest, NodeWorkersBusyClearsSavedPullingTime) {
 }
 
 TEST_F(LocalResourceManagerTest, RepeatedMarkFootprintAsIdleDoesNotResetIdleTime) {
-  // Regression test for https://github.com/ray-project/ray/issues/60546.
-  // MarkFootprintAsIdle called repeatedly (e.g. from SpillWaitingLeases when the
-  // waiting queue is already empty) should not reset the idle timer if the
-  // footprint is already idle with no saved state.
   CreateManagerWithFakeClock();
 
   AssertIdleAndGetTime();
@@ -521,7 +517,7 @@ TEST_F(LocalResourceManagerTest, RepeatedMarkFootprintAsIdleDoesNotResetIdleTime
   // Idle time must NOT have been reset to the current (advanced) time.
   ASSERT_EQ(AssertIdleAndGetTime(), idle_after_first_mark);
 
-  // Call it several more times with time advancing each time.
+  // Call it a few more times with time advancing each time.
   for (int i = 0; i < 5; i++) {
     AdvanceTime(absl::Milliseconds(100));
     manager->MarkFootprintAsIdle(WorkFootprint::PULLING_TASK_ARGUMENTS);
