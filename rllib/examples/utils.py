@@ -27,7 +27,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.serialization import convert_numpy_to_python_primitives
 from ray.rllib.utils.typing import ResultDict
-from ray.tune import CLIReporter
 from ray.tune.result import TRAINING_ITERATION
 
 if TYPE_CHECKING:
@@ -658,11 +657,11 @@ def run_rllib_example_script_experiment(
             )
         )
 
-    # Auto-configure a CLIReporter (to log the results to the console).
+    # Auto-configure a tune.CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
     if progress_reporter is None:
         if args.num_agents == 0:
-            progress_reporter = CLIReporter(
+            progress_reporter = tune.CLIReporter(
                 metric_columns={
                     TRAINING_ITERATION: "iter",
                     "time_total_s": "total time (s)",
@@ -672,7 +671,7 @@ def run_rllib_example_script_experiment(
                 max_report_frequency=args.tune_max_report_freq,
             )
         else:
-            progress_reporter = CLIReporter(
+            progress_reporter = tune.CLIReporter(
                 metric_columns={
                     **{
                         TRAINING_ITERATION: "iter",
@@ -691,7 +690,7 @@ def run_rllib_example_script_experiment(
             )
 
     # Force Tuner to use old progress output as the new one silently ignores our custom
-    # `CLIReporter`.
+    # `tune.CLIReporter`.
     os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
 
     # Run the actual experiment (using Tune).
@@ -700,6 +699,7 @@ def run_rllib_example_script_experiment(
         trainable or config.algo_class,
         param_space=config,
         run_config=tune.RunConfig(
+            failure_config=tune.FailureConfig(max_failures=0, fail_fast="raise"),
             stop=stop,
             verbose=args.verbose,
             callbacks=tune_callbacks,
