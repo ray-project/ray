@@ -157,7 +157,7 @@ Soft Actor Critic (SAC)
 `Cartpole-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/sac/cartpole_sac.py>`__,
 `Atari (Pong-v5) with Rainbow <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/sac/atari_sac.py>`__,
 `Stateless Cartpole with LSTM <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/sac/stateless_cartpole_sac_with_lstm.py>`__,
-`Multi-Agent <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/sac/tictactoe_sac.py>`__,
+`Multi-Agent with TicTacToe <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/sac/tictactoe_sac.py>`__,
 
 **SAC-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
