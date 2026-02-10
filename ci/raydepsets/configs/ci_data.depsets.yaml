@@ -96,3 +96,19 @@ depsets:
       - --override python/requirements/data/mongo.txt
     build_arg_sets:
       - py310
+
+  - name: data_pyarrow_nightly_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - data_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/pyarrow-nightly.txt
+    output: python/deplocks/ci/data-pyarrow-nightly-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cpu
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+      - --upgrade
+    build_arg_sets:
+      - py310

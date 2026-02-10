@@ -1,6 +1,6 @@
 name: "datamongobuild-py$PYTHON"
 froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON"]
-dockerfile: ci/docker/data.base.build.Dockerfile
+dockerfile: ci/docker/data.build.Dockerfile
 srcs:
   - python/deplocks/ci/data-mongo-ci_depset_py$PYTHON.lock
 build_args:
