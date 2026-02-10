@@ -73,8 +73,8 @@ Job-level Checkpointing
 
 Ray Data supports job-level checkpointing to improve fault tolerance for
 long-running batch pipelines. When enabled, Ray Data can resume a failed job
-from the last successfully processed rows instead of restarting from the
-beginning.
+by skipping rows that were successfully processed in a previous run, instead
+of restarting from the beginning.
 
 To configure job-level checkpointing, specify a
 :class:`~ray.data.checkpoint.CheckpointConfig` on the current
