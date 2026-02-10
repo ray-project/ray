@@ -531,5 +531,97 @@ def test_get_byod_image_tag_ray_version(mock_get_byod_base_image_tag):
     assert test.get_byod_image_tag() == f"test-image-{hash_value}-2.50.0"
 
 
+def test_require_custom_byod_image():
+    # No custom build needed
+    assert not _stub_test({"cluster": {"byod": {}}}).require_custom_byod_image()
+    # post_build_script triggers custom build
+    assert _stub_test(
+        {"cluster": {"byod": {"post_build_script": "foo.sh"}}}
+    ).require_custom_byod_image()
+    # python_depset triggers custom build
+    assert _stub_test(
+        {"cluster": {"byod": {"python_depset": "deps.lock"}}}
+    ).require_custom_byod_image()
+    # runtime_env triggers custom build
+    assert _stub_test(
+        {"cluster": {"byod": {"runtime_env": ["FOO=bar"]}}}
+    ).require_custom_byod_image()
+    # empty runtime_env does not trigger custom build
+    assert not _stub_test(
+        {"cluster": {"byod": {"runtime_env": []}}}
+    ).require_custom_byod_image()
+
+
+@patch("ray_release.test.Test.get_byod_base_image_tag")
+def test_get_byod_image_tag_runtime_env_only(mock_get_byod_base_image_tag):
+    """Tests with only runtime_env get a custom image tag including env hash."""
+    test = _stub_test(
+        {
+            "name": "linux://test",
+            "cluster": {
+                "byod": {
+                    "runtime_env": ["MY_VAR=123"],
+                },
+            },
+        }
+    )
+    mock_get_byod_base_image_tag.return_value = "test-image"
+    custom_info = {
+        "post_build_script": None,
+        "python_depset": None,
+        "runtime_env": {"MY_VAR": "123"},
+    }
+    hash_value = dict_hash(custom_info)
+    assert test.get_byod_image_tag() == f"test-image-{hash_value}"
+
+    # A different test with the same runtime_env but a different run script
+    # should produce the same image tag (run script doesn't affect the image).
+    test2 = _stub_test(
+        {
+            "name": "linux://other_test",
+            "cluster": {
+                "byod": {
+                    "runtime_env": ["MY_VAR=123"],
+                },
+            },
+            "run": {
+                "script": "python different_script.py",
+            },
+        }
+    )
+    assert test2.get_byod_image_tag() == f"test-image-{hash_value}"
+
+
+@patch("ray_release.test.Test.get_byod_base_image_tag")
+def test_get_byod_image_tag_with_runtime_env_and_script(mock_get_byod_base_image_tag):
+    """Tests with runtime_env AND post_build_script include both in the hash."""
+    test = _stub_test(
+        {
+            "name": "linux://test",
+            "cluster": {
+                "byod": {
+                    "post_build_script": "test_script.sh",
+                    "runtime_env": ["KEY=val"],
+                },
+            },
+        }
+    )
+    mock_get_byod_base_image_tag.return_value = "test-image"
+    custom_info = {
+        "post_build_script": "test_script.sh",
+        "python_depset": None,
+        "runtime_env": {"KEY": "val"},
+    }
+    hash_value = dict_hash(custom_info)
+    assert test.get_byod_image_tag() == f"test-image-{hash_value}"
+
+    # Verify this is different from the hash without runtime_env
+    custom_info_no_env = {
+        "post_build_script": "test_script.sh",
+        "python_depset": None,
+    }
+    assert dict_hash(custom_info) != dict_hash(custom_info_no_env)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
