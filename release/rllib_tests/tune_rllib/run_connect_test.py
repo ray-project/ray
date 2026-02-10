@@ -1,59 +1,82 @@
 """Tests integration between Ray Tune and RLlib
 
-Runs APPO + Pong learning test.
+Runs a learning test: APPO with Atari Pong
 """
 
 import json
-import logging
 import os
 import time
-from pprint import pformat
+
+import gymnasium as gym
 
 import ray
-from ray import tune
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.tune import CLIReporter, RunConfig
+from ray.rllib.connectors.env_to_module.frame_stacking import \
+    FrameStackingEnvToModule
+from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
+from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
+from ray.tune import CLIReporter, RunConfig, Tuner
+from ray.tune.registry import register_env
 
-logging.basicConfig(level=logging.WARN)
-logger = logging.getLogger("rllib")
+
+def _make_env_to_module_connector(env, spaces, device):
+    return FrameStackingEnvToModule(num_frames=4)
 
 
-def run(smoke_test=False, storage_path: str = None):
-    stop = {"training_iteration": 1 if smoke_test else 50}
+def _make_learner_connector(input_observation_space, input_action_space):
+    return FrameStackingLearner(num_frames=4)
 
-    config = (
-        APPOConfig()
-        .environment(
-            env="ale_py:ALE/Pong-v5",
-            clip_rewards=True,
-        )
-        .framework(
-            framework="torch",
-        )
-        .env_runners(
-            rollout_fragment_length=50,
-            num_env_runners=0 if smoke_test else 20,
-            num_envs_per_env_runner=1,
-        )
-        .training(
-            train_batch_size=750,
-            num_epochs=2,
-            vf_loss_coeff=1.0,
-            clip_param=0.3,
-            grad_clip=10,
-            vtrace=True,
-            use_kl_loss=False,
-        )
-        .learners(
-            num_learners=0 if smoke_test else 1,
-            num_gpus_per_learner=0 if smoke_test else 1,
-        )
+
+def _env_creator(cfg):
+    return wrap_atari_for_new_api_stack(
+        gym.make(id="ale_py:ALE/Pong-v5", **cfg, **{"render_mode": "rgb_array"}),
+        dim=64,
+        framestack=None,
     )
 
-    logger.info(f"Algorithm configuration: \n {pformat(config)}")
 
-    # Run the experiment
-    exp_results = tune.Tuner(
+register_env(name="env", env_creator=_env_creator)
+
+stop = {"training_iteration": 50}
+config = (
+    APPOConfig()
+    .environment(
+        env="env",
+        env_config={
+            # Make analogous to old v4 + NoFrameskip.
+            "frameskip": 1,
+            "full_action_space": False,
+            "repeat_action_probability": 0.0,
+        },
+        clip_rewards=True,
+    )
+    .env_runners(
+        env_to_module_connector=_make_env_to_module_connector,
+        num_env_runners=4,
+        num_envs_per_env_runner=5,
+        rollout_fragment_length=50,
+    )
+    .training(
+        learner_connector=_make_learner_connector,
+        train_batch_size=1000,
+        vf_loss_coeff=1.0,
+        clip_param=0.3,
+        grad_clip=10,
+        vtrace=True,
+        use_kl_loss=False,
+    )
+    .learners(
+        num_learners=1,
+        num_gpus_per_learner=1,
+    )
+)
+
+
+if __name__ == "__main__":
+    ray.init(ignore_reinit_error=True)
+
+    start_time = time.time()
+    results = Tuner(
         trainable=config.algo_class,
         param_space=config,
         run_config=RunConfig(
@@ -61,36 +84,14 @@ def run(smoke_test=False, storage_path: str = None):
             verbose=1,
             progress_reporter=CLIReporter(
                 metric_columns={
-                    "training_iteration": "iter",
-                    "time_total_s": "time_total_s",
-                    "timesteps_total": "ts",
-                    "snapshots": "snapshots",
-                    "episodes_this_iter": "train_episodes",
-                    "episode_reward_mean": "reward_mean",
+                    "training_iteration": "training_iteration",
+                    "env_runners/episode_return_mean": "episode_return_mean",
                 },
-                sort_by_metric=True,
                 max_report_frequency=30,
             ),
-            storage_path=storage_path,
-        ),
-        tune_config=tune.TuneConfig(
-            num_samples=1,
         ),
     ).fit()
 
-    return exp_results
-
-
-if __name__ == "__main__":
-    addr = os.environ.get("RAY_ADDRESS")
-    job_name = os.environ.get("RAY_JOB_NAME", "rllib_tune_connect_tests")
-    if addr is not None and addr.startswith("anyscale://"):
-        ray.init(address=addr, job_name=job_name)
-    else:
-        ray.init(address="auto")
-
-    start_time = time.time()
-    results = run(storage_path="/mnt/cluster_storage")
     exp_analysis = results._experiment_analysis
     end_time = time.time()
 
