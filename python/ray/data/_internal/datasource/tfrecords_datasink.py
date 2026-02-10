@@ -156,8 +156,11 @@ def _value_to_feature(
         value = [v.encode() for v in value]  # casting to bytes
         return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
     if underlying_value_type["tensor"]:
-        value = tf.io.serialize_tensor(value).numpy()
-        return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+        if value is None:
+            value = []
+        else:
+            value = [tf.io.serialize_tensor(value).numpy()]
+        return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
     if pa.types.is_null(value_type):
         raise ValueError(
             "Unable to infer type from partially missing column. "
