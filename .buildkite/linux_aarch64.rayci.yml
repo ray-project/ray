@@ -428,6 +428,7 @@ steps:
       - manylinux-aarch64
       - oss-ci-base_build-aarch64
       - forge-aarch64
+      - ray-wheel-build-aarch64
     job_env: forge-aarch64
 
   - label: ":ray-serve: serve: wheel-aarch64 tests"
@@ -445,4 +446,5 @@ steps:
       - manylinux-aarch64
       - oss-ci-base_build-aarch64
       - forge-aarch64
+      - ray-wheel-build-aarch64
     job_env: forge-aarch64
