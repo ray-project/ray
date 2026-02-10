@@ -104,7 +104,7 @@ py_library(
 # | (MA/D) TicTacToe               | -2      | ✅          | ❌              | ✅           | ✅          |
 # | (SA/D) Atari (Pong)            | -10.0   | ❌          | ❌              | ✅           | ✅          |
 # | (SA/C) MuJoCo (Humanoid)       | 200     | ❌          | ✅              | ❌           | ✅          |
-# | (MA/D) Footsies                |         | ❌          | ❌              | ✅           | ✅          |
+# | (MA/D) Footsies                | 4       | ❌          | ❌              | ✅           | ✅          |
 # | (SA/C) IsaacLab (Humanoid)     |         | ❌          | ✅ (with 1 GPU) | ⚠️           | ❌          |
 
 py_test(
