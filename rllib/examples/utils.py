@@ -326,11 +326,6 @@ def add_rllib_example_script_args(
         action="store_true",
         help=argparse.SUPPRESS,
     )
-    parser.add_argument(
-        "--local-mode",
-        action="store_true",
-        help=argparse.SUPPRESS,
-    )
 
     return parser
 
