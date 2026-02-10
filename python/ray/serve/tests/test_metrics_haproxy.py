@@ -28,11 +28,12 @@ from starlette.responses import PlainTextResponse
 import ray
 from ray import serve
 from ray._common.network_utils import parse_address
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._common.utils import reset_ray_address
-from ray._private.test_utils import (
+from ray._common.test_utils import (
+    SignalActor,
     fetch_prometheus_metrics,
+    wait_for_condition,
 )
+from ray._common.utils import reset_ray_address
 from ray.serve import HTTPOptions
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
 from ray.serve._private.test_utils import (
