@@ -1633,7 +1633,7 @@ py-spy==0.4.0 ; python_version < "3.12"
     # via -r python/requirements.txt
 py4j==0.10.9.7
     # via pyspark
-pyarrow==20.0.0
+pyarrow==19.0.1
     # via
     #   -r python/requirements.txt
     #   dask

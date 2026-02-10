@@ -19,11 +19,6 @@ set -ex
 
 uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
-if [[ -n "$ARROW_MONGO_VERSION" ]]; then
-  # Older versions of Arrow Mongo require an older version of NumPy.
-  pip install numpy==1.23.5
-fi
-
 # Install MongoDB
 sudo apt-get purge -y mongodb*
 sudo apt-get install -y mongodb
