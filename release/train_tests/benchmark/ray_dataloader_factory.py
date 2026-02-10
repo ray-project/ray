@@ -23,7 +23,7 @@ SPILL_MONITOR_ACTOR_NAMESPACE = "_spill_metrics_monitor"
 @ray.remote(num_cpus=0)
 class SpillMetricsMonitor:
     """Actor that periodically polls object store spill metrics
-    to compute peak and average spilling rates (GB/min).
+    to compute peak and average spilling rates (GB/s).
 
     A single instance is shared across all workers via a named actor.
     """
@@ -31,7 +31,7 @@ class SpillMetricsMonitor:
     def __init__(self, poll_interval_s: float = 60.0):
         self._poll_interval_s = poll_interval_s
         self._stop_event = threading.Event()
-        self._spill_rates_gb_min: List[float] = []
+        self._spill_rates_gb_s: List[float] = []
         self._lock = threading.Lock()
 
         self._thread = threading.Thread(target=self._poll_loop, daemon=True)
@@ -60,9 +60,9 @@ class SpillMetricsMonitor:
                 delta_time = current_time - prev_time
 
                 if delta_time > 0 and delta_bytes >= 0:
-                    rate_gb_min = (delta_bytes / (1024**3)) / delta_time * 60
+                    rate_gb_s = (delta_bytes / (1024**3)) / delta_time
                     with self._lock:
-                        self._spill_rates_gb_min.append(rate_gb_min)
+                        self._spill_rates_gb_s.append(rate_gb_s)
 
                 prev_spilled_bytes = current_bytes
                 prev_time = current_time
@@ -71,14 +71,14 @@ class SpillMetricsMonitor:
 
     def get_metrics(self) -> Dict[str, float]:
         with self._lock:
-            rates = list(self._spill_rates_gb_min)
+            rates = list(self._spill_rates_gb_s)
 
         if not rates:
             return {}
 
         return {
-            "object_store_spilling_peak_gb_min": round(max(rates), 4),
-            "object_store_spilling_avg_gb_min": round(sum(rates) / len(rates), 4),
+            "object_store_spilling_peak_gb_s": round(max(rates), 4),
+            "object_store_spilling_avg_gb_s": round(sum(rates) / len(rates), 4),
         }
 
 
