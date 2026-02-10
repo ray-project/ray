@@ -803,14 +803,14 @@ class OpBufferQueueTest(unittest.TestCase):
             count = 0
 
             try:
-                while True:
-                    if queue.has_next(output_split_idx):
-                        ref_bundle = queue.pop(output_split_idx)
-                        if ref_bundle is not None:
-                            count += 1
-                            assert ref_bundle.output_split_idx == output_split_idx
-                    elif done.is_set():
-                        break
+                # Iterate until both are true:
+                #   - Producer is done
+                #   - Queue is empty
+                while not done.is_set() or queue.has_next(output_split_idx):
+                    ref_bundle = queue.pop(output_split_idx)
+                    if ref_bundle is not None:
+                        count += 1
+                        assert ref_bundle.output_split_idx == output_split_idx
             except Exception as e:
                 print(f">>> Caught exception: {e}")
                 raise
