@@ -4,10 +4,11 @@ import sys
 import tempfile
 import unittest
 from collections import namedtuple
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from mlflow.tracking import MlflowClient
+from pyarrow.fs import LocalFileSystem
 
 import ray
 from ray._private.dict import flatten_dict
@@ -17,8 +18,16 @@ from ray.train.torch import TorchTrainer
 from ray.tune import Tuner
 
 
+class MockStorage:
+    def __init__(self, storage_filesystem):
+        self.storage_filesystem = storage_filesystem
+
+
 class MockTrial(
-    namedtuple("MockTrial", ["config", "trial_name", "trial_id", "local_path"])
+    namedtuple(
+        "MockTrial",
+        ["config", "trial_name", "trial_id", "local_path", "path", "storage"],
+    )
 ):
     def __hash__(self):
         return hash(self.trial_id)
@@ -181,7 +190,10 @@ class MLflowTest(unittest.TestCase):
     def testMlFlowLoggerLogging(self):
         clear_env_vars()
         trial_config = {"par1": "a", "par2": "b"}
-        trial = MockTrial(trial_config, "trial1", 0, "artifact")
+        mock_storage = MockStorage(LocalFileSystem())
+        trial = MockTrial(
+            trial_config, "trial1", 0, "artifact", "artifact", mock_storage
+        )
 
         logger = MLflowLoggerCallback(
             tracking_uri=self.tracking_uri,
@@ -242,7 +254,10 @@ class MLflowTest(unittest.TestCase):
     def testMlFlowLoggerLogging_logAtEnd(self):
         clear_env_vars()
         trial_config = {"par1": "a", "par2": "b"}
-        trial = MockTrial(trial_config, "trial1", 0, "artifact")
+        mock_storage = MockStorage(LocalFileSystem())
+        trial = MockTrial(
+            trial_config, "trial1", 0, "artifact", "artifact", mock_storage
+        )
 
         logger = MLflowLoggerCallback(
             tracking_uri=self.tracking_uri,
@@ -311,6 +326,41 @@ class MLflowTest(unittest.TestCase):
 
         mlflow.log_metrics()
         mlflow.sklearn.save_model(None, "model_directory")
+
+    @patch("ray.air.integrations.mlflow._MLflowLoggerUtil", Mock_MLflowLoggerUtil)
+    @patch("pyarrow.fs.copy_files")
+    def testMlFlowLoggerWithRemoteStorage(self, mock_copy_files):
+        """Test that artifacts work with remote storage filesystems."""
+        clear_env_vars()
+        trial_config = {"par1": "a", "par2": "b"}
+
+        mock_fs = Mock()
+        mock_fs.type_name = "s3"
+        mock_storage = MockStorage(mock_fs)
+
+        trial = MockTrial(
+            trial_config,
+            "trial1",
+            0,
+            "local_artifact",
+            "bucket/path",
+            mock_storage,
+        )
+
+        logger = MLflowLoggerCallback(
+            tracking_uri=self.tracking_uri,
+            registry_uri=self.registry_uri,
+            experiment_name="test_remote",
+            save_artifact=True,
+        )
+        logger.setup()
+
+        logger.on_trial_start(iteration=0, trials=[], trial=trial)
+        logger.on_trial_complete(0, [], trial)
+
+        self.assertTrue(logger.mlflow_util.artifact_saved)
+
+        mock_copy_files.assert_called_once()
 
 
 class MLflowUtilTest(unittest.TestCase):
