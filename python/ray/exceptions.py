@@ -810,10 +810,6 @@ class ObjectReconstructionFailedError(ObjectLostError):
             "boundary. Only the owner of an object can trigger reconstruction, "
             "but this worker borrowed the object from another worker."
         ),
-        ErrorType.OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE: (
-            "The object cannot be reconstructed because Ray is running in "
-            "local mode. Local mode does not support object reconstruction."
-        ),
         ErrorType.OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND: (
             "The object cannot be reconstructed because its reference was "
             "not found in the reference counter. "
