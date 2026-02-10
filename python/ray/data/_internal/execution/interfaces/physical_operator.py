@@ -683,7 +683,7 @@ class PhysicalOperator(Operator):
         """Returns the current estimated CPU, GPU, and memory usage of this operator,
         excluding object store memory.
 
-        This method is called by the executor to decide how to allocate processors
+        This method is called by the executor to decide how to allocate resources
         between different operators.
         """
         return ExecutionResources.zero()
