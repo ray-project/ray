@@ -244,8 +244,8 @@ like node restarts or transient execution errors.
 
 When enabled, Ray Data records progress during execution. If a batch inference
 job fails partway through processing, rerunning the same pipeline with the same
-checkpoint configuration resumes from the last completed checkpoint instead
-of reprocessing all records.
+checkpoint configuration resumes by skipping already-processed records instead
+of reprocessing the entire dataset.
 
 This is especially useful for large batch inference workloads where restarting
 from the beginning would be expensive.
