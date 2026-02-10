@@ -190,6 +190,18 @@ METRICS_GAUGES = {
         "bytes",
         GPU_TAG_KEYS,
     ),
+    "node_gpu_power_milliwatts": Gauge(
+        "node_gpu_power_milliwatts",
+        "Current GPU power draw in milliwatts",
+        "milliwatts",
+        GPU_TAG_KEYS,
+    ),
+    "node_gpu_temperature_celsius": Gauge(
+        "node_gpu_temperature_celsius",
+        "Current GPU temperature in Celsius",
+        "celsius",
+        GPU_TAG_KEYS,
+    ),
     # TPU metrics
     "tpu_tensorcore_utilization": Gauge(
         "tpu_tensorcore_utilization",
@@ -1523,14 +1535,30 @@ class ReporterAgent(
                         value=gram_available,
                         tags=gpu_tags,
                     )
-                    records_reported.extend(
-                        [
-                            gpus_available_record,
-                            gpus_utilization_record,
-                            gram_used_record,
-                            gram_available_record,
-                        ]
-                    )
+                    gpu_records_to_add = [
+                        gpus_available_record,
+                        gpus_utilization_record,
+                        gram_used_record,
+                        gram_available_record,
+                    ]
+                    # Optional GPU power and temperature (e.g. NVIDIA, AMD)
+                    if gpu.get("power_mw") is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS_GAUGES["node_gpu_power_milliwatts"],
+                                value=gpu["power_mw"],
+                                tags=gpu_tags,
+                            )
+                        )
+                    if gpu.get("temperature_c") is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS_GAUGES["node_gpu_temperature_celsius"],
+                                value=gpu["temperature_c"],
+                                tags=gpu_tags,
+                            )
+                        )
+                    records_reported.extend(gpu_records_to_add)
 
         # -- TPU per node --
         tpus = stats["tpus"]
