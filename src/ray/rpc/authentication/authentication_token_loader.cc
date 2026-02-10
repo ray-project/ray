@@ -48,9 +48,6 @@ constexpr const char *kNoTokenErrorMessage =
     "or store the token in any file and set RAY_AUTH_TOKEN_PATH to point to it, "
     "or set the RAY_AUTH_TOKEN environment variable.";
 
-constexpr int kRaySATokenDefaultTTLSeconds = 600;
-constexpr int kRaySATokenExpirationBufferSeconds = 300;
-
 std::optional<std::chrono::system_clock::time_point>
 AuthenticationTokenLoader::GetJWTTokenExpiration(const std::string &token) {
   std::vector<std::string> parts = absl::StrSplit(token, '.');
@@ -70,14 +67,14 @@ AuthenticationTokenLoader::GetJWTTokenExpiration(const std::string &token) {
     if (json.contains("exp") && json["exp"].is_number()) {
       int64_t exp = json["exp"].get<int64_t>();
       return std::chrono::system_clock::from_time_t(exp) -
-             std::chrono::seconds(kRaySATokenExpirationBufferSeconds);
+             std::chrono::seconds(ray::rpc::k8s::kRaySATokenExpirationBufferSeconds);
     }
   } catch (...) {
     return std::nullopt;
   }
 
   return std::chrono::system_clock::now() +
-         std::chrono::seconds(kRaySATokenDefaultTTLSeconds);
+         std::chrono::seconds(ray::rpc::k8s::kRaySATokenDefaultTTLSeconds);
 }
 
 AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
