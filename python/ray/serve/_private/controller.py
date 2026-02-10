@@ -1360,6 +1360,7 @@ class ServeController:
                 TargetGroup(
                     protocol=RequestProtocol.HTTP,
                     route_prefix="/",
+                    app_name="",
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                 )
             )
@@ -1368,6 +1369,7 @@ class ServeController:
                     TargetGroup(
                         protocol=RequestProtocol.GRPC,
                         route_prefix="/",
+                        app_name="",
                         targets=self.proxy_state_manager.get_targets(
                             RequestProtocol.GRPC
                         ),
