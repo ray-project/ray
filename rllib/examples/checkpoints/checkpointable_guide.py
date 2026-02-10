@@ -2,11 +2,11 @@
 Guide on how to use RLlib's Checkpointable API for saving and restoring RLlib components.
 
 About:
-    This guide will cover some most common use cases of the RLlib's Checkpointable API.
-    This API allows users to save and restore various RLlib components and continue training models from a previous states.
+    This guide will cover common use cases of the RLlib's Checkpointable API.
+    Checkpointable API allows users to save and restore various RLlib components and continue training models from a previous states.
     Users can leverage local file system as well as cloud storage solutions (like AWS S3, Google Cloud GCS)
 
-Key RLlib Checkpointable Components:
+Key RLlib Checkpointable components are:
         - Algorithm
         - LearnerGroup
         - Learner
@@ -50,82 +50,89 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 
-NUM_ITERS = 5
+NUM_ITERS = 2
 
-base_config = (
-    PPOConfig()
-    .environment(
-        env="CartPole-v1",
+
+def build_base_config(local_only=False):
+    return (
+        PPOConfig()
+        .environment(
+            env="CartPole-v1",
+        )
+        .env_runners(
+            num_env_runners=0 if local_only else 1,
+            num_envs_per_env_runner=10,
+        )
+        .evaluation(
+            evaluation_num_env_runners=0 if local_only else 1,
+            evaluation_interval=1,
+            evaluation_duration_unit="episodes",
+            evaluation_duration=10,
+            evaluation_parallel_to_training=False,
+            evaluation_force_reset_envs_before_iteration=True,
+        )
+        .learners(
+            num_learners=0 if local_only else 1,
+            num_gpus_per_learner=0,
+        )
+        .training(
+            lr=0.0003,
+            vf_loss_coeff=0.01,
+            train_batch_size_per_learner=128,
+            num_epochs=1,
+        )
+        .rl_module(
+            model_config=DefaultModelConfig(
+                fcnet_hiddens=[32],
+                fcnet_activation="linear",
+                vf_share_layers=True,
+            ),
+        )
     )
-    .env_runners(
-        num_env_runners=1,
-        num_envs_per_env_runner=16,
+
+
+if __name__ == "__main__":
+    # Build the algorithm
+    base_config = build_base_config(local_only=True)
+    base_ppo_algo = base_config.build_algo()
+
+    # train for NUM_ITERS iterations
+    for i in range(NUM_ITERS):
+        base_ppo_algo.train()
+
+    # evaluate
+    eval_results = base_ppo_algo.evaluate()
+    mean_return = eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+
+    ###############################################
+    # Save and restore the entire algorithm state #
+    ###############################################
+
+    # Save a checkpoint
+    path = f"/tmp/ray/rllib_results/iter_{str(NUM_ITERS).zfill(3)}"
+    checkpoint_path = base_ppo_algo.save_to_path(path=path)
+
+    # Release resources claimed by the base_ppo_algo
+    base_ppo_algo.cleanup()
+
+    # Create a new algorithm instance (reusing the same base_config),
+    # and restore its state from the checkpoint.
+    new_base_ppo_algo = base_config.build_algo()
+    new_base_ppo_algo.restore_from_path(path=checkpoint_path)
+
+    # check if the algorithm is restored correctly
+    base_num_env_steps_samples_lifetime = base_ppo_algo.metrics.peek(
+        key=(ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME)
     )
-    .evaluation(
-        evaluation_num_env_runners=1,
-        evaluation_interval=1,
-        evaluation_duration_unit="episodes",
-        evaluation_duration=10,
-        evaluation_parallel_to_training=False,
-        evaluation_force_reset_envs_before_iteration=True,
+    new_num_env_steps_samples_lifetime = new_base_ppo_algo.metrics.peek(
+        key=(ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME)
     )
-    .learners(
-        num_learners=1,
-    )
-    .training(
-        lr=0.0003,
-        vf_loss_coeff=0.01,
-        train_batch_size_per_learner=128,
-    )
-    .rl_module(
-        model_config=DefaultModelConfig(
-            fcnet_hiddens=[32],
-            fcnet_activation="linear",
-            vf_share_layers=True,
-        ),
-    )
-)
+    base_iter = base_ppo_algo.iteration
+    new_iter = new_base_ppo_algo.iteration
 
-# Build the algorithm
-base_ppo_algo = base_config.build_algo()
+    assert base_num_env_steps_samples_lifetime == new_num_env_steps_samples_lifetime
+    assert base_iter == new_iter
 
-# train for NUM_ITERS iterations
-for i in range(NUM_ITERS):
-    base_ppo_algo.train()
-
-# evaluate
-eval_results = base_ppo_algo.evaluate()
-mean_return = eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
-
-###############################################
-# Save and restore the entire algorithm state #
-###############################################
-
-# Save a checkpoint
-path = f"/tmp/ray/rllib_results/iter_{str(NUM_ITERS).zfill(3)}"
-checkpoint_path = base_ppo_algo.save_to_path(path=path)
-
-# Release resources claimed by the base_ppo_algo
-base_ppo_algo.cleanup()
-
-# Create a new algorithm instance (reusing the same base_config),
-# and restore its state from the checkpoint.
-new_base_ppo_algo = base_config.build_algo()
-new_base_ppo_algo.restore_from_path(path=checkpoint_path)
-
-# check if the algorithm is restored correctly
-base_num_env_steps_samples_lifetime = base_ppo_algo.metrics.peek(
-    key=(ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME)
-)
-new_num_env_steps_samples_lifetime = new_base_ppo_algo.metrics.peek(
-    key=(ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME)
-)
-base_iter = base_ppo_algo.iteration
-new_iter = new_base_ppo_algo.iteration
-
-assert base_num_env_steps_samples_lifetime == new_num_env_steps_samples_lifetime
-assert base_iter == new_iter
-
-# Continue training the restored algorithm for NUM_ITERS iterations
-for i in range(NUM_ITERS):
-    new_base_ppo_algo.train()
+    # Continue training the restored algorithm for NUM_ITERS iterations
+    for i in range(NUM_ITERS):
+        new_base_ppo_algo.train()
