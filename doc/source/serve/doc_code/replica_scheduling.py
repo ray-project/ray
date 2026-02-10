@@ -38,6 +38,19 @@ class MultiCPUModel:
 multi_cpu_app = MultiCPUModel.bind()
 # __placement_group_end__
 
+# __placement_group_labels_start__
+@serve.deployment(
+    placement_group_bundles=[{"GPU": 1}],
+    placement_group_bundle_label_selector=[
+        {"ray.io/accelerator-type": "A100"}
+    ]
+)
+def PlacementGroupBundleLabelSelector(request):
+    return "Running in PG on A100"
+
+pg_label_app = PlacementGroupBundleLabelSelector.bind()
+# __placement_group_labels_end__
+
 if __name__ == "__main__":
     ray.init()
     serve.run(multi_cpu_app)
@@ -45,19 +58,19 @@ if __name__ == "__main__":
     ray.shutdown()
 
 
-# __custom_resources_start__
+# __label_selectors_start__
 from ray import serve
 
 
 # Schedule only on nodes with A100 GPUs
-@serve.deployment(ray_actor_options={"resources": {"A100": 1}})
+@serve.deployment(ray_actor_options={"label_selector": {"ray.io/accelerator-type": "A100"}})
 class A100Model:
     def __call__(self, request):
         return "Running on A100"
 
 
 # Schedule only on nodes with T4 GPUs
-@serve.deployment(ray_actor_options={"resources": {"T4": 1}})
+@serve.deployment(ray_actor_options={"label_selector": {"ray.io/accelerator-type": "T4"}})
 class T4Model:
     def __call__(self, request):
         return "Running on T4"
@@ -65,19 +78,30 @@ class T4Model:
 
 a100_app = A100Model.bind()
 t4_app = T4Model.bind()
-# __custom_resources_end__
+# __label_selectors_end__
 
+# __fallback_strategy_start__
+@serve.deployment(
+    ray_actor_options={
+        "label_selector": {"zone": "us-west-2a"},
+        "fallback_strategy": [{"label_selector": {"zone": "us-west-2b"}}]
+    }
+)
+class SoftAffinityDeployment:
+    def __call__(self, request):
+        return "Scheduling to a zone with soft constraints!"
 
-# __custom_resources_main_start__
+soft_affinity_app = SoftAffinityDeployment.bind()
+# __fallback_strategy_end__
+
+# __label_selector_main_start__
 if __name__ == "__main__":
     ray.init(
-        resources={
-            "A100": 1,
-            "T4": 1,
+        labels={
+            "ray.io/accelerator-type": "A100",
         }
     )
     serve.run(a100_app, name="a100", route_prefix="/a100")
-    serve.run(t4_app, name="t4", route_prefix="/t4")
     serve.shutdown()
     ray.shutdown()
-# __custom_resources_main_end__
+# __label_selector_main_end__
