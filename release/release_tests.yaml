@@ -2124,7 +2124,7 @@
       --num-env-runners=4 \
       --num-learners=1
 
-- name: rllib_tictactoe_multi_gpu_single_node
+- name: rllib_appo_tictactoe_multi_gpu_single_node
   python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
