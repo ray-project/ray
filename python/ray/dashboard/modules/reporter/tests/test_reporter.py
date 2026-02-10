@@ -15,7 +15,6 @@ from google.protobuf import text_format
 
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
-import ray.dashboard.modules.reporter.reporter_agent as reporter_agent_mod
 from ray._common.network_utils import build_address
 from ray._common.test_utils import (
     fetch_prometheus,
@@ -1321,12 +1320,9 @@ def _assert_cluster_node_metrics(
 
 
 @pytest.mark.asyncio
-async def test_reporter_v1_autoscaler_uses_debug_status_bytes(monkeypatch, tmp_path):
+async def test_reporter_v1_autoscaler_uses_debug_status_bytes(tmp_path):
     agent, captured = _make_reporter_agent_and_capture(tmp_path)
 
-    monkeypatch.setattr(
-        reporter_agent_mod, "is_autoscaler_v2", lambda gcs_client=None: False
-    )
     agent._get_cluster_stats_v2 = MagicMock()
 
     node_type = _AUTOSCALER_TEST_NODE_TYPE
@@ -1341,7 +1337,9 @@ async def test_reporter_v1_autoscaler_uses_debug_status_bytes(monkeypatch, tmp_p
         }
     }
 
-    await agent._async_compose_stats_payload(json.dumps(v1_cluster_stats).encode())
+    await agent._async_compose_stats_payload(
+        json.dumps(v1_cluster_stats).encode(), autoscaler_v2_enabled=False
+    )
 
     recs = captured["records"]
     _assert_cluster_node_metrics(
@@ -1351,12 +1349,8 @@ async def test_reporter_v1_autoscaler_uses_debug_status_bytes(monkeypatch, tmp_p
 
 
 @pytest.mark.asyncio
-async def test_reporter_v2_autoscaler_emits_idle_nodes_metric(monkeypatch, tmp_path):
+async def test_reporter_v2_autoscaler_emits_idle_nodes_metric(tmp_path):
     agent, captured = _make_reporter_agent_and_capture(tmp_path)
-
-    monkeypatch.setattr(
-        reporter_agent_mod, "is_autoscaler_v2", lambda gcs_client=None: True
-    )
 
     node_type = _AUTOSCALER_TEST_NODE_TYPE
     agent._get_cluster_stats_v2 = MagicMock(
@@ -1369,11 +1363,10 @@ async def test_reporter_v2_autoscaler_emits_idle_nodes_metric(monkeypatch, tmp_p
                 ],
                 "failed_nodes": [(_AUTOSCALER_TEST_IP_FAILED, node_type)],
             },
-            "has_autoscaler_v2_stats": True,
         }
     )
 
-    await agent._async_compose_stats_payload(None)
+    await agent._async_compose_stats_payload(None, autoscaler_v2_enabled=True)
 
     recs = captured["records"]
     _assert_cluster_node_metrics(
