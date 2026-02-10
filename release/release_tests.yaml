@@ -1477,6 +1477,29 @@
   variations:
     - __suffix__: aws
 
+- name: pytest_serve_haproxy_smoke
+  python: "3.10"
+  group: Serve tests
+  working_dir: serve_tests
+
+  frequency: nightly
+  team: serve
+  cluster:
+    cluster_compute: compute_tpl_single_node.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 900
+    long_running: false
+    script: python workloads/serve_haproxy_smoke.py
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+
+
 - name: pytest_serve_multi_deployment_1k_noop_replica
   python: "3.10"
   group: Serve tests
