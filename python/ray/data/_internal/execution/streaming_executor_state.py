@@ -85,7 +85,7 @@ class OpBufferQueue:
 
     def __len__(self):
         with self._lock:
-            return len(self._queues[0])
+            return sum(len(q) for q in self._queues)
 
     def has_next(self, output_split_idx: Optional[int] = None) -> bool:
         """Whether next RefBundle is available.
