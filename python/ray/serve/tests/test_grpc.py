@@ -110,9 +110,10 @@ def test_serve_start_dictionary_grpc_options(ray_cluster):
         },
     )
 
-    channel = grpc.insecure_channel("localhost:9000")
-
     serve.run(g)
+
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
 
     # Ensures ListApplications method succeeding.
     ping_grpc_list_applications(channel, ["default"])
@@ -148,7 +149,8 @@ def test_grpc_routing_without_metadata(ray_cluster):
     app1 = "app1"
     serve.run(g, name=app1, route_prefix=f"/{app1}")
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", app_name=app1, use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
 
@@ -202,7 +204,8 @@ def test_grpc_request_with_request_id(ray_cluster):
     app1 = "app1"
     serve.run(g, name=app1, route_prefix=f"/{app1}")
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", app_name=app1, use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
 
@@ -268,7 +271,8 @@ def test_grpc_request_timeouts(ray_instance, ray_shutdown, streaming: bool):
 
     serve.run(HelloModel.bind())
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
 
@@ -329,7 +333,8 @@ def test_grpc_request_internal_error(ray_instance, ray_shutdown, streaming: bool
     app_name = "app1"
     serve.run(model, name=app_name)
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", app_name=app_name, use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
 
@@ -388,7 +393,8 @@ async def test_grpc_request_cancellation(ray_instance, ray_shutdown, streaming: 
     serve.run(downstream, name="downstream", route_prefix="/downstream")
 
     # Send a request and wait for it to start executing.
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", app_name="downstream", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     metadata = (("application", "downstream"),)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
