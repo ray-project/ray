@@ -25,7 +25,6 @@ def handle_result(
 
     elif test_name in [
         "long_running_impala",
-        "long_running_many_ppo",
     ]:
         # Tune/RLlib style tests
         target_update_diff = 480
