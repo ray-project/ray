@@ -29,21 +29,25 @@ namespace ray {
 
 namespace raylet {
 
-/// Provides the policy on which worker to prioritize killing.
-class WorkerKillingPolicy {
+/**
+ * @brief Implementations of this interface provide the policy on which worker to
+ * prioritize killing.
+ */
+class WorkerKillingPolicyInterface {
  public:
-  /// Selects workers to be killed.
-  ///
-  /// \param workers the list of candidate workers.
-  /// \param system_memory snapshot of memory usage.
-  ///
-  /// \return the list of workers to kill and whether the task on each worker should be
-  /// retried.
+  /**
+   * @brief Selects workers to be killed.
+   *
+   * @param workers the list of candidate workers.
+   * @param system_memory snapshot of memory usage.
+   * @return the list of workers to kill and whether the task on each worker should be
+   * retried.
+   */
   virtual std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
   SelectWorkersToKill(const std::vector<std::shared_ptr<WorkerInterface>> &workers,
                       const MemorySnapshot &system_memory) = 0;
 
-  virtual ~WorkerKillingPolicy() = default;
+  virtual ~WorkerKillingPolicyInterface() = default;
 };
 
 }  // namespace raylet

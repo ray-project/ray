@@ -21,7 +21,7 @@ namespace ray {
 
 namespace raylet {
 
-std::unique_ptr<WorkerKillingPolicy> WorkerKillingPolicyFactory::Create() {
+std::unique_ptr<WorkerKillingPolicyInterface> WorkerKillingPolicyFactory::Create() {
   return std::make_unique<GroupByOwnerIdWorkerKillingPolicy>();
 }
 
