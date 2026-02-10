@@ -774,7 +774,7 @@ py_test(
 # | (SA/D) Cartpole                | 200     | ✅          | ✅              | ❌           | ❌          |
 # | (SA/D/LSTM) Stateless Cartpole | 150     | ✅          | ❌              | ✅           | ❌          |
 # | (SA/D) Atari (Pong)            | -10     | ❌          | ❌              | ✅           | ✅          |
-# | (SA/C) MuJoCo (Humanoid)       | 200     | ❌          | ✅              | ❌           | ✅          |
+# | (SA/C) MuJoCo (Humanoid)       | 150     | ❌          | ✅              | ❌           | ✅          |
 # | (MA/D) Footsies                | 4       | ❌          | ❌              | ✅           | ✅          |
 # | (SA/C) IsaacLab (Humanoid)     |         | ❌          | ✅ (with 1 GPU) | ⚠️           | ❌          |
 
