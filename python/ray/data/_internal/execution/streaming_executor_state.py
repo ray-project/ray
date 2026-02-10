@@ -280,7 +280,7 @@ class OpState:
             and not self._warned_on_schema_divergence
             and self.op.data_context.enforce_schemas
         ):
-            warning_message = build_schemas_mismatch_warning(self._schema, ref.schema)
+            warning_message = _build_schemas_mismatch_warning(self._schema, ref.schema)
             logger.warning(warning_message)
 
         self._schema = ref.schema
@@ -707,7 +707,7 @@ def _format_schema_mismatch_section(
     return f"{title} ({len(entries)} total):\n{body}{suffix}\n"
 
 
-def build_schemas_mismatch_warning(
+def _build_schemas_mismatch_warning(
     old_schema: "Schema", new_schema: Optional["Schema"], truncation_length: int = 20
 ) -> str:
     from ray.data.block import _is_empty_schema
