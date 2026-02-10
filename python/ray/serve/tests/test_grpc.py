@@ -1241,8 +1241,8 @@ def test_grpc_streaming_context_with_exception(
 ):
     """Test setting gRPC context then raising exception in streaming.
 
-    When the handler sets context then raises an exception, the response
-    should have INTERNAL status, not the custom status.
+    When the handler sets a custom gRPC status code on the context then raises
+    an exception, the response should preserve the user-set status code.
     """
     grpc_port = 9000
     grpc_servicer_functions = [
@@ -1297,7 +1297,7 @@ def test_grpc_streaming_context_with_exception(
             list(stub.BidiStreaming(request_generator()))
 
     rpc_error = exception_info.value
-    assert rpc_error.code() == grpc.StatusCode.INTERNAL
+    assert rpc_error.code() == user_defined_error_code
     assert real_error_message in rpc_error.details()
 
 
