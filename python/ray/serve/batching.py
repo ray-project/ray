@@ -27,9 +27,16 @@ from typing import (
 from ray import serve
 from ray._common.signature import extract_signature, flatten_args, recover_args
 from ray._common.utils import get_or_create_event_loop
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    BATCH_EXECUTION_TIME_BUCKETS_MS,
+    BATCH_SIZE_BUCKETS,
+    BATCH_UTILIZATION_BUCKETS_PERCENT,
+    BATCH_WAIT_TIME_BUCKETS_MS,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.utils import extract_self_if_method_call
 from ray.serve.exceptions import RayServeException
+from ray.serve.metrics import Counter, Gauge, Histogram
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -148,6 +155,46 @@ class _BatchQueue:
         # Used for observability.
         self.curr_iteration_start_times: Dict[asyncio.Task, float] = {}
 
+        # Initialize batching metrics.
+        self._batch_wait_time_histogram = Histogram(
+            "serve_batch_wait_time_ms",
+            description="Time requests waited for batch to fill (in milliseconds).",
+            boundaries=BATCH_WAIT_TIME_BUCKETS_MS,
+            tag_keys=("function_name",),
+        )
+        self._batch_execution_time_histogram = Histogram(
+            "serve_batch_execution_time_ms",
+            description="Time to execute the batch function (in milliseconds).",
+            boundaries=BATCH_EXECUTION_TIME_BUCKETS_MS,
+            tag_keys=("function_name",),
+        )
+        self._batch_queue_length_gauge = Gauge(
+            "serve_batch_queue_length",
+            description="Number of requests waiting in the batch queue.",
+            tag_keys=("function_name",),
+        )
+        self._batch_utilization_histogram = Histogram(
+            "serve_batch_utilization_percent",
+            description="Batch utilization as percentage (actual_batch_size / max_batch_size * 100).",
+            boundaries=BATCH_UTILIZATION_BUCKETS_PERCENT,
+            tag_keys=("function_name",),
+        )
+        self._batch_size_histogram = Histogram(
+            "serve_actual_batch_size",
+            description="The actual number of requests in each batch.",
+            boundaries=BATCH_SIZE_BUCKETS,
+            tag_keys=("function_name",),
+        )
+        self._batches_processed_counter = Counter(
+            "serve_batches_processed",
+            description="Counter of batches executed.",
+            tag_keys=("function_name",),
+        )
+
+        self._function_name = (
+            handle_batch_func.__name__ if handle_batch_func is not None else "unknown"
+        )
+
         self._handle_batch_task = None
         self._loop = get_or_create_event_loop()
         if handle_batch_func is not None:
@@ -199,12 +246,13 @@ class _BatchQueue:
 
         return self.batch_size_fn(items)
 
-    async def wait_for_batch(self) -> List[_SingleRequest]:
+    async def wait_for_batch(self) -> Tuple[List[_SingleRequest], int]:
         """Wait for batch respecting self.max_batch_size and self.timeout_s.
 
-        Returns a batch of up to self.max_batch_size items. Waits for up to
-        to self.timeout_s after receiving the first request that will be in
-        the next batch. After the timeout, returns as many items as are ready.
+        Returns a tuple of (batch, computed_batch_size) where batch contains
+        up to self.max_batch_size items. Waits for up to self.timeout_s after
+        receiving the first request that will be in the next batch. After the
+        timeout, returns as many items as are ready.
 
         Always returns a batch with at least one item - will block
         indefinitely until an item comes in.
@@ -228,13 +276,18 @@ class _BatchQueue:
                 )
                 # Set exception on the future so the caller receives it
                 first_item.future.set_exception(exc)
-                return []
+                return [], 0
 
         batch.append(first_item)
 
         # Wait self.timeout_s seconds for new queue arrivals.
         batch_start_time = time.time()
         while True:
+            # Record queue length metric.
+            self._batch_queue_length_gauge.set(
+                self.queue.qsize(), tags={"function_name": self._function_name}
+            )
+
             remaining_batch_time_s = max(
                 batch_wait_timeout_s - (time.time() - batch_start_time), 0
             )
@@ -270,6 +323,9 @@ class _BatchQueue:
                     # so newer requests may be processed before it. Consider using
                     # asyncio.PriorityQueue if strict ordering is required.
                     self.queue.put_nowait(deferred_item)
+                    # Compute final batch size before breaking (batch is now valid
+                    # after popping the deferred item).
+                    current_batch_size = self._compute_batch_size(batch)
                     # break the loop early because the deferred item is too large to fit in the batch
                     break
             else:
@@ -293,7 +349,13 @@ class _BatchQueue:
             ):
                 break
 
-        return batch
+        # Record batch wait time metric (time spent waiting for batch to fill).
+        batch_wait_time_ms = (time.time() - batch_start_time) * 1000
+        self._batch_wait_time_histogram.observe(
+            batch_wait_time_ms, tags={"function_name": self._function_name}
+        )
+
+        return batch, current_batch_size
 
     def _validate_results(
         self, results: Iterable[Any], input_batch_length: int
@@ -373,69 +435,158 @@ class _BatchQueue:
             for future in futures:
                 _set_exception_if_not_done(future, e)
 
+    def _split_batch_by_model_id(
+        self, batch: List[_SingleRequest]
+    ) -> List[List[_SingleRequest]]:
+        """Split a batch into sub-batches based on multiplexed_model_id.
+
+        When using model multiplexing with batching, requests for different models
+        may end up in the same batch. This method ensures that each sub-batch only
+        contains requests for the same model, preventing issues where a single batch
+        contains requests for different models.
+
+        If no requests have a multiplexed_model_id set, returns the original batch
+        as a single sub-batch.
+
+        Args:
+            batch: The batch of requests to split.
+
+        Returns:
+            A list of sub-batches, where each sub-batch contains requests for the
+            same multiplexed_model_id.
+        """
+        # Group requests by their multiplexed_model_id
+        model_id_to_requests: Dict[str, List[_SingleRequest]] = {}
+        for request in batch:
+            model_id = request.request_context.multiplexed_model_id
+            if model_id not in model_id_to_requests:
+                model_id_to_requests[model_id] = []
+            model_id_to_requests[model_id].append(request)
+
+        # Return sub-batches for each model_id
+        return list(model_id_to_requests.values())
+
     async def _process_batches(self, func: Callable) -> None:
         """Loops infinitely and processes queued request batches."""
         # When asyncio task is created, the task will inherit the request context from the current context.
         # So we unset the request context so the current context is not inherited by the task, _process_batch.
         serve.context._unset_request_context()
         while not self._loop.is_closed():
-            batch = await self.wait_for_batch()
-            promise = self._process_batch(func, batch)
+            batch, _ = await self.wait_for_batch()
+
+            # Split batch by multiplexed_model_id to ensure requests for different
+            # models are processed in separate batches. This is necessary when using
+            # model multiplexing with batching, as a single batch containing requests
+            # for different models would not work correctly.
+            sub_batches = self._split_batch_by_model_id(batch)
+
+            # Process all sub-batches together under a single semaphore permit.
+            # This ensures sub-batches from the same original batch run concurrently
+            # rather than being serialized by the semaphore.
+            promise = self._process_sub_batches(func, sub_batches)
             task = asyncio.create_task(promise)
             self.tasks.add(task)
             self.curr_iteration_start_times[task] = time.time()
             task.add_done_callback(self._handle_completed_task)
 
-    async def _process_batch(self, func: Callable, batch: List[_SingleRequest]) -> None:
-        """Processes queued request batch."""
+    async def _process_sub_batches(
+        self, func: Callable, sub_batches: List[List[_SingleRequest]]
+    ) -> None:
+        """Processes multiple sub-batches concurrently under a single semaphore permit.
+
+        This method acquires the semaphore once and then processes all sub-batches
+        in parallel, ensuring that sub-batches from the same original batch don't
+        compete for semaphore permits.
+        """
         # NOTE: this semaphore caps the number of concurrent batches specified by `max_concurrent_batches`
         async with self.semaphore:
-            # Remove requests that have been cancelled from the batch. If
-            # all requests have been cancelled, simply return and wait for
-            # the next batch.
-            batch = [req for req in batch if not req.future.cancelled()]
-            if len(batch) == 0:
-                return
+            # Create tasks for each sub-batch. We use asyncio.create_task() instead
+            # of passing coroutines directly to asyncio.gather() because create_task
+            # copies the current context, giving each sub-batch its own isolated
+            # contextvars. This prevents concurrent sub-batches from overwriting
+            # each other's _serve_batch_request_context, which would cause
+            # get_multiplexed_model_id() to return wrong values.
+            tasks = [
+                asyncio.create_task(self._process_batch_inner(func, sub_batch))
+                for sub_batch in sub_batches
+            ]
+            await asyncio.gather(*tasks)
 
-            futures = [item.future for item in batch]
+    async def _process_batch_inner(
+        self, func: Callable, batch: List[_SingleRequest]
+    ) -> None:
+        """Processes a single batch without acquiring the semaphore.
 
-            # Most of the logic in the function should be wrapped in this try-
-            # except block, so the futures' exceptions can be set if an exception
-            # occurs. Otherwise, the futures' requests may hang indefinitely.
-            try:
-                self_arg = batch[0].self_arg
-                args, kwargs = _batch_args_kwargs(
-                    [item.flattened_args for item in batch]
-                )
+        This is the inner implementation called by _process_sub_batches after
+        the semaphore has already been acquired.
+        """
+        # Remove requests that have been cancelled from the batch. If
+        # all requests have been cancelled, simply return and wait for
+        # the next batch.
+        batch = [req for req in batch if not req.future.cancelled()]
+        if len(batch) == 0:
+            return
 
-                # Method call.
-                if self_arg is not None:
-                    func_future_or_generator = func(self_arg, *args, **kwargs)
-                # Normal function call.
-                else:
-                    func_future_or_generator = func(*args, **kwargs)
+        # Compute batch size for this sub-batch. Each sub-batch may have a different
+        # size, especially when splitting by model_id, so we compute it here.
+        computed_batch_size = self._compute_batch_size(batch)
 
-                # Add individual request context to the batch request context
-                serve.context._set_batch_request_context(
-                    [req.request_context for req in batch]
-                )
+        # Calculate and record batch utilization percentage.
+        batch_utilization_percent = (computed_batch_size / self.max_batch_size) * 100
+        self._batch_utilization_histogram.observe(
+            batch_utilization_percent, tags={"function_name": self._function_name}
+        )
 
-                if isasyncgenfunction(func):
-                    func_generator = func_future_or_generator
-                    await self._consume_func_generator(
-                        func_generator, futures, len(batch)
-                    )
-                else:
-                    func_future = func_future_or_generator
-                    await self._assign_func_results(func_future, futures, len(batch))
+        # Record actual batch size (number of requests in the batch computed by the batch_size_fn).
+        self._batch_size_histogram.observe(
+            computed_batch_size, tags={"function_name": self._function_name}
+        )
 
-                # Reset the batch request context after the batch is processed
-                serve.context._set_batch_request_context([])
-            except Exception as e:
-                logger.exception("_process_batch ran into an unexpected exception.")
+        # Increment batches processed counter.
+        self._batches_processed_counter.inc(tags={"function_name": self._function_name})
 
-                for future in futures:
-                    _set_exception_if_not_done(future, e)
+        futures = [item.future for item in batch]
+
+        # Most of the logic in the function should be wrapped in this try-
+        # except block, so the futures' exceptions can be set if an exception
+        # occurs. Otherwise, the futures' requests may hang indefinitely.
+        batch_execution_start_time = time.time()
+        try:
+            self_arg = batch[0].self_arg
+            args, kwargs = _batch_args_kwargs([item.flattened_args for item in batch])
+
+            # Method call.
+            if self_arg is not None:
+                func_future_or_generator = func(self_arg, *args, **kwargs)
+            # Normal function call.
+            else:
+                func_future_or_generator = func(*args, **kwargs)
+
+            # Add individual request context to the batch request context
+            serve.context._set_batch_request_context(
+                [req.request_context for req in batch]
+            )
+
+            if isasyncgenfunction(func):
+                func_generator = func_future_or_generator
+                await self._consume_func_generator(func_generator, futures, len(batch))
+            else:
+                func_future = func_future_or_generator
+                await self._assign_func_results(func_future, futures, len(batch))
+
+            # Reset the batch request context after the batch is processed
+            serve.context._set_batch_request_context([])
+        except Exception as e:
+            logger.exception("_process_batch ran into an unexpected exception.")
+
+            for future in futures:
+                _set_exception_if_not_done(future, e)
+        finally:
+            # Record batch execution time.
+            batch_execution_time_ms = (time.time() - batch_execution_start_time) * 1000
+            self._batch_execution_time_histogram.observe(
+                batch_execution_time_ms, tags={"function_name": self._function_name}
+            )
 
     def _handle_completed_task(self, task: asyncio.Task) -> None:
         self.tasks.remove(task)

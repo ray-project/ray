@@ -34,24 +34,21 @@ def torch_available():
 class Backend(object):
     """A class to represent different backends."""
 
-    NCCL = "nccl"
-    MPI = "mpi"
-    # `pygloo` is deprecated. Use gloo through torch.distributed for both
-    # `GLOO` and `TORCH_GLOO`.
-    GLOO = "gloo"
-    # Use gloo through torch.distributed.
-    TORCH_GLOO = "torch_gloo"
-    NIXL = "nixl"
+    NCCL = "NCCL"
+    GLOO = "GLOO"
     UNRECOGNIZED = "unrecognized"
 
     def __new__(cls, name: str):
-        backend = getattr(Backend, name.upper(), Backend.UNRECOGNIZED)
+        upper_name = name.upper()
+        backend = getattr(Backend, upper_name, Backend.UNRECOGNIZED)
         if backend == Backend.UNRECOGNIZED:
+            if upper_name == "TORCH_GLOO":
+                return Backend.GLOO
             raise ValueError(
-                "Unrecognized backend: '{}'. Only NCCL is supported".format(name)
+                "Unrecognized backend: '{}'. Only NCCL and GLOO are supported".format(
+                    name
+                )
             )
-        if backend == Backend.MPI:
-            raise RuntimeError("Ray does not support MPI backend.")
         return backend
 
 

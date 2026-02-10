@@ -64,7 +64,7 @@ class LanceDatasource(Datasource):
         self,
         parallelism: int,
         per_task_row_limit: Optional[int] = None,
-        epoch_idx: int = 0,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         read_tasks = []
         ds_fragments = self.scanner_options.get("fragments")

@@ -36,7 +36,7 @@ aws_session_token=baz" >> ~/.aws/credentials
 
 ## Start Ray with the Ray cluster launcher
 
-Once Boto3 is configured to manage resources in your AWS account, you should be ready to launch your cluster using the cluster launcher. The provided [cluster config file](https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml) will create a small cluster with an m5.large head node (on-demand) configured to autoscale to up to two m5.large [spot-instance](https://aws.amazon.com/ec2/spot/) workers.
+Once Boto3 is configured to manage resources in your AWS account, you should be ready to launch your cluster using the cluster launcher. The provided [cluster config file](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-full.yaml) will create a small cluster with an m5.large head node (on-demand) configured to autoscale to up to two m5.large [spot-instance](https://aws.amazon.com/ec2/spot/) workers.
 
 Test that it works by running the following commands from your local machine:
 

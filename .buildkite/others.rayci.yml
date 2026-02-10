@@ -5,7 +5,9 @@ steps:
   # docs
   - name: doctestbuild
     wanda: ci/docker/doctest.build.wanda.yaml
-    depends_on: oss-ci-base_build
+    depends_on: oss-ci-base_build-multipy
+    env:
+      PYTHON: "3.10"
     tags: cibase
 
   - label: doc tests
@@ -18,6 +20,7 @@ steps:
         --only-tags doctest
         --except-tags gpu
         --parallelism-per-worker 3
+        --python-version 3.10
     depends_on:
       - doctestbuild
       - ray-core-build

@@ -11,7 +11,10 @@ from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
-from ray.rllib.utils.test_utils import add_rllib_example_script_args
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 
 parser = add_rllib_example_script_args(
     default_reward=0.0,
@@ -104,6 +107,4 @@ config = (
 
 
 if __name__ == "__main__":
-    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
-
     run_rllib_example_script_experiment(config, args)

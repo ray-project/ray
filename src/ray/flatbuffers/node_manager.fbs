@@ -83,9 +83,6 @@ table RegisterClientRequest {
   worker_type: int;
   worker_id: string;
   worker_pid: long;
-  // The startup token of the process assigned to
-  // it during startup as a command line argument.
-  startup_token: long;
   // The job ID if the client is a driver, otherwise it should be NIL.
   job_id: string;
   // The hash of the runtime env for this worker.

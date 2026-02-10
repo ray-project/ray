@@ -6,7 +6,7 @@ import numpy as np
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.progress.progress_bar import ProgressBar
 
 
 def run_task_workload(total_num_cpus, smoke):

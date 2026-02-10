@@ -1,7 +1,10 @@
 import asyncio
+import logging
 import pickle
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional, Set
+
+import grpc
 
 import ray
 from ray.actor import ActorHandle
@@ -9,11 +12,26 @@ from ray.serve._private.common import (
     ReplicaID,
     RunningReplicaInfo,
 )
-from ray.serve._private.replica_result import ActorReplicaResult, ReplicaResult
+from ray.serve._private.constants import (
+    RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
+    SERVE_LOGGER_NAME,
+)
+from ray.serve._private.replica_result import (
+    ActorReplicaResult,
+    ReplicaResult,
+    gRPCReplicaResult,
+)
 from ray.serve._private.request_router.common import PendingRequest
+from ray.serve._private.serialization import RPCSerializer
 from ray.serve._private.utils import JavaActorHandleProxy
-from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
+from ray.serve.generated.serve_pb2 import (
+    ASGIRequest,
+    RequestMetadata as RequestMetadataProto,
+)
+from ray.serve.generated.serve_pb2_grpc import ASGIServiceStub
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class ReplicaWrapper(ABC):
@@ -94,6 +112,58 @@ class ActorReplicaWrapper(ReplicaWrapper):
         )
 
 
+class gRPCReplicaWrapper(ReplicaWrapper):
+    def __init__(self, stub, actor_id):
+        self._stub = stub
+        self._actor_id = actor_id
+        self._loop = asyncio.get_running_loop()
+
+    def send_request_java(self, pr: PendingRequest):
+        raise RuntimeError("gRPC requests not supported for Java.")
+
+    def send_request_python(
+        self, pr: PendingRequest, *, with_rejection: bool
+    ) -> gRPCReplicaResult:
+        """Send the request to a Python replica."""
+
+        # Get serialization options from request metadata
+        request_serialization = pr.metadata.request_serialization
+        response_serialization = pr.metadata.response_serialization
+
+        # Get cached serializer for this request to avoid per-request instantiation overhead
+        serializer = RPCSerializer.get_cached_serializer(
+            request_serialization, response_serialization
+        )
+
+        asgi_request = ASGIRequest(
+            pickled_request_metadata=pickle.dumps(pr.metadata),
+            request_args=serializer.dumps_request(pr.args),
+            request_kwargs=serializer.dumps_request(pr.kwargs),
+        )
+        if with_rejection and pr.metadata.is_streaming:
+            # Call a separate handler that may reject the request.
+            # This handler is *always* a streaming call and the first message will
+            # be a system message that accepts or rejects.
+            call = self._stub.HandleRequestWithRejectionStreaming(asgi_request)
+        elif with_rejection and not pr.metadata.is_streaming:
+            # Call a separate handler that may reject the request.
+            # This handler is *always* a unary call and the first message will
+            # be a system message that accepts or rejects.
+            call = self._stub.HandleRequestWithRejection(asgi_request)
+        elif pr.metadata.is_streaming:
+            call = self._stub.HandleRequestStreaming(asgi_request)
+        else:
+            call = self._stub.HandleRequest(asgi_request)
+
+        return gRPCReplicaResult(
+            call,
+            pr.metadata,
+            self._actor_id,
+            loop=self._loop,
+            with_rejection=with_rejection,
+        )
+
+
 @PublicAPI(stability="alpha")
 class RunningReplica:
     """Contains info on a running replica.
@@ -111,6 +181,14 @@ class RunningReplica:
             self._actor_handle = JavaActorHandleProxy(actor_handle)
         else:
             self._actor_handle = actor_handle
+
+        # Lazily created
+        self._channel = None
+        self._stub = None
+
+        # Replica wrappers
+        self._actor_replica_wrapper = ActorReplicaWrapper(self._actor_handle)
+        self._grpc_replica_wrapper = None
 
     @property
     def replica_id(self) -> ReplicaID:
@@ -152,8 +230,33 @@ class RunningReplica:
         """Whether this replica is cross-language (Java)."""
         return self._replica_info.is_cross_language
 
+    @property
+    def stub(self):
+        if self._stub is None:
+            self._channel = grpc.aio.insecure_channel(
+                f"{self._replica_info.node_ip}:{self._replica_info.port}",
+                options=[
+                    (
+                        "grpc.max_receive_message_length",
+                        RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
+                    )
+                ],
+            )
+            self._stub = ASGIServiceStub(self._channel)
+
+        return self._stub
+
     def _get_replica_wrapper(self, pr: PendingRequest) -> ReplicaWrapper:
-        return ActorReplicaWrapper(self._actor_handle)
+        if self._grpc_replica_wrapper is None:
+            self._grpc_replica_wrapper = gRPCReplicaWrapper(
+                self.stub, self._actor_handle._actor_id
+            )
+
+        return (
+            self._actor_replica_wrapper
+            if pr.metadata._by_reference
+            else self._grpc_replica_wrapper
+        )
 
     def push_proxy_handle(self, handle: ActorHandle):
         """When on proxy, push proxy's self handle to replica"""

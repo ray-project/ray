@@ -72,7 +72,7 @@ from ray.rllib.env.external.env_runner_server_for_external_inference import (
 from ray.rllib.examples.envs.classes.utils.dummy_external_client import (
     _dummy_external_client,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )

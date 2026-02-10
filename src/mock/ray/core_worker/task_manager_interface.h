@@ -76,6 +76,7 @@ class MockTaskManagerInterface : public TaskManagerInterface {
               (const TaskID &task_id, const NodeID &node_id, const WorkerID &worker_id),
               (override));
   MOCK_METHOD(bool, IsTaskPending, (const TaskID &task_id), (const, override));
+  MOCK_METHOD(bool, IsTaskCanceled, (const TaskID &task_id), (const, override));
   MOCK_METHOD(void, MarkGeneratorFailedAndResubmit, (const TaskID &task_id), (override));
 };
 

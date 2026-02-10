@@ -1,5 +1,5 @@
 name: k8sbuild
-froms: ["cr.ray.io/rayproject/oss-ci-base_build"]
+froms: ["cr.ray.io/rayproject/oss-ci-base_build-py3.10"]
 dockerfile: ci/docker/k8s.build.Dockerfile
 srcs:
   - python/requirements.txt

@@ -6,6 +6,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 from starlette.types import Scope
 
 import ray
+from ray._common.pydantic_compat import BaseModel
 from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
@@ -24,6 +25,25 @@ REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
 class DeploymentID:
     name: str
     app_name: str = SERVE_DEFAULT_APP_NAME
+
+    def __hash__(self):
+        # Lazy hash caching: compute on first access, cache for subsequent calls.
+        # The _hash attribute is excluded from pickling via __getstate__, so after
+        # deserialization it gets recomputed with the correct per-process hash seed.
+        try:
+            return self._hash
+        except AttributeError:
+            h = hash((self.name, self.app_name))
+            object.__setattr__(self, "_hash", h)
+            return h
+
+    def __getstate__(self):
+        # Exclude _hash from pickling - it must be recomputed per-process
+        return {"name": self.name, "app_name": self.app_name}
+
+    def __setstate__(self, state):
+        object.__setattr__(self, "name", state["name"])
+        object.__setattr__(self, "app_name", state["app_name"])
 
     def to_replica_actor_class_name(self):
         return f"ServeReplica:{self.app_name}:{self.name}"
@@ -45,6 +65,25 @@ class ReplicaID:
 
     deployment_id: DeploymentID
     """The deployment this replica belongs to."""
+
+    def __hash__(self):
+        # Lazy hash caching: compute on first access, cache for subsequent calls.
+        # The _hash attribute is excluded from pickling via __getstate__, so after
+        # deserialization it gets recomputed with the correct per-process hash seed.
+        try:
+            return self._hash
+        except AttributeError:
+            h = hash((self.unique_id, self.deployment_id))
+            object.__setattr__(self, "_hash", h)
+            return h
+
+    def __getstate__(self):
+        # Exclude _hash from pickling - it must be recomputed per-process
+        return {"unique_id": self.unique_id, "deployment_id": self.deployment_id}
+
+    def __setstate__(self, state):
+        object.__setattr__(self, "unique_id", state["unique_id"])
+        object.__setattr__(self, "deployment_id", state["deployment_id"])
 
     def to_full_id_str(self) -> str:
         s = f"{self.deployment_id.name}#{self.unique_id}"
@@ -158,6 +197,24 @@ class DeploymentStatus(str, Enum):
     DEPLOY_FAILED = "DEPLOY_FAILED"
     UPSCALING = "UPSCALING"
     DOWNSCALING = "DOWNSCALING"
+
+    def to_numeric(self) -> int:
+        """Convert status to numeric value for metrics, it serves state
+        progression order on the dashboard.
+
+        0 is reserved for UNKNOWN. Values are ordered by severity/state progression:
+        0=UNKNOWN, 1=DEPLOY_FAILED, 2=UNHEALTHY, 3=UPDATING,
+        4=UPSCALING, 5=DOWNSCALING, 6=HEALTHY
+        """
+        mapping = {
+            DeploymentStatus.DEPLOY_FAILED: 1,
+            DeploymentStatus.UNHEALTHY: 2,
+            DeploymentStatus.UPDATING: 3,
+            DeploymentStatus.UPSCALING: 4,
+            DeploymentStatus.DOWNSCALING: 5,
+            DeploymentStatus.HEALTHY: 6,
+        }
+        return mapping.get(self, 0)
 
 
 class DeploymentStatusTrigger(str, Enum):
@@ -664,6 +721,21 @@ class gRPCRequest:
     user_request_proto: Any
 
 
+@dataclass
+class gRPCStreamingRequest:
+    """Sent from the GRPC proxy to replicas for client/bidirectional streaming.
+
+    This class carries metadata about the streaming session. The actual request
+    messages are delivered through a separate channel/callback mechanism.
+    """
+
+    # Session ID for tracking this streaming session
+    session_id: str
+
+    # Name of the proxy actor to call back for receiving messages
+    proxy_actor_name: str
+
+
 class RequestProtocol(str, Enum):
     UNDEFINED = "UNDEFINED"
     HTTP = "HTTP"
@@ -709,7 +781,19 @@ class RequestMetadata:
     # Serve's gRPC context associated with this request for getting and setting metadata
     grpc_context: Optional[RayServegRPCContext] = None
 
+    # Tracing context
+    tracing_context: Optional[Dict[str, str]] = None
+
+    # Whether it is a direct ingress request
+    is_direct_ingress: bool = False
+
+    # By reference or value
     _by_reference: bool = True
+    _on_separate_loop: bool = True
+
+    # gRPC serialization options
+    request_serialization: str = "cloudpickle"
+    response_serialization: str = "cloudpickle"
 
     @property
     def is_http_request(self) -> bool:
@@ -786,6 +870,8 @@ class CreatePlacementGroupRequest:
     target_node_id: str
     name: str
     runtime_env: Optional[str] = None
+    bundle_label_selector: Optional[List[Dict[str, str]]] = None
+    fallback_strategy: Optional[List[Dict[str, Any]]] = None
 
 
 # This error is used to raise when a by-value DeploymentResponse is converted to an
@@ -794,6 +880,74 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
     "Converting by-value DeploymentResponses to ObjectRefs is not supported. "
     "Use handle.options(_by_reference=True) to enable it."
 )
+
+
+class AutoscalingStatus(str, Enum):
+    UPSCALE = "AUTOSCALING_UPSCALE"
+    DOWNSCALE = "AUTOSCALING_DOWNSCALE"
+    STABLE = "AUTOSCALING_STABLE"
+
+    @staticmethod
+    def format_scaling_status(trigger: "AutoscalingStatus") -> str:
+        mapping = {
+            AutoscalingStatus.UPSCALE: "scaling up",
+            AutoscalingStatus.DOWNSCALE: "scaling down",
+            AutoscalingStatus.STABLE: "stable",
+        }
+        return mapping.get(trigger, str(trigger).lower())
+
+
+class DeploymentSnapshot(BaseModel):
+    snapshot_type: str = "deployment"
+    timestamp_str: str
+    app: str
+    deployment: str
+    current_replicas: int
+    target_replicas: int
+    min_replicas: Optional[int]
+    max_replicas: Optional[int]
+    scaling_status: str
+    policy_name: str
+    look_back_period_s: Optional[float]
+    queued_requests: Optional[float]
+    ongoing_requests: float
+    metrics_health: str
+    errors: List[str]
+
+    @staticmethod
+    def format_metrics_health_text(
+        *,
+        time_since_last_collected_metrics_s: Optional[float],
+        look_back_period_s: Optional[float],
+    ) -> str:
+        """
+        - < 1s  -> integer milliseconds
+        - >= 1s -> seconds with two decimals
+        """
+        if time_since_last_collected_metrics_s is None:
+            return "unknown"
+        val = time_since_last_collected_metrics_s
+        if val < 1.0:
+            return f"{val * 1000:.0f}ms"
+        return f"{val:.2f}s"
+
+    def is_scaling_equivalent(self, other: "DeploymentSnapshot") -> bool:
+        """Return True if scaling-related fields are equal.
+
+        Used for autoscaling snapshot log deduplication. Compares only:
+        target_replicas, min_replicas, max_replicas, scaling_status
+        """
+        if not isinstance(other, DeploymentSnapshot):
+            return False
+        return (
+            self.app == other.app
+            and self.deployment == other.deployment
+            and self.target_replicas == other.target_replicas
+            and self.min_replicas == other.min_replicas
+            and self.max_replicas == other.max_replicas
+            and self.scaling_status == other.scaling_status
+        )
+
 
 RUNNING_REQUESTS_KEY = "running_requests"
 ONGOING_REQUESTS_KEY = "ongoing_requests"
@@ -885,3 +1039,22 @@ class ReplicaMetricReport:
     aggregated_metrics: Dict[str, float]
     metrics: Dict[str, TimeSeries]
     timestamp: float
+
+
+@dataclass
+class AsyncInferenceTaskQueueMetricReport:
+    """Metric report from QueueMonitor to controller for async inference.
+
+    Args:
+        deployment_id: The deployment ID this queue belongs to.
+        queue_length: The number of pending tasks in the broker queue.
+        timestamp_s: The time at which this report was created.
+    """
+
+    deployment_id: DeploymentID
+    queue_length: int
+    timestamp_s: float
+
+
+class AutoscalingSnapshotError(str, Enum):
+    METRICS_UNAVAILABLE = "METRICS_UNAVAILABLE"

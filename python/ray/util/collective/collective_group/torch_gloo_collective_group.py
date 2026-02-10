@@ -106,7 +106,7 @@ class TorchGLOOGroup(BaseGroup):
     @classmethod
     def backend(cls):
         """The backend of this collective group."""
-        return Backend.TORCH_GLOO
+        return Backend.GLOO
 
     def _check_tensor_input(self, tensor: List["torch.Tensor"]) -> "torch.Tensor":
         """ray.util.collective wraps tensor arguments in a list.

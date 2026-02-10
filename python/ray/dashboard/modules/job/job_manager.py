@@ -11,8 +11,10 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.utils import Timer, run_background_task
+from ray._private.accelerators.npu import NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.event.event_logger import get_event_logger
+from ray._private.label_utils import validate_label_selector
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.core.generated.event_pb2 import Event
@@ -406,6 +408,8 @@ class JobManager:
             # driver can use GPUs if it wants to. This will be removed from
             # the driver's runtime_env so it isn't inherited by tasks & actors.
             env_vars[NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
+            env_vars[NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR] = "1"
+
         runtime_env["env_vars"] = env_vars
 
         if os.getenv(RAY_STREAM_RUNTIME_ENV_LOG_TO_JOB_DRIVER_LOG_ENV_VAR, "0") == "1":
@@ -476,6 +480,7 @@ class JobManager:
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
         entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
+        entrypoint_label_selector: Optional[Dict[str, str]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ) -> str:
         """
@@ -510,6 +515,7 @@ class JobManager:
             entrypoint_resources: The quantity of various custom resources
                 to reserve for the entrypoint command, separately from any tasks or
                 actors launched by it.
+            entrypoint_label_selector: Label selector for the entrypoint command.
             _start_signal_actor: Used in testing only to capture state
                 transitions between PENDING -> RUNNING. Regular user shouldn't
                 need this.
@@ -532,6 +538,10 @@ class JobManager:
         await self._recover_running_jobs_event.wait()
 
         logger.info(f"Starting job with submission_id: {submission_id}")
+        if entrypoint_label_selector:
+            error_message = validate_label_selector(entrypoint_label_selector)
+            if error_message:
+                raise ValueError(error_message)
         job_info = JobInfo(
             entrypoint=entrypoint,
             status=JobStatus.PENDING,
@@ -563,6 +573,7 @@ class JobManager:
                     entrypoint_num_gpus is not None and entrypoint_num_gpus > 0,
                     entrypoint_memory is not None and entrypoint_memory > 0,
                     entrypoint_resources not in [None, {}],
+                    entrypoint_label_selector not in [None, {}],
                 ]
             )
             scheduling_strategy = await self._get_scheduling_strategy(
@@ -574,7 +585,7 @@ class JobManager:
                 )
 
             driver_logger.info("Runtime env is setting up.")
-            supervisor = self._supervisor_actor_cls.options(
+            supervisor_options = dict(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=entrypoint_num_cpus,
@@ -589,6 +600,11 @@ class JobManager:
                 # Don't pollute task events with system actor tasks that users don't
                 # know about.
                 enable_task_events=False,
+            )
+            if entrypoint_label_selector:
+                supervisor_options["label_selector"] = entrypoint_label_selector
+            supervisor = self._supervisor_actor_cls.options(
+                **supervisor_options
             ).remote(
                 submission_id,
                 entrypoint,

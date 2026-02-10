@@ -4,7 +4,7 @@ import numpy as np
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
-from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data._internal.util import NULL_SENTINEL

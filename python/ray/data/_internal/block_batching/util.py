@@ -254,7 +254,7 @@ class WaitBlockPrefetcher(BlockPrefetcher):
             except Exception:
                 logger.exception("Error in prefetcher thread.")
 
-        logger.info("Exiting prefetcher's background thread")
+        logger.debug("Exiting prefetcher's background thread")
 
     def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
         with self._condition:

@@ -48,8 +48,13 @@ RayletClientWithIoContext::RayletClientWithIoContext(const std::string &ip_addre
 }
 
 void RayletClientWithIoContext::GetWorkerPIDs(
-    const gcs::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
+    const rpc::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
   raylet_client_->GetWorkerPIDs(callback, timeout_ms);
+}
+
+void RayletClientWithIoContext::GetAgentPIDs(
+    const rpc::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
+  raylet_client_->GetAgentPIDs(callback, timeout_ms);
 }
 
 }  // namespace rpc

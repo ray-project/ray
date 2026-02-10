@@ -155,6 +155,21 @@ RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 10 * 60
 # If set to 1, then `.gitignore` files will not be parsed and loaded into "excludes"
 # when using a local working_dir or py_modules.
 RAY_RUNTIME_ENV_IGNORE_GITIGNORE = "RAY_RUNTIME_ENV_IGNORE_GITIGNORE"
+# Default directories to exclude when packaging working_dir.
+# Override by setting the RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES
+# (comma-separated) environment variable. Set to an empty string to disable.
+# `.git` is necessary since it is never in .gitignore.
+RAY_RUNTIME_ENV_DEFAULT_EXCLUDES = ".git,.venv,venv,__pycache__"
+
+
+def get_runtime_env_default_excludes() -> list[str]:
+    """Get default excludes for working_dir, overridable via RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES environment variable."""
+    val = os.environ.get(
+        "RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES", RAY_RUNTIME_ENV_DEFAULT_EXCLUDES
+    )
+    return [x.strip() for x in val.split(",") if x.strip()]
+
+
 # Hook for running a user-specified runtime-env hook. This hook will be called
 # unconditionally given the runtime_env dict passed for ray.init. It must return
 # a rewritten runtime_env dict. Example: "your.module.runtime_env_hook".
@@ -306,6 +321,14 @@ RAY_DEDUP_LOGS_ALLOW_REGEX = os.environ.get(
 # Regex for log messages to always skip / suppress, or None.
 RAY_DEDUP_LOGS_SKIP_REGEX = os.environ.get("RAY_DEDUP_LOGS_SKIP_REGEX")
 
+AGENT_PROCESS_TYPE_DASHBOARD_AGENT = "ray::DashboardAgent"
+AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT = "ray::RuntimeEnvAgent"
+
+AGENT_PROCESS_LIST = [
+    AGENT_PROCESS_TYPE_DASHBOARD_AGENT,
+    AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT,
+]
+
 WORKER_PROCESS_TYPE_IDLE_WORKER = "ray::IDLE"
 WORKER_PROCESS_TYPE_SPILL_WORKER_NAME = "SpillWorker"
 WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME = "RestoreWorker"
@@ -379,14 +402,11 @@ REDIS_DEFAULT_USERNAME = ""
 
 REDIS_DEFAULT_PASSWORD = ""
 
-# The default ip address to bind to.
-NODE_DEFAULT_IP = "127.0.0.1"
-
 # The Mach kernel page size in bytes.
 MACH_PAGE_SIZE_BYTES = 4096
 
 # The max number of bytes for task execution error message.
-MAX_APPLICATION_ERROR_LEN = 500
+MAX_APPLICATION_ERROR_LENGTH = env_integer("RAY_MAX_APPLICATION_ERROR_LENGTH", 500)
 
 # Max 64 bit integer value, which is needed to ensure against overflow
 # in C++ when passing integer values cross-language.
@@ -410,6 +430,12 @@ DEFAULT_RUNTIME_ENV_DIR_NAME = "runtime_resources"
 # The timeout seconds for the creation of runtime env,
 # dafault timeout is 10 minutes
 DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS = 600
+
+# The timeout seconds for the GCS server request.
+# Try fetching from the cpp environment variable first.
+GCS_SERVER_REQUEST_TIMEOUT_SECONDS = int(
+    os.environ.get("RAY_gcs_server_request_timeout_seconds", "60")
+)
 
 # Used to separate lines when formatting the call stack where an ObjectRef was
 # created.
@@ -478,11 +504,6 @@ RAY_INTERNAL_FLAGS = [
     "RAY_OVERRIDE_NODE_ID_FOR_TESTING",
 ]
 
-
-def gcs_actor_scheduling_enabled():
-    return os.environ.get("RAY_gcs_actor_scheduling_enabled") == "true"
-
-
 DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 
 # Supported Python versions for runtime env's "conda" field. Ray downloads
@@ -502,16 +523,6 @@ ENABLE_RAY_CLUSTER = env_bool(
 SESSION_LATEST = "session_latest"
 NUM_PORT_RETRIES = 40
 NUM_REDIS_GET_RETRIES = int(os.environ.get("RAY_NUM_REDIS_GET_RETRIES", "20"))
-
-# The allowed cached ports in Ray. Refer to Port configuration for more details:
-# https://docs.ray.io/en/latest/ray-core/configure.html#ports-configurations
-RAY_ALLOWED_CACHED_PORTS = {
-    "metrics_agent_port",
-    "metrics_export_port",
-    "dashboard_agent_listen_port",
-    "runtime_env_agent_port",
-    "gcs_server_port",  # the `port` option for gcs port.
-}
 
 # Turn this on if actor task log's offsets are expected to be recorded.
 # With this enabled, actor tasks' log could be queried with task id.

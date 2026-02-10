@@ -18,12 +18,12 @@ import ray
 import ray.cloudpickle as cloudpickle
 import ray.util.client.server.server as ray_client_server
 from ray._common.network_utils import build_address
+from ray._common.test_utils import run_string_as_driver
 from ray._private.client_mode_hook import (
     client_mode_should_convert,
     disable_client_hook,
     enable_client_mode,
 )
-from ray._private.test_utils import run_string_as_driver
 from ray.tests.client_test_utils import (
     create_remote_signal_actor,
     run_wrapped_actor_creation,
@@ -951,6 +951,27 @@ def test_get_runtime_context_gcs_client(call_ray_start_shared):
     with ray_start_client_server_for_address(call_ray_start_shared) as ray:
         context = ray.get_runtime_context()
         assert context.gcs_address, "gcs_address not set"
+
+
+def test_get_runtime_context_session_name_client(call_ray_start_shared):
+    """
+    Tests get_runtime_context get_session_name in client mode
+    """
+    with ray_start_client_server_for_address(call_ray_start_shared) as ray:
+        context = ray.get_runtime_context()
+        session_name = context.get_session_name()
+        assert isinstance(session_name, str), "session_name should be a string"
+        assert len(session_name) > 0, "session_name should not be empty"
+
+        @ray.remote
+        def verify_session_name(expected_session_name):
+            rtc = ray.get_runtime_context()
+            assert isinstance(rtc.get_session_name(), str)
+            assert rtc.get_session_name() == expected_session_name
+            return True
+
+        # Verify session name is consistent across driver and remote tasks
+        ray.get(verify_session_name.remote(session_name))
 
 
 def test_internal_kv_in_proxy_mode(call_ray_start_shared):
