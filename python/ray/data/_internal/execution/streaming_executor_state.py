@@ -693,9 +693,9 @@ def _format_schema_mismatch_section(
         title: Section title describing the mismatched fields.
         entries: Field detail strings (name + type).
         truncate_num_mismatched_fields_to: Max entries shown before truncation.
+        
     Returns:
         A formatted message for the warning section, or "" if entries is empty.
-
     """
     if not entries:
         return ""
