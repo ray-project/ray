@@ -66,14 +66,22 @@ config = (
     .env_runners(
         num_env_runners=args.num_env_runners,
         num_envs_per_env_runner=args.num_envs_per_env_runner,
+        rollout_fragment_length=32,
     )
     .learners(
         num_learners=args.num_learners,
     )
     .training(
+        train_batch_size=2048,
+        minibatch_size=128,
         lr=0.0003,
-        num_epochs=6,
-        vf_loss_coeff=0.01,
+        num_epochs=5,
+        vf_loss_coeff=1.5,
+        entropy_coeff=0,
+        gamma=0.99,
+        lambda_=0.95,
+        clip_param=0.3,
+        vf_clip_param=10_000,
     )
     .rl_module(
         model_config=DefaultModelConfig(
