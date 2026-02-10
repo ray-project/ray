@@ -2081,7 +2081,7 @@
       --num-gpus-per-learner=1 \
       --num-learners=1
 
-- name: rllib_tictactoe_local
+- name: rllib_appo_tictactoe_local
   python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
