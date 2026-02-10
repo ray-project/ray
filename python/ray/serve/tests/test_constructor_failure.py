@@ -114,7 +114,7 @@ def test_gang_deploy_with_consistent_constructor_failure(ray_shutdown):
 
     @serve.deployment(
         num_replicas=4,
-        ray_actor_options={"num_cpus": 0},
+        ray_actor_options={"num_cpus": 0.1},
         gang_scheduling_config=GangSchedulingConfig(gang_size=2),
     )
     class GangConstructorFailure:
