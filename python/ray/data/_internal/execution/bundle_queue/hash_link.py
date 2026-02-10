@@ -23,6 +23,8 @@ class HashLinkedQueue(QueueWithRemoval):
     """A bundle queue that supports these operations quickly:
     - contains(bundle)
     - remove(bundle)
+
+    NOTE: Not thread-safe
     """
 
     def __init__(self):
