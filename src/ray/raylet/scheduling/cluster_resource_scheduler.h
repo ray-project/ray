@@ -138,14 +138,6 @@ class ClusterResourceScheduler {
 
   bool IsLocalNodeWithRaylet() { return is_local_node_with_raylet_; }
 
-  /// Call at the start of a scheduling round to snapshot node availability.
-  /// All subsequent NodeAvailable() calls will use this snapshot until
-  /// EndSchedulingRound() is called. This method is reentrant-safe.
-  void BeginSchedulingRound();
-
-  /// Clear the node availability snapshot. Must be called after BeginSchedulingRound().
-  void EndSchedulingRound();
-
   /// RAII guard for managing a scheduling round.
   class SchedulingRoundGuard {
    public:
@@ -246,6 +238,15 @@ class ClusterResourceScheduler {
 
   /// Judging whether it affinity with placement group bundle
   bool IsAffinityWithBundleSchedule(const rpc::SchedulingStrategy &scheduling_strategy);
+
+  /// Call at the start of a scheduling round to snapshot node availability.
+  /// All subsequent NodeAvailable() calls will use this snapshot until
+  /// EndSchedulingRound() is called. This method is reentrant-safe.
+  void BeginSchedulingRound();
+
+  /// Clear the node availability snapshot. Must be called after BeginSchedulingRound().
+  void EndSchedulingRound();
+
   /// Identifier of local node.
   scheduling::NodeID local_node_id_;
   /// Callback to check if node is available.
@@ -264,7 +265,7 @@ class ClusterResourceScheduler {
 
   /// Pre-computed node availability for the current scheduling round.
   /// Empty when not in a scheduling round.
-  absl::flat_hash_map<scheduling::NodeID, bool> node_available_snapshot_;
+  absl::flat_hash_map<scheduling::NodeID, bool> remote_node_available_snapshot_;
   /// Depth counter for reentrant BeginSchedulingRound/EndSchedulingRound calls.
   int scheduling_round_depth_ = 0;
 

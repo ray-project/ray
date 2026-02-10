@@ -107,14 +107,13 @@ bool ClusterResourceScheduler::NodeAvailable(scheduling::NodeID node_id) const {
     return false;
   }
 
-  if (!node_available_snapshot_.empty()) {
-    auto it = node_available_snapshot_.find(node_id);
-    if (it != node_available_snapshot_.end()) {
+  if (!remote_node_available_snapshot_.empty()) {
+    auto it = remote_node_available_snapshot_.find(node_id);
+    if (it != remote_node_available_snapshot_.end()) {
       return it->second;
     }
   }
 
-  // Not in a round or node not in snapshot (e.g. newly added): full live check.
   return IsRemoteNodeAvailable(node_id);
 }
 
@@ -135,13 +134,13 @@ void ClusterResourceScheduler::BeginSchedulingRound() {
     return;
   }
 
-  node_available_snapshot_.clear();
+  remote_node_available_snapshot_.clear();
   for (const auto &[node_id, _] : cluster_resource_manager_->GetResourceView()) {
     // Skip local node - it's always checked directly
     if (node_id == local_node_id_) {
       continue;
     }
-    node_available_snapshot_[node_id] = IsRemoteNodeAvailable(node_id);
+    remote_node_available_snapshot_[node_id] = IsRemoteNodeAvailable(node_id);
   }
 }
 
@@ -152,7 +151,7 @@ void ClusterResourceScheduler::EndSchedulingRound() {
   scheduling_round_depth_--;
   
   if (scheduling_round_depth_ == 0) {
-    node_available_snapshot_.clear();
+    remote_node_available_snapshot_.clear();
   }
 }
 
