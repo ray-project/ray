@@ -16,7 +16,10 @@
 
 #pragma once
 
+#include <cstdlib>
 #include <string>
+
+#include "ray/util/getenv_trace.h"
 
 namespace ray {
 

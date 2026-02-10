@@ -62,7 +62,7 @@ std::string GetWorkerOutputFilepath(WorkerType worker_type,
                                     const std::string &suffix) {
   std::string parsed_job_id;
   if (job_id.IsNil()) {
-    char *job_id_env = ::getenv("RAY_JOB_ID");
+    const char *job_id_env = RAY_GETENV("RAY_JOB_ID");
     if (job_id_env != nullptr) {
       parsed_job_id = job_id_env;
     }

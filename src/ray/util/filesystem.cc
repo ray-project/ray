@@ -15,6 +15,8 @@
 #include "ray/util/filesystem.h"
 
 #include <cstdlib>
+
+#include "ray/util/getenv_trace.h"
 #include <fstream>
 #include <string>
 
@@ -45,7 +47,7 @@ std::string GetUserTempDir() {
   const char *candidates[] = {"TMPDIR", "TMP", "TEMP", "TEMPDIR"};
   const char *found = NULL;
   for (char const *candidate : candidates) {
-    found = std::getenv(candidate);
+    found = RAY_GETENV(candidate);
     if (found) {
       break;
     }

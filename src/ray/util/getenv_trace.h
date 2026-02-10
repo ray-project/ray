@@ -12,28 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/util/scoped_env_setter.h"
+// Minimal wrapper to log getenv call sites (for debugging SIGSEGV in getenv).
+// No dependency on Ray logging; logs to stderr. The last "[RAY_GETENV]" line
+// before a crash is the call that faulted.
+
+#pragma once
 
 #include <cstdlib>
 
-#include "ray/util/env.h"
-
 namespace ray {
 
-ScopedEnvSetter::ScopedEnvSetter(const char *env_name, const char *value)
-    : env_name_(env_name) {
-  const char *val = RAY_GETENV(env_name);
-  if (val != nullptr) {
-    old_value_ = val;
-  }
-  SetEnv(env_name, value);
-}
-
-ScopedEnvSetter::~ScopedEnvSetter() {
-  UnsetEnv(env_name_.c_str());
-  if (old_value_.has_value()) {
-    SetEnv(env_name_, *old_value_);
-  }
-}
+const char *RayGetEnv(const char *name, const char *file, int line);
 
 }  // namespace ray
+
+#define RAY_GETENV(name) ::ray::RayGetEnv((name), __FILE__, __LINE__)

@@ -26,6 +26,7 @@
 
 #include "nlohmann/json.hpp"
 #include "ray/rpc/authentication/k8s_constants.h"
+#include "ray/util/getenv_trace.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -59,8 +60,8 @@ static const char *k8s_host = nullptr;
 static const char *k8s_port = nullptr;
 
 void InitK8sClientConfig() {
-  k8s_host = std::getenv(kK8sServiceHostEnvVar);
-  k8s_port = std::getenv(kK8sServicePortEnvVar);
+  k8s_host = RAY_GETENV(kK8sServiceHostEnvVar);
+  k8s_port = RAY_GETENV(kK8sServicePortEnvVar);
   if (k8s_host == nullptr || k8s_port == nullptr) {
     RAY_LOG(WARNING)
         << kK8sServiceHostEnvVar << " or " << kK8sServicePortEnvVar << " not set. "
@@ -179,8 +180,8 @@ bool ValidateToken(const AuthenticationToken &token) {
     return false;
   }
 
-  const char *ray_cluster_name_env = std::getenv(kRayClusterNameEnvVar);
-  const char *ray_cluster_namespace_env = std::getenv(kRayClusterNamespaceEnvVar);
+  const char *ray_cluster_name_env = RAY_GETENV(kRayClusterNameEnvVar);
+  const char *ray_cluster_namespace_env = RAY_GETENV(kRayClusterNamespaceEnvVar);
 
   if (ray_cluster_name_env == nullptr || ray_cluster_namespace_env == nullptr) {
     RAY_LOG(WARNING) << kRayClusterNameEnvVar << " or " << kRayClusterNamespaceEnvVar

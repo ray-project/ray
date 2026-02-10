@@ -23,6 +23,7 @@
 #include "absl/strings/str_split.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/id.h"
+#include "ray/util/getenv_trace.h"
 #include "ray/util/network_util.h"
 
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
@@ -206,7 +207,7 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   worker_type = config.is_worker_ ? WorkerType::WORKER : WorkerType::DRIVER;
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
     if (bootstrap_ip.empty()) {
-      auto ray_address_env = std::getenv("RAY_ADDRESS");
+      auto ray_address_env = RAY_GETENV("RAY_ADDRESS");
       if (ray_address_env) {
         RAY_LOG(DEBUG) << "Initialize Ray cluster address to \"" << ray_address_env
                        << "\" from environment variable \"RAY_ADDRESS\".";
@@ -240,7 +241,7 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
     }
   }
 
-  auto job_config_json_string = std::getenv("RAY_JOB_CONFIG_JSON_ENV_VAR");
+  auto job_config_json_string = RAY_GETENV("RAY_JOB_CONFIG_JSON_ENV_VAR");
   if (job_config_json_string) {
     json job_config_json = json::parse(job_config_json_string);
     runtime_env = RuntimeEnv::Deserialize(job_config_json.at("runtime_env").dump());

@@ -323,6 +323,7 @@ ray_cc_library(
         "ray_internal_flag_def.h",
     ],
     deps = [
+        "//src/ray/util:getenv_trace",
         "//src/ray/util:logging",
         "@boost//:algorithm",
         "@com_google_absl//absl/strings",

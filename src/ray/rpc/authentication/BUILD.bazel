@@ -35,6 +35,7 @@ ray_cc_library(
     deps = [
         ":authentication_token",
         ":k8s_constants",
+        "//src/ray/util:getenv_trace",
         "//src/ray/util:logging",
         "@boost//:asio_ssl",
         "@boost//:beast",
@@ -51,6 +52,7 @@ ray_cc_library(
         ":authentication_mode",
         ":authentication_token",
         ":k8s_constants",
+        "//src/ray/util:getenv_trace",
         "//src/ray/util:logging",
     ],
 )

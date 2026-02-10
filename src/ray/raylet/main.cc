@@ -52,6 +52,7 @@
 #include "ray/stats/tag_defs.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
+#include "ray/util/getenv_trace.h"
 #include "ray/util/process.h"
 #include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
@@ -223,7 +224,7 @@ int main(int argc, char *argv[]) {
 
 #ifdef __linux__
   // Reset LD_PRELOAD if it's loaded with ray jemalloc
-  auto ray_ld_preload = std::getenv("RAY_LD_PRELOAD_ON_WORKERS");
+  auto ray_ld_preload = RAY_GETENV("RAY_LD_PRELOAD_ON_WORKERS");
   if (ray_ld_preload != nullptr && std::string(ray_ld_preload) == "0") {
     unsetenv("LD_PRELOAD");
   }
@@ -1091,11 +1092,11 @@ int main(int argc, char *argv[]) {
     self_node_info.mutable_labels()->insert(node_manager_config.labels.begin(),
                                             node_manager_config.labels.end());
     // Setting up autoscaler related fields from ENV
-    auto instance_id = std::getenv(kNodeCloudInstanceIdEnv);
+    auto instance_id = RAY_GETENV(kNodeCloudInstanceIdEnv);
     self_node_info.set_instance_id(instance_id ? instance_id : "");
-    auto cloud_node_type_name = std::getenv(kNodeTypeNameEnv);
+    auto cloud_node_type_name = RAY_GETENV(kNodeTypeNameEnv);
     self_node_info.set_node_type_name(cloud_node_type_name ? cloud_node_type_name : "");
-    auto instance_type_name = std::getenv(kNodeCloudInstanceTypeNameEnv);
+    auto instance_type_name = RAY_GETENV(kNodeCloudInstanceTypeNameEnv);
     self_node_info.set_instance_type_name(instance_type_name ? instance_type_name : "");
 
     node_manager->Start(std::move(self_node_info));

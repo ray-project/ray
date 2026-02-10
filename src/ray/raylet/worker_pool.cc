@@ -35,6 +35,7 @@
 #include "ray/common/status.h"
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 #include "ray/util/container_util.h"
+#include "ray/util/getenv_trace.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 #include "ray/util/time.h"
@@ -406,7 +407,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     // Set native library path for shared library search.
     if (!native_library_path_.empty() || !code_search_path.empty()) {
 #if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
-      auto path_env_p = std::getenv(kLibraryPathEnvName);
+      auto path_env_p = RAY_GETENV(kLibraryPathEnvName);
       std::string path_env = native_library_path_;
       if (path_env_p != nullptr && strlen(path_env_p) != 0) {
         path_env.append(":").append(path_env_p);

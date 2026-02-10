@@ -18,6 +18,7 @@
 #include <boost/asio.hpp>
 
 #include "ray/common/constants.h"
+#include "ray/util/getenv_trace.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 
@@ -25,7 +26,7 @@ namespace ray {
 namespace internal {
 
 std::string getLibraryPathEnv() {
-  auto path_env_p = std::getenv(kLibraryPathEnvName);
+  auto path_env_p = RAY_GETENV(kLibraryPathEnvName);
   if (path_env_p != nullptr && strlen(path_env_p) != 0) {
     return std::string(path_env_p);
   }

@@ -1081,6 +1081,7 @@ bool NodeManager::UpdateResourceUsage(
   return true;
 }
 
+// will this override job status?
 void NodeManager::HandleClientConnectionError(
     const std::shared_ptr<ClientConnection> &client,
     const boost::system::error_code &error) {
