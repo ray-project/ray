@@ -24,7 +24,6 @@ def handle_result(
         target_update_diff = 300
 
     elif test_name in [
-        "long_running_apex",
         "long_running_impala",
         "long_running_many_ppo",
     ]:
