@@ -234,6 +234,10 @@ First, start your Ray nodes with labels that identify their capabilities:
 
 By default, a `label_selector` acts as a hard constraint. If no node matches the selector, the replica remains pending indefinitely. You can relax this requirement by providing a `fallback_strategy` in `ray_actor_options`.
 
+```{literalinclude} ../doc_code/replica_scheduling.py
+:start-after: __fallback_strategy_start__
+:end-before: __fallback_strategy_end__
+:language: python
 This allows you to express preferences. For example, when using PACK scheduling, the scheduler will attempt to find a node that matches the `label_selector` first. If no available node is found, the scheduler will retry scheduling using the rules defined in your fallback strategy.
 
 Label selectors and fallback strategies offer several advantages for Ray Serve deployments:
