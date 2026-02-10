@@ -610,20 +610,8 @@ class gRPCProxy(GenericProxy):
         )
 
     def service_handler_factory(
-        self,
-        service_method: str,
-        stream: bool = False,
-        *,
-        streaming_type: gRPCStreamingType = None,
+        self, service_method: str, streaming_type: gRPCStreamingType
     ) -> Callable:
-        # Determine streaming type from parameters for backward compatibility
-        if streaming_type is None:
-            streaming_type = (
-                gRPCStreamingType.UNARY_STREAM
-                if stream
-                else gRPCStreamingType.UNARY_UNARY
-            )
-
         async def unary_unary(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
         ) -> bytes:
@@ -747,18 +735,13 @@ class gRPCProxy(GenericProxy):
 
             set_grpc_code_and_details(context, status)
 
-        # Return the appropriate handler based on streaming type
-        if streaming_type == gRPCStreamingType.UNARY_UNARY:
-            return unary_unary
-        elif streaming_type == gRPCStreamingType.UNARY_STREAM:
-            return unary_stream
-        elif streaming_type == gRPCStreamingType.STREAM_UNARY:
-            return stream_unary
-        elif streaming_type == gRPCStreamingType.STREAM_STREAM:
-            return stream_stream
-        else:
-            # Fallback for backward compatibility
-            return unary_stream if stream else unary_unary
+        handler_map = {
+            gRPCStreamingType.UNARY_UNARY: unary_unary,
+            gRPCStreamingType.UNARY_STREAM: unary_stream,
+            gRPCStreamingType.STREAM_UNARY: stream_unary,
+            gRPCStreamingType.STREAM_STREAM: stream_stream,
+        }
+        return handler_map[streaming_type]
 
     def setup_request_context_and_handle(
         self,

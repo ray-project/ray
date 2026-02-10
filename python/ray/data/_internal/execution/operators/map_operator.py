@@ -513,16 +513,19 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._metrics.on_input_queued(refs)
 
         if self._block_ref_bundler.has_bundle():
-            # The ref bundler combines one or more RefBundles into a new larger
-            # RefBundle. Rather than dequeuing the new RefBundle, which was never
-            # enqueued in the first place, we dequeue the original RefBundles.
+            # The ref bundler combines one or more `RefBundle`s into a new
+            # `RefBundle`. To update metrics appropriately, we need to deque
+            # original input bundles.
             (input_refs, bundled_input) = self._block_ref_bundler.get_next_bundle()
             for bundle in input_refs:
                 self._metrics.on_input_dequeued(bundle)
 
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue
-            self._add_bundled_input(bundled_input)
+            #
+            # NOTE: This is a strict path, hence operator is *required* to launch
+            #       at least 1 task
+            self._try_schedule_task(bundled_input, strict=True)
 
     def _get_dynamic_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
@@ -561,19 +564,15 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         return ray_remote_args
 
     @abstractmethod
-    def _add_bundled_input(self, refs: RefBundle):
-        """Add a pre-bundled upstream output to this operator.
-
-        Unlike the add_input() arg, this RefBundle has already been further bundled by
-        _block_ref_bundler up to the target size, meaning that this bundle is ready for
-        task submission.
-
-        This must be implemented by subclasses.
+    def _try_schedule_task(self, refs: RefBundle, strict: bool):
+        """Method to try schedule task handling provided bundle
 
         Args:
             refs: The fully-bundled ref bundle that should be added as input.
+            strict: Controls whether operator has to strictly follow the input handling
+                    protocol and guarantee that at least 1 task is launched.
         """
-        raise NotImplementedError
+        pass
 
     def _submit_data_task(
         self,
@@ -651,16 +650,23 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
     def all_inputs_done(self):
         self._block_ref_bundler.done_adding_bundles()
+
+        # Handle any bundles still in the bundler
         while self._block_ref_bundler.has_bundle():
-            # Handle any leftover bundles in the bundler.
-            (
-                _,
-                bundled_input,
-            ) = self._block_ref_bundler.get_next_bundle()
+            # The ref bundler combines one or more `RefBundle`s into a new
+            # `RefBundle`. To update metrics appropriately, we need to deque
+            # original input bundles.
+            (input_refs, bundled_input) = self._block_ref_bundler.get_next_bundle()
+            for bundle in input_refs:
+                self._metrics.on_input_dequeued(bundle)
 
-            self._add_bundled_input(bundled_input)
+            # NOTE: When `all_inputs_done` is invoked we can't guarantee that the
+            #       task will be launched since all actors might be busy.
+            self._try_schedule_task(bundled_input, strict=False)
 
-        assert self._block_ref_bundler.num_blocks() == 0, "Bundler must be empty"
+        assert (
+            self._block_ref_bundler.size_bytes() == 0
+        ), f"Bundler in {self} must be empty (got {self._block_ref_bundler.num_blocks()} blocks)"
 
         super().all_inputs_done()
 
