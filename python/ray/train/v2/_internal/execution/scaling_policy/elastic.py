@@ -211,7 +211,8 @@ class ElasticScalingPolicy(ScalingPolicy):
                     resources=[resources_per_worker] * max_workers,
                     expire_after_s=self.AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
                     priority=ResourceRequestPriority.HIGH,
-                )
+                ),
+                timeout=self.AUTOSCALING_REQUESTS_GET_TIMEOUT_S,
             )
             self._latest_autoscaling_request_time = time_monotonic()
         except Exception:
