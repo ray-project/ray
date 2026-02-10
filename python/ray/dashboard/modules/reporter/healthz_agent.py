@@ -145,9 +145,9 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
                         f"{response.status}: {body}"
                     )
         except aiohttp.ClientError as e:
-            raise Exception(f"Serve proxy health check failed: {e}")
-        except asyncio.TimeoutError:
-            raise Exception("Serve proxy health check timed out")
+            raise Exception(f"Serve proxy health check failed: {e}") from e
+        except asyncio.TimeoutError as e:
+            raise Exception("Serve proxy health check timed out") from e
 
         return "success"
 
