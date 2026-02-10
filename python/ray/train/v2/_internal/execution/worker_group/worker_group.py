@@ -367,12 +367,13 @@ class WorkerGroup(BaseWorkerGroup):
 
                 self._worker_group_state = worker_group_state_builder.build()
 
-                cb_start = time_monotonic()
+                after_wg_start_cb_start = time_monotonic()
                 for callback in self._callbacks:
                     callback.after_worker_group_start(self)
                 logger.debug(
                     "[Train Worker Initialization] after_worker_group_start "
-                    f"callbacks completed in {time_monotonic() - cb_start:.2f}s."
+                    f"callbacks completed in {time_monotonic() - after_wg_start_cb_start:.2f}s."
+                )
                 )
 
             except RayActorError as actor_error:
