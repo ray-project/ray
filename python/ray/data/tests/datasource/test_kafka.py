@@ -451,19 +451,16 @@ def test_read_kafka_with_datetime_offsets(
     """Test reading Kafka messages using datetime-based start and end offsets."""
     topic = "test-datetime-offsets"
 
-    # all messages at Jan 15 2025
     msg_ts = datetime_to_ms(datetime(2025, 1, 15))
     time_before = datetime(2025, 1, 1)
     time_after = datetime(2025, 2, 1)
 
-    # Produce messages with explicit timestamp
     for i in range(100):
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.send(topic, value=message, timestamp_ms=msg_ts)
     kafka_producer.flush()
     time.sleep(1)
 
-    # Read all messages using datetime range that spans the messages
     ds = ray.data.read_kafka(
         topics=[topic],
         bootstrap_servers=[bootstrap_server],
@@ -480,17 +477,15 @@ def test_read_kafka_datetime_partial_range(
     """Test that only messages within the datetime range are returned."""
     topic = "test-datetime-partial-range"
 
-    # Use explicit timestamps: first batch at Jan 1 2025, second batch at Feb 1 2025
+    # first batch at Jan 1 2025, second batch at Feb 1 2025
     batch1_ts = datetime_to_ms(datetime(2025, 1, 1))
     batch2_ts = datetime_to_ms(datetime(2025, 2, 1))
     boundary_time = datetime(2025, 1, 15)  # Between the two batches
 
-    # Produce first batch of 50 messages with explicit timestamp
     for i in range(50):
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.send(topic, value=message, timestamp_ms=batch1_ts)
 
-    # Produce second batch of 50 messages with later timestamp
     for i in range(50, 100):
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.send(topic, value=message, timestamp_ms=batch2_ts)
@@ -530,7 +525,6 @@ def test_read_kafka_datetime_after_all_messages(
     kafka_producer.flush()
     time.sleep(1)
 
-    # Use a start time well after all messages
     future_time = datetime(2099, 1, 1)
 
     ds = ray.data.read_kafka(
@@ -555,7 +549,6 @@ def test_read_kafka_datetime_before_all_messages(
     kafka_producer.flush()
     time.sleep(1)
 
-    # Use an end time well before all messages (epoch)
     past_time = datetime(1970, 1, 2)
 
     ds = ray.data.read_kafka(
