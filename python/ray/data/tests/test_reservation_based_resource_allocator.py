@@ -1082,8 +1082,8 @@ class TestReservationOpResourceAllocator:
 
         # Test when resources are used.
         op_usages[o6] = ExecutionResources.zero()
-        op_internal_usage[o6] = 300
-        op_outputs_usages[o6] = 200
+        op_internal_usage[o6] = 0
+        op_outputs_usages[o6] = 0
         op_usages[o8] = ExecutionResources(2, 0, 100)
         op_internal_usage[o8] = 50
         op_outputs_usages[o8] = 50
