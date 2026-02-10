@@ -108,11 +108,6 @@ if __name__ == "__main__":
     haproxy_proc = start_haproxy()
     wait_for_condition(check_endpoint_ready, url="http://localhost:8000")
 
-    # Validate request through HAProxy
-    resp = requests.get("http://localhost:8000")
-    assert resp.status_code == 200
-    print("HAProxy proxying OK:", resp.json())
-
     # Reload config WITHOUT backend
     write_cfg(generate_haproxy_cfg(host, fastapi_port, include_backend=False))
     haproxy_proc.send_signal(signal.SIGHUP)  # reload
