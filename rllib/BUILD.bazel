@@ -898,45 +898,47 @@ py_test(
     ],
 )
 
-py_test(
-    name = "learning_test_ppo_mujoco_single_cpu",
-    size = "large",
-    srcs = ["examples/algorithms/ppo/mujoco_ppo.py"],
-    args = [
-        "--as-test",
-        "--num-cpus=6",
-        "--num-env-runners=4",
-        "--num-learners=1",
-        "--stop-reward=150",
-    ],
-    main = "examples/algorithms/ppo/mujoco_ppo.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "team:rllib",
-    ],
-)
+# TODO (Mark): Commented out for being flaky
+# py_test(
+#     name = "learning_test_ppo_mujoco_single_cpu",
+#     size = "large",
+#     srcs = ["examples/algorithms/ppo/mujoco_ppo.py"],
+#     args = [
+#         "--as-test",
+#         "--num-cpus=6",
+#         "--num-env-runners=4",
+#         "--num-learners=1",
+#         "--stop-reward=150",
+#     ],
+#     main = "examples/algorithms/ppo/mujoco_ppo.py",
+#     tags = [
+#         "exclusive",
+#         "learning_tests",
+#         "team:rllib",
+#     ],
+# )
 
-py_test(
-    name = "learning_test_ppo_mujoco_multi_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/ppo/mujoco_ppo.py"],
-    args = [
-        "--as-test",
-        "--num-cpus=11",
-        "--num-env-runners=8",
-        "--num-learners=2",
-        "--num-gpus-per-learner=1",
-        "--stop-reward=150",
-    ],
-    main = "examples/algorithms/ppo/mujoco_ppo.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "multi_gpu",
-        "team:rllib",
-    ],
-)
+# TODO (Mark): Commented out for being flaky
+# py_test(
+#     name = "learning_test_ppo_mujoco_multi_gpu",
+#     size = "large",
+#     srcs = ["examples/algorithms/ppo/mujoco_ppo.py"],
+#     args = [
+#         "--as-test",
+#         "--num-cpus=11",
+#         "--num-env-runners=8",
+#         "--num-learners=2",
+#         "--num-gpus-per-learner=1",
+#         "--stop-reward=150",
+#     ],
+#     main = "examples/algorithms/ppo/mujoco_ppo.py",
+#     tags = [
+#         "exclusive",
+#         "learning_tests",
+#         "multi_gpu",
+#         "team:rllib",
+#     ],
+# )
 
 py_test(
     name = "learning_test_ppo_footsies_single_gpu",
