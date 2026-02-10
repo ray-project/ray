@@ -112,10 +112,13 @@ The [`LocalObjectManager`](https://github.com/ray-project/ray/blob/master/src/ra
 
 ### TryToSpillObjects
 
-[`TryToSpillObjects`](https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L185) selects which objects to spill in a single batch:
+[`TryToSpillObjects`](https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L186) selects which objects to spill in a single batch:
 
 1. Iterates through `pinned_objects_`, checking `is_plasma_object_spillable_(id)` for each (this ensures the object is not actively used by a worker process).
-2. Accumulates objects until either `max_fused_object_count_` objects are collected or all pinned objects have been checked.
+2. Accumulates objects until one of the following limits is reached:
+   - `max_fused_object_count_` objects have been collected, **or**
+   - `max_spilling_file_size_bytes_` would be exceeded by adding the next object (when enabled, i.e. > 0). The first object is always included even if it alone exceeds the limit, **or**
+   - all pinned objects have been checked.
 3. **Batching optimization**: if the accumulated bytes are less than `min_spilling_size_` and other spills are already in progress, it returns `false` to wait for current spills to complete before starting a small batch. This gives the system time to accumulate more objects for better batching.
 4. Calls `SpillObjectsInternal()` with the selected batch.
 
@@ -345,8 +348,10 @@ sequenceDiagram
 Object spilling is controlled by the following configuration parameters:
 
 - `object_spilling_config`: JSON string specifying the storage backend. Empty string disables spilling.
+- `object_spilling_threshold`: fraction (0.0–1.0) of available object store memory at which spilling begins. Default: `0.8`.
 - `min_spilling_size`: minimum bytes to accumulate before triggering a spill batch.
-- `max_fused_object_count`: maximum number of objects fused into a single spill file.
+- `max_spilling_file_size_bytes`: maximum bytes allowed in a single fused spill file. When enabled (> 0), `TryToSpillObjects` stops fusing objects once adding the next object would exceed this limit (the first object is always included). Must be >= `min_spilling_size` when enabled. Set to `-1` (default) to disable.
+- `max_fused_object_count`: maximum number of objects fused into a single spill file. Default: `2000`.
 - `max_io_workers`: maximum number of concurrent spill/restore IO worker processes.
 - `oom_grace_period_s`: seconds to wait after OOM before using the fallback allocator.
 - `free_objects_batch_size`: number of freed objects to batch before flushing.
@@ -365,7 +370,8 @@ ray.init(
                 "buffer_size": 1048576,
             }
         }),
-        "min_spilling_size": 100 * 1024 * 1024,    # 100 MB
+        "min_spilling_size": 100 * 1024 * 1024,          # 100 MB
+        "max_spilling_file_size_bytes": 1024 * 1024 * 1024,  # 1 GB cap per file
         "max_io_workers": 4,
     }
 )
