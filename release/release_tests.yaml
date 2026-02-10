@@ -1955,7 +1955,6 @@
 
   alert: default
 
-
 ########################
 # RLlib tests
 ########################
@@ -1963,13 +1962,12 @@
 # --------------------------
 # Ray Tune // RLlib Integration Tests
 # --------------------------
-
 - name: tune_rllib_connect_test
   python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
-  frequency: nightly-3x
+  frequency: weekly
   team: rllib
 
   cluster:
@@ -1978,7 +1976,7 @@
       post_build_script: byod_rllib.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: tune_rllib/compute_tpl_aws.yaml
+    cluster_compute: 2gpus_50cpus_8nodes_aws.yaml
 
   run:
     timeout: 2400 # 40 minutes
@@ -1990,9 +1988,9 @@
     - __suffix__: aws
     - __suffix__: gce
       env: gce
-      frequency: manual
+      frequency: weekly
       cluster:
-        cluster_compute: tune_rllib/compute_tpl_gce.yaml
+        cluster_compute: 2gpus_50cpus_8nodes_gce.yaml
 
   alert: default
 
