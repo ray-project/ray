@@ -925,6 +925,9 @@ python/ray/dashboard/modules/reporter/profile_manager.py
     DOC111: Method `MemoryProfilingManager.attach_profiler`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
     DOC111: Method `MemoryProfilingManager.detach_profiler`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
 --------------------
+python/ray/dashboard/modules/reporter/reporter_agent.py
+    DOC201: Method `ReporterAgent.generate_worker_stats_record` does not have a return section in docstring
+--------------------
 python/ray/dashboard/modules/reporter/reporter_head.py
     DOC102: Method `ReportHead.get_task_traceback`: Docstring contains more arguments than in function signature.
     DOC103: Method `ReportHead.get_task_traceback`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [req: aiohttp.web.Request]. Arguments in the docstring but not in the function signature: [attempt_number: , node_id: , task_id: ].
