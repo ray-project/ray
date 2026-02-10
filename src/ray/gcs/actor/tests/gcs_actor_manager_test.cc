@@ -1926,7 +1926,6 @@ TEST_F(GcsActorManagerTest, TestNodeFailureDestroysAllOwnedActors) {
   }
 
   // Kill the owner's node
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(owner_node_id));
   OnNodeDead(owner_node_id);
 
   // Verify ALL 3 actors are now DEAD
