@@ -88,7 +88,7 @@ class AuthenticationTokenLoader {
   /// Extract expiration time from a JWT token.
   /// \param token The JWT token string.
   /// \return The expiration time, or std::nullopt if not a valid JWT or no exp claim.
-  std::optional<std::chrono::system_clock::time_point> GetTokenExpiration(
+  std::optional<std::chrono::system_clock::time_point> GetJWTTokenExpiration(
       const std::string &token);
 
   absl::Mutex token_mutex_;

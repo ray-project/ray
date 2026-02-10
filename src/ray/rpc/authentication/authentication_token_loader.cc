@@ -52,7 +52,7 @@ constexpr int kRaySATokenDefaultTTLSeconds = 600;
 constexpr int kRaySATokenExpirationBufferSeconds = 300;
 
 std::optional<std::chrono::system_clock::time_point>
-AuthenticationTokenLoader::GetTokenExpiration(const std::string &token) {
+AuthenticationTokenLoader::GetJWTTokenExpiration(const std::string &token) {
   std::vector<std::string> parts = absl::StrSplit(token, '.');
   if (parts.size() != 3) {
     RAY_LOG(WARNING) << "Invalid JWT token format.";
@@ -121,7 +121,7 @@ std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
   if (has_token) {
     cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
     if (IsK8sTokenAuthEnabled()) {
-      auto exp = GetTokenExpiration(cached_token_->GetRawValue());
+      auto exp = GetJWTTokenExpiration(cached_token_->GetRawValue());
       if (exp) {
         cached_token_expiration_time_ =
             *exp - std::chrono::seconds(kRaySATokenExpirationBufferSeconds);
@@ -178,7 +178,7 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
   // Cache and return success
   cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
   if (IsK8sTokenAuthEnabled()) {
-    auto exp = GetTokenExpiration(cached_token_->GetRawValue());
+    auto exp = GetJWTTokenExpiration(cached_token_->GetRawValue());
     if (exp) {
       cached_token_expiration_time_ =
           *exp - std::chrono::seconds(kRaySATokenExpirationBufferSeconds);
