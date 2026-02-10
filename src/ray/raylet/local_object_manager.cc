@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/stats/tag_defs.h"
 
@@ -187,16 +188,23 @@ bool LocalObjectManager::TryToSpillObjects() {
     return false;
   }
 
-  RAY_LOG(DEBUG) << "Choosing objects to spill with minimum total size "
-                 << min_spilling_size_
-                 << " or with total # of objects = " << max_fused_object_count_;
   int64_t bytes_to_spill = 0;
   std::vector<ObjectID> objects_to_spill;
   int64_t num_to_spill = 0;
   size_t idx = 0;
   for (const auto &[object_id, ray_object] : pinned_objects_) {
     if (is_plasma_object_spillable_(object_id)) {
-      bytes_to_spill += ray_object->GetSize();
+      const int64_t object_size = ray_object->GetSize();
+
+      // If the max file size limit is enabled, avoid fusing more objects once we'd exceed
+      // it. Always allow spilling at least one object, even if it's larger than the
+      // limit.
+      if (max_spilling_file_size_bytes_ > 0 && !objects_to_spill.empty() &&
+          bytes_to_spill + object_size > max_spilling_file_size_bytes_) {
+        break;
+      }
+
+      bytes_to_spill += object_size;
       objects_to_spill.push_back(object_id);
       ++num_to_spill;
       if (num_to_spill == max_fused_object_count_) {

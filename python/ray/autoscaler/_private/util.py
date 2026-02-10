@@ -1,3 +1,4 @@
+import base64
 import collections
 import copy
 import hashlib
@@ -77,6 +78,15 @@ NodeStatus = str
 Usage = Dict[str, Tuple[Number, Number]]
 
 logger = logging.getLogger(__name__)
+
+
+def base32hex(data: bytes) -> str:
+    """Encode bytes using base32hex, without padding and in lower case.
+
+    This is used to create a shorter hash string that is compatible with
+    GCP label value constraints (<= 63 chars, lowercase, no padding).
+    """
+    return base64.b32hexencode(data).decode("ascii").lower().rstrip("=")
 
 
 def is_placement_group_resource(resource_name: str) -> bool:
@@ -445,7 +455,7 @@ def hash_launch_conf(node_conf, auth):
             with open(os.path.expanduser(auth[key_type])) as key:
                 full_auth[key_type] = key.read()
     hasher.update(json.dumps([node_conf, full_auth], sort_keys=True).encode("utf-8"))
-    return hasher.hexdigest()
+    return base32hex(hasher.digest())
 
 
 # Cache the file hashes to avoid rescanning it each time. Also, this avoids
@@ -504,7 +514,7 @@ def hash_runtime_conf(
     if conf_str not in _hash_cache or generate_file_mounts_contents_hash:
         for local_path in sorted(file_mounts.values()):
             add_content_hashes(local_path)
-        head_node_contents_hash = contents_hasher.hexdigest()
+        head_node_contents_hash = base32hex(contents_hasher.digest())
 
         # Generate a new runtime_hash if its not cached
         # The runtime hash does not depend on the cluster_synced_files hash
@@ -513,7 +523,7 @@ def hash_runtime_conf(
         if conf_str not in _hash_cache:
             runtime_hasher.update(conf_str)
             runtime_hasher.update(head_node_contents_hash.encode("utf-8"))
-            _hash_cache[conf_str] = runtime_hasher.hexdigest()
+            _hash_cache[conf_str] = base32hex(runtime_hasher.digest())
 
         # Add cluster_synced_files to the file_mounts_content hash
         if cluster_synced_files is not None:
@@ -523,7 +533,7 @@ def hash_runtime_conf(
                 # anytime over the life of the head node.
                 add_content_hashes(local_path, allow_non_existing_paths=True)
 
-        file_mounts_contents_hash = contents_hasher.hexdigest()
+        file_mounts_contents_hash = base32hex(contents_hasher.digest())
 
     else:
         file_mounts_contents_hash = None
