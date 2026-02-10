@@ -13,7 +13,7 @@ from typing import Callable, Dict, List, Optional
 import ray
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.common import DeploymentID, GangContext, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
@@ -44,6 +44,7 @@ class ReplicaContext:
         - servable_object: instance of the user class/function this replica is running.
         - rank: the rank of the replica.
         - world_size: the number of replicas in the deployment.
+        - gang_context: context information for the gang the replica is part of.
     """
 
     replica_id: ReplicaID
@@ -52,6 +53,7 @@ class ReplicaContext:
     rank: ReplicaRank
     world_size: int
     _handle_registration_callback: Optional[Callable[[DeploymentID], None]] = None
+    gang_context: Optional[GangContext] = None
 
     @property
     def app_name(self) -> str:
@@ -117,6 +119,7 @@ def _set_internal_replica_context(
     rank: ReplicaRank,
     world_size: int,
     handle_registration_callback: Optional[Callable[[str, str], None]] = None,
+    gang_context: Optional[GangContext] = None,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
@@ -126,6 +129,7 @@ def _set_internal_replica_context(
         rank=rank,
         world_size=world_size,
         _handle_registration_callback=handle_registration_callback,
+        gang_context=gang_context,
     )
 
 

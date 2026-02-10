@@ -48,6 +48,7 @@ from ray.serve import metrics
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentID,
+    GangContext,
     ReplicaID,
     ReplicaMetricReport,
     ReplicaQueueLengthInfo,
@@ -1009,6 +1010,8 @@ class ReplicaBase(ABC):
         # Flipped to `True` once graceful shutdown is initiated. May be used by replica
         # subclass implementations.
         self._shutting_down = False
+        # Gang context for this replica.
+        self._gang_context: Optional[GangContext] = None
 
         # Will be populated with the wrapped ASGI app if the user callable is an
         # `ASGIAppReplicaWrapper` (i.e., they are using the FastAPI integration).
@@ -1152,6 +1155,7 @@ class ReplicaBase(ABC):
             rank=rank,
             world_size=world_size,
             handle_registration_callback=register_handle_callback,
+            gang_context=self._gang_context,
         )
 
     def _configure_logger_and_profilers(
@@ -1464,8 +1468,13 @@ class ReplicaBase(ABC):
         raise NotImplementedError
 
     async def initialize(
-        self, deployment_config: Optional[DeploymentConfig], rank: Optional[ReplicaRank]
+        self,
+        deployment_config: Optional[DeploymentConfig],
+        rank: Optional[ReplicaRank],
+        gang_context: Optional[GangContext] = None,
     ):
+        if gang_context is not None:
+            self._gang_context = gang_context
         if rank is not None:
             self._rank = rank
             self._set_internal_replica_context(
@@ -2510,7 +2519,10 @@ class ReplicaActor:
         return self._replica_impl.list_outbound_deployments()
 
     async def initialize_and_get_metadata(
-        self, deployment_config: DeploymentConfig = None, rank: ReplicaRank = None
+        self,
+        deployment_config: DeploymentConfig = None,
+        rank: ReplicaRank = None,
+        gang_context: GangContext = None,
     ) -> ReplicaMetadata:
         """Handles initializing the replica.
 
@@ -2523,7 +2535,7 @@ class ReplicaActor:
         """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
-        await self._replica_impl.initialize(deployment_config, rank)
+        await self._replica_impl.initialize(deployment_config, rank, gang_context)
         return self._replica_impl.get_metadata()
 
     async def check_health(self):
