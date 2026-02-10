@@ -3877,6 +3877,7 @@ class AutoscalingTest(unittest.TestCase):
             autoscaling_config=None,
             log_dir=self.tmpdir,
         )
+        monitor._initialize_autoscaler()
         old_client = monitor.gcs_client
 
         calls = 0
@@ -3902,8 +3903,9 @@ class AutoscalingTest(unittest.TestCase):
                     # raise AuthenticationError once
                     monitor._run()
 
-        # assert the gcs client is refreshed on both monitor
+        # assert the gcs client is refreshed on both monitor and autoscaler
         self.assertIsNot(monitor.gcs_client, old_client)
+        self.assertIsNot(monitor.autoscaler.gcs_client, old_client)
 
 
 def test_import():

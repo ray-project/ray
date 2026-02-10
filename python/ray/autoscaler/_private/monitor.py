@@ -375,7 +375,7 @@ class Monitor:
         self._session_name = self.get_session_name(self.gcs_client)
         logger.info(f"session_name: {self._session_name}")
         if self.autoscaler:
-            self.autoscaler._gcs_client = self.gcs_client
+            self.autoscaler.gcs_client = self.gcs_client
 
     def _run(self):
         """Run the monitor loop."""
