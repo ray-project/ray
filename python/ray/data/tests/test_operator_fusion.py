@@ -794,21 +794,21 @@ def test_streaming_repartition_map_batches_fusion_order_and_params(
 def test_streaming_repartition_no_further_fuse(
     ray_start_regular_shared_2_cpus,
 ):
-    """Test that fused streaming_repartition operators don't fuse further.
+    """Test that fused streaming_repartition operators (strict mode) don't fuse further.
 
-    Case 1: map_batches -> map_batches -> streaming_repartition -> map_batches -> map_batches
+    Case 1: map_batches -> map_batches -> streaming_repartition(strict=True) -> map_batches -> map_batches
             Result: map -> (map -> s_r)-> (map -> map)
             The fused (map -> s_r) doesn't fuse further with surrounding maps.
     """
     n = 100
     target_rows = 20
 
-    # Case 1: map_batches -> map_batches -> streaming_repartition -> map_batches -> map_batches
+    # Case 1: map_batches -> map_batches -> streaming_repartition(strict=True) -> map_batches -> map_batches
     # Result: map -> (map -> s_r)-> (map -> map)
     ds1 = ray.data.range(n, override_num_blocks=2)
     ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
     ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
-    ds1 = ds1.repartition(target_num_rows_per_block=target_rows)
+    ds1 = ds1.repartition(target_num_rows_per_block=target_rows, strict=True)
     ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
     ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
 
@@ -816,7 +816,7 @@ def test_streaming_repartition_no_further_fuse(
     stats1 = ds1.stats()
 
     assert (
-        f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows},strict=False]"
+        f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows},strict=True]"
         in stats1
     ), stats1
     assert "MapBatches(<lambda>)->MapBatches(<lambda>)" in stats1
