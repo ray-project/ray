@@ -139,6 +139,8 @@ nitpick_ignore_regex = [
     # UnknownPreprocessorError is an internal exception not exported in public API
     ("py:exc", "UnknownPreprocessorError"),
     ("py:exc", "ray\\.data\\.preprocessors\\.version_support\\.UnknownPreprocessorError"),
+    # TypeVar for gRPCInputStream generic type
+    ("py:obj", "ray\\.serve\\.grpc_util\\.T"),
 ]
 
 # Cache notebook outputs in _build/.jupyter_cache
@@ -242,6 +244,7 @@ exclude_patterns = [
     # Other misc files (overviews, console-only examples, etc)
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
+    "train/tutorials/content/**/README.md",
     "serve/tutorials/video-analysis/*.ipynb",
     # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",

@@ -11,14 +11,8 @@ import ray
 from ray.data import Schema
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
-from ray.data.datasource import (
-    BaseFileMetadataProvider,
-)
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
-)
-from ray.data.datasource.file_meta_provider import (
-    DefaultFileMetadataProvider,
 )
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
@@ -146,30 +140,6 @@ def test_csv_read(
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     shutil.rmtree(path)
-
-
-def test_csv_read_meta_provider(ray_start_regular_shared, tmp_path):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(tmp_path, "test1.csv")
-    df1.to_csv(path1, index=False)
-    ds = ray.data.read_csv(
-        path1,
-        meta_provider=DefaultFileMetadataProvider(),
-    )
-
-    dsdf = ds.to_pandas()
-    assert df1.equals(dsdf)
-
-    # Expect to lazily compute all metadata correctly.
-    assert ds.count() == 3
-    assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
-
-    with pytest.raises(NotImplementedError):
-        ray.data.read_csv(
-            path1,
-            meta_provider=BaseFileMetadataProvider(),
-        )
 
 
 def test_csv_read_many_files_basic(ray_start_regular_shared, tmp_path):
@@ -372,6 +342,20 @@ def test_write_min_rows_per_file(
             # Subtract 1 from the number of lines to account for the header.
             num_rows_written = len(file.read().splitlines()) - 1
             assert num_rows_written == min_rows_per_file
+
+
+def test_read_example_data(ray_start_regular_shared, tmp_path):
+    ds = ray.data.read_csv("example://iris.csv")
+    assert ds.count() == 150
+    assert ds.take(1) == [
+        {
+            "sepal.length": 5.1,
+            "sepal.width": 3.5,
+            "petal.length": 1.4,
+            "petal.width": 0.2,
+            "variety": "Setosa",
+        }
+    ]
 
 
 if __name__ == "__main__":

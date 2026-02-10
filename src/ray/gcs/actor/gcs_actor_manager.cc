@@ -420,7 +420,8 @@ void GcsActorManager::HandleRestartActorForLineageReconstruction(
         for (auto &callback : callbacks) {
           callback(actor);
         }
-      });
+      },
+      rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION);
 }
 
 void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
@@ -1442,10 +1443,12 @@ void GcsActorManager::SetPreemptedAndPublish(const NodeID &node_id) {
   }
 }
 
-void GcsActorManager::RestartActor(const ActorID &actor_id,
-                                   bool need_reschedule,
-                                   const rpc::ActorDeathCause &death_cause,
-                                   std::function<void()> done_callback) {
+void GcsActorManager::RestartActor(
+    const ActorID &actor_id,
+    bool need_reschedule,
+    const rpc::ActorDeathCause &death_cause,
+    std::function<void()> done_callback,
+    std::optional<rpc::events::ActorLifecycleEvent::RestartReason> restart_reason) {
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before restart.
   auto iter = registered_actors_.find(actor_id);
@@ -1507,23 +1510,36 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
       mutable_actor_table_data->set_num_restarts_due_to_node_preemption(
           num_restarts_due_to_node_preemption + 1);
     }
-    mutable_actor_table_data->set_num_restarts(num_restarts + 1);
+    auto new_num_restarts = num_restarts + 1;
+    mutable_actor_table_data->set_num_restarts(new_num_restarts);
     actor->UpdateState(rpc::ActorTableData::RESTARTING);
+    actor->GetMutableTaskSpec()->set_attempt_number(new_num_restarts);
     // Make sure to reset the address before flushing to GCS. Otherwise,
     // GCS will mistakenly consider this lease request succeeds when restarting.
     actor->UpdateAddress(rpc::Address());
     mutable_actor_table_data->clear_resource_mapping();
+    // Emit lifecycle event immediately after state transition so tests and
+    // observers see the restart without waiting for async table writes.
+    actor->WriteActorExportEvent(false, restart_reason);
     // The backend storage is reliable in the future, so the status must be ok.
     gcs_table_storage_->ActorTable().Put(
         actor_id,
         *mutable_actor_table_data,
-        {[this, actor, actor_id, mutable_actor_table_data, done_callback](Status status) {
-           if (done_callback) {
-             done_callback();
-           }
-           gcs_publisher_->PublishActor(
-               actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
-           actor->WriteActorExportEvent(false);
+
+        {[this, actor, actor_id, mutable_actor_table_data, done_callback](
+             Status actor_table_status) {
+           gcs_table_storage_->ActorTaskSpecTable().Put(
+               actor_id,
+               *actor->GetMutableTaskSpec(),
+               {[this, actor, actor_id, mutable_actor_table_data, done_callback](
+                    Status actor_task_spec_table_status) {
+                  if (done_callback) {
+                    done_callback();
+                  }
+                  gcs_publisher_->PublishActor(
+                      actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
+                },
+                io_context_});
          },
          io_context_});
     gcs_actor_scheduler_->Schedule(actor);
