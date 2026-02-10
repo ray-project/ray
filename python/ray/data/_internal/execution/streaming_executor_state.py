@@ -14,6 +14,7 @@ import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
+    ThreadSafeBundleQueue,
     create_bundle_queue,
 )
 from ray.data._internal.execution.interfaces import (
@@ -64,27 +65,22 @@ class OpBufferQueue:
     def __init__(self, num_splits: int):
         assert num_splits >= 1, f"n_splits must be >= 1, got {num_splits}"
 
-        self._queues: List[BaseBundleQueue] = [
-            create_bundle_queue() for _ in range(num_splits)
+        self._queues: List[ThreadSafeBundleQueue] = [
+            ThreadSafeBundleQueue(create_bundle_queue()) for _ in range(num_splits)
         ]
-
-        self._lock = threading.Lock()
 
     @property
     def memory_usage(self) -> int:
         """The total memory usage of the queue in bytes."""
-        with self._lock:
-            return sum(q.estimate_size_bytes() for q in self._queues)
+        return sum(q.estimate_size_bytes() for q in self._queues)
 
     @property
     def num_blocks(self) -> int:
         """The total number of blocks in the queue."""
-        with self._lock:
-            return sum(q.num_blocks() for q in self._queues)
+        return sum(q.num_blocks() for q in self._queues)
 
     def __len__(self):
-        with self._lock:
-            return sum(len(q) for q in self._queues)
+        return sum(len(q) for q in self._queues)
 
     def has_next(self, output_split_idx: Optional[int] = None) -> bool:
         """Whether next RefBundle is available.
@@ -93,13 +89,11 @@ class OpBufferQueue:
             output_split_idx: If specified, only check ref bundles with the
                 given output split. When None, checks the default queue (index 0).
         """
-        with self._lock:
-            return len(self._get_queue_for(output_split_idx)) > 0
+        return self._get_queue_for(output_split_idx).has_next()
 
     def append(self, bundle: RefBundle):
         """Append a RefBundle to the queue."""
-        with self._lock:
-            self._get_queue_for(bundle.output_split_idx).add(bundle)
+        self._get_queue_for(bundle.output_split_idx).add(bundle)
 
     def pop(self, output_split_idx: Optional[int] = None) -> Optional[RefBundle]:
         """Pop a RefBundle from the queue.
@@ -111,18 +105,18 @@ class OpBufferQueue:
         Returns:
             A RefBundle if available, otherwise None.
         """
-        with self._lock:
-            try:
-                return self._get_queue_for(output_split_idx).get_next()
-            except IndexError:
-                return None
+        try:
+            return self._get_queue_for(output_split_idx).get_next()
+        except IndexError:
+            return None
 
     def clear(self):
-        with self._lock:
-            for q in self._queues:
-                q.clear()
+        for q in self._queues:
+            q.clear()
 
-    def _get_queue_for(self, output_split_idx: Optional[int]) -> "BaseBundleQueue":
+    def _get_queue_for(
+        self, output_split_idx: Optional[int]
+    ) -> ThreadSafeBundleQueue:
         target_output_split_idx = output_split_idx or 0
 
         assert target_output_split_idx < len(self._queues), (
