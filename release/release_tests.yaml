@@ -2095,7 +2095,7 @@
     cluster_compute: cpu_single_node.yaml
 
   run:
-    timeout: 3000  # expected 2000 seconds
+    timeout: 3000  # 50 minutes; expected 2000 seconds (~30 minutes)
     script: python example_algorithms/appo/tictactoe_appo.py \
       --as-release-test \
       --num-aggregator-actors-per-learner=2 \
