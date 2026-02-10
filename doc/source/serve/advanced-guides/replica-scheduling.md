@@ -140,7 +140,7 @@ You can further refine where placement groups are scheduled using a `placement_g
 
 The `placement_group_bundle_label_selector` accepts a list of dictionaries.
 - Single selector: If you provide a list containing a single dictionary, that selector is applied to all bundles in `placement_group_bundles`.
-- Per-bundle selector: If you provide a list of multiple dictionaries, the length must match `placement_group_bundles`.The *i*-th selector applies to the *i*-th bundle.
+- Per-bundle selector: If you provide a list of multiple dictionaries, the length must match `placement_group_bundles`. The *i*-th selector applies to the *i*-th bundle.
 
 #### What placement groups and bundles mean
 
