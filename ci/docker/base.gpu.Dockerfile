@@ -17,6 +17,9 @@ ENV RAY_DEFAULT_BUILD=1
 ENV RAY_INSTALL_JAVA=0
 ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
 
+# Install uv
+RUN curl -fsSL https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+
 RUN <<EOF
 #!/bin/bash
 

@@ -49,10 +49,6 @@ apt-get install -y docker-ce-cli
 
 EOF
 
-# Install uv
-RUN curl -LsSf https://astral.sh/uv/0.9.26/install.sh | \
-    env UV_INSTALL_DIR=/usr/local/bin sh
-
 # System conf for tests
 RUN locale -a
 ENV LC_ALL=en_US.utf8
