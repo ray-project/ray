@@ -33,17 +33,10 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "getenv_trace",
-    srcs = ["getenv_trace.cc"],
-    hdrs = ["getenv_trace.h"],
-)
-
-ray_cc_library(
     name = "env",
     srcs = ["env.cc"],
     hdrs = ["env.h"],
     deps = [
-        ":getenv_trace",
         ":logging",
         "@com_google_absl//absl/strings",
     ],
@@ -63,7 +56,6 @@ ray_cc_library(
     srcs = ["logging.cc"],
     hdrs = ["logging.h"],
     deps = [
-        ":getenv_trace",
         ":macros",
         ":thread_utils",
         "@com_github_spdlog//:spdlog",
@@ -78,7 +70,6 @@ ray_cc_library(
     srcs = ["filesystem.cc"],
     hdrs = ["filesystem.h"],
     deps = [
-        ":getenv_trace",
         "//src/ray/common:status_or",
     ],
 )

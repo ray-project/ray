@@ -21,7 +21,6 @@
 
 #include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/k8s_constants.h"
-#include "ray/util/getenv_trace.h"
 #include "ray/util/logging.h"
 
 #ifdef _WIN32
@@ -121,7 +120,7 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadTokenFromSources() {
   TokenLoadResult result;
 
   // Precedence 1: RAY_AUTH_TOKEN environment variable
-  const char *env_token = RAY_GETENV("RAY_AUTH_TOKEN");
+  const char *env_token = std::getenv("RAY_AUTH_TOKEN");
   if (env_token != nullptr) {
     std::string token_str(env_token);
     if (!token_str.empty()) {
@@ -133,7 +132,7 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadTokenFromSources() {
   }
 
   // Precedence 2: RAY_AUTH_TOKEN_PATH environment variable
-  const char *env_token_path = RAY_GETENV("RAY_AUTH_TOKEN_PATH");
+  const char *env_token_path = std::getenv("RAY_AUTH_TOKEN_PATH");
   if (env_token_path != nullptr) {
     std::string path_str(env_token_path);
     if (!path_str.empty()) {
@@ -202,19 +201,19 @@ std::string AuthenticationTokenLoader::GetDefaultTokenPath() {
 
 #ifdef _WIN32
   const char *path_separator = "\\";
-  const char *userprofile = RAY_GETENV("USERPROFILE");
+  const char *userprofile = std::getenv("USERPROFILE");
   if (userprofile != nullptr) {
     home_dir = userprofile;
   } else {
-    const char *homedrive = RAY_GETENV("HOMEDRIVE");
-    const char *homepath = RAY_GETENV("HOMEPATH");
+    const char *homedrive = std::getenv("HOMEDRIVE");
+    const char *homepath = std::getenv("HOMEPATH");
     if (homedrive != nullptr && homepath != nullptr) {
       home_dir = std::string(homedrive) + std::string(homepath);
     }
   }
 #else
   const char *path_separator = "/";
-  const char *home = RAY_GETENV("HOME");
+  const char *home = std::getenv("HOME");
   if (home != nullptr) {
     home_dir = home;
   }

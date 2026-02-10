@@ -46,7 +46,6 @@
 #include "absl/debugging/symbolize.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
-#include "ray/util/getenv_trace.h"
 #include "ray/util/thread_utils.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
@@ -282,7 +281,7 @@ static spdlog::level::level_enum GetMappedSeverity(RayLogLevel severity) {
 std::vector<FatalLogCallback> RayLog::fatal_log_callbacks_;
 
 void RayLog::InitSeverityThreshold(RayLogLevel severity_threshold) {
-  const char *var_value = RAY_GETENV("RAY_BACKEND_LOG_LEVEL");
+  const char *var_value = std::getenv("RAY_BACKEND_LOG_LEVEL");
   if (var_value != nullptr) {
     std::string data = var_value;
     std::transform(data.begin(), data.end(), data.begin(), ::tolower);
@@ -312,7 +311,7 @@ void RayLog::InitLogFormat() {
   log_format_json_ = false;
   log_format_pattern_ = kLogFormatTextPattern;
 
-  if (const char *var_value = RAY_GETENV("RAY_BACKEND_LOG_JSON"); var_value != nullptr) {
+  if (const char *var_value = std::getenv("RAY_BACKEND_LOG_JSON"); var_value != nullptr) {
     if (std::string_view{var_value} == std::string_view{"1"}) {
       log_format_json_ = true;
       log_format_pattern_ = kLogFormatJsonPattern;
@@ -322,7 +321,7 @@ void RayLog::InitLogFormat() {
 
 /*static*/ size_t RayLog::GetRayLogRotationMaxBytesOrDefault() {
 #if defined(__APPLE__) || defined(__linux__)
-  if (const char *ray_rotation_max_bytes = RAY_GETENV("RAY_ROTATION_MAX_BYTES");
+  if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
       ray_rotation_max_bytes != nullptr) {
     size_t max_size = 0;
     if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size)) {
@@ -335,7 +334,7 @@ void RayLog::InitLogFormat() {
 
 /*static*/ size_t RayLog::GetRayLogRotationBackupCountOrDefault() {
 #if defined(__APPLE__) || defined(__linux__)
-  if (const char *ray_rotation_backup_count = RAY_GETENV("RAY_ROTATION_BACKUP_COUNT");
+  if (const char *ray_rotation_backup_count = std::getenv("RAY_ROTATION_BACKUP_COUNT");
       ray_rotation_backup_count != nullptr) {
     size_t file_num = 0;
     if (absl::SimpleAtoi(ray_rotation_backup_count, &file_num) && file_num > 0) {

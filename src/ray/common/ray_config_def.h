@@ -759,8 +759,8 @@ RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 // (a few GB/s) to populate all the pages on Raylet startup.
 RAY_CONFIG(uint32_t,
            raylet_start_wait_time_s,
-           RAY_GETENV("RAY_preallocate_plasma_memory") != nullptr &&
-                   std::string(RAY_GETENV("RAY_preallocate_plasma_memory")) == "1"
+           std::getenv("RAY_preallocate_plasma_memory") != nullptr &&
+                   std::getenv("RAY_preallocate_plasma_memory") == std::string("1")
                ? 120
                : 30)
 

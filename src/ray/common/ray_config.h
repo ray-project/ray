@@ -23,7 +23,6 @@
 
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_split.h"
-#include "ray/util/getenv_trace.h"
 #include "ray/util/logging.h"
 
 template <typename T>
@@ -102,7 +101,7 @@ class RayConfig {
   T ReadEnv(const std::string &name,
             const std::string &type_string,
             const T &default_value) {
-    auto value = RAY_GETENV(name.c_str());
+    auto value = std::getenv(name.c_str());
     if (value == nullptr) {
       return default_value;
     } else {

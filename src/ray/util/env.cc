@@ -14,6 +14,7 @@
 
 #include "ray/util/env.h"
 
+#include <cstdlib>
 #include <string>
 
 #include "absl/strings/ascii.h"
@@ -43,7 +44,7 @@ void UnsetEnv(const std::string &name) {
 }
 
 bool IsEnvTrue(const std::string &name) {
-  const char *val = RAY_GETENV(name.data());
+  const char *val = ::getenv(name.data());
   if (val == nullptr) {
     return false;
   }

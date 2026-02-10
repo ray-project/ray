@@ -68,7 +68,6 @@ cc_library(
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/gcs_rpc_client:global_state_accessor_lib",
         "//src/ray/util:cmd_line_utils",
-        "//src/ray/util:getenv_trace",
         "//src/ray/util:network_util",
         "//src/ray/util:process",
         "@boost//:callable_traits",

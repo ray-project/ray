@@ -22,7 +22,7 @@ namespace ray {
 
 ScopedEnvSetter::ScopedEnvSetter(const char *env_name, const char *value)
     : env_name_(env_name) {
-  const char *val = RAY_GETENV(env_name);
+  const char *val = ::getenv(env_name);
   if (val != nullptr) {
     old_value_ = val;
   }
