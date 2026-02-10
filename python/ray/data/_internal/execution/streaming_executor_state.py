@@ -2,7 +2,7 @@
 
 This is split out from streaming_executor.py to facilitate better unit testing.
 """
-
+import dataclasses
 import logging
 import time
 from collections import defaultdict
@@ -104,7 +104,14 @@ class OpBufferQueue:
             A RefBundle if available, otherwise None.
         """
         try:
-            return self._get_queue_for(output_split_idx).get_next()
+            bundle = self._get_queue_for(output_split_idx).get_next()
+            # NOTE: We're making a copy of the `RefBundle` object to seal off
+            #       any potential modifcations to it from propagating backwards:
+            #
+            #       For ex, `OutputSplitter` modifies `RefBundle.output_split_idx`
+            #       that could affect original bundles that could be materialized,
+            #       therefore undermining these when these are being reused.
+            return dataclasses.replace(bundle)
         except IndexError:
             return None
 
