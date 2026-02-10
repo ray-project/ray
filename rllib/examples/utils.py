@@ -318,11 +318,18 @@ def add_rllib_example_script_args(
         help="Run this script on the old API stack of RLlib.",
     )
 
-    # Deprecated options. Throws error when still used. Use `--old-api-stack` for
-    # disabling the new API stack.
+    # Deprecated options that are maintained to throw an error when still used.
+
+    # Use `--old-api-stack` to disable the new API stack.
     parser.add_argument(
         "--enable-new-api-stack",
         action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--local-mode",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
 
     return parser
@@ -463,6 +470,9 @@ def run_rllib_example_script_experiment(
             "the `--old-api-stack` flag."
         )
 
+    if args.local_mode:
+        raise ValueError("`--local-mode` is no longer supported.")
+
     # If run --as-release-test, --as-test must also be set.
     if args.as_release_test:
         args.as_test = True
@@ -474,7 +484,6 @@ def run_rllib_example_script_experiment(
     # Initialize Ray.
     ray.init(
         num_cpus=args.num_cpus or None,
-        local_mode=args.local_mode,
         ignore_reinit_error=True,
     )
 
