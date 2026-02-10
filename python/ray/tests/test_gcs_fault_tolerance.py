@@ -14,14 +14,16 @@ from filelock import FileLock
 
 import ray
 from ray._common.network_utils import parse_address
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private import ray_constants
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import (
     external_redis_test_enabled,
     generate_system_config_map,
     redis_sentinel_replicas,
-    run_string_as_driver,
     wait_for_pid_to_exit,
 )
 from ray._raylet import GcsClient
