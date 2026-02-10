@@ -793,6 +793,7 @@ class OpBufferQueueTest(unittest.TestCase):
                 for i, ref_bundle in enumerate(ref_bundles):
                     if i % 10 == 1:
                         print(f">>> Queue size {len(q)}")
+                        # Introduce jitter
                         time.sleep(random.random() * 1e-4)
 
                     ref_bundle.output_split_idx = i % num_splits
@@ -815,6 +816,10 @@ class OpBufferQueueTest(unittest.TestCase):
                 #   - Producer is done
                 #   - Queue is empty
                 while not done.is_set() or q.has_next(output_split_idx):
+                    # We add tiny sleep of 1us to avoid thrashing GIL with
+                    # tight loops
+                    time.sleep(1e-6)
+
                     b = q.pop(output_split_idx)
                     if b is not None:
                         assert b.output_split_idx == output_split_idx
