@@ -56,30 +56,26 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
+    Count,
+    Filter,
+    FlatMap,
+    InputData,
+    Join,
+    Limit,
+    MapBatches,
+    MapRows,
+    Project,
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
     Sort,
-)
-from ray.data._internal.logical.operators.count_operator import Count
-from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.join_operator import Join
-from ray.data._internal.logical.operators.map_operator import (
-    Filter,
-    FlatMap,
-    MapBatches,
-    MapRows,
-    Project,
     StreamingRepartition,
-)
-from ray.data._internal.logical.operators.n_ary_operator import (
+    StreamingSplit,
     Union as UnionLogicalOperator,
+    Write,
     Zip,
 )
-from ray.data._internal.logical.operators.one_to_one_operator import Limit
-from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
-from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -108,7 +104,6 @@ from ray.data.aggregate import (
     Unique,
 )
 from ray.data.block import (
-    VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
     DataBatch,
@@ -406,7 +401,7 @@ class Dataset:
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature.
-            ray_remote_args: Additional resource requirements to request from
+            **ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
         .. seealso::
@@ -418,6 +413,9 @@ class Dataset:
 
             :meth:`~Dataset.map_batches`
                 Call this method to transform batches of data.
+
+        Returns:
+            A new :class:`Dataset` with the transformation applied to each row.
         """  # noqa: E501
         compute = get_compute_strategy(
             fn,
@@ -492,7 +490,7 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
-        udf_modifying_row_count: bool = False,
+        udf_modifying_row_count: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -666,14 +664,16 @@ class Dataset:
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: This argument is deprecated. Use ``compute`` argument.
-            udf_modifying_row_count: Set to True if the UDF may modify the number of rows it receives so the limit pushdown optimization will not be applied.
+            udf_modifying_row_count: If your UDF produces the same number of output rows
+                as it receives, set this parameter to False. It allows Ray Data to
+                perform more optimizations like limit pushdown.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature.
-            ray_remote_args: Additional resource requirements to request from
+            **ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
         .. note::
@@ -707,6 +707,8 @@ class Dataset:
             :meth:`~Dataset.map`
                 Call this method to transform one record at time.
 
+        Returns:
+            A new :class:`Dataset` with the transformation applied to each batch.
         """  # noqa: E501
         use_gpus = num_gpus is not None and num_gpus > 0
         if use_gpus and (batch_size is None or batch_size == "default"):
@@ -791,11 +793,6 @@ class Dataset:
             ray_remote_args["memory"] = memory
 
         batch_format = _apply_batch_format(batch_format)
-        if batch_format not in VALID_BATCH_FORMATS:
-            raise ValueError(
-                f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "
-                f"{batch_format}"
-            )
 
         plan = self._plan.copy()
         map_batches_op = MapBatches(
@@ -892,8 +889,7 @@ class Dataset:
             A new dataset with the added column evaluated via the expression.
         """
         # TODO: update schema based on the expression AST.
-        from ray.data._internal.logical.operators.map_operator import Project
-        from ray.data._internal.logical.operators.one_to_one_operator import Download
+        from ray.data._internal.logical.operators import Download, Project
 
         # TODO: Once the expression API supports UDFs, we can clean up the code here.
         from ray.data.expressions import DownloadExpr
@@ -905,6 +901,7 @@ class Dataset:
                 uri_column_names=[expr.uri_column_name],
                 output_bytes_column_names=[column_name],
                 ray_remote_args=ray_remote_args,
+                filesystem=expr.filesystem,
             )
             logical_plan = LogicalPlan(download_op, self.context)
         else:
@@ -970,9 +967,12 @@ class Dataset:
                 ``Dict[str, numpy.ndarray]``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
-            ray_remote_args: Additional resource requirements to request from
+            **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
+
+        Returns:
+            A new :class:`Dataset` with the specified column added or overwritten.
         """
         # Check that batch_format
         accepted_batch_formats = ["pandas", "pyarrow", "numpy"]
@@ -1072,9 +1072,12 @@ class Dataset:
                 an exception is raised. Column names must be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
-            ray_remote_args: Additional resource requirements to request from
+            **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
+
+        Returns:
+            A new :class:`Dataset` with the specified columns removed.
         """  # noqa: E501
 
         if len(cols) != len(set(cols)):
@@ -1135,9 +1138,12 @@ class Dataset:
                 dataset schema, an exception is raised. Columns also should be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
-            ray_remote_args: Additional resource requirements to request from
+            **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
+
+        Returns:
+            A new :class:`Dataset` composed with the specified columns.
         """  # noqa: E501
         from ray.data.expressions import col
 
@@ -1221,9 +1227,12 @@ class Dataset:
             names: A dictionary that maps old column names to new column names, or a
                 list of new column names.
             concurrency: The maximum number of Ray workers to use concurrently.
-            ray_remote_args: Additional resource requirements to request from
+            **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
+
+        Returns:
+            A new :class:`Dataset` with the specified columns renamed.
         """  # noqa: E501
 
         if isinstance(names, dict):
@@ -1396,7 +1405,7 @@ class Dataset:
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
-            ray_remote_args: Additional resource requirements to request from
+            **ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
         .. seealso::
@@ -1406,6 +1415,9 @@ class Dataset:
 
             :meth:`~Dataset.map`
                 Call this method to transform one row at time.
+
+        Returns:
+            A new :class:`Dataset` containing the flattened results of applying the function to each row.
         """
         compute = get_compute_strategy(
             fn,
@@ -1490,16 +1502,6 @@ class Dataset:
             expr: An expression that represents a predicate (boolean condition) for filtering.
                 Can be either a string expression (deprecated) or a predicate expression
                 from `ray.data.expressions`.
-            fn_args: Positional arguments to pass to ``fn`` after the first argument.
-                These arguments are top-level arguments to the underlying Ray task.
-            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
-                top-level arguments to the underlying Ray task.
-            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
-                You can only provide this if ``fn`` is a callable class. These arguments
-                are top-level arguments in the underlying Ray actor construction task.
-            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
-                This can only be provided if ``fn`` is a callable class. These arguments
-                are top-level arguments in the underlying Ray actor construction task.
             compute: The compute strategy to use for the map operation.
 
                 * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
@@ -1514,6 +1516,17 @@ class Dataset:
 
                 * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)`` to use an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
 
+            fn_args: Positional arguments to pass to ``fn`` after the first argument.
+                These arguments are top-level arguments to the underlying Ray task.
+            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
+                top-level arguments to the underlying Ray task.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
@@ -1526,9 +1539,12 @@ class Dataset:
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
-            ray_remote_args: Additional resource requirements to request from
+            **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
+
+        Returns:
+            A new :class:`Dataset` containing only the rows that satisfy the predicate.
         """
         # Ensure exactly one of fn or expr is provided
         provided_params = sum([fn is not None, expr is not None])
@@ -1789,6 +1805,13 @@ class Dataset:
         Args:
             seed: Fix the random seed to use, otherwise one is chosen
                 based on system randomness.
+            num_blocks: This parameter is deprecated. It was previously intended to
+                specify the number of output blocks in the shuffled dataset, but is no
+                longer supported. To control the number of output blocks, use
+                :meth:`Dataset.repartition` after shuffling instead.
+            **ray_remote_args: Additional resource requirements to request from
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
 
         Returns:
             The shuffled :class:`Dataset`.
@@ -2699,7 +2722,7 @@ class Dataset:
         return ds_train, ds_test
 
     @PublicAPI(api_group=SMJ_API_GROUP)
-    def union(self, *other: List["Dataset"]) -> "Dataset":
+    def union(self, *other: "Dataset") -> "Dataset":
         """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
 
         The order of the blocks in the datasets is preserved, as is the
@@ -2718,7 +2741,7 @@ class Dataset:
             [{'id': 0}, {'id': 1}, {'id': 0}, {'id': 1}, {'id': 2}]
 
         Args:
-            other: List of datasets to combine with this one. The datasets
+            *other: The datasets to combine with this one. The datasets
                 must have the same schema as this dataset, otherwise the
                 behavior is undefined.
 
@@ -3513,7 +3536,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=SMJ_API_GROUP)
-    def zip(self, *other: List["Dataset"]) -> "Dataset":
+    def zip(self, *other: "Dataset") -> "Dataset":
         """Zip the columns of this dataset with the columns of another.
 
         The datasets must have the same number of rows. Their column sets are
@@ -3537,7 +3560,7 @@ class Dataset:
             {'id': array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4]), 'id_2': array([0, 1, 2, 3, 4])}
 
         Args:
-            *other: List of datasets to combine with this one. The datasets
+            *other: The datasets to combine with this one. The datasets
                 must have the same row count as this dataset, otherwise the
                 ValueError is raised.
 
@@ -4050,15 +4073,15 @@ class Dataset:
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
             num_rows_per_file: [Deprecated] Use min_rows_per_file instead.
-            arrow_parquet_args: Options to pass to
-                `pyarrow.parquet.ParquetWriter() <https:/\
-                    /arrow.apache.org/docs/python/generated/\
-                        pyarrow.parquet.ParquetWriter.html>`_, which is used to write
-                out each block to a file. See `arrow_parquet_args_fn` for more detail.
             mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
                 "ignore", "append". Defaults to "append".
                 NOTE: This method isn't atomic. "Overwrite" first deletes all the data
                 before writing to `path`.
+            **arrow_parquet_args: Options to pass to
+                `pyarrow.parquet.ParquetWriter() <https:/\
+                    /arrow.apache.org/docs/python/generated/\
+                        pyarrow.parquet.ParquetWriter.html>`_, which is used to write
+                out each block to a file. See `arrow_parquet_args_fn` for more detail.
 
         .. note::
 
@@ -4195,16 +4218,16 @@ class Dataset:
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
             num_rows_per_file: Deprecated. Use ``min_rows_per_file`` instead.
-            pandas_json_args: These args are passed to
+            mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
+                "ignore", "append". Defaults to "append".
+                NOTE: This method isn't atomic. "Overwrite" first deletes all the data
+                before writing to `path`.
+            **pandas_json_args: These args are passed to
                 `pandas.DataFrame.to_json() <https://pandas.pydata.org/docs/reference/\
                     api/pandas.DataFrame.to_json.html>`_,
                 which is used under the hood to write out each
                 :class:`~ray.data.Dataset` block. These
                 are dict(orient="records", lines=True) by default.
-            mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
-                "ignore", "append". Defaults to "append".
-                NOTE: This method isn't atomic. "Overwrite" first deletes all the data
-                before writing to `path`.
         """
         if pandas_json_args_fn is None:
             pandas_json_args_fn = lambda: {}  # noqa: E731
@@ -4516,14 +4539,14 @@ class Dataset:
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
             num_rows_per_file: [Deprecated] Use min_rows_per_file instead.
-            arrow_csv_args: Options to pass to `pyarrow.write.write_csv <https://\
-                arrow.apache.org/docs/python/generated/pyarrow.csv.write_csv.html\
-                    #pyarrow.csv.write_csv>`_
-                when writing each block to a file.
             mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
                 "ignore", "append". Defaults to "append".
                 NOTE: This method isn't atomic. "Overwrite" first deletes all the data
                 before writing to `path`.
+            **arrow_csv_args: Options to pass to `pyarrow.write.write_csv <https://\
+                arrow.apache.org/docs/python/generated/pyarrow.csv.write_csv.html\
+                    #pyarrow.csv.write_csv>`_
+                when writing each block to a file.
         """
         if arrow_csv_args_fn is None:
             arrow_csv_args_fn = lambda: {}  # noqa: E731
@@ -4602,6 +4625,8 @@ class Dataset:
         Args:
             path: The path to the destination root directory, where tfrecords
                 files are written to.
+            tf_schema: A TensorFlow Schema protobuf (`schema_pb2.Schema`) that
+                defines the structure of the TFRecord examples.
             filesystem: The pyarrow filesystem implementation to write to.
                 These filesystems are specified in the
                 `pyarrow docs <https://arrow.apache.org/docs\
@@ -4726,6 +4751,12 @@ class Dataset:
                 The specified value is a hint, not a strict limit. Ray Data
                 might write more or fewer rows to each file.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
+            encoder: Controls how dataset rows are encoded into WebDataset samples.
+                If ``True`` (default), uses the default encoder that automatically
+                handles common data types. If ``False``, disables encoding and requires
+                all values to already be bytes or strings. A string specifies a format
+                hint for the default encoder, a callable provides a custom encoding
+                function, and a list applies multiple encoders in sequence.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -5303,6 +5334,11 @@ class Dataset:
                 "legacy" which will use the legacy v1 version.  See the user guide
                 for more details.
             storage_options: The storage options for the writer. Default is None.
+            ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
         """
         datasink = LanceDatasink(
             path,
@@ -5494,6 +5530,7 @@ class Dataset:
                 buffer in order to yield a batch. When there are no more rows to add to
                 the buffer, the remaining rows in the buffer are drained.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            _collate_fn: A custom function to collate each batch of data.
 
         Returns:
             An iterable over batches of data.
@@ -6268,6 +6305,11 @@ class Dataset:
                 in the cluster by four. As a rule of thumb, you can expect each worker
                 to provide ~3000 records / second via ``get_async()``, and
                 ~10000 records / second via ``multiget()``.
+
+        Returns:
+            A :class:`~ray.data.random_access_dataset.RandomAccessDataset` that
+            provides efficient distributed random access to records in the dataset
+            by the specified key.
         """
         if num_workers is None:
             num_workers = 4 * len(ray.nodes())
@@ -6371,6 +6413,9 @@ class Dataset:
             * Output size bytes: 0 min, 8 max, 4 mean, 80 total
             * Tasks per node: 20 min, 20 max, 20 mean; 1 nodes used
 
+        Returns:
+            A string containing execution timing information, or an empty string if
+            the dataset has not been executed.
         """
         if self._current_executor:
             return self._current_executor.get_stats().to_summary().to_string()
@@ -6482,6 +6527,10 @@ class Dataset:
             False
             >>> ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv").has_serializable_lineage()
             True
+
+        Returns:
+            ``True`` if the dataset's lineage can be serialized and later deserialized,
+            possibly on a different cluster; ``False`` otherwise.
         """  # noqa: E501
         return all(
             op.is_lineage_serializable()
@@ -6661,7 +6710,7 @@ class Dataset:
             return result
 
     @repr_with_fallback(["ipywidgets", "8"])
-    def _repr_mimebundle_(self, **kwargs):
+    def _repr_mimebundle_(self, **kwargs: Any) -> Dict[str, Any]:
         """Return a mimebundle with an ipywidget repr and a simple text repr.
 
         Depending on the frontend where the data is being displayed,
@@ -6922,7 +6971,7 @@ class Schema:
         from ray.data.extensions import ArrowTensorType, TensorDtype
 
         def _convert_to_pa_type(
-            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
+            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype],
         ) -> pa.DataType:
             if isinstance(dtype, pd.ArrowDtype):
                 return dtype.pyarrow_dtype

@@ -93,7 +93,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
         while self._output_buffer:
-            bundle = self._output_buffer.popleft()
+            bundle = self._output_buffer.get_next()
             self._metrics.on_output_dequeued(bundle)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
@@ -131,6 +131,14 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def get_stats(self) -> StatsDict:
         return self._stats
+
+    def throttling_disabled(self) -> bool:
+        """Disables resource-based throttling.
+
+        Union operator only manipulates bundle metadata and doesn't launch
+        any tasks, so it doesn't need resource allocation.
+        """
+        return True
 
     def _try_round_robin(self) -> None:
         """Try to move blocks from input buffers to output in round-robin order.
