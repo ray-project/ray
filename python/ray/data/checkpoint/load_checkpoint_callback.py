@@ -33,11 +33,15 @@ class LoadCheckpointCallback(ExecutionCallback):
         """
         return BatchBasedCheckpointFilter(config)
 
+    def _load_checkpoint_data(self) -> ObjectRef[Block]:
+        """Load checkpoint data from storage (via the checkpoint filter)."""
+        return self._ckpt_filter.load_checkpoint()
+
     def before_execution_starts(self, executor: StreamingExecutor):
         assert self._config is executor._data_context.checkpoint_config
 
         # Load checkpoint data before execution starts.
-        self._checkpoint_ref = self._ckpt_filter.load_checkpoint()
+        self._checkpoint_ref = self._load_checkpoint_data()
 
     def after_execution_succeeds(self, executor: StreamingExecutor):
         assert self._config is executor._data_context.checkpoint_config
