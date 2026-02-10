@@ -102,7 +102,11 @@ class NormalTaskSubmitter {
       std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
       const TensorTransportGetter &tensor_transport_getter,
       instrumented_io_context &io_service,
-      ray::observability::MetricInterface &scheduler_placement_time_ms_histogram)
+      ray::observability::MetricInterface &scheduler_placement_time_ms_histogram,
+      ray::observability::MetricInterface
+          &task_total_submitter_preprocessing_time_ms_histogram,
+      ray::observability::MetricInterface &task_dependency_resolution_time_ms_histogram,
+      ray::observability::MetricInterface &task_push_time_ms_histogram)
       : rpc_address_(std::move(rpc_address)),
         local_raylet_client_(std::move(local_raylet_client)),
         raylet_client_pool_(std::move(raylet_client_pool)),
@@ -118,7 +122,12 @@ class NormalTaskSubmitter {
         job_id_(job_id),
         lease_request_rate_limiter_(std::move(lease_request_rate_limiter)),
         io_service_(io_service),
-        scheduler_placement_time_ms_histogram_(scheduler_placement_time_ms_histogram) {}
+        scheduler_placement_time_ms_histogram_(scheduler_placement_time_ms_histogram),
+        task_total_submitter_preprocessing_time_ms_histogram_(
+            task_total_submitter_preprocessing_time_ms_histogram),
+        task_dependency_resolution_time_ms_histogram_(
+            task_dependency_resolution_time_ms_histogram),
+        task_push_time_ms_histogram_(task_push_time_ms_histogram) {}
 
   /// Schedule a task for direct submission to a worker.
   void SubmitTask(TaskSpecification task_spec);
@@ -226,12 +235,13 @@ class NormalTaskSubmitter {
   }
 
   /// Push a task to a specific worker.
-  void PushNormalTask(const rpc::Address &addr,
-                      std::shared_ptr<rpc::CoreWorkerClientInterface> client,
-                      const SchedulingKey &task_queue_key,
-                      TaskSpecification task_spec,
-                      const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
-                          &assigned_resources);
+  void PushNormalTask(
+      const rpc::Address &addr,
+      std::shared_ptr<rpc::CoreWorkerClientInterface> client,
+      const SchedulingKey &task_queue_key,
+      TaskSpecification task_spec,
+      const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Handles result from GetWorkerFailureCause.
   /// \return true if the task executing on the worker should be retried, false otherwise.
@@ -376,6 +386,23 @@ class NormalTaskSubmitter {
   instrumented_io_context &io_service_;
 
   ray::observability::MetricInterface &scheduler_placement_time_ms_histogram_;
+
+  // Metric for tracking total submitter-side task preprocessing time
+  // Only recorded when worker_type_ == WorkerType::DRIVER.
+  ray::observability::MetricInterface
+      &task_total_submitter_preprocessing_time_ms_histogram_;
+
+  // Metric for tracking dependency resolution time.
+  // Only recorded when worker_type_ == WorkerType::DRIVER.
+  ray::observability::MetricInterface &task_dependency_resolution_time_ms_histogram_;
+
+  // Metric for tracking task push time (lease granted to push).
+  // Only recorded when worker_type_ == WorkerType::DRIVER.
+  ray::observability::MetricInterface &task_push_time_ms_histogram_;
+
+  // Map from task ID to submission timestamp (ms) for computing preprocessing time.
+  // Only populated when worker_type_ == WorkerType::DRIVER.
+  absl::flat_hash_map<TaskID, int64_t> task_submission_time_ms_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace core
