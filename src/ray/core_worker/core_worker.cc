@@ -1931,7 +1931,7 @@ void CoreWorker::BuildCommonTaskSpec(
       generator_backpressure_num_objects,
       required_resources,
       required_placement_resources,
-      debugger_breakpoint,
+      std::string(debugger_breakpoint),
       depth,
       main_thread_current_task_id,
       call_site,

@@ -370,7 +370,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   auto it = object_id_refs_
                 .emplace(object_id,
                          Reference(owner_address,
-                                   call_site,
+                                   std::string(call_site),
                                    object_size,
                                    lineage_eligibility,
                                    pinned_at_node_id,
