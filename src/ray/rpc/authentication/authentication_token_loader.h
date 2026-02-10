@@ -63,7 +63,7 @@ class AuthenticationTokenLoader {
   void ResetCache() {
     absl::MutexLock lock(&token_mutex_);
     cached_token_ = nullptr;
-    cached_token_expiration_time_ = std::chrono::system_clock::time_point();
+    cached_token_expiration_time_ = std::nullopt;
   }
 
   AuthenticationTokenLoader(const AuthenticationTokenLoader &) = delete;
