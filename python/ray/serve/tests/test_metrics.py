@@ -19,10 +19,11 @@ from websockets.sync.client import connect
 import ray
 from ray import serve
 from ray._common.network_utils import parse_address
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     PrometheusTimeseries,
+    SignalActor,
     fetch_prometheus_metric_timeseries,
+    wait_for_condition,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
@@ -1220,6 +1221,9 @@ def test_routing_stats_delay_metric(metrics_start_shutdown):
     class Model:
         def __call__(self):
             return "hello"
+
+        async def record_routing_stats(self):
+            return {}
 
     serve.run(Model.bind(), name="app")
     timeseries = PrometheusTimeseries()
