@@ -5,6 +5,6 @@ srcs:
   - python/deplocks/ci/data-v9-pyarrow-ci_depset_py$PYTHON.lock
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
-  - IMAGE_TYPE=v9-pyarrow
+  - IMAGE_TYPE=pyarrow-v9
 tags:
   - cr.ray.io/rayproject/data9build-py$PYTHON

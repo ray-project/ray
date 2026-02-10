@@ -36,7 +36,7 @@ depsets:
       - data_ci_depset_${PYTHON_SHORT}
     requirements:
       - python/requirements/data/pyarrow-v20.txt
-    output: python/deplocks/ci/data-v20-pyarrow-ci_depset_py${PYTHON_VERSION}.lock
+    output: python/deplocks/ci/data-pyarrow-v20-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
       - --index https://download.pytorch.org/whl/cpu
       - --python-version=${PYTHON_VERSION}
@@ -48,13 +48,13 @@ depsets:
       - py312
 
 # needs to use constraints file once relax operation is supported (conflict on pyarrow version)
-  - name: data_latest_pyarrow_depset_${PYTHON_SHORT}
+  - name: data_pyarrow_latest_depset_${PYTHON_SHORT}
     operation: expand
     depsets:
       - data_ci_depset_${PYTHON_SHORT}
     requirements:
       - python/requirements/data/pyarrow-latest.txt
-    output: python/deplocks/ci/data-latest-pyarrow-ci_depset_py${PYTHON_VERSION}.lock
+    output: python/deplocks/ci/data-pyarrow-latest-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
       - --index https://download.pytorch.org/whl/cpu
       - --python-version=${PYTHON_VERSION}
@@ -71,7 +71,7 @@ depsets:
       - data_ci_depset_${PYTHON_SHORT}
     requirements:
       - python/requirements/data/pyarrow-v9.txt
-    output: python/deplocks/ci/data-v9-pyarrow-ci_depset_py${PYTHON_VERSION}.lock
+    output: python/deplocks/ci/data-pyarrow-v9-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
       - --index https://download.pytorch.org/whl/cpu
       - --python-version=${PYTHON_VERSION}
