@@ -7,12 +7,13 @@ import gymnasium as gym
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc import BCConfig
+from ray.rllib.algorithms.bc.torch.default_bc_torch_rl_module import (
+    DefaultBCTorchRLModule,
+)
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.offline.offline_data import OfflineData, OfflinePreLearner
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.algorithms.bc.torch.default_bc_torch_rl_module import DefaultBCTorchRLModule
-
 
 
 class TestOfflineData(unittest.TestCase):
@@ -198,8 +199,16 @@ class TestOfflineData(unittest.TestCase):
             Columns.TERMINATEDS: "d_t",
         }
 
-        config = BCConfig().offline_data(input_=[dir_path], input_read_schema=input_read_schema)
-        config.rl_module(rl_module_spec=RLModuleSpec(module_class=DefaultBCTorchRLModule, observation_space=self.observation_space, action_space=self.action_space))
+        config = BCConfig().offline_data(
+            input_=[dir_path], input_read_schema=input_read_schema
+        )
+        config.rl_module(
+            rl_module_spec=RLModuleSpec(
+                module_class=DefaultBCTorchRLModule,
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+            )
+        )
         # Explicitly request to use a different schema.
         # Create the `OfflineData` instance. Note, this tests reading
         # the files.

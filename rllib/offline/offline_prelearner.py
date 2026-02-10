@@ -7,7 +7,7 @@ import numpy as np
 
 from ray._common.deprecation import deprecation_warning
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils import flatten_dict, try_import_torch
 from ray.rllib.utils.annotations import (
