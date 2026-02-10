@@ -236,25 +236,23 @@ class NixlTensorTransport(TensorTransportManager):
                 tensor_transport_metadata.nixl_agent_meta_version
             )
 
-            # If the remote agent metadata version is different from the cached one,
-            # it means there was memory deregistered. We need to remove the remote agent
-            # and add it again, because `nixlRemoteSection` currently does not support
-            # updating descriptor list in such a case (there is potential memory overlap).
-            if (
-                remote_name in self._remote_agents
-                and remote_agent_meta_version != self._remote_agents[remote_name]
-            ):
-                nixl_agent.remove_remote_agent(remote_name)
-            nixl_agent.add_remote_agent(remote_nixl_agent_meta)
-
+            # Nixl agent reuse is enabled.
             if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
                 if remote_name in self._remote_agents:
+                    # If the remote agent metadata version is different from the cached one,
+                    # it means there was memory deregistered. We need to remove the remote agent
+                    # before adding it, because `nixlRemoteSection` currently does not support
+                    # updating descriptor list in such a case (there is potential memory overlap).
+                    if remote_agent_meta_version != self._remote_agents[remote_name]:
+                        nixl_agent.remove_remote_agent(remote_name)
                     self._remote_agents.move_to_end(remote_name)
                 elif len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE:
                     evicted_agent_name, _ = self._remote_agents.popitem(last=False)
                     nixl_agent.remove_remote_agent(evicted_agent_name)
 
                 self._remote_agents[remote_name] = remote_agent_meta_version
+
+            nixl_agent.add_remote_agent(remote_nixl_agent_meta)
 
             xfer_handle = nixl_agent.initialize_xfer(
                 # "UUID" here is just a placeholder, can be any bytes, but without it,
