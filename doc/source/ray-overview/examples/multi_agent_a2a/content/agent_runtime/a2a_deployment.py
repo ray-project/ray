@@ -156,16 +156,18 @@ async def run_langgraph_agent_once(
     if last_text:
         return last_text
 
-    # Fallback: some versions don't include final text in "updates"
+    # Fallback: read the committed checkpoint state instead of re-invoking,
+    # which would duplicate the user message and re-run tool calls.
     try:
-        if hasattr(agent, "ainvoke"):
-            out = await agent.ainvoke(inputs, config=config)
-            txt = _extract_text(out)
-            if txt:
-                return txt
-        elif hasattr(agent, "invoke"):
-            out = await asyncio.to_thread(agent.invoke, inputs, config=config)
-            txt = _extract_text(out)
+        if hasattr(agent, "aget_state"):
+            state = await agent.aget_state(config)
+        elif hasattr(agent, "get_state"):
+            state = await asyncio.to_thread(agent.get_state, config)
+        else:
+            state = None
+
+        if state and hasattr(state, "values"):
+            txt = _extract_text(state.values)
             if txt:
                 return txt
     except Exception:
