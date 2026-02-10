@@ -2009,11 +2009,8 @@ TEST_F(GcsActorManagerTest, TestRegisterNamedActorOnOutOfScopeActorReturnsAlread
   // Actor should now be DEAD but name still reserved (reconstructable) by owner
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
 
-  Status register_status;
   auto capture_reply_callback =
-      [&register_status](Status status, std::function<void()>, std::function<void()>) {
-        register_status = status;
-      };
+      [](Status status, std::function<void()>, std::function<void()>) {};
   auto register_request = GenRegisterActorRequest(job_id,
                                                   /*max_restarts=*/-1,
                                                   /*detached=*/false,
