@@ -2,8 +2,6 @@
 
 This template provides a comprehensive introduction to **Ray Data** — a scalable data processing library for AI workloads built on [Ray](https://docs.ray.io/en/latest/). You will learn what Ray Data is, why it matters for ML pipelines, and how to use its core APIs hands-on with an MNIST image classification example.
 
-**Assumed knowledge:** You should be comfortable with PyTorch, NumPy, and standard Python data processing patterns.
-
 **Here is the roadmap for this template:**
 
 - **Part 1:** When to Use Ray Data
@@ -59,8 +57,6 @@ Ray Data features a **streaming execution engine** that processes data in a pipe
 
 <img src="https://docs.ray.io/en/latest/_images/dataset-loading-1.svg" width="60%"/>
 
-**When to use something else:** If your workload is primarily SQL-based analytics, or if you need a mature SQL query engine, consider Spark or another SQL-focused system. Ray Data excels when your pipeline involves deep learning models, GPU compute, or needs tight integration with the Ray ecosystem (Ray Train, Ray Serve, Ray Tune).
-
 ---
 
 ## Part 2: Loading Data
@@ -80,7 +76,7 @@ See the full list in the [Input/Output docs](https://docs.ray.io/en/latest/data/
 
 Under the hood, Ray Data uses Ray tasks to read data from remote storage. It creates read tasks proportional to the number of CPUs in your cluster, and each task produces output **blocks**:
 
-<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/ray-summit/rag-app/dataset-read-cropped-v2.svg" width="500px">
+<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/ray-summit/rag-app/dataset-read-cropped-v2.svg" width="90%">
 
 Let's load MNIST image data from S3:
 
@@ -94,7 +90,7 @@ ds
 
 A **Dataset** is a distributed collection of **blocks** — contiguous subsets of rows stored as PyArrow tables. Blocks are distributed across the cluster and processed in parallel.
 
-<img src="https://docs.ray.io/en/latest/_images/dataset-arch.svg" width="50%"/>
+<img src="https://docs.ray.io/en/latest/_images/dataset-arch.svg" width="90%"/>
 
 Since a Dataset is a list of Ray object references, it can be freely passed between Ray tasks, actors, and libraries.
 
@@ -238,7 +234,7 @@ Ray Data provides three approaches to data preprocessing, each suited to differe
 
 ### Built-in Preprocessors
 
-Ray Data includes built-in Preprocessors that follow the familiar scikit-learn `fit` / `transform` pattern. Here's a general example with tabular data (not our MNIST pipeline, which uses `map_batches` for image transforms):
+Ray Data includes built-in Preprocessors that follow the familiar scikit-learn `fit` / `transform` pattern. Here's a general example with tabular data:
 
 ```python
 from ray.data.preprocessors import StandardScaler, Chain, Concatenator, LabelEncoder
@@ -478,7 +474,7 @@ For detailed guidance, see the [Anyscale monitoring and debugging guide](https:/
 
 Ray Data provides fault tolerance at two levels:
 
-### Worker-Level Retry (Open Source)
+### Worker-Level Retry
 
 If a worker task fails (e.g., OOM, transient network error), Ray Data automatically retries the task. Configure retry behavior:
 
@@ -488,7 +484,7 @@ ctx.retried_io_errors = [IOError, ConnectionError]  # Retry on these errors
 ctx.max_errored_blocks = 5  # Allow up to 5 failed blocks before aborting
 ```
 
-### Job-Level Checkpointing (RayTurbo / Anyscale)
+### Job-Level Checkpointing
 
 For recovering from driver failures, head node crashes, or job pre-emptions, RayTurbo Data provides **job-level checkpointing**:
 
@@ -501,7 +497,6 @@ For recovering from driver failures, head node crashes, or job pre-emptions, Ray
 <img src="https://anyscale-materials.s3.us-west-2.amazonaws.com/ray-data-deep-dive/ray_data_checkpointing_restore.png" alt="Ray Data Checkpoint Restore Flow" width="800">
 
 ```python
-# Note: This import is Anyscale-specific (RayTurbo Data). Not available in open-source Ray.
 from ray.anyscale.data.checkpoint import CheckpointConfig
 
 ctx = ray.data.DataContext.get_current()
@@ -511,8 +506,6 @@ ctx.checkpoint_config = CheckpointConfig(
     delete_checkpoint_on_success=True,
 )
 ```
-
-> **Note:** Job-level checkpointing is an Anyscale/RayTurbo feature. It requires a pipeline shaped as: **read** -> **map operations** -> **write**. See the [fault tolerance docs](https://docs.ray.io/en/latest/data/fault-tolerance.html) for details on both open-source and Anyscale fault tolerance.
 
 ---
 
