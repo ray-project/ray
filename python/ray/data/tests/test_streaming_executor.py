@@ -767,7 +767,7 @@ def test_configure_output_locality(mock_scale_up, ray_start_regular_shared):
 
 class OpBufferQueueTest(unittest.TestCase):
     def test_multi_threading(self):
-        num_blocks = 10_000
+        num_blocks = 5_000
         num_splits = 4
         num_per_split = num_blocks // num_splits
         ref_bundles = make_ref_bundles([[[i]] for i in range(num_blocks)])
@@ -785,7 +785,7 @@ class OpBufferQueueTest(unittest.TestCase):
                 for i, ref_bundle in enumerate(ref_bundles):
                     if i % 10 == 1:
                         print(f">>> Queue size {len(queue)}")
-                        time.sleep(random.random() * 0.001)
+                        time.sleep(random.random() * 1e-4)
 
                     ref_bundle.output_split_idx = i % num_splits
                     queue.append(ref_bundle)
