@@ -22,12 +22,6 @@ def handle_result(
     ]:
         # Core tests
         target_update_diff = 300
-
-    elif test_name in [
-        "long_running_impala",
-    ]:
-        # Tune/RLlib style tests
-        target_update_diff = 480
     elif test_name in ["long_running_serve"]:
         # Serve tests have workload logs every five minutes.
         # Leave up to 180 seconds overhead.
