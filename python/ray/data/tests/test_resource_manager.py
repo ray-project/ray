@@ -257,7 +257,8 @@ class TestResourceManager:
                 return_value=mock_internal_inqueue[op],
             )
             ref_bundle = MagicMock(
-                size_bytes=MagicMock(return_value=mock_external_outqueue_sizes[op])
+                size_bytes=MagicMock(return_value=mock_external_outqueue_sizes[op]),
+                output_split_idx=None,
             )
             topo[op].add_output(ref_bundle)
 
