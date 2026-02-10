@@ -113,7 +113,7 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
 
     # Feed data and implement streaming exec.
     output = []
-    op.start(ExecutionOptions(actor_locality_enabled=True))
+    op.start(ExecutionOptions(actor_locality_enabled=True, preserve_order=True))
 
     if use_actors:
         # Wait for actors to be ready before adding inputs.
