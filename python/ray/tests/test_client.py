@@ -68,9 +68,10 @@ def call_ray_start_shared(request):
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_client_context_manager(call_ray_start_shared, connect_to_client):
     if connect_to_client:
-        with ray_start_client_server_for_address(
-            call_ray_start_shared
-        ), enable_client_mode():
+        with (
+            ray_start_client_server_for_address(call_ray_start_shared),
+            enable_client_mode(),
+        ):
             # Client mode is on.
             assert client_mode_should_convert()
             # We're connected to Ray client.
@@ -516,7 +517,6 @@ def test_serializing_exceptions(call_ray_start_shared):
 
 def test_invalid_task(call_ray_start_shared):
     with ray_start_client_server_for_address(call_ray_start_shared) as ray:
-
         with pytest.raises(TypeError):
 
             @ray.remote(runtime_env="invalid value")
@@ -1038,30 +1038,46 @@ def test_ray_client_uv_hook_detection():
 
     # Test 4: Hook failure - should return original and not crash
     with patch(
-        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline",
+        "ray._private.runtime_env.uv_runtime_env_hook.hook",
         side_effect=RuntimeError("mock error"),
     ):
         original = {"working_dir": "/tmp/test"}
         result = _apply_uv_hook_for_client(original)
         assert result == original, "should return original on error"
 
+    # Test 5: Feature flag disabled - should return runtime_env unchanged
+    with patch("ray._private.ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV", False):
+        original = {"working_dir": "/tmp/test"}
+        result = _apply_uv_hook_for_client(original)
+        assert result == original, "should skip UV hook when feature flag is disabled"
+        assert "py_executable" not in result
+
 
 def test_ray_client_uv_no_detection_without_uv(call_ray_start_shared):
-    """Test that Ray Client works normally when UV is not detected."""
-    # Ensure clean state (previous tests may leave Ray initialized)
+    """Test that Ray Client works normally when UV is not detected.
+
+    Explicitly mocks UV detection to return None to exercise the UV hook
+    code path and verify it does not interfere with normal operation.
+    """
+    from unittest.mock import patch
+
     import ray as ray_module
 
     ray_module.shutdown()
-    with ray_start_client_server_for_address(call_ray_start_shared) as ray:
-        # Connect without UV (normal case)
 
-        @ray.remote
-        def simple_task():
-            return "success"
+    # Mock UV as not detected to exercise the hook code path
+    with patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline",
+        return_value=None,
+    ):
+        with ray_start_client_server_for_address(call_ray_start_shared) as ray:
 
-        # Should work normally
-        result = ray.get(simple_task.remote())
-        assert result == "success"
+            @ray.remote
+            def simple_task():
+                return "success"
+
+            result = ray.get(simple_task.remote())
+            assert result == "success"
 
 
 def test_ray_client_uv_hook_with_existing_runtime_env():
