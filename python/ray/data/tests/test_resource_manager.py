@@ -563,26 +563,25 @@ class TestResourceManager:
 
     def test_memory_limit_blocks_task_submission(self, restore_data_context):
         """Test that tasks are blocked when memory limit is exceeded."""
-        # Cluster has 10GB memory available
-        cluster_resources = ExecutionResources(cpu=10, gpu=0, memory=10 * 1024**3)
+        # Cluster has 1000 bytes of memory
+        cluster_resources = ExecutionResources(cpu=1, gpu=0, memory=1000)
 
-        def get_total_resources():
-            return cluster_resources
-
-        # Create operator that requests 15GB memory
+        # Request 2000 bytes memory
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(
             o1,
-            ray_remote_args={"num_cpus": 1, "memory": 15 * 1024**3},
+            ray_remote_args={"num_cpus": 1, "memory": 2000},
             name="HighMemoryTask",
         )
 
         topo = build_streaming_topology(o2, ExecutionOptions())
         options = ExecutionOptions()
-        options.resource_limits = cluster_resources
 
         resource_manager = ResourceManager(
-            topo, options, get_total_resources, DataContext.get_current()
+            topology=topo,
+            options=options,
+            get_total_resources=lambda: cluster_resources,
+            data_context=DataContext.get_current()
         )
         resource_manager.update_usages()
 
@@ -591,7 +590,7 @@ class TestResourceManager:
         if allocator is not None:
             can_submit = allocator.can_submit_new_task(o2)
             assert not can_submit, (
-                "Task should be blocked: requires 15GB but only 10GB available"
+                "Task should be blocked: requires 2000 bytes but only 1000 bytes memory available"
             )
 
 
