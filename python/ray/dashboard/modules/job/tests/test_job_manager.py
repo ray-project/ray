@@ -1,10 +1,12 @@
 import asyncio
+import json
 import os
 import signal
 import sys
 import tempfile
 import time
 import urllib.request
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -419,7 +421,22 @@ async def test_pending_job_timeout_during_new_head_creation(
         {
             "cmd": "ray start --head",
             "env": {
-                "RAY_testing_rpc_failure": "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=3:33:33:33,CoreWorkerService.grpc_client.PushTask=3:33:33:33"
+                "RAY_testing_rpc_failure": json.dumps(
+                    {
+                        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet": {
+                            "num_failures": 3,
+                            "req_failure_prob": 33,
+                            "resp_failure_prob": 33,
+                            "in_flight_failure_prob": 33,
+                        },
+                        "CoreWorkerService.grpc_client.PushTask": {
+                            "num_failures": 3,
+                            "req_failure_prob": 33,
+                            "resp_failure_prob": 33,
+                            "in_flight_failure_prob": 33,
+                        },
+                    }
+                )
             },
         },
     ],
@@ -945,6 +962,28 @@ class TestRuntimeEnv:
 
         await async_wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
+        )
+
+    async def test_entrypoint_label_selector(self, job_manager):
+        label_selector = {"fragile_node": "!1"}
+
+        with patch.object(
+            job_manager._supervisor_actor_cls,
+            "options",
+            wraps=job_manager._supervisor_actor_cls.options,
+        ) as mocked_options:
+            job_id = await job_manager.submit_job(
+                entrypoint="echo hello",
+                entrypoint_label_selector=label_selector,
+            )
+
+            await async_wait_for_condition(
+                check_job_succeeded, job_manager=job_manager, job_id=job_id
+            )
+
+        assert any(
+            call.kwargs.get("label_selector") == label_selector
+            for call in mocked_options.call_args_list
         )
 
 

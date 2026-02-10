@@ -92,8 +92,8 @@ def test_llm_serve_data_parallelism():
 
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(
-            model_id="opt-1.3b",
-            model_source="facebook/opt-1.3b",
+            model_id="microsoft/Phi-tiny-MoE-instruct",
+            model_source="microsoft/Phi-tiny-MoE-instruct",
         ),
         deployment_config=dict(),  # DP sets num_replicas, not autoscaling
         engine_kwargs=dict(
@@ -101,8 +101,8 @@ def test_llm_serve_data_parallelism():
             pipeline_parallel_size=1,
             data_parallel_size=4,  # 4 DP replicas, need to fill 2x4GPU workers
             distributed_executor_backend="ray",
-            max_model_len=512,
-            max_num_batched_tokens=256,
+            max_model_len=1024,
+            max_num_seqs=32,
             enforce_eager=True,
         ),
         experimental_configs=dict(
@@ -154,6 +154,7 @@ def test_llm_serve_prefill_decode_with_data_parallelism():
         },
         experimental_configs={
             "dp_size_per_node": 4,
+            "NIXL_SIDE_CHANNEL_PORT_BASE": 40000,  # Prefill port range
         },
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
@@ -170,6 +171,7 @@ def test_llm_serve_prefill_decode_with_data_parallelism():
         },
         experimental_configs={
             "dp_size_per_node": 4,
+            "NIXL_SIDE_CHANNEL_PORT_BASE": 41000,  # Decode port range (different)
         },
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )

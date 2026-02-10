@@ -162,22 +162,9 @@ class OfflinePreLearner:
                 )
                 for state in batch["item"]
             ]
-            # Ensure that all episodes are done and no duplicates are in the batch.
-            episodes = self._validate_episodes(episodes)
-            # Add the episodes to the buffer.
-            self.episode_buffer.add(episodes)
-            # TODO (simon): Refactor into a single code block for both cases.
-            episodes = self.episode_buffer.sample(
-                num_items=self.config.train_batch_size_per_learner,
-                batch_length_T=self.config.model_config.get("max_seq_len", 0)
-                if self._module.is_stateful()
-                else None,
-                n_step=self.config.get("n_step", 1) or 1,
-                # TODO (simon): This can be removed as soon as DreamerV3 has been
-                # cleaned up, i.e. can use episode samples for training.
-                sample_episodes=True,
-                to_numpy=True,
-            )
+            # Postprocess and sample from the buffer.
+            episodes = self._postprocess_and_sample(episodes)
+
         # Else, if we have old stack `SampleBatch`es.
         elif self.input_read_sample_batches:
             episodes: List[
@@ -191,22 +178,9 @@ class OfflinePreLearner:
             )[
                 "episodes"
             ]
-            # Ensure that all episodes are done and no duplicates are in the batch.
-            episodes = self._validate_episodes(episodes)
-            # Add the episodes to the buffer.
-            self.episode_buffer.add(episodes)
-            # Sample steps from the buffer.
-            episodes = self.episode_buffer.sample(
-                num_items=self.config.train_batch_size_per_learner,
-                batch_length_T=self.config.model_config.get("max_seq_len", 0)
-                if self._module.is_stateful()
-                else None,
-                n_step=self.config.get("n_step", 1) or 1,
-                # TODO (simon): This can be removed as soon as DreamerV3 has been
-                # cleaned up, i.e. can use episode samples for training.
-                sample_episodes=True,
-                to_numpy=True,
-            )
+            # Postprocess and sample from the buffer.
+            episodes = self._postprocess_and_sample(episodes)
+
         # Otherwise we map the batch to episodes.
         else:
             episodes: List[SingleAgentEpisode] = self._map_to_episodes(
@@ -325,6 +299,70 @@ class OfflinePreLearner:
                 unique_episode_ids.add(eps.id_)
                 cleaned_episodes.add(eps)
         return cleaned_episodes
+
+    def _remove_states_from_episodes(
+        self,
+        episodes: List[SingleAgentEpisode],
+    ) -> List[SingleAgentEpisode]:
+        """Removes states from episodes.
+
+        This is necessary, if the module is stateful and we want to
+        enable the offline RLModule to learn its own state representations.
+
+        Args:
+            episodes: A list of `SingleAgentEpisode` instances.
+
+        Returns:
+            A list of `SingleAgentEpisode` instances without states.
+        """
+        for eps in episodes:
+            if Columns.STATE_OUT in eps.extra_model_outputs:
+                del eps.extra_model_outputs[Columns.STATE_OUT]
+            if Columns.STATE_IN in eps.extra_model_outputs:
+                del eps.extra_model_outputs[Columns.STATE_IN]
+        return episodes
+
+    def _postprocess_and_sample(
+        self, episodes: List[SingleAgentEpisode]
+    ) -> List[SingleAgentEpisode]:
+        """Postprocesses episodes and samples from the buffer.
+
+        Args:
+            episodes: A list of `SingleAgentEpisode` instances.
+
+        Returns:
+            A list of `SingleAgentEpisode` instances sampled from the buffer.
+        """
+        # Ensure that all episodes are done and no duplicates are in the batch.
+        episodes = self._validate_episodes(episodes)
+
+        if (
+            self._module.is_stateful()
+            and not self.config.prelearner_use_recorded_module_states
+        ):
+            episodes = self._remove_states_from_episodes(episodes)
+
+        # Add the episodes to the buffer.
+        self.episode_buffer.add(episodes)
+
+        # Sample from the buffer.
+        batch_length_T = (
+            self.config.model_config.get("max_seq_len", 0)
+            if self._module.is_stateful()
+            else None
+        )
+
+        return self.episode_buffer.sample(
+            num_items=self.config.train_batch_size_per_learner,
+            batch_length_T=batch_length_T,
+            n_step=self.config.get("n_step", 1),
+            # TODO (simon): This can be removed as soon as DreamerV3 has been
+            # cleaned up, i.e. can use episode samples for training.
+            sample_episodes=True,
+            to_numpy=True,
+            lookback=self.config.episode_lookback_horizon,
+            min_batch_length_T=getattr(self.config, "burnin_len", 0),
+        )
 
     def _should_module_be_updated(self, module_id, multi_agent_batch=None) -> bool:
         """Checks which modules in a MultiRLModule should be updated."""

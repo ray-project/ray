@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import json
 import os
 import signal
 import sys
@@ -109,8 +110,22 @@ def test_kv_timeout(ray_start_regular):
 def test_kv_transient_network_error(shutdown_only, monkeypatch):
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=5:25:25:25,"
-        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVPut=5:25:25:25",
+        json.dumps(
+            {
+                "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet": {
+                    "num_failures": 5,
+                    "req_failure_prob": 25,
+                    "resp_failure_prob": 25,
+                    "in_flight_failure_prob": 25,
+                },
+                "ray::rpc::InternalKVGcsService.grpc_client.InternalKVPut": {
+                    "num_failures": 5,
+                    "req_failure_prob": 25,
+                    "resp_failure_prob": 25,
+                    "in_flight_failure_prob": 25,
+                },
+            }
+        ),
     )
     ray.init()
     gcs_address = ray._private.worker.global_worker.gcs_client.address

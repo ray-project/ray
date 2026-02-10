@@ -29,7 +29,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
-#include "ray/core_worker/fake_actor_creator.h"
+#include "ray/core_worker/actor_management/fake_actor_creator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
@@ -512,7 +512,7 @@ class NormalTaskSubmitterTest : public testing::Test {
         actor_creator,
         JobID::Nil(),
         rate_limiter,
-        [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+        [](const ObjectID &object_id) { return std::nullopt; },
         io_context,
         fake_scheduler_placement_time_ms_histogram_);
   }
@@ -1498,7 +1498,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
       actor_creator,
       JobID::Nil(),
       std::make_shared<StaticLeaseRequestRateLimiter>(1),
-      [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+      [](const ObjectID &object_id) { return std::nullopt; },
       io_context,
       fake_scheduler_placement_time_ms_histogram_);
 

@@ -91,15 +91,18 @@ run_ray_cpp() {
   bazel run --config=ci //cpp:gen_ray_cpp_pkg
 
   echo "--- Test //cpp:all"
-  bazel test --config=ci --test_strategy=exclusive --build_tests_only \
+  # shellcheck disable=SC2046
+  bazel test --config=ci $(./ci/run/bazel_export_options) --test_strategy=exclusive --build_tests_only \
     --test_tag_filters=-no_macos //cpp:all
 
   echo "--- Test //cpp:cluster_mode_test"
-  bazel test --config=ci //cpp:cluster_mode_test --test_arg=--external_cluster=true \
+  # shellcheck disable=SC2046
+  bazel test --config=ci $(./ci/run/bazel_export_options) //cpp:cluster_mode_test --test_arg=--external_cluster=true \
     --test_arg=--ray_redis_password="1234" --test_arg=--ray_redis_username="default"
 
   echo "--- Test //cpp:test_python_call_cpp"
-  bazel test --config=ci --test_output=all //cpp:test_python_call_cpp
+  # shellcheck disable=SC2046
+  bazel test --config=ci $(./ci/run/bazel_export_options) --test_output=all //cpp:test_python_call_cpp
 }
 
 bisect() {

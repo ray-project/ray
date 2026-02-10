@@ -9,10 +9,11 @@ from fastapi import FastAPI
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     PrometheusTimeseries,
+    SignalActor,
     fetch_prometheus_metric_timeseries,
+    wait_for_condition,
 )
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 from ray.serve._private.test_utils import (
@@ -947,6 +948,104 @@ class TestHandleMetrics:
             expected=0,
             timeseries=timeseries,
         )
+
+
+class TestProxyStateMetrics:
+    def test_proxy_status_metric(self, metrics_start_shutdown):
+        """Test that proxy status metric is reported correctly."""
+
+        @serve.deployment
+        def f():
+            return "hello"
+
+        serve.run(f.bind(), name="app")
+        timeseries = PrometheusTimeseries()
+
+        # Wait for the proxy to become healthy and metric to be reported
+        def check_proxy_status():
+            metrics = get_metric_dictionaries(
+                "ray_serve_proxy_status", timeseries=timeseries
+            )
+            if not metrics:
+                return False
+            # Check that at least one proxy has the metric with expected tags
+            for metric in metrics:
+                if "node_id" in metric and "node_ip_address" in metric:
+                    return True
+            return False
+
+        wait_for_condition(check_proxy_status, timeout=30)
+
+        # Verify the metric has the expected tags
+        metrics = get_metric_dictionaries(
+            "ray_serve_proxy_status", timeseries=timeseries
+        )
+        assert len(metrics) >= 1
+        for metric in metrics:
+            assert "node_id" in metric
+            assert "node_ip_address" in metric
+
+        wait_for_condition(
+            check_metric_float_eq,
+            metric="ray_serve_proxy_status",
+            expected=2,
+            timeseries=timeseries,
+            expected_tags={},
+        )
+
+    def test_proxy_shutdown_duration_metric(self, metrics_start_shutdown):
+        """Test that proxy shutdown duration metric is recorded when proxy shuts down."""
+
+        @serve.deployment
+        def f():
+            return "hello"
+
+        serve.run(f.bind(), name="app")
+        timeseries = PrometheusTimeseries()
+
+        # Wait for the proxy to become healthy first (status=2 means HEALTHY)
+        wait_for_condition(
+            check_metric_float_eq,
+            metric="ray_serve_proxy_status",
+            expected=2,
+            timeseries=timeseries,
+            expected_tags={},
+            timeout=30,
+        )
+
+        # Shutdown serve, which will trigger proxy shutdown
+        serve.shutdown()
+
+        # Wait for the shutdown duration metric to be recorded
+        # The histogram metric will have _sum and _count suffixes
+        def check_shutdown_duration_metric_exists():
+            metrics = get_metric_dictionaries(
+                "ray_serve_proxy_shutdown_duration_ms_sum", timeseries=timeseries
+            )
+            if not metrics:
+                return False
+            # Check that the metric has expected tags
+            for metric in metrics:
+                if "node_id" in metric and "node_ip_address" in metric:
+                    return True
+            return False
+
+        wait_for_condition(check_shutdown_duration_metric_exists, timeout=30)
+
+        # Verify the metric has the expected tags
+        metrics = get_metric_dictionaries(
+            "ray_serve_proxy_shutdown_duration_ms_sum", timeseries=timeseries
+        )
+        assert len(metrics) == 1
+        for metric in metrics:
+            assert "node_id" in metric
+            assert "node_ip_address" in metric
+
+        # Also verify _count metric exists
+        count_metrics = get_metric_dictionaries(
+            "ray_serve_proxy_shutdown_duration_ms_count", timeseries=timeseries
+        )
+        assert len(count_metrics) == 1
 
 
 if __name__ == "__main__":

@@ -4,7 +4,9 @@
 ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
-ARG PIP_REQUIREMENTS
+ARG PYTHON_VERSION=3.10
+ARG IMAGE_TYPE="ray"
+ARG PIP_REQUIREMENTS="python/deplocks/base_extra_testdeps/${IMAGE_TYPE}-base_extra_testdeps_py${PYTHON_VERSION}.lock"
 
 COPY "$PIP_REQUIREMENTS" extra-test-requirements.txt
 
@@ -56,3 +58,17 @@ rm -rf /tmp/wrk
 "$HOME/anaconda3/bin/pip" install --no-cache-dir -r extra-test-requirements.txt
 
 EOF
+
+# RAY_BACKEND_LOG_JSON=1
+#   Uses JSON structured logging.
+#
+# RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT=1
+#   Logs the full stack trace from Ray Data in case of exception,
+#   which is useful for debugging failures.
+#
+# RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1
+#   To make ray data compatible across multiple pyarrow versions.
+ENV \
+  RAY_BACKEND_LOG_JSON=1 \
+  RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT=1 \
+  RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1

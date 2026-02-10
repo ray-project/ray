@@ -6,10 +6,9 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 import numpy as np
 from packaging.version import parse as parse_version
 
-from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.ray_constants import env_integer
 from ray._private.utils import INT32_MAX
-from ray.air.util.tensor_extensions.arrow import (
+from ray.data._internal.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
     PYARROW_VERSION,
     get_arrow_extension_fixed_shape_tensor_types,
@@ -17,6 +16,7 @@ from ray.air.util.tensor_extensions.arrow import (
     unify_tensor_arrays,
     unify_tensor_types,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 try:
     import pyarrow
@@ -143,7 +143,7 @@ def take_table(
     extension arrays. This is exposed as a static method for easier use on
     intermediate tables, not underlying an ArrowBlockAccessor.
     """
-    from ray.air.util.transform_pyarrow import (
+    from ray.data._internal.utils.transform_pyarrow import (
         _concatenate_extension_column,
         _is_pa_extension_type,
     )
@@ -176,7 +176,7 @@ def _reconcile_diverging_fields(
     Returns:
         A dictionary of diverging fields with their reconciled types.
     """
-    from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 
     reconciled_fields = {}
     field_types = defaultdict(list)  # field_name -> list of types seen so far
@@ -232,8 +232,8 @@ def _reconcile_field(
 
     Returns reconciled type or None if default PyArrow handling is sufficient.
     """
-    from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
-    from ray.air.util.tensor_extensions.arrow import (
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+    from ray.data._internal.tensor_extensions.arrow import (
         get_arrow_extension_tensor_types,
     )
 
@@ -431,7 +431,7 @@ def _backfill_missing_fields(
     """
     import pyarrow as pa
 
-    from ray.air.util.tensor_extensions.arrow import (
+    from ray.data._internal.tensor_extensions.arrow import (
         ArrowVariableShapedTensorType,
     )
 
@@ -481,10 +481,19 @@ def _backfill_missing_fields(
                     ndim=field_type.ndim
                 )
 
-            # The schema should already be unified by unify_schemas, so types
-            # should be compatible. If not, let the error propagate up.
-            # No explicit casting needed - PyArrow will handle type compatibility
-            # during struct creation or raise appropriate errors.
+            # Handle type mismatches for primitive types
+            # The schema should already be unified by unify_schemas, but
+            # struct field types may still diverge (e.g., int64 vs float64).
+            # Cast the existing array to match the unified struct field type.
+            elif current_array.type != field_type:
+                try:
+                    current_array = current_array.cast(field_type)
+                except pa.ArrowInvalid as e:
+                    raise ValueError(
+                        f"Cannot cast struct field '{field_name}' from "
+                        f"{current_array.type} to {field_type}: {e}"
+                    ) from e
+
             aligned_fields.append(current_array)
         else:
             # If the field is missing, fill with nulls
@@ -690,7 +699,7 @@ def concat(
     """
     import pyarrow as pa
 
-    from ray.air.util.tensor_extensions.arrow import ArrowConversionError
+    from ray.data._internal.tensor_extensions.arrow import ArrowConversionError
     from ray.data.extensions import (
         ArrowPythonObjectType,
         get_arrow_extension_tensor_types,
@@ -910,7 +919,7 @@ def combine_chunked_array(
 
     import pyarrow as pa
 
-    from ray.air.util.transform_pyarrow import (
+    from ray.data._internal.utils.transform_pyarrow import (
         _concatenate_extension_column,
         _is_pa_extension_type,
     )
@@ -993,7 +1002,7 @@ def _try_combine_chunks_safe(
 
     import pyarrow as pa
 
-    from ray.air.util.transform_pyarrow import _is_pa_extension_type
+    from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
 
     assert not _is_pa_extension_type(
         array.type

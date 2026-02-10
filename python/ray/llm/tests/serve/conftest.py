@@ -14,8 +14,10 @@ from ray import serve
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     CompletionRequest,
+    DetokenizeRequest,
     EmbeddingCompletionRequest,
     ScoreRequest,
+    TokenizeCompletionRequest,
     TranscriptionRequest,
 )
 from ray.llm._internal.serve.engines.vllm.vllm_models import (
@@ -146,6 +148,27 @@ def mock_score_request():
         model=MOCK_MODEL_ID,
         text_1="What is the capital of France?",
         text_2="The capital of France is Paris.",
+    )
+
+
+@pytest.fixture
+def mock_tokenize_request(return_token_strs):
+    """Fixture for creating tokenize requests for mock testing."""
+    return TokenizeCompletionRequest(
+        model=MOCK_MODEL_ID,
+        prompt="Hello, world!",
+        add_special_tokens=False,
+        return_token_strs=return_token_strs,
+    )
+
+
+@pytest.fixture
+def mock_detokenize_request():
+    """Fixture for creating detokenize requests for mock testing."""
+    # Use character codes for "Hello" as tokens
+    return DetokenizeRequest(
+        model=MOCK_MODEL_ID,
+        tokens=[72, 101, 108, 108, 111],  # "Hello" in ASCII
     )
 
 

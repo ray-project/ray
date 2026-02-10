@@ -141,7 +141,7 @@ def _take_first_non_empty_schema(schemas: Iterator["Schema"]) -> Optional["Schem
     return None
 
 
-def _apply_batch_format(given_batch_format: Optional[str]) -> str:
+def _apply_batch_format(given_batch_format: Optional[str]) -> Optional[str]:
     if given_batch_format == "default":
         given_batch_format = DEFAULT_BATCH_FORMAT
     if given_batch_format not in VALID_BATCH_FORMATS:
@@ -174,6 +174,7 @@ class BlockExecStats:
         self.end_time_s: Optional[float] = None
         self.wall_time_s: Optional[float] = None
         self.udf_time_s: Optional[float] = 0
+        self.block_ser_time_s: Optional[float] = None
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
         self.max_uss_bytes: int = 0
@@ -205,7 +206,7 @@ class _BlockExecStatsBuilder:
         self._start_time = time.perf_counter()
         self._start_cpu = time.process_time()
 
-    def build(self) -> "BlockExecStats":
+    def build(self, block_ser_time_s: Optional[int] = None) -> "BlockExecStats":
         # Record end times.
         end_time = time.perf_counter()
         end_cpu = time.process_time()
@@ -216,6 +217,7 @@ class _BlockExecStatsBuilder:
         stats.end_time_s = end_time
         stats.wall_time_s = end_time - self._start_time
         stats.cpu_time_s = end_cpu - self._start_cpu
+        stats.block_ser_time_s = block_ser_time_s
 
         return stats
 
@@ -470,7 +472,9 @@ class BlockAccessor:
 
         elif isinstance(batch, collections.abc.Mapping):
             if block_type is None or block_type == BlockType.ARROW:
-                from ray.air.util.tensor_extensions.arrow import ArrowConversionError
+                from ray.data._internal.tensor_extensions.arrow import (
+                    ArrowConversionError,
+                )
 
                 try:
                     return cls.batch_to_arrow_block(batch)
@@ -717,14 +721,9 @@ class BlockColumnAccessor:
     def dropna(self) -> BlockColumn:
         raise NotImplementedError()
 
-    def is_composed_of_lists(self, types: Optional[Tuple] = None) -> bool:
+    def is_composed_of_lists(self) -> bool:
         """
         Checks whether the column is composed of list-like elements.
-
-        Args:
-            types: Optional tuple of backend-specific types to check against.
-                If not provided, defaults to list-like types appropriate
-                for the underlying backend (e.g., PyArrow list types).
 
         Returns:
             True if the column is made up of list-like values; False otherwise.

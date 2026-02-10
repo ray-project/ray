@@ -312,7 +312,10 @@ class KafkaDatasource(Datasource):
         return None
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         """Create read tasks for Kafka partitions.
 
@@ -322,6 +325,7 @@ class KafkaDatasource(Datasource):
         Args:
             parallelism: This argument is deprecated.
             per_task_row_limit: Maximum number of rows per read task.
+            data_context: The data context to use to get read tasks. This is not used by this datasource.
 
         Returns:
             List of ReadTask objects, one per partition.

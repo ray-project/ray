@@ -2113,8 +2113,7 @@ TEST_F(ClusterResourceSchedulerTest, ScheduleWithFallbackStrategyTest) {
                                  true,
                                  {},
                                  prepared_label_selector,
-                                 prepared_fallback_strategy,
-                                 rpc::TensorTransport::OBJECT_STORE);
+                                 prepared_fallback_strategy);
   spec_builder.SetNormalTaskSpec(0, false, "", scheduling_strategy, ActorID::Nil());
   LeaseSpecification lease_spec(std::move(spec_builder).ConsumeAndBuild().GetMessage());
 

@@ -56,16 +56,16 @@ async def test_vllm_multimodal_utils():
     """Test vLLM's multimodal utilities.
 
     This test is adapted from https://github.com/vllm-project/vllm/blob/main/tests/entrypoints/test_chat_utils.py.
-    `parse_chat_messages_futures` is thoroughly tested in vLLM. This test serves as an
+    `parse_chat_messages_async` is thoroughly tested in vLLM. This test serves as an
     integration test to verify that the function isn't moved to an unexpected location and its signature isn't changed.
     """
     from vllm.config import ModelConfig
-    from vllm.entrypoints.chat_utils import parse_chat_messages_futures
+    from vllm.entrypoints.chat_utils import parse_chat_messages_async
 
     image_url = "https://air-example-data.s3.us-west-2.amazonaws.com/rayllm-ossci/assets/cherry_blossom.jpg"
     image_uuid = str(hash(image_url))
 
-    conversation, mm_future, mm_uuids = parse_chat_messages_futures(
+    conversation, mm_data, mm_uuids = await parse_chat_messages_async(
         [
             {
                 "role": "user",
@@ -85,7 +85,6 @@ async def test_vllm_multimodal_utils():
             trust_remote_code=True,
             limit_mm_per_prompt={"image": 2},
         ),
-        None,  # Tokenizer is not used in vLLM's parse_chat_messages_futures
         content_format="string",
     )
 
@@ -93,7 +92,6 @@ async def test_vllm_multimodal_utils():
         {"role": "user", "content": "<|image_1|>\nWhat's in the image?"}
     ]
 
-    mm_data = await mm_future
     assert mm_data is not None
     assert set(mm_data.keys()) == {"image"}
 

@@ -44,7 +44,7 @@ situation.
   in the FIFO order.
 - Last commands win. The state of the publisher / subscriber is equivalent to
   the last command that's called.
-- Publisher failiure detection. The publisher failure is detected by
+- Publisher failure detection. The publisher failure is detected by
   subscribers.
 - Subscriber failure detection. The subscriber failure is tracked by
   publishers.
