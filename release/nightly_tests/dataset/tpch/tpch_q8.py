@@ -22,7 +22,7 @@ def main(args):
         date2 = datetime(1997, 1, 1)
         region_name = "AMERICA"
         part_type = "ECONOMY ANODIZED STEEL"
-        nation_name = "BRAZIL"  # Specific nation for market share calculation
+        nation_name = "BRAZIL"
 
         # Filter region
         region_filtered = region.filter(expr=col("r_name") == region_name)
@@ -31,26 +31,23 @@ def main(args):
         nation_region = region_filtered.join(
             nation,
             join_type="inner",
-            num_partitions=100,
             on=("r_regionkey",),
             right_on=("n_regionkey",),
         )
 
-        # Join customer with nation
+        # Join customer with nation (use suffix to avoid conflicts)
         customer_nation = customer.join(
             nation_region,
             join_type="inner",
-            num_partitions=100,
             on=("c_nationkey",),
             right_on=("n_nationkey",),
+            left_suffix="",
+            right_suffix="_cust",
         )
 
-        # Join supplier with nation (for supplier nation)
-        # Note: For Q8, suppliers can be from ALL nations, not just the region
         supplier_nation = supplier.join(
             nation,
             join_type="inner",
-            num_partitions=100,
             on=("s_nationkey",),
             right_on=("n_nationkey",),
             left_suffix="",
@@ -67,7 +64,6 @@ def main(args):
         orders_customer = orders_filtered.join(
             customer_nation,
             join_type="inner",
-            num_partitions=100,
             on=("o_custkey",),
             right_on=("c_custkey",),
         )
@@ -76,7 +72,6 @@ def main(args):
         lineitem_orders = lineitem.join(
             orders_customer,
             join_type="inner",
-            num_partitions=100,
             on=("l_orderkey",),
             right_on=("o_orderkey",),
         )
@@ -85,18 +80,18 @@ def main(args):
         lineitem_part = lineitem_orders.join(
             part_filtered,
             join_type="inner",
-            num_partitions=100,
             on=("l_partkey",),
             right_on=("p_partkey",),
         )
 
-        # Join with supplier
+        # Join with supplier (use suffix to avoid conflicts with customer nation columns)
         ds = lineitem_part.join(
             supplier_nation,
             join_type="inner",
-            num_partitions=100,
             on=("l_suppkey",),
             right_on=("s_suppkey",),
+            left_suffix="",
+            right_suffix="_supp",
         )
 
         # Calculate volume
@@ -111,12 +106,6 @@ def main(args):
             col("o_orderdate").dt.year(),
         )
 
-        # For Q8, we need to calculate market share for a specific nation (e.g., BRAZIL)
-        # Market share = (volume from specific nation suppliers) / (total volume in region)
-
-        # Create a conditional column for volume from the specific nation
-        # Use conditional expression: if n_name_supp == nation_name then volume else 0
-        # Convert boolean to numeric: True -> 1, False -> 0, then multiply by volume
         ds = ds.with_column(
             "is_nation",
             to_f64((col("n_name_supp") == nation_name)),

@@ -20,57 +20,82 @@ def main(args):
         date = datetime(1994, 1, 1)
 
         # Filter region by name
-        region = region.filter(expr=col("r_name") == "ASIA")
+        region_filtered = region.filter(expr=col("r_name") == "ASIA")
 
-        # Join region with nation
-        ds = region.join(
+        nation_region = region_filtered.join(
             nation,
             join_type="inner",
-            num_partitions=100,
             on=("r_regionkey",),
             right_on=("n_regionkey",),
         )
 
-        # Join with supplier
-        ds = ds.join(
-            supplier,
-            join_type="inner",
-            num_partitions=100,
-            on=("n_nationkey",),
-            right_on=("s_nationkey",),
+        import pandas as pd
+
+        nation_region_pd = nation_region.to_pandas()[["n_nationkey", "n_name"]].copy()
+
+        def _join_supplier(batch: pd.DataFrame) -> pd.DataFrame:
+            out = batch.merge(
+                nation_region_pd,
+                left_on="s_nationkey",
+                right_on="n_nationkey",
+                how="inner",
+            )
+            return out.rename(
+                columns={
+                    "n_nationkey": "n_nationkey_supp",
+                    "n_name": "n_name_supp",
+                }
+            )
+
+        supplier_nation = supplier.map_batches(
+            _join_supplier,
+            batch_format="pandas",
         )
 
-        # Join with customer
-        ds = ds.join(
-            customer,
-            join_type="inner",
-            num_partitions=100,
-            on=("s_nationkey",),
-            right_on=("c_nationkey",),
+        def _join_customer(batch: pd.DataFrame) -> pd.DataFrame:
+            out = batch.merge(
+                nation_region_pd,
+                left_on="c_nationkey",
+                right_on="n_nationkey",
+                how="inner",
+            )
+            return out.rename(
+                columns={
+                    "n_nationkey": "n_nationkey_cust",
+                    "n_name": "n_name_cust",
+                }
+            )
+
+        customer_nation = customer.map_batches(
+            _join_customer,
+            batch_format="pandas",
         )
 
-        # Join with orders and filter by date
         orders_filtered = orders.filter(
             expr=(
                 (col("o_orderdate") >= date)
                 & (col("o_orderdate") < datetime(date.year + 1, date.month, date.day))
             )
         )
-        ds = ds.join(
-            orders_filtered,
+        orders_customer = orders_filtered.join(
+            customer_nation,
             join_type="inner",
-            num_partitions=100,
-            on=("c_custkey",),
-            right_on=("o_custkey",),
+            on=("o_custkey",),
+            right_on=("c_custkey",),
         )
 
-        # Join with lineitem on order key and supplier key
-        ds = ds.join(
-            lineitem,
+        lineitem_orders = lineitem.join(
+            orders_customer,
             join_type="inner",
-            num_partitions=100,
-            on=("o_orderkey", "s_suppkey"),
-            right_on=("l_orderkey", "l_suppkey"),
+            on=("l_orderkey",),
+            right_on=("o_orderkey",),
+        )
+
+        ds = lineitem_orders.join(
+            supplier_nation,
+            join_type="inner",
+            on=("l_suppkey", "n_nationkey_cust"),
+            right_on=("s_suppkey", "n_nationkey_supp"),
         )
 
         # Calculate revenue
@@ -79,9 +104,9 @@ def main(args):
             to_f64(col("l_extendedprice")) * (1 - to_f64(col("l_discount"))),
         )
 
-        # Aggregate by nation name
+        # Aggregate by nation name (supplier nation)
         _ = (
-            ds.groupby("n_name")
+            ds.groupby("n_name_supp")
             .aggregate(Sum(on="revenue", alias_name="revenue"))
             .sort(key="revenue", descending=True)
             .materialize()

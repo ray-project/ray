@@ -8,13 +8,11 @@ from ray.data.expressions import udf
 from benchmark import Benchmark
 
 # Define schemas for TPC-H tables
-# Parquet datasets use column0, column1, ... (or column00, column01 for lineitem)
 TABLE_COLUMNS = {
     "region": {
         "column0": "r_regionkey",
         "column1": "r_name",
         "column2": "r_comment",
-        "column3": "r_dummy",
     },
     "nation": {
         "column0": "n_nationkey",
@@ -30,7 +28,6 @@ TABLE_COLUMNS = {
         "column4": "s_phone",
         "column5": "s_acctbal",
         "column6": "s_comment",
-        "column7": "s_dummy",
     },
     "customer": {
         "column0": "c_custkey",
@@ -117,6 +114,11 @@ def load_table(
 ) -> ray.data.Dataset:
     path = f"{base_uri}/sf{scale_factor}/{table_name}"
     ds = ray.data.read_parquet(path)
+
+    read_kwargs = {}
+    if table_name in TABLE_COLUMNS:
+        read_kwargs["columns"] = list(TABLE_COLUMNS[table_name].keys())
+    ds = ray.data.read_parquet(path, **read_kwargs)
 
     if table_name in TABLE_COLUMNS:
         ds = ds.rename_columns(TABLE_COLUMNS[table_name])

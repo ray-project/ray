@@ -21,40 +21,30 @@ def main(args):
         nation1 = "FRANCE"
         nation2 = "GERMANY"
 
-        # Filter nations of interest (both directions: nation1 <-> nation2)
         nations_of_interest = nation.filter(
             expr=(col("n_name") == nation1) | (col("n_name") == nation2)
         )
 
-        # Join supplier with nation (use suffix to distinguish)
         supplier_nation = supplier.join(
             nations_of_interest,
             join_type="inner",
-            num_partitions=100,
             on=("s_nationkey",),
             right_on=("n_nationkey",),
-            left_suffix="",
-            right_suffix="_supp",
-        )
+        ).rename_columns({"n_name": "n_name_supp"})
 
-        # Join customer with nation (use suffix to distinguish)
         customer_nation = customer.join(
             nations_of_interest,
             join_type="inner",
-            num_partitions=100,
             on=("c_nationkey",),
             right_on=("n_nationkey",),
-            left_suffix="",
-            right_suffix="_cust",
-        )
+        ).rename_columns({"n_name": "n_name_cust"})
 
-        # Join orders with customer
         orders_customer = orders.join(
             customer_nation,
             join_type="inner",
-            num_partitions=100,
             on=("o_custkey",),
             right_on=("c_custkey",),
+            left_suffix="",
         )
 
         # Join lineitem with orders and filter by date
@@ -64,18 +54,18 @@ def main(args):
         lineitem_orders = lineitem_filtered.join(
             orders_customer,
             join_type="inner",
-            num_partitions=100,
             on=("l_orderkey",),
             right_on=("o_orderkey",),
         )
 
-        # Join with supplier
+        # Join with supplier (use suffix to avoid conflicts with customer nation columns)
         ds = lineitem_orders.join(
             supplier_nation,
             join_type="inner",
-            num_partitions=100,
             on=("l_suppkey",),
             right_on=("s_suppkey",),
+            left_suffix="",
+            right_suffix="_supp",
         )
 
         # Filter to ensure we only include shipments between the two nations

@@ -17,42 +17,38 @@ def main(args):
         # Q9 parameters
         part_name_pattern = "green"
 
-        # Filter part by name pattern
-        part_filtered = part.filter(expr=col("p_name").str.contains(part_name_pattern))
-
         # Join partsupp with supplier
         partsupp_supplier = partsupp.join(
             supplier,
             join_type="inner",
-            num_partitions=100,
             on=("ps_suppkey",),
             right_on=("s_suppkey",),
         )
 
-        # Join with part
+        # Join with part (filter will be applied after join to avoid UDF expression issues)
         partsupp_part = partsupp_supplier.join(
-            part_filtered,
+            part,
             join_type="inner",
-            num_partitions=100,
             on=("ps_partkey",),
             right_on=("p_partkey",),
+        )
+
+        # Filter part by name pattern (after join to avoid UDF expression conversion issues)
+        partsupp_part = partsupp_part.filter(
+            expr=col("p_name").str.contains(part_name_pattern)
         )
 
         # Join supplier with nation
         partsupp_nation = partsupp_part.join(
             nation,
             join_type="inner",
-            num_partitions=100,
             on=("s_nationkey",),
             right_on=("n_nationkey",),
         )
 
-        # Join orders with lineitem
-        # Note: TPC-H Q9 processes all orders and groups by year, no date filter
         lineitem_orders = lineitem.join(
             orders,
             join_type="inner",
-            num_partitions=100,
             on=("l_orderkey",),
             right_on=("o_orderkey",),
         )
@@ -62,7 +58,6 @@ def main(args):
         ds = lineitem_orders.join(
             partsupp_nation,
             join_type="inner",
-            num_partitions=100,
             on=("l_partkey", "l_suppkey"),
             right_on=("ps_partkey", "ps_suppkey"),
         )
