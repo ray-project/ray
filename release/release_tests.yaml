@@ -1993,8 +1993,8 @@
 # | (SA/D/LSTM) Stateless Cartpole | 350     | ✅          | ❌              | ✅            | ❌                      | ❌                     |
 # | (MA/D) TicTacToe               | 0       | ✅          | ✅              | ❌            | ✅                      | ❌                     |
 # | (SA/D) Atari (Pong)            | 18      | ❌          | ❌              | ❌            | ✅                      | ✅                     |
+# | (MA/D) Footsies                | 7       | ❌          | ❌              | ✅            | ❌                      | ✅                     |
 # | (SA/C) IsaacLab (Humanoid)     | ??      | ❌          | ✅ (with 1 GPU) | ⚠️            | ❌                      | ❌                     |
-# | (MA/D) Footsies                | ??      | ❌          | ❌              | ✅            | ❌                      | ❌                     |
 #
 # --------------------------
 
