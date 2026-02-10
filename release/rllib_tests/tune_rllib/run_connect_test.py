@@ -83,7 +83,7 @@ def run(smoke_test=False, storage_path: str = None):
 
 if __name__ == "__main__":
     addr = os.environ.get("RAY_ADDRESS")
-    job_name = os.environ.get("RAY_JOB_NAME", "rllib_connect_tests")
+    job_name = os.environ.get("RAY_JOB_NAME", "rllib_tune_connect_tests")
     if addr is not None and addr.startswith("anyscale://"):
         ray.init(address=addr, job_name=job_name)
     else:

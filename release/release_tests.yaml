@@ -1962,7 +1962,7 @@
 # --------------------------
 # Ray Tune // RLlib Integration Tests
 # --------------------------
-- name: tune_rllib_connect_test
+- name: rllib_tune_connect_test
   python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
@@ -1980,7 +1980,7 @@
 
   run:
     timeout: 2400 # 40 minutes
-    script: RAY_TRAIN_V2_ENABLED=1 python tune_rllib/run_connect_tests.py
+    script: RAY_TRAIN_V2_ENABLED=1 python tune_rllib/run_connect_test.py
     wait_for_nodes:
       num_nodes: 9
 
