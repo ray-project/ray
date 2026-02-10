@@ -14,6 +14,7 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusTrigger,
+    GangContext,
     HandleMetricReport,
     ReplicaID,
     ReplicaMetricReport,
@@ -112,6 +113,7 @@ class MockReplicaActorWrapper:
         self._rank = replica_rank_context.get(replica_id.unique_id, None)
         self._assign_rank_callback = None
         self._ingress = False
+        self._gang_context = None
 
     @property
     def is_cross_language(self) -> bool:
@@ -344,6 +346,10 @@ class MockReplicaActorWrapper:
     @property
     def route_patterns(self) -> Optional[List[str]]:
         return None
+
+    @property
+    def gang_context(self) -> Optional[GangContext]:
+        return self._gang_context
 
 
 def deployment_info(
