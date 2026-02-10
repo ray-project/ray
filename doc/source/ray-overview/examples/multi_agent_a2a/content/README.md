@@ -281,10 +281,9 @@ To follow the same structure as the local `serve run ...` deployment, verify pro
 
 **Set up environment variables (once):**
 
-
-```python
-!export BASE_URL="https://<service-name>-<id>.cld-<cluster-id>.s.anyscaleuserdata.com"
-!export ANYSCALE_API_TOKEN="<your-anyscale-api-token>"
+```bash
+export BASE_URL="https://<service-name>-<id>.cld-<cluster-id>.s.anyscaleuserdata.com"
+export ANYSCALE_API_TOKEN="<your-anyscale-api-token>"
 ```
 
 > Note: Do **not** include a trailing `/` at the end of `BASE_URL` (after `.anyscaleuserdata.com`).
