@@ -404,7 +404,7 @@ The agent runtime consists of four core modules:
 The configuration module [`agent_runtime/config.py`](agent_runtime/config.py) centralizes configuration loading for LLM and MCP settings from environment variables.
 
 - **Classes:** `LLMConfig` (LLM backend settings) and `MCPEndpoint` (MCP server configuration).
-- **Functions:** `load_llm_config()`, `weather_mcp_endpoint()`, and `web_search_mcp_endpoint()`.
+- **Functions:** `load_llm_config()`.
 
 
 #### 5.3.2 Agent building helpers
