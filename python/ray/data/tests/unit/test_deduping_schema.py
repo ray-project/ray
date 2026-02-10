@@ -93,7 +93,7 @@ def test_build_mismatch_warning_empty(incoming_schema: Optional["Schema"]):
         [
             pa.field("foo", pa.int32()),
             pa.field("bar", pa.string()),
-            pa.field("baz", pa.bool8()),
+            pa.field("baz", pa.bool_()),
         ]
     )
 
@@ -103,7 +103,7 @@ def test_build_mismatch_warning_empty(incoming_schema: Optional["Schema"]):
         """Operator produced a RefBundle with an empty/unknown schema. (3 total):
     foo: int32
     bar: string
-    baz: extension<arrow.bool8>
+    baz: bool
 This may lead to unexpected behavior."""
         == msg
     )
@@ -115,7 +115,7 @@ def test_build_mismatch_warning_truncation(truncation_length: int):
         [
             pa.field("foo", pa.int32()),
             pa.field("bar", pa.string()),
-            pa.field("baz", pa.bool8()),
+            pa.field("baz", pa.bool_()),
             pa.field("quux", pa.uint16()),
             pa.field("corge", pa.int64()),
             pa.field("grault", pa.int32()),
@@ -124,7 +124,7 @@ def test_build_mismatch_warning_truncation(truncation_length: int):
     incoming_schema = pa.schema(
         [
             pa.field("foo", pa.int64()),
-            pa.field("baz", pa.bool8()),
+            pa.field("baz", pa.bool_()),
             pa.field("qux", pa.float64()),
             pa.field("quux", pa.uint32()),
             pa.field("corge", pa.int32()),
@@ -187,14 +187,14 @@ def test_build_mismatch_warning_disordered():
         [
             pa.field("foo", pa.int32()),
             pa.field("bar", pa.string()),
-            pa.field("baz", pa.bool8()),
+            pa.field("baz", pa.bool_()),
             pa.field("qux", pa.float64()),
         ]
     )
     incoming_schema = pa.schema(
         [
             pa.field("foo", pa.int32()),
-            pa.field("baz", pa.bool8()),
+            pa.field("baz", pa.bool_()),
             pa.field("bar", pa.string()),
             pa.field("qux", pa.float64()),
         ]
@@ -238,7 +238,7 @@ def test_add_output_emits_warning(enforce_schemas, caplog, propagate_logs):
     old_schema = pa.schema(
         [
             pa.field("foo", pa.int32()),
-            pa.field("bar", pa.bool8()),
+            pa.field("bar", pa.bool_()),
         ]
     )
     new_schema = pa.schema(
@@ -267,7 +267,7 @@ def test_add_output_emits_warning(enforce_schemas, caplog, propagate_logs):
 Fields exclusive to the incoming schema (1 total):
     baz: uint32
 Fields exclusive to the old schema (1 total):
-    bar: extension<arrow.bool8>
+    bar: bool
 Fields that have different types across the old and the incoming schemas (1 total):
     foo: int32 => int64
 This may lead to unexpected behavior."""
