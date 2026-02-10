@@ -254,30 +254,29 @@ class _AutoscalingCoordinatorActor:
 
         self._ongoing_reqs: Dict[str, OngoingRequest] = {}
         self._cluster_node_resources: List[ResourceDict] = []
+        # Lock for thread-safe access to shared state from the background
+        self._lock = threading.Lock()
         self._update_cluster_node_resources()
 
         # This is an actor, so the following check should always be True.
         # It's only needed for unit tests.
         if ray.is_initialized():
-            self._self_handle = ray.get_runtime_context().current_actor
-
             # Start a thread to perform periodical operations.
             def tick_thread_run():
                 while True:
-                    # Call tick() as an actor task,
-                    # so we don't need to handle multi-threading.
                     time.sleep(self.TICK_INTERVAL_S)
-                    ray.get(self._self_handle.tick.remote())
+                    self._tick()
 
             self._tick_thread = threading.Thread(target=tick_thread_run, daemon=True)
             self._tick_thread.start()
 
-    def tick(self):
+    def _tick(self):
         """Used to perform periodical operations, e.g., purge expired requests,
         merge and send requests, check cluster resource updates, etc."""
-        self._merge_and_send_requests()
-        self._update_cluster_node_resources()
-        self._reallocate_resources()
+        with self._lock:
+            self._merge_and_send_requests()
+            self._update_cluster_node_resources()
+            self._reallocate_resources()
 
     def request_resources(
         self,
@@ -288,51 +287,53 @@ class _AutoscalingCoordinatorActor:
         priority: ResourceRequestPriority = ResourceRequestPriority.MEDIUM,
     ) -> None:
         logger.debug("Received request from %s: %s.", requester_id, resources)
-        # Round up the resource values to integers,
-        # because the Autoscaler SDK only accepts integer values.
-        for r in resources:
-            for k in r:
-                r[k] = math.ceil(r[k])
-        now = self._get_current_time()
-        request_updated = False
-        old_req = self._ongoing_reqs.get(requester_id)
-        if old_req is not None:
-            if request_remaining != old_req.request_remaining:
-                raise ValueError(
-                    "Cannot change request_remaining flag of an ongoing request."
-                )
-            if priority.value != old_req.priority:
-                raise ValueError("Cannot change priority of an ongoing request.")
+        with self._lock:
+            # Round up the resource values to integers,
+            # because the Autoscaler SDK only accepts integer values.
+            for r in resources:
+                for k in r:
+                    r[k] = math.ceil(r[k])
+            now = self._get_current_time()
+            request_updated = False
+            old_req = self._ongoing_reqs.get(requester_id)
+            if old_req is not None:
+                if request_remaining != old_req.request_remaining:
+                    raise ValueError(
+                        "Cannot change request_remaining flag of an ongoing request."
+                    )
+                if priority.value != old_req.priority:
+                    raise ValueError("Cannot change priority of an ongoing request.")
 
-            request_updated = resources != old_req.requested_resources
-            old_req.requested_resources = resources
-            old_req.expiration_time = now + expire_after_s
-        else:
-            request_updated = True
-            self._ongoing_reqs[requester_id] = OngoingRequest(
-                first_request_time=now,
-                requested_resources=resources,
-                request_remaining=request_remaining,
-                priority=priority.value,
-                expiration_time=now + expire_after_s,
-                allocated_resources=[],
-            )
-        if request_updated:
-            # If the request has updated, immediately send
-            # a new request and reallocate resources.
-            self._merge_and_send_requests()
-            self._reallocate_resources()
+                request_updated = resources != old_req.requested_resources
+                old_req.requested_resources = resources
+                old_req.expiration_time = now + expire_after_s
+            else:
+                request_updated = True
+                self._ongoing_reqs[requester_id] = OngoingRequest(
+                    first_request_time=now,
+                    requested_resources=resources,
+                    request_remaining=request_remaining,
+                    priority=priority.value,
+                    expiration_time=now + expire_after_s,
+                    allocated_resources=[],
+                )
+            if request_updated:
+                # If the request has updated, immediately send
+                # a new request and reallocate resources.
+                self._merge_and_send_requests()
+                self._reallocate_resources()
 
     def cancel_request(
         self,
         requester_id: str,
     ):
         logger.debug("Canceling request for %s.", requester_id)
-        if requester_id not in self._ongoing_reqs:
-            return
-        del self._ongoing_reqs[requester_id]
-        self._merge_and_send_requests()
-        self._reallocate_resources()
+        with self._lock:
+            if requester_id not in self._ongoing_reqs:
+                return
+            del self._ongoing_reqs[requester_id]
+            self._merge_and_send_requests()
+            self._reallocate_resources()
 
     def _purge_expired_requests(self):
         now = self._get_current_time()
@@ -352,9 +353,10 @@ class _AutoscalingCoordinatorActor:
 
     def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
         """Get the allocated resources for the requester."""
-        if requester_id not in self._ongoing_reqs:
-            return []
-        return self._ongoing_reqs[requester_id].allocated_resources
+        with self._lock:
+            if requester_id not in self._ongoing_reqs:
+                return []
+            return self._ongoing_reqs[requester_id].allocated_resources
 
     def _maybe_subtract_resources(self, res1: ResourceDict, res2: ResourceDict) -> bool:
         """If res2<=res1, subtract res2 from res1 in-place, and return True.
