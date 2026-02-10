@@ -239,12 +239,12 @@ Configuration and troubleshooting
 Job-level Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Job-level checkpointing can be used to make offline batch inference jobs
-resilient to failures such as node restarts or transient execution errors.
+Use job-level checkpointing to make offline batch inference jobs resilient to failures
+like node restarts or transient execution errors.
 
 When enabled, Ray Data records progress during execution. If a batch inference
 job fails partway through processing, rerunning the same pipeline with the same
-checkpoint configuration will resume from the last completed checkpoint instead
+checkpoint configuration resumes from the last completed checkpoint instead
 of reprocessing all records.
 
 This is especially useful for large batch inference workloads where restarting

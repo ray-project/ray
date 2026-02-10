@@ -73,11 +73,11 @@ Job-level Checkpointing
 
 Ray Data supports job-level checkpointing to improve fault tolerance for
 long-running batch pipelines. When enabled, Ray Data can resume a failed job
-from the last successfully processed records instead of restarting from the
+from the last successfully processed rows instead of restarting from the
 beginning.
 
-Job-level checkpointing is configured through the
-:class:`~ray.data.checkpoint.CheckpointConfig` and is set on the current
+To configure job-level checkpointing, specify a
+:class:`~ray.data.checkpoint.CheckpointConfig` on the current
 :class:`~ray.data.DataContext`.
 
 **Example configuration:**
@@ -90,9 +90,6 @@ Job-level checkpointing is configured through the
     ctx = ray.data.DataContext.get_current()
     ctx.checkpoint_config = CheckpointConfig(
         id_column="id",
-        checkpoint_path="s3://my-bucket/ray-data-checkpoints", 
-        delete_checkpoint_on_success=False,
+        checkpoint_path="s3://my-bucket/ray-data-checkpoints",  # Must be accessible by all nodes
+        delete_checkpoint_on_success=False,  # Preserves checkpoints after successful runs
     ) 
-
-.. The checkpoint path must be accessible by all nodes in the Ray cluster.
-.. delete_checkpoint_on_success=False preserves checkpoints after successful runs.
