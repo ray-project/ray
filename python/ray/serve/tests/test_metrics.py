@@ -19,10 +19,11 @@ from websockets.sync.client import connect
 import ray
 from ray import serve
 from ray._common.network_utils import parse_address
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     PrometheusTimeseries,
+    SignalActor,
     fetch_prometheus_metric_timeseries,
+    wait_for_condition,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
@@ -1221,6 +1222,9 @@ def test_routing_stats_delay_metric(metrics_start_shutdown):
         def __call__(self):
             return "hello"
 
+        async def record_routing_stats(self):
+            return {}
+
     serve.run(Model.bind(), name="app")
     timeseries = PrometheusTimeseries()
 
@@ -1346,6 +1350,75 @@ def test_routing_stats_error_metric(metrics_start_shutdown):
     print("Timeout error metric verified.")
 
     ray.get(signal.send.remote(clear=True))
+
+
+def test_replica_utilization_metric(metrics_start_shutdown):
+    """Test that the replica utilization metric is correctly reported.
+
+    This test verifies that:
+    1. The serve_replica_utilization_percent metric is emitted
+    2. It has the correct tags (deployment, application, replica)
+    3. The value is within the expected range (0-100)
+
+    With window=1s, max_ongoing_requests=1, and 800ms sleep per request:
+    - Utilization = 800ms / (1000ms * 1) * 100 = 80%
+    """
+
+    @serve.deployment(name="UtilizationTest", max_ongoing_requests=1)
+    class SlowDeployment:
+        def __call__(self):
+            # Sleep for 800ms to generate 80% utilization in a 1s window
+            time.sleep(0.8)
+            return "ok"
+
+    app_name = "utilization_app"
+    handle = serve.run(SlowDeployment.bind(), name=app_name)
+
+    # Fire a request that takes 800ms (80% of 1s window)
+    handle.remote().result()
+
+    timeseries = PrometheusTimeseries()
+
+    # Wait for the utilization metric to be reported
+    def check_utilization_metric_exists():
+        metrics = get_metric_dictionaries(
+            "ray_serve_replica_utilization_percent", timeseries=timeseries
+        )
+        if not metrics:
+            return False
+
+        # Check that at least one metric has the expected tags
+        for metric in metrics:
+            if (
+                metric.get("deployment") == "UtilizationTest"
+                and metric.get("application") == app_name
+                and "replica" in metric
+            ):
+                return True
+        return False
+
+    wait_for_condition(check_utilization_metric_exists, timeout=30)
+    print("Replica utilization metric exists with correct tags.")
+
+    # Verify the metric value is within expected range
+    def check_utilization_metric_value():
+        value = get_metric_float(
+            "ray_serve_replica_utilization_percent",
+            timeseries=timeseries,
+            expected_tags={
+                "deployment": "UtilizationTest",
+                "application": app_name,
+            },
+        )
+        # Value should be between 0 and 100
+        assert 0 <= value <= 100, f"Utilization should be 0-100, got {value}"
+        # should be 80% but I am giving it some tolerance for the test to pass
+        assert value >= 70, f"Utilization should be >= 70 after requests, got {value}"
+        print(f"Replica utilization value: {value}%")
+        return True
+
+    wait_for_condition(check_utilization_metric_value, timeout=30)
+    print("Replica utilization metric value verified.")
 
 
 if __name__ == "__main__":
