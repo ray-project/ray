@@ -58,6 +58,7 @@ from ray.serve._private.utils import (
 from ray.serve.config import GangSchedulingConfig
 from ray.serve.schema import ReplicaRank
 from ray.util.placement_group import validate_placement_group
+from ray.serve._private.common import GANG_PG_NAME_PREFIX
 
 # Global variable that is fetched during controller recovery that
 # marks (simulates) which replicas have died since controller first
