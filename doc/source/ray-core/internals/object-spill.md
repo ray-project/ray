@@ -21,25 +21,64 @@ The following diagram shows the high-level architecture and data flow:
 
 ```mermaid
 flowchart TD
-    A["User Application<br/>ray.put() / task return"] --> B["CoreWorker"]
+    %% Node Definitions for Parallelism
+    A1["User Application 1"]
+    A2["User Application 2"]
+    B1["CoreWorker 1"]
+    B2["CoreWorker 2"]
 
-    B -- "1. Create(object_id, size)" --> C["PlasmaStore"]
-    B -- "2. PinObjectIDs RPC" --> NM["NodeManager"]
+    %% Entry point connections
+    A1 -- "ray.put()" --> B1
+    A2 -- "ray.put()" --> B2
 
+    %% Main Logic paths (Parallel)
+    B1 -- "Step 1. Create" --> C["PlasmaStore"]
+    B2 -- "Step 1. Create" --> C
+
+    B1 -- "Step 2. Pin RPC" --> NM["NodeManager"]
+    B2 -- "Step 2. Pin RPC" --> NM
+
+    %% Alignment constraint
+    C ~~~ NM
+
+    %% Left: Memory Allocation Logic
     subgraph PlasmaThread["Plasma Store Thread"]
         C --> E["CreateRequestQueue<br/>ProcessRequests()"]
     end
 
+    %% Right: Scheduling & Management
     subgraph RayletThread["Raylet Main Thread"]
         NM -- "PinObjectsAndWaitForFree()" --> F["LocalObjectManager"]
         F --> G["WorkerPool<br/>(IO Worker Pool)"]
     end
 
-    E -- "OOM: spill_objects_callback_()<br/>main_service.post()" --> F
+    %% Spilling Link (Cross-thread callback)
+    E -- "OOM: spill_objects_callback()<br/>→ main_service.post()" --> F
     F -. "IsSpillingInProgress()<br/>(std::atomic, cross-thread)" .-> E
 
-    G -- "gRPC" --> H["Python IO Worker<br/>external_storage.py"]
-    H --> I["External Storage<br/>(Filesystem / S3)"]
+    %% Parallel IO Workers
+    subgraph IOWorkerProcesses["Python IO Worker Processes"]
+        H1["Python IO Worker 1"]
+        H2["Python IO Worker 2"]
+        Hn["Python IO Worker N"]
+    end
+    G -- "gRPC" --> H1
+    G -- "gRPC" --> H2
+    G -- "gRPC" --> Hn
+
+    %% Storage Destination
+    H1 & H2 & Hn --> I[("External Storage<br/>(Filesystem / S3)")]
+
+    %% Styling
+    classDef memory fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef logic fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+    classDef storage fill:#f1f8e9,stroke:#33691e,stroke-width:2px;
+    classDef core fill:#f3e5f5,stroke:#4a148c,stroke-width:2px;
+
+    class C,E memory;
+    class NM,F,G logic;
+    class H1,H2,Hn,I storage;
+    class A1,A2,B1,B2 core;
 ```
 
 > **Note:** The Plasma store and the Raylet main event loop run in **separate threads**. The spill callback bridges them by posting work from the store thread to the main thread. Only `IsSpillingInProgress()` is called cross-thread (using `std::atomic`).
