@@ -21,7 +21,6 @@ import ray.util.serialization_addons
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import binary_to_hex, get_random_alphanumeric_string, import_attr
 from ray._private.state import state
-from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
