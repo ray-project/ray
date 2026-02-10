@@ -15,15 +15,13 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.from_operators import (
+from ray.data._internal.logical.operators import (
+    Filter,
+    FlatMap,
     FromArrow,
     FromItems,
     FromNumpy,
     FromPandas,
-)
-from ray.data._internal.logical.operators.map_operator import (
-    Filter,
-    FlatMap,
     MapBatches,
     MapRows,
     Project,

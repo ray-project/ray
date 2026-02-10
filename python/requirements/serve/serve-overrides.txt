@@ -1,0 +1,5 @@
+# uvloop is excluded from the serve depset because uvloop's Cython event loop
+# does not expose _default_executor as a Python-accessible attribute, which
+# breaks tests that inspect the asyncio event loop internals. Ray gracefully
+# falls back to the standard asyncio event loop when uvloop is not installed.
+uvloop ; python_version < "0"

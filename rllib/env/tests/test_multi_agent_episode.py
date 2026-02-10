@@ -156,7 +156,10 @@ class TestMultiAgentEpisode(unittest.TestCase):
         actions = [{"a0": 0, "a1": 0}, {"a1": 1}, {"a1": 2}]
         rewards = [{"a0": 0.1, "a1": 0.1}, {"a1": 0.2}, {"a1": 0.3}]
         episode = MultiAgentEpisode(
-            observations=observations, actions=actions, rewards=rewards
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            agent_t_started={"a0": 0, "a1": 3},
         )
         check(episode.agent_episodes["a0"].observations.data, [0])
         check(episode.agent_episodes["a1"].observations.data, [0, 1, 2, 3])
@@ -177,7 +180,10 @@ class TestMultiAgentEpisode(unittest.TestCase):
         actions = [{"a0": 0}, {"a1": 1}, {"a0": 2, "a1": 2}, {"a1": 3}]
         rewards = [{"a0": 0.1}, {"a1": 0.2}, {"a0": 0.3, "a1": 0.3}, {"a1": 0.4}]
         episode = MultiAgentEpisode(
-            observations=observations, actions=actions, rewards=rewards
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            agent_t_started={"a0": 1, "a1": 3},
         )
         check(episode.agent_episodes["a0"].observations.data, [0, 2])
         check(episode.agent_episodes["a1"].observations.data, [1, 2, 3, 4])
@@ -259,6 +265,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             truncateds=truncateds,
             extra_model_outputs=extra_model_outputs,
             env_t_started=len(rewards),
+            agent_t_started={"agent_0": agent_0_num_steps - 1},
             len_lookback_buffer="auto",  # default
         )
 
@@ -285,6 +292,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             truncateds=truncateds,
             extra_model_outputs=extra_model_outputs[-10:],
             env_t_started=100,
+            agent_t_started={"agent_5": 8},
             len_lookback_buffer="auto",  # default: all data goes into lookback buffers
         )
 
@@ -1325,7 +1333,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         rew = episode.get_rewards(-4, env_steps=False, fill=-5)
         check(rew, {"a0": -5, "a1": 0})
 
-        # Generate simple records for a multi agent environment.
+        # Generate simple records for a multi-agent environment.
         (
             observations,
             actions,
@@ -2294,6 +2302,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 {"a0": 3, "a1": 3},
             ],
             len_lookback_buffer=2,
+            agent_t_started={"a0": 0, "a1": 0},
         )
         # Cut with lookback=0 argument (default).
         successor = episode.cut()
@@ -2350,6 +2359,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 {"a0": 0.2, "a1": 0.2},  # 2
             ],
             len_lookback_buffer=0,
+            agent_t_started={"a0": 0, "a1": 0},
         )
         successor = episode.cut()
         check(len(successor), 0)
@@ -2422,6 +2432,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 {"a1": 3},
             ],
             len_lookback_buffer="auto",
+            agent_t_started={"a0": 0, "a1": 3},
         )
         episode_2 = episode_1.cut()
         check(episode_1.id_, episode_2.id_)
@@ -3067,6 +3078,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(a1.rewards, [0.2])
         check(a1.is_done, False)
 
+    def test_slice_with_lookback(self):
         # Test what happens if we have lookback buffers.
         observations = [
             {"a0": 0, "a1": 0},  # lookback -2
@@ -3080,7 +3092,13 @@ class TestMultiAgentEpisode(unittest.TestCase):
             {"a0": 8},  # 6
             {"a1": 9},  # 7
         ]
-        episode = self._create_simple_episode(observations, len_lookback_buffer=2)
+        # env-t  0 1 2 3 4 5 6 7 8 9
+        # a0 obs 0 1       5 6 7 8
+        # a1 obs 0 1 2 3 4 5   7   9
+
+        episode = self._create_simple_episode(
+            observations, len_lookback_buffer=2, agent_t_started={"a0": 2, "a1": 2}
+        )
         # ---
         slice_ = episode[1:3]
         check(len(slice_), 2)
@@ -3347,12 +3365,21 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Ensure that this batch is empty.
         check(len(batch), 0)
 
-    def _create_simple_episode(self, obs, len_lookback_buffer=0):
+    def _create_simple_episode(
+        self, obs, len_lookback_buffer: int = 0, agent_t_started: dict[str, int] = None
+    ):
+        if agent_t_started is None:
+            unique_agents = {agent_id for ob in obs for agent_id in ob}
+            agent_t_started = {
+                agent_id: len_lookback_buffer for agent_id in unique_agents
+            }
+
         return MultiAgentEpisode(
             observations=obs,
             actions=obs[:-1],
             rewards=[{aid: o / 10 for aid, o in o_dict.items()} for o_dict in obs[:-1]],
             len_lookback_buffer=len_lookback_buffer,
+            agent_t_started=agent_t_started,
         )
 
     def _mock_multi_agent_records_from_env(
