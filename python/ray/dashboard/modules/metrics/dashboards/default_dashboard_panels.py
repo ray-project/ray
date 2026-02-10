@@ -573,10 +573,10 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
         id=62,
         title="Node GPU Power",
         description="Current GPU power draw per node. Reported in milliwatts; displayed in watts. Supported on NVIDIA and AMD GPUs.",
-        unit="watts",
+        unit="mwatt",
         targets=[
             Target(
-                expr='sum(ray_node_gpu_power_milliwatts{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName) / 1000',
+                expr='sum(ray_node_gpu_power_milliwatts{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
                 legend="Power: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
         ],
