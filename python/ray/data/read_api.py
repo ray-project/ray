@@ -4408,15 +4408,17 @@ def read_kafka(
         trigger: Trigger mode for reading. Only "once" is supported, which
             performs a single bounded read.
         start_offset: Starting position for reading. Can be:
+
             - int: Offset number
-            - datetime: Read from the first message at or after this time.
-              Naive datetimes are treated as UTC.
+            - datetime: Read from the first message at or after this time. Naive datetimes are treated as UTC.
             - str: "earliest"
+
         end_offset: Ending position for reading (exclusive). Can be:
+
             - int: Offset number
-            - datetime: Read up to (but not including) the first message
-              at or after this time. Naive datetimes are treated as UTC.
+            - datetime: Read up to (but not including) the first message at or after this time. Naive datetimes are treated as UTC.
             - str: "latest"
+
         kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker.
