@@ -7,13 +7,13 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
+from ray.serve._private.common import GANG_PG_NAME_PREFIX
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.utils import get_all_live_placement_group_names
+from ray.serve.config import GangSchedulingConfig
 from ray.serve.context import _get_global_client
 from ray.util.placement_group import PlacementGroup, get_current_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from ray.serve._private.common import GANG_PG_NAME_PREFIX
-from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve.config import GangSchedulingConfig
 
 
 def _get_pg_strategy(pg: PlacementGroup) -> str:
@@ -246,6 +246,7 @@ def test_leaked_gang_pg_removed_on_controller_recovery(serve_instance):
     * The survivor's gang PG still has alive actors → preserved.
     * The survivor's actors continue to serve requests without interruption.
     """
+
     @serve.deployment(
         num_replicas=2,
         ray_actor_options={"num_cpus": 0.1},
