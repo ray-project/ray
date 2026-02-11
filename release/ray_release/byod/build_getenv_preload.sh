@@ -3,8 +3,6 @@
 # LD_PRELOAD in runtime_env (to trace getenv calls from all libraries).
 # Use with: cluster.byod.post_build_script: build_getenv_preload.sh
 #           cluster.byod.runtime_env: [ "LD_PRELOAD=/home/ray/getenv_trace_preload.so" ]
-# Each getenv is logged as: caller=0x... lib=... symbol=... name_ptr=0x... then name=...
-# so the last line(s) before a crash identify the caller (no addr2line needed).
 # For tests that also use jemalloc: use a single LD_PRELOAD with both paths
 # separated by colon, e.g. LD_PRELOAD=/home/ray/getenv_trace_preload.so:/usr/lib/x86_64-linux-gnu/libjemalloc.so
 
@@ -20,8 +18,10 @@ cat > getenv_preload.c << 'GETENV_EOF'
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <execinfo.h>
 
-static char *(*real_getenv_ptr)(const char *) = NULL;
+#define MAX_FRAMES 64
+#define SKIP_FRAMES 1
 
 static void log_line(const char *line) {
   fputs(line, stderr);
@@ -46,39 +46,31 @@ static getenv_fn resolve_real_getenv(void) {
 }
 
 static char *getenv_real(const char *name) {
-  if (real_getenv_ptr == NULL) return NULL;
-  return real_getenv_ptr(name);
-}
-
-__attribute__((constructor))
-static void getenv_preload_init(void) {
-  real_getenv_ptr = resolve_real_getenv();
+  static getenv_fn real_getenv = NULL;
+  if (real_getenv == NULL) {
+    real_getenv = resolve_real_getenv();
+    if (real_getenv == NULL) return NULL;
+  }
+  return real_getenv(name);
 }
 
 char *getenv(const char *name) {
-  /* Log caller/lib/symbol first (no dereference of name). Flush. Then log name
-   * on a separate line so if name is a bad pointer and causes SIGSEGV, we
-   * already have the caller info and name_ptr. */
-  void *caller = __builtin_return_address(0);
-  char line[1024];
-  Dl_info info;
-  if (dladdr(caller, &info) != 0 && (info.dli_sname != NULL || info.dli_fname != NULL)) {
-    const char *lib = info.dli_fname ? info.dli_fname : "?";
-    const char *sym = info.dli_sname ? info.dli_sname : "?";
-    unsigned long offset = info.dli_saddr
-        ? (unsigned long)caller - (unsigned long)info.dli_saddr
-        : 0;
-    snprintf(line, sizeof(line),
-             "[getenv_preload] caller=%p lib=%s symbol=%s+0x%lx name_ptr=%p\n",
-             caller, lib, sym, offset, (void *)name);
-  } else {
-    snprintf(line, sizeof(line), "[getenv_preload] caller=%p name_ptr=%p\n",
-             caller, (void *)name);
+  void *buf[MAX_FRAMES];
+  int n = backtrace(buf, MAX_FRAMES);
+  char **syms = backtrace_symbols(buf, n);
+
+  if (syms != NULL) {
+    char line[4096];
+    snprintf(line, sizeof(line), "[getenv_preload] getenv(%s) called from:\n",
+             name ? name : "(null)");
+    log_line(line);
+    for (int i = SKIP_FRAMES; i < n && i < MAX_FRAMES; i++) {
+      snprintf(line, sizeof(line), "  #%d %s\n", i - SKIP_FRAMES, syms[i]);
+      log_line(line);
+    }
+    log_line("\n");
+    free(syms);
   }
-  log_line(line);
-  /* Separate line for name (may fault if name is invalid). */
-  snprintf(line, sizeof(line), "[getenv_preload] name=%s\n", name ? name : "(null)");
-  log_line(line);
 
   return getenv_real(name);
 }
