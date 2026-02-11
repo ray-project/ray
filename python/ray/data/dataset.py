@@ -4350,6 +4350,7 @@ class Dataset:
         partition_cols: Optional[List[str]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional["pyarrow.Schema"] = None,
+        schema_mode: str = "merge",
         ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         **write_kwargs,
@@ -4420,7 +4421,7 @@ class Dataset:
                 detected based on the path scheme (s3://, gs://, etc.).
             schema: PyArrow schema for the table. If None, inferred from the data.
                 Schema inference may fail for complex types; provide explicit schema
-                if needed. **PR 1: Schema evolution not supported.** Will be added in PR 4.
+                if needed. Schema evolution is supported via ``schema_mode`` parameter.
             ray_remote_args: Arguments passed to :func:`ray.remote` for write tasks.
                 Use to configure resources such as ``num_cpus`` or ``num_gpus``.
             concurrency: Maximum number of concurrent write tasks. By default,
@@ -4433,7 +4434,12 @@ class Dataset:
                 * configuration: Delta table configuration options (dict)
                 * compression: Parquet compression codec ("snappy", "gzip", "zstd", etc.)
 
-                Note: Other write_kwargs (schema_mode, upsert_kwargs, partition_overwrite_mode,
+                * schema_mode: Schema evolution mode when writing to existing tables:
+                  - "merge" (default): Automatically add new columns from incoming data.
+                    Existing columns must have compatible types.
+                  - "error": Raise error if schemas differ. Use for strict schema enforcement.
+
+                Note: Other write_kwargs (upsert_kwargs, partition_overwrite_mode,
                 target_file_size_bytes) will be added in subsequent PRs.
 
         Raises:
@@ -4443,12 +4449,14 @@ class Dataset:
                 or if unsupported write_kwargs are provided (PR 1 limitations).
 
         Note:
-            **PR 3 Features:**
+            **PR 4 Features:**
 
             * **ACID guarantees**: Uses a two-phase commit protocol ensuring atomicity.
               Either all files become visible or none do.
-            * **Write modes**: Append, overwrite, ignore, and error modes.
+            * **Schema evolution**: Automatically add new columns when writing to existing
+              tables (controlled by ``schema_mode`` parameter).
             * **Partitioning**: Hive-style partitioning support.
+            * **Write modes**: Append, overwrite, ignore, and error modes.
 
             The two-phase commit protocol:
 
@@ -4461,7 +4469,6 @@ class Dataset:
             by running Delta's VACUUM command.
 
             **Future PRs will add:**
-            * Schema evolution (PR 4)
             * Time travel reads (PR 5)
             * Upsert mode (PR 6)
             * Partition overwrite modes (PR 7)
@@ -4503,49 +4510,42 @@ class Dataset:
             )
             partition_cols = validate_partition_column_names(partition_cols)
 
-        # PR 3: Schema evolution not supported yet
-        if "schema_mode" in write_kwargs:
+        # PR 4: Schema evolution now supported via schema_mode parameter
+        # Allow schema_mode to be passed in write_kwargs for backward compatibility
+        schema_mode = write_kwargs.pop("schema_mode", "merge")
+        if schema_mode not in ("merge", "error"):
             raise ValueError(
-                "PR 3: schema_mode not supported. Schema evolution will be added in PR 4."
+                f"Invalid schema_mode '{schema_mode}'. Supported: ['merge', 'error']"
             )
 
-        # PR 3: Upsert not supported yet
+        # PR 4: Upsert not supported yet
         if "upsert_kwargs" in write_kwargs:
             raise ValueError(
-                "PR 3: upsert_kwargs not supported. Upsert mode will be added in PR 6."
+                "PR 4: upsert_kwargs not supported. Upsert mode will be added in PR 6."
             )
 
-        # PR 3: Partition overwrite not supported yet
+        # PR 4: Partition overwrite not supported yet
         if "partition_overwrite_mode" in write_kwargs:
             raise ValueError(
-                "PR 3: partition_overwrite_mode not supported. "
+                "PR 4: partition_overwrite_mode not supported. "
                 "Partition overwrite modes will be added in PR 7."
             )
 
-        # PR 3: File buffering not supported yet
+        # PR 4: File buffering not supported yet
         if "target_file_size_bytes" in write_kwargs:
             raise ValueError(
-                "PR 3: target_file_size_bytes not supported. "
+                "PR 4: target_file_size_bytes not supported. "
                 "File buffering will be added in PR 8."
             )
 
-        # PR 3: Write modes and partitioning supported, but no schema_mode yet
+        # PR 4: Write modes, partitioning, and schema evolution supported
         datasink = DeltaDatasink(
             path,
             mode=mode,
-            partition_cols=partition_cols or [],  # PR 3: Partitioning now supported
+            partition_cols=partition_cols or [],  # PR 3: Partitioning supported
             filesystem=filesystem,
             schema=schema,
-            schema_mode="merge",  # PR 3: Not used, but required parameter
-            **write_kwargs,
-        )
-        datasink = DeltaDatasink(
-            path,
-            mode=mode,
-            partition_cols=[],  # PR 2: No partitioning yet
-            filesystem=filesystem,
-            schema=schema,
-            schema_mode="merge",  # PR 2: Not used, but required parameter
+            schema_mode=schema_mode,  # PR 4: Schema evolution now supported
             **write_kwargs,
         )
         self.write_datasink(
