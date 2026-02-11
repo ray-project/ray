@@ -25,6 +25,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/metric_interface.h"
+#include "ray/observability/python_event_interface.h"
 #include "ray/observability/ray_actor_definition_event.h"
 #include "ray/observability/ray_actor_lifecycle_event.h"
 #include "ray/observability/ray_driver_job_definition_event.h"
@@ -32,6 +33,7 @@
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/public/events_base_event.pb.h"
 #include "src/ray/protobuf/public/events_driver_job_lifecycle_event.pb.h"
+#include "src/ray/protobuf/public/events_submission_job_definition_event.pb.h"
 
 namespace ray {
 namespace observability {
@@ -451,6 +453,60 @@ TEST_F(RayEventRecorderTest, TestExportSkipsWhenGrpcInProgress) {
             "test_job_id_first");
   EXPECT_EQ(recorded_events[1].driver_job_definition_event().job_id(),
             "test_job_id_second");
+}
+
+// Test that non-mergeable events (e.g., PythonRayEvent) with the same entity_id
+// and event_type are NOT merged — each is exported individually.
+TEST_F(RayEventRecorderTest, TestSkipMergeForNonMergeableEvents) {
+  RayConfig::instance().initialize(
+      R"(
+{
+"enable_ray_event": true
+}
+)");
+  recorder_->StartExportingEvents();
+
+  // Create two PythonRayEvents with the same entity_id and event_type.
+  rpc::events::SubmissionJobDefinitionEvent def_event_1;
+  def_event_1.set_submission_id("sub-1");
+  def_event_1.set_entrypoint("python script1.py");
+
+  rpc::events::SubmissionJobDefinitionEvent def_event_2;
+  def_event_2.set_submission_id("sub-1");
+  def_event_2.set_entrypoint("python script2.py");
+
+  // Field number 19 = submission_job_definition_event in RayEvent proto.
+  constexpr int kFieldNumber = 19;
+
+  std::vector<std::unique_ptr<RayEventInterface>> events;
+  events.push_back(CreatePythonRayEvent(
+      static_cast<int>(rpc::events::RayEvent::GCS),
+      static_cast<int>(rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT),
+      static_cast<int>(rpc::events::RayEvent::INFO),
+      "sub-1",
+      "",
+      "test_session",
+      def_event_1.SerializeAsString(),
+      kFieldNumber));
+  events.push_back(CreatePythonRayEvent(
+      static_cast<int>(rpc::events::RayEvent::GCS),
+      static_cast<int>(rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT),
+      static_cast<int>(rpc::events::RayEvent::INFO),
+      "sub-1",
+      "",
+      "test_session",
+      def_event_2.SerializeAsString(),
+      kFieldNumber));
+  recorder_->AddEvents(std::move(events));
+  io_service_.run_one();
+
+  std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
+  // Both events should be exported individually (not merged).
+  ASSERT_EQ(recorded_events.size(), 2);
+  EXPECT_EQ(recorded_events[0].submission_job_definition_event().entrypoint(),
+            "python script1.py");
+  EXPECT_EQ(recorded_events[1].submission_job_definition_event().entrypoint(),
+            "python script2.py");
 }
 
 }  // namespace observability
