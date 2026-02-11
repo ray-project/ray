@@ -13,10 +13,10 @@ import torch
 import ray
 import ray._private
 import ray.cluster_utils
+from ray._common.test_utils import run_string_as_driver
 from ray._common.utils import (
     get_or_create_event_loop,
 )
-from ray._private.test_utils import run_string_as_driver
 from ray.dag import DAGContext, InputNode, MultiOutputNode
 from ray.dag.tests.experimental.actor_defs import Actor, Collector
 from ray.exceptions import RayChannelTimeoutError
