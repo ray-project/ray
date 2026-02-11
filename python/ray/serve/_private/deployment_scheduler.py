@@ -8,10 +8,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from functools import total_ordering
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
-
-if TYPE_CHECKING:
-    from ray.util.placement_group import PlacementGroup
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray._raylet import node_labels_match_selector
@@ -31,6 +28,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
 )
+from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
     LabelMatchExpressionsT,
     NodeAffinitySchedulingStrategy,
@@ -168,7 +166,7 @@ class ReplicaSchedulingRequest:
     max_replicas_per_node: Optional[int] = None
     # Gang scheduling fields -- if set, replica should be scheduled on
     # the reserved gang placement group at the specified bundle index.
-    gang_placement_group: Optional["PlacementGroup"] = None
+    gang_placement_group: Optional[PlacementGroup] = None
     gang_replica_rank: Optional[int] = None
 
     @property
