@@ -277,10 +277,10 @@ class NixlTensorTransport(TensorTransportManager):
             if local_xfer_descs:
                 for tensor in tensors:
                     key = tensor.data_ptr()
-                    if key not in self._cached_memory_registrations and key in self._tensor_desc_cache:
-                        print("DEREGISTERING MEMORY", key)
-                        nixl_agent.deregister_memory(self._tensor_desc_cache[key].reg_desc)
-                        self._tensor_desc_cache.pop(key)
+                    if key in self._cached_memory_registrations:
+                        pass
+                    nixl_agent.deregister_memory(self._tensor_desc_cache[key].reg_desc)
+                    self._tensor_desc_cache.pop(key)
 
         return tensors
 
