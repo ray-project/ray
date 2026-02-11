@@ -85,6 +85,9 @@ class DefaultModelConfig:
     #: Kwargs passed into the initializer function defined through
     #: `fcnet_bias_initializer`.
     fcnet_bias_initializer_kwargs: Optional[dict] = None
+    #: Whether to insert a LayerNorm functionality in between each hidden layer's output
+    #: and its activation in the stack configured by `fcnet_hiddens`.
+    fcnet_use_layernorm: bool = False
     # __sphinx_doc_default_model_config_fcnet_end__
 
     # ====================================================
