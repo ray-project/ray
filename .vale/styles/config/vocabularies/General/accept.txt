@@ -77,6 +77,7 @@ KTO
 kubectl
 Kubernetes
 Kueue
+[Ll]angfuse
 lakehouse(s)?
 LGBM
 LLMServer
@@ -105,12 +106,14 @@ Podman
 preemptible
 pretraining
 productionize
+Palo
 Pythonic
 QPS
 Quantizing
 Quickstarts
 Qwen
 Reimplement
+REST
 retrigger
 RISECamp
 RLHF
@@ -126,6 +129,7 @@ streamable
 Softmax
 streamable
 subprocess
+[Ss]uperset
 teardown
 tiktoken
 TPU(s)?
