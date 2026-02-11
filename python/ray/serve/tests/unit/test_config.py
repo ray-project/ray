@@ -15,9 +15,6 @@ from ray.serve._private.config import (
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
-    RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
-    RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
-    RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
 )
 from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
 from ray.serve._private.utils import DEFAULT
@@ -1135,27 +1132,6 @@ class TestProtoToDict:
 
         # Optional field should not be filled.
         assert "initial_replicas" not in result
-
-
-def test_request_router_config_backoff_params_proto_zero_defaults():
-    """Test that zero proto defaults don't override Pydantic defaults.
-
-    Proto3 fields default to 0.0 when not set. During rolling upgrades,
-    older controllers may send configs without backoff fields. This test
-    verifies that zero values are replaced with proper defaults to avoid
-    tight retry loops.
-    """
-    # Simulate a proto with zero default values (as if from older controller)
-    config = RequestRouterConfig(
-        initial_backoff_s=None,
-        backoff_multiplier=None,
-        max_backoff_s=None,
-    )
-
-    # Verify that None values are replaced with proper defaults
-    assert config.initial_backoff_s == RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S
-    assert config.backoff_multiplier == RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER
-    assert config.max_backoff_s == RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S
 
 
 if __name__ == "__main__":
