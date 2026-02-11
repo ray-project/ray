@@ -613,6 +613,14 @@ def test_audio_model(
 
 
 class TestVLLMEngineProcessorConfig:
+    def test_build_processor_autoconfig_failure(self):
+        config = vLLMEngineProcessorConfig(
+            model_source="nonexistent-org/nonexistent-model",
+        )
+
+        processor = build_processor(config)
+        assert processor is not None
+
     @pytest.mark.parametrize(
         "experimental_config",
         [
