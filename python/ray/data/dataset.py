@@ -4536,23 +4536,14 @@ class Dataset:
                 "File buffering will be added in PR 8."
             )
 
-        # PR 3: Write modes and partitioning supported, but no schema_mode yet
+        # PR 7: Partition overwrite mode now supported
         datasink = DeltaDatasink(
             path,
             mode=mode,
-            partition_cols=partition_cols or [],  # PR 3: Partitioning now supported
+            partition_cols=partition_cols or [],
             filesystem=filesystem,
             schema=schema,
-            schema_mode="merge",  # PR 3: Not used, but required parameter
-            **write_kwargs,
-        )
-        datasink = DeltaDatasink(
-            path,
-            mode=mode,
-            partition_cols=[],  # PR 2: No partitioning yet
-            filesystem=filesystem,
-            schema=schema,
-            schema_mode="merge",  # PR 2: Not used, but required parameter
+            schema_mode=schema_mode,
             **write_kwargs,
         )
         self.write_datasink(
