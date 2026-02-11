@@ -2,7 +2,7 @@
 
 **Time to complete:** 20 min
 
-This template shows how to train large language models using tensor parallelism with PyTorch's native [Distributed Tensor API](https://docs.pytorch.org/docs/stable/distributed.tensor.html) and Ray Train for distributed execution.
+This template shows how to train large language models using tensor parallelism with PyTorch's native [DTensor (Distributed Tensor) API](https://docs.pytorch.org/docs/stable/distributed.tensor.html) and Ray Train for distributed execution.
 
 **Tensor Parallelism (TP)** shards model weights across multiple GPUs, enabling training of models that are too large to fit on a single GPU. Combined with **Data Parallelism (DP)**, this creates a powerful **2D parallelism** strategy that scales efficiently to many GPUs.
 
@@ -57,7 +57,7 @@ We can combine two complementary parallelization strategies:
 
 This tutorial uses **FSDP2** for data parallelism instead of the older `DistributedDataParallel` (DDP). While DDP replicates the entire model on each GPU, FSDP2 shards model parameters across the data parallel dimension, significantly reducing memory usage.
 
-Additionally, FSDP2 is built on the same Distributed Tensor primitives as tensor parallelism, which makes them naturally composable for 2D parallelism.
+Additionally, FSDP2 is built on the same DTensor primitives as tensor parallelism, which makes them naturally composable for 2D parallelism.
 
 The following figure shows the dataflow of a forward pass using tensor parallelism and FSDP2. Assume we split a parameter tensor row-wise in a tensor-parallel layer. The input tensor (activations) must be partitioned column-wise. After multiplying the local shards, we run an all-reduce to produce the layer output.
 
@@ -110,12 +110,9 @@ pip install torch transformers datasets
 
 
 ```python
-# Enable Ray Train V2 for the latest train APIs
-import os
-os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
-
 import json
 import logging
+import os
 import tempfile
 import uuid
 
@@ -231,9 +228,9 @@ def create_dataloader(
     return DataLoader(tokenized, batch_size=batch_size_per_gpu, sampler=sampler, drop_last=True)
 ```
 
-## 3. Model parallelization with the Distributed Tensor API
+## 3. Model parallelization with the DTensor API
 
-PyTorch's Distributed Tensor API provides native tensor parallelism through the `parallelize_module` API. For transformer models, you apply:
+PyTorch's DTensor API provides native tensor parallelism through the `parallelize_module` API. For transformer models, you apply:
 
 - **ColwiseParallel**: Splits output features across TP ranks (used for q, k, v projections and MLP up projections)
 - **RowwiseParallel**: Splits input features across TP ranks (used for output projections and MLP down projections)
@@ -264,7 +261,7 @@ def setup_model_with_tp(
     seed: int,
 ):
     """
-    Set up the model with tensor parallelism (Distributed Tensor) and data parallelism (FSDP2).
+    Set up the model with tensor parallelism (DTensor) and data parallelism (FSDP2).
     
     Returns:
         tuple: (model, tp_mesh, dp_mesh, tp_rank, dp_rank)
@@ -334,7 +331,7 @@ def setup_model_with_tp(
     if world_rank == 0:
         logger.info(f"Applying tensor parallelism to {len(layers)} layers")
 
-    # [4] Apply Distributed Tensor TP to transformer layers
+    # [4] Apply DTensor TP to transformer layers
     for layer in layers:
         parallelize_module(layer, tp_mesh, tp_mapping)
 
@@ -364,6 +361,10 @@ def setup_model_with_tp(
 ## 4. Checkpointing
 
 With tensor parallelism, each worker holds a shard of the model. Checkpointing saves each shard independently, and Ray Train aggregates them into a single checkpoint.
+
+In this example, each rank writes `model_rank{world_rank}.pt` and `optimizer_rank{world_rank}.pt`, while rank 0 additionally writes `metadata.json` (for `epoch`/`step`). Calling `ray.train.report(..., checkpoint=...)` on all workers lets Ray package these per-rank files into one logical checkpoint artifact.
+
+On restore, each worker loads its own shard file based on `world_rank` (instead of materializing the full model on every worker), then resumes from `metadata.json`. This keeps checkpoint I/O and memory overhead low and aligns naturally with DTensor/FSDP sharding.
 
 
 ```python
@@ -398,6 +399,34 @@ def save_checkpoint(
         # All workers must call report() with their checkpoint
         checkpoint = Checkpoint.from_directory(checkpoint_dir)
         ray.train.report({"loss": avg_loss, "epoch": epoch}, checkpoint=checkpoint)
+
+
+def load_checkpoint(
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    world_rank: int,
+    device: torch.device,
+) -> int:
+    """Load worker-local model/optimizer shards from the latest Ray Train checkpoint."""
+    checkpoint = ray.train.get_checkpoint()
+    if checkpoint is None:
+        return 0
+
+    with checkpoint.as_directory() as checkpoint_dir:
+        model_path = os.path.join(checkpoint_dir, f"model_rank{world_rank}.pt")
+        optimizer_path = os.path.join(checkpoint_dir, f"optimizer_rank{world_rank}.pt")
+        metadata_path = os.path.join(checkpoint_dir, "metadata.json")
+
+        model.load_state_dict(torch.load(model_path, map_location=device))
+        optimizer.load_state_dict(torch.load(optimizer_path, map_location=device))
+
+        start_epoch = 0
+        if os.path.exists(metadata_path):
+            with open(metadata_path, "r") as f:
+                metadata = json.load(f)
+            start_epoch = metadata.get("epoch", -1) + 1
+
+    return start_epoch
 ```
 
 ## 5. Training loop
@@ -412,7 +441,7 @@ def train_func(config):
 
     This function:
     1. Sets up the 2D device mesh for TP + DP
-    2. Creates and shards the model with Distributed Tensor (TP) and FSDP2 (DP)
+    2. Creates and shards the model with DTensor (TP) and FSDP2 (DP)
     3. Runs the training loop with checkpointing
     """
     # Get Ray Train context
@@ -445,6 +474,7 @@ def train_func(config):
         weight_decay=config.get("weight_decay", 0.01),
         foreach=False,
     )
+    start_epoch = load_checkpoint(model, optimizer, world_rank, device)
 
     dtype = get_mixed_precision_dtype()
 
@@ -472,7 +502,7 @@ def train_func(config):
     # Training loop
     model.train()
 
-    for epoch in range(config["num_epochs"]):
+    for epoch in range(start_epoch, config["num_epochs"]):
         dataloader.sampler.set_epoch(epoch)
 
         running_loss = 0.0
@@ -599,10 +629,9 @@ print(f"Final metrics: {result.metrics}")
 
 ## Scaling to larger models
 
-To train larger models like Qwen2-7B or Llama-3-8B, adjust the configuration:
+To train larger models like Qwen2-7B or Llama-3-8B, adjust the configuration. For example, on 8 GPUs you can use 4-way TP and 2-way DP:
 
 ```python
-# For 8 GPUs: 4-way TP, 2-way DP
 train_loop_config = {
     "model_name": "Qwen/Qwen2-7B",
     "tp_size": 4,
@@ -630,9 +659,9 @@ In this tutorial, you learned:
 
 - How to combine tensor parallelism and data parallelism for 2D parallelism
 - How to set up a 2D device mesh with PyTorch
-- How to apply tensor parallelism with the Distributed Tensor API to transformer layers
+- How to apply tensor parallelism with the DTensor API to transformer layers
 - The importance of TP-aware data loading for correct gradient computation
-- How to combine the Distributed Tensor API with FSDP2 for 2D parallelism
+- How to combine the DTensor API with FSDP2 for 2D parallelism
 - How to save distributed checkpoints with Ray Train
 
 For production training of large models, consider:
