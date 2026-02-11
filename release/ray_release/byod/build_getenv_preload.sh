@@ -1,6 +1,6 @@
 #!/bin/bash
 # Builds getenv_trace_preload.so and installs to container home for use with
-# LD_PRELOAD in runtime_env (to trace getenv calls from all libraries).
+# LD_PRELOAD in runtime_env (to trace getenv/setenv/putenv/unsetenv from all libraries).
 # Use with: cluster.byod.post_build_script: build_getenv_preload.sh
 #           cluster.byod.runtime_env: [ "LD_PRELOAD=/home/ray/getenv_trace_preload.so" ]
 # For tests that also use jemalloc: use a single LD_PRELOAD with both paths
@@ -15,6 +15,7 @@ cd "$INSTALL_DIR"
 cat > getenv_preload.c << 'GETENV_EOF'
 #define _GNU_SOURCE
 #include <dlfcn.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,62 +23,101 @@ cat > getenv_preload.c << 'GETENV_EOF'
 
 #define MAX_FRAMES 64
 #define SKIP_FRAMES 1
+#define LOG_BUF_SIZE (64 * 1024)
 
-static void log_line(const char *line) {
-  fputs(line, stderr);
-  fflush(stderr);
-  fputs(line, stdout);
-  fflush(stdout);
+static char log_buf[LOG_BUF_SIZE];
+static size_t log_pos;
+
+static void buf_append(const char *fmt, ...) {
+  if (log_pos >= LOG_BUF_SIZE) return;
+  va_list ap;
+  va_start(ap, fmt);
+  int n = vsnprintf(log_buf + log_pos, LOG_BUF_SIZE - log_pos, fmt, ap);
+  va_end(ap);
+  if (n > 0) log_pos += (size_t)n;
+}
+
+static void buf_flush(void) {
+  if (log_pos > 0) {
+    fputs(log_buf, stderr);
+    fflush(stderr);
+  }
+  log_pos = 0;
 }
 
 typedef char *(*getenv_fn)(const char *);
-
-static getenv_fn resolve_real_getenv(void) {
-#ifdef __APPLE__
-  void *libc = dlopen("/usr/lib/system/libsystem_c.dylib", RTLD_NOW);
-  if (libc != NULL) {
-    getenv_fn fn = (getenv_fn)dlsym(libc, "getenv");
-    if (fn != NULL) return fn;
-  }
-  return NULL;
-#else
-  return (getenv_fn)dlsym(RTLD_NEXT, "getenv");
-#endif
-}
+typedef int (*setenv_fn)(const char *, const char *, int);
+typedef int (*putenv_fn)(char *);
+typedef int (*unsetenv_fn)(const char *);
 
 static char *getenv_real(const char *name) {
-  static getenv_fn real_getenv = NULL;
-  if (real_getenv == NULL) {
-    real_getenv = resolve_real_getenv();
-    if (real_getenv == NULL) return NULL;
-  }
-  return real_getenv(name);
+  static getenv_fn real = NULL;
+  if (real == NULL) real = (getenv_fn)dlsym(RTLD_NEXT, "getenv");
+  return real ? real(name) : NULL;
 }
 
-char *getenv(const char *name) {
-  /* Print backtrace first (does not dereference name). Then print name on a
-   * separate line so if name is a bad pointer and causes SIGSEGV, we already
-   * have the backtrace identifying the caller. */
-  char line[4096];
+static int setenv_real(const char *name, const char *value, int overwrite) {
+  static setenv_fn real = NULL;
+  if (real == NULL) real = (setenv_fn)dlsym(RTLD_NEXT, "setenv");
+  return real ? real(name, value, overwrite) : -1;
+}
+
+static int putenv_real(char *string) {
+  static putenv_fn real = NULL;
+  if (real == NULL) real = (putenv_fn)dlsym(RTLD_NEXT, "putenv");
+  return real ? real(string) : -1;
+}
+
+static int unsetenv_real(const char *name) {
+  static unsetenv_fn real = NULL;
+  if (real == NULL) real = (unsetenv_fn)dlsym(RTLD_NEXT, "unsetenv");
+  return real ? real(name) : -1;
+}
+
+static void log_backtrace_append(const char *tag) {
   void *buf[MAX_FRAMES];
   int n = backtrace(buf, MAX_FRAMES);
   char **syms = backtrace_symbols(buf, n);
-
   if (syms != NULL) {
-    snprintf(line, sizeof(line), "[getenv_preload] backtrace:\n");
-    log_line(line);
-    for (int i = SKIP_FRAMES; i < n && i < MAX_FRAMES; i++) {
-      snprintf(line, sizeof(line), "  #%d %s\n", i - SKIP_FRAMES, syms[i]);
-      log_line(line);
-    }
-    log_line("\n");
+    buf_append("[getenv_preload] %s backtrace:\n", tag);
+    for (int i = SKIP_FRAMES; i < n && i < MAX_FRAMES; i++)
+      buf_append("  #%d %s\n", i - SKIP_FRAMES, syms[i]);
+    buf_append("\n");
     free(syms);
   }
+}
 
-  snprintf(line, sizeof(line), "[getenv_preload] name=%s\n", name ? name : "(null)");
-  log_line(line);
-
+char *getenv(const char *name) {
+  log_pos = 0;
+  buf_append("[getenv_preload] getenv name=%s\n", name ? name : "(null)");
+  log_backtrace_append("getenv");
+  buf_flush();
   return getenv_real(name);
+}
+
+int setenv(const char *name, const char *value, int overwrite) {
+  log_pos = 0;
+  buf_append("[getenv_preload] setenv name=%s value=%s overwrite=%d\n",
+             name ? name : "(null)", value ? value : "(null)", overwrite);
+  log_backtrace_append("setenv");
+  buf_flush();
+  return setenv_real(name, value, overwrite);
+}
+
+int putenv(char *string) {
+  log_pos = 0;
+  buf_append("[getenv_preload] putenv string=%s\n", string ? string : "(null)");
+  log_backtrace_append("putenv");
+  buf_flush();
+  return putenv_real(string);
+}
+
+int unsetenv(const char *name) {
+  log_pos = 0;
+  buf_append("[getenv_preload] unsetenv name=%s\n", name ? name : "(null)");
+  log_backtrace_append("unsetenv");
+  buf_flush();
+  return unsetenv_real(name);
 }
 GETENV_EOF
 
