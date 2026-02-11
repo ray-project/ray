@@ -3,7 +3,7 @@ from typing import Any, Dict
 
 import pyarrow
 
-from ray.data.datasource.file_datasink import RowBasedFileDatasink
+from ray.data._internal.datasource.file_datasink import RowBasedFileDatasink
 
 
 class ImageDatasink(RowBasedFileDatasink):

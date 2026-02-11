@@ -1,8 +1,8 @@
 import numpy as np
 import pyarrow
 
+from ray.data._internal.datasource.file_datasink import BlockBasedFileDatasink
 from ray.data.block import BlockAccessor
-from ray.data.datasource.file_datasink import BlockBasedFileDatasink
 
 
 class NumpyDatasink(BlockBasedFileDatasink):

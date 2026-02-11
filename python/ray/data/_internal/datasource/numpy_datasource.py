@@ -3,8 +3,8 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 import numpy as np
 
+from ray.data._internal.datasource.file_based_datasource import FileBasedDatasource
 from ray.data.block import Block, BlockAccessor
-from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
 if TYPE_CHECKING:
     import pyarrow

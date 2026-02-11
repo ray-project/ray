@@ -24,6 +24,26 @@ from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
 )
+from ray.data._internal.datasource import Datasource
+from ray.data._internal.datasource.datasource import ReadTask
+from ray.data._internal.datasource.file_based_datasource import (
+    _shuffle_file_metadata,
+    _validate_shuffle_arg,
+)
+from ray.data._internal.datasource.file_meta_provider import (
+    FileMetadataProvider,
+    _handle_read_os_error,
+    _list_files,
+)
+from ray.data._internal.datasource.partitioning import (
+    PartitionDataType,
+    Partitioning,
+    PathPartitionFilter,
+    PathPartitionParser,
+)
+from ray.data._internal.datasource.path_util import (
+    _resolve_paths_and_filesystem,
+)
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
@@ -38,26 +58,6 @@ from ray.data._internal.util import (
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
-from ray.data.datasource import Datasource
-from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_based_datasource import (
-    _shuffle_file_metadata,
-    _validate_shuffle_arg,
-)
-from ray.data.datasource.file_meta_provider import (
-    FileMetadataProvider,
-    _handle_read_os_error,
-    _list_files,
-)
-from ray.data.datasource.partitioning import (
-    PartitionDataType,
-    Partitioning,
-    PathPartitionFilter,
-    PathPartitionParser,
-)
-from ray.data.datasource.path_util import (
-    _resolve_paths_and_filesystem,
-)
 from ray.data.expressions import BinaryExpr, Expr, Operation
 from ray.util.debug import log_once
 
@@ -869,7 +869,9 @@ def _read_batches_from(
 
     import pyarrow as pa
 
-    from ray.data.datasource.datasource import _DatasourceProjectionPushdownMixin
+    from ray.data._internal.datasource.datasource import (
+        _DatasourceProjectionPushdownMixin,
+    )
 
     # Copy to avoid modifying passed in arg
     to_batches_kwargs = dict(to_batches_kwargs or {})

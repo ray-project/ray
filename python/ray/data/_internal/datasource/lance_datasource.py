@@ -4,10 +4,10 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 import numpy as np
 
 from ray._common.retry import call_with_retry
+from ray.data._internal.datasource.datasource import Datasource, ReadTask
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
-from ray.data.datasource.datasource import Datasource, ReadTask
 
 if TYPE_CHECKING:
     import pyarrow

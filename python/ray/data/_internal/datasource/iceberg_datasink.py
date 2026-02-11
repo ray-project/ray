@@ -6,11 +6,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
 
 from ray._common.retry import call_with_retry
+from ray.data._internal.datasource.datasink import Datasink, WriteResult
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.savemode import SaveMode
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 

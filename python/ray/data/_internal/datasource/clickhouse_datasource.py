@@ -2,9 +2,9 @@ import logging
 import math
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Tuple
 
+from ray.data._internal.datasource.datasource import Datasource, ReadTask
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor, BlockMetadata
-from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:

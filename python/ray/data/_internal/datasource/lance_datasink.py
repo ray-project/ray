@@ -14,9 +14,9 @@ from typing import (
 
 import pyarrow as pa
 
+from ray.data._internal.datasource.datasink import Datasink
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockAccessor
-from ray.data.datasource.datasink import Datasink
 
 if TYPE_CHECKING:
     import pandas as pd

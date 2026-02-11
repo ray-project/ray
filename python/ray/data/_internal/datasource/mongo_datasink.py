@@ -1,6 +1,7 @@
 import logging
 from typing import Iterable
 
+from ray.data._internal.datasource.datasink import Datasink
 from ray.data._internal.datasource.mongo_datasource import (
     _validate_database_collection_exist,
 )
@@ -8,7 +9,6 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
-from ray.data.datasource.datasink import Datasink
 
 logger = logging.getLogger(__name__)
 
