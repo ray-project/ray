@@ -129,6 +129,10 @@ def test_grpc_routing_without_metadata(ray_cluster):
     with or without the metadata. If there are multiple app deployed, without metadata
     will return a notfound response.
     """
+    # Routing doesn't happen in direct ingress mode.
+    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     cluster = ray_cluster
     cluster.add_node(num_cpus=2)
     cluster.connect(namespace=SERVE_NAMESPACE)
@@ -184,6 +188,10 @@ def test_grpc_request_with_request_id(ray_cluster):
     the trailing metadata. When request id is passed, gRPC proxy will respond with the
     original request id.
     """
+    # Custom request id is not yet supported for direct ingress
+    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     cluster = ray_cluster
     cluster.add_node(num_cpus=2)
     cluster.connect(namespace=SERVE_NAMESPACE)
