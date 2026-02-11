@@ -829,15 +829,84 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       new ray::stats::Gauge(GetOwnedObjectsByStateGaugeMetric()));
   owned_objects_size_counter_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
-  scheduler_placement_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
-      new ray::stats::Histogram(GetSchedulerPlacementTimeMsHistogramMetric()));
-  task_total_submitter_preprocessing_time_ms_histogram_ =
-      std::unique_ptr<ray::stats::Histogram>(new ray::stats::Histogram(
-          GetTaskTotalSubmitterPreprocessingTimeMsHistogramMetric()));
-  task_dependency_resolution_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
-      new ray::stats::Histogram(GetTaskDependencyResolutionTimeMsHistogramMetric()));
-  task_push_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
-      new ray::stats::Histogram(GetTaskPushTimeMsHistogramMetric()));
+
+  // Initialize comparison metrics (wrappers that record to all 3 implementations)
+  // Each ComparisonMetric records to: histogram, percentile, and exponential histogram
+  task_total_submitter_preprocessing_time_ms_histogram_ = std::make_unique<
+      ray::stats::ComparisonMetric>(
+      std::make_unique<ray::stats::Histogram>(
+          "task_total_submitter_preprocessing_time_ms",
+          "Total submitter-side time from task submission to task being pushed to the "
+          "worker, including dependency resolution and scheduling.",
+          "ms",
+          std::vector<double>{
+              1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
+          std::vector<std::string>{}),
+      GetTaskTotalSubmitterPreprocessingTimeMsPercentileMetric(),
+      std::make_unique<ray::stats::ExponentialHistogram>(
+          "task_total_submitter_preprocessing_time_ms_exponential",
+          "Exponential histogram: Total submitter-side time from task submission to task "
+          "being pushed.",
+          "ms",
+          160,
+          20,
+          std::vector<std::string>{}));
+
+  task_dependency_resolution_time_ms_histogram_ =
+      std::make_unique<ray::stats::ComparisonMetric>(
+          std::make_unique<ray::stats::Histogram>(
+              "task_dependency_resolution_time_ms",
+              "Time from task submission to dependency resolution completion.",
+              "ms",
+              std::vector<double>{
+                  1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
+              std::vector<std::string>{}),
+          GetTaskDependencyResolutionTimeMsPercentileMetric(),
+          std::make_unique<ray::stats::ExponentialHistogram>(
+              "task_dependency_resolution_time_ms_exponential",
+              "Exponential histogram: Time from task submission to dependency resolution "
+              "completion.",
+              "ms",
+              160,
+              20,
+              std::vector<std::string>{}));
+
+  task_push_time_ms_histogram_ = std::make_unique<ray::stats::ComparisonMetric>(
+      std::make_unique<ray::stats::Histogram>(
+          "task_push_time_ms",
+          "Time from worker lease granted to task being pushed to the worker.",
+          "ms",
+          std::vector<double>{
+              1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
+          std::vector<std::string>{}),
+      GetTaskPushTimeMsPercentileMetric(),
+      std::make_unique<ray::stats::ExponentialHistogram>(
+          "task_push_time_ms_exponential",
+          "Exponential histogram: Time from worker lease granted to task being pushed.",
+          "ms",
+          160,
+          20,
+          std::vector<std::string>{}));
+
+  scheduler_placement_time_ms_histogram_ = std::make_unique<ray::stats::ComparisonMetric>(
+      std::make_unique<ray::stats::Histogram>(
+          "scheduler_placement_time_ms",
+          "The time it takes for a workload (task, actor, placement group) to be placed. "
+          "This is the time from when the tasks dependencies are resolved to when it "
+          "actually reserves resources on a node to run.",
+          "ms",
+          std::vector<double>{
+              1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
+          std::vector<std::string>{"WorkloadType"}),
+      GetSchedulerPlacementTimeMsPercentileMetric(),
+      std::make_unique<ray::stats::ExponentialHistogram>(
+          "scheduler_placement_time_ms_exponential",
+          "Exponential histogram: Time for workload placement from dependency resolution "
+          "to resource reservation.",
+          "ms",
+          160,
+          20,
+          std::vector<std::string>{"WorkloadType"}));
 
   // Initialize event framework before starting up worker.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {

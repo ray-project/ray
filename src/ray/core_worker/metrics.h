@@ -14,7 +14,10 @@
 
 #pragma once
 
+#include <memory>
+
 #include "ray/stats/metric.h"
+#include "ray/stats/percentile_metric.h"
 
 namespace ray {
 namespace core {
@@ -112,6 +115,81 @@ inline ray::stats::Histogram GetTaskPushTimeMsHistogramMetric() {
       "Time from worker lease granted to task being pushed to the worker.",
       /*unit=*/"ms",
       /*boundaries=*/{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
+      /*tag_keys=*/{},
+  };
+}
+
+// Percentile-based metric variants (for A/B/C testing comparison)
+
+inline std::shared_ptr<ray::stats::PercentileMetric>
+GetTaskTotalSubmitterPreprocessingTimeMsPercentileMetric() {
+  return ray::stats::PercentileMetric::Create(
+      /*name=*/"task_total_submitter_preprocessing_time_ms_percentile",
+      /*description=*/
+      "Percentile-based tracking: Total submitter-side time from task submission to "
+      "task being pushed.",
+      /*unit=*/"ms",
+      /*max_expected_value=*/10000.0);
+}
+
+inline std::shared_ptr<ray::stats::PercentileMetric>
+GetTaskDependencyResolutionTimeMsPercentileMetric() {
+  return ray::stats::PercentileMetric::Create(
+      /*name=*/"task_dependency_resolution_time_ms_percentile",
+      /*description=*/
+      "Percentile-based tracking: Time from task submission to dependency "
+      "resolution completion.",
+      /*unit=*/"ms",
+      /*max_expected_value=*/10000.0);
+}
+
+inline std::shared_ptr<ray::stats::PercentileMetric> GetTaskPushTimeMsPercentileMetric() {
+  return ray::stats::PercentileMetric::Create(
+      /*name=*/"task_push_time_ms_percentile",
+      /*description=*/
+      "Percentile-based tracking: Time from worker lease granted to task being pushed.",
+      /*unit=*/"ms",
+      /*max_expected_value=*/10000.0);
+}
+
+// Exponential histogram variants (for A/B/C testing comparison)
+
+inline ray::stats::ExponentialHistogram
+GetTaskTotalSubmitterPreprocessingTimeMsExponentialHistogramMetric() {
+  return ray::stats::ExponentialHistogram{
+      /*name=*/"task_total_submitter_preprocessing_time_ms_exponential",
+      /*description=*/
+      "Exponential histogram: Total submitter-side time from task submission to task "
+      "being pushed.",
+      /*unit=*/"ms",
+      /*max_size=*/160,
+      /*max_scale=*/20,
+      /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::ExponentialHistogram
+GetTaskDependencyResolutionTimeMsExponentialHistogramMetric() {
+  return ray::stats::ExponentialHistogram{
+      /*name=*/"task_dependency_resolution_time_ms_exponential",
+      /*description=*/
+      "Exponential histogram: Time from task submission to dependency resolution "
+      "completion.",
+      /*unit=*/"ms",
+      /*max_size=*/160,
+      /*max_scale=*/20,
+      /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::ExponentialHistogram GetTaskPushTimeMsExponentialHistogramMetric() {
+  return ray::stats::ExponentialHistogram{
+      /*name=*/"task_push_time_ms_exponential",
+      /*description=*/
+      "Exponential histogram: Time from worker lease granted to task being pushed.",
+      /*unit=*/"ms",
+      /*max_size=*/160,
+      /*max_scale=*/20,
       /*tag_keys=*/{},
   };
 }

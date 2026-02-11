@@ -196,6 +196,32 @@ class Histogram : public Metric {
 
 };  // class Histogram
 
+class ExponentialHistogram : public Metric {
+ public:
+  ExponentialHistogram(const std::string &name,
+                       const std::string &description,
+                       const std::string &unit,
+                       int max_size = 160,
+                       int max_scale = 20,
+                       const std::vector<std::string> &tag_keys = {})
+      : Metric(name, description, unit, tag_keys),
+        max_size_(max_size),
+        max_scale_(max_scale) {
+    if (::RayConfig::instance().enable_open_telemetry()) {
+      RegisterOpenTelemetryMetric();
+    }
+  }
+
+ private:
+  void RegisterView() override;
+  void RegisterOpenTelemetryMetric() override;
+
+ private:
+  int max_size_;
+  int max_scale_;
+
+};  // class ExponentialHistogram
+
 class Count : public Metric {
  public:
   Count(const std::string &name,

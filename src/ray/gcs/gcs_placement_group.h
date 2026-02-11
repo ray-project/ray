@@ -24,6 +24,7 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/metrics.h"
+#include "ray/stats/comparison_metric.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -173,6 +174,34 @@ class GcsPlacementGroup {
     if (stats->scheduling_state() == 0) {
       stats->set_scheduling_state(rpc::PlacementGroupStats::QUEUED);
     }
+
+    // Initialize comparison metric with all three implementations
+    // Construct each metric type directly with its parameters
+    auto histogram = std::make_unique<ray::stats::Histogram>(
+        "scheduler_placement_time_ms",
+        "The time it takes for a workload (task, actor, placement group) to be placed. "
+        "This is the time from when the tasks dependencies are resolved to when it "
+        "actually reserves resources on a node to run.",
+        "ms",
+        std::vector<double>{
+            1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
+        std::vector<std::string>{"WorkloadType"});
+
+    auto exponential = std::make_unique<ray::stats::ExponentialHistogram>(
+        "scheduler_placement_time_ms_exponential",
+        "Exponential histogram: Time for workload placement from dependency resolution "
+        "to resource reservation.",
+        "ms",
+        160,  // max_size
+        20,   // max_scale
+        std::vector<std::string>{"WorkloadType"});
+
+    scheduler_placement_time_ms_histogram_ =
+        std::make_unique<ray::stats::ComparisonMetric>(
+            std::move(histogram),
+            ray::GetSchedulerPlacementTimeMsPercentileMetric(),
+            std::move(exponential));
+
     RefreshMetrics();
   }
 
@@ -208,8 +237,11 @@ class GcsPlacementGroup {
   /// The last recorded metric state.
   std::optional<rpc::PlacementGroupTableData::PlacementGroupState> last_metric_state_;
 
-  ray::stats::Histogram scheduler_placement_time_ms_histogram_{
-      ray::GetSchedulerPlacementTimeMsHistogramMetric()};
+  // Comparison metric - records to all three implementations:
+  // 1. Original histogram (baseline with explicit buckets)
+  // 2. Percentile metric (client-side percentile tracking)
+  // 3. Exponential histogram (OpenTelemetry auto-rescaling buckets)
+  std::unique_ptr<ray::stats::ComparisonMetric> scheduler_placement_time_ms_histogram_;
 };
 
 }  // namespace gcs

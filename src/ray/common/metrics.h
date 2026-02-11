@@ -23,6 +23,7 @@
 #endif  // #ifdef _WIN32
 
 #include "ray/stats/metric.h"
+#include "ray/stats/percentile_metric.h"
 
 namespace ray {
 
@@ -82,6 +83,33 @@ inline ray::stats::Histogram GetSchedulerPlacementTimeMsHistogramMetric() {
       "resolved to when it actually reserves resources on a node to run.",
       /*unit=*/"ms",
       /*boundaries=*/{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
+      /*tag_keys=*/{"WorkloadType"},
+  };
+}
+
+// Percentile-based variant (for A/B/C testing comparison)
+inline std::shared_ptr<ray::stats::PercentileMetric>
+GetSchedulerPlacementTimeMsPercentileMetric() {
+  return ray::stats::PercentileMetric::Create(
+      /*name=*/"scheduler_placement_time_ms_percentile",
+      /*description=*/
+      "Percentile-based tracking: Time for workload placement from dependency "
+      "resolution to resource reservation.",
+      /*unit=*/"ms",
+      /*max_expected_value=*/10000.0);
+}
+
+// Exponential histogram variant (for A/B/C testing comparison)
+inline ray::stats::ExponentialHistogram
+GetSchedulerPlacementTimeMsExponentialHistogramMetric() {
+  return ray::stats::ExponentialHistogram{
+      /*name=*/"scheduler_placement_time_ms_exponential",
+      /*description=*/
+      "Exponential histogram: Time for workload placement from dependency resolution "
+      "to resource reservation.",
+      /*unit=*/"ms",
+      /*max_size=*/160,
+      /*max_scale=*/20,
       /*tag_keys=*/{"WorkloadType"},
   };
 }

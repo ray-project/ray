@@ -33,8 +33,8 @@ void GcsPlacementGroup::UpdateState(
         placement_group_table_data_
             .placement_group_final_bundle_placement_timestamp_ms() -
         placement_group_table_data_.placement_group_creation_timestamp_ms();
-    scheduler_placement_time_ms_histogram_.Record(duration_ms,
-                                                  {{"WorkloadType", "PlacementGroup"}});
+    scheduler_placement_time_ms_histogram_->Record(duration_ms,
+                                                   {{"WorkloadType", "PlacementGroup"}});
   }
   placement_group_table_data_.set_state(state);
   RefreshMetrics();
