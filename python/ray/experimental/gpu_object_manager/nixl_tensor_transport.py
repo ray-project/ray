@@ -65,18 +65,13 @@ class NixlTensorTransport(TensorTransportManager):
         # Lock protecting _tensor_desc_cache and _managed_meta_nixl since they can be
         # accessed from the main task execution thread or the _ray_system thread.
         self._cache_lock = threading.Lock()
+        # LRU cache of remote agent names. When full, the least
+        # recently used remote agent is evicted and remove_remote_agent is called.
+        self._remote_agents: OrderedDict = OrderedDict()
+        # Increment the version whenever memory is deregistered.
+        self._nixl_agent_meta_version = 0
         # Set of data_ptrs to tensors whose memory registrations are cached and not deregistered when the ref goes out of scope.
         self._cached_memory_registrations: set = set()
-        # LRU cache of remote agent names. When full, the least
-        # recently used remote agent is evicted and remove_remote_agent is called.
-        self._remote_agents: OrderedDict = OrderedDict()
-        # Increment the version whenever memory is deregistered.
-        self._nixl_agent_meta_version = 0
-        # LRU cache of remote agent names. When full, the least
-        # recently used remote agent is evicted and remove_remote_agent is called.
-        self._remote_agents: OrderedDict = OrderedDict()
-        # Increment the version whenever memory is deregistered.
-        self._nixl_agent_meta_version = 0
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
