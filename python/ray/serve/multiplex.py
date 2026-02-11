@@ -212,7 +212,7 @@ class _ModelMultiplexWrapper:
                         self._push_multiplexed_replica_info = True
 
                     # Load the model.
-                    logger.info(f"Loading model '{model_id}'.")
+                    logger.debug(f"Loading model '{model_id}'.")
                     self.models_load_counter.inc()
                     load_start_time = time.time()
                     if self.self_arg is None:
@@ -222,7 +222,7 @@ class _ModelMultiplexWrapper:
                             self.self_arg, model_id
                         )
                     load_latency_ms = (time.time() - load_start_time) * 1000.0
-                    logger.info(
+                    logger.debug(
                         f"Successfully loaded model '{model_id}' in "
                         f"{load_latency_ms:.1f}ms."
                     )
