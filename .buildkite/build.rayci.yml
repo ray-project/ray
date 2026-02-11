@@ -78,6 +78,7 @@ steps:
       - release_wheels
       - linux_wheels
       - oss
+      - skip-on-premerge
 
   - name: ray-cpp-core-build
     label: "wanda: cpp core (x86_64)"
@@ -122,6 +123,7 @@ steps:
       - release_wheels
       - linux_wheels
       - oss
+      - skip-on-premerge
 
   - label: ":tapioca: build: jar"
     key: java_wheels
