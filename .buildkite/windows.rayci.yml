@@ -147,6 +147,7 @@ steps:
     tags:
       - flaky
       - windows
+      - skip-on-premerge
     job_env: WINDOWS
     instance_type: windows
     commands:
