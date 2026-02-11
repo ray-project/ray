@@ -190,12 +190,16 @@ class BlockOutputBuffer:
 
         if self._exceeded_block_row_slice_limit(accessor):
             target_num_rows = self._max_num_rows_per_block()
-        elif self._exceeded_block_size_slice_limit(accessor):
-            assert accessor.num_rows() > 0, "Block may not be empty"
-            num_bytes_per_row = accessor.size_bytes() / accessor.num_rows()
-            target_num_rows = max(
-                1, math.ceil(self._max_bytes_per_block() / num_bytes_per_row)
-            )
+        elif self._max_bytes_per_block() is not None:
+            # Compute size_bytes once and reuse — avoids a redundant expensive
+            # call when we need it again below for num_bytes_per_row.
+            block_size = accessor.size_bytes()
+            if block_size >= MAX_SAFE_BLOCK_SIZE_FACTOR * self._max_bytes_per_block():
+                assert accessor.num_rows() > 0, "Block may not be empty"
+                num_bytes_per_row = block_size / accessor.num_rows()
+                target_num_rows = max(
+                    1, math.ceil(self._max_bytes_per_block() / num_bytes_per_row)
+                )
 
         if target_num_rows is not None and target_num_rows < accessor.num_rows():
             block = accessor.slice(0, target_num_rows, copy=False)
