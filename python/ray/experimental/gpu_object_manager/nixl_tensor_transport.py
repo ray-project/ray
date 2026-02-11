@@ -316,7 +316,7 @@ class NixlTensorTransport(TensorTransportManager):
                 for tensor in tensors:
                     key = tensor.data_ptr()
                     if key in self._cached_memory_registrations:
-                        pass
+                        continue
                     with self._cache_lock:
                         nixl_agent.deregister_memory(self._tensor_desc_cache[key].reg_desc)
                         self._tensor_desc_cache.pop(key)
