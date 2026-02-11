@@ -826,6 +826,30 @@
       cluster:
         cluster_compute: dataset/cross_az_250_350_compute_aws.yaml
 
+#####################
+# Checkpoint tests
+#####################
+
+- name: "checkpoint_benchmark_{{scale}}"
+  python: "3.10"
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  matrix:
+    setup:
+      scale: [small, large]
+
+  frequency: nightly
+  team: data
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: "checkpoint_benchmark_compute_{{scale}}.yaml"
+
+  run:
+    timeout: 4800
+    script: python ./run_checkpoint_benchmark.py {{scale}}
+
 ###################
 # Autoscaling tests
 ###################
