@@ -348,7 +348,7 @@ async def test_vllm_wrapper_embed(model_opt_125m):
     [
         ({}, True),
         ({"truncate_prompt_tokens": 3}, False),
-        ({"normalize": True}, False),
+        ({"use_activation": True}, False),
     ],
 )
 async def test_vllm_wrapper_embed_pooling_params(
@@ -726,6 +726,11 @@ async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
         idx = row["__idx_in_batch"]
         if idx == 1:
             raise ValueError("prompt too long")
+        output_data = vLLMOutputData(
+            prompt=row["prompt"],
+            prompt_token_ids=None,
+            num_input_tokens=0,
+        )
         return (
             MagicMock(
                 request_id=idx,
@@ -733,10 +738,7 @@ async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
                 params=row["sampling_params"],
                 idx_in_batch=idx,
             ),
-            {
-                "prompt": row["prompt"],
-                "generated_text": f"Response to: {row['prompt']}",
-            },
+            output_data.model_dump(),
             0.1,
         )
 
@@ -767,17 +769,22 @@ async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
 
     assert len(results) == 3
 
-    errors = [r for r in results if r.get("__inference_error__") is not None]
-    successes = [r for r in results if r.get("__inference_error__") is None]
+    errors = [r for r in results if r.get("__inference_error__", "") != ""]
+    successes = [r for r in results if r.get("__inference_error__", "") == ""]
 
     assert len(errors) == 1
     assert len(successes) == 2
     assert "ValueError" in errors[0]["__inference_error__"]
 
+    # Verify schema consistency
+    error_keys = set(errors[0].keys())
+    success_keys = set(successes[0].keys())
+    assert error_keys == success_keys
+
 
 @pytest.mark.asyncio
-async def test_vllm_udf_fatal_error_always_raises(mock_vllm_wrapper):
-    """Fatal errors (EngineDeadError) always propagate, even with should_continue_on_error=True."""
+async def test_vllm_udf_fatal_error_exits_actor(mock_vllm_wrapper):
+    """Fatal errors (EngineDeadError) trigger actor exit for recovery, not error rows."""
     from vllm.v1.engine.exceptions import EngineDeadError
 
     mock_vllm_wrapper.return_value.generate_async.side_effect = EngineDeadError()
@@ -790,14 +797,28 @@ async def test_vllm_udf_fatal_error_always_raises(mock_vllm_wrapper):
         batch_size=32,
         max_concurrent_batches=4,
         engine_kwargs={},
-        should_continue_on_error=True,  # Even with this True, fatal errors should raise
+        should_continue_on_error=True,  # Even with this True, fatal errors should not yield error rows
     )
 
     batch = {"__data": [{"prompt": "test", "sampling_params": {"temperature": 0.7}}]}
 
-    with pytest.raises(EngineDeadError):
-        async for _ in udf(batch):
-            pass
+    # Fatal errors trigger actor exit for recovery (not error rows, not simple re-raise).
+    # We use os._exit(1) instead of ray.actor.exit_actor() because:
+    # - os._exit(1) -> SYSTEM_ERROR -> RaySystemError -> task IS retried
+    # - ray.actor.exit_actor() -> INTENDED_USER_EXIT -> ActorDiedError -> NOT retried
+    # We mock os._exit to verify it was called with exit code 1.
+    with patch(
+        "ray.llm._internal.batch.stages.vllm_engine_stage.os._exit"
+    ) as mock_os_exit:
+        # Don't actually exit - let code continue and fail naturally
+        # The important thing is verifying os._exit was called
+        try:
+            async for _ in udf(batch):
+                pass
+        except Exception:
+            pass  # Code may fail after mock returns None - that's OK for this test
+
+        mock_os_exit.assert_called_once_with(1)
 
 
 if __name__ == "__main__":

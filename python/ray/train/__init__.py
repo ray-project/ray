@@ -61,6 +61,11 @@ if is_v2_enabled():
         get_dataset_shard,
         report,
     )
+    from ray.train.v2.api.validation_config import (  # noqa: F811
+        ValidationConfig,
+        ValidationFn,
+        ValidationTaskConfig,
+    )
 
 
 __all__ = [
@@ -108,6 +113,9 @@ if is_v2_enabled():
             "ReportedCheckpoint",
             "UserCallback",
             "WorkerGroupError",
+            "ValidationConfig",
+            "ValidationFn",
+            "ValidationTaskConfig",
             "get_all_reported_checkpoints",
         ]
     )
@@ -118,6 +126,9 @@ if is_v2_enabled():
     ReportedCheckpoint.__module__ = "ray.train"
     UserCallback.__module__ = "ray.train"
     WorkerGroupError.__module__ = "ray.train"
+    ValidationConfig.__module__ = "ray.train"
+    ValidationFn.__module__ = "ray.train"
+    ValidationTaskConfig.__module__ = "ray.train"
     get_all_reported_checkpoints.__module__ = "ray.train"
 
 

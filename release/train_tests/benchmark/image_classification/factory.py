@@ -300,6 +300,9 @@ def get_imagenet_data_dirs(task_config: ImageClassificationConfig) -> Dict[str, 
     from image_classification.parquet.imagenet import (
         IMAGENET_PARQUET_SPLIT_S3_DIRS,
     )
+    from image_classification.s3_url.imagenet import (
+        IMAGENET_S3_URL_SPLIT_DIRS,
+    )
 
     data_format = task_config.image_classification_data_format
 
@@ -310,6 +313,8 @@ def get_imagenet_data_dirs(task_config: ImageClassificationConfig) -> Dict[str, 
         return IMAGENET_JPEG_SPLIT_S3_DIRS
     elif data_format == ImageClassificationConfig.ImageFormat.PARQUET:
         return IMAGENET_PARQUET_SPLIT_S3_DIRS
+    elif data_format == ImageClassificationConfig.ImageFormat.S3_URL:
+        return IMAGENET_S3_URL_SPLIT_DIRS
     else:
         raise ValueError(f"Unknown data format: {data_format}")
 
@@ -342,6 +347,17 @@ class ImageClassificationFactory(BenchmarkFactory):
                 )
 
                 return ImageClassificationParquetRayDataLoaderFactory(
+                    self.benchmark_config, data_dirs
+                )
+            elif data_format == ImageClassificationConfig.ImageFormat.S3_URL:
+                # NOTE: This format downloads images via ray data expressions,
+                # which is less efficient than native Ray Data S3 reading (JPEG format or Parquet format).
+                # Use this primarily for testing the S3 URL download pattern.
+                from image_classification.s3_url.factory import (
+                    ImageClassificationS3UrlRayDataLoaderFactory,
+                )
+
+                return ImageClassificationS3UrlRayDataLoaderFactory(
                     self.benchmark_config, data_dirs
                 )
 
