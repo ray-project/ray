@@ -158,7 +158,7 @@ def test_build_consumer_config_for_read():
 
 
 def test_datetime_to_ms_without_timezone():
-    """Test that datetimes without timezone info (naive) are treated as UTC."""
+    """Test that datetimes without timezone info are treated as UTC."""
     assert _datetime_to_ms(datetime(1970, 1, 1, 0, 0, 0)) == 0
     assert _datetime_to_ms(datetime(2025, 1, 1, 0, 0, 0)) == 1735689600000
 
