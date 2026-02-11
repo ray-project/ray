@@ -288,7 +288,7 @@ class TestOfflinePreLearner:
 
         algo = config.build()
 
-        episode_ds = ray.data.read_parquet(EPISODES_DATA_PATH)
+        episode_ds = ray.data.read_parquet(episodes_output_path)
         episode_batch = episode_ds.take_batch(64)
         module_state = algo.offline_data.learner_handles[0].get_state(
             component=COMPONENT_RL_MODULE,
@@ -300,7 +300,6 @@ class TestOfflinePreLearner:
             spaces=algo.offline_data.spaces[INPUT_ENV_SPACES],
         )
         # Offline Prelearner is expected to map episodes to sample batches.
-        breakpoint()
         batch = unflatten_dict(offline_prelearner(episode_batch))
 
         # Assert that we have a batch of `train_batch_size_per_learner`.
