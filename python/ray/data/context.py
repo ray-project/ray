@@ -281,6 +281,7 @@ DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
     "RAY_DATA_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO", 20.0
 )
 
+
 @DeveloperAPI
 @dataclass
 class IcebergConfig:
