@@ -13,7 +13,7 @@ Requires:
 import logging
 import time
 from dataclasses import dataclass, fields
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from kafka import KafkaConsumer, TopicPartition
 
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
-from ray.data._internal.util import _check_import, datetime_to_ms
+from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
@@ -177,6 +177,53 @@ def _build_consumer_config_for_read(
     return config
 
 
+def _datetime_to_ms(dt: datetime) -> int:
+    """Convert a datetime to milliseconds since epoch (UTC).
+
+    If the datetime has no timezone info (i.e., ``tzinfo is None``),
+    it is assumed to be UTC. Timezone-aware datetimes are converted to
+    UTC automatically via ``datetime.timestamp()``.
+
+    Args:
+        dt: A datetime object, with or without timezone info.
+
+    Returns:
+        Milliseconds since Unix epoch.
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return int(dt.timestamp() * 1000)
+
+
+def _resolve_datetime_offset(
+    consumer: "KafkaConsumer",
+    topic_partition: "TopicPartition",
+    dt: datetime,
+    fallback_offset: int,
+) -> int:
+    """Resolve a datetime to a concrete Kafka offset.
+
+    Uses ``consumer.offsets_for_times()`` to find the earliest offset whose
+    timestamp is >= the given datetime. If no such offset exists, returns
+    ``fallback_offset``.
+
+    Args:
+        consumer: Kafka consumer instance.
+        topic_partition: TopicPartition to resolve the offset for.
+        dt: The datetime to resolve.
+        fallback_offset: Offset to return if no messages match the timestamp.
+
+    Returns:
+        The resolved integer offset.
+    """
+    timestamp_ms: int = _datetime_to_ms(dt)
+    offsets: Dict = consumer.offsets_for_times({topic_partition: timestamp_ms})
+    offset_and_ts: Optional[Tuple[int, int]] = offsets.get(topic_partition)
+    if offset_and_ts is None:
+        return fallback_offset
+    return offset_and_ts.offset
+
+
 def _resolve_offsets(
     consumer: "KafkaConsumer",
     topic_partition: "TopicPartition",
@@ -208,26 +255,16 @@ def _resolve_offsets(
     if start_offset == "earliest" or start_offset is None:
         start_offset = earliest_offset
     elif isinstance(start_offset, datetime):
-        timestamp_ms = datetime_to_ms(start_offset)
-        result = consumer.offsets_for_times({topic_partition: timestamp_ms})
-        offset_and_ts = result.get(topic_partition)
-        if offset_and_ts is None:
-            # No messages with timestamp >= start_offset; nothing to read
-            start_offset = latest_offset
-        else:
-            start_offset = offset_and_ts.offset
+        start_offset = _resolve_datetime_offset(
+            consumer, topic_partition, start_offset, latest_offset
+        )
 
     if end_offset == "latest" or end_offset is None:
         end_offset = latest_offset
     elif isinstance(end_offset, datetime):
-        timestamp_ms = datetime_to_ms(end_offset)
-        result = consumer.offsets_for_times({topic_partition: timestamp_ms})
-        offset_and_ts = result.get(topic_partition)
-        if offset_and_ts is None:
-            # No messages with timestamp >= end_offset; read everything
-            end_offset = latest_offset
-        else:
-            end_offset = offset_and_ts.offset
+        end_offset = _resolve_datetime_offset(
+            consumer, topic_partition, end_offset, latest_offset
+        )
 
     if start_offset > end_offset:
         start_str = (
@@ -302,7 +339,7 @@ class KafkaDatasource(Datasource):
                 raise ValueError("start_offset must be less than end_offset")
 
         if isinstance(start_offset, datetime) and isinstance(end_offset, datetime):
-            if datetime_to_ms(start_offset) > datetime_to_ms(end_offset):
+            if _datetime_to_ms(start_offset) > _datetime_to_ms(end_offset):
                 raise ValueError("start_offset must be less than end_offset")
 
         if isinstance(start_offset, str) and start_offset == "latest":

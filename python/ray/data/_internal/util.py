@@ -10,7 +10,6 @@ import threading
 import time
 import urllib.parse
 import uuid
-from datetime import datetime, timezone
 from queue import Empty, Full, Queue
 from types import ModuleType
 from typing import (
@@ -1775,24 +1774,6 @@ def merge_resources_to_ray_remote_args(
     if memory is not None:
         ray_remote_args["memory"] = memory
     return ray_remote_args
-
-
-def datetime_to_ms(dt: datetime) -> int:
-    """Convert a datetime object to milliseconds since epoch (UTC).
-
-    Naive datetime objects (without timezone info) are treated as UTC.
-    Timezone-aware datetime objects are converted to UTC automatically.
-
-    Args:
-        dt: A datetime object.
-
-    Returns:
-        Milliseconds since Unix epoch.
-    """
-    if dt.tzinfo is None:
-        # Naive datetime: treat as UTC
-        dt = dt.replace(tzinfo=timezone.utc)
-    return int(dt.timestamp() * 1000)
 
 
 @DeveloperAPI

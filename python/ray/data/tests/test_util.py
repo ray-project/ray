@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Type
 
 import numpy as np
@@ -26,7 +25,6 @@ from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import _make_hashable, cached_remote_fn
 from ray.data._internal.util import (
     NULL_SENTINEL,
-    datetime_to_ms,
     find_partition_index,
     iterate_with_retry,
     merge_resources_to_ray_remote_args,
@@ -423,28 +421,6 @@ def test_rows_same(actual: pd.DataFrame, expected: pd.DataFrame, expected_equal:
     else:
         with pytest.raises(AssertionError):
             assert rows_same(actual, expected)
-
-
-def test_datetime_to_ms_naive():
-    """Test that naive datetimes are treated as UTC."""
-    # Unix epoch
-    dt = datetime(1970, 1, 1, 0, 0, 0)
-    assert datetime_to_ms(dt) == 0
-
-    # Known timestamp: 2025-01-01 00:00:00 UTC = 1735689600000 ms
-    dt = datetime(2025, 1, 1, 0, 0, 0)
-    assert datetime_to_ms(dt) == 1735689600000
-
-
-def test_datetime_to_ms_aware():
-    """Test that timezone-aware datetimes are converted correctly."""
-    # UTC timezone-aware
-    dt = datetime(1970, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-    assert datetime_to_ms(dt) == 0
-
-    # 2025-01-01 00:00:00 UTC
-    dt = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-    assert datetime_to_ms(dt) == 1735689600000
 
 
 if __name__ == "__main__":
