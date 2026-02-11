@@ -1,5 +1,6 @@
 import collections
 import logging
+import random
 import sys
 from typing import (
     TYPE_CHECKING,
@@ -59,8 +60,8 @@ logger = logging.getLogger(__name__)
 # float/int lists in O(1) without visiting each element.
 _CONSTANT_ELEM_SIZES = {float: _SIZEOF_FLOAT, int: _SIZEOF_INT}
 
-# Element types for which we sample 3 elements (first, middle, last)
-# from a homogeneous list and extrapolate, rather than visiting all N.
+# Element types for which we use stratified random sampling (5 strata,
+# 1 random element each) and extrapolate, rather than visiting all N.
 _SAMPLED_ELEM_TYPES = (str, dict, list)
 
 # Minimum list length to apply sampling. Shorter lists are traversed fully.
@@ -76,7 +77,8 @@ def _estimate_list_contents(
 
     For homogeneous lists this avoids O(n) traversal:
       - float/int elements: exact O(1) multiply (constant per-element size).
-      - str/dict/list elements: sample 5 evenly-spaced elements and extrapolate.
+      - str/dict/list elements: stratified random sampling (5 strata,
+        1 random element each) and extrapolate.
       - Anything else, or heterogeneous: returns None so the caller can
         fall back to full traversal.
 
@@ -107,19 +109,29 @@ def _estimate_list_contents(
     if constant_size is not None:
         return length * constant_size
 
-    # Compound/variable types (str, dict, list) — sample evenly-spaced
-    # elements and extrapolate. More samples improves accuracy for lists
-    # with non-uniform element sizes (e.g., JSON arrays where some dicts
-    # have optional nested fields). Indices always include first and last.
+    # Compound/variable types (str, dict, list) — stratified random sampling.
+    # Divide the list into equal-width strata and pick one random element
+    # from each. This guarantees coverage across the full range while
+    # handling non-uniform element sizes better than fixed-position sampling.
+    #
+    #   list: [  small small small | med  med  med  | big  big  big  big ]
+    #           \___ stratum 0 ___/ \__ stratum 1 __/ \___ stratum 2 ___/
+    #                  ^ pick 1          ^ pick 1           ^ pick 1
+    #
+    #   estimate = len(list) * mean(sampled sizes)
     if (
         first_elem_type in _SAMPLED_ELEM_TYPES
         and length >= _MIN_LIST_LENGTH_FOR_SAMPLING
     ):
-        n_samples = min(5, length)
-        # Evenly spaced indices spanning the full range [0, length-1].
-        indices = np.linspace(0, length - 1, n_samples, dtype=int)
-        sampled_total = sum(get_deep_size_fn(items[idx], seen) for idx in indices)
-        return int(length * sampled_total / n_samples)
+        n_strata = min(5, length)
+        stride = length / n_strata
+        sampled_total = 0
+        for s in range(n_strata):
+            lo = int(s * stride)
+            hi = min(int((s + 1) * stride) - 1, length - 1)
+            idx = random.randint(lo, hi)
+            sampled_total += get_deep_size_fn(items[idx], seen)
+        return int(length * sampled_total / n_strata)
 
     # Unrecognized or too small to sample — caller should traverse.
     return None
@@ -598,7 +610,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             For homogeneous lists (common in JSON data), we avoid visiting
             every element:
             - float/int lists: O(1) via constant-size multiply.
-            - str/dict/list lists: sample 3 elements and extrapolate.
+            - str/dict/list lists: stratified random sampling and extrapolate.
 
             Args:
                 obj: The object to measure.
