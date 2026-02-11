@@ -96,8 +96,11 @@ logger = logging.getLogger(__name__)
 class FixedShapeTensorFormat(Enum):
     """Enum representing the different tensor type formats."""
 
+    # ArrowTensorType (legacy, limited to <2GB)
     V1 = "v1"
+    # ArrowTensorTypeV2 (supports >2GB tensors)
     V2 = "v2"
+    # PyArrow's native FixedShapeTensorType (requires PyArrow 12+)
     ARROW_NATIVE = "native"
 
     def to_type(self) -> pa.DataType:
@@ -761,7 +764,6 @@ def create_arrow_fixed_shape_tensor_type(
     shape: Tuple[int, ...],
     dtype: pa.DataType,
     outer_len: Optional[int] = None,
-    tensor_format: Optional[FixedShapeTensorFormat] = None,
 ) -> pa.ExtensionType:
     """
     Factory method to create an Arrow tensor type.
@@ -770,13 +772,6 @@ def create_arrow_fixed_shape_tensor_type(
         shape: Shape of the tensor.
         dtype: PyArrow data type of tensor elements.
         outer_len: Optional, the # of tensors
-        tensor_format: The tensor format to use. If None, uses
-            ``DataContext.arrow_fixed_shape_tensor_format``.
-
-            Explicit values:
-            - V1: ArrowTensorType (legacy, limited to <2GB)
-            - V2: ArrowTensorTypeV2 (supports >2GB tensors)
-            - NATIVE: PyArrow's native FixedShapeTensorType (requires PyArrow 12+)
 
     Returns:
         An Arrow ExtensionType for the tensor.
@@ -786,29 +781,28 @@ def create_arrow_fixed_shape_tensor_type(
     """
     from ray.data.context import DataContext
 
-    is_variable_shaped = any(dim is None for dim in shape)
-    assert not is_variable_shaped
-    if tensor_format is None:
-        tensor_format = DataContext.get_current().arrow_fixed_shape_tensor_format
+    is_valid_dim = all(dim is not None for dim in shape)
+    assert is_valid_dim
+    tensor_format = DataContext.get_current().arrow_fixed_shape_tensor_format
 
-        # Native tensor format requires PyArrow 12+
-        if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
-            fallback = FixedShapeTensorFormat.V2
-            if FixedShapeTensorType is None:
-                if log_once("native_fixed_shape_tensors_not_supported"):
-                    warnings.warn(
-                        f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} "
-                        f"to enable native tensor arrays. Falling back to {fallback}.",
-                        UserWarning,
-                        stacklevel=3,
-                    )
-                tensor_format = fallback
-            elif len(shape) > 0 and (np.prod(shape) == 0 or outer_len == 0):
-                # FixedShapeTensor types don't support 0-sized shapes, but they
-                # do accept 0-dim shapes
-                tensor_format = fallback
-            elif not _native_tensor_value_type_can_convert_to_numpy(dtype):
-                tensor_format = fallback
+    # Native tensor format requires PyArrow 12+
+    if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
+        fallback = FixedShapeTensorFormat.V2
+        if FixedShapeTensorType is None:
+            if log_once("native_fixed_shape_tensors_not_supported"):
+                warnings.warn(
+                    f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} "
+                    f"to enable native tensor arrays. Falling back to {fallback}.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+            tensor_format = fallback
+        elif len(shape) > 0 and (np.prod(shape) == 0 or outer_len == 0):
+            # FixedShapeTensor types don't support 0-sized shapes, but they
+            # do accept 0-dim shapes
+            tensor_format = fallback
+        elif not _native_tensor_value_type_can_convert_to_numpy(dtype):
+            tensor_format = fallback
 
     if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
         if FixedShapeTensorType is None:

@@ -188,7 +188,7 @@ def test_strict_compute(ray_start_regular_shared_2_cpus):
         ray.data.range(10).map(lambda x: x, compute="tasks").show()
 
 
-def test_strict_schema(ray_start_regular_shared_2_cpus):
+def test_strict_schema(ray_start_regular_shared_2_cpus, tensor_format_context):
     import pyarrow as pa
 
     from ray.data._internal.pandas_block import PandasBlockSchema
@@ -232,7 +232,6 @@ def test_strict_schema(ray_start_regular_shared_2_cpus):
     assert isinstance(schema.base_schema, pa.lib.Schema)
     assert schema.names == ["data"]
 
-    # Uses context defaults to determine tensor type
     expected_arrow_ext_type = create_arrow_fixed_shape_tensor_type(
         shape=(10,), dtype=pa.float64()
     )

@@ -830,16 +830,17 @@ def to_numpy(
         if pa.types.is_null(array.type):
             return np.full(len(array), np.nan, dtype=np.float32)
         if _is_native_tensor_type(array.type):
-            # This is zero-copy
+            # This is zero-copy. We use to_numpy_ndarray() because to_numpy
+            # will flatten n-dim array into 1d.
             return array.to_numpy_ndarray()
         return array.to_numpy(zero_copy_only=zero_copy_only)
     elif isinstance(array, pa.ChunkedArray):
         if pa.types.is_null(array.type):
             return np.full(array.length(), np.nan, dtype=np.float32)
         if _is_native_tensor_type(array.type):
-            # This may not be performant
-            array = combine_chunked_array(array)
-            return array.to_numpy_ndarray()
+            # Convert each chunk to numpy, then stack them
+            numpy_chunks = [chunk.to_numpy_ndarray() for chunk in array.chunks]
+            return np.vstack(numpy_chunks)
         if PYARROW_VERSION >= MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY:
             return array.to_numpy(zero_copy_only=zero_copy_only)
         else:

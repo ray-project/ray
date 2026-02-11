@@ -1231,9 +1231,6 @@ def test_tensors_in_tables_parquet(
     #   - (Arrow-native) FixedShapeTensorType
     #
 
-    ctx = DataContext.get_current()
-    ctx.arrow_fixed_shape_tensor_format = new_tensor_format
-
     tensor_v2_path = f"{tmp_path}/tensor_new_{new_tensor_format}"
 
     ds = ray.data.from_pandas([df])

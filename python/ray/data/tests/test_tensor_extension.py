@@ -8,10 +8,8 @@ import pyarrow as pa
 import pytest
 from packaging.version import parse as parse_version
 
-from ray.data import DataContext
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.tensor_extensions.arrow import (
-    MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
     ArrowConversionError,
     ArrowTensorArray,
     ArrowTensorType,
@@ -872,35 +870,7 @@ class TestCreateFixedShapeTensorType:
     """Tests for the create_arrow_fixed_shape_tensor_type factory function."""
 
     @pytest.mark.parametrize(
-        "shape,dtype",
-        [
-            ((2, 3), pa.int64()),
-            ((4, 5, 6), pa.float32()),
-            ((10,), pa.float64()),
-        ],
-    )
-    def test_explicit_v1_v2_format(self, tensor_format, shape, dtype):
-        tensor_type = create_arrow_fixed_shape_tensor_type(
-            shape=shape, dtype=dtype, tensor_format=tensor_format
-        )
-        assert isinstance(tensor_type, tensor_format.to_type())
-        assert tuple(tensor_type.shape) == shape
-        assert tensor_type.value_type == dtype
-
-    @pytest.mark.skipif(
-        get_pyarrow_version() >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
-        reason="Requires pyarrow<12 for non-FixedShapeTensorTypes",
-    )
-    def test_native_format_raises_error_on_unsupported_pyarrow_version(self):
-        with pytest.raises(ValueError):
-            create_arrow_fixed_shape_tensor_type(
-                shape=(1, 1),
-                dtype=pa.int64(),
-                tensor_format=FixedShapeTensorFormat.ARROW_NATIVE,
-            )
-
-    @pytest.mark.parametrize(
-        "fixed_shape_tensor_format,expected_type_if_native_available,expected_type_fallback",
+        "tensor_format,expected_type_if_native_available,expected_type_fallback",
         [
             # V1
             (FixedShapeTensorFormat.V1, ArrowTensorType, ArrowTensorType),
@@ -916,15 +886,11 @@ class TestCreateFixedShapeTensorType:
     )
     def test_context_defaults(
         self,
-        restore_data_context,
-        fixed_shape_tensor_format,
+        tensor_format_context,
         expected_type_if_native_available,
         expected_type_fallback,
     ):
         """Test default tensor type based on context settings with fallback behavior."""
-        ctx = DataContext.get_current()
-        ctx.arrow_fixed_shape_tensor_format = fixed_shape_tensor_format
-
         tensor_type = create_arrow_fixed_shape_tensor_type(
             shape=(2, 3), dtype=pa.int64()
         )
@@ -938,11 +904,9 @@ class TestCreateFixedShapeTensorType:
         "dtype",
         [pa.int8(), pa.int16(), pa.int32(), pa.int64(), pa.float32(), pa.float64()],
     )
-    def test_various_dtypes(self, tensor_format, dtype):
+    def test_various_dtypes(self, tensor_format_context, dtype):
         """Test factory works with various PyArrow dtypes across all formats."""
-        tensor_type = create_arrow_fixed_shape_tensor_type(
-            shape=(2, 2), dtype=dtype, tensor_format=tensor_format
-        )
+        tensor_type = create_arrow_fixed_shape_tensor_type(shape=(2, 2), dtype=dtype)
         assert tensor_type.value_type == dtype
 
 
