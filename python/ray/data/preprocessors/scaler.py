@@ -93,19 +93,19 @@ class StandardScaler(SerializablePreprocessorBase):
 
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         super().__init__()
-        self.columns = columns
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._columns = columns
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         self.stat_computation_plan.add_aggregator(
             aggregator_fn=Mean,
-            columns=self.columns,
+            columns=self._columns,
         )
         self.stat_computation_plan.add_aggregator(
             aggregator_fn=lambda col: Std(col, ddof=0),
-            columns=self.columns,
+            columns=self._columns,
         )
         return self
 
@@ -126,7 +126,7 @@ class StandardScaler(SerializablePreprocessorBase):
 
             return (s - s_mean) / s_std
 
-        df[self.output_columns] = df[self.columns].transform(column_standard_scaler)
+        df[self._output_columns] = df[self._columns].transform(column_standard_scaler)
         return df
 
     @staticmethod
@@ -143,10 +143,10 @@ class StandardScaler(SerializablePreprocessorBase):
         """Transform using fast native PyArrow operations."""
         # Read all input columns first to avoid reading modified data when
         # output_columns[i] == columns[j] for i < j
-        input_columns = [table.column(input_col) for input_col in self.columns]
+        input_columns = [table.column(input_col) for input_col in self._columns]
 
         for input_col, output_col, column in zip(
-            self.columns, self.output_columns, input_columns
+            self._columns, self._output_columns, input_columns
         ):
             s_mean = self.stats_[f"mean({input_col})"]
             s_std = self.stats_[f"std({input_col})"]
@@ -174,20 +174,20 @@ class StandardScaler(SerializablePreprocessorBase):
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "columns": self.columns,
-            "output_columns": self.output_columns,
+            "columns": self._columns,
+            "output_columns": self._output_columns,
             "_fitted": getattr(self, "_fitted", None),
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
-        self.columns = fields["columns"]
-        self.output_columns = fields["output_columns"]
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
         # optional fields
         self._fitted = fields.get("_fitted")
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(columns={self.columns!r}, output_columns={self.output_columns!r})"
+        return f"{self.__class__.__name__}(columns={self._columns!r}, output_columns={self._output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
@@ -258,13 +258,13 @@ class MinMaxScaler(SerializablePreprocessorBase):
 
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         super().__init__()
-        self.columns = columns
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._columns = columns
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        aggregates = [Agg(col) for Agg in [Min, Max] for col in self.columns]
+        aggregates = [Agg(col) for Agg in [Min, Max] for col in self._columns]
         self.stats_ = dataset.aggregate(*aggregates)
         return self
 
@@ -282,25 +282,25 @@ class MinMaxScaler(SerializablePreprocessorBase):
 
             return (s - s_min) / diff
 
-        df[self.output_columns] = df[self.columns].transform(column_min_max_scaler)
+        df[self._output_columns] = df[self._columns].transform(column_min_max_scaler)
         return df
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "columns": self.columns,
-            "output_columns": self.output_columns,
+            "columns": self._columns,
+            "output_columns": self._output_columns,
             "_fitted": getattr(self, "_fitted", None),
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
-        self.columns = fields["columns"]
-        self.output_columns = fields["output_columns"]
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
         # optional fields
         self._fitted = fields.get("_fitted")
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(columns={self.columns!r}, output_columns={self.output_columns!r})"
+        return f"{self.__class__.__name__}(columns={self._columns!r}, output_columns={self._output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
@@ -367,13 +367,13 @@ class MaxAbsScaler(SerializablePreprocessorBase):
 
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         super().__init__()
-        self.columns = columns
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._columns = columns
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        aggregates = [AbsMax(col) for col in self.columns]
+        aggregates = [AbsMax(col) for col in self._columns]
         self.stats_ = dataset.aggregate(*aggregates)
         return self
 
@@ -388,25 +388,25 @@ class MaxAbsScaler(SerializablePreprocessorBase):
 
             return s / s_abs_max
 
-        df[self.output_columns] = df[self.columns].transform(column_abs_max_scaler)
+        df[self._output_columns] = df[self._columns].transform(column_abs_max_scaler)
         return df
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "columns": self.columns,
-            "output_columns": self.output_columns,
+            "columns": self._columns,
+            "output_columns": self._output_columns,
             "_fitted": getattr(self, "_fitted", None),
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
-        self.columns = fields["columns"]
-        self.output_columns = fields["output_columns"]
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
         # optional fields
         self._fitted = fields.get("_fitted")
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(columns={self.columns!r}, output_columns={self.output_columns!r})"
+        return f"{self.__class__.__name__}(columns={self._columns!r}, output_columns={self._output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
@@ -497,9 +497,9 @@ class RobustScaler(SerializablePreprocessorBase):
         quantile_precision: int = DEFAULT_QUANTILE_PRECISION,
     ):
         super().__init__()
-        self.columns = columns
-        self.quantile_range = quantile_range
-        self.quantile_precision = quantile_precision
+        self._columns = columns
+        self._quantile_range = quantile_range
+        self._quantile_precision = quantile_precision
 
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
@@ -507,22 +507,22 @@ class RobustScaler(SerializablePreprocessorBase):
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         quantiles = [
-            self.quantile_range[0],
+            self._quantile_range[0],
             0.50,
-            self.quantile_range[1],
+            self._quantile_range[1],
         ]
         aggregates = [
             ApproximateQuantile(
                 on=col,
                 quantiles=quantiles,
-                quantile_precision=self.quantile_precision,
+                quantile_precision=self._quantile_precision,
             )
-            for col in self.columns
+            for col in self._columns
         ]
         aggregated = dataset.aggregate(*aggregates)
 
         self.stats_ = {}
-        for col in self.columns:
+        for col in self._columns:
             low_q, med_q, high_q = aggregated[f"approx_quantile({col})"]
             self.stats_[f"low_quantile({col})"] = low_q
             self.stats_[f"median({col})"] = med_q
@@ -544,30 +544,30 @@ class RobustScaler(SerializablePreprocessorBase):
 
             return (s - s_median) / diff
 
-        df[self.output_columns] = df[self.columns].transform(column_robust_scaler)
+        df[self.output_columns] = df[self._columns].transform(column_robust_scaler)
         return df
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "columns": self.columns,
+            "columns": self._columns,
             "output_columns": self.output_columns,
-            "quantile_range": self.quantile_range,
-            "quantile_precision": self.quantile_precision,
+            "quantile_range": self._quantile_range,
+            "quantile_precision": self._quantile_precision,
             "_fitted": getattr(self, "_fitted", None),
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
-        self.columns = fields["columns"]
+        self._columns = fields["columns"]
         self.output_columns = fields["output_columns"]
-        self.quantile_range = fields["quantile_range"]
-        self.quantile_precision = fields["quantile_precision"]
+        self._quantile_range = fields["quantile_range"]
+        self._quantile_precision = fields["quantile_precision"]
         # optional fields
         self._fitted = fields.get("_fitted")
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"quantile_range={self.quantile_range!r}), "
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"quantile_range={self._quantile_range!r}), "
             f"output_columns={self.output_columns!r})"
         )
