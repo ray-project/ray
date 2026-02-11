@@ -928,17 +928,11 @@ class TestCreateFixedShapeTensorType:
         ),
     ],
 )
-def test_arrow_fixed_shape_tensor_format_eq_with_concat(
-    restore_data_context, tensor_format
-):
+def test_arrow_fixed_shape_tensor_format_eq_with_concat(tensor_format_context):
     """Test that ArrowTensorType, ArrowTensorTypeV2, and native tensor type __eq__
     methods work correctly when concatenating Arrow arrays with the same tensor type."""
-    from ray.data.context import DataContext
-    from ray.data.extensions.tensor_extension import (
-        ArrowTensorArray,
-        ArrowTensorType,
-        ArrowTensorTypeV2,
-    )
+
+    tensor_format = tensor_format_context
 
     # Create the appropriate tensor type based on format
     if tensor_format == FixedShapeTensorFormat.V1:
@@ -947,8 +941,6 @@ def test_arrow_fixed_shape_tensor_format_eq_with_concat(
         tensor_type = ArrowTensorTypeV2((2, 3), pa.int64())
     else:  # ARROW_NATIVE
         tensor_type = pa.fixed_shape_tensor(pa.int64(), (2, 3))
-
-    DataContext.get_current().arrow_fixed_shape_tensor_format = tensor_format
 
     first = ArrowTensorArray.from_numpy(np.ones((2, 2, 3), dtype=np.int64))
     second = ArrowTensorArray.from_numpy(np.zeros((3, 2, 3), dtype=np.int64))

@@ -25,7 +25,6 @@ from ray.data._internal.tensor_extensions.arrow import (
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
-from ray.data.context import DataContext
 from ray.data.extensions import (
     ArrowConversionError,
     ArrowPythonObjectArray,
@@ -2910,11 +2909,8 @@ def unify_schemas_nested_struct_tensors_schemas():
     get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
     reason="Requires Arrow version of at least 14.0.0",
 )
-def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(
-    tensor_format, restore_data_context
-):
-    DataContext.get_current().arrow_fixed_shape_tensor_format = tensor_format
-
+def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(tensor_format_context):
+    tensor_format = tensor_format_context
     num_rows = 1024
 
     # Block A: int is uint64; tensor = Ray tensor extension
