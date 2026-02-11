@@ -129,9 +129,9 @@ void RayEventRecorder::ExportEvents() {
                       std::list<std::unique_ptr<RayEventInterface>>::iterator>
       event_key_to_iterator;
 
-  size_t processed = 0;
+  size_t num_raw_events = 0;
   size_t estimated_batch_size = 0;
-  for (auto it = buffer_.begin(); it != buffer_.end(); ++it, ++processed) {
+  for (auto it = buffer_.begin(); it != buffer_.end(); ++it, ++num_raw_events) {
     auto &event = *it;
     auto key = std::make_pair(event->GetEntityId(), event->GetEventType());
     auto [map_it, inserted] = event_key_to_iterator.try_emplace(key);
@@ -153,32 +153,29 @@ void RayEventRecorder::ExportEvents() {
   }
 
   // Remove processed events from buffer
-  buffer_.erase(buffer_.begin(), buffer_.begin() + processed);
+  buffer_.erase(buffer_.begin(), buffer_.begin() + num_raw_events);
 
   // Serialize events and add to request
   rpc::events::AddEventsRequest request;
-  size_t num_events = 0;
   for (auto &event : grouped_events) {
     rpc::events::RayEvent ray_event = std::move(*event).Serialize();
     ray_event.set_node_id(node_id_.Binary());
     *request.mutable_events_data()->mutable_events()->Add() = std::move(ray_event);
-    ++num_events;
   }
 
   // Send with callback to record metrics
-  // Capture metric_source_ by value since it's a string_view
   std::string metric_source_str(metric_source_);
   grpc_in_progress_ = true;
   event_aggregator_client_.AddEvents(
       std::move(request),
-      [this, num_events, metric_source_str](Status status,
-                                            rpc::events::AddEventsReply reply) {
+      [this, num_raw_events, metric_source_str](Status status,
+                                                rpc::events::AddEventsReply reply) {
         if (status.ok()) {
-          events_sent_counter_.Record(num_events, {{"Source", metric_source_str}});
+          events_sent_counter_.Record(num_raw_events, {{"Source", metric_source_str}});
         } else {
-          events_failed_to_send_counter_.Record(num_events,
+          events_failed_to_send_counter_.Record(num_raw_events,
                                                 {{"Source", metric_source_str}});
-          RAY_LOG(ERROR) << "Failed to send " << num_events
+          RAY_LOG(ERROR) << "Failed to send " << num_raw_events
                          << " ray events: " << status.ToString();
         }
         // Signal under mutex to avoid lost wakeup race condition

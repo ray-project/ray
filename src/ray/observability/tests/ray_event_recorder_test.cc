@@ -149,6 +149,14 @@ TEST_F(RayEventRecorderTest, TestMergeEvents) {
   ASSERT_EQ(state_transitions.size(), 2);
   ASSERT_EQ(state_transitions[0].state(), rpc::events::DriverJobLifecycleEvent::CREATED);
   ASSERT_EQ(state_transitions[1].state(), rpc::events::DriverJobLifecycleEvent::FINISHED);
+
+  // Verify the sent counter records raw event count (2), not merged count (1)
+  auto sent_tag_to_value = fake_events_sent_counter_->GetTagToValue();
+  double total_sent = 0;
+  for (const auto &[tags, value] : sent_tag_to_value) {
+    total_sent += value;
+  }
+  ASSERT_EQ(total_sent, 2);
 }
 
 TEST_F(RayEventRecorderTest, TestRecordEvents) {
