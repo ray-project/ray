@@ -55,14 +55,16 @@ static char *getenv_real(const char *name) {
 }
 
 char *getenv(const char *name) {
+  /* Print backtrace first (does not dereference name). Then print name on a
+   * separate line so if name is a bad pointer and causes SIGSEGV, we already
+   * have the backtrace identifying the caller. */
+  char line[4096];
   void *buf[MAX_FRAMES];
   int n = backtrace(buf, MAX_FRAMES);
   char **syms = backtrace_symbols(buf, n);
 
   if (syms != NULL) {
-    char line[4096];
-    snprintf(line, sizeof(line), "[getenv_preload] getenv(%s) called from:\n",
-             name ? name : "(null)");
+    snprintf(line, sizeof(line), "[getenv_preload] backtrace:\n");
     log_line(line);
     for (int i = SKIP_FRAMES; i < n && i < MAX_FRAMES; i++) {
       snprintf(line, sizeof(line), "  #%d %s\n", i - SKIP_FRAMES, syms[i]);
@@ -71,6 +73,9 @@ char *getenv(const char *name) {
     log_line("\n");
     free(syms);
   }
+
+  snprintf(line, sizeof(line), "[getenv_preload] name=%s\n", name ? name : "(null)");
+  log_line(line);
 
   return getenv_real(name);
 }
