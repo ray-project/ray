@@ -4404,29 +4404,15 @@ class Dataset:
                 * GCS: gs://bucket/path/to/table
                 * Azure: abfss://container@account.dfs.core.windows.net/path
 
-            mode: Write mode for handling existing tables. Options:
+            mode: Write mode. **PR 1: Only "append" is supported.**
+                Other modes (overwrite, ignore, error, upsert) will be added in subsequent PRs.
 
-                * "append": Add data to existing table (default)
-                * "overwrite": Replace all data in the table
-                * "upsert": Update existing rows matching join columns, or insert new rows.
-                  **WARNING**: UPSERT uses two separate transactions (delete then append)
-                  and is NOT fully atomic. If the second transaction fails, deleted rows
-                  will not be restored. Requires ``upsert_kwargs={'join_cols': [...]}``.
-                  For more complex conditional updates/inserts/deletes, use Delta Lake's
-                  SQL MERGE operation directly.
-                * "error": Raise error if table already exists
-                * "ignore": Skip write if table already exists
-
-            partition_cols: List of column names to partition by. Creates Hive-style
-                partitioning (e.g., year=2024/month=10/). Partition columns are
-                removed from the data files and encoded in directory names.
+            partition_cols: **PR 1: Not supported.** Partitioning will be added in PR 3.
             filesystem: PyArrow filesystem to use for writing. If None, automatically
                 detected based on the path scheme (s3://, gs://, etc.).
             schema: PyArrow schema for the table. If None, inferred from the data.
                 Schema inference may fail for complex types; provide explicit schema
-                if needed. Supports all Delta Lake types including maps, structs, arrays,
-                and nested types. Schema evolution is supported: new columns are
-                automatically added when writing to existing tables (if schema_mode="merge").
+                if needed. **PR 1: Schema evolution not supported.** Will be added in PR 4.
             ray_remote_args: Arguments passed to :func:`ray.remote` for write tasks.
                 Use to configure resources such as ``num_cpus`` or ``num_gpus``.
             concurrency: Maximum number of concurrent write tasks. By default,
@@ -4438,32 +4424,40 @@ class Dataset:
                 * description: Table description for Delta metadata
                 * configuration: Delta table configuration options (dict)
                 * compression: Parquet compression codec ("snappy", "gzip", "zstd", etc.)
-                * partition_overwrite_mode: For OVERWRITE mode with partitioned tables:
-                  - "static": Delete all data before writing (default)
-                  - "dynamic": Only delete partitions being written (more efficient)
-                * upsert_kwargs: Options for UPSERT mode (dict). Required keys:
-                  - join_cols: List of column names to match rows on (required)
-                  Example: ``upsert_kwargs={'join_cols': ['id', 'timestamp']}``
+
+                Note: Other write_kwargs (schema_mode, upsert_kwargs, partition_overwrite_mode,
+                target_file_size_bytes) will be added in subsequent PRs.
 
         Raises:
             ImportError: If the deltalake package is not installed. Install with
                 ``pip install deltalake``.
-            ValueError: If mode is invalid, or if table exists with mode="error",
-                or if partition columns don't exist in the data schema.
+            ValueError: If mode is not "append", or if partition_cols is provided,
+                or if unsupported write_kwargs are provided (PR 1 limitations).
 
         Note:
-            This connector supports the following Delta Lake features:
+            **PR 1 Features:**
 
             * **ACID guarantees**: Uses a two-phase commit protocol ensuring atomicity.
               Either all files become visible or none do.
-            * **Schema evolution**: Automatically adds new columns when writing to existing
-              tables (controlled by schema_mode parameter).
-            * **Time travel**: All writes create new table versions that can be read
-              using ``read_delta(path, version=N)``.
-            * **All primitive types**: Supports maps, structs, arrays, and nested types.
-            * **MERGE operations**: For complex conditional updates/inserts/deletes,
-              use Delta Lake's SQL MERGE operation directly. UPSERT mode provides
-              simpler update-or-insert semantics.
+
+            The two-phase commit protocol:
+
+            1. **Phase 1 (Distributed)**: Each Ray task writes its data blocks as
+               Parquet files and returns AddAction metadata (files not yet visible).
+            2. **Phase 2 (Driver)**: The driver collects all AddActions and commits
+               them atomically in a single Delta transaction.
+
+            If the write fails partway through, uncommitted files can be removed
+            by running Delta's VACUUM command.
+
+            **Future PRs will add:**
+            * Write modes: overwrite, ignore, error (PR 2)
+            * Partitioning (PR 3)
+            * Schema evolution (PR 4)
+            * Time travel reads (PR 5)
+            * Upsert mode (PR 6)
+            * Partition overwrite modes (PR 7)
+            * Advanced optimizations (PR 8)
 
             The two-phase commit protocol:
 
@@ -4487,12 +4481,53 @@ class Dataset:
         """
         from ray.data._internal.datasource.delta import DeltaDatasink
 
+        # PR 1: Validate only append mode
+        if mode != "append":
+            raise ValueError(
+                f"PR 1: Only 'append' mode is supported. Got mode='{mode}'. "
+                "Other modes will be added in PR 2."
+            )
+
+        # PR 1: Partitioning not supported
+        if partition_cols:
+            raise ValueError(
+                "PR 1: partition_cols not supported. Partitioning will be added in PR 3."
+            )
+
+        # PR 1: Schema evolution not supported
+        if "schema_mode" in write_kwargs:
+            raise ValueError(
+                "PR 1: schema_mode not supported. Schema evolution will be added in PR 4."
+            )
+
+        # PR 1: Upsert not supported
+        if "upsert_kwargs" in write_kwargs:
+            raise ValueError(
+                "PR 1: upsert_kwargs not supported. Upsert mode will be added in PR 6."
+            )
+
+        # PR 1: Partition overwrite not supported
+        if "partition_overwrite_mode" in write_kwargs:
+            raise ValueError(
+                "PR 1: partition_overwrite_mode not supported. "
+                "Partition overwrite modes will be added in PR 7."
+            )
+
+        # PR 1: File buffering not supported
+        if "target_file_size_bytes" in write_kwargs:
+            raise ValueError(
+                "PR 1: target_file_size_bytes not supported. "
+                "File buffering will be added in PR 8."
+            )
+
+        # PR 1: Only append mode, no partitioning
         datasink = DeltaDatasink(
             path,
             mode=mode,
-            partition_cols=partition_cols,
+            partition_cols=[],  # PR 1: No partitioning
             filesystem=filesystem,
             schema=schema,
+            schema_mode="merge",  # PR 1: Not used, but required parameter
             **write_kwargs,
         )
         self.write_datasink(
