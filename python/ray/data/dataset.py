@@ -4530,21 +4530,23 @@ class Dataset:
             write_kwargs["partition_overwrite_mode"] = partition_overwrite_mode"
             )
 
-        # PR 3: File buffering not supported yet
-        if "target_file_size_bytes" in write_kwargs:
-            raise ValueError(
-                "PR 3: target_file_size_bytes not supported. "
-                "File buffering will be added in PR 8."
-            )
+        # PR 8: File buffering now supported
+        target_file_size_bytes = write_kwargs.pop("target_file_size_bytes", None)
+        if target_file_size_bytes is not None:
+            if not isinstance(target_file_size_bytes, int) or target_file_size_bytes <= 0:
+                raise ValueError(
+                    f"target_file_size_bytes must be a positive integer, got {target_file_size_bytes}"
+                )
+            write_kwargs["target_file_size_bytes"] = target_file_size_bytes
 
-        # PR 3: Write modes and partitioning supported, but no schema_mode yet
+        # PR 8: All features supported (write modes, partitioning, schema evolution, upsert, partition overwrite, file buffering)
         datasink = DeltaDatasink(
             path,
             mode=mode,
-            partition_cols=partition_cols or [],  # PR 3: Partitioning now supported
+            partition_cols=partition_cols or [],
             filesystem=filesystem,
             schema=schema,
-            schema_mode="merge",  # PR 3: Not used, but required parameter
+            schema_mode="merge",  # Default schema mode
             **write_kwargs,
         )
         datasink = DeltaDatasink(
