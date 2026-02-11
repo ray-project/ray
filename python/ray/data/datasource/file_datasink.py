@@ -273,8 +273,8 @@ class BlockBasedFileDatasink(_FileDatasink):
         raise NotImplementedError
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
-        filename = self.filename_provider.get_filename_for_block(
-            block, ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx, block_index
+        filename = self.filename_provider.get_filename_for_task(
+            ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx
         )
         write_path = posixpath.join(self.path, filename)
 

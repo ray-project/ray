@@ -21,7 +21,21 @@ def test_default_filename_for_row_is_deterministic(filename_provider):
     assert first_filename == second_filename
 
 
+def test_default_get_filename_for_task_is_deterministic(filename_provider):
+    """Test the new get_filename_for_task() method is deterministic."""
+
+    first_filename = filename_provider.get_filename_for_task(
+        write_uuid="spam", task_index=0
+    )
+    second_filename = filename_provider.get_filename_for_task(
+        write_uuid="spam", task_index=0
+    )
+
+    assert first_filename == second_filename
+
+
 def test_default_filename_for_block_is_deterministic(filename_provider):
+    """Test backward compatibility with deprecated get_filename_for_block()."""
     block = pd.DataFrame()
 
     first_filename = filename_provider.get_filename_for_block(
@@ -50,18 +64,28 @@ def test_default_filename_for_row_is_unique(filename_provider):
     assert len(set(filenames)) == len(filenames)
 
 
-def test_default_filename_for_block_is_unique(filename_provider):
+def test_default_get_filename_for_task_is_unique(filename_provider):
+    """Test the new get_filename_for_task() method generates unique filenames."""
     filenames = [
-        filename_provider.get_filename_for_block(
-            pd.DataFrame(),
+        filename_provider.get_filename_for_task(
             write_uuid="spam",
             task_index=task_index,
-            block_index=block_index,
         )
-        for task_index in range(2)
-        for block_index in range(2)
+        for task_index in range(4)
     ]
     assert len(set(filenames)) == len(filenames)
+
+
+def test_get_filename_for_task_matches_deprecated_with_block_index_0(filename_provider):
+    """Test that get_filename_for_task() returns same result as get_filename_for_block(block_index=0)."""
+    new_filename = filename_provider.get_filename_for_task(
+        write_uuid="spam", task_index=0
+    )
+    old_filename = filename_provider.get_filename_for_block(
+        None, write_uuid="spam", task_index=0, block_index=0
+    )
+
+    assert new_filename == old_filename
 
 
 if __name__ == "__main__":

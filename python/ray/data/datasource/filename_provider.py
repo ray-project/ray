@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional
 
 from ray.data.block import Block
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 
 
 @PublicAPI(stability="alpha")
@@ -17,7 +17,7 @@ class FilenameProvider:
 
     If you're writing each row to a separate file, implement
     :meth:`~FilenameProvider.get_filename_for_row`. Otherwise, implement
-    :meth:`~FilenameProvider.get_filename_for_block`.
+    :meth:`~FilenameProvider.get_filename_for_task`.
 
     Example:
 
@@ -48,23 +48,55 @@ class FilenameProvider:
             )
     """  # noqa: E501
 
+    def get_filename_for_task(self, write_uuid: str, task_index: int) -> str:
+        """Generate a filename for a block of data.
+
+        Override this method to customize filenames when writing a Dataset.
+
+        .. note::
+            Filenames must be unique and deterministic for a given write UUID and
+            task index.
+
+        Args:
+            write_uuid: The UUID of the write operation.
+            task_index: The index of the write task.
+
+        Returns:
+            A unique, deterministic filename for the given write task.
+        """
+        # Delegate to get_filename_for_block for backward compatibility with
+        # existing custom FilenameProvider implementations.
+        return self.get_filename_for_block(None, write_uuid, task_index, 0)
+
+    @Deprecated(
+        message="Use get_filename_for_task() instead. The block and block_index "
+        "parameters are unused in practice because datasinks merge all blocks into "
+        "one before writing. These parameters will be removed in a future release. "
+        "Do not depend on block content or block_index in your FilenameProvider "
+        "implementation - filenames must be deterministic from (write_uuid, task_index) "
+        "alone to ensure checkpointing correctness."
+    )
     def get_filename_for_block(
-        self, block: Block, write_uuid: str, task_index: int, block_index: int
+        self, block: Optional[Block], write_uuid: str, task_index: int, block_index: int
     ) -> str:
         """Generate a filename for a block of data.
 
         .. note::
-            Filenames must be unique and deterministic for a given write UUID, and
-            task and block index.
+            Filenames must be unique and deterministic for a given write UUID and
+            task index. Do NOT depend on block content or block_index.
 
-            A block consists of multiple rows and corresponds to a single output file.
-            Each task might produce a different number of blocks.
+            Checkpointing requires predicting the output filename BEFORE writing
+            data. This enables 2-phase commit: if a write fails after creating the
+            file but before committing the checkpoint, recovery can use the
+            predicted filename to delete orphaned files and retry cleanly. If
+            filenames depend on block content, this prediction is impossible and
+            checkpointing cannot guarantee exactly-once semantics.
 
         Args:
-            block: The block that will be written to a file.
+            block: Deprecated, unused. Do not depend on block content.
             write_uuid: The UUID of the write operation.
             task_index: The index of the write task.
-            block_index: The index of the block *within* the write task.
+            block_index: Deprecated, always 0. Do not depend on this value.
         """
         raise NotImplementedError
 
@@ -109,8 +141,9 @@ class _DefaultFilenameProvider(FilenameProvider):
         self._file_format = file_format
 
     def get_filename_for_block(
-        self, block: Block, write_uuid: str, task_index: int, block_index: int
+        self, block: Optional[Block], write_uuid: str, task_index: int, block_index: int
     ) -> str:
+        # Keep backward compatibility for callers that still use this method
         file_id = f"{write_uuid}_{task_index:06}_{block_index:06}"
         return self._generate_filename(file_id)
 

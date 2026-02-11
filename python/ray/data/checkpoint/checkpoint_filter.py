@@ -1,21 +1,43 @@
 import abc
 import logging
+import os
+import posixpath
 import time
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy
 import pyarrow
+from pyarrow import parquet as pq
+from pyarrow.fs import FileSelector, FileType
 
 import ray
+from ray._common.retry import call_with_retry
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import Block, BlockAccessor, BlockMetadata, DataBatch, Schema
 from ray.data.checkpoint import CheckpointConfig
+from ray.data.checkpoint.checkpoint_writer import (
+    DATA_FILE_DIR_METADATA_KEY,
+    DATA_FILE_PREFIX_METADATA_KEY,
+    PENDING_CHECKPOINT_SUFFIX,
+)
 from ray.data.datasource import PathPartitionFilter
-from ray.data.datasource.path_util import _unwrap_protocol
+from ray.data.datasource.path_util import (
+    _resolve_single_path_with_fallback,
+    _unwrap_protocol,
+)
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
+
+# Retry configuration for checkpoint recovery operations.
+# These can be overridden via environment variables for testing or tuning.
+CHECKPOINT_RECOVERY_MAX_ATTEMPTS = int(
+    os.environ.get("RAY_DATA_CHECKPOINT_RECOVERY_MAX_ATTEMPTS", "3")
+)
+CHECKPOINT_RECOVERY_MAX_BACKOFF_S = int(
+    os.environ.get("RAY_DATA_CHECKPOINT_RECOVERY_MAX_BACKOFF_S", "8")
+)
 
 
 class CheckpointFilter(abc.ABC):
@@ -32,6 +54,185 @@ class CheckpointFilter(abc.ABC):
         self.id_column = self.ckpt_config.id_column
         self.filesystem = self.ckpt_config.filesystem
         self.filter_num_threads = self.ckpt_config.filter_num_threads
+
+
+@ray.remote(num_cpus=0)
+def _clean_pending_checkpoints_task(
+    checkpoint_path_unwrapped: str,
+    filesystem: pyarrow.fs.FileSystem,
+) -> int:
+    """Ray task to recover pending checkpoints from incomplete 2-phase commits.
+
+    This runs as a remote task to avoid blocking the driver during potentially
+    slow filesystem operations (especially on cloud storage like S3).
+
+    Args:
+        checkpoint_path_unwrapped: The unwrapped checkpoint path.
+        filesystem: The filesystem to use.
+
+    Returns:
+        Number of pending checkpoints recovered.
+    """
+
+    def impl() -> int:
+        # List all files in the checkpoint directory
+        file_infos = filesystem.get_file_info(
+            FileSelector(checkpoint_path_unwrapped, recursive=False)
+        )
+
+        pending_suffix = f"{PENDING_CHECKPOINT_SUFFIX}.parquet"
+        recovered_count = 0
+        # Cache for file info to avoid redundant filesystem calls.
+        # Maps directory path to (filesystem, file_info_list) tuples since
+        # data files may be on a different filesystem than checkpoints.
+        # TODO: Replace with a FileIndexer abstraction that encapsulates
+        # filesystem resolution, directory listing, and caching.
+        data_file_info_cache: Dict[
+            str, Tuple[pyarrow.fs.FileSystem, List[pyarrow.fs.FileInfo]]
+        ] = {}
+
+        for file_info in file_infos:
+            if file_info.type != FileType.File:
+                continue
+
+            file_path = file_info.path
+            if not file_path.endswith(pending_suffix):
+                continue
+
+            logger.debug(f"Found pending checkpoint file: {file_path}")
+
+            # Read metadata from pending checkpoint to get data file location
+            data_file_info = _get_data_file_info_from_checkpoint(file_path, filesystem)
+
+            if data_file_info is not None:
+                data_file_dir, data_file_prefix = data_file_info
+                # Note: _delete_matching_data_files resolves the filesystem from
+                # data_file_dir itself, which may be different from the checkpoint
+                # filesystem (e.g., checkpoint on local disk, output on S3).
+                deleted_files = _delete_matching_data_files(
+                    data_file_dir, data_file_prefix, data_file_info_cache
+                )
+                if deleted_files:
+                    logger.debug(
+                        f"Deleted {len(deleted_files)} data file(s) for "
+                        f"dir={data_file_dir}, prefix={data_file_prefix}: "
+                        f"{deleted_files}"
+                    )
+
+            # Delete the pending checkpoint file
+            filesystem.delete_file(file_path)
+            recovered_count += 1
+            logger.debug(
+                f"Deleted pending checkpoint (recovered_count={recovered_count}): "
+                f"data_file_info={data_file_info}, checkpoint_file={file_path}"
+            )
+
+        return recovered_count
+
+    return call_with_retry(
+        impl,
+        description="recover pending checkpoints",
+        max_attempts=CHECKPOINT_RECOVERY_MAX_ATTEMPTS,
+        max_backoff_s=CHECKPOINT_RECOVERY_MAX_BACKOFF_S,
+    )
+
+
+def _get_data_file_info_from_checkpoint(
+    checkpoint_path: str,
+    filesystem: pyarrow.fs.FileSystem,
+) -> Optional[Tuple[str, str]]:
+    """Read the data file directory and prefix from checkpoint file metadata.
+
+    Args:
+        checkpoint_path: Path to the checkpoint parquet file.
+        filesystem: The filesystem to use for reading the file.
+
+    Returns:
+        A tuple of (data_file_dir, data_file_prefix), or None if not found.
+    """
+    # Open the file through the filesystem to support cloud storage (S3, GCS, etc.)
+    # where checkpoint_path is an unwrapped path without protocol prefix.
+    with filesystem.open_input_file(checkpoint_path) as f:
+        schema = pq.read_schema(f)
+    metadata = schema.metadata
+
+    if (
+        metadata
+        and DATA_FILE_DIR_METADATA_KEY in metadata
+        and DATA_FILE_PREFIX_METADATA_KEY in metadata
+    ):
+        data_file_dir = metadata[DATA_FILE_DIR_METADATA_KEY].decode("utf-8")
+        data_file_prefix = metadata[DATA_FILE_PREFIX_METADATA_KEY].decode("utf-8")
+        return (data_file_dir, data_file_prefix)
+    return None
+
+
+def _delete_matching_data_files(
+    data_file_dir: str,
+    data_file_prefix: str,
+    data_file_info_cache: Dict[
+        str, Tuple[pyarrow.fs.FileSystem, List[pyarrow.fs.FileInfo]]
+    ],
+) -> List[str]:
+    """Delete all data files matching a filename prefix in the given directory.
+
+    This function handles both non-partitioned and partitioned writes:
+    - Non-partitioned: files are in base directory (e.g., output/file-0.parquet)
+    - Partitioned: files are in subdirectories (e.g., output/col=val/file-0.parquet)
+
+    For partitioned writes, we need to recursively search subdirectories to find
+    all files matching the prefix. The prefix is just the base filename, so files
+    in any partition subdirectory with matching names will be deleted.
+
+    The filesystem is resolved from data_file_dir itself, not passed in.
+    This is important because the data files may be on a different filesystem
+    than the checkpoint files (e.g., checkpoint on local disk, output on S3).
+
+    Args:
+        data_file_dir: Directory containing data files. May include a protocol
+            prefix (e.g., s3://bucket/path).
+        data_file_prefix: Filename prefix for data files. Any file whose
+            basename starts with this prefix will be deleted (searched
+            recursively).
+        data_file_info_cache: Cache mapping directory paths to tuples of
+            (filesystem, file_info_list) to avoid redundant filesystem resolution
+            and listing calls.
+
+    Returns:
+        List of deleted file paths.
+    """
+    # Resolve the filesystem from data_file_dir itself.
+    # This handles cross-filesystem scenarios where checkpoint is on local disk
+    # but output is on S3/GCS/etc.
+    filesystem, dir_path = _resolve_single_path_with_fallback(
+        data_file_dir, filesystem=None
+    )
+
+    # Use cache if available, otherwise fetch from filesystem.
+    # Use recursive=True to find files in partition subdirectories
+    # (e.g., output/col=val/file-0.parquet when using partition_cols).
+    if dir_path in data_file_info_cache:
+        cached_filesystem, file_infos = data_file_info_cache[dir_path]
+        # Use the cached filesystem for operations
+        filesystem = cached_filesystem
+    else:
+        file_infos = filesystem.get_file_info(FileSelector(dir_path, recursive=True))
+        data_file_info_cache[dir_path] = (filesystem, file_infos)
+
+    deleted_files: List[str] = []
+    for file_info in file_infos:
+        if file_info.type != FileType.File:
+            continue
+        # Use basename to match files regardless of which subdirectory they're in.
+        # This handles partitioned writes where the same base filename appears
+        # in multiple partition directories (e.g., output/a=1/file.parquet,
+        # output/a=2/file.parquet).
+        filename = posixpath.basename(file_info.path)
+        if filename.startswith(data_file_prefix):
+            filesystem.delete_file(file_info.path)
+            deleted_files.append(file_info.path)
+
+    return deleted_files
 
 
 @ray.remote(max_retries=-1)
@@ -177,9 +378,15 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
     def load_checkpoint(self) -> ObjectRef[Block]:
         """Load checkpointed ids as a sorted block.
 
+        This method first cleans up any pending checkpoints from incomplete
+        2-phase commits, then loads the committed checkpoint data.
+
         Returns:
             ObjectRef[Block]: ObjectRef to the checkpointed IDs block.
         """
+        # Clean up pending checkpoints before loading (runs as a Ray task)
+        self._clean_pending_checkpoints()
+
         loader = IdColumnCheckpointLoader(
             checkpoint_path=self.checkpoint_path,
             filesystem=self.filesystem,
@@ -187,6 +394,25 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
             checkpoint_path_partition_filter=self.ckpt_config.checkpoint_path_partition_filter,
         )
         return loader.load_checkpoint()
+
+    def _clean_pending_checkpoints(self) -> None:
+        """Clean up pending checkpoints from incomplete 2-phase commits.
+
+        Runs as a Ray task to avoid blocking the driver during potentially
+        slow filesystem operations (especially on cloud storage like S3).
+        """
+        try:
+            cleaned_count = ray.get(
+                _clean_pending_checkpoints_task.remote(
+                    self.checkpoint_path_unwrapped,
+                    self.filesystem,
+                )
+            )
+            if cleaned_count > 0:
+                logger.info(f"Cleaned up {cleaned_count} pending checkpoint(s)")
+        except ray.exceptions.RayTaskError:
+            logger.exception("Failed to clean up pending checkpoints")
+            raise
 
     def delete_checkpoint(self) -> None:
         self.filesystem.delete_dir(self.checkpoint_path_unwrapped)

@@ -188,8 +188,8 @@ class ParquetDatasink(_FileDatasink):
             block for block in blocks if BlockAccessor.for_block(block).num_rows() > 0
         ]
 
-        filename = self.filename_provider.get_filename_for_block(
-            blocks[0], ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx, 0
+        filename = self.filename_provider.get_filename_for_task(
+            ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx
         )
         write_kwargs = _resolve_kwargs(
             self.arrow_parquet_args_fn, **self.arrow_parquet_args
