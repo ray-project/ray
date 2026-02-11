@@ -1,0 +1,21 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+head_node_type:
+    name: head_node
+    instance_type: m5.2xlarge
+    resources:
+      cpu: 0
+
+worker_node_types:
+    - name: fake_gpu_node
+      # m5.8xlarge, 32 vCPU, 128 GiB memory
+      instance_type: m5.8xlarge
+      max_workers: 50
+      min_workers: 50
+      use_spot: true
+      fallback_to_ondemand: true
+      resources:
+        gpu: 4
+        # Larger object store memory make the test run faster.
+        object_store_memory: 64000000000
