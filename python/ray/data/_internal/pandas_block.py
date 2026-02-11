@@ -52,7 +52,6 @@ _PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT = 200
 # calls during deep object graph traversal in size_bytes).
 _SIZEOF_FLOAT = sys.getsizeof(0.0)
 _SIZEOF_INT = sys.getsizeof(0)
-_GETSIZEOF = sys.getsizeof
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +59,7 @@ logger = logging.getLogger(__name__)
 # float/int lists in O(1) without visiting each element.
 _CONSTANT_ELEM_SIZES = {float: _SIZEOF_FLOAT, int: _SIZEOF_INT}
 
-# Element types for which we use stratified random sampling (5 strata,
+# Element types for which we use bucketed random sampling (5 buckets,
 # 1 random element each) and extrapolate, rather than visiting all N.
 _SAMPLED_ELEM_TYPES = (str, dict, list)
 
@@ -77,7 +76,7 @@ def _estimate_list_contents(
 
     For homogeneous lists this avoids O(n) traversal:
       - float/int elements: exact O(1) multiply (constant per-element size).
-      - str/dict/list elements: stratified random sampling (5 strata,
+      - str/dict/list elements: bucketed random sampling (5 buckets,
         1 random element each) and extrapolate.
       - Anything else, or heterogeneous: returns None so the caller can
         fall back to full traversal.
@@ -109,13 +108,13 @@ def _estimate_list_contents(
     if constant_size is not None:
         return length * constant_size
 
-    # Compound/variable types (str, dict, list) — stratified random sampling.
-    # Divide the list into equal-width strata and pick one random element
+    # Compound/variable types (str, dict, list) — bucketed random sampling.
+    # Split the list into equal-width buckets and pick one random element
     # from each. This guarantees coverage across the full range while
     # handling non-uniform element sizes better than fixed-position sampling.
     #
     #   list: [  small small small | med  med  med  | big  big  big  big ]
-    #           \___ stratum 0 ___/ \__ stratum 1 __/ \___ stratum 2 ___/
+    #           \___ bucket 0 ____/ \___ bucket 1 __/ \___ bucket 2 ____/
     #                  ^ pick 1          ^ pick 1           ^ pick 1
     #
     #   estimate = len(list) * mean(sampled sizes)
@@ -123,15 +122,15 @@ def _estimate_list_contents(
         first_elem_type in _SAMPLED_ELEM_TYPES
         and length >= _MIN_LIST_LENGTH_FOR_SAMPLING
     ):
-        n_strata = min(5, length)
-        stride = length / n_strata
-        sampled_total = 0
-        for s in range(n_strata):
-            lo = int(s * stride)
-            hi = min(int((s + 1) * stride) - 1, length - 1)
-            idx = random.randint(lo, hi)
-            sampled_total += get_deep_size_fn(items[idx], seen)
-        return int(length * sampled_total / n_strata)
+        num_buckets = min(5, length)
+        bucket_width = length / num_buckets
+        sampled_total_bytes = 0
+        for bucket in range(num_buckets):
+            bucket_start = int(bucket * bucket_width)
+            bucket_end = min(int((bucket + 1) * bucket_width) - 1, length - 1)
+            sample_idx = random.randint(bucket_start, bucket_end)
+            sampled_total_bytes += get_deep_size_fn(items[sample_idx], seen)
+        return int(length * sampled_total_bytes / num_buckets)
 
     # Unrecognized or too small to sample — caller should traverse.
     return None
@@ -610,7 +609,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             For homogeneous lists (common in JSON data), we avoid visiting
             every element:
             - float/int lists: O(1) via constant-size multiply.
-            - str/dict/list lists: stratified random sampling and extrapolate.
+            - str/dict/list lists: bucketed random sampling and extrapolate.
 
             Args:
                 obj: The object to measure.
@@ -625,13 +624,13 @@ class PandasBlockAccessor(TableBlockAccessor):
             if seen is None:
                 seen = set()
             total_size = 0
-            queue = collections.deque([obj])
-            while queue:
-                current = queue.pop()
+            objects = collections.deque([obj])
+            while objects:
+                current = objects.pop()
 
                 # Immutable scalars — constant size, no dedup needed.
                 if isinstance(current, (str, bytes, int, float)):
-                    total_size += _GETSIZEOF(current)
+                    total_size += sys.getsizeof(current)
                     continue
 
                 # Mutable / container objects: deduplicate by id.
@@ -643,7 +642,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 seen.add(obj_id)
 
                 try:
-                    size = _GETSIZEOF(current)
+                    size = sys.getsizeof(current)
                 except TypeError:
                     size = 0
                 total_size += size
@@ -653,12 +652,12 @@ class PandasBlockAccessor(TableBlockAccessor):
                     if estimate is not None:
                         total_size += estimate
                     else:
-                        queue.extend(current)
+                        objects.extend(current)
                 elif isinstance(current, dict):
-                    queue.extend(current.keys())
-                    queue.extend(current.values())
+                    objects.extend(current.keys())
+                    objects.extend(current.values())
                 elif isinstance(current, (set, frozenset)):
-                    queue.extend(current)
+                    objects.extend(current)
                 elif isinstance(current, np.ndarray):
                     total_size += current.nbytes - size
                 elif isinstance(current, pd.DataFrame):
@@ -666,7 +665,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                         current.memory_usage(index=True, deep=True).sum() - size
                     )
                 elif isinstance(current, TensorArrayElement):
-                    queue.extend(current.to_numpy())
+                    objects.extend(current.to_numpy())
             return total_size
 
         # Get initial memory usage.
