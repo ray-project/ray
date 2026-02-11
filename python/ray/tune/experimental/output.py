@@ -794,6 +794,57 @@ class ProgressReporter(Callback):
             )
 
 
+class LegacyProgressReporterAdapter(ProgressReporter):
+    """Wraps an old-style ProgressReporter for the new AIR callback system.
+
+    This adapter bridges legacy ``ray.tune.progress_reporter.ProgressReporter``
+    implementations to the new callback-based output engine. It delegates
+    periodic reporting to the legacy reporter's ``should_report()`` /
+    ``report()`` interface, and makes all per-trial callback hooks no-ops
+    (since legacy reporters use poll-based reporting only).
+    """
+
+    _heartbeat_freq = 5
+    _heartbeat_threshold = AirVerbosity.DEFAULT
+    _start_end_verbosity = AirVerbosity.DEFAULT
+    _intermediate_result_verbosity = AirVerbosity.VERBOSE
+    _addressing_tmpl = "Trial {}"
+
+    def __init__(self, legacy_reporter, verbosity: AirVerbosity):
+        super().__init__(verbosity=verbosity)
+        self._legacy_reporter = legacy_reporter
+
+    def setup(self, start_time=None, total_samples=None, **kwargs):
+        super().setup(start_time=start_time)
+        self._legacy_reporter.setup(
+            start_time=start_time, total_samples=total_samples, **kwargs
+        )
+
+    def print_heartbeat(self, trials, *args, force=False):
+        done = force
+        if self._legacy_reporter.should_report(trials, done=done):
+            self._legacy_reporter.report(trials, done, *args)
+
+    def _print_heartbeat(self, trials, *args, force=False):
+        pass  # Unused — print_heartbeat is overridden directly
+
+    # No-op callback hooks — legacy reporter uses poll-based reporting only
+    def on_trial_result(self, iteration, trials, trial, result, **info):
+        pass
+
+    def on_trial_complete(self, iteration, trials, trial, **info):
+        pass
+
+    def on_trial_error(self, iteration, trials, trial, **info):
+        pass
+
+    def on_trial_start(self, iteration, trials, trial, **info):
+        pass
+
+    def on_checkpoint(self, iteration, trials, trial, checkpoint, **info):
+        pass
+
+
 def _detect_reporter(
     verbosity: AirVerbosity,
     num_samples: int,
