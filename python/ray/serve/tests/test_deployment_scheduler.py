@@ -668,9 +668,9 @@ async def test_e2e_serve_label_selector_unschedulable(
 class TestGangScheduling:
     """Tests for gang scheduling with placement groups."""
 
-    def test_sufficient_resources(self, ray_start_cluster):
+    def test_sufficient_resources(self, ray_cluster):
         """Verifies that gang scheduling succeeds when cluster has sufficient resources."""
-        cluster = ray_start_cluster
+        cluster = ray_cluster
         cluster.add_node(num_cpus=1)
         cluster.add_node(num_cpus=1)
         cluster.wait_for_nodes()
@@ -700,9 +700,9 @@ class TestGangScheduling:
         serve.delete("gang_app_success")
         serve.shutdown()
 
-    def test_sufficient_resources_with_options(self, ray_start_cluster):
+    def test_sufficient_resources_with_options(self, ray_cluster):
         """Verifies gang scheduling via .options() succeeds and responds to requests."""
-        cluster = ray_start_cluster
+        cluster = ray_cluster
         cluster.add_node(num_cpus=1)
         cluster.add_node(num_cpus=1)
         cluster.wait_for_nodes()
