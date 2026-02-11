@@ -49,6 +49,10 @@ The following diagram shows when each method is called during a tensor transfer:
    6. garbage_collect                   |                               |
    (when ref goes out of scope)         |                               |
 
+
+Note that Ray will not call `send_multiple_tensors` for one-sided transports.
+
+
 Transport identification methods
 --------------------------------
 
@@ -67,6 +71,7 @@ Indicates whether your transport uses one-sided communication where only the rec
 - **Two-sided transports**: Both sender and receiver must actively participate in the transfer. Collective communication libraries like NCCL and GLOO are examples.
 
 This affects how Ray orchestrates the transfer and handles failures. Two-sided transports also have extra limitations described in :ref:`limitations <limitations>`.
+Ray will not call `send_multiple_tensors` for one-sided transports. The transfer is expected to happen through just `recv_multiple_tensors`.
 
 can_abort_transport
 ^^^^^^^^^^^^^^^^^^^
@@ -141,6 +146,7 @@ CommunicatorMetadata
 
 :class:`CommunicatorMetadata <ray.experimental.CommunicatorMetadata>` stores any information about the actors that are doing the communication.
 This is used when your owner / driver process has specific information about the actors involved in the transfer that needs to be sent.
+Note that for many non-collective transports, this may be empty and unused, e.g. for one-sided RDMA transports like NIXL.
 
 .. code-block:: python
 
@@ -154,12 +160,9 @@ get_communicator_metadata
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Gets the CommunicatorMetadata for a send/recv. Ray calls this on the owner/driver process before orchestrating the transfer.
-Implement this to:
+You can typically implement this to return information both actors need to identify each other such as ranks in a collective group.
+Many forms of transports such as one-sided RDMA reads may be ok just returning empty CommunicatorMetadata here.
 
-1. Look up or establish a communication channel between the two actors.
-2. Return information both actors need to identify each other such as ranks in a collective group.
-
-For collective-based transports, this typically involves looking up the actors' ranks in a collective group:
 
 .. code-block:: python
 
@@ -186,7 +189,9 @@ send_multiple_tensors
 ^^^^^^^^^^^^^^^^^^^^^
 
 Sends tensors from the source actor to the destination actor. Ray calls this on the source actor during the transfer.
-Implement this to perform the actual data transfer using your transport's send mechanism. For collective-based transports:
+Implement this to perform the actual data transfer using your transport's send mechanism. For one-sided transports,
+you can simply avoid implementing this method or even raise a NotImplementedError to assure it's not being called.
+For collective-based transports:
 
 .. code-block:: python
 
@@ -196,6 +201,7 @@ Implement this to perform the actual data transfer using your transport's send m
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: MyCustomCommunicatorMetadata,
     ):
+        comm = self._get_communicator(communicator_metadata.communicator_name)
         dst_rank = communicator_metadata.dst_rank
         comm.send(tensors, dst_rank)
 
@@ -229,8 +235,8 @@ Lifecycle management methods
 garbage_collect
 ^^^^^^^^^^^^^^^
 
-Cleans up resources when Ray decides to free the RDT object. Ray calls this only on the source actor after Ray's distributed reference counting protocol determines the object is out of scope.
-Use this to release any resources your transport allocated, such as deregistering memory buffers.
+Cleans up resources when Ray decides to free the RDT object. Ray calls this on the source actor after Ray's distributed reference counting protocol determines the object is out of scope.
+Use this to release any resources your transport allocated, such as deregistering memory buffers. Ray doesn't hold the tensor after returning it to the user on the recv side.
 
 .. code-block:: python
 
