@@ -14,8 +14,8 @@ import ray
 import ray.experimental.internal_kv as _internal_kv
 import ray.util.collective
 from . import types
-from ray._common.deprecation import Deprecated
 from ray._common.network_utils import find_free_port, is_ipv6
+from ray.util.annotations import Deprecated
 from ray.util.collective.collective_group.torch_gloo_collective_group import (
     get_master_address_metadata_key as _get_master_addr_key,
 )
@@ -83,7 +83,7 @@ def _kv_put(key: str, value: str) -> None:
     _internal_kv._internal_kv_put(key, value)
 
 
-def _kv_get(key: str):
+def _kv_get(key: str) -> str:
     return _internal_kv._internal_kv_get(key)
 
 
@@ -415,9 +415,7 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
     g.allreduce(tensor, opts)
 
 
-@Deprecated(
-    message="allreduce_multigpu is soft-deprecated and will be removed in future releases."
-)
+@Deprecated(message="allreduce_multigpu will no longer be supported.")
 def allreduce_multigpu(
     tensor_list: list, group_name: str = "default", op=types.ReduceOp.SUM
 ):
@@ -480,9 +478,7 @@ def reduce(
     g.reduce(tensor, opts)
 
 
-@Deprecated(
-    message="reduce_multigpu is soft-deprecated and will be removed in future releases."
-)
+@Deprecated(message="reduce_multigpu will no longer be supported.")
 def reduce_multigpu(
     tensor_list: list,
     dst_rank: int = 0,
@@ -542,9 +538,7 @@ def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
     g.broadcast(tensor, opts)
 
 
-@Deprecated(
-    message="broadcast_multigpu is soft-deprecated and will be removed in future releases."
-)
+@Deprecated(message="broadcast_multigpu will no longer be supported.")
 def broadcast_multigpu(
     tensor_list, src_rank: int = 0, src_tensor: int = 0, group_name: str = "default"
 ):
@@ -599,9 +593,7 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
     g.allgather(tensor_list, tensor, opts)
 
 
-@Deprecated(
-    message="allgather_multigpu is soft-deprecated and will be removed in future releases."
-)
+@Deprecated(message="allgather_multigpu will no longer be supported.")
 def allgather_multigpu(
     output_tensor_lists: list, input_tensor_list: list, group_name: str = "default"
 ):
@@ -652,14 +644,12 @@ def reducescatter(
     if len(tensor_list) != g.world_size:
         raise RuntimeError(
             "The length of the tensor list operands to reducescatter "
-            "must not be equal to world_size."
+            "must be equal to world_size."
         )
     g.reducescatter(tensor, tensor_list, opts)
 
 
-@Deprecated(
-    message="reducescatter_multigpu is soft-deprecated and will be removed in future releases."
-)
+@Deprecated(message="reducescatter_multigpu will no longer be supported.")
 def reducescatter_multigpu(
     output_tensor_list,
     input_tensor_lists,
@@ -711,9 +701,7 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
     g.send(tensor, opts)
 
 
-@Deprecated(
-    message="send_multigpu is soft-deprecated and will be removed in future releases."
-)
+@Deprecated(message="send_multigpu will no longer be supported.")
 def send_multigpu(
     tensor,
     dst_rank: int,
@@ -772,15 +760,13 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
     g = get_group_handle(group_name)
     _check_rank_valid(g, src_rank)
     if src_rank == g.rank:
-        raise RuntimeError("The destination rank '{}' is self.".format(src_rank))
+        raise RuntimeError("The source rank '{}' is self.".format(src_rank))
     opts = types.RecvOptions()
     opts.src_rank = src_rank
     g.recv(tensor, opts)
 
 
-@Deprecated(
-    message="recv_multigpu is soft-deprecated and will be removed in future releases."
-)
+@Deprecated(message="recv_multigpu will no longer be supported.")
 def recv_multigpu(
     tensor,
     src_rank: int,
@@ -822,9 +808,7 @@ def recv_multigpu(
     g.recv([tensor], opts)
 
 
-@Deprecated(
-    message="synchronize is soft-deprecated and will be removed in future releases."
-)
+@Deprecated(message="synchronize will no longer be supported.")
 def synchronize(gpu_id: int):
     """Synchronize the current process to a give device.
 
@@ -861,15 +845,21 @@ def get_group_handle_multigpu(group_name: str = "default"):
             try:
                 # if the information is stored in an Info object,
                 # get and create the group.
-                ids, world_size, rank, _, _ = pickle.loads(
-                    _kv_get(get_uniqueness_key(group_name_multigpu))
-                )
+                group_info = _kv_get(get_uniqueness_key(group_name_multigpu))
+                if group_info is None:
+                    logger.info(
+                        "Group info for '{}' not found.".format(group_name_multigpu)
+                    )
+                    raise ValueError(
+                        "Group info for '{}' not found.".format(group_name_multigpu)
+                    )
+                ids, world_size, rank, _, _ = pickle.loads(group_info)
                 worker = ray._private.worker.global_worker
                 id_ = worker.core_worker.get_actor_id()
                 r = rank[ids.index(id_)]
                 # Create only the multigpu NCCL group locally.
                 _group_mgr.create_multigpu_nccl_group(world_size, r, group_name)
-            except (ValueError, TypeError) as exc:
+            except ValueError as exc:
                 # check if this group is initialized using options()
                 if (
                     "collective_group_name" in os.environ
@@ -910,7 +900,7 @@ def get_group_handle(group_name: str = "default"):
                 rank = int(os.environ["collective_rank"])
                 world_size = int(os.environ["collective_world_size"])
                 backend = os.environ["collective_backend"]
-                gloo_timeout = os.getenv("collective_gloo_timeout", 30000)
+                gloo_timeout = int(os.getenv("collective_gloo_timeout", 30000))
                 _group_mgr.create_collective_group(
                     backend, world_size, rank, group_name, gloo_timeout
                 )
