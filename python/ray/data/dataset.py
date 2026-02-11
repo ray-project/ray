@@ -4413,7 +4413,9 @@ class Dataset:
 
                 Upsert mode will be added in PR 6.
 
-            partition_cols: **PR 2: Not supported.** Partitioning will be added in PR 3.
+            partition_cols: List of column names to partition by. Creates Hive-style
+                partitioning (e.g., year=2024/month=10/). Partition columns are
+                removed from the data files and encoded in directory names.
             filesystem: PyArrow filesystem to use for writing. If None, automatically
                 detected based on the path scheme (s3://, gs://, etc.).
             schema: PyArrow schema for the table. If None, inferred from the data.
@@ -4441,11 +4443,12 @@ class Dataset:
                 or if unsupported write_kwargs are provided (PR 1 limitations).
 
         Note:
-            **PR 2 Features:**
+            **PR 3 Features:**
 
             * **ACID guarantees**: Uses a two-phase commit protocol ensuring atomicity.
               Either all files become visible or none do.
             * **Write modes**: Append, overwrite, ignore, and error modes.
+            * **Partitioning**: Hive-style partitioning support.
 
             The two-phase commit protocol:
 
@@ -4458,7 +4461,6 @@ class Dataset:
             by running Delta's VACUUM command.
 
             **Future PRs will add:**
-            * Partitioning (PR 3)
             * Schema evolution (PR 4)
             * Time travel reads (PR 5)
             * Upsert mode (PR 6)
@@ -4494,39 +4496,49 @@ class Dataset:
                 f"Invalid mode '{mode}'. Supported modes: {sorted(valid_modes)}"
             )
 
-        # PR 2: Partitioning not supported yet
+        # PR 3: Partitioning now supported
         if partition_cols:
-            raise ValueError(
-                "PR 2: partition_cols not supported. Partitioning will be added in PR 3."
+            from ray.data._internal.datasource.delta.utils import (
+                validate_partition_column_names,
             )
+            partition_cols = validate_partition_column_names(partition_cols)
 
-        # PR 2: Schema evolution not supported yet
+        # PR 3: Schema evolution not supported yet
         if "schema_mode" in write_kwargs:
             raise ValueError(
-                "PR 2: schema_mode not supported. Schema evolution will be added in PR 4."
+                "PR 3: schema_mode not supported. Schema evolution will be added in PR 4."
             )
 
-        # PR 2: Upsert not supported yet
+        # PR 3: Upsert not supported yet
         if "upsert_kwargs" in write_kwargs:
             raise ValueError(
-                "PR 2: upsert_kwargs not supported. Upsert mode will be added in PR 6."
+                "PR 3: upsert_kwargs not supported. Upsert mode will be added in PR 6."
             )
 
-        # PR 2: Partition overwrite not supported yet
+        # PR 3: Partition overwrite not supported yet
         if "partition_overwrite_mode" in write_kwargs:
             raise ValueError(
-                "PR 2: partition_overwrite_mode not supported. "
+                "PR 3: partition_overwrite_mode not supported. "
                 "Partition overwrite modes will be added in PR 7."
             )
 
-        # PR 2: File buffering not supported yet
+        # PR 3: File buffering not supported yet
         if "target_file_size_bytes" in write_kwargs:
             raise ValueError(
-                "PR 2: target_file_size_bytes not supported. "
+                "PR 3: target_file_size_bytes not supported. "
                 "File buffering will be added in PR 8."
             )
 
-        # PR 2: Write modes supported, but no partitioning or schema_mode yet
+        # PR 3: Write modes and partitioning supported, but no schema_mode yet
+        datasink = DeltaDatasink(
+            path,
+            mode=mode,
+            partition_cols=partition_cols or [],  # PR 3: Partitioning now supported
+            filesystem=filesystem,
+            schema=schema,
+            schema_mode="merge",  # PR 3: Not used, but required parameter
+            **write_kwargs,
+        )
         datasink = DeltaDatasink(
             path,
             mode=mode,
