@@ -281,6 +281,14 @@ def _generate_commit_checkpoint_transform(
     def commit_checkpoints(
         blocks: Iterable[Block], ctx: TaskContext
     ) -> Iterable[Block]:
+        # NOTE(ray-oss): Materialize all upstream blocks before reading
+        # ctx.kwargs. In OSS Ray, MapTransformer chains BlockMapTransformFns
+        # as lazy generators (yield from). Without this, ctx.kwargs is read
+        # before prepare_checkpoint has executed and stored pending checkpoints.
+        # This is not needed in Ray Turbo where OptimizedMapTransformer fuses
+        # consecutive BlockMapTransformFns into an eager call chain.
+        block_list = list(blocks)
+
         # Get pending checkpoints written in pre-write phase
         pending_checkpoints: List[PendingCheckpoint] = ctx.kwargs.get(
             PENDING_CHECKPOINTS_KWARG_NAME, []
@@ -290,7 +298,7 @@ def _generate_commit_checkpoint_transform(
         for pending in pending_checkpoints:
             checkpoint_writer.commit_checkpoint(pending)
 
-        return blocks
+        return iter(block_list)
 
     return BlockMapTransformFn(
         commit_checkpoints,
