@@ -129,7 +129,7 @@ bool ClusterResourceScheduler::NodeAvailableImpl(scheduling::NodeID node_id) con
 
 void ClusterResourceScheduler::BeginSchedulingRound() {
   scheduling_round_depth_++;
-  
+
   if (scheduling_round_depth_ > 1) {
     return;
   }
@@ -145,11 +145,11 @@ void ClusterResourceScheduler::BeginSchedulingRound() {
 }
 
 void ClusterResourceScheduler::EndSchedulingRound() {
-  RAY_CHECK(scheduling_round_depth_ > 0) 
+  RAY_CHECK(scheduling_round_depth_ > 0)
       << "EndSchedulingRound called without matching BeginSchedulingRound";
-  
+
   scheduling_round_depth_--;
-  
+
   if (scheduling_round_depth_ == 0) {
     remote_node_available_snapshot_.clear();
   }

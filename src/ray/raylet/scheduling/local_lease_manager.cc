@@ -125,7 +125,7 @@ void LocalLeaseManager::WaitForLeaseArgsRequests(std::shared_ptr<internal::Work>
 
 void LocalLeaseManager::ScheduleAndGrantLeases() {
   ClusterResourceScheduler::SchedulingRoundGuard guard(cluster_resource_scheduler_);
-  
+
   GrantScheduledLeasesToWorkers();
   // TODO(swang): Spill from waiting queue first? Otherwise, we may end up
   // spilling a lease whose args are already local.
