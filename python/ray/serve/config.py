@@ -251,23 +251,23 @@ class RequestRouterConfig(BaseModel):
         ),
     )
 
-    initial_backoff_s: Optional[float] = Field(
-        default=None,
+    initial_backoff_s: PositiveFloat = Field(
+        default=RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
         description=(
             "Initial backoff time (in seconds) before retrying to route a request "
             "to a replica. Defaults to 0.025."
         ),
     )
 
-    backoff_multiplier: Optional[float] = Field(
-        default=None,
+    backoff_multiplier: PositiveFloat = Field(
+        default=RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
         description=(
             "Multiplier applied to the backoff time after each retry. " "Defaults to 2."
         ),
     )
 
-    max_backoff_s: Optional[float] = Field(
-        default=None,
+    max_backoff_s: PositiveFloat = Field(
+        default=RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
         description=(
             "Maximum backoff time (in seconds) between retries. " "Defaults to 0.5."
         ),

@@ -496,12 +496,6 @@ async def create_event() -> asyncio.Event:
 
 
 class AsyncioRouter:
-
-    # Backoff parameters for request routing.
-    _initial_backoff_s: float
-    _backoff_multiplier: float
-    _max_backoff_s: float
-
     def __init__(
         self,
         controller_handle: ActorHandle,
@@ -559,6 +553,10 @@ class AsyncioRouter:
         # Flipped to `True` once the router has received a non-empty
         # replica set at least once.
         self._running_replicas_populated: bool = False
+
+        self._initial_backoff_s: Optional[float] = None
+        self._backoff_multiplier: Optional[float] = None
+        self._max_backoff_s: Optional[float] = None
 
         # Initializing `self._metrics_manager` before `self.long_poll_client` is
         # necessary to avoid race condition where `self.update_deployment_config()`
@@ -632,6 +630,14 @@ class AsyncioRouter:
         router is initialized.
         """
         if not self._request_router and self._request_router_class:
+            backoff_kwargs = {}
+            if self._initial_backoff_s is not None:
+                backoff_kwargs["initial_backoff_s"] = self._initial_backoff_s
+            if self._backoff_multiplier is not None:
+                backoff_kwargs["backoff_multiplier"] = self._backoff_multiplier
+            if self._max_backoff_s is not None:
+                backoff_kwargs["max_backoff_s"] = self._max_backoff_s
+
             request_router = self._request_router_class(
                 deployment_id=self.deployment_id,
                 handle_source=self._handle_source,
@@ -646,9 +652,7 @@ class AsyncioRouter:
                 prefer_local_node_routing=self._prefer_local_node_routing,
                 prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_availability_zone=self._availability_zone,
-                initial_backoff_s=self._initial_backoff_s,
-                backoff_multiplier=self._backoff_multiplier,
-                max_backoff_s=self._max_backoff_s,
+                **backoff_kwargs,
             )
             request_router.initialize_state(**(self._request_router_kwargs))
 
@@ -707,6 +711,12 @@ class AsyncioRouter:
             deployment_config.request_router_config.backoff_multiplier
         )
         self._max_backoff_s = deployment_config.request_router_config.max_backoff_s
+
+        if self._request_router:
+            self._request_router.initial_backoff_s = self._initial_backoff_s
+            self._request_router.backoff_multiplier = self._backoff_multiplier
+            self._request_router.max_backoff_s = self._max_backoff_s
+
         self._metrics_manager.update_deployment_config(
             deployment_config,
             curr_num_replicas=len(self.request_router.curr_replicas),
