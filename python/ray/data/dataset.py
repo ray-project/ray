@@ -4515,11 +4515,19 @@ class Dataset:
                 "PR 3: upsert_kwargs not supported. Upsert mode will be added in PR 6."
             )
 
-        # PR 3: Partition overwrite not supported yet
-        if "partition_overwrite_mode" in write_kwargs:
+        # PR 7: Partition overwrite mode now supported
+        partition_overwrite_mode = write_kwargs.pop("partition_overwrite_mode", "static")
+        if partition_overwrite_mode not in ("static", "dynamic"):
             raise ValueError(
-                "PR 3: partition_overwrite_mode not supported. "
-                "Partition overwrite modes will be added in PR 7."
+                f"Invalid partition_overwrite_mode '{partition_overwrite_mode}'. "
+                "Supported: ['static', 'dynamic']"
+            )
+        if partition_overwrite_mode == "dynamic" and not partition_cols:
+            raise ValueError(
+                "partition_overwrite_mode='dynamic' requires partition_cols to be specified"
+            )
+        if partition_overwrite_mode:
+            write_kwargs["partition_overwrite_mode"] = partition_overwrite_mode"
             )
 
         # PR 3: File buffering not supported yet
