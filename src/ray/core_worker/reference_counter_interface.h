@@ -99,6 +99,7 @@ class ReferenceCounterInterface {
   /// any owner information, since we don't know how it was created.
   ///
   /// \param[in] object_id The object to to increment the count for.
+  /// \param[in] call_site Description of the call site where the reference was created.
   virtual void AddLocalReference(
       const ObjectID &object_id,
       std::string_view call_site) = 0;  // Changed: read-only param

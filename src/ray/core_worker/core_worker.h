@@ -823,8 +823,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] The timestamp of the error.
   /// \return Status.
   Status PushError(const JobID &job_id,
-                   std::string_view type,           // Changed: read-only param
-                   std::string_view error_message,  // Changed: read-only param
+                   const std::string &type,
+                   const std::string &error_message,
                    double timestamp);
 
   // Prestart workers. The workers:
