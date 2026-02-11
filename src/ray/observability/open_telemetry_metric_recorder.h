@@ -86,6 +86,20 @@ class OpenTelemetryMetricRecorder {
                                const std::string &description,
                                const std::vector<double> &buckets);
 
+  // Registers an exponential histogram metric with the given name and description.
+  // Exponential histograms use logarithmically-spaced buckets that automatically
+  // rescale to fit the data range, making them ideal for latency measurements with
+  // long-tail distributions.
+  // - max_size: Maximum number of buckets (default: 160)
+  // - max_scale: Initial bucket resolution, range -10 to 20 (default: 20 = finest)
+  // The histogram starts at max_scale and automatically rescales down if needed to
+  // fit within max_size buckets. Default values provide <5% relative error for
+  // latencies from 1ms to 10s.
+  void RegisterExponentialHistogramMetric(const std::string &name,
+                                          const std::string &description,
+                                          int max_size = 160,
+                                          int max_scale = 20);
+
   // Check if a metric with the given name is registered.
   bool IsMetricRegistered(const std::string &name);
 

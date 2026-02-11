@@ -213,6 +213,28 @@ void Histogram::RegisterView() {
   internal::RegisterAsView(view_descriptor, tag_keys_);
 }
 
+void ExponentialHistogram::RegisterOpenTelemetryMetric() {
+  OpenTelemetryMetricRecorder::GetInstance().RegisterExponentialHistogramMetric(
+      name_, description_, max_size_, max_scale_);
+}
+
+void ExponentialHistogram::RegisterView() {
+  // OpenCensus doesn't support exponential histograms, so we fall back to a
+  // reasonable set of explicit boundaries for latency measurements (1ms to 10s).
+  // This is only used when OpenTelemetry is disabled.
+  std::vector<double> fallback_boundaries = {
+      1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000};
+  opencensus::stats::ViewDescriptor view_descriptor =
+      opencensus::stats::ViewDescriptor()
+          .set_name(name_)
+          .set_description(description_)
+          .set_measure(name_)
+          .set_aggregation(opencensus::stats::Aggregation::Distribution(
+              opencensus::stats::BucketBoundaries::Explicit(fallback_boundaries)));
+
+  internal::RegisterAsView(view_descriptor, tag_keys_);
+}
+
 void Count::RegisterOpenTelemetryMetric() {
   OpenTelemetryMetricRecorder::GetInstance().RegisterCounterMetric(name_, description_);
 }

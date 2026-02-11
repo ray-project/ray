@@ -1,0 +1,14 @@
+diff --git a/exporters/otlp/src/otlp_log_recordable.cc b/exporters/otlp/src/otlp_log_recordable.cc
+index 1234567..abcdefg 100644
+--- a/exporters/otlp/src/otlp_log_recordable.cc
++++ b/exporters/otlp/src/otlp_log_recordable.cc
+@@ -200,7 +200,8 @@ void OtlpLogRecordable::SetBody(const opentelemetry::common::AttributeValue &me
+
+ void OtlpLogRecordable::SetEventId(int64_t /* id */, nostd::string_view event_name) noexcept
+ {
+-  proto_record_.set_event_name(event_name.data(), event_name.size());
++  // Commented out for proto compatibility - event_name field not available in v1.3.1
++  // proto_record_.set_event_name(event_name.data(), event_name.size());
+ }
+
+ void OtlpLogRecordable::SetTraceId(const opentelemetry::trace::TraceId &trace_id) noexcept
