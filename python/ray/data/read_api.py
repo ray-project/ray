@@ -119,6 +119,7 @@ if TYPE_CHECKING:
     import pyspark
     import tensorflow as tf
     import torch
+    from deltalake import DeltaTable
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
@@ -4236,6 +4237,73 @@ def read_unity_catalog(
     return connector.read()
 
 
+def _infer_partition_types_from_delta_table(
+    dt: "DeltaTable", partitioning: Optional[Partitioning]
+) -> Partitioning:
+    """Infer partition column types from DeltaTable schema and update Partitioning.
+
+    Extracts partition column names and types from DeltaTable metadata and schema,
+    then creates or updates the Partitioning object with field_types to ensure
+    partition columns maintain their original types (int, float, bool) instead of
+    being read as strings from directory names.
+
+    Reference:
+    - DeltaTable metadata: https://delta-io.github.io/delta-rs/python/api/deltalake.html#deltalake.DeltaTable.metadata
+    - DeltaTable schema: https://delta-io.github.io/delta-rs/python/api/deltalake.html#deltalake.DeltaTable.schema
+
+    Args:
+        dt: DeltaTable instance to extract partition info from.
+        partitioning: Existing Partitioning object or None.
+
+    Returns:
+        Partitioning object with field_types set based on DeltaTable schema.
+    """
+    from ray.data._internal.datasource.delta.utils import (
+        pyarrow_type_to_partition_python_type,
+        to_pyarrow_schema,
+    )
+
+    metadata = dt.metadata()
+    partition_cols = metadata.partition_columns if metadata else []
+
+    if not partition_cols:
+        return partitioning or Partitioning("hive")
+
+    # Get schema from DeltaTable and extract partition column types
+    delta_schema = dt.schema()
+    pa_schema = to_pyarrow_schema(delta_schema)
+
+    partition_field_types = {}
+    for col_name in partition_cols:
+        if col_name in pa_schema.names:
+            col_type = pa_schema.field(col_name).type
+            python_type = pyarrow_type_to_partition_python_type(col_type)
+            if python_type is not None:
+                partition_field_types[col_name] = python_type
+
+    # Create or update Partitioning with inferred types
+    if partitioning is None:
+        return Partitioning(
+            style="hive",
+            field_names=partition_cols,
+            field_types=partition_field_types,
+        )
+
+    # Merge user's field_types with inferred types (user's take precedence)
+    merged_field_types = {
+        **partition_field_types,
+        **(partitioning.field_types or {}),
+    }
+
+    return Partitioning(
+        style=partitioning.style,
+        base_dir=partitioning.base_dir,
+        field_names=partitioning.field_names or partition_cols,
+        field_types=merged_field_types,
+        filesystem=partitioning.filesystem,
+    )
+
+
 @PublicAPI(stability="alpha")
 def read_delta(
     path: Union[str, List[str]],
@@ -4279,11 +4347,14 @@ def read_delta(
             For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
             used. If ``None``, this function uses a system-chosen implementation.
         columns: A list of column names to read. Only the specified columns are
-            read during the file scan.
+            read during the file scan. This enables projection pushdown for efficient
+            column selection.
         partition_filters: Delta Lake partition filters as list of tuples in the format
             ``[(column, op, value), ...]`` where ``op`` can be ``"="``, ``"!="``, ``"in"``,
             or ``"not in"``. Example: ``[("year", "=", "2024"), ("month", "in", ["01", "02"])]``.
-            Filters are applied at the Delta table level to reduce I/O.
+            Filters are applied at the Delta table level to reduce I/O. Combined with
+            predicate pushdown, this enables file skipping using Delta Lake statistics
+            (min/max values) for optimal performance.
         storage_options: Cloud storage authentication options passed to delta-rs.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
@@ -4315,8 +4386,23 @@ def read_delta(
                     #pyarrow.dataset.Scanner.from_fragment>`_
 
     Returns:
-        :class:`~ray.data.Dataset` producing records read from the specified parquet
-        files.
+        :class:`~ray.data.Dataset` producing records read from the specified Delta
+        Lake table.
+
+    Note:
+        This connector supports the following Delta Lake features:
+
+        * **File skipping/filter pushdown**: Uses Delta Lake statistics (min/max values)
+          to skip files that don't match predicates, reducing I/O.
+        * **Projection pushdown**: Only reads requested columns, reducing data transfer.
+        * **Time travel**: Read specific table versions using the ``version`` parameter
+          (integer version number or ISO 8601 timestamp string).
+        * **All primitive types**: Supports maps, structs, arrays, and nested types.
+        * **ACID guarantees**: Reads are consistent with Delta Lake's ACID transaction model.
+        * **Schema evolution**: Automatically handles schema changes across table versions.
+
+        Predicate pushdown is supported via Ray Data expressions. Apply filters using
+        ``ds.filter(expr=col("column") > value)`` to leverage file skipping optimizations.
 
     """
     # Modified from ray.data._internal.util._check_import, which is meant for objects,
@@ -4357,10 +4443,19 @@ def read_delta(
     dt = DeltaTable(path, **dt_kwargs)
 
     # Handle timestamp string versions using load_as_version()
+    # Reference: https://delta-io.github.io/delta-rs/python/api/deltalake.html#deltalake.DeltaTable.load_as_version
     if version is not None and isinstance(version, str):
         dt.load_as_version(version)
 
+    # Infer partition column types from DeltaTable schema to preserve original types
+    # when reading partitioned data. Without this, partition columns are read as strings
+    # from directory names (e.g., "year=2024" becomes string "2024" instead of int 2024).
+    partitioning = _infer_partition_types_from_delta_table(
+        dt, partitioning
+    )
+
     # Get the parquet file paths from the DeltaTable with partition filters applied
+    # Reference: https://delta-io.github.io/delta-rs/python/api/deltalake.html#deltalake.DeltaTable.file_uris
     if partition_filters is not None:
         paths = dt.file_uris(partition_filters=partition_filters)
     else:

@@ -1,6 +1,11 @@
 """Utility functions for Delta Lake datasource operations.
 
-This module consolidates file, partition, schema, and storage utilities.
+This module consolidates file, partition, schema, and storage utilities for
+Delta Lake integration with Ray Data.
+
+Delta Lake: https://delta.io/
+delta-rs Python library: https://delta-io.github.io/delta-rs/python/
+PyArrow: https://arrow.apache.org/docs/python/
 """
 
 import json
@@ -9,7 +14,7 @@ import os
 import posixpath
 import urllib.parse
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -476,6 +481,33 @@ def is_numeric_type(t: pa.DataType) -> bool:
 
 def is_temporal_type(t: pa.DataType) -> bool:
     return pa.types.is_date(t) or pa.types.is_timestamp(t)
+
+
+def pyarrow_type_to_partition_python_type(pa_type: pa.DataType) -> Optional[Type]:
+    """Convert PyArrow type to Python type for Partitioning.field_types.
+
+    Converts PyArrow DataTypes to Python types (int, float, bool, str) that can be
+    used in Partitioning.field_types to ensure partition columns maintain their
+    original types when reading from path-based partitions.
+
+    Reference: https://arrow.apache.org/docs/python/api/datatypes.html
+
+    Args:
+        pa_type: PyArrow DataType to convert.
+
+    Returns:
+        Python type (int, float, bool, str) or None if type should default to string.
+    """
+    if pa.types.is_integer(pa_type):
+        return int
+    elif pa.types.is_floating(pa_type):
+        return float
+    elif pa.types.is_boolean(pa_type):
+        return bool
+    elif pa.types.is_string(pa_type) or pa.types.is_large_string(pa_type):
+        return str
+    # Default to string for other types (date, timestamp, etc.)
+    return None
 
 
 def create_filesystem_from_storage_options(
