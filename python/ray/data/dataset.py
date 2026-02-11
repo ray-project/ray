@@ -2433,6 +2433,9 @@ class Dataset:
         ds = self
         dataset_length = ds._meta_count()
         if dataset_length is None:
+            # Materialize once so split_at_indices() can reuse the computed snapshot.
+            # Calling count() first would execute the upstream pipeline for counting,
+            # then execute it again for the split.
             ds = ds.materialize()
             dataset_length = ds._meta_count()
             if dataset_length is None:
@@ -2525,6 +2528,8 @@ class Dataset:
         else:
             ds_length = ds._meta_count()
             if ds_length is None:
+                # Materialize once so split_at_indices() doesn't re-execute the
+                # upstream pipeline after a separate count() run.
                 ds = ds.materialize()
                 ds_length = ds._meta_count()
             ds_length = self._validate_test_size_int(test_size, ds, ds_length=ds_length)
