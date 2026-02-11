@@ -4494,46 +4494,50 @@ class Dataset:
                 f"Invalid mode '{mode}'. Supported modes: {sorted(valid_modes)}"
             )
 
-        # PR 2: Partitioning not supported yet
+        # PR 3: Partitioning now supported
         if partition_cols:
+            from ray.data._internal.datasource.delta.utils import (
+                validate_partition_column_names,
+            )
+            partition_cols = validate_partition_column_names(partition_cols)
+
+        # PR 4: Schema evolution now supported via schema_mode parameter
+        # Allow schema_mode to be passed in write_kwargs for backward compatibility
+        schema_mode = write_kwargs.pop("schema_mode", "merge")
+        if schema_mode not in ("merge", "error"):
             raise ValueError(
-                "PR 2: partition_cols not supported. Partitioning will be added in PR 3."
+                f"Invalid schema_mode '{schema_mode}'. Supported: ['merge', 'error']"
             )
 
-        # PR 2: Schema evolution not supported yet
-        if "schema_mode" in write_kwargs:
-            raise ValueError(
-                "PR 2: schema_mode not supported. Schema evolution will be added in PR 4."
-            )
-
-        # PR 2: Upsert not supported yet
+        # PR 4: Upsert not supported yet
         if "upsert_kwargs" in write_kwargs:
             raise ValueError(
-                "PR 2: upsert_kwargs not supported. Upsert mode will be added in PR 6."
+                "PR 4: upsert_kwargs not supported. Upsert mode will be added in PR 6."
             )
 
-        # PR 2: Partition overwrite not supported yet
+        # PR 4: Partition overwrite not supported yet
         if "partition_overwrite_mode" in write_kwargs:
             raise ValueError(
-                "PR 2: partition_overwrite_mode not supported. "
+                "PR 4: partition_overwrite_mode not supported. "
                 "Partition overwrite modes will be added in PR 7."
             )
 
-        # PR 2: File buffering not supported yet
+        # PR 4: File buffering not supported yet
         if "target_file_size_bytes" in write_kwargs:
             raise ValueError(
-                "PR 2: target_file_size_bytes not supported. "
+                "PR 4: target_file_size_bytes not supported. "
                 "File buffering will be added in PR 8."
             )
 
-        # PR 2: Write modes supported, but no partitioning or schema_mode yet
+        # PR 5: Time travel is read-only, but write_delta inherits features from PR 4
+        # (Write modes, partitioning, and schema evolution supported)
         datasink = DeltaDatasink(
             path,
             mode=mode,
-            partition_cols=[],  # PR 2: No partitioning yet
+            partition_cols=partition_cols or [],  # PR 3: Partitioning supported
             filesystem=filesystem,
             schema=schema,
-            schema_mode="merge",  # PR 2: Not used, but required parameter
+            schema_mode=schema_mode,  # PR 4: Schema evolution now supported
             **write_kwargs,
         )
         self.write_datasink(
