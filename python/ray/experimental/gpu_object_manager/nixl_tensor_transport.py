@@ -300,7 +300,9 @@ class NixlTensorTransport(TensorTransportManager):
             if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and remote_name:
                 nixl_agent.remove_remote_agent(remote_name)
             if local_descs:
-                nixl_agent.deregister_memory(local_descs)
+                with self._cache_lock:
+                    nixl_agent.deregister_memory(local_descs)
+                    self._nixl_agent_meta_version += 1
 
         return tensors
 
