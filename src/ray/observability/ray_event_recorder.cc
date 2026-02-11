@@ -147,8 +147,15 @@ void RayEventRecorder::ExportEvents() {
       event_key_to_iterator[key] = std::prev(grouped_events.end());
       estimated_batch_size += estimated_size;
     } else {
-      // Merge into existing event (doesn't significantly change size)
-      (*map_it->second)->Merge(std::move(*event));
+      // Merge into existing event, update estimated batch size
+      estimated_batch_size -=
+          (*map_it->second)
+              ->GetSerializedSizeEstimate();  // subtract the size of the existing event
+      (*map_it->second)
+          ->Merge(std::move(*event));  // merge the new event into the existing event
+      estimated_batch_size +=
+          (*map_it->second)
+              ->GetSerializedSizeEstimate();  // add the size of the merged event
     }
   }
 
