@@ -343,15 +343,15 @@ class DeploymentConfig(BaseModel):
                 else:
                     data["request_router_config"]["request_router_kwargs"] = {}
 
-            # Replace falsy proto defaults with None so Pydantic uses its defaults.
+            # Remove falsy proto defaults so Pydantic uses its Field defaults.
             # This is important during rolling upgrades when older controllers
             # send configs without these fields (proto3 defaults to 0.0).
             if not data["request_router_config"].get("initial_backoff_s"):
-                data["request_router_config"]["initial_backoff_s"] = None
+                data["request_router_config"].pop("initial_backoff_s", None)
             if not data["request_router_config"].get("backoff_multiplier"):
-                data["request_router_config"]["backoff_multiplier"] = None
+                data["request_router_config"].pop("backoff_multiplier", None)
             if not data["request_router_config"].get("max_backoff_s"):
-                data["request_router_config"]["max_backoff_s"] = None
+                data["request_router_config"].pop("max_backoff_s", None)
 
             data["request_router_config"] = RequestRouterConfig(
                 **data["request_router_config"]
