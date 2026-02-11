@@ -10,12 +10,11 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformer,
 )
 from ray.data._internal.logical.operators import Write
+from ray.data._internal.planner.write_op_constants import WRITE_UUID_KWARG_NAME
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.datasource import Datasource
-
-WRITE_UUID_KWARG_NAME = "write_uuid"
 
 
 def generate_write_fn(

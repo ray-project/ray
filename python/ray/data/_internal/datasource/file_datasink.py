@@ -12,7 +12,7 @@ from ray.data._internal.datasource.filename_provider import (
 from ray.data._internal.datasource.path_util import _resolve_paths_and_filesystem
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
+from ray.data._internal.planner.write_op_constants import WRITE_UUID_KWARG_NAME
 from ray.data._internal.savemode import SaveMode
 from ray.data._internal.util import (
     RetryingPyFileSystem,

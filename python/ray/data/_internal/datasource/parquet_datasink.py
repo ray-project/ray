@@ -7,7 +7,7 @@ from ray.data._internal.datasource.file_based_datasource import _resolve_kwargs
 from ray.data._internal.datasource.file_datasink import _FileDatasink
 from ray.data._internal.datasource.filename_provider import FilenameProvider
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
+from ray.data._internal.planner.write_op_constants import WRITE_UUID_KWARG_NAME
 from ray.data._internal.savemode import SaveMode
 from ray.data.block import Block, BlockAccessor
 
