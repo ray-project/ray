@@ -2929,12 +2929,15 @@ pandas==2.3.3 \
     --hash=sha256:f086f6fe114e19d92014a1966f43a3e62285109afe874f067f5abbdcbb10e59c \
     --hash=sha256:f8bfc0e12dc78f777f323f55c58649591b2cd0c43534e8355c51d3fede5f4dee
     # via
+    #   --override python/requirements/data/pyarrow-v20.txt
+    #   -r python/requirements/data/pyarrow-v20.txt
     #   -r python/requirements/ml/data-requirements.txt
     #   bokeh
     #   dask
     #   datasets
     #   delta-sharing
     #   modin
+    #   pyiceberg
     #   pymars
     #   ray
     #   raydp
@@ -3699,7 +3702,6 @@ pygments==2.19.2 \
     --hash=sha256:636cb2477cec7f8952536970bc533bc43743542f70392ae026374600add5b887 \
     --hash=sha256:86540386c03d588bb81d44bc3928634ff26449851e99741617ecb9037ee5ec0b
     # via
-    #   pytest
     #   rich
     #   textual
 pyiceberg==0.10.0 \
@@ -3861,12 +3863,15 @@ pyroaring==1.0.3 \
 pyspark==3.5.4 \
     --hash=sha256:1c2926d63020902163f58222466adf6f8016f6c43c1f319b8e7a71dbaa05fc51
     # via raydp
-pytest==9.0.2 \
-    --hash=sha256:711ffd45bf766d5264d487b917733b453d917afd2b0ad65223959f59089f875b \
-    --hash=sha256:75186651a92bd89611d1d9fc20f0b4345fd827c41ccd5c299a868a05d70edf11
+pytest==7.4.4 \
+    --hash=sha256:2cf0005922c6ace4a3e2ec8b4080eb0d9753fdc93107415332f50ce9e7994280 \
+    --hash=sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8
     # via
+    #   --override python/requirements/data/pyarrow-v20.txt
+    #   -r python/requirements/data/pyarrow-v20.txt
     #   pytest-mock
     #   pytest-repeat
+    #   pytest-sphinx
 pytest-mock==3.15.1 \
     --hash=sha256:0a25e2eb88fe5168d535041d09a4529a188176ae608a6d249ee65abc0949630d \
     --hash=sha256:1849a238f6f396da19762269de72cb1814ab44416fa73a8686deac10b0d87a0f
@@ -3875,6 +3880,10 @@ pytest-repeat==0.9.4 \
     --hash=sha256:c1738b4e412a6f3b3b9e0b8b29fcd7a423e50f87381ad9307ef6f5a8601139f3 \
     --hash=sha256:d92ac14dfaa6ffcfe6917e5d16f0c9bc82380c135b03c2a5f412d2637f224485
     # via -r python/requirements/ml/data-test-requirements.txt
+pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx@c1ab2b33c784d04fa467211a15f89edf631107a1
+    # via
+    #   --override python/requirements/data/pyarrow-v20.txt
+    #   -r python/requirements/data/pyarrow-v20.txt
 python-dateutil==2.9.0.post0 \
     --hash=sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3 \
     --hash=sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427
