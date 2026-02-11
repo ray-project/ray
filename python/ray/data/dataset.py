@@ -4527,8 +4527,7 @@ class Dataset:
                 "partition_overwrite_mode='dynamic' requires partition_cols to be specified"
             )
         if partition_overwrite_mode:
-            write_kwargs["partition_overwrite_mode"] = partition_overwrite_mode"
-            )
+            write_kwargs["partition_overwrite_mode"] = partition_overwrite_mode
 
         # PR 8: File buffering now supported
         target_file_size_bytes = write_kwargs.pop("target_file_size_bytes", None)
