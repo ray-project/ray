@@ -4545,16 +4545,7 @@ class Dataset:
             partition_cols=partition_cols or [],
             filesystem=filesystem,
             schema=schema,
-            schema_mode="merge",  # Default schema mode
-            **write_kwargs,
-        )
-        datasink = DeltaDatasink(
-            path,
-            mode=mode,
-            partition_cols=[],  # PR 2: No partitioning yet
-            filesystem=filesystem,
-            schema=schema,
-            schema_mode="merge",  # PR 2: Not used, but required parameter
+            schema_mode=schema_mode,
             **write_kwargs,
         )
         self.write_datasink(
