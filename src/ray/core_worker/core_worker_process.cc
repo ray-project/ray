@@ -829,15 +829,20 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       new ray::stats::Gauge(GetOwnedObjectsByStateGaugeMetric()));
   owned_objects_size_counter_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
-  scheduler_placement_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
-      new ray::stats::Histogram(GetSchedulerPlacementTimeMsHistogramMetric()));
+  scheduler_placement_time_ms_histogram_ =
+      std::unique_ptr<ray::stats::ExponentialHistogram>(
+          new ray::stats::ExponentialHistogram(
+              GetSchedulerPlacementTimeMsHistogramMetric()));
   task_total_submitter_preprocessing_time_ms_histogram_ =
-      std::unique_ptr<ray::stats::Histogram>(new ray::stats::Histogram(
-          GetTaskTotalSubmitterPreprocessingTimeMsHistogramMetric()));
-  task_dependency_resolution_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
-      new ray::stats::Histogram(GetTaskDependencyResolutionTimeMsHistogramMetric()));
-  task_push_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
-      new ray::stats::Histogram(GetTaskPushTimeMsHistogramMetric()));
+      std::unique_ptr<ray::stats::ExponentialHistogram>(
+          new ray::stats::ExponentialHistogram(
+              GetTaskTotalSubmitterPreprocessingTimeMsHistogramMetric()));
+  task_dependency_resolution_time_ms_histogram_ =
+      std::unique_ptr<ray::stats::ExponentialHistogram>(
+          new ray::stats::ExponentialHistogram(
+              GetTaskDependencyResolutionTimeMsHistogramMetric()));
+  task_push_time_ms_histogram_ = std::unique_ptr<ray::stats::ExponentialHistogram>(
+      new ray::stats::ExponentialHistogram(GetTaskPushTimeMsHistogramMetric()));
 
   // Initialize event framework before starting up worker.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
