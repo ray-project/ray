@@ -67,20 +67,22 @@ steps:
     depends_on: windowsbuild
 
   - label: ":ray-serve: serve: :windows: tests"
-    key: windows_serve_doctest
     tags:
       - serve
       - windows
     job_env: WINDOWS
     instance_type: windows
+    parallelism: 2
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve:doctest serve
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
         --build-name windowsbuild
         --operating-system windows
+        --except-tags no_windows,use_all_core_windows
         --test-env=CI="1"
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
     depends_on: windowsbuild
 
   - label: ":ray-serve: serve: :windows: enormous tests"
@@ -145,7 +147,6 @@ steps:
     tags:
       - flaky
       - windows
-      - skip-on-premerge
     job_env: WINDOWS
     instance_type: windows
     commands:
