@@ -133,11 +133,8 @@ pip install torch transformers datasets deepspeed
 
 
 ```python
-# Enable Ray Train V2 for the latest train APIs
 import os
-os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
-import json
 import logging
 import tempfile
 import uuid
@@ -497,6 +494,12 @@ def setup_model_with_autotp(
 
 With tensor parallelism, each worker holds a shard of the model. Checkpointing saves each shard independently, and Ray Train aggregates them into a single checkpoint.
 
+For DeepSpeed AutoTP + ZeRO, prefer DeepSpeed's native checkpoint API. `engine.save_checkpoint(...)` writes model shards, ZeRO optimizer partition state, and training state in a format that `engine.load_checkpoint(...)` can restore correctly.
+
+In this example, all workers call `engine.save_checkpoint(...)` with the same `tag` and `client_state` (`epoch`/`step`), then each reports the checkpoint directory to Ray Train via `ray.train.report(..., checkpoint=...)`.
+
+On restore, each worker calls `engine.load_checkpoint(...)` from the Ray Train checkpoint directory and resumes from `client_state["epoch"] + 1`.
+
 
 ```python
 from ray.train import Checkpoint
@@ -504,31 +507,48 @@ from ray.train import Checkpoint
 
 def save_checkpoint(
     engine,
-    world_rank: int,
     epoch: int,
     step: int,
     avg_loss: float,
 ) -> None:
     """Save checkpoint and report to Ray Train."""
     with tempfile.TemporaryDirectory() as checkpoint_dir:
-        # Each rank saves its model/optimizer shard
-        torch.save(
-            engine.module.state_dict(),
-            os.path.join(checkpoint_dir, f"model_rank{world_rank}.pt"),
+        ckpt_tag = f"epoch_{epoch:04d}_step_{step:06d}"
+        # DeepSpeed requires all ranks to call save_checkpoint with same tag.
+        engine.save_checkpoint(
+            checkpoint_dir,
+            tag=ckpt_tag,
+            client_state={"epoch": epoch, "step": step},
+            save_latest=True,
         )
-        torch.save(
-            engine.optimizer.state_dict(),
-            os.path.join(checkpoint_dir, f"optimizer_rank{world_rank}.pt"),
-        )
-
-        # Save metadata (from rank 0 only)
-        if world_rank == 0:
-            with open(os.path.join(checkpoint_dir, "metadata.json"), "w") as f:
-                json.dump({"epoch": epoch, "step": step}, f)
 
         # All workers must call report() with their checkpoint
         checkpoint = Checkpoint.from_directory(checkpoint_dir)
         ray.train.report({"loss": avg_loss, "epoch": epoch}, checkpoint=checkpoint)
+
+
+def load_checkpoint(
+    engine,
+) -> int:
+    """Load DeepSpeed checkpoint from Ray Train checkpoint directory."""
+    checkpoint = ray.train.get_checkpoint()
+    if checkpoint is None:
+        return 0
+
+    with checkpoint.as_directory() as checkpoint_dir:
+        load_path, client_state = engine.load_checkpoint(
+            checkpoint_dir,
+            load_optimizer_states=True,
+            load_lr_scheduler_states=True,
+        )
+        if load_path is None:
+            raise RuntimeError("Failed to load DeepSpeed checkpoint.")
+
+        start_epoch = 0
+        if client_state is not None:
+            start_epoch = client_state.get("epoch", -1) + 1
+
+    return start_epoch
 ```
 
 ## 5. Training loop
@@ -567,6 +587,7 @@ def train_func(config):
         device=device,
         config=config,
     )
+    start_epoch = load_checkpoint(engine)
 
     # Create dataloader with TP-aware sharding
     dataloader = create_dataloader(
@@ -587,7 +608,7 @@ def train_func(config):
     # Training loop
     engine.train()
 
-    for epoch in range(config["num_epochs"]):
+    for epoch in range(start_epoch, config["num_epochs"]):
         dataloader.sampler.set_epoch(epoch)
 
         running_loss = 0.0
@@ -634,7 +655,7 @@ def train_func(config):
         avg_loss = running_loss / num_batches if num_batches > 0 else 0.0
 
         # Save checkpoint at end of epoch
-        save_checkpoint(engine, world_rank, epoch, step, avg_loss)
+        save_checkpoint(engine, epoch, step, avg_loss)
 
         if world_rank == 0:
             logger.info(f"Epoch {epoch} completed. Average loss: {avg_loss:.4f}")
@@ -709,10 +730,9 @@ print(f"Final metrics: {result.metrics}")
 
 ## Scaling to larger models
 
-To train larger models like Qwen2-7B or Llama-3-8B, adjust the configuration:
+To train larger models like Qwen2-7B or Llama-3-8B, adjust the configuration. For example, on 8 GPUs you can use 4-way TP and 2-way DP:
 
 ```python
-# For 8 GPUs: 4-way TP, 2-way DP
 train_loop_config = {
     "model_name": "Qwen/Qwen2-7B",
     "tp_size": 4,
