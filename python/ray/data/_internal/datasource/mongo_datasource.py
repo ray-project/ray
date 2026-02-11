@@ -97,6 +97,9 @@ class MongoDatasource(Datasource):
             )
 
             return estimated_size
+        except ValueError:
+            # Re-raise ValueError for database/collection validation errors
+            raise
         except Exception as e:
             logger.warning(f"Failed to estimate MongoDB data size: {e}")
             return None
