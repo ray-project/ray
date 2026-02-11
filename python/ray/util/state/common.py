@@ -520,7 +520,7 @@ class ActorState(StateSchema):
     call_site: Optional[str] = state_column(detail=True, filterable=False)
     #: The label selector for the actor.
     label_selector: Optional[dict] = state_column(detail=True, filterable=False)
-
+    #: The fallback options for the label selector.
     fallback_strategy: Optional[dict] = state_column(detail=True, filterable=False)
 
 
