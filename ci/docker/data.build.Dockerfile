@@ -23,10 +23,13 @@ if [[ -n "$ARROW_MONGO_VERSION" ]]; then
   pip install numpy==1.23.5
 fi
 
-# Install MongoDB
-sudo apt-get purge -y mongodb*
-sudo apt-get install -y mongodb
-sudo rm -rf /var/lib/mongodb/mongod.lock
+curl -fsSL https://pgp.mongodb.com/server-8.0.asc | \
+  sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] \
+  https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multiverse" | \
+  sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
+sudo apt-get update
+sudo apt-get install -y mongodb-org
 
 if [[ $RAY_CI_JAVA_BUILD == 1 ]]; then
   # These packages increase the image size quite a bit, so we only install them

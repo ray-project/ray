@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.3-labs
 
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -11,9 +11,9 @@ set -euo pipefail
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y curl zip clang-12
+apt-get install -y curl zip clang-14
 
-ln -s /usr/bin/clang-12 /usr/bin/clang
+ln -s /usr/bin/clang-14 /usr/bin/clang
 
 # Install miniforge3
 curl -fsSL https://github.com/conda-forge/miniforge/releases/download/25.3.0-1/Miniforge3-25.3.0-1-Linux-aarch64.sh > /tmp/miniforge3.sh
@@ -50,6 +50,6 @@ uv pip install --system pip==25.2 cffi==1.16.0
 EOF
 
 ENV CC=clang
-ENV CXX=clang++-12
+ENV CXX=clang++-14
 
 CMD ["echo", "ray release-automation forge"]

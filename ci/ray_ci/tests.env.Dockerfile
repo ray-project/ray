@@ -147,4 +147,25 @@ case "$BUILD_TYPE" in
     ;;
 esac
 
+# HACK: Ubuntu 24.04 system libstdc++ provides GLIBCXX_3.4.33 (GCC 14),
+# but conda's bundled libstdc++ may not include all these symbols.
+# When Ray is compiled locally (non-wheel build types), raylet links against
+# the system libstdc++ and fails to load in the conda environment.
+# Symlink the system library into the conda lib dir to fix this.
+#
+# This is NOT needed for wheel builds (manylinux wheels bundle compatible libs)
+# but is harmless for them, so we apply it unconditionally for simplicity.
+#
+# Proper fix options:
+#   - Always use prebuilt manylinux wheels (eliminates local compilation)
+#   - Define a Bazel C++ toolchain independent of the system toolchain
+#   - Downgrade system libstdc++ to match conda's version
+if [[ -f /usr/lib/gcc/x86_64-linux-gnu/14/libstdc++.so ]]; then
+  ln -sf /usr/lib/gcc/x86_64-linux-gnu/14/libstdc++.so /opt/miniforge/lib/libstdc++.so
+  ln -sf /usr/lib/gcc/x86_64-linux-gnu/14/libstdc++.so /opt/miniforge/lib/libstdc++.so.6
+elif [[ -f /usr/lib/gcc/aarch64-linux-gnu/14/libstdc++.so ]]; then
+  ln -sf /usr/lib/gcc/aarch64-linux-gnu/14/libstdc++.so /opt/miniforge/lib/libstdc++.so
+  ln -sf /usr/lib/gcc/aarch64-linux-gnu/14/libstdc++.so /opt/miniforge/lib/libstdc++.so.6
+fi
+
 EOF
