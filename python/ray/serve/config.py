@@ -287,15 +287,15 @@ class RequestRouterConfig(BaseModel):
 
         return v
 
-    @validator("initial_backoff_s", always=True)
+    @validator("initial_backoff_s", always=True, pre=True)
     def set_initial_backoff_s_default(cls, v):
         return v if v is not None else RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S
 
-    @validator("backoff_multiplier", always=True)
+    @validator("backoff_multiplier", always=True, pre=True)
     def set_backoff_multiplier_default(cls, v):
         return v if v is not None else RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER
 
-    @validator("max_backoff_s", always=True)
+    @validator("max_backoff_s", always=True, pre=True)
     def set_max_backoff_s_default(cls, v):
         return v if v is not None else RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S
 
