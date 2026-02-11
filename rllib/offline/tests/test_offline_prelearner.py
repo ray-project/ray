@@ -253,6 +253,10 @@ class TestOfflinePreLearner(unittest.TestCase):
             .env_runners(
                 batch_mode="complete_episodes",
             )
+            .training(
+                train_batch_size=20,
+                minibatch_size=10,
+            )
             .offline_data(
                 output=data_path,
                 output_write_episodes=True,
