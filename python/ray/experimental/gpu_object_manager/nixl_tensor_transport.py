@@ -218,21 +218,23 @@ class NixlTensorTransport(TensorTransportManager):
         if not tensors:
             return []
 
-        local_descs = None
+        local_xfer_descs = None
         remote_name = None
         xfer_handle = None
         try:
             nixl_agent = self.get_nixl_agent()
-            remote_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
-            local_descs = nixl_agent.register_memory(tensors)
+            remote_xfer_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
+            # This creates a placeholder for the tensor in the tensor_desc_cache even though it doesn't have an object ref for caching purposes.
+            self._add_tensor_descs(tensors)
+            local_xfer_descs = nixl_agent.get_xfer_descs(tensors)
             remote_name = nixl_agent.add_remote_agent(remote_nixl_agent_meta)
 
             xfer_handle = nixl_agent.initialize_xfer(
                 # "UUID" here is just a placeholder, can be any bytes, but without it,
                 # nixl will fail to transfer multiple times.
                 "READ",
-                local_descs.trim(),
-                remote_descs,
+                local_xfer_descs,
+                remote_xfer_descs,
                 remote_name,
                 "UUID",
             )
@@ -272,8 +274,13 @@ class NixlTensorTransport(TensorTransportManager):
                 nixl_agent.release_xfer_handle(xfer_handle)
             if remote_name:
                 nixl_agent.remove_remote_agent(remote_name)
-            if local_descs:
-                nixl_agent.deregister_memory(local_descs)
+            if local_xfer_descs:
+                for tensor in tensors:
+                    key = tensor.data_ptr()
+                    if key not in self._cached_memory_registrations and key in self._tensor_desc_cache:
+                        print("DEREGISTERING MEMORY", key)
+                        nixl_agent.deregister_memory(self._tensor_desc_cache[key].reg_desc)
+                        self._tensor_desc_cache.pop(key)
 
         return tensors
 
