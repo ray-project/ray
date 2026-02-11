@@ -2,7 +2,7 @@ import logging
 from typing import Iterable
 
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data.block import Block, BlockAccessor, DataBatch
+from ray.data.block import Block, DataBatch
 from ray.data.checkpoint.interfaces import (
     CheckpointConfig,
 )
