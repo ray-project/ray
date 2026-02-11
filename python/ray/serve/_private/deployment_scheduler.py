@@ -1091,7 +1091,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             )
         num_gangs = request.num_replicas_to_add // gang_size
 
-        gang_pgs: Dict[int, Any] = {}
+        gang_pgs: List[PlacementGroup] = []
         for gang_index in range(num_gangs):
             bundles = [request.replica_resource_dict.copy() for _ in range(gang_size)]
 
@@ -1111,7 +1111,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                         bundle_label_selector=None,
                     )
                 )
-                gang_pgs[gang_index] = pg
+                gang_pgs.append(pg)
             except Exception:
                 # Follow the same pattern as single-replica PG creation
                 # failure: log and skip this gang so the controller can
