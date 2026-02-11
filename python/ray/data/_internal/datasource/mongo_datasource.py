@@ -88,7 +88,9 @@ class MongoDatasource(Datasource):
             # Estimate total size: count * avg_obj_size
             # Add 20% buffer for PyArrow conversion overhead (empirically determined)
             PYARROW_OVERHEAD_FACTOR = 1.2
-            estimated_size = int(estimated_count * avg_obj_size * PYARROW_OVERHEAD_FACTOR)
+            estimated_size = int(
+                estimated_count * avg_obj_size * PYARROW_OVERHEAD_FACTOR
+            )
 
             logger.debug(
                 f"MongoDB memory estimation: "
