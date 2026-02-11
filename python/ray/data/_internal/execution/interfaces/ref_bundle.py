@@ -319,13 +319,18 @@ class RefBundle:
         bundles = list(bundles)
         if not bundles:
             return cls(blocks=(), owns_blocks=True, schema=None)
+
         merged_blocks = list(
             itertools.chain.from_iterable(bundle.blocks for bundle in bundles)
         )
         merged_slices = list(
             itertools.chain.from_iterable(bundle.slices for bundle in bundles)
         )
+        # Ray Data uses the `owns_blocks` flag to determine if the system can eagerly
+        # destroy blocks when they're no longer needed. To be safe, we only set this
+        # to True if all input bundles own their blocks.
         owns_blocks = all(bundle.owns_blocks for bundle in bundles)
+        # TODO: Reconcile the schemas rather than taking the first non-empty schema.
         schema = _take_first_non_empty_schema(bundle.schema for bundle in bundles)
         return cls(
             blocks=tuple(merged_blocks),
