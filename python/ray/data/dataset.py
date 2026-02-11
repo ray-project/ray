@@ -5456,9 +5456,6 @@ class Dataset:
                 efficient but require newer versions of lance to read.  The default is
                 "legacy" which will use the legacy v1 version.  See the user guide
                 for more details.
-            table_id: The table identifier as a list of strings, used with namespace params.
-            namespace_impl: The namespace implementation type (e.g., "rest", "dir").
-            namespace_properties: Properties for connecting to the namespace.
             storage_options: The storage options for the writer. Default is None.
             table_id: The table identifier as a list of strings, used with namespace params.
             namespace_impl: The namespace implementation type (e.g., "rest", "dir").
