@@ -15,7 +15,6 @@
 #include "ray/observability/ray_event_recorder.h"
 
 #include "ray/common/ray_config.h"
-#include "ray/util/graceful_shutdown.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/public/events_base_event.pb.h"
 
@@ -70,53 +69,38 @@ void RayEventRecorder::StopExportingEvents() {
   RAY_LOG(INFO) << "Stopping RayEventRecorder and flushing remaining events.";
 
   auto flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
+  auto deadline = absl::Now() + absl::Milliseconds(flush_timeout_ms);
 
-  // Local handler implementing GracefulShutdownHandler interface.
-  class ShutdownHandler : public GracefulShutdownHandler {
-   public:
-    explicit ShutdownHandler(RayEventRecorder *recorder) : recorder_(recorder) {}
-
-    bool WaitUntilIdle(absl::Duration timeout) override {
-      absl::MutexLock lock(&recorder_->grpc_completion_mutex_);
-      auto deadline = absl::Now() + timeout;
-      while (recorder_->grpc_in_progress_) {
-        if (recorder_->grpc_completion_cv_.WaitWithDeadline(
-                &recorder_->grpc_completion_mutex_, deadline)) {
-          return false;  // Timeout
-        }
-      }
-      return true;
-    }
-
-    void Flush() override {
-      // ExportEvents() sends one batch at a time. Loop until the buffer is
-      // fully drained, waiting for each in-flight gRPC to complete before
-      // sending the next batch. This is safe because enabled_ is false so
-      // no new events can be added, and the buffer is bounded.
-      while (true) {
-        recorder_->ExportEvents();
-        // Wait for the gRPC call (if any) to complete before checking
-        // whether more events remain.
-        {
-          absl::MutexLock lock(&recorder_->grpc_completion_mutex_);
-          while (recorder_->grpc_in_progress_) {
-            recorder_->grpc_completion_cv_.Wait(&recorder_->grpc_completion_mutex_);
-          }
-        }
-        absl::MutexLock lock(&recorder_->mutex_);
-        if (recorder_->buffer_.empty()) {
-          break;
+  // ExportEvents() sends one batch at a time. Drain all batches by looping:
+  // wait for in-flight gRPC → check buffer → flush next batch.
+  // All waits share the same absolute deadline so the overall shutdown timeout
+  // is respected. No new events can arrive since enabled_ is already false.
+  while (true) {
+    {
+      absl::MutexLock lock(&grpc_completion_mutex_);
+      while (grpc_in_progress_) {
+        if (grpc_completion_cv_.WaitWithDeadline(&grpc_completion_mutex_, deadline)) {
+          RAY_LOG(WARNING)
+              << "RayEventRecorder shutdown timed out. Some events may be lost.";
+          return;
         }
       }
     }
 
-   private:
-    RayEventRecorder *recorder_;
-  };
+    {
+      absl::MutexLock lock(&mutex_);
+      if (buffer_.empty()) {
+        break;
+      }
+    }
 
-  ShutdownHandler handler(this);
-  GracefulShutdownWithFlush(
-      handler, absl::Milliseconds(flush_timeout_ms), "RayEventRecorder");
+    if (absl::Now() >= deadline) {
+      RAY_LOG(WARNING) << "RayEventRecorder shutdown timed out. Some events may be lost.";
+      return;
+    }
+
+    ExportEvents();
+  }
 }
 
 void RayEventRecorder::ExportEvents() {
