@@ -4509,11 +4509,22 @@ class Dataset:
                 "PR 3: schema_mode not supported. Schema evolution will be added in PR 4."
             )
 
-        # PR 3: Upsert not supported yet
-        if "upsert_kwargs" in write_kwargs:
+        # PR 4: Schema evolution is supported (from PR 4)
+        schema_mode = write_kwargs.pop("schema_mode", schema_mode)
+
+        # PR 6: Upsert mode now supported
+        upsert_kwargs = write_kwargs.pop("upsert_kwargs", None)
+        if mode == "upsert" and not upsert_kwargs:
             raise ValueError(
-                "PR 3: upsert_kwargs not supported. Upsert mode will be added in PR 6."
+                "UPSERT mode requires upsert_kwargs with 'join_cols' specified. "
+                "Example: upsert_kwargs={'join_cols': ['id']}"
             )
+        if upsert_kwargs and mode != "upsert":
+            raise ValueError(
+                "upsert_kwargs can only be specified with mode='upsert'"
+            )
+        if upsert_kwargs:
+            write_kwargs["upsert_kwargs"] = upsert_kwargs
 
         # PR 7: Partition overwrite mode now supported
         partition_overwrite_mode = write_kwargs.pop("partition_overwrite_mode", "static")
@@ -4529,10 +4540,10 @@ class Dataset:
         if partition_overwrite_mode:
             write_kwargs["partition_overwrite_mode"] = partition_overwrite_mode
 
-        # PR 3: File buffering not supported yet
+        # PR 7: File buffering not supported yet
         if "target_file_size_bytes" in write_kwargs:
             raise ValueError(
-                "PR 3: target_file_size_bytes not supported. "
+                "PR 7: target_file_size_bytes not supported. "
                 "File buffering will be added in PR 8."
             )
 
