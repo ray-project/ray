@@ -253,6 +253,7 @@ class MockReplicaActorWrapper:
         gang_context=None,
     ):
         self.started = True
+        self._gang_context = gang_context
         self._assign_rank_callback = assign_rank_callback
         self._rank = assign_rank_callback(self._replica_id.unique_id, node_id=-1)
         replica_rank_context[self._replica_id.unique_id] = self._rank

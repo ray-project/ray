@@ -522,29 +522,20 @@ def get_all_live_placement_group_names() -> List[str]:
 
 
 def get_active_placement_group_ids() -> Set[str]:
-    """Retrieve the set of placement group IDs referenced by alive actors.
-
-    Queries the GCS actor table for all ``ALIVE`` actors and extracts their
-    ``placement_group_id`` fields.
     """
-    try:
-        accessor = state._connect_and_get_accessor()
-        raw_actors = accessor.get_actor_table(None, "ALIVE")
-    except Exception:
-        logger.warning(
-            "Failed to query actor table for placement group leak detection. "
-            "Assuming no active placement groups."
-        )
-        return set()
+    Retrieve the set of placement group IDs referenced by alive actors.
+
+    Returns:
+        The set of placement group IDs referenced by alive actors.
+    """
+    accessor = state._connect_and_get_accessor()
+    raw_actors = accessor.get_actor_table(None, "ALIVE")
 
     occupied: Set[str] = set()
     for raw_actor_bytes in raw_actors:
-        try:
-            actor_data = gcs_pb2.ActorTableData.FromString(raw_actor_bytes)
-            if actor_data.HasField("placement_group_id"):
-                occupied.add(binary_to_hex(actor_data.placement_group_id))
-        except Exception:
-            continue
+        actor_data = gcs_pb2.ActorTableData.FromString(raw_actor_bytes)
+        if actor_data.HasField("placement_group_id"):
+            occupied.add(binary_to_hex(actor_data.placement_group_id))
 
     return occupied
 

@@ -3173,7 +3173,7 @@ class DeploymentState:
         # Lazy import to avoid circular imports
         from ray.serve.context import GangContext
 
-        for gang_pg in gang_pgs.values():
+        for gang_pg in gang_pgs:
             # Pre-generate replica IDs for all members of this gang
             gang_id = get_random_string()
             member_replica_ids = [
@@ -4023,11 +4023,18 @@ class DeploymentStateManager:
                 if name.startswith(GANG_PG_NAME_PREFIX):
                     gang_pg_name_to_id[name] = pg_id_hex
 
-            occupied_pg_ids = get_active_placement_group_ids()
-            for gang_pg_name in gang_pg_names_in_cluster:
-                pg_id = gang_pg_name_to_id.get(gang_pg_name)
-                if pg_id is not None and pg_id not in occupied_pg_ids:
-                    leaked_pg_names.append(gang_pg_name)
+            try:
+                occupied_pg_ids = get_active_placement_group_ids()
+            except Exception:
+                logger.warning(
+                    "Skipping gang PG leak detection due to GCS query failure.",
+                    exc_info=True,
+                )
+            else:
+                for gang_pg_name in gang_pg_names_in_cluster:
+                    pg_id = gang_pg_name_to_id.get(gang_pg_name)
+                    if pg_id is not None and pg_id not in occupied_pg_ids:
+                        leaked_pg_names.append(gang_pg_name)
 
         if len(leaked_pg_names) > 0:
             logger.warning(
