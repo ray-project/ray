@@ -13,7 +13,7 @@ from typing import Callable, Dict, List, Optional
 import ray
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import DeploymentID, GangContext, ReplicaID
+from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
@@ -30,6 +30,24 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _global_client: ServeControllerClient = None
+
+
+@DeveloperAPI
+@dataclass
+class GangContext:
+    """Context information for a replica that is part of a gang."""
+
+    gang_id: str
+    """Unique identifier for this gang."""
+
+    rank: int
+    """This replica's rank within the gang (0-indexed)."""
+
+    world_size: int
+    """Total number of replicas in this gang."""
+
+    member_replica_ids: List[str]
+    """List of replica IDs in this gang, ordered by rank."""
 
 
 @DeveloperAPI

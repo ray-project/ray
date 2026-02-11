@@ -48,7 +48,6 @@ from ray.serve import metrics
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentID,
-    GangContext,
     ReplicaID,
     ReplicaMetricReport,
     ReplicaQueueLengthInfo,
@@ -143,7 +142,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig, HTTPOptions, gRPCOptions
-from ray.serve.context import _get_in_flight_requests
+from ray.serve.context import GangContext, _get_in_flight_requests
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import (
     BackPressureError,
