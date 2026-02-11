@@ -37,8 +37,13 @@ cdef class _MemcopyThreadPool:
     cdef int _num_threads
 
     def __cinit__(self, int num_threads):
-        self._pool = NULL
         self._num_threads = num_threads
+        if num_threads > 1:
+            self._pool = CreateParallelMemcopyThreadPool(num_threads)
+            if self._pool == NULL:
+                raise RuntimeError("Failed to create memcopy thread pool")
+        else:
+            self._pool = NULL
 
     def __dealloc__(self):
         if self._pool != NULL:
@@ -46,18 +51,9 @@ cdef class _MemcopyThreadPool:
             self._pool = NULL
 
     def __bool__(self):
-        return self._num_threads > 1
+        return self._pool != NULL
 
     cdef ParallelMemcopyThreadPool* get(self):
-        cdef ParallelMemcopyThreadPool* created_pool
-        if self._pool == NULL and self._num_threads > 1:
-            created_pool = CreateParallelMemcopyThreadPool(self._num_threads)
-            # Another thread may have initialized the pool while we were
-            # creating ours. Prefer the existing pool and free the extra one.
-            if self._pool == NULL:
-                self._pool = created_pool
-            elif created_pool != NULL:
-                DestroyParallelMemcopyThreadPool(created_pool)
         return self._pool
 
 cdef extern from "google/protobuf/repeated_field.h" nogil:

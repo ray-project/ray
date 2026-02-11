@@ -168,9 +168,7 @@ class SerializationContext:
         self._memcopy_thread_pool = None
         if MEMCOPY_THREAD_COUNT > 1:
             try:
-                pool = _MemcopyThreadPool(MEMCOPY_THREAD_COUNT)
-                if pool:
-                    self._memcopy_thread_pool = pool
+                self._memcopy_thread_pool = _MemcopyThreadPool(MEMCOPY_THREAD_COUNT)
             except Exception:
                 logger.warning(
                     "Failed to initialize serialization memcopy thread pool.",
