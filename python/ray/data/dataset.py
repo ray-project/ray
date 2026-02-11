@@ -4539,10 +4539,10 @@ class Dataset:
                 "Partition overwrite modes will be added in PR 7."
             )
 
-        # PR 4: File buffering not supported yet
+        # PR 6: File buffering not supported yet
         if "target_file_size_bytes" in write_kwargs:
             raise ValueError(
-                "PR 4: target_file_size_bytes not supported. "
+                "PR 6: target_file_size_bytes not supported. "
                 "File buffering will be added in PR 8."
             )
 
