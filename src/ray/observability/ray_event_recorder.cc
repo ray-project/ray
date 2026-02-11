@@ -88,7 +88,27 @@ void RayEventRecorder::StopExportingEvents() {
       return true;
     }
 
-    void Flush() override { recorder_->ExportEvents(); }
+    void Flush() override {
+      // ExportEvents() sends one batch at a time. Loop until the buffer is
+      // fully drained, waiting for each in-flight gRPC to complete before
+      // sending the next batch. This is safe because enabled_ is false so
+      // no new events can be added, and the buffer is bounded.
+      while (true) {
+        recorder_->ExportEvents();
+        // Wait for the gRPC call (if any) to complete before checking
+        // whether more events remain.
+        {
+          absl::MutexLock lock(&recorder_->grpc_completion_mutex_);
+          while (recorder_->grpc_in_progress_) {
+            recorder_->grpc_completion_cv_.Wait(&recorder_->grpc_completion_mutex_);
+          }
+        }
+        absl::MutexLock lock(&recorder_->mutex_);
+        if (recorder_->buffer_.empty()) {
+          break;
+        }
+      }
+    }
 
    private:
     RayEventRecorder *recorder_;

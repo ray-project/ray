@@ -408,6 +408,37 @@ TEST_F(RayEventRecorderTest, TestStopWaitsForInflightThenFlushes) {
             "test_job_id_after");
 }
 
+// Test that StopExportingEvents() flushes ALL buffered events even when
+// multiple batches are required (batch size limit forces splitting).
+TEST_F(RayEventRecorderTest, TestStopFlushesAllBatches) {
+  RayConfig::instance().initialize(
+      R"(
+{
+"enable_ray_event": true,
+"task_events_shutdown_flush_timeout_ms": 5000,
+"ray_event_recorder_send_batch_size_bytes": 1
+}
+)");
+  recorder_->StartExportingEvents();
+
+  // Add 3 events with different entity IDs so they can't be merged and will
+  // require multiple batches (batch size = 1 byte forces one event per batch).
+  for (int i = 0; i < 3; i++) {
+    rpc::JobTableData data;
+    data.set_job_id("job_" + std::to_string(i));
+    std::vector<std::unique_ptr<RayEventInterface>> events;
+    events.push_back(
+        std::make_unique<RayDriverJobDefinitionEvent>(data, "test_session"));
+    recorder_->AddEvents(std::move(events));
+  }
+
+  // StopExportingEvents should drain all 3 events across multiple batches.
+  recorder_->StopExportingEvents();
+
+  std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
+  ASSERT_EQ(recorded_events.size(), 3);
+}
+
 // Test that ExportEvents() skips if there's already an in-flight gRPC call.
 // This prevents overlapping exports which could cause StopExportingEvents() to
 // return while a gRPC is still in flight.
