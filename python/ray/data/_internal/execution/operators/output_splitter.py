@@ -2,7 +2,7 @@ import math
 import time
 from typing import Any, Collection, Dict, List, Optional, Tuple
 
-from ray._private.ray_constants import env_float
+from ray._common.utils import env_float
 from ray.data._internal.execution.bundle_queue import (
     FIFOBundleQueue,
     HashLinkedQueue,
