@@ -9,9 +9,9 @@ Or use this script: bash convert_to_md.sh
 
 This tutorial guides you through building and deploying a **multi-agent system** where agents communicate using the **A2A (Agent-to-Agent) protocol**. The system is built on Ray Serve for scalable deployment, LangGraph for agent orchestration, and MCP for tool integration.
 
-If you’re new to Ray Serve and LangChain integration, we recommend checking out this **single-agent template** first:
+If you're new to Ray Serve and LangChain integration, check out this **single-agent template** first:
 -  **Anyscale Template**: [langchain-agent-ray-serve](https://console.anyscale.com/template-preview/langchain-agent-ray-serve)
-- **Ray Repo**: [langchain_agent_ray_serve](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/langchain_agent_ray_serve/content)
+- **Ray Repository**: [`langchain_agent_ray_serve`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/langchain_agent_ray_serve/content)
 
 ## 1. Architecture
 
@@ -23,7 +23,7 @@ The multi-agent system consists of 3 agents:
 
 - **Research Agent** performs web searches and fetches content using Google Custom Search.
 
-- **Travel Agent** orchestrates both agents via the A2A protocol to create comprehensive travel plans, delegating tasks to the Weather Agent and Research Agent as needed.
+- **Travel Agent** orchestrates both agents using the A2A protocol to create comprehensive travel plans, delegating tasks to the Weather Agent and Research Agent as needed.
 
 Each agent runs as an independent, autoscaling service with two interfaces: **SSE** for human-to-agent chat and **A2A** for agent-to-agent communication.
 
@@ -42,7 +42,7 @@ Each agent runs as an independent, autoscaling service with two interfaces: **SS
 
 | Component | Description | Interface | Resources |
 |------------------|--------------------|------------------|------------------|
-| **LLM Service** | Qwen3-4B-Instruct-2507-FP8 with tool calling support | OpenAI-compatible API | 1x L4 GPU |
+| **LLM Service** | `Qwen3-4B-Instruct-2507-FP8` with tool calling support | OpenAI-compatible API | 1x L4 GPU |
 | **Weather MCP** | National Weather Service tools | MCP protocol | 0.2 CPU |
 | **Web Search MCP** | Google search and URL fetching | MCP protocol | 0.2 CPU |
 | **Weather Agent** | Answers weather questions | SSE + A2A | 1 CPU |
@@ -110,7 +110,7 @@ Each agent runs as an independent, autoscaling service with two interfaces: **SS
 | Aspect      | Direct Integration | A2A Protocol                        |
 |-------------|--------------------|-------------------------------------|
 | Coupling    | Tight              | Loose                               |
-| Discovery   | Hardcoded          | Dynamic (`/.well-known/agent-card.json`) |
+| Discovery   | Hard-coded          | Dynamic (`/.well-known/agent-card.json`) |
 | Versioning  | Code changes       | Protocol-level                      |
 | Debugging   | Complex            | Traceable per-task                  |
 | Composition | Nested code        | HTTP boundaries                     |
@@ -160,7 +160,7 @@ For more information, see the [Anyscale Services documentation](https://docs.any
 
 ## 3. Quick start with local deployment
 
-Let’s get the system running first, then explore how it works.
+Get the system running first, then explore how it works.
 
 ### Prerequisites
 
@@ -181,7 +181,7 @@ Let’s get the system running first, then explore how it works.
 ```
 
 ### Obtain the Google search API keys
-First, to get Google Search API keys, visit the [Google Cloud Console](https://console.cloud.google.com/) to create an API key, then set up a [Custom Search Engine](https://programmablesearchengine.google.com/) to get your CSE ID.
+First, to get Google Search API keys, visit the [Google Cloud Console](https://console.cloud.google.com/) to create an API key, then set up a [Custom Search Engine](https://programmablesearchengine.google.com/) to get your Custom Search Engine (CSE) ID.
 
 Set up environment variables following the link on Anyscale Workspace: https://docs.anyscale.com/development/workspace-defaults#env-var
 
@@ -234,7 +234,7 @@ Run each of the following curl commands separately and check their responses:
 !curl -X POST http://127.0.0.1:8000/research-agent/chat -H "Content-Type: application/json" -d '{"user_request": "What are the top attractions in Seattle? Reply with sources."}'
 ```
 
-4) Travel Agent (SSE interface, orchestrates other agents via A2A)
+4) Travel Agent (SSE interface, orchestrates other agents through A2A)
 
 
 ```python
@@ -271,11 +271,11 @@ To deploy to production on Anyscale:
 
 ### Test the production services
 
-After deploying to Anyscale, your service will be available at a URL like:
+After deploying to Anyscale, your service is available at a URL like:
 
     https://<service-name>-<id>.cld-<cluster-id>.s.anyscaleuserdata.com
 
-You’ll also receive an authentication token for secure access.
+You also receive an authentication token for secure access.
 
 To follow the same structure as the local `serve run ...` deployment, verify production in two steps: (1) test each service directly with curl, then (2) run the full test suite.
 
@@ -286,7 +286,7 @@ export BASE_URL="https://<service-name>-<id>.cld-<cluster-id>.s.anyscaleuserdata
 export ANYSCALE_API_TOKEN="<your-anyscale-api-token>"
 ```
 
-> Note: Do **not** include a trailing `/` at the end of `BASE_URL` (after `.anyscaleuserdata.com`).
+> Note: Don't include a trailing `/` at the end of `BASE_URL` (after `.anyscaleuserdata.com`).
 
 **Test services individually (with curl):**  
 Run each of the following curl commands separately and check their responses:
@@ -312,7 +312,7 @@ Run each of the following curl commands separately and check their responses:
 !curl -X POST "${BASE_URL}/research-agent/chat" -H "Content-Type: application/json" -H "Authorization: Bearer ${ANYSCALE_API_TOKEN}" -d '{"user_request": "What are the top attractions in Seattle? Reply with sources."}'
 ```
 
-4) Travel Agent (SSE interface, orchestrates other agents via A2A)
+4) Travel Agent (SSE interface, orchestrates other agents through A2A)
 
 
 ```python
@@ -331,19 +331,20 @@ Run each of the following curl commands separately and check their responses:
 ### Run the test suite against production
 
 You can run the full test suite against your production deployment:
+```bash
+export BASE_URL="https://<service-name>-<id>.cld-<cluster-id>.s.anyscaleuserdata.com"
+export ANYSCALE_API_TOKEN="<your-anyscale-api-token>"
+export TEST_TIMEOUT_SECONDS="2000"
+```
 
 
 ```python
-!export BASE_URL="https://<service-name>-<id>.cld-<cluster-id>.s.anyscaleuserdata.com"
-!export ANYSCALE_API_TOKEN="<your-anyscale-api-token>"
-!export TEST_TIMEOUT_SECONDS="2000"
-
 !python tests/run_all.py
 ```
 
 ## 5. Deep dive: Understanding each component
 
-Now let's explore how each service is implemented.
+This section explores how each service is implemented.
 
 ### 5.1 The LLM service
 
@@ -374,7 +375,7 @@ Check out [mcps/weather_mcp_server.py](mcps/weather_mcp_server.py):
 
 | Tool | Description | Parameters |
 |---------------|------------------------------|----------------------------|
-| `get_alerts` | Fetches active weather alerts | `state: str` (e.g., "CA") |
+| `get_alerts` | Fetches active weather alerts | `state: str` (for example, "CA") |
 | `get_forecast` | Gets a 5-period forecast | `latitude: float`, `longitude: float` |
 
 #### 5.2.2 Web search MCP server
@@ -383,7 +384,7 @@ Check out [mcps/web_search_mcp_server.py](mcps/web_search_mcp_server.py):
 
 | Tool | Description | Parameters |
 |---------------|------------------------------|----------------------------|
-| `google_search` | Searches via Google CSE | `query: str`, `num_results: int` (default: 10) |
+| `google_search` | Searches using Google Custom Search Engine (CSE) | `query: str`, `num_results: int` (default: 10) |
 | `fetch_url` | Fetches and parses web pages | `url: str`, `max_length: int` (default: 5000), `start_index: int` (default: 0), `raw: bool` (default: false), `ignore_robots_txt: bool` (default: false) |
 
 
@@ -419,7 +420,7 @@ The SSE deployment module [`agent_runtime/serve_deployment.py`](agent_runtime/se
 
 - **Endpoints:** Exposes `POST /chat` with SSE streaming support.
 - **Functions:** `create_chat_app()` and `create_serve_deployment()`.
-- **Features:** Real-time SSE streaming, conversation continuity via Thread IDs, and automatic LangGraph event serialization.
+- **Features:** Real-time SSE streaming, conversation continuity through Thread IDs, and automatic LangGraph event serialization.
 
 #### 5.3.4 A2A deployment factory
 
@@ -428,7 +429,7 @@ The A2A deployment module [`agent_runtime/a2a_deployment.py`](agent_runtime/a2a_
 
 ### 5.4 The specialized agents
 
-Each specialized agent is a LangGraph agent that combines an LLM with specific tools. The agents use the agent runtime's builder pattern to minimize boilerplate code.
+Each specialized agent is a LangGraph agent that combines an LLM with specific tools. The agents use the builder pattern from the agent runtime to minimize boilerplate code.
 
 #### Weather agent
 
@@ -442,7 +443,7 @@ This agent provides weather information using tools from the Weather MCP server.
 - Tools are auto-discovered from the MCP server (`get_alerts`, `get_forecast`)
 
 **System prompt strategy:**
-- Break tasks into sub-questions (e.g., finding coordinates first)
+- Break tasks into sub-questions (for example, finding coordinates first)
 - Use weather tools to get current conditions and forecasts
 - Provide concise, actionable answers
 
@@ -489,17 +490,17 @@ This agent performs online research and gathers sources using the Web Search MCP
 
 **File:** [`agents/travel_agent_with_a2a.py`](agents/travel_agent_with_a2a.py)
 
-This agent demonstrates agent-to-agent communication via the A2A protocol. Instead of connecting to MCP servers directly, it orchestrates two downstream agents (Weather and Research) to create comprehensive travel plans.
+This agent demonstrates agent-to-agent communication using the A2A protocol. Instead of connecting to MCP servers directly, it orchestrates two downstream agents (Weather and Research) to create comprehensive travel plans.
 
 **Implementation approach:**
 - Uses `build_tool_agent()` from agent runtime with explicit A2A tools
 - Defines two custom tools that wrap A2A calls:
-  - `a2a_research(query)` - Calls Research Agent via A2A
-  - `a2a_weather(query)` - Calls Weather Agent via A2A
+  - `a2a_research(query)` - Calls Research Agent through A2A
+  - `a2a_weather(query)` - Calls Weather Agent through A2A
 - Uses `a2a_execute_text()` helper for simple agent-to-agent communication
 
 **System prompt strategy:**
-- Always call BOTH tools (research and weather) at least once
+- Always call both tools (research and weather) at least once
 - Ask clarifying questions if missing key constraints (dates, budget, origin, travelers, pace, interests)
 - Produce structured travel plans with:
   1. Assumptions & trip summary
@@ -518,7 +519,7 @@ This agent demonstrates agent-to-agent communication via the A2A protocol. Inste
 **Configuration:**
 - `RESEARCH_A2A_BASE_URL` - Base URL for Research Agent A2A endpoint (default: `http://127.0.0.1:8000/a2a-research`)
 - `WEATHER_A2A_BASE_URL` - Base URL for Weather Agent A2A endpoint (default: `http://127.0.0.1:8000/a2a-weather`)
-- `A2A_TIMEOUT_S` - Timeout for downstream agent calls (default: 360s)
+- `A2A_TIMEOUT_S` - Timeout for downstream agent calls (default: 360 seconds)
 
 **A2A tool implementation:**
 
@@ -658,7 +659,7 @@ print(result)
 # python -c 'import asyncio; from protocols.a2a_client import a2a_execute_text; print(asyncio.run(a2a_execute_text("http://127.0.0.1:8000/a2a-weather","Weather in NYC?")))'
 ```
 
-#### 5.5.4 Calling an Agent via A2A
+#### 5.5.4 Calling an Agent through A2A
 
 Use the `a2a_execute_text` helper for simple text-based calls:
 
@@ -688,7 +689,7 @@ Check out [`serve_multi_config.yaml`](serve_multi_config.yaml) for the complete 
 
 **Autoscaling Configuration:**
 
-The system uses Ray Serve’s built-in autoscaling to handle variable load. See the configuration details in [`serve_multi_config.yaml`](serve_multi_config.yaml).
+The system uses Ray Serve's built-in autoscaling to handle variable load. See the configuration details in [`serve_multi_config.yaml`](serve_multi_config.yaml).
 
 
 
@@ -696,13 +697,13 @@ The system uses Ray Serve’s built-in autoscaling to handle variable load. See 
 
 1. **Build your own agents (or a multi-agent system) using the agent runtime**
    - Start from the builder pattern in **5.3 The agent runtime** and adapt the existing agents to your use case.
-   - Add/modify tools and prompts, update your Agent Card metadata, and deploy via Ray Serve so you can test both **SSE (human-to-agent)** and **A2A (agent-to-agent)** flows.
+   - Add/modify tools and prompts, update your Agent Card metadata, and deploy with Ray Serve so you can test both **SSE (human-to-agent)** and **A2A (agent-to-agent)** flows.
 
 2. **Integrate Langfuse for observability, prompt management, and evals**
    - Project: [`langfuse/langfuse`](https://github.com/langfuse/langfuse)
    - **LLM Application Observability**: instrument your app and ingest traces to Langfuse to track LLM calls and other logic (retrieval, embedding, agent actions), inspect/debug sessions, and iterate faster.
    - **Prompt Management**: centrally manage and version prompts; strong caching on server/client helps you iterate without adding latency.
-   - **Evaluations**: run LLM-as-a-judge, collect user feedback, support manual labeling, and build custom evaluation pipelines via APIs/SDKs.
+   - **Evaluations**: run LLM-as-a-judge, collect user feedback, support manual labeling, and build custom evaluation pipelines through APIs/SDKs.
 
 ## 7. Additional resources
 
