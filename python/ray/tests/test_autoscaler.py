@@ -3881,21 +3881,21 @@ class AutoscalingTest(unittest.TestCase):
         old_client = monitor.gcs_client
 
         calls = 0
-        original_get_all_resource_usage = old_client.get_all_resource_usage
+        original_update_load_metrics = monitor.update_load_metrics
 
         def flaky():
             nonlocal calls
             if calls == 0:
                 calls += 1
                 raise ray.exceptions.AuthenticationError("WrongClusterID")
-            return original_get_all_resource_usage()
+            return original_update_load_metrics()
 
         # replace time.sleep(AUTOSCALER_UPDATE_INTERVAL_S) in monitor._run()
         def raise_stop(_):
             raise RuntimeError("stop")
 
-        # inject the failure once
-        with patch.object(old_client, "get_all_resource_usage", side_effect=flaky):
+        # inject the failure once by patching update_load_metrics on the monitor
+        with patch.object(monitor, "update_load_metrics", side_effect=flaky):
             # breaks the infinite loop with the patched time.sleep
             with patch.object(time, "sleep", side_effect=raise_stop):
                 # verify stop happened
