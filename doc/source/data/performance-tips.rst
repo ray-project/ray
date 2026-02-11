@@ -15,6 +15,23 @@ faster.
 
 If your transformation isn't vectorized, there's no performance benefit.
 
+Enabling Polars for sort operations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can speed up :meth:`~ray.data.Dataset.sort` and operations that sort internally,
+such as :meth:`~ray.data.grouped_data.GroupedData.map_groups`, by enabling Polars:
+
+.. testcode::
+
+    import ray
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.use_polars_sort = True
+
+When you enable this flag, Ray Data uses Polars instead of PyArrow for the internal
+sorting step, which can improve performance for large tabular datasets.
+This flag doesn't affect other operations such as :meth:`~ray.data.Dataset.map_batches`.
+
 Optimizing reads
 ----------------
 
