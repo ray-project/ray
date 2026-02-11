@@ -1,8 +1,8 @@
 import logging
 from typing import TYPE_CHECKING, Dict, List, Optional
 
+from ray.data._internal.datasource.datasource import Datasource, ReadTask
 from ray.data.block import Block, BlockMetadata
-from ray.data.datasource.datasource import Datasource, ReadTask
 
 if TYPE_CHECKING:
     import pymongoarrow.api

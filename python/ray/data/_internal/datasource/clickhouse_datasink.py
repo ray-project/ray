@@ -13,10 +13,10 @@ import pyarrow
 import pyarrow as pa
 import pyarrow.types as pat
 
+from ray.data._internal.datasource.datasink import Datasink, WriteReturnType
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
-from ray.data.datasource.datasink import Datasink, WriteReturnType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)

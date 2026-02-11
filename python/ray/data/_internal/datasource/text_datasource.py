@@ -1,8 +1,8 @@
 from typing import TYPE_CHECKING, Iterator, List
 
+from ray.data._internal.datasource.file_based_datasource import FileBasedDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block
-from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
 if TYPE_CHECKING:
     import pyarrow

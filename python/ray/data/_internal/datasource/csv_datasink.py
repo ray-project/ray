@@ -2,9 +2,9 @@ from typing import Any, Callable, Dict, Optional
 
 import pyarrow
 
+from ray.data._internal.datasource.file_based_datasource import _resolve_kwargs
+from ray.data._internal.datasource.file_datasink import BlockBasedFileDatasink
 from ray.data.block import BlockAccessor
-from ray.data.datasource.file_based_datasource import _resolve_kwargs
-from ray.data.datasource.file_datasink import BlockBasedFileDatasink
 
 
 class CSVDatasink(BlockBasedFileDatasink):

@@ -1,9 +1,9 @@
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+from ray.data._internal.datasource.file_based_datasource import FileBasedDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
-from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
 if TYPE_CHECKING:
     import pyarrow

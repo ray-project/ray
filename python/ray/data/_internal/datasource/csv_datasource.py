@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
+from ray.data._internal.datasource.file_based_datasource import FileBasedDatasource
 from ray.data.block import Block
-from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
 if TYPE_CHECKING:
     import pyarrow

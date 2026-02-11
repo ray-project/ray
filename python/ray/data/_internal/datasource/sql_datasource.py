@@ -3,8 +3,8 @@ import math
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, List, Optional
 
+from ray.data._internal.datasource.datasource import Datasource, ReadTask
 from ray.data.block import Block, BlockMetadata
-from ray.data.datasource.datasource import Datasource, ReadTask
 
 Connection = Any  # A Python DB API2-compliant `Connection` object.
 Cursor = Any  # A Python DB API2-compliant `Cursor` object.

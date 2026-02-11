@@ -9,9 +9,9 @@ import tarfile
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
+from ray.data._internal.datasource.file_based_datasource import FileBasedDatasource
 from ray.data._internal.util import iterate_with_retry
 from ray.data.block import BlockAccessor
-from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
 if TYPE_CHECKING:
     import pyarrow

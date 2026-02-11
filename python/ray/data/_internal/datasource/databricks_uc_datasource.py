@@ -14,8 +14,8 @@ from ray.data._internal.datasource.databricks_credentials import (
     build_headers,
     request_with_401_retry,
 )
+from ray.data._internal.datasource.datasource import Datasource, ReadTask
 from ray.data.block import BlockMetadata
-from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:

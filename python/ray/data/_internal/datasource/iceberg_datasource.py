@@ -11,10 +11,10 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tupl
 import pyarrow as pa
 from packaging import version
 
+from ray.data._internal.datasource.datasource import Datasource, ReadTask
 from ray.data._internal.planner.plan_expression.expression_visitors import _ExprVisitor
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
-from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.expressions import (
     AliasExpr,
     BinaryExpr,
@@ -199,7 +199,9 @@ def _get_read_task(
     # Determine the PyIceberg version to handle backward compatibility
     import pyiceberg
 
-    from ray.data.datasource.datasource import _DatasourceProjectionPushdownMixin
+    from ray.data._internal.datasource.datasource import (
+        _DatasourceProjectionPushdownMixin,
+    )
 
     def _generate_tables() -> Iterable[pa.Table]:
         """Inner generator that yields tables without renaming."""

@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 
 from ray.data._internal.arrow_block import ArrowBlockBuilder
-from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.data._internal.datasource.file_based_datasource import FileBasedDatasource
 
 if TYPE_CHECKING:
     import pyarrow

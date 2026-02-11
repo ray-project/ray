@@ -1,10 +1,10 @@
 from typing import TYPE_CHECKING, Iterator, List, Union
 
+from ray.data._internal.datasource.file_based_datasource import FileBasedDatasource
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.util import _check_import
 from ray.data.block import Block
 from ray.data.context import DataContext
-from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
 if TYPE_CHECKING:
     import pyarrow

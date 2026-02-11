@@ -3,13 +3,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ray._common.retry import call_with_retry
+from ray.data._internal.datasource.file_based_datasource import _resolve_kwargs
+from ray.data._internal.datasource.file_datasink import _FileDatasink
+from ray.data._internal.datasource.filename_provider import FilenameProvider
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
 from ray.data._internal.savemode import SaveMode
 from ray.data.block import Block, BlockAccessor
-from ray.data.datasource.file_based_datasource import _resolve_kwargs
-from ray.data.datasource.file_datasink import _FileDatasink
-from ray.data.datasource.filename_provider import FilenameProvider
 
 if TYPE_CHECKING:
     import pyarrow

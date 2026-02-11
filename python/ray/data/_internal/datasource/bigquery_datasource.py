@@ -1,9 +1,9 @@
 import logging
 from typing import TYPE_CHECKING, List, Optional
 
+from ray.data._internal.datasource.datasource import Datasource, ReadTask
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
-from ray.data.datasource.datasource import Datasource, ReadTask
 
 if TYPE_CHECKING:
     from ray.data.context import DataContext
