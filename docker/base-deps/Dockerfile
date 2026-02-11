@@ -3,7 +3,7 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
 # The GPU options are NVIDIA CUDA developer images.
-ARG BASE_IMAGE="ubuntu:22.04"
+ARG BASE_IMAGE="ubuntu:24.04"
 
 # --- HAProxy Build Stage ---
 FROM ${BASE_IMAGE} AS haproxy-builder
