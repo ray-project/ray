@@ -790,6 +790,7 @@ class gRPCOptions(BaseModel):
         return callables
 
 
+@PublicAPI(stability="alpha")
 class GangPlacementStrategy(str, Enum):
     """Placement strategy for replicas within a gang."""
 
@@ -800,6 +801,7 @@ class GangPlacementStrategy(str, Enum):
     """Spread replicas across distinct nodes as evenly as possible (best effort)."""
 
 
+@PublicAPI(stability="alpha")
 class GangRuntimeFailurePolicy(str, Enum):
     """Policy for handling runtime failures of replicas in a gang."""
 
