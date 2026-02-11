@@ -1141,7 +1141,7 @@ Then, specify your Kafka configuration and read from topics.
         end_offset="latest",
     )
 
-    # Read messages within a datetime range (naive datetimes are treated as UTC)
+    # Read messages within a datetime range (datetimes with no timezone info are treated as UTC)
     from datetime import datetime
     ds = ray.data.read_kafka(
         topics="my-topic",

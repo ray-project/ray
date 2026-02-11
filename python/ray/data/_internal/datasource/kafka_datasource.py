@@ -307,12 +307,12 @@ class KafkaDatasource(Datasource):
             start_offset: Starting position. Can be:
                 - int: Offset number
                 - datetime: Read from the first message at or after this time.
-                  Naive datetimes are treated as UTC.
+                  datetimes with no timezone info are treated as UTC.
                 - str: "earliest"
             end_offset: Ending position (exclusive). Can be:
                 - int: Offset number
                 - datetime: Read up to (but not including) the first message
-                  at or after this time. Naive datetimes are treated as UTC.
+                  at or after this time. datetimes with no timezone info are treated as UTC.
                 - str: "latest"
             kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
             timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).

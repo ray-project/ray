@@ -4410,13 +4410,13 @@ def read_kafka(
         start_offset: Starting position for reading. Can be:
 
             - int: Offset number
-            - datetime: Read from the first message at or after this time. Naive datetimes are treated as UTC.
+            - datetime: Read from the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "earliest"
 
         end_offset: Ending position for reading (exclusive). Can be:
 
             - int: Offset number
-            - datetime: Read up to (but not including) the first message at or after this time. Naive datetimes are treated as UTC.
+            - datetime: Read up to (but not including) the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "latest"
 
         kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
