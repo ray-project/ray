@@ -4412,6 +4412,8 @@ class Dataset:
                   **WARNING**: UPSERT uses two separate transactions (delete then append)
                   and is NOT fully atomic. If the second transaction fails, deleted rows
                   will not be restored. Requires ``upsert_kwargs={'join_cols': [...]}``.
+                  For more complex conditional updates/inserts/deletes, use Delta Lake's
+                  SQL MERGE operation directly.
                 * "error": Raise error if table already exists
                 * "ignore": Skip write if table already exists
 
@@ -4422,7 +4424,9 @@ class Dataset:
                 detected based on the path scheme (s3://, gs://, etc.).
             schema: PyArrow schema for the table. If None, inferred from the data.
                 Schema inference may fail for complex types; provide explicit schema
-                if needed.
+                if needed. Supports all Delta Lake types including maps, structs, arrays,
+                and nested types. Schema evolution is supported: new columns are
+                automatically added when writing to existing tables (if schema_mode="merge").
             ray_remote_args: Arguments passed to :func:`ray.remote` for write tasks.
                 Use to configure resources such as ``num_cpus`` or ``num_gpus``.
             concurrency: Maximum number of concurrent write tasks. By default,
@@ -4448,14 +4452,26 @@ class Dataset:
                 or if partition columns don't exist in the data schema.
 
         Note:
-            This operation uses a two-phase commit protocol:
+            This connector supports the following Delta Lake features:
+
+            * **ACID guarantees**: Uses a two-phase commit protocol ensuring atomicity.
+              Either all files become visible or none do.
+            * **Schema evolution**: Automatically adds new columns when writing to existing
+              tables (controlled by schema_mode parameter).
+            * **Time travel**: All writes create new table versions that can be read
+              using ``read_delta(path, version=N)``.
+            * **All primitive types**: Supports maps, structs, arrays, and nested types.
+            * **MERGE operations**: For complex conditional updates/inserts/deletes,
+              use Delta Lake's SQL MERGE operation directly. UPSERT mode provides
+              simpler update-or-insert semantics.
+
+            The two-phase commit protocol:
 
             1. **Phase 1 (Distributed)**: Each Ray task writes its data blocks as
                Parquet files and returns AddAction metadata (files not yet visible).
             2. **Phase 2 (Driver)**: The driver collects all AddActions and commits
                them atomically in a single Delta transaction.
 
-            This ensures ACID properties: either all files become visible or none do.
             If the write fails partway through, uncommitted files can be removed
             by running Delta's VACUUM command.
 

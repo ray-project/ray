@@ -197,6 +197,58 @@ def test_write_delta_string_data(ray_start_regular_shared, temp_delta_path):
     assert "unicode: café" in texts
 
 
+def test_write_delta_complex_types_maps_structs(ray_start_regular_shared, temp_delta_path):
+    """Test that Delta Lake supports maps and structs (complex types)."""
+    # Create data with maps and structs
+    # Note: PyArrow maps are represented as list of key-value pairs
+    # Structs are represented as dictionaries
+    schema = pa.schema([
+        ("id", pa.int64()),
+        ("metadata", pa.map_(pa.string(), pa.string())),  # Map type
+        ("address", pa.struct([  # Struct type
+            ("street", pa.string()),
+            ("city", pa.string()),
+            ("zip", pa.int32()),
+        ])),
+    ])
+
+    # Create PyArrow table with complex types
+    map_data = [
+        [("key1", "value1"), ("key2", "value2")],
+        [("key3", "value3")],
+    ]
+    struct_data = [
+        {"street": "123 Main St", "city": "San Francisco", "zip": 94102},
+        {"street": "456 Oak Ave", "city": "New York", "zip": 10001},
+    ]
+
+    table = pa.table({
+        "id": [1, 2],
+        "metadata": map_data,
+        "address": struct_data,
+    }, schema=schema)
+
+    # Write to Delta
+    ray.data.from_arrow(table).write_delta(temp_delta_path)
+
+    # Read back and verify
+    ds = ray.data.read_delta(temp_delta_path)
+    assert ds.count() == 2
+
+    rows = ds.take_all()
+    assert len(rows) == 2
+
+    # Verify map data
+    assert len(rows[0]["metadata"]) == 2
+    assert rows[0]["metadata"][0]["key"] == "key1"
+    assert rows[0]["metadata"][0]["value"] == "value1"
+
+    # Verify struct data
+    assert rows[0]["address"]["street"] == "123 Main St"
+    assert rows[0]["address"]["city"] == "San Francisco"
+    assert rows[0]["address"]["zip"] == 94102
+
+
 # =============================================================================
 # Read Tests
 # =============================================================================
@@ -749,14 +801,26 @@ def test_build_partition_delete_predicate_unit():
     assert pred.count("IS NULL") == 2 or pred.lower().count("is null") == 2
 
     # Test with NaN partition value (critical: must use != comparison, not = 'NaN')
+    # Schema is required to distinguish float NaN from string "NaN"
+    schema = pa.schema([("value", pa.float64())])
     action9 = Mock()
     action9.partition_values = {"value": "NaN"}
-    pred = _build_partition_delete_predicate([action9], ["value"])
+    pred = _build_partition_delete_predicate([action9], ["value"], schema=schema)
     assert pred is not None
     assert "value" in pred
     # Should use != comparison for NaN (col != col), not string comparison
     assert "!=" in pred
     assert "'NaN'" not in pred  # Should not use string literal
+
+    # Test with NaN partition value WITHOUT schema (should fall back to string "NaN")
+    # This verifies that without schema, the code treats "NaN" as a string value
+    action10 = Mock()
+    action10.partition_values = {"value": "NaN"}
+    pred_no_schema = _build_partition_delete_predicate([action10], ["value"])
+    assert pred_no_schema is not None
+    assert "value" in pred_no_schema
+    # Without schema, should treat as string "NaN"
+    assert "'NaN'" in pred_no_schema or '"NaN"' in pred_no_schema
 
 
 if __name__ == "__main__":

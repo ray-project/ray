@@ -607,23 +607,31 @@ def create_filesystem_from_storage_options(
     elif path_lower.startswith(("abfss://", "abfs://")):
         account_name = storage_options.get("AZURE_STORAGE_ACCOUNT_NAME")
         token = storage_options.get("AZURE_STORAGE_TOKEN")
+        # AzureFileSystem accepts sas_token, not bearer_token
+        # If token is provided, treat it as a SAS token
         if account_name and token:
             return pa_fs.AzureFileSystem(
                 account_name=account_name,
-                bearer_token=token,
+                sas_token=token,
             )
+        # If only account_name is provided, use DefaultAzureCredential
+        elif account_name:
+            return pa_fs.AzureFileSystem(account_name=account_name)
     elif path_lower.startswith(("gs://", "gcs://")):
         # Check for GCS-specific credentials in storage_options
         # GOOGLE_SERVICE_ACCOUNT can be a path to service account JSON file
         service_account = storage_options.get("GOOGLE_SERVICE_ACCOUNT")
         anonymous = storage_options.get("GOOGLE_ANONYMOUS", "").lower() == "true"
+        # GcsFileSystem doesn't accept service_account file path directly
+        # Set GOOGLE_APPLICATION_CREDENTIALS env var if service_account path is provided
+        if service_account:
+            import os
+            # Set environment variable for PyArrow to pick up
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = service_account
         # Only create filesystem if explicit credentials are provided
         # Otherwise return None to let PyArrow use Application Default Credentials
         if service_account or anonymous:
-            return pa_fs.GcsFileSystem(
-                service_account=service_account if service_account else None,
-                anonymous=anonymous,
-            )
+            return pa_fs.GcsFileSystem(anonymous=anonymous)
 
     return None
 

@@ -102,10 +102,10 @@ class DeltaDatasource(Datasource):
     @property
     def delta_table(self):
         """Lazy-load Delta table object.
-        
+
         Uses deltalake.DeltaTable (delta-rs Python bindings) to access Delta Lake
         metadata. Supports time travel via version parameter (int or ISO 8601 timestamp).
-        
+
         Reference: https://delta-io.github.io/delta-rs/python/api/deltalake.html#deltalake.DeltaTable
         """
         if self._delta_table is None or self._needs_new_table():
@@ -315,15 +315,15 @@ class DeltaDatasource(Datasource):
         predicate_expr: Expr,
     ) -> "DeltaDatasource":
         """Apply a predicate with pushdown support.
-        
+
         This method supports predicate pushdown at multiple levels:
         1. Partition-level: Uses partition_filters for partition pruning
         2. File-level: Delta Lake statistics (min/max) enable file skipping
         3. Row-level: ParquetDatasource handles row-level filtering
-        
+
         Args:
             predicate_expr: Expression to push down.
-            
+
         Returns:
             New DeltaDatasource instance with predicate applied.
         """
@@ -349,10 +349,10 @@ class DeltaDatasource(Datasource):
         projection: List[str],
     ) -> "DeltaDatasource":
         """Apply a projection to select specific columns.
-        
+
         Args:
             projection: List of column names to select.
-            
+
         Returns:
             New DeltaDatasource instance with projection applied.
         """

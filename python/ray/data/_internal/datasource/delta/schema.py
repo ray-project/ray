@@ -77,11 +77,20 @@ def validate_and_plan_evolution(
     existing_cols = {f.name: f.type for f in existing_schema}
     incoming_cols = {f.name: (f.type, f.nullable) for f in incoming_schema}
 
-    mismatches = [
-        c
-        for c, t in existing_cols.items()
-        if c in incoming_cols and not types_compatible(t, incoming_cols[c][0])
-    ]
+    mismatches = []
+    for c, t in existing_cols.items():
+        if c in incoming_cols:
+            incoming_type = incoming_cols[c][0]
+            # Handle null type: if incoming column is all NULL (null type),
+            # use existing type for compatibility check (NULL can be written to any nullable column)
+            if pa.types.is_null(incoming_type):
+                # If existing column is nullable, NULL values are compatible
+                existing_field = existing_schema.field(c)
+                if not existing_field.nullable:
+                    mismatches.append(c)
+            elif not types_compatible(t, incoming_type):
+                mismatches.append(c)
+
     if mismatches:
         raise ValueError(
             f"Schema mismatch: type mismatches for existing columns: {mismatches}"

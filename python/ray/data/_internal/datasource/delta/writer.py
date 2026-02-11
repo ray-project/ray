@@ -1,8 +1,10 @@
 """File writing logic for Delta Lake datasink.
 
-This module handles writing Parquet files to storage. It's designed to be
-streaming-safe and can be used independently of the main datasink class.
+This module handles writing Parquet files to storage for Delta Lake tables.
+It's designed to be streaming-safe and can be used independently of the main
+datasink class.
 
+Delta Lake: https://delta.io/
 PyArrow Parquet: https://arrow.apache.org/docs/python/parquet.html
 """
 

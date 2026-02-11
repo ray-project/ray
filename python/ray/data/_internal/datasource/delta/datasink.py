@@ -48,6 +48,7 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink, WriteResult
 
 if TYPE_CHECKING:
+    from deltalake import DeltaTable
     from deltalake.transaction import AddAction, CommitProperties
 
 logger = logging.getLogger(__name__)
@@ -498,8 +499,25 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         upsert_keys = concat(upsert_tables) if upsert_tables else None
         return actions, upsert_keys, schemas, files, write_uuid
 
-    def _handle_races(self, existing, written_files: List[str]):
-        """Validate race conditions and raise errors or cleanup as needed."""
+    def _handle_races(
+        self, existing, written_files: List[str]
+    ) -> Optional["DeltaTable"]:
+        """Validate race conditions and raise errors or cleanup as needed.
+
+        Handles concurrent table creation/deletion scenarios during write operations.
+        This ensures ACID guarantees by detecting and handling race conditions where
+        the table state changes between write start and commit.
+
+        Args:
+            existing: Current DeltaTable instance (may be None if table doesn't exist).
+            written_files: List of files written by workers (for cleanup on error).
+
+        Returns:
+            DeltaTable instance to use for commit, or None if table should be created.
+
+        Raises:
+            ValueError: If race condition is detected and cannot be handled gracefully.
+        """
         if (
             not self._table_existed_at_start
             and existing is not None
