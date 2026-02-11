@@ -185,6 +185,9 @@ def pow_2_router(request) -> PowerOfTwoChoicesRequestRouter:
     assert s.curr_num_routing_tasks == 0
     assert s.num_pending_requests == 0
 
+    # Clean up background tasks to avoid "Task was destroyed but pending" warnings.
+    s.shutdown()
+
 
 def fake_pending_request(
     *, created_at: Optional[float] = None, model_id: str = ""
@@ -1625,28 +1628,30 @@ async def test_queue_len_cache_active_probing(pow_2_router):
     ],
     indirect=True,
 )
-async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_router):
+async def test_queue_len_cache_replica_at_capacity_not_routed(pow_2_router):
     """
-    Verify that if a replica has a cache entry but is at max_ongoing_requests, it's
-    actively probed.
+    Verify that if a replica has a cache entry but is at max_ongoing_requests,
+    it's not immediately routed to when load shedding is enabled. The routing task
+    should wait/retry, which allows load shedding to work properly.
     """
     s = pow_2_router
     loop = get_or_create_event_loop()
 
-    # Add an entry for replica "r1" -- it shouldn't be actively probed.
+    # Enable load shedding - without this, optimistic routing would be used.
+    s._max_queued_requests = 10
+
     r1 = FakeRunningReplica("r1")
     s.update_replicas([r1])
     s.replica_queue_len_cache.update(r1.replica_id, DEFAULT_MAX_ONGOING_REQUESTS)
 
+    # Request should NOT complete immediately because replica is at capacity.
+    # The routing task will retry with backoff.
     task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
-    # 1 probe from routing requests
-    # + 1 probe from when the replica set was updated with replica r1
-    assert len(r1.queue_len_deadline_history) - 1 == 1
 
-    # Now let the replica respond and accept the request, it should be routed.
-    r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS - 1)
+    # Now let the replica have capacity, the request should be routed.
+    s.replica_queue_len_cache.update(r1.replica_id, DEFAULT_MAX_ONGOING_REQUESTS - 1)
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
@@ -1695,6 +1700,152 @@ async def test_queue_len_cache_background_probing(pow_2_router):
         return True
 
     await async_wait_for_condition(r2_was_probed)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_background_probe_deduplication(pow_2_router):
+    """
+    Verify that if the same replica is enqueued for probing multiple times,
+    it's only probed once per batch.
+    """
+    s = pow_2_router
+
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(5)
+
+    # Directly enqueue the same replica multiple times before the background
+    # probe task has a chance to run
+    s._enqueue_replicas_for_probe([r1])
+    s._enqueue_replicas_for_probe([r1])
+    s._enqueue_replicas_for_probe([r1])
+
+    # The probe queue should only have one entry due to deduplication
+    assert len(s._probe_queue) == 1
+    assert r1.replica_id in s._probe_queue
+
+    # Wait for the background probe to complete by checking the cache is populated
+    def probe_completed():
+        return s._replica_queue_len_cache.get(r1.replica_id) == 5
+
+    await async_wait_for_condition(probe_completed)
+
+    # Should only have been probed once (not 3 times) since duplicates are deduplicated
+    assert len(r1.queue_len_deadline_history) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_probe_queue_cleanup_on_replica_removal(pow_2_router):
+    """
+    Verify that when replicas are removed via update_replicas,
+    they're also removed from the probe queue.
+    """
+    s = pow_2_router
+
+    r1 = FakeRunningReplica("r1")
+    r2 = FakeRunningReplica("r2")
+
+    # Add replicas to the probe queue directly (simulating pending probes)
+    s._probe_queue[r1.replica_id] = r1
+    s._probe_queue[r2.replica_id] = r2
+    assert len(s._probe_queue) == 2
+
+    # Update replicas to only include r1 (removing r2)
+    s.update_replicas([r1])
+
+    # r2 should be removed from the probe queue
+    assert r1.replica_id in s._probe_queue or len(s._probe_queue) == 0
+    assert r2.replica_id not in s._probe_queue
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_routing_waits_when_all_replicas_full(pow_2_router):
+    """
+    Verify that when all cached replicas appear full (at max_ongoing_requests),
+    routing waits/retries instead of immediately routing when load shedding is
+    enabled. This is essential for load shedding to work properly.
+    """
+    s = pow_2_router
+    loop = get_or_create_event_loop()
+
+    # Enable load shedding - without this, optimistic routing would be used.
+    s._max_queued_requests = 10
+
+    r1 = FakeRunningReplica("r1")
+    r2 = FakeRunningReplica("r2")
+    s.update_replicas([r1, r2])
+
+    # Set both replicas as "full"
+    s.replica_queue_len_cache.update(r1.replica_id, DEFAULT_MAX_ONGOING_REQUESTS)
+    s.replica_queue_len_cache.update(r2.replica_id, DEFAULT_MAX_ONGOING_REQUESTS)
+
+    # Request should NOT complete immediately - all replicas are full
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 0
+
+    # Now let r1 have capacity, the request should be routed to it
+    s.replica_queue_len_cache.update(r1.replica_id, 0)
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 1
+    assert (await task) == r1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_optimistic_routing_when_load_shedding_disabled(pow_2_router):
+    """
+    Verify that when load shedding is disabled (max_queued_requests=-1),
+    requests are optimistically routed to full replicas for better performance.
+    """
+    s = pow_2_router
+    loop = get_or_create_event_loop()
+
+    # Load shedding disabled by default (_max_queued_requests = -1)
+    assert s._max_queued_requests == -1
+
+    r1 = FakeRunningReplica("r1")
+    r2 = FakeRunningReplica("r2")
+    s.update_replicas([r1, r2])
+
+    # Set both replicas as "full"
+    s.replica_queue_len_cache.update(r1.replica_id, DEFAULT_MAX_ONGOING_REQUESTS)
+    s.replica_queue_len_cache.update(r2.replica_id, DEFAULT_MAX_ONGOING_REQUESTS)
+
+    # Request should complete immediately with optimistic routing
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 1
+
+    # Should be routed to one of the replicas
+    result = await task
+    assert result in {r1, r2}
 
 
 @pytest.mark.asyncio

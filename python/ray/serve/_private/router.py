@@ -466,7 +466,6 @@ class RouterMetricsManager:
 
         if self.metrics_pusher:
             await self.metrics_pusher.graceful_shutdown()
-
         self._shutdown = True
 
 
@@ -687,6 +686,10 @@ class AsyncioRouter:
         self._metrics_manager.update_deployment_config(
             deployment_config,
             curr_num_replicas=len(self.request_router.curr_replicas),
+        )
+        # Update max_queued_requests for optimistic routing decision.
+        self.request_router.set_max_queued_requests(
+            deployment_config.max_queued_requests
         )
 
     async def _resolve_request_arguments(
@@ -925,6 +928,8 @@ class AsyncioRouter:
                 raise
 
     async def shutdown(self):
+        if self.request_router:
+            self.request_router.shutdown()
         await self._metrics_manager.shutdown()
 
 
