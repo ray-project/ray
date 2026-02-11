@@ -260,9 +260,7 @@ class TestResourceManager:
             op.running_logical_usage = MagicMock(
                 return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0, memory=0)
             )
-            op.pending_logical_usage = MagicMock(
-                return_value=ExecutionResources.zero()
-            )
+            op.pending_logical_usage = MagicMock(return_value=ExecutionResources.zero())
             op.extra_resource_usage = MagicMock(return_value=ExecutionResources.zero())
             op._metrics = MagicMock(
                 obj_store_mem_pending_task_outputs=mock_pending_task_outputs[op],
@@ -582,18 +580,20 @@ class TestResourceManager:
             topology=topo,
             options=options,
             get_total_resources=lambda: cluster_resources,
-            data_context=DataContext.get_current()
+            data_context=DataContext.get_current(),
         )
         resource_manager.update_usages()
 
         # Task cannot be submitted because it exceeds memory limit
-        allocator = create_resource_allocator(resource_manager, DataContext.get_current())
+        allocator = create_resource_allocator(
+            resource_manager, DataContext.get_current()
+        )
         assert allocator is not None
         allocator.update_budgets(limits=resource_manager.get_global_limits())
         can_submit = allocator.can_submit_new_task(o2)
-        assert not can_submit, (
-            "Task should be blocked: requires 2000 bytes but only 1000 bytes memory available"
-        )
+        assert (
+            not can_submit
+        ), "Task should be blocked: requires 2000 bytes but only 1000 bytes memory available"
 
 
 class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
