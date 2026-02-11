@@ -466,21 +466,7 @@ def method(
     _generator_backpressure_num_objects: Optional[int] = None,
     enable_task_events: Optional[bool] = None,
     tensor_transport: Optional[str] = None,
-) -> Callable[[Callable[Concatenate[Any, _P], Awaitable[_Ret]]], Any]:
-    ...
-
-
-@overload
-def method(
-    *,
-    num_returns: Optional[Union[int, Literal["streaming"]]] = None,
-    concurrency_group: Optional[str] = None,
-    max_task_retries: Optional[int] = None,
-    retry_exceptions: Optional[Union[bool, list, tuple]] = None,
-    _generator_backpressure_num_objects: Optional[int] = None,
-    enable_task_events: Optional[bool] = None,
-    tensor_transport: Optional[str] = None,
-) -> Callable[[Callable[Concatenate[Any, _P], _Ret]], Any]:
+) -> Callable[[Callable[Concatenate[Any, _P], Any]], Any]:
     ...
 
 
