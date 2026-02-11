@@ -260,6 +260,15 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"]["policy"][
                 "_serialized_policy_def"
             ] = self.autoscaling_config.policy._serialized_policy_def
+            # Serialize policy_kwargs dict to bytes for the proto
+            policy_kwargs = data["autoscaling_config"]["policy"].get("policy_kwargs")
+            if policy_kwargs is not None:
+                if not policy_kwargs:
+                    data["autoscaling_config"]["policy"]["policy_kwargs"] = b""
+                else:
+                    data["autoscaling_config"]["policy"][
+                        "policy_kwargs"
+                    ] = cloudpickle.dumps(policy_kwargs)
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
@@ -361,6 +370,17 @@ class DeploymentConfig(BaseModel):
                 data["autoscaling_config"][
                     "aggregation_function"
                 ] = AggregationFunction.MEAN
+            # Deserialize policy_kwargs bytes back to a dict
+            if "policy" in data["autoscaling_config"]:
+                policy_data = data["autoscaling_config"]["policy"]
+                if "policy_kwargs" in policy_data:
+                    raw = policy_data["policy_kwargs"]
+                    if raw and raw != b"":
+                        policy_data["policy_kwargs"] = cloudpickle.loads(
+                            proto.autoscaling_config.policy.policy_kwargs
+                        )
+                    else:
+                        policy_data["policy_kwargs"] = {}
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":
