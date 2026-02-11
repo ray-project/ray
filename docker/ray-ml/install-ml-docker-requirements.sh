@@ -10,7 +10,7 @@ sudo apt-get update \
         cmake \
         libgtk2.0-dev \
         libgl1-mesa-dev \
-        libgl1-mesa-glx \
+        libgl1 \
         libosmesa6 \
         libosmesa6-dev \
         libglfw3 \
