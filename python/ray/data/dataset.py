@@ -3666,7 +3666,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._snapshot_stats = limited_ds._plan.stats()
+        self._plan._cache.set_stats(limited_ds._plan.stats())
         return res
 
     @ConsumptionAPI
@@ -3717,7 +3717,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._snapshot_stats = limited_ds._plan.stats()
+        self._plan._cache.set_stats(limited_ds._plan.stats())
         return output
 
     @ConsumptionAPI
@@ -3883,6 +3883,7 @@ class Dataset:
         # execute to get its schema.
         base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema is not None:
+            # TODO (kyuds): this was removed
             self._plan.cache_schema(base_schema)
             return Schema(base_schema, data_context=context)
         else:
@@ -6721,7 +6722,7 @@ class Dataset:
         plan_copy = self._plan.deep_copy()
         logical_plan_copy = copy.copy(self._plan._logical_plan)
         ds = Dataset(plan_copy, logical_plan_copy)
-        ds._plan.clear_snapshot()
+        ds._plan.clear_cache()
         ds._set_uuid(self._get_uuid())
 
         def _reduce_remote_fn(rf: ray.remote_function.RemoteFunction):
@@ -7221,6 +7222,9 @@ class ExecutionCache:
     def has_computed_output(self, dag: "LogicalOperator") -> bool:
         return self.get_bundle(dag) is not None
 
+    def get_operator(self) -> "LogicalOperator":
+        return self._operator
+
     def get_bundle(self, dag: "LogicalOperator") -> Optional[RefBundle]:
         if self.cache_is_fresh(dag):
             return self._bundle
@@ -7254,15 +7258,11 @@ class ExecutionCache:
 
     # --- Setters ---
 
-    def set_bundle(self, dag: "LogicalOperator", bundle: RefBundle) -> None:
-        self._operator = dag
-        self._bundle = bundle
-
     def set_stats(self, stats: DatasetStats) -> None:
         # stats are cached independently
         self._stats = stats
 
-    def set_metadata(
+    def set_from_iteration(
         self,
         dag: "LogicalOperator",
         schema: Optional["Schema"],
@@ -7273,6 +7273,17 @@ class ExecutionCache:
         self._schema = schema
         self._num_rows = num_rows
         self._size_bytes = size_bytes
+
+    def set_schema(self, dag: "LogicalOperator", schema: "Schema") -> None:
+        self._operator = dag
+        self._schema = schema
+
+    def set_from_execution(
+        self, dag: "LogicalOperator", bundle: RefBundle, stats: DatasetStats
+    ) -> None:
+        self._operator = dag
+        self._bundle = bundle
+        self._stats = stats
 
     # --- Lifecycle ---
 
