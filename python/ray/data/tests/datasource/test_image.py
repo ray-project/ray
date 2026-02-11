@@ -15,9 +15,6 @@ from ray.data._internal.datasource.image_datasource import (
 from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
-from ray.data.datasource.file_meta_provider import (
-    DefaultFileMetadataProvider,
-)
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -59,17 +56,6 @@ class TestReadImages:
             ]
         )
         assert ds.count() == 2
-
-    def test_file_metadata_provider(self, ray_start_regular_shared):
-        ds = ray.data.read_images(
-            paths=[
-                "example://image-datasets/simple/image1.jpg",
-                "example://image-datasets/simple/image2.jpg",
-                "example://image-datasets/simple/image2.jpg",
-            ],
-            meta_provider=DefaultFileMetadataProvider(),
-        )
-        assert ds.count() == 3
 
     def test_filtering(self, ray_start_regular_shared):
         # "different-extensions" contains three images and two non-images.
@@ -235,13 +221,6 @@ class TestReadImages:
         with tempfile.NamedTemporaryFile(suffix=".png") as file:
             with pytest.raises(ValueError):
                 ray.data.read_images(paths=file.name).materialize()
-
-    def test_custom_meta_provider_emits_deprecation_warning(ray_start_regular_shared):
-        with pytest.warns(DeprecationWarning):
-            ray.data.read_images(
-                paths=["example://image-datasets/simple/image1.jpg"],
-                meta_provider=DefaultFileMetadataProvider(),
-            )
 
 
 class TestWriteImages:

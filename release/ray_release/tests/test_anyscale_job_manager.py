@@ -31,7 +31,7 @@ def test_get_last_logs_long_running_job():
     )
     anyscale_job_manager = AnyscaleJobManager(cluster_manager=cluster_manager)
     anyscale_job_manager._duration = 4 * 3_600 + 1
-    anyscale_job_manager.last_job_result = FakeJobResult(_id="foo")
+    anyscale_job_manager.save_last_job_result(FakeJobResult(_id="foo"))
     assert anyscale_job_manager.get_last_logs() is None
 
 
