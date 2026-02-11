@@ -8,10 +8,8 @@ from fsspec.implementations.local import LocalFileSystem
 from PIL import Image
 
 import ray
-from ray.data._internal.datasource.image_datasource import (
-    ImageDatasource,
-    ImageFileMetadataProvider,
-)
+from ray.data._internal.datasource import ImageDatasource
+from ray.data._internal.datasource.image_datasource import ImageFileMetadataProvider
 from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
