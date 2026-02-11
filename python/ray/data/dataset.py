@@ -4529,6 +4529,9 @@ class Dataset:
         if partition_overwrite_mode:
             write_kwargs["partition_overwrite_mode"] = partition_overwrite_mode
 
+        # PR 8: Schema evolution is supported (from PR 4)
+        schema_mode = write_kwargs.pop("schema_mode", schema_mode)
+
         # PR 8: File buffering now supported
         target_file_size_bytes = write_kwargs.pop("target_file_size_bytes", None)
         if target_file_size_bytes is not None:
