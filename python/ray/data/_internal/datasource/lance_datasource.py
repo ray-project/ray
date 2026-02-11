@@ -113,6 +113,9 @@ class LanceDatasource(Datasource):
         then applies a decompression factor for in-memory estimation.
         Takes column projection into account if specified.
 
+        Note: This is an approximate estimation. Column projection uses a simple
+        ratio based on column count, which may not reflect actual column sizes.
+
         Returns:
             Optional[int]: Estimated size in bytes, or None if cannot estimate.
         """
@@ -142,8 +145,10 @@ class LanceDatasource(Datasource):
             if total_size == 0:
                 return None
 
-            # Lance uses compression (typically LZ4), so in-memory size is larger
-            # Use conservative 3x decompression factor
+            # Lance uses compression (typically LZ4), so in-memory size is larger.
+            # Based on typical LZ4 compression ratios for columnar data, use a
+            # conservative 3x decompression factor. This may vary depending on
+            # data characteristics (highly compressible text vs. random binary data).
             DECOMPRESSION_FACTOR = 3.0
 
             # Consider column projection if specified
@@ -152,7 +157,9 @@ class LanceDatasource(Datasource):
             if selected_columns and schema:
                 total_columns = len(schema)
                 if total_columns > 0:
-                    # Adjust size based on column selection ratio
+                    # Adjust size based on column count ratio.
+                    # Note: This is a rough approximation that assumes all columns
+                    # are similar in size. Actual column sizes may vary significantly.
                     column_ratio = len(selected_columns) / total_columns
                     total_size = int(total_size * column_ratio)
                     logger.debug(

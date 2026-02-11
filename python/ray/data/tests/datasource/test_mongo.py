@@ -264,6 +264,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
 def test_mongo_estimate_inmemory_data_size(ray_start_regular_shared, start_mongo):
     """Test MongoDB datasource memory size estimation."""
     from pymongoarrow.api import Schema
+
     from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 
     client, mongo_url = start_mongo
@@ -298,9 +299,13 @@ def test_mongo_estimate_inmemory_data_size(ray_start_regular_shared, start_mongo
     avg_obj_size = stats["avgObjSize"]
 
     # Estimated size should be within reasonable range
-    # (actual * 1.2 accounting for PyArrow overhead and some variance)
-    expected_min = actual_size * 0.5  # 50% lower bound
-    expected_max = actual_size * 2.5  # 250% upper bound (conservative)
+    # The estimate uses actual_size * 1.2 for PyArrow overhead
+    # Allow 0.8x to 1.8x of actual size to account for:
+    # - MongoDB's actual_size may include storage overhead
+    # - PyArrow conversion overhead (1.2x factor)
+    # - Some variance in document size estimation
+    expected_min = actual_size * 0.8
+    expected_max = actual_size * 1.8
 
     assert expected_min < estimated_size < expected_max, (
         f"Estimated size {estimated_size} outside expected range "

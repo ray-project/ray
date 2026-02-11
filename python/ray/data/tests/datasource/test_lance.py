@@ -290,10 +290,11 @@ def test_lance_estimate_inmemory_data_size(local_path):
         f"compressed size {actual_compressed_size}"
     )
 
-    # Should be within reasonable range (2x to 5x of compressed size)
-    assert actual_compressed_size * 2 < estimated_size < actual_compressed_size * 5, (
+    # Should be within reasonable range (2.5x to 4x of compressed size)
+    # Based on 3x decompression factor with some tolerance for variance
+    assert actual_compressed_size * 2.5 < estimated_size < actual_compressed_size * 4, (
         f"Estimated size {estimated_size} outside expected range "
-        f"[{actual_compressed_size * 2}, {actual_compressed_size * 5}]"
+        f"[{actual_compressed_size * 2.5}, {actual_compressed_size * 4}]"
     )
 
     # Test with column projection
@@ -315,9 +316,12 @@ def test_lance_estimate_inmemory_data_size(local_path):
     # Selecting 1 out of 3 columns should reduce size significantly
     column_ratio = 1 / 3
     expected_proj_size = estimated_size * column_ratio
-    # Allow 50% variance due to column size differences
-    assert expected_proj_size * 0.3 < estimated_size_proj < expected_proj_size * 1.7, (
+    # The projection is based on column count ratio, which may not perfectly
+    # reflect actual column sizes. Allow reasonable variance (0.5x to 2x)
+    # due to differences in column data sizes.
+    assert expected_proj_size * 0.5 < estimated_size_proj < expected_proj_size * 2.0, (
         f"Projected size {estimated_size_proj} not within expected range "
+        f"[{expected_proj_size * 0.5}, {expected_proj_size * 2.0}] "
         f"around {expected_proj_size} (column ratio: {column_ratio})"
     )
 

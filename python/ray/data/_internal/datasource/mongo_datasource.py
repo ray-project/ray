@@ -43,12 +43,20 @@ class MongoDatasource(Datasource):
         - Average object size (avgObjSize from collStats)
         - Estimated document count matching the pipeline
 
+        Note: This is an approximate estimation. The actual in-memory size may vary
+        depending on data characteristics and PyArrow conversion overhead.
+
         Returns:
             Optional[int]: Estimated size in bytes, or None if cannot estimate.
         """
         try:
             # Initialize client if not already done
             self._get_or_create_client()
+
+            # Check if _avg_obj_size was initialized successfully
+            avg_obj_size = getattr(self, "_avg_obj_size", 0)
+            if avg_obj_size == 0:
+                return None
 
             coll = self._client[self._database][self._collection]
 
@@ -74,17 +82,18 @@ class MongoDatasource(Datasource):
                 # Use estimated_document_count for full collection scans (faster)
                 estimated_count = coll.estimated_document_count()
 
-            if estimated_count == 0 or self._avg_obj_size == 0:
+            if estimated_count == 0:
                 return None
 
             # Estimate total size: count * avg_obj_size
-            # Add 20% buffer for PyArrow conversion overhead
-            estimated_size = int(estimated_count * self._avg_obj_size * 1.2)
+            # Add 20% buffer for PyArrow conversion overhead (empirically determined)
+            PYARROW_OVERHEAD_FACTOR = 1.2
+            estimated_size = int(estimated_count * avg_obj_size * PYARROW_OVERHEAD_FACTOR)
 
             logger.debug(
                 f"MongoDB memory estimation: "
-                f"{estimated_count} docs * {self._avg_obj_size} bytes/doc "
-                f"= {estimated_size} bytes (with 20% overhead)"
+                f"{estimated_count} docs * {avg_obj_size} bytes/doc "
+                f"= {estimated_size} bytes (with {PYARROW_OVERHEAD_FACTOR}x overhead)"
             )
 
             return estimated_size
