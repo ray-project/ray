@@ -4530,7 +4530,12 @@ class Dataset:
             write_kwargs["partition_overwrite_mode"] = partition_overwrite_mode
 
         # PR 8: Schema evolution is supported (from PR 4)
-        schema_mode = write_kwargs.pop("schema_mode", schema_mode)
+        # Allow schema_mode to be passed in write_kwargs for backward compatibility
+        schema_mode = write_kwargs.pop("schema_mode", "merge")
+        if schema_mode not in ("merge", "error"):
+            raise ValueError(
+                f"Invalid schema_mode '{schema_mode}'. Supported: ['merge', 'error']"
+            )
 
         # PR 8: File buffering now supported
         target_file_size_bytes = write_kwargs.pop("target_file_size_bytes", None)
