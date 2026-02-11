@@ -77,12 +77,7 @@ alias(
 refresh_compile_commands(
     name = "refresh_compile_commands",
     targets = [
-        "//src/ray/raylet:raylet",
-        "//src/ray/gcs:gcs_server",
-        "//src/ray/core_worker:core_worker_lib",
-        "//src/ray/gcs_rpc_client:global_state_accessor_lib",
-        "//src/ray/pubsub:python_gcs_subscriber",
-        "//src/ray/raylet_rpc_client:raylet_client_with_io_context_lib",
+        "//:ray_pkg_zip",
     ],
 )
 
