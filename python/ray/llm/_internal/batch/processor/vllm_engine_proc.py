@@ -327,10 +327,21 @@ def build_vllm_engine_processor(
         download_model=download_model_mode,
         download_extra_files=False,
     )
-    hf_config = transformers.AutoConfig.from_pretrained(
-        model_path,
-        trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
-    )
+
+    try:
+        hf_config = transformers.AutoConfig.from_pretrained(
+            model_path,
+            trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
+        )
+    except Exception:
+        # Failed to retrieve HuggingFace config for telemetry purposes.
+        # This is non-fatal: we fall back to DEFAULT_MODEL_ARCHITECTURE for telemetry.
+        # The actual model loading happens later in vLLM, which may support models
+        # that aren't available via HuggingFace's AutoConfig.
+        logger.warning(
+            f"Failed to retrieve HuggingFace config for {config.model_source}"
+        )
+        hf_config = None
 
     architectures = getattr(hf_config, "architectures", [])
     architecture = architectures[0] if architectures else DEFAULT_MODEL_ARCHITECTURE

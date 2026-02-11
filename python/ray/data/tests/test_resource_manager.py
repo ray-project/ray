@@ -25,6 +25,7 @@ from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
     OpResourceAllocator,
     ResourceManager,
+    create_resource_allocator,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
@@ -233,15 +234,13 @@ class TestResourceManager:
 
         for op in [o1, o2, o3]:
             op.update_resource_usage = MagicMock()
-            op.current_processor_usage = MagicMock(
-                return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0)
+            op.current_logical_usage = MagicMock(
+                return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0, memory=0)
             )
-            op.running_processor_usage = MagicMock(
-                return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0)
+            op.running_logical_usage = MagicMock(
+                return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0, memory=0)
             )
-            op.pending_processor_usage = MagicMock(
-                return_value=ExecutionResources.zero()
-            )
+            op.pending_logical_usage = MagicMock(return_value=ExecutionResources.zero())
             op.extra_resource_usage = MagicMock(return_value=ExecutionResources.zero())
             op._metrics = MagicMock(
                 obj_store_mem_pending_task_outputs=mock_pending_task_outputs[op],
@@ -540,6 +539,41 @@ class TestResourceManager:
         # o5's downstream (o6, o7) has no blocking materializing ops
         assert resource_manager2._is_blocking_materializing_op(o5) is False
         assert resource_manager2._is_blocking_materializing_op(o7) is False
+
+    def test_memory_limit_blocks_task_submission(self, restore_data_context):
+        """Test that tasks are blocked when memory limit is exceeded."""
+        # Cluster has 1000 bytes of memory
+        cluster_resources = ExecutionResources(cpu=1, gpu=0, memory=1000)
+
+        # Request 2000 bytes memory
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(
+            o1,
+            ray_remote_args={"num_cpus": 1, "memory": 2000},
+            name="HighMemoryTask",
+        )
+
+        topo = build_streaming_topology(o2, ExecutionOptions())
+        options = ExecutionOptions()
+
+        resource_manager = ResourceManager(
+            topology=topo,
+            options=options,
+            get_total_resources=lambda: cluster_resources,
+            data_context=DataContext.get_current(),
+        )
+        resource_manager.update_usages()
+
+        # Task cannot be submitted because it exceeds memory limit
+        allocator = create_resource_allocator(
+            resource_manager, DataContext.get_current()
+        )
+        assert allocator is not None
+        allocator.update_budgets(limits=resource_manager.get_global_limits())
+        can_submit = allocator.can_submit_new_task(o2)
+        assert (
+            not can_submit
+        ), "Task should be blocked: requires 2000 bytes but only 1000 bytes memory available"
 
 
 class TestResourceAllocatorUnblockingStreamingOutputBackpressure:

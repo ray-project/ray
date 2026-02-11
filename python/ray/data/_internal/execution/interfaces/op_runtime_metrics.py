@@ -549,8 +549,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             result.append((metric.name, value))
 
         # TODO: record resource usage in OpRuntimeMetrics,
-        # avoid calling self._op.current_processor_usage()
-        resource_usage = self._op.current_processor_usage()
+        # avoid calling self._op.current_logical_usage()
+        resource_usage = self._op.current_logical_usage()
         result.extend(
             [
                 ("cpu_usage", resource_usage.cpu or 0),

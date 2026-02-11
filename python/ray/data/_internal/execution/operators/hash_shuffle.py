@@ -1014,7 +1014,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             reduce_name: self._output_blocks_stats,
         }
 
-    def current_processor_usage(self) -> ExecutionResources:
+    def current_logical_usage(self) -> ExecutionResources:
         # Current processors resource usage is comprised by
         #   - Base Aggregator actors resource utilization (captured by
         #     `base_resource_usage` method)
@@ -1023,19 +1023,21 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         base_usage = self.base_resource_usage
         running_usage = self._shuffling_resource_usage
 
-        # TODO add memory to resources being tracked
         return base_usage.add(running_usage)
 
     @property
     def base_resource_usage(self) -> ExecutionResources:
-        # TODO add memory to resources being tracked
         return ExecutionResources(
             cpu=(
                 self._aggregator_pool.num_aggregators
                 * self._aggregator_pool._aggregator_ray_remote_args["num_cpus"]
             ),
-            object_store_memory=0,
             gpu=0,
+            memory=(
+                self._aggregator_pool.num_aggregators
+                * self._aggregator_pool._aggregator_ray_remote_args.get("memory", 0)
+            ),
+            object_store_memory=0,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:
