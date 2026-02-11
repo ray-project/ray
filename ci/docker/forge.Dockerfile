@@ -52,7 +52,7 @@ Signed-by: /etc/apt/keyrings/microsoft.gpg" | tee /etc/apt/sources.list.d/azure-
 apt-get update
 apt-get install -y \
   awscli nodejs build-essential python-is-python3 \
-  python3-pip openjdk-8-jre wget jq \
+  python3-pip openjdk-17-jre wget jq \
   docker-ce-cli azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
 
 # Install uv
