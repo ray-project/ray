@@ -4469,8 +4469,7 @@ def read_delta(
 
     # Handle empty Delta table (no files to read)
     if not paths:
-        from ray.data.dataset import Dataset
-        return Dataset.range(0, parallelism=1)
+        return range(0)
 
     # If no filesystem was supplied, try to construct one from storage options
     # so that Parquet reads use the same credentials as Delta metadata access.
