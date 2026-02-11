@@ -4489,8 +4489,8 @@ class Dataset:
         """
         from ray.data._internal.datasource.delta import DeltaDatasink
 
-        # PR 2: Validate mode is one of the supported modes (append, overwrite, ignore, error)
-        valid_modes = {"append", "overwrite", "ignore", "error"}
+        # PR 8: Validate mode - all modes supported including upsert
+        valid_modes = {"append", "overwrite", "ignore", "error", "upsert"}
         if mode not in valid_modes:
             raise ValueError(
                 f"Invalid mode '{mode}'. Supported modes: {sorted(valid_modes)}"
