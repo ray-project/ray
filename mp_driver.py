@@ -120,8 +120,8 @@ def train_func():
     )
     manager = Manager(
         pg=ft_pg,
-        # With TP, all workers in a replica group must be up
-        min_replica_size=TP_SIZE,
+        # This refers to the minimum number of replica groups you need per quorum
+        min_replica_size=num_replica_groups,
         load_state_dict=load_state_dict,
         state_dict=state_dict,
         # Replica group world size (TP dimension)
