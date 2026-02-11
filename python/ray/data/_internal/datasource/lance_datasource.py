@@ -107,79 +107,8 @@ class LanceDatasource(Datasource):
         return read_tasks
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        """Estimate the in-memory size of Lance data.
-
-        Uses Lance dataset metadata to calculate compressed size,
-        then applies a decompression factor for in-memory estimation.
-        Takes column projection into account if specified.
-
-        Note: This is an approximate estimation. Column projection uses a simple
-        ratio based on column count, which may not reflect actual column sizes.
-
-        Returns:
-            Optional[int]: Estimated size in bytes, or None if cannot estimate.
-        """
-        try:
-            # Get all fragments
-            ds_fragments = self.scanner_options.get("fragments")
-            if ds_fragments is None:
-                ds_fragments = list(self.lance_ds.get_fragments())
-
-            if not ds_fragments:
-                return None
-
-            total_size = 0
-            total_rows = 0
-
-            # Calculate total compressed size from data files
-            for fragment in ds_fragments:
-                physical_rows = fragment.count_rows()
-                total_rows += physical_rows
-
-                # Sum up sizes of all data files in this fragment
-                for data_file in fragment.data_files():
-                    file_size = data_file.size()  # Compressed size on disk
-                    if file_size is not None:
-                        total_size += file_size
-
-            if total_size == 0:
-                return None
-
-            # Lance uses compression (typically LZ4), so in-memory size is larger.
-            # Based on typical LZ4 compression ratios for columnar data, use a
-            # conservative 3x decompression factor. This may vary depending on
-            # data characteristics (highly compressible text vs. random binary data).
-            DECOMPRESSION_FACTOR = 3.0
-
-            # Consider column projection if specified
-            schema = ds_fragments[0].schema
-            selected_columns = self.scanner_options.get("columns")
-            if selected_columns and schema:
-                total_columns = len(schema)
-                if total_columns > 0:
-                    # Adjust size based on column count ratio.
-                    # Note: This is a rough approximation that assumes all columns
-                    # are similar in size. Actual column sizes may vary significantly.
-                    column_ratio = len(selected_columns) / total_columns
-                    total_size = int(total_size * column_ratio)
-                    logger.debug(
-                        f"Lance column projection: selecting {len(selected_columns)}"
-                        f"/{total_columns} columns (ratio: {column_ratio:.2f})"
-                    )
-
-            estimated_size = int(total_size * DECOMPRESSION_FACTOR)
-
-            logger.debug(
-                f"Lance memory estimation: "
-                f"{total_rows} rows, {total_size} bytes compressed "
-                f"-> {estimated_size} bytes estimated in-memory "
-                f"(decompression factor: {DECOMPRESSION_FACTOR}x)"
-            )
-
-            return estimated_size
-        except Exception as e:
-            logger.warning(f"Failed to estimate Lance data size: {e}")
-            return None
+        # TODO(chengsu): Add memory size estimation to improve auto-tune of parallelism.
+        return None
 
 
 def _read_fragments_with_retry(
