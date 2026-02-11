@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 # Checkpoint keyword argument name
+CHECKPOINT_EXISTED_KWARG_NAME = "is_checkpoint_existed"
 CHECKPOINTED_IDS_KWARG_NAME = "checkpointed_ids"
 
 
@@ -25,20 +26,28 @@ def filter_checkpointed_rows_for_blocks(
         BatchBasedCheckpointFilter,
     )
 
-    ckpt_filter = BatchBasedCheckpointFilter(checkpoint_config)
+    is_checkpoint_existed = task_context.kwargs[CHECKPOINT_EXISTED_KWARG_NAME]
     checkpointed_ids = task_context.kwargs[CHECKPOINTED_IDS_KWARG_NAME]
 
-    def filter_fn(block: Block) -> Block:
-        return ckpt_filter.filter_rows_for_block(
-            block=block,
-            checkpointed_ids=checkpointed_ids,
-        )
+    if is_checkpoint_existed:
+        ckpt_filter = BatchBasedCheckpointFilter(checkpoint_config)
 
-    for block in blocks:
-        filtered_block = filter_fn(block)
-        ba = BlockAccessor.for_block(filtered_block)
-        if ba.num_rows() > 0:
-            yield filtered_block
+        def filter_fn(block: Block) -> Block:
+            return ckpt_filter.filter_rows_for_block(
+                block=block,
+                checkpointed_ids=checkpointed_ids,
+            )
+
+        for block in blocks:
+            filtered_block = filter_fn(block)
+            ba = BlockAccessor.for_block(filtered_block)
+            if ba.num_rows() > 0:
+                yield filtered_block
+    else:
+        for block in blocks:
+            ba = BlockAccessor.for_block(block)
+            if ba.num_rows() > 0:
+                yield block
 
 
 def filter_checkpointed_rows_for_batches(
@@ -52,15 +61,21 @@ def filter_checkpointed_rows_for_batches(
         BatchBasedCheckpointFilter,
     )
 
-    ckpt_filter = BatchBasedCheckpointFilter(checkpoint_config)
-    checkpointed_ids = task_context.kwargs[CHECKPOINTED_IDS_KWARG_NAME]
+    is_checkpoint_existed = task_context.kwargs[CHECKPOINT_EXISTED_KWARG_NAME]
 
-    def filter_fn(batch: DataBatch) -> DataBatch:
-        return ckpt_filter.filter_rows_for_batch(
-            batch=batch,
-            checkpointed_ids=checkpointed_ids,
-        )
+    if is_checkpoint_existed:
+        ckpt_filter = BatchBasedCheckpointFilter(checkpoint_config)
+        checkpointed_ids = task_context.kwargs[CHECKPOINTED_IDS_KWARG_NAME]
 
-    for batch in batches:
-        filtered_batch = filter_fn(batch)
-        yield filtered_batch
+        def filter_fn(batch: DataBatch) -> DataBatch:
+            return ckpt_filter.filter_rows_for_batch(
+                batch=batch,
+                checkpointed_ids=checkpointed_ids,
+            )
+
+        for batch in batches:
+            filtered_batch = filter_fn(batch)
+            yield filtered_batch
+    else:
+        for batch in batches:
+            yield batch
