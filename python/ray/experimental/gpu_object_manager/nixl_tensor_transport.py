@@ -1,10 +1,12 @@
 import threading
 import time
 import traceback
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
+from ray._private.ray_constants import NIXL_REMOTE_AGENT_CACHE_MAXSIZE
 from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     CommunicatorMetadata,
     TensorTransportManager,
@@ -27,10 +29,14 @@ class NixlTransportMetadata(TensorTransportMetadata):
     Args:
         nixl_serialized_descs: Serialized tensor descriptors for NIXL transport.
         nixl_agent_meta: The additional metadata of the remote NIXL agent.
+        nixl_agent_name: The name of the NIXL agent.
+        nixl_agent_meta_version: The version of the NIXL agent metadata.
     """
 
     nixl_serialized_descs: Optional[bytes] = None
     nixl_agent_meta: Optional[bytes] = None
+    nixl_agent_name: Optional[str] = None
+    nixl_agent_meta_version: Optional[int] = 0
 
     __eq__ = object.__eq__
     __hash__ = object.__hash__
@@ -58,6 +64,12 @@ class NixlTensorTransport(TensorTransportManager):
         # Lock protecting _tensor_desc_cache and _managed_meta_nixl since they can be
         # accessed from the main task execution thread or the _ray_system thread.
         self._cache_lock = threading.Lock()
+
+        # LRU cache of remote agent names. When full, the least
+        # recently used remote agent is evicted and remove_remote_agent is called.
+        self._remote_agents: OrderedDict = OrderedDict()
+        # Increment the version whenever memory is deregistered.
+        self._nixl_agent_meta_version = 0
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
@@ -160,14 +172,19 @@ class NixlTensorTransport(TensorTransportManager):
                 xfer_descs = nixl_agent.get_xfer_descs(gpu_object)
                 serialized_descs = nixl_agent.get_serialized_descs(xfer_descs)
                 agent_meta = nixl_agent.get_agent_metadata()
+                agent_name = nixl_agent.name
+                agent_meta_version = self._nixl_agent_meta_version
             else:
                 serialized_descs, agent_meta = None, None
+                agent_name, agent_meta_version = None, None
 
             ret = NixlTransportMetadata(
                 tensor_meta=tensor_meta,
                 tensor_device=device,
                 nixl_serialized_descs=serialized_descs,
                 nixl_agent_meta=agent_meta,
+                nixl_agent_name=agent_name,
+                nixl_agent_meta_version=agent_meta_version,
             )
             self._put_meta(obj_id, ret)
             return ret
@@ -213,7 +230,29 @@ class NixlTensorTransport(TensorTransportManager):
             nixl_agent = self.get_nixl_agent()
             remote_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
             local_descs = nixl_agent.register_memory(tensors)
-            remote_name = nixl_agent.add_remote_agent(remote_nixl_agent_meta)
+
+            remote_name = tensor_transport_metadata.nixl_agent_name
+            remote_agent_meta_version = (
+                tensor_transport_metadata.nixl_agent_meta_version
+            )
+
+            # Nixl agent reuse is enabled.
+            if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
+                if remote_name in self._remote_agents:
+                    # If the remote agent metadata version is different from the cached one,
+                    # it means there was memory deregistered. We need to remove the remote agent
+                    # before adding it, because `nixlRemoteSection` currently does not support
+                    # updating descriptor list in such a case (there is potential memory overlap).
+                    if remote_agent_meta_version != self._remote_agents[remote_name]:
+                        nixl_agent.remove_remote_agent(remote_name)
+                    self._remote_agents.move_to_end(remote_name)
+                elif len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE:
+                    evicted_agent_name, _ = self._remote_agents.popitem(last=False)
+                    nixl_agent.remove_remote_agent(evicted_agent_name)
+
+                self._remote_agents[remote_name] = remote_agent_meta_version
+
+            nixl_agent.add_remote_agent(remote_nixl_agent_meta)
 
             xfer_handle = nixl_agent.initialize_xfer(
                 # "UUID" here is just a placeholder, can be any bytes, but without it,
@@ -258,10 +297,12 @@ class NixlTensorTransport(TensorTransportManager):
                 self._aborted_transfer_obj_ids.discard(obj_id)
             if xfer_handle:
                 nixl_agent.release_xfer_handle(xfer_handle)
-            if remote_name:
+            if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and remote_name:
                 nixl_agent.remove_remote_agent(remote_name)
             if local_descs:
-                nixl_agent.deregister_memory(local_descs)
+                with self._cache_lock:
+                    nixl_agent.deregister_memory(local_descs)
+                    self._nixl_agent_meta_version += 1
 
         return tensors
 
@@ -295,6 +336,7 @@ class NixlTensorTransport(TensorTransportManager):
                     if tensor_desc.metadata_count == 0:
                         self._tensor_desc_cache.pop(key)
                         self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
+                        self._nixl_agent_meta_version += 1
 
     def abort_transport(
         self,
