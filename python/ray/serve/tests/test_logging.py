@@ -153,7 +153,8 @@ def test_http_access_log_in_stderr(serve_instance, log_format):
                 [
                     name in s,
                     _get_expected_replica_log_content(replica_id) in s,
-                    f"-- {method} {route} {status_code}" in s,
+                    f"{method} {route} {status_code}" in s,
+                    re.search(r"127\.0\.0\.1:\d+", s),  # Client IP:port.
                     "ms" in s,
                     ("OOPS!" in s and "RuntimeError" in s)
                     if fail
@@ -329,6 +330,7 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
                                 f"default_{name}" == log_data.get("deployment"),
                                 f"{call_info['method']} {call_info['expected_route']} {call_info['expected_status']}"
                                 in message,
+                                re.search(r"127\.0\.0\.1:\d+", message),
                                 "ms" in message,
                                 (
                                     context_info is not None
@@ -353,8 +355,9 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
                     [
                         name in line,
                         f"default_{name} {replica_id}" in line,
-                        f"-- {call_info['method']} {call_info['expected_route']} {call_info['expected_status']}"
+                        f"{call_info['method']} {call_info['expected_route']} {call_info['expected_status']}"
                         in line,
+                        re.search(r"127\.0\.0\.1:\d+", line),
                         "ms" in line,
                     ]
                 ):

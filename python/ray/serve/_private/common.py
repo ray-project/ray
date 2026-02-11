@@ -775,6 +775,9 @@ class RequestMetadata:
 
     _http_method: str = ""
 
+    # The client address in "host:port" format, if available.
+    _client: str = ""
+
     # The protocol to serve this request
     _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
 
