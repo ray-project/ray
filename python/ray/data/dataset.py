@@ -4497,7 +4497,7 @@ class Dataset:
         from ray.data._internal.datasource.delta import DeltaDatasink
 
         # PR 2: Validate mode is one of the supported modes (append, overwrite, ignore, error)
-        valid_modes = {"append", "overwrite", "ignore", "error"}
+        valid_modes = {"append", "overwrite", "ignore", "error", "upsert"}
         if mode not in valid_modes:
             raise ValueError(
                 f"Invalid mode '{mode}'. Supported modes: {sorted(valid_modes)}"
@@ -4518,10 +4518,19 @@ class Dataset:
                 f"Invalid schema_mode '{schema_mode}'. Supported: ['merge', 'error']"
             )
 
-        # PR 4: Upsert not supported yet
-        if "upsert_kwargs" in write_kwargs:
+        # PR 6: Upsert mode now supported
+        upsert_kwargs = write_kwargs.pop("upsert_kwargs", None)
+        if mode == "upsert" and not upsert_kwargs:
             raise ValueError(
-                "PR 4: upsert_kwargs not supported. Upsert mode will be added in PR 6."
+                "UPSERT mode requires upsert_kwargs with 'join_cols' specified. "
+                "Example: upsert_kwargs={'join_cols': ['id']}"
+            )
+        if upsert_kwargs and mode != "upsert":
+            raise ValueError(
+                "upsert_kwargs can only be specified with mode='upsert'"
+            )
+        if upsert_kwargs:
+            write_kwargs["upsert_kwargs"] = upsert_kwargs"
             )
 
         # PR 4: Partition overwrite not supported yet
