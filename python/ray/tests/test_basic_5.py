@@ -13,9 +13,9 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
+from ray._common.test_utils import run_string_as_driver
 from ray._private.test_utils import (
     client_test_enabled,
-    run_string_as_driver,
     wait_for_pid_to_exit,
 )
 

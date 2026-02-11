@@ -330,6 +330,102 @@ SERVE_LLM_GRAFANA_PANELS = [
         grid_pos=GridPos(12, 56, 12, 8),
     ),
     Panel(
+        id=40,
+        title="NIXL: Transfer Latency",
+        description="Average NIXL KV cache transfer latency in milliseconds.",
+        unit="ms",
+        targets=[
+            Target(
+                expr='sum by(model_name, WorkerId) (rate(ray_vllm_nixl_xfer_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_nixl_xfer_time_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n* 1000',
+                legend="Avg Latency - {{model_name}} - {{WorkerId}}",
+            ),
+        ],
+        fill=1,
+        linewidth=2,
+        stack=False,
+        grid_pos=GridPos(0, 64, 12, 8),
+    ),
+    Panel(
+        id=41,
+        title="NIXL: Transfer Throughput",
+        description="NIXL KV cache transfer throughput in GB/s (bytes transferred / transfer time).",
+        unit="GBs",
+        targets=[
+            Target(
+                expr='sum by(model_name, WorkerId) (rate(ray_vllm_nixl_bytes_transferred_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_nixl_xfer_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/ 1024 / 1024 / 1024',
+                legend="Throughput - {{model_name}} - {{WorkerId}}",
+            ),
+        ],
+        fill=1,
+        linewidth=2,
+        stack=False,
+        grid_pos=GridPos(12, 64, 12, 8),
+    ),
+    Panel(
+        id=42,
+        title="NIXL: Transfer Rate",
+        description="Number of NIXL KV cache transfers per second.",
+        unit="ops",
+        targets=[
+            Target(
+                expr='sum by (model_name, WorkerId) (rate(ray_vllm_nixl_xfer_time_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
+                legend="Transfers/s - {{model_name}} - {{WorkerId}}",
+            ),
+        ],
+        fill=1,
+        linewidth=2,
+        stack=False,
+        grid_pos=GridPos(0, 72, 12, 8),
+    ),
+    Panel(
+        id=43,
+        title="NIXL: Avg Post Time",
+        description="Average time to post/initiate a NIXL transfer in milliseconds.",
+        unit="ms",
+        targets=[
+            Target(
+                expr='sum by(model_name, WorkerId) (rate(ray_vllm_nixl_post_time_seconds_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_nixl_post_time_seconds_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n* 1000',
+                legend="Avg Post Time - {{model_name}} - {{WorkerId}}",
+            ),
+        ],
+        fill=1,
+        linewidth=2,
+        stack=False,
+        grid_pos=GridPos(12, 72, 12, 8),
+    ),
+    Panel(
+        id=44,
+        title="NIXL: KV Transfer Failures",
+        description="Number of failed NIXL KV cache transfers. Any non-zero value is concerning and indicates RDMA transfer errors.",
+        unit="short",
+        targets=[
+            Target(
+                expr='sum by (model_name, WorkerId) (increase(ray_vllm_nixl_num_failed_transfers{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
+                legend="Failed Transfers - {{model_name}} - {{WorkerId}}",
+            ),
+        ],
+        fill=1,
+        linewidth=2,
+        stack=False,
+        grid_pos=GridPos(0, 80, 12, 8),
+    ),
+    Panel(
+        id=45,
+        title="NIXL: KV Expired Requests",
+        description="Number of requests whose KV blocks expired before decode consumed them. Spikes indicate prefill is outrunning decode or the timeout is too short.",
+        unit="short",
+        targets=[
+            Target(
+                expr='sum by (model_name, WorkerId) (increase(ray_vllm_nixl_num_kv_expired_reqs{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))',
+                legend="KV Expired - {{model_name}} - {{WorkerId}}",
+            ),
+        ],
+        fill=1,
+        linewidth=2,
+        stack=False,
+        grid_pos=GridPos(12, 80, 12, 8),
+    ),
+    Panel(
         id=14,
         title="Tokens Last 24 Hours",
         description="",
@@ -347,7 +443,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 64, 12, 8),
+        grid_pos=GridPos(0, 88, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -368,7 +464,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 64, 12, 8),
+        grid_pos=GridPos(12, 88, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -385,7 +481,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 72, 12, 8),
+        grid_pos=GridPos(0, 96, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -402,7 +498,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 72, 12, 8),
+        grid_pos=GridPos(12, 96, 12, 8),
         template=PanelTemplate.PIE_CHART,
     ),
     Panel(
@@ -419,7 +515,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 80, 12, 8),
+        grid_pos=GridPos(0, 104, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -436,7 +532,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 80, 12, 8),
+        grid_pos=GridPos(12, 104, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -453,7 +549,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 88, 12, 8),
+        grid_pos=GridPos(0, 112, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
     Panel(
@@ -470,7 +566,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 88, 12, 8),
+        grid_pos=GridPos(12, 112, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
     Panel(
@@ -491,7 +587,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 96, 12, 8),
+        grid_pos=GridPos(0, 120, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
     Panel(
@@ -508,7 +604,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 96, 12, 8),
+        grid_pos=GridPos(12, 120, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
     Panel(
@@ -529,7 +625,7 @@ SERVE_LLM_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 104, 12, 8),
+        grid_pos=GridPos(12, 128, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
 ]

@@ -5,12 +5,14 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.test_utils import (
     get_other_nodes,
     kill_actor_and_wait_for_failure,
     placement_group_assert_no_leak,
-    run_string_as_driver,
 )
 from ray.util.placement_group import PlacementGroup, get_current_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy

@@ -8,7 +8,7 @@ import pytest
 import regex as re
 
 from ray import tune
-from ray._private.test_utils import run_string_as_driver
+from ray._common.test_utils import run_string_as_driver
 from ray.tune.experiment.trial import Trial
 from ray.tune.progress_reporter import (
     CLIReporter,

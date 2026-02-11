@@ -23,6 +23,7 @@ from ray._common.network_utils import find_free_port, parse_address
 from ray._common.test_utils import (
     SignalActor,
     async_wait_for_condition,
+    run_string_as_driver,
     wait_for_condition,
 )
 from ray._private.grpc_utils import init_grpc_channel
@@ -31,10 +32,7 @@ from ray._private.state_api_test_utils import (
     get_state_api_manager,
     verify_schema,
 )
-from ray._private.test_utils import (
-    run_string_as_driver,
-    wait_for_aggregator_agent_if_enabled,
-)
+from ray._private.test_utils import wait_for_aggregator_agent_if_enabled
 from ray._raylet import ActorID, GcsClient, JobID, NodeID, TaskID
 from ray.cluster_utils import cluster_not_supported
 from ray.core.generated.common_pb2 import (

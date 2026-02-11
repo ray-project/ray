@@ -38,7 +38,6 @@ def mock_map_op(
     input_op: PhysicalOperator,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     compute_strategy: Optional[ComputeStrategy] = None,
-    incremental_resource_usage: Optional[ExecutionResources] = None,
     name="Map",
 ):
     op = MapOperator.create(
@@ -50,34 +49,19 @@ def mock_map_op(
         name=name,
     )
     op.start(ExecutionOptions())
-    if incremental_resource_usage is not None:
-        op.incremental_resource_usage = MagicMock(
-            return_value=incremental_resource_usage
-        )
     return op
 
 
-def mock_union_op(
-    input_ops,
-    incremental_resource_usage=None,
-):
+def mock_union_op(input_ops):
     op = UnionOperator(
         DataContext.get_current(),
         *input_ops,
     )
     op.start = MagicMock(side_effect=lambda _: None)
-    if incremental_resource_usage is not None:
-        op.incremental_resource_usage = MagicMock(
-            return_value=incremental_resource_usage
-        )
     return op
 
 
-def mock_join_op(
-    left_input_op,
-    right_input_op,
-    incremental_resource_usage=None,
-):
+def mock_join_op(left_input_op, right_input_op):
     left_input_op._logical_operators = [(MagicMock())]
     right_input_op._logical_operators = [(MagicMock())]
 
@@ -98,10 +82,6 @@ def mock_join_op(
         )
 
     op.start = MagicMock(side_effect=lambda _: None)
-    if incremental_resource_usage is not None:
-        op.incremental_resource_usage = MagicMock(
-            return_value=incremental_resource_usage
-        )
     return op
 
 
