@@ -65,20 +65,39 @@ def __getattr__(name: str):
             from ray.data._internal.savemode import SaveMode
 
             return SaveMode
-        from ray.data._internal.datasource import (
-            Connection,
-            DeltaSharingDatasource,
-            MCAPDatasource,
-            TimeRange,
-        )
-
         return {
-            "Connection": Connection,
-            "DeltaSharingDatasource": DeltaSharingDatasource,
-            "MCAPDatasource": MCAPDatasource,
-            "TimeRange": TimeRange,
-        }[name]
+            "Connection": _get_connection,
+            "DeltaSharingDatasource": _get_delta_sharing_datasource,
+            "MCAPDatasource": _get_mcap_datasource,
+            "TimeRange": _get_time_range,
+        }[name]()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _get_connection():
+    from ray.data._internal.datasource.sql_datasource import Connection
+
+    return Connection
+
+
+def _get_delta_sharing_datasource():
+    from ray.data._internal.datasource.delta_sharing_datasource import (
+        DeltaSharingDatasource,
+    )
+
+    return DeltaSharingDatasource
+
+
+def _get_mcap_datasource():
+    from ray.data._internal.datasource.mcap_datasource import MCAPDatasource
+
+    return MCAPDatasource
+
+
+def _get_time_range():
+    from ray.data._internal.datasource.mcap_datasource import TimeRange
+
+    return TimeRange
 
 
 __all__ = [

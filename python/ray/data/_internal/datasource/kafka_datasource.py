@@ -30,7 +30,7 @@ import pyarrow as pa
 if TYPE_CHECKING:
     from kafka import KafkaConsumer, TopicPartition
 
-from ray.data._internal.datasource import Datasource, ReadTask
+from ray.data._internal.datasource.datasource import Datasource, ReadTask
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata

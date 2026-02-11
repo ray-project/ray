@@ -24,8 +24,7 @@ from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
 )
-from ray.data._internal.datasource import Datasource
-from ray.data._internal.datasource.datasource import ReadTask
+from ray.data._internal.datasource.datasource import Datasource, ReadTask
 from ray.data._internal.datasource.file_based_datasource import (
     _shuffle_file_metadata,
     _validate_shuffle_arg,
