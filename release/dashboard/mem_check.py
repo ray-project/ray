@@ -66,6 +66,73 @@ if __name__ == "__main__":
         print(client.get_job_logs(job_id))
         assert False, "Job has failed."
 
+    # --- Debug logging for Prometheus query ---
+    from urllib.parse import quote
+
+    import requests
+
+    prom_addr = os.environ.get(PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST)
+    session_name = os.path.basename(
+        ray._private.worker._global_node.get_session_dir_path()
+    )
+    print(
+        f"DEBUG: RAY_PROMETHEUS_HOST env var = {os.environ.get(PROMETHEUS_HOST_ENV_VAR, '<NOT SET>')}"
+    )
+    print(f"DEBUG: Prometheus address used = {prom_addr}")
+    print(f"DEBUG: Session name = {session_name}")
+
+    query = f"sum(ray_component_uss_mb{{Component='agent',SessionName='{session_name}'}}) by (pid)"
+    print(f"DEBUG: Query = {query}")
+
+    try:
+        resp = requests.get(
+            f"{prom_addr}/api/v1/query?query={quote(query)}",
+            timeout=10,
+        )
+        print(f"DEBUG: Prometheus response status = {resp.status_code}")
+        print(f"DEBUG: Prometheus response body = {resp.text[:2000]}")
+    except Exception as e:
+        print(f"DEBUG: Prometheus request failed: {type(e).__name__}: {e}")
+
+    # Also try querying without SessionName filter to see if any agent metrics exist
+    query_no_session = "ray_component_uss_mb{Component='agent'}"
+    try:
+        resp2 = requests.get(
+            f"{prom_addr}/api/v1/query?query={quote(query_no_session)}",
+            timeout=10,
+        )
+        print(f"DEBUG: Query without SessionName filter: {query_no_session}")
+        print(f"DEBUG: Response = {resp2.text[:2000]}")
+    except Exception as e:
+        print(f"DEBUG: Query without SessionName failed: {e}")
+
+    # Check what metrics export port the agent is using
+    node_info = ray.nodes()[0]
+    print(
+        f"DEBUG: Node info MetricsExportPort = {node_info.get('MetricsExportPort', 'N/A')}"
+    )
+
+    # Try scraping the raw metrics endpoint directly as a fallback check
+    metrics_port = node_info.get("MetricsExportPort")
+    if metrics_port:
+        try:
+            raw_resp = requests.get(f"http://localhost:{metrics_port}", timeout=10)
+            uss_lines = [
+                line
+                for line in raw_resp.text.split("\n")
+                if "component_uss_mb" in line and "agent" in line
+            ]
+            print(
+                f"DEBUG: Raw metrics endpoint (port {metrics_port}) uss_mb agent lines:"
+            )
+            for line in uss_lines:
+                print(f"DEBUG:   {line}")
+            if not uss_lines:
+                print("DEBUG:   (none found)")
+        except Exception as e:
+            print(f"DEBUG: Raw metrics scrape failed: {e}")
+    # --- End debug logging ---
+
     uss_mb_for_agent_component = get_system_metric_for_component(
         "ray_component_uss_mb",
         "agent",
