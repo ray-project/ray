@@ -4404,10 +4404,16 @@ class Dataset:
                 * GCS: gs://bucket/path/to/table
                 * Azure: abfss://container@account.dfs.core.windows.net/path
 
-            mode: Write mode. **PR 1: Only "append" is supported.**
-                Other modes (overwrite, ignore, error, upsert) will be added in subsequent PRs.
+            mode: Write mode for handling existing tables. **PR 2: Supports append, overwrite, ignore, error.**
 
-            partition_cols: **PR 1: Not supported.** Partitioning will be added in PR 3.
+                * "append": Add data to existing table (default)
+                * "overwrite": Replace all data in the table
+                * "error": Raise error if table already exists
+                * "ignore": Skip write if table already exists
+
+                Upsert mode will be added in PR 6.
+
+            partition_cols: **PR 2: Not supported.** Partitioning will be added in PR 3.
             filesystem: PyArrow filesystem to use for writing. If None, automatically
                 detected based on the path scheme (s3://, gs://, etc.).
             schema: PyArrow schema for the table. If None, inferred from the data.
@@ -4435,10 +4441,11 @@ class Dataset:
                 or if unsupported write_kwargs are provided (PR 1 limitations).
 
         Note:
-            **PR 1 Features:**
+            **PR 2 Features:**
 
             * **ACID guarantees**: Uses a two-phase commit protocol ensuring atomicity.
               Either all files become visible or none do.
+            * **Write modes**: Append, overwrite, ignore, and error modes.
 
             The two-phase commit protocol:
 
@@ -4451,7 +4458,6 @@ class Dataset:
             by running Delta's VACUUM command.
 
             **Future PRs will add:**
-            * Write modes: overwrite, ignore, error (PR 2)
             * Partitioning (PR 3)
             * Schema evolution (PR 4)
             * Time travel reads (PR 5)
@@ -4481,53 +4487,53 @@ class Dataset:
         """
         from ray.data._internal.datasource.delta import DeltaDatasink
 
-        # PR 1: Validate only append mode
-        if mode != "append":
+        # PR 2: Validate mode is one of the supported modes (append, overwrite, ignore, error)
+        valid_modes = {"append", "overwrite", "ignore", "error"}
+        if mode not in valid_modes:
             raise ValueError(
-                f"PR 1: Only 'append' mode is supported. Got mode='{mode}'. "
-                "Other modes will be added in PR 2."
+                f"Invalid mode '{mode}'. Supported modes: {sorted(valid_modes)}"
             )
 
-        # PR 1: Partitioning not supported
+        # PR 2: Partitioning not supported yet
         if partition_cols:
             raise ValueError(
-                "PR 1: partition_cols not supported. Partitioning will be added in PR 3."
+                "PR 2: partition_cols not supported. Partitioning will be added in PR 3."
             )
 
-        # PR 1: Schema evolution not supported
+        # PR 2: Schema evolution not supported yet
         if "schema_mode" in write_kwargs:
             raise ValueError(
-                "PR 1: schema_mode not supported. Schema evolution will be added in PR 4."
+                "PR 2: schema_mode not supported. Schema evolution will be added in PR 4."
             )
 
-        # PR 1: Upsert not supported
+        # PR 2: Upsert not supported yet
         if "upsert_kwargs" in write_kwargs:
             raise ValueError(
-                "PR 1: upsert_kwargs not supported. Upsert mode will be added in PR 6."
+                "PR 2: upsert_kwargs not supported. Upsert mode will be added in PR 6."
             )
 
-        # PR 1: Partition overwrite not supported
+        # PR 2: Partition overwrite not supported yet
         if "partition_overwrite_mode" in write_kwargs:
             raise ValueError(
-                "PR 1: partition_overwrite_mode not supported. "
+                "PR 2: partition_overwrite_mode not supported. "
                 "Partition overwrite modes will be added in PR 7."
             )
 
-        # PR 1: File buffering not supported
+        # PR 2: File buffering not supported yet
         if "target_file_size_bytes" in write_kwargs:
             raise ValueError(
-                "PR 1: target_file_size_bytes not supported. "
+                "PR 2: target_file_size_bytes not supported. "
                 "File buffering will be added in PR 8."
             )
 
-        # PR 1: Only append mode, no partitioning
+        # PR 2: Write modes supported, but no partitioning or schema_mode yet
         datasink = DeltaDatasink(
             path,
             mode=mode,
-            partition_cols=[],  # PR 1: No partitioning
+            partition_cols=[],  # PR 2: No partitioning yet
             filesystem=filesystem,
             schema=schema,
-            schema_mode="merge",  # PR 1: Not used, but required parameter
+            schema_mode="merge",  # PR 2: Not used, but required parameter
             **write_kwargs,
         )
         self.write_datasink(
