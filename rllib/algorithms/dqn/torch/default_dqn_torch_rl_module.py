@@ -95,7 +95,7 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
         )
 
         actions = torch.where(
-            torch.rand((B,)) < epsilon,
+            torch.rand((B,), device=random_actions.device) < epsilon,
             random_actions,
             exploit_actions,
         )
