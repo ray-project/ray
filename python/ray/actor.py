@@ -4,6 +4,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Coroutine,
     Dict,
     Generic,
     List,
@@ -91,12 +92,18 @@ class _RemoteMethodNoArgs(Generic[_Ret]):
     def remote(self) -> "ObjectRef[_Ret]":
         ...
 
+    def __call__(self) -> _Ret:
+        ...
+
     def bind(self) -> Any:
         ...
 
 
 class _RemoteMethod0(Generic[_Ret, _T0]):
     def remote(self, __arg0: "Union[_T0, ObjectRef[_T0]]") -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(self, __arg0: _T0) -> _Ret:
         ...
 
     def bind(self, __arg0: _T0) -> Any:
@@ -107,6 +114,9 @@ class _RemoteMethod1(Generic[_Ret, _T0, _T1]):
     def remote(
         self, __arg0: "Union[_T0, ObjectRef[_T0]]", __arg1: "Union[_T1, ObjectRef[_T1]]"
     ) -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(self, __arg0: _T0, __arg1: _T1) -> _Ret:
         ...
 
     def bind(self, __arg0: _T0, __arg1: _T1) -> Any:
@@ -120,6 +130,9 @@ class _RemoteMethod2(Generic[_Ret, _T0, _T1, _T2]):
         __arg1: "Union[_T1, ObjectRef[_T1]]",
         __arg2: "Union[_T2, ObjectRef[_T2]]",
     ) -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(self, __arg0: _T0, __arg1: _T1, __arg2: _T2) -> _Ret:
         ...
 
     def bind(self, __arg0: _T0, __arg1: _T1, __arg2: _T2) -> Any:
@@ -136,6 +149,9 @@ class _RemoteMethod3(Generic[_Ret, _T0, _T1, _T2, _T3]):
     ) -> "ObjectRef[_Ret]":
         ...
 
+    def __call__(self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3) -> _Ret:
+        ...
+
     def bind(self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3) -> Any:
         ...
 
@@ -149,6 +165,11 @@ class _RemoteMethod4(Generic[_Ret, _T0, _T1, _T2, _T3, _T4]):
         __arg3: "Union[_T3, ObjectRef[_T3]]",
         __arg4: "Union[_T4, ObjectRef[_T4]]",
     ) -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(
+        self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3, __arg4: _T4
+    ) -> _Ret:
         ...
 
     def bind(
@@ -167,6 +188,17 @@ class _RemoteMethod5(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]):
         __arg4: "Union[_T4, ObjectRef[_T4]]",
         __arg5: "Union[_T5, ObjectRef[_T5]]",
     ) -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+    ) -> _Ret:
         ...
 
     def bind(
@@ -192,6 +224,18 @@ class _RemoteMethod6(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]):
         __arg5: "Union[_T5, ObjectRef[_T5]]",
         __arg6: "Union[_T6, ObjectRef[_T6]]",
     ) -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+    ) -> _Ret:
         ...
 
     def bind(
@@ -221,6 +265,19 @@ class _RemoteMethod7(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]):
     ) -> "ObjectRef[_Ret]":
         ...
 
+    def __call__(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+    ) -> _Ret:
+        ...
+
     def bind(
         self,
         __arg0: _T0,
@@ -248,6 +305,20 @@ class _RemoteMethod8(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8])
         __arg7: "Union[_T7, ObjectRef[_T7]]",
         __arg8: "Union[_T8, ObjectRef[_T8]]",
     ) -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8,
+    ) -> _Ret:
         ...
 
     def bind(
@@ -281,6 +352,21 @@ class _RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, 
     ) -> "ObjectRef[_Ret]":
         ...
 
+    def __call__(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8,
+        __arg9: _T9,
+    ) -> _Ret:
+        ...
+
     def bind(
         self,
         __arg0: _T0,
@@ -295,6 +381,450 @@ class _RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, 
         __arg9: _T9,
     ) -> Any:
         ...
+
+
+# --- Async remote method classes ---
+# These unwrap Coroutine return types so that .remote() returns ObjectRef[T]
+# instead of ObjectRef[Coroutine[Any, Any, T]].
+
+
+class _AsyncRemoteMethodNoArgs(Generic[_Ret]):
+    def remote(self) -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(self) -> "Coroutine[Any, Any, _Ret]":
+        ...
+
+    def bind(self) -> Any:
+        ...
+
+
+class _AsyncRemoteMethod0(Generic[_Ret, _T0]):
+    def remote(self, __arg0: "Union[_T0, ObjectRef[_T0]]") -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(self, __arg0: _T0) -> "Coroutine[Any, Any, _Ret]":
+        ...
+
+    def bind(self, __arg0: _T0) -> Any:
+        ...
+
+
+class _AsyncRemoteMethod1(Generic[_Ret, _T0, _T1]):
+    def remote(
+        self, __arg0: "Union[_T0, ObjectRef[_T0]]", __arg1: "Union[_T1, ObjectRef[_T1]]"
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(self, __arg0: _T0, __arg1: _T1) -> "Coroutine[Any, Any, _Ret]":
+        ...
+
+    def bind(self, __arg0: _T0, __arg1: _T1) -> Any:
+        ...
+
+
+class _AsyncRemoteMethod2(Generic[_Ret, _T0, _T1, _T2]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(
+        self, __arg0: _T0, __arg1: _T1, __arg2: _T2
+    ) -> "Coroutine[Any, Any, _Ret]":
+        ...
+
+    def bind(self, __arg0: _T0, __arg1: _T1, __arg2: _T2) -> Any:
+        ...
+
+
+class _AsyncRemoteMethod3(Generic[_Ret, _T0, _T1, _T2, _T3]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(
+        self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3
+    ) -> "Coroutine[Any, Any, _Ret]":
+        ...
+
+    def bind(self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3) -> Any:
+        ...
+
+
+class _AsyncRemoteMethod4(Generic[_Ret, _T0, _T1, _T2, _T3, _T4]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(
+        self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3, __arg4: _T4
+    ) -> "Coroutine[Any, Any, _Ret]":
+        ...
+
+    def bind(
+        self, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3, __arg4: _T4
+    ) -> Any:
+        ...
+
+
+class _AsyncRemoteMethod5(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+    ) -> "Coroutine[Any, Any, _Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+    ) -> Any:
+        ...
+
+
+class _AsyncRemoteMethod6(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+    ) -> "Coroutine[Any, Any, _Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+    ) -> Any:
+        ...
+
+
+class _AsyncRemoteMethod7(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+        __arg7: "Union[_T7, ObjectRef[_T7]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+    ) -> "Coroutine[Any, Any, _Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+    ) -> Any:
+        ...
+
+
+class _AsyncRemoteMethod8(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+        __arg7: "Union[_T7, ObjectRef[_T7]]",
+        __arg8: "Union[_T8, ObjectRef[_T8]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8,
+    ) -> "Coroutine[Any, Any, _Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8,
+    ) -> Any:
+        ...
+
+
+class _AsyncRemoteMethod9(
+    Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]
+):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+        __arg7: "Union[_T7, ObjectRef[_T7]]",
+        __arg8: "Union[_T8, ObjectRef[_T8]]",
+        __arg9: "Union[_T9, ObjectRef[_T9]]",
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def __call__(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8,
+        __arg9: _T9,
+    ) -> "Coroutine[Any, Any, _Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8,
+        __arg9: _T9,
+    ) -> Any:
+        ...
+
+
+# --- Async method overloads ---
+# Use async_method instead of method for async actor methods so that
+# .remote() returns ObjectRef[T] instead of ObjectRef[Coroutine[Any, Any, T]].
+
+
+@overload
+def async_method(
+    __method: Callable[[Any], Coroutine[Any, Any, _Ret]],
+) -> _AsyncRemoteMethodNoArgs[_Ret]:
+    ...
+
+
+@overload
+def async_method(
+    __method: Callable[[Any, _T0], Coroutine[Any, Any, _Ret]],
+) -> _AsyncRemoteMethod0[_Ret, _T0]:
+    ...
+
+
+@overload
+def async_method(
+    __method: Callable[[Any, _T0, _T1], Coroutine[Any, Any, _Ret]],
+) -> _AsyncRemoteMethod1[_Ret, _T0, _T1]:
+    ...
+
+
+@overload
+def async_method(
+    __method: Callable[[Any, _T0, _T1, _T2], Coroutine[Any, Any, _Ret]],
+) -> _AsyncRemoteMethod2[_Ret, _T0, _T1, _T2]:
+    ...
+
+
+@overload
+def async_method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3], Coroutine[Any, Any, _Ret]],
+) -> _AsyncRemoteMethod3[_Ret, _T0, _T1, _T2, _T3]:
+    ...
+
+
+@overload
+def async_method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4], Coroutine[Any, Any, _Ret]],
+) -> _AsyncRemoteMethod4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+    ...
+
+
+@overload
+def async_method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5], Coroutine[Any, Any, _Ret]],
+) -> _AsyncRemoteMethod5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]:
+    ...
+
+
+@overload
+def async_method(
+    __method: Callable[
+        [Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6], Coroutine[Any, Any, _Ret]
+    ],
+) -> _AsyncRemoteMethod6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+    ...
+
+
+@overload
+def async_method(
+    __method: Callable[
+        [Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7], Coroutine[Any, Any, _Ret]
+    ],
+) -> _AsyncRemoteMethod7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
+    ...
+
+
+@overload
+def async_method(
+    __method: Callable[
+        [Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8],
+        Coroutine[Any, Any, _Ret],
+    ],
+) -> _AsyncRemoteMethod8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+    ...
+
+
+@overload
+def async_method(
+    __method: Callable[
+        [Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9],
+        Coroutine[Any, Any, _Ret],
+    ],
+) -> _AsyncRemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+    ...
+
+
+@overload
+def async_method(
+    *,
+    num_returns: Optional[Union[int, Literal["streaming"]]] = None,
+    concurrency_group: Optional[str] = None,
+    max_task_retries: Optional[int] = None,
+    retry_exceptions: Optional[Union[bool, list, tuple]] = None,
+    _generator_backpressure_num_objects: Optional[int] = None,
+    enable_task_events: Optional[bool] = None,
+    tensor_transport: Optional[str] = None,
+) -> Callable[[Callable[Concatenate[Any, _P], Coroutine[Any, Any, _Ret]]], Any]:
+    ...
+
+
+@PublicAPI
+def async_method(*args, **kwargs):
+    """Annotate an async actor method with proper type unwrapping.
+
+    Identical to :func:`ray.method` at runtime, but provides correct type
+    annotations for async methods so that ``.remote()`` returns
+    ``ObjectRef[T]`` instead of ``ObjectRef[Coroutine[Any, Any, T]]``.
+
+    .. code-block:: python
+
+        @ray.remote
+        class Foo:
+            @ray.async_method
+            async def bar(self) -> int:
+                return 42
+
+        f = Foo.remote()
+        ref = f.bar.remote()  # ObjectRef[int], not ObjectRef[Coroutine[...]]
+    """
+    return method(*args, **kwargs)
+
+
+# --- Sync method overloads ---
+
+
+@overload
+def method(
+    __method: Callable[[Any], _Ret],
+) -> _RemoteMethodNoArgs[_Ret]:
+    ...
 
 
 @overload
@@ -367,11 +897,7 @@ def method(
     ...
 
 
-@overload
-def method(
-    __method: Callable[[Any], _Ret],
-) -> _RemoteMethodNoArgs[_Ret]:
-    ...
+# --- Keyword-only overload for options ---
 
 
 @overload
@@ -2376,7 +2902,7 @@ class ActorHandle(Generic[T]):
 
     def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
-        (serialized, _, weak_ref) = self._serialization_helper()
+        serialized, _, weak_ref = self._serialization_helper()
         # There is no outer object ref when the actor handle is
         # deserialized out-of-band using pickle.
         return ActorHandle._deserialization_helper, (serialized, weak_ref, None)

@@ -134,7 +134,7 @@ from ray._private.ray_logging.logging_config import LoggingConfig  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.
 import ray.actor  # noqa: E402,F401
-from ray.actor import method  # noqa: E402,F401
+from ray.actor import async_method, method  # noqa: E402,F401
 
 # TODO(qwang): We should remove this exporting in Ray2.0.
 from ray.cross_language import java_function, java_actor_class  # noqa: E402,F401
@@ -177,6 +177,7 @@ __all__ = [
     "_config",
     "get_runtime_context",
     "autoscaler",
+    "async_method",
     "available_resources",
     "cancel",
     "client",
@@ -218,6 +219,7 @@ AUTO_INIT_APIS = {
 
 # Public APIs that should not automatically trigger ray.init().
 NON_AUTO_INIT_APIS = {
+    "async_method",
     "ClientBuilder",
     "Language",
     "SCRIPT_MODE",
