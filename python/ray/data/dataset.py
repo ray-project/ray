@@ -4530,8 +4530,7 @@ class Dataset:
                 "upsert_kwargs can only be specified with mode='upsert'"
             )
         if upsert_kwargs:
-            write_kwargs["upsert_kwargs"] = upsert_kwargs"
-            )
+            write_kwargs["upsert_kwargs"] = upsert_kwargs
 
         # PR 4: Partition overwrite not supported yet
         if "partition_overwrite_mode" in write_kwargs:
