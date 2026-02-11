@@ -144,6 +144,14 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
     scheduler.GetClusterResourceManager().AddOrUpdateNode(node_id, resources);
   }
 
+  void BeginSchedulingRound(ClusterResourceScheduler &scheduler) {
+    scheduler.BeginSchedulingRound();
+  }
+
+  void EndSchedulingRound(ClusterResourceScheduler &scheduler) {
+    scheduler.EndSchedulingRound();
+  }
+
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   std::function<bool(scheduling::NodeID)> is_node_available_fn_;
   std::string node_name;
@@ -2568,12 +2576,12 @@ TEST_F(ClusterResourceSchedulerTest, NodeAvailableSnapshotReentrantTest) {
   
   // First Begin - should create snapshot
   call_count = 0;
-  resource_scheduler.BeginSchedulingRound();
+  BeginSchedulingRound(resource_scheduler);
   int calls_after_first_begin = call_count;
   ASSERT_EQ(calls_after_first_begin, 2) << "First Begin should snapshot 2 nodes";
   
   // Second Begin (reentrant) - should NOT create new snapshot
-  resource_scheduler.BeginSchedulingRound();
+  BeginSchedulingRound(resource_scheduler);
   ASSERT_EQ(call_count, calls_after_first_begin) 
       << "Reentrant Begin should not re-snapshot";
   
@@ -2586,7 +2594,7 @@ TEST_F(ClusterResourceSchedulerTest, NodeAvailableSnapshotReentrantTest) {
   ASSERT_EQ(call_count, 0) << "Should use snapshot, not call is_node_available_fn_";
   
   // First End - should NOT clear snapshot (still nested)
-  resource_scheduler.EndSchedulingRound();
+  EndSchedulingRound(resource_scheduler);
   call_count = 0;
   for (int i = 1; i <= 2; i++) {
     auto node_id = scheduling::NodeID(i);
@@ -2595,7 +2603,7 @@ TEST_F(ClusterResourceSchedulerTest, NodeAvailableSnapshotReentrantTest) {
   ASSERT_EQ(call_count, 0) << "After first End, should still use snapshot";
   
   // Second End - should clear snapshot
-  resource_scheduler.EndSchedulingRound();
+  EndSchedulingRound(resource_scheduler);
   call_count = 0;
   for (int i = 1; i <= 2; i++) {
     auto node_id = scheduling::NodeID(i);
@@ -2636,14 +2644,17 @@ TEST_F(ClusterResourceSchedulerTest, NodeAvailableSnapshotDrainingTest) {
   expected_available[draining_node] = NodeAvailable(resource_scheduler, draining_node);
   expected_available[liveness_failed_node] =
       NodeAvailable(resource_scheduler, liveness_failed_node);
-  ASSERT_EQ(call_count, 2) << "Without snapshot, should call is_node_available_fn_ 2 times";
+  ASSERT_EQ(call_count, 1)
+      << "Without snapshot, only the non-draining node should call is_node_available_fn_";
   ASSERT_FALSE(expected_available[draining_node]);
   ASSERT_FALSE(expected_available[liveness_failed_node]);
 
   {
     call_count = 0;
     ClusterResourceScheduler::SchedulingRoundGuard guard(resource_scheduler);
-    ASSERT_EQ(call_count, 2) << "SchedulingRoundGuard should snapshot both nodes";
+    ASSERT_EQ(call_count, 1)
+        << "SchedulingRoundGuard should evaluate both nodes, but only non-draining "
+           "nodes call is_node_available_fn_";
     call_count = 0;
 
     ASSERT_EQ(NodeAvailable(resource_scheduler, draining_node), expected_available[draining_node])
@@ -2658,8 +2669,9 @@ TEST_F(ClusterResourceSchedulerTest, NodeAvailableSnapshotDrainingTest) {
   ASSERT_EQ(NodeAvailable(resource_scheduler, draining_node), expected_available[draining_node]);
   ASSERT_EQ(NodeAvailable(resource_scheduler, liveness_failed_node),
             expected_available[liveness_failed_node]);
-  ASSERT_EQ(call_count, 2)
-      << "After SchedulingRoundGuard destroyed, should call is_node_available_fn_ again";
+  ASSERT_EQ(call_count, 1)
+      << "After SchedulingRoundGuard destroyed, only non-draining nodes should call "
+         "is_node_available_fn_";
 }
 
 }  // namespace ray
