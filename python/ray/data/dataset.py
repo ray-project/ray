@@ -4539,15 +4539,6 @@ class Dataset:
             schema_mode="merge",  # PR 3: Not used, but required parameter
             **write_kwargs,
         )
-        datasink = DeltaDatasink(
-            path,
-            mode=mode,
-            partition_cols=[],  # PR 2: No partitioning yet
-            filesystem=filesystem,
-            schema=schema,
-            schema_mode="merge",  # PR 2: Not used, but required parameter
-            **write_kwargs,
-        )
         self.write_datasink(
             datasink,
             ray_remote_args=ray_remote_args,
