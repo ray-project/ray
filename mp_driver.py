@@ -189,16 +189,17 @@ def train_func():
 
         current_step = manager.current_step()
 
-        checkpoint_path = Path(ray.train.get_context().get_storage().build_checkpoint_path_from_name("marker"))
-        if world_rank == 0 and current_step == 123 and not checkpoint_path.exists():
-            checkpoint_path.touch()
-            raise ValueError("inject fake error")
+        #checkpoint_path = Path(ray.train.get_context().get_storage().build_checkpoint_path_from_name("marker"))
+        #if world_rank == 0 and current_step == 123 and not checkpoint_path.exists():
+        #    checkpoint_path.touch()
+        #    raise ValueError("inject fake error")
 
-        if current_step % 50 == 0 or current_step >= 195:
+        if current_step % 50 == 0 or current_step >= 197:
             print(
                 f"[group={replica_group_id} rank={group_rank}] "
                 f"step={current_step} loss={loss.item():.4f}"
             )
+            time.sleep(5)
 
         if current_step >= 200:
             # complete training
