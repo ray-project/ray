@@ -26,6 +26,13 @@ from ray._private.test_utils import (
 @pytest.mark.parametrize("native", ["0", "1"])
 @pytest.mark.parametrize("node_info", ["node_id", "ip"])
 def test_profiler_endpoints(ray_start_with_dashboard, native, node_info):
+    if native == "1" and sys.platform == "linux":
+        pytest.skip(
+            "py-spy --native 'failed to get os threadid' "
+            "(https://github.com/ray-project/ray/issues/30566); "
+            "see also https://github.com/benfred/py-spy/issues/490; "
+            "disabled as part of Ubuntu 24.04 upgrade"
+        )
     # Sanity check py-spy are installed.
     subprocess.check_call(["py-spy", "--version"])
 
