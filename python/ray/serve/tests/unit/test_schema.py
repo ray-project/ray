@@ -16,7 +16,7 @@ from ray.serve.config import (
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
 )
-from ray.serve.deployment import deployment_to_schema, schema_to_deployment
+from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     DeploymentSchema,
     LoggingConfig,
@@ -986,9 +986,6 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
 
 def test_gang_scheduling_config_deployment_schema_roundtrip():
     # Ensure deployment_to_schema -> schema_to_deployment preserves gang config
-
-    from ray.serve.deployment import Deployment
-
     gang_config = GangSchedulingConfig(gang_size=2, gang_placement_strategy="SPREAD")
     dc = DeploymentConfig.from_default(
         num_replicas=4,
@@ -1004,7 +1001,6 @@ def test_gang_scheduling_config_deployment_schema_roundtrip():
         _internal=True,
     )
 
-    # deployment -> schema
     schema = deployment_to_schema(dep)
     assert isinstance(schema.gang_scheduling_config, GangSchedulingConfig)
     assert schema.gang_scheduling_config.gang_size == 2
@@ -1014,7 +1010,6 @@ def test_gang_scheduling_config_deployment_schema_roundtrip():
     )
     assert schema.num_replicas == 4
 
-    # schema -> deployment (exercises deployment.py schema_to_deployment)
     dep2 = schema_to_deployment(schema)
     gc2 = dep2._deployment_config.gang_scheduling_config
     assert isinstance(gc2, GangSchedulingConfig)
@@ -1026,7 +1021,6 @@ def test_gang_scheduling_config_deployment_schema_roundtrip():
 def test_schema_to_deployment_gang_scheduling_config_from_dict():
     # Ensure schema_to_deployment works when gang_scheduling_config
     # comes from a parsed dict (the YAML / declarative API path)
-
     schema = DeploymentSchema.parse_obj(
         {
             "name": "GangDep",
@@ -1038,7 +1032,6 @@ def test_schema_to_deployment_gang_scheduling_config_from_dict():
         }
     )
 
-    # Schema validator should have converted dict -> GangSchedulingConfig
     assert isinstance(schema.gang_scheduling_config, GangSchedulingConfig)
 
     dep = schema_to_deployment(schema)

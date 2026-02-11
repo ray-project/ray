@@ -258,16 +258,11 @@ class Deployment:
         # `num_replicas="auto"`
         if max_ongoing_requests is None:
             raise ValueError("`max_ongoing_requests` must be non-null, got None.")
+
+        # Later used to validate compatibility with gang_scheduling_config
+        auto_replicas_requested = num_replicas == "auto"
+
         if num_replicas == "auto":
-            gang_config = gang_scheduling_config
-            if gang_config is DEFAULT.VALUE:
-                gang_config = self._deployment_config.gang_scheduling_config
-            if gang_config is not None:
-                raise ValueError(
-                    'num_replicas="auto" is not allowed when '
-                    "gang_scheduling_config is provided. Please set "
-                    "num_replicas to a fixed multiple of gang_size."
-                )
             num_replicas = None
             max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
                 max_ongoing_requests, autoscaling_config
@@ -401,6 +396,12 @@ class Deployment:
             new_deployment_config.gang_scheduling_config = gang_scheduling_config
 
         gc = new_deployment_config.gang_scheduling_config
+        if gc is not None and auto_replicas_requested:
+            raise ValueError(
+                'num_replicas="auto" is not allowed when '
+                "gang_scheduling_config is provided. Set "
+                "num_replicas to a fixed multiple of gang_size."
+            )
         if gc is not None and isinstance(new_deployment_config.num_replicas, int):
             if new_deployment_config.num_replicas % gc.gang_size != 0:
                 raise ValueError(

@@ -20,7 +20,6 @@ from ray.util.annotations import PublicAPI
 from ray.util.placement_group import PlacementGroup
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
-GANG_PG_NAME_PREFIX = "SERVE_GANG::"
 
 
 @dataclass(frozen=True)
@@ -915,7 +914,7 @@ class GangReservationResult:
     success: bool
     """True when all gang PGs were created successfully."""
     error_message: Optional[str] = None
-    gang_pgs: Dict[int, PlacementGroup] = field(default_factory=dict)
+    gang_pgs: Optional[List[PlacementGroup]] = None
 
 
 # This error is used to raise when a by-value DeploymentResponse is converted to an
