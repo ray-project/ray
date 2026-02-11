@@ -172,7 +172,12 @@ def create_dataloader(
     """
     # Handle datasets that require a config name
     dataset_config = "wikitext-2-raw-v1" if dataset_name == "wikitext" else None
-    split_spec = f"train[:{int(dataset_percentage)}%]"
+    dataset_percentage = float(dataset_percentage)
+    if not 0 < dataset_percentage <= 100:
+        raise ValueError(
+            f"dataset_percentage must be in (0, 100], got {dataset_percentage}."
+        )
+    split_spec = f"train[:{dataset_percentage:.15g}%]"
 
     # HF datasets/tokenizers handle process-safe caching and downloads.
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
@@ -266,24 +271,33 @@ def setup_model_with_tp(
     Returns:
         tuple: (model, tp_mesh, dp_mesh, tp_rank, dp_rank)
     """
-    # Calculate TP and DP rank
-    tp_rank = world_rank % tp_size
-    dp_rank = world_rank // tp_size
-
     # Validate configuration
+    if tp_size <= 0 or dp_size <= 0:
+        raise ValueError(
+            f"tp_size and dp_size must be positive, got tp_size={tp_size}, dp_size={dp_size}."
+        )
     if dp_size * tp_size != world_size:
         raise ValueError(
             f"dp_size ({dp_size}) * tp_size ({tp_size}) must equal "
             f"world_size ({world_size})"
         )
 
+    # Calculate TP and DP rank
+    tp_rank = world_rank % tp_size
+    dp_rank = world_rank // tp_size
+
     # Load model config and validate TP compatibility
     hf_config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-    if hf_config.num_key_value_heads % tp_size != 0:
+    num_kv_heads = getattr(hf_config, "num_key_value_heads", None)
+    if num_kv_heads is None:
+        num_kv_heads = getattr(hf_config, "num_attention_heads", None)
+    if num_kv_heads is None:
         raise ValueError(
-            f"TP size {tp_size} must divide num_key_value_heads "
-            f"{hf_config.num_key_value_heads}"
+            "Model config must define `num_key_value_heads` or `num_attention_heads` "
+            "to validate tensor parallel compatibility."
         )
+    if num_kv_heads % tp_size != 0:
+        raise ValueError(f"TP size {tp_size} must divide attention heads count {num_kv_heads}")
 
     if world_rank == 0:
         logger.info(f"Setting up 2D mesh: dp_size={dp_size}, tp_size={tp_size}")
@@ -298,17 +312,15 @@ def setup_model_with_tp(
     if world_rank == 0:
         logger.info(f"Device mesh created: {device_mesh}")
 
-    # [2] Create model with random initialization on the target device
+    # [2] Load pretrained model weights on the target device
     dtype = get_mixed_precision_dtype()
-    prev_device = torch.get_default_device()
-    try:
-        # Ensure all TP ranks start from identical weights.
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-        torch.set_default_device(device)
-        model = AutoModelForCausalLM.from_config(hf_config).to(dtype=dtype)
-    finally:
-        torch.set_default_device(prev_device)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        trust_remote_code=True,
+        torch_dtype=dtype,
+    ).to(device)
 
     # Get transformer layers (Qwen/Llama-style models)
     layers = model.model.layers
@@ -607,10 +619,12 @@ train_loop_config = {
 
 # Create experiment name
 experiment_name = f"tp_dtensor_{uuid.uuid4().hex[:8]}"
+storage_path = "/tmp/ray_train_tp_dtensor"  # Use persistent/shared storage in production
 
 # Configure run settings
 run_config = RunConfig(
     name=experiment_name,
+    storage_path=storage_path,
 )
 
 # Initialize and launch the trainer
@@ -625,6 +639,22 @@ print(f"Starting tensor parallel training with {tp_size}-way TP and {dp_size}-wa
 result = trainer.fit()
 print("Training completed successfully!")
 print(f"Final metrics: {result.metrics}")
+
+# Ray Train V2 resume pattern:
+# Reuse the same RunConfig(name, storage_path). train_func() will receive the
+# latest checkpoint from ray.train.get_checkpoint() and continue automatically.
+RUN_RESUME_DEMO = False
+if RUN_RESUME_DEMO:
+    resume_train_loop_config = dict(train_loop_config)
+    resume_train_loop_config["num_epochs"] = 2  # Continue to epoch 1
+    resume_trainer = TorchTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=scaling_config,
+        train_loop_config=resume_train_loop_config,
+        run_config=RunConfig(name=experiment_name, storage_path=storage_path),
+    )
+    resume_result = resume_trainer.fit()
+    print(f"Resumed metrics: {resume_result.metrics}")
 ```
 
 ## Scaling to larger models
@@ -650,7 +680,7 @@ scaling_config = ScalingConfig(
 **Tips for scaling:**
 - Increase `tp_size` to fit larger models (TP shards model weights)
 - Increase `dp_size` to improve throughput (DP processes more data in parallel)
-- Ensure `tp_size` divides the model's `num_key_value_heads`
+- Ensure `tp_size` divides the model's attention heads count
 - Use NVLink-connected GPUs for efficient TP communication
 
 ## Summary
