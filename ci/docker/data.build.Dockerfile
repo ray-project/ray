@@ -35,6 +35,9 @@ if [[ $RAY_CI_JAVA_BUILD == 1 ]]; then
   # These packages increase the image size quite a bit, so we only install them
   # as needed.
   sudo apt-get install -y -qq maven openjdk-8-jre openjdk-8-jdk
+  # Ensure Java 8 is the default; Ubuntu 24.04 defaults to Java 21 which
+  # breaks Spark's reflective access to DirectByteBuffer.
+  sudo update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java
 fi
 
 EOF

@@ -18,7 +18,7 @@ from ray.tests.conftest import *  # noqa
 def start_mongo():
     import pymongo
 
-    subprocess.check_call(["service", "mongodb", "start"])
+    subprocess.check_call(["service", "mongod", "start"])
     mongo_url = "mongodb://localhost:27017"
     client = pymongo.MongoClient(mongo_url)
     # Make sure a clean slate for each test by dropping
@@ -29,7 +29,7 @@ def start_mongo():
             client.drop_database(db)
     yield client, mongo_url
 
-    subprocess.check_call(["service", "mongodb", "stop"])
+    subprocess.check_call(["service", "mongod", "stop"])
 
 
 def test_read_write_mongo(ray_start_regular_shared, start_mongo):
