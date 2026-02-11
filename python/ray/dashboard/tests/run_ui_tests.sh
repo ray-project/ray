@@ -20,7 +20,7 @@ CYPRESS_VERSION=14.2.1
 echo "Installing cypress"
 if [[ -n "$BUILDKITE" ]]; then
   apt-get update -qq
-  apt install -y libgtk2.0-0 libgtk-3-0 libgbm-dev libnotify-dev libgconf-2-4 libnss3 libxss1 libasound2 libxtst6 xauth xvfb
+  apt install -y libgtk2.0-0 libgtk-3-0 libgbm-dev libnotify-dev libnss3 libxss1 libasound2t64 libxtst6 xauth xvfb
   sudo npm install "cypress@$CYPRESS_VERSION"
 else
   which cypress || npm install "cypress@$CYPRESS_VERSION" -g

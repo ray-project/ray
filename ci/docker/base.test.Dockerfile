@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.3-labs
 
-FROM ubuntu:focal
+FROM ubuntu:noble
 
 ARG BUILDKITE_BAZEL_CACHE_URL
 ARG PYTHON=3.10
@@ -8,7 +8,7 @@ ARG PYTHON=3.10
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
 
-ENV RAY_BUILD_ENV=ubuntu20.04_py$PYTHON
+ENV RAY_BUILD_ENV=ubuntu24.04_py$PYTHON
 ENV BUILDKITE=true
 ENV CI=true
 ENV PYTHON=$PYTHON
@@ -28,13 +28,13 @@ apt-get install -y -qq \
     sudo zip unzip unrar apt-utils dialog tzdata wget rsync \
     language-pack-en tmux cmake gdb vim htop graphviz \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev \
-    liblz4-dev libunwind-dev libncurses5 \
-    clang-format-12 jq \
-    clang-tidy-12 clang-12
+    liblz4-dev libunwind-dev libncurses6 \
+    clang-format-14 jq \
+    clang-tidy-14 clang-14
 
-ln -s /usr/bin/clang-format-12 /usr/bin/clang-format
-ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy
-ln -s /usr/bin/clang-12 /usr/bin/clang
+ln -s /usr/bin/clang-format-14 /usr/bin/clang-format
+ln -s /usr/bin/clang-tidy-14 /usr/bin/clang-tidy
+ln -s /usr/bin/clang-14 /usr/bin/clang
 
 # Install docker CLI
 mkdir -p /etc/apt/keyrings
