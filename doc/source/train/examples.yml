@@ -34,6 +34,14 @@ examples:
     use_cases:
       - computer vision
     link: examples/tf/tensorflow_mnist_example
+  - title: Train a GPT-2-style Transformer with JAX and Flax
+    frameworks:
+      - jax
+      - flax
+    skill_level: beginner
+    use_cases:
+      - natural language processing
+    link: examples/jax/intro_to_jax_trainer/README
   - title: Train with Horovod and PyTorch
     frameworks:
       - horovod

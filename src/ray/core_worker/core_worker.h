@@ -29,8 +29,8 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
-#include "ray/core_worker/actor_handle.h"
-#include "ray/core_worker/actor_manager.h"
+#include "ray/core_worker/actor_management/actor_handle.h"
+#include "ray/core_worker/actor_management/actor_manager.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_options.h"
@@ -917,6 +917,17 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// server times out. NotFound if placement group is already removed or doesn't exist.
   Status WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
                                  int64_t timeout_seconds);
+
+  /// Asynchronously wait for a placement group to be ready.
+  /// Returns an ObjectRef that can be used with ray.get()/ray.wait()/await.
+  ///
+  /// \param placement_group_id The id of a placement group to wait for.
+  /// \param serialized_object_data The serialized object data to put when ready.
+  /// \param serialized_object_metadata The serialized object metadata.
+  /// \return ObjectID that becomes ready when the placement group is ready.
+  ObjectID AsyncWaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
+                                        const std::string &serialized_object_data,
+                                        const std::string &serialized_object_metadata);
 
   /// Submit an actor task.
   ///

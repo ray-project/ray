@@ -26,3 +26,6 @@ build_args:
   - RAY_CPP_CORE_IMAGE=cr.ray.io/rayproject/ray-cpp-core$ARCH_SUFFIX
   - RAY_JAVA_IMAGE=cr.ray.io/rayproject/ray-java-build$ARCH_SUFFIX
   - RAY_DASHBOARD_IMAGE=cr.ray.io/rayproject/ray-dashboard$ARCH_SUFFIX
+artifacts:
+  - src: "/opt/artifacts/"
+    dst: "./"
