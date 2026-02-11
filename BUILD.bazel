@@ -57,13 +57,33 @@ alias(
     }),
 )
 
-# bazel run :refresh_compile_commands for compile_commands generation for clangd
-# https://github.com/hedronvision/bazel-compile-commands-extractor?tab=readme-ov-file#vscode - directions for clangd config
+# Clangd is language server that allows IDEs to implement
+# features such as autocomplete, code navigation etc. Clangd needs
+# to understand how the code is compiled to work. However, this
+# information is captured in BUILD files that are used by Bazel.
+# To work, clangd needs a JSON compilation database.
+# The full format of the file is specified in
+# https://clang.llvm.org/docs/JSONCompilationDatabase.html
+#
+# Thankfully, there's a bazel extension that allows you to extract
+# this information and create a compile_commands.json database.
+# https://github.com/hedronvision/bazel-compile-commands-extractor
+#
+# This database is used by your IDE's clangd extension to build
+# an index that can be queried for IDE features. The json file
+# is snapshot from the time this command was run.
+#
+# Re-run when BUILD files or external dependencies change.
 refresh_compile_commands(
     name = "refresh_compile_commands",
-    targets = {
-        "//:ray_pkg_zip": "",
-    },
+    targets = [
+        "//src/ray/raylet:raylet",
+        "//src/ray/gcs:gcs_server",
+        "//src/ray/core_worker:core_worker_lib",
+        "//src/ray/gcs_rpc_client:global_state_accessor_lib",
+        "//src/ray/pubsub:python_gcs_subscriber",
+        "//src/ray/raylet_rpc_client:raylet_client_with_io_context_lib",
+    ],
 )
 
 ray_cc_library(
