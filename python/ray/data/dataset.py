@@ -145,6 +145,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
+    from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
@@ -7178,3 +7179,134 @@ def _block_to_ndarray(block: Block, column: Optional[str]):
 def _block_to_arrow(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_arrow()
+
+
+class ExecutionCache:
+    """Consolidated cache for Dataset execution results.
+
+    Caches the output bundle, execution stats, and lightweight metadata
+    (schema, num_rows, size_bytes), and tracks which operator produced
+    the cached data.
+
+    There are two "layers" of cache:
+      1. Bundle layer: the full RefBundle from eager execution (execute()).
+         Valid only when _operator matches the current DAG.
+      2. Metadata layer: schema, num_rows, size_bytes cached as scalars.
+         Populated when a streaming iterator is fully exhausted
+         (CacheMetadataIterator in legacy_compat.py).
+
+    Getters check the bundle layer first, then the metadata layer.
+    """
+
+    def __init__(self):
+        # --- Bundle layer (from eager execution) ---
+        self._operator: Optional["LogicalOperator"] = None
+        self._bundle: Optional[RefBundle] = None
+        self._stats: Optional[DatasetStats] = None
+
+        # --- Metadata layer (from streaming iteration) ---
+        self._schema: Optional["Schema"] = None
+        self._num_rows: Optional[int] = None
+        self._size_bytes: Optional[int] = None
+
+    # --- Consolidated Getters ---
+
+    def cache_is_fresh(self, dag: "LogicalOperator") -> bool:
+        # This ExecutionCache is only fresh if the current logical
+        # plan dag ends with the same operator. Otherwise, the plan
+        # has changed, so there may have been a change in schema,
+        # count, etc.
+        return self._operator == dag
+
+    def has_computed_output(self, dag: "LogicalOperator") -> bool:
+        return self.get_bundle(dag) is not None
+
+    def get_bundle(self, dag: "LogicalOperator") -> Optional[RefBundle]:
+        if self.cache_is_fresh(dag):
+            return self._bundle
+        return None
+
+    def get_stats(self) -> Optional[DatasetStats]:
+        # We don't check for cache freshness just for stats for behaviorial
+        # backwards compatibility.
+        return self._stats
+
+    def get_schema(self, dag: "LogicalOperator") -> Optional["Schema"]:
+        if self.cache_is_fresh(dag):
+            if self._bundle is not None:
+                return self._bundle.schema
+            return self._schema
+        return None
+
+    def get_num_rows(self, dag: "LogicalOperator") -> Optional[int]:
+        if self.cache_is_fresh(dag):
+            if self._bundle is not None:
+                return sum(m.num_rows for m in self._bundle.metadata)
+            return self._num_rows
+        return None
+
+    def get_size_bytes(self, dag: "LogicalOperator") -> Optional[int]:
+        if self.cache_is_fresh(dag):
+            if self._bundle is not None:
+                return self._bundle.size_bytes()
+            return self._size_bytes
+        return None
+
+    # --- Setters ---
+
+    def set_bundle(self, dag: "LogicalOperator", bundle: RefBundle) -> None:
+        self._operator = dag
+        self._bundle = bundle
+
+    def set_stats(self, stats: DatasetStats) -> None:
+        # stats are cached independently
+        self._stats = stats
+
+    def set_metadata(
+        self,
+        dag: "LogicalOperator",
+        schema: Optional["Schema"],
+        num_rows: Optional[int],
+        size_bytes: Optional[int],
+    ) -> None:
+        self._operator = dag
+        self._schema = schema
+        self._num_rows = num_rows
+        self._size_bytes = size_bytes
+
+    # --- Lifecycle ---
+
+    def clear(self) -> None:
+        self._operator = None
+        self._bundle = None
+        self._stats = None
+
+        # NOTE (kyuds): theoretically you should clear this
+        # but previous behavior left this alone. Currently
+        # snapshot clears are for dataset lineage serialization
+        # and I don't think this information is needed anyways.
+        self._schema = None
+        self._num_rows = None
+        self._size_bytes = None
+
+    def copy(self) -> "ExecutionCache":
+        new = ExecutionCache()
+        new._operator = self._operator
+        if self._bundle is not None:
+            new._bundle = self._bundle
+            new._stats = self._stats
+        new._schema = self._schema
+        new._num_rows = self._num_rows
+        new._size_bytes = self._size_bytes
+        return new
+
+    def deep_copy(self) -> "ExecutionCache":
+        new = ExecutionCache()
+        new._operator = copy.copy(self._operator)
+        if self._bundle:
+            new._bundle = copy.copy(self._bundle)
+            new._stats = copy.copy(self._stats)
+        new._schema = copy.copy(self._schema)
+        new._num_rows = self._num_rows
+        new._size_bytes = self._size_bytes
+        return new
