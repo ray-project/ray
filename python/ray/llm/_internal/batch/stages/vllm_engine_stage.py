@@ -54,18 +54,6 @@ except ImportError:
     # vLLM not installed or older version without this exception
     pass
 
-# vLLM v1 Ray metrics integration. When available and stats logging is enabled,
-# this logger exports vLLM metrics (e.g., prefix cache hit rate, TTFT, TPOT,
-# KV cache utilization) to Ray's metrics system for Prometheus/Grafana integration.
-_RAY_PROMETHEUS_STAT_LOGGER: Optional[Type] = None
-try:
-    from vllm.v1.metrics.ray_wrappers import RayPrometheusStatLogger
-
-    _RAY_PROMETHEUS_STAT_LOGGER = RayPrometheusStatLogger
-except ImportError:
-    # vLLM v1 not available or metrics module not present
-    pass
-
 # Length of prompt snippet to surface in case of recoverable error
 _MAX_PROMPT_LENGTH_IN_ERROR = 500
 
@@ -299,23 +287,14 @@ class vLLMEngineWrapper:
         # create_engine_config will set default values including `max_num_seqs`.
         self._vllm_config = engine_args.create_engine_config()
 
-        # Enable Ray metrics export when log_engine_metrics is True and
-        # RayPrometheusStatLogger is available (vLLM v1).
-        # This exports vLLM metrics (prefix cache hit rate, TTFT, TPOT, etc.)
-        # to Ray's metrics system for Prometheus/Grafana integration.
-        # Users can access metrics by initializing Ray with _metrics_export_port
-        # (e.g., ray.init(_metrics_export_port=8080))
         stat_loggers = None
-        if log_engine_metrics and _RAY_PROMETHEUS_STAT_LOGGER is not None:
-            stat_loggers = [_RAY_PROMETHEUS_STAT_LOGGER]
+        if log_engine_metrics:
+            from vllm.v1.metrics.ray_wrappers import RayPrometheusStatLogger
+
+            stat_loggers = [RayPrometheusStatLogger]
             logger.info(
                 "Enabling Ray metrics export for vLLM engine. "
                 "Metrics will be available at Ray's Prometheus endpoint."
-            )
-        elif log_engine_metrics and _RAY_PROMETHEUS_STAT_LOGGER is None:
-            logger.warning(
-                "log_engine_metrics is enabled but RayPrometheusStatLogger is not available. "
-                "This typically means vLLM v1 is not installed. Metrics will not be exported."
             )
 
         self.engine = vllm.AsyncLLMEngine.from_engine_args(
