@@ -830,7 +830,7 @@
 # Checkpoint tests
 #####################
 
-- name: "checkpoint_benchmark_{{scale}}_{{id_column}}"
+- name: "checkpoint_benchmark_{{scale}}"
   python: "3.10"
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -838,7 +838,6 @@
   matrix:
     setup:
       scale: [small, large]
-      id_column: [default_id, generated_id_column]
 
   frequency: nightly
   team: data
@@ -849,7 +848,7 @@
 
   run:
     timeout: 4800
-    script: python ./run_checkpoint_benchmark.py {{scale}} {{id_column}}
+    script: python ./run_checkpoint_benchmark.py {{scale}}
 
 ###################
 # Autoscaling tests

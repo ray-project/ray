@@ -27,16 +27,8 @@ def _parse_checkpoint_config(args: argparse.Namespace) -> Optional[CheckpointCon
     else:
         raise ValueError(f"Unknown checkpoint backend: {backend_str}")
 
-    if args.generated_id_column:
-        id_column: Optional[str] = None
-        generated_id_column: Optional[str] = args.generated_id_column
-    else:
-        id_column: Optional[str] = "id"
-        generated_id_column: Optional[str] = None
-
     return CheckpointConfig(
-        id_column=id_column,
-        generated_id_column=generated_id_column,
+        id_column="id",
         checkpoint_path=args.checkpoint_output_path,
         override_backend=backend,
     )
@@ -243,21 +235,10 @@ def run_checkpoints_benchmark(
                     ("10_percent_completion", 0.1),  # 10% completion
                 ]
             elif num_rows == 3_000_000_000:
-                # For large scale, limit the test scenarios
-                if checkpoint_config.generated_id_column is not None:
-                    # For generated id column, we only test full completion and 99% completion for
-                    # 3B rows scale. This is because for simulating failure, we randomly delete
-                    # checkpoint files, and this may end up resulting in more partial file checkpoint
-                    # completions than expected in real-world batch inference scenarios.
-                    test_scenarios = [
-                        ("full_checkpoint", 1.0),  # Full completion
-                        ("99_percent_completion", 0.99),  # 99% completion
-                    ]
-                else:
-                    # For existing id column, we test full completion
-                    test_scenarios = [
-                        ("full_checkpoint", 1.0),  # Full completion
-                    ]
+                # For large scale, we only test full completion
+                test_scenarios = [
+                    ("full_checkpoint", 1.0),  # Full completion
+                ]
 
             for scenario_name, completion_percentage in test_scenarios:
                 if completion_percentage < 1.0:
@@ -337,7 +318,6 @@ if __name__ == "__main__":
     _ = parser.add_argument("--inference_sleep_s", type=float)
     _ = parser.add_argument("--transform_sleep_s", type=float, default=0.001)
     _ = parser.add_argument("--num_output_files", type=int, default=50)
-    _ = parser.add_argument("--generated_id_column", type=str, default=None)
     args = parser.parse_args()
 
     checkpoint_config = _parse_checkpoint_config(args)
