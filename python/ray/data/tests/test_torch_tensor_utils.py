@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 import torch
 
+import ray
 from ray.data.util.torch_utils import (
     concat_tensors_to_device,
     convert_pandas_to_torch_tensor,
@@ -98,6 +99,49 @@ class TestConvertPandasToTorch:
             repeats=10,
         )
         assert not suspicious_stats
+
+
+def test_to_torch_no_memory_leak(ray_start_regular_shared):
+    # Warm up Ray Data execution to avoid one-time allocations
+    # (autoscaler/tracing wrappers, imports) being flagged as leaks.
+    warm_col = np.empty(1, dtype=object)
+    warm_col[:] = [np.ones((1, 1))]
+    warm_df = pd.DataFrame({"features": warm_col, "label": np.arange(1)})
+    warm_ds = ray.data.from_pandas([warm_df])
+    for _ in warm_ds.iterator().to_torch(
+        label_column="label",
+        feature_columns=["features"],
+        batch_size=1,
+    ):
+        pass
+
+    def code():
+        col = np.empty(100, dtype=object)
+        col[:] = [np.ones((10, 10)) for _ in range(100)]
+        df = pd.DataFrame({"features": col, "label": np.arange(100)})
+        ds = ray.data.from_pandas([df])
+        for _ in ds.iterator().to_torch(
+            label_column="label",
+            feature_columns=["features"],
+            batch_size=10,
+        ):
+            pass
+
+    suspicious_stats = _test_some_code_for_memory_leaks(
+        desc="Testing to_torch() for memory leaks.",
+        init=None,
+        code=code,
+        repeats=5,
+        # Filter known per-iteration noise from Ray Data execution path.
+        ignore_traceback_patterns=[
+            "ray/util/tracing/tracing_helper.py",
+            "ray/data/_internal/cluster_autoscaler",
+            "ray/data/_internal/utils/transform_pyarrow.py",
+            "ray/data/_internal/arrow_block.py",
+            "ray/data/_internal/block_batching/iter_batches.py",
+        ],
+    )
+    assert not suspicious_stats
 
 
 def test_move_tensors_to_device():
