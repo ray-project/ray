@@ -112,7 +112,7 @@ class FixedShapeTensorFormat(Enum):
         return FixedShapeTensorType
 
 
-def _native_tensor_value_type_can_convert_to_numpy(t: "FixedShapeTensorType") -> bool:
+def _native_tensor_value_type_can_convert_to_numpy(t: "pa.DataType") -> bool:
     """Pyarrow native fixed shaped tensors support most types. However, when converting
     between numpy representions using their built-in `to_numpy_ndarray()` or `from_numpy_ndarray()`,
     numbers (floating or integer) are only supported. It is possible to handle this logic using

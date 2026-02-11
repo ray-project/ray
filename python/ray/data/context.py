@@ -780,7 +780,8 @@ class DataContext:
             from ray.data._internal.tensor_extensions.arrow import (
                 FixedShapeTensorFormat,
             )
-            if value == True:
+
+            if isinstance(value, bool) and value:
                 self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V2
             else:
                 self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V1
