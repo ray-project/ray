@@ -67,7 +67,7 @@ def build_base_config(local_only=False):
             evaluation_num_env_runners=0 if local_only else 1,
             evaluation_interval=1,
             evaluation_duration_unit="episodes",
-            evaluation_duration=10,
+            evaluation_duration=100,
             evaluation_parallel_to_training=False,
             evaluation_force_reset_envs_before_iteration=True,
         )
