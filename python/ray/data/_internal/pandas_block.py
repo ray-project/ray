@@ -616,7 +616,6 @@ class PandasBlockAccessor(TableBlockAccessor):
             queue = collections.deque([obj])
             while queue:
                 current = queue.pop()
-                current_type = type(current)
 
                 # Immutable scalars — constant size, no dedup needed.
                 if isinstance(current, (str, bytes, int, float)):
@@ -637,16 +636,16 @@ class PandasBlockAccessor(TableBlockAccessor):
                     size = 0
                 total_size += size
 
-                if current_type is list or current_type is tuple:
+                if isinstance(current, (list, tuple)):
                     estimate = _estimate_list_contents(current, seen, get_deep_size)
                     if estimate is not None:
                         total_size += estimate
                     else:
                         queue.extend(current)
-                elif current_type is dict:
+                elif isinstance(current, dict):
                     queue.extend(current.keys())
                     queue.extend(current.values())
-                elif current_type is set or current_type is frozenset:
+                elif isinstance(current, (set, frozenset)):
                     queue.extend(current)
                 elif isinstance(current, np.ndarray):
                     total_size += current.nbytes - size

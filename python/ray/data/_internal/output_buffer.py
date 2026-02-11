@@ -159,14 +159,13 @@ class BlockOutputBuffer:
 
         return self._exceeded_buffer_row_limit() or self._exceeded_buffer_size_limit()
 
-    def _exceeded_block_size_slice_limit(self, block: BlockAccessor) -> bool:
+    def _exceeded_block_size_slice_limit(self, block_size: int) -> bool:
         # Slice a block to respect the target max block size. We only do this if we are
         # more than 50% above the target block size, because this ensures that the last
         # block produced will be at least half the target block size.
         return (
             self._max_bytes_per_block() is not None
-            and block.size_bytes()
-            >= MAX_SAFE_BLOCK_SIZE_FACTOR * self._max_bytes_per_block()
+            and block_size >= MAX_SAFE_BLOCK_SIZE_FACTOR * self._max_bytes_per_block()
         )
 
     def _exceeded_block_row_slice_limit(self, block: BlockAccessor) -> bool:
@@ -191,10 +190,10 @@ class BlockOutputBuffer:
         if self._exceeded_block_row_slice_limit(accessor):
             target_num_rows = self._max_num_rows_per_block()
         elif self._max_bytes_per_block() is not None:
-            # Compute size_bytes once and reuse — avoids a redundant expensive
-            # call when we need it again below for num_bytes_per_row.
+            # Compute size_bytes once and pass it to the check — avoids a
+            # redundant expensive call when reused for num_bytes_per_row.
             block_size = accessor.size_bytes()
-            if block_size >= MAX_SAFE_BLOCK_SIZE_FACTOR * self._max_bytes_per_block():
+            if self._exceeded_block_size_slice_limit(block_size):
                 assert accessor.num_rows() > 0, "Block may not be empty"
                 num_bytes_per_row = block_size / accessor.num_rows()
                 target_num_rows = max(
