@@ -714,6 +714,10 @@ class DataContext:
                 "Configure `arrow_fixed_shape_tensor_format` instead. ",
                 DeprecationWarning,
             )
+            from ray.data._internal.tensor_extensions.arrow import (
+                FixedShapeTensorFormat,
+            )
+
             self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V2
 
         super().__setattr__(name, value)
