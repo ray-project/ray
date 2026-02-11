@@ -1,6 +1,5 @@
 import importlib
 import os
-import subprocess
 import sys
 from typing import Callable, Optional
 
@@ -39,12 +38,6 @@ def serve_ha(external_redis, monkeypatch):  # noqa: F811
     # Clear cache and global serve client
     serve.shutdown()
     ray.shutdown()
-
-    # Kill orphaned HAProxy processes left behind when GCS failure prevents
-    # clean shutdown of the HAProxy manager actor.
-    subprocess.run(
-        ["pkill", "-x", "haproxy"], capture_output=True, text=True, check=False
-    )
 
 
 @pytest.mark.skipif(
