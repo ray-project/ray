@@ -865,7 +865,7 @@ def run(
         metric=metric,
         mode=mode,
         progress_metrics=progress_metrics,
-        progress_reporter=progress_reporter if air_verbosity is not None else None,
+        progress_reporter=progress_reporter,
     )
 
     # User Warning for GPUs
