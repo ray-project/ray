@@ -1762,13 +1762,10 @@ TaskID CoreWorker::GetCallerId() const {
 }
 
 Status CoreWorker::PushError(const JobID &job_id,
-                             std::string_view type,           // Changed: read-only param
-                             std::string_view error_message,  // Changed: read-only param
+                             const std::string &type,
+                             const std::string &error_message,
                              double timestamp) {
-  return raylet_ipc_client_->PushError(job_id,
-                                       std::string(type),
-                                       std::string(error_message),
-                                       timestamp);  // Convert for function
+  return raylet_ipc_client_->PushError(job_id, type, error_message, timestamp);
 }
 
 json CoreWorker::OverrideRuntimeEnv(const json &child,
