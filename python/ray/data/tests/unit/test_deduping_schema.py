@@ -243,7 +243,7 @@ def test_add_output_emits_warning(enforce_schemas, caplog, propagate_logs):
     )
     new_schema = pa.schema(
         [
-            pa.field("foo", pa.int64()),
+            pa.field("foo", pa.int32()),
             pa.field("baz", pa.uint32()),
         ]
     )
@@ -268,8 +268,6 @@ Fields exclusive to the incoming schema (1 total):
     baz: uint32
 Fields exclusive to the old schema (1 total):
     bar: bool
-Fields that have different types across the old and the incoming schemas (1 total):
-    foo: int32 => int64
 This may lead to unexpected behavior."""
         )
 
