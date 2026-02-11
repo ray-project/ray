@@ -38,13 +38,15 @@ steps:
 
   # tests
   - label: ":ray-serve: serve: tests"
-    key: serve_metrics_haproxy
+    parallelism: 2
     tags:
       - serve
       - python
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests:test_metrics_haproxy serve
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
+        --except-tags post_wheel_build,gpu,ha_integration,serve_tracing,direct_ingress
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servebuild-py3.10 --test-env=EXPECTED_PYTHON_VERSION=3.10 --python-version 3.10
     depends_on: servebuild-multipy
 
@@ -280,7 +282,6 @@ steps:
       - serve
       - python
       - flaky
-      - skip-on-premerge
     instance_type: medium
     soft_fail: true
     commands:
