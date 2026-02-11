@@ -963,6 +963,40 @@ TEST_F(TaskEventBufferTest, TestIsDebuggerPausedFlag) {
   ASSERT_TRUE(event->state_updates().is_debugger_paused());
 }
 
+TEST_F(TaskEventBufferTest, TestTaskLogInfoInLifecycleEvent) {
+  // Create task log info
+  rpc::TaskLogInfo task_log_info;
+  task_log_info.set_stdout_file("/tmp/stdout.log");
+  task_log_info.set_stderr_file("/tmp/stderr.log");
+  task_log_info.set_stdout_start(0);
+  task_log_info.set_stdout_end(100);
+  task_log_info.set_stderr_start(0);
+  task_log_info.set_stderr_end(50);
+
+  // Generate the event
+  auto task_id = RandomTaskId();
+  TaskStatusEvent::TaskStateUpdate state_update(task_log_info);
+  auto task_event = GenStatusTaskEvent(task_id, 0, 1, state_update);
+
+  // Convert to RayEvents format
+  RayEventsTuple ray_events_tuple;
+  task_event->ToRpcRayEvents(ray_events_tuple);
+
+  // Verify the lifecycle event has task_log_info
+  ASSERT_TRUE(ray_events_tuple.task_lifecycle_event.has_value());
+  const auto &lifecycle_event =
+      ray_events_tuple.task_lifecycle_event->task_lifecycle_event();
+  ASSERT_TRUE(lifecycle_event.has_task_log_info());
+
+  const auto &log_info = lifecycle_event.task_log_info();
+  EXPECT_EQ(log_info.stdout_file(), "/tmp/stdout.log");
+  EXPECT_EQ(log_info.stderr_file(), "/tmp/stderr.log");
+  EXPECT_EQ(log_info.stdout_start(), 0);
+  EXPECT_EQ(log_info.stdout_end(), 100);
+  EXPECT_EQ(log_info.stderr_start(), 0);
+  EXPECT_EQ(log_info.stderr_end(), 50);
+}
+
 TEST_F(TaskEventBufferTest, TestGracefulDestruction) {
   delete task_event_buffer_.release();
 }
