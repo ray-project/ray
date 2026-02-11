@@ -76,7 +76,7 @@ def _estimate_list_contents(
 
     For homogeneous lists this avoids O(n) traversal:
       - float/int elements: exact O(1) multiply (constant per-element size).
-      - str/dict/list elements: sample 3 (first, middle, last) and extrapolate.
+      - str/dict/list elements: sample 5 evenly-spaced elements and extrapolate.
       - Anything else, or heterogeneous: returns None so the caller can
         fall back to full traversal.
 
@@ -107,14 +107,19 @@ def _estimate_list_contents(
     if constant_size is not None:
         return length * constant_size
 
-    # Compound/variable types (str, dict, list) — sample 3, extrapolate.
+    # Compound/variable types (str, dict, list) — sample evenly-spaced
+    # elements and extrapolate. More samples improves accuracy for lists
+    # with non-uniform element sizes (e.g., JSON arrays where some dicts
+    # have optional nested fields). Indices always include first and last.
     if (
         first_elem_type in _SAMPLED_ELEM_TYPES
         and length >= _MIN_LIST_LENGTH_FOR_SAMPLING
     ):
-        sampled_elems = (items[0], items[length // 2], items[-1])
-        sampled_total = sum(get_deep_size_fn(elem, seen) for elem in sampled_elems)
-        return int(length * sampled_total / len(sampled_elems))
+        n_samples = min(5, length)
+        # Evenly spaced indices spanning the full range [0, length-1].
+        indices = np.linspace(0, length - 1, n_samples, dtype=int)
+        sampled_total = sum(get_deep_size_fn(items[idx], seen) for idx in indices)
+        return int(length * sampled_total / n_samples)
 
     # Unrecognized or too small to sample — caller should traverse.
     return None
