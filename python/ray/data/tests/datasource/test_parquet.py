@@ -2612,6 +2612,43 @@ def test_write_parquet_partitioning(choice, tmp_path):
     assert set(df.columns.tolist()) == {"id", "grp"}
 
 
+def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
+    """Same as `test_parquet_write` but using a custom, fsspec filesystem.
+
+    TODO (Alex): We should write a similar test with a mock PyArrow fs, but
+    unfortunately pa.fs._MockFileSystem isn't serializable, so this may require
+    some effort.
+    """
+    from fsspec.implementations.local import LocalFileSystem
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    table = pa.Table.from_pandas(df1)
+    path1 = os.path.join(str(tmp_path), "test1.parquet")
+    pq.write_table(table, path1)
+    table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(str(tmp_path), "test2.parquet")
+    pq.write_table(table, path2)
+
+    fs = LocalFileSystem()
+
+    ds = ray.data.read_parquet([path1, path2], filesystem=fs)
+
+    # Test metadata-only parquet ops.
+    assert not ds._plan.has_started_execution
+    assert ds.count() == 6
+
+    out_path = os.path.join(tmp_path, "out")
+    os.mkdir(out_path)
+
+    ds._set_uuid("data")
+    ds.write_parquet(out_path)
+
+    actual_data = set(pd.read_parquet(out_path).itertuples(index=False))
+    expected_data = set(pd.concat([df1, df2]).itertuples(index=False))
+    assert actual_data == expected_data, (actual_data, expected_data)
+
+
 if __name__ == "__main__":
     import sys
 

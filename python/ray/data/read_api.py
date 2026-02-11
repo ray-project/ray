@@ -106,6 +106,9 @@ from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
 )
 from ray.data.datasource.partitioning import Partitioning
+from ray.data.datasource.util import (
+    _validate_head_node_resources_for_local_scheduling,
+)
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -442,6 +445,12 @@ def read_datasource(
         memory,
         ray_remote_args,
     )
+
+    if not datasource.supports_distributed_reads:
+        _validate_head_node_resources_for_local_scheduling(
+            ray_remote_args,
+            op_description="Reading from a local:// path",
+        )
 
     datasource_or_legacy_reader = _get_datasource_or_legacy_reader(
         datasource,

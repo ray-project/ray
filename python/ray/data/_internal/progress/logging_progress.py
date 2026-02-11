@@ -5,7 +5,7 @@ import typing
 from collections import defaultdict
 from typing import Callable, Dict, List, Optional
 
-from ray._private.ray_constants import env_integer
+from ray._common.utils import env_integer
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.execution.streaming_executor_state import (
