@@ -52,6 +52,9 @@ def _resolve_policy_callable(policy: AutoscalingPolicy) -> Callable:
     """
     raw = policy.get_policy()
     if inspect.isclass(raw):
+        logger.info(
+            f"Instantiating class-callable autoscaling policy '{raw.__name__}' with kwargs: {policy.policy_kwargs}"
+        )
         return raw(**policy.policy_kwargs)
     return raw
 

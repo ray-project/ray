@@ -2123,7 +2123,6 @@ class TestAppLevelClassCallablePolicy:
         results = [hA.remote() for _ in range(40)]
         wait_for_condition(lambda: ray.get(signal_A.cur_num_waiters.remote()) == 40)
         wait_for_condition(check_num_replicas_eq, name="A", target=2)
-        print("A scaled to 2 (low).")
 
         # ---- Deployment A: high load → targets_high["A"] = 4 ----
         ray.get(signal_A.send.remote(clear=True))
@@ -2133,14 +2132,12 @@ class TestAppLevelClassCallablePolicy:
         wait_for_condition(check_num_replicas_eq, name="A", target=4)
         ray.get(signal_A.send.remote())
         assert all(r.result(timeout_s=10) for r in results)
-        print("A scaled to 4 (high).")
 
         # ---- Deployment B: low load → targets_low["B"] = 3 ----
         ray.get(signal_B.send.remote(clear=True))
         results = [hB.remote() for _ in range(50)]
         wait_for_condition(lambda: ray.get(signal_B.cur_num_waiters.remote()) == 50)
         wait_for_condition(check_num_replicas_eq, name="B", target=3)
-        print("B scaled to 3 (low).")
 
         # ---- Deployment B: high load → targets_high["B"] = 5 ----
         ray.get(signal_B.send.remote(clear=True))
@@ -2150,7 +2147,6 @@ class TestAppLevelClassCallablePolicy:
         wait_for_condition(check_num_replicas_eq, name="B", target=5)
         ray.get(signal_B.send.remote())
         assert all(r.result(timeout_s=10) for r in results)
-        print("B scaled to 5 (high).")
 
 
 class ClassCallableAutoscalingPolicy:
