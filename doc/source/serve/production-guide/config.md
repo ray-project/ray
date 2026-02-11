@@ -68,8 +68,6 @@ You can also configure proxy health checks and lifecycle behavior with the follo
 - `RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S`: How long (in seconds) to wait for a proxy to become ready during startup. Default is `5.0`.
 - `RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S`: The minimum time (in seconds) a proxy stays in the draining state before termination. During draining: (1) the proxy fails health checks, causing the load balancer to stop routing new traffic(because it sees the unhealthy health checks for that proxy), (2) ongoing requests complete normally, and (3) the proxy waits at least this period before terminating. Default is `30.0`.
 
-Note that the Proxy config is global to your Ray cluster, and you can't update it during runtime.
-
 (http-config)=
 
 ## HTTP config 

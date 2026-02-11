@@ -1,0 +1,4 @@
+Checking AWS environment settings
+Attaching to node with IP: .+
+Fetched IP: .+
+ubuntu@ip-.+:~\$ exit

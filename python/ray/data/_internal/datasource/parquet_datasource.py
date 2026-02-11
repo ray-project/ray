@@ -20,7 +20,6 @@ import numpy as np
 from packaging.version import parse as parse_version
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
@@ -36,6 +35,7 @@ from ray.data._internal.util import (
     _is_local_scheme,
     iterate_with_retry,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
@@ -328,8 +328,12 @@ class ParquetDatasource(Datasource):
             self._local_scheduling = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             )
-        # Need this property for lineage tracking
-        self._source_paths = paths
+
+        # Need this property for lineage tracking. We should not directly assign paths
+        # to self since it is captured every read_task_fn during serialization and
+        # causing this data being duplicated and excessive object store spilling.
+        self._source_paths_ref = ray.put(paths)
+
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         filesystem = RetryingPyFileSystem.wrap(
             self._filesystem,
@@ -464,6 +468,10 @@ class ParquetDatasource(Datasource):
         self._default_batch_size = _estimate_reader_batch_size(
             sampled_file_infos, DataContext.get_current().target_max_block_size
         )
+
+    @property
+    def _source_paths(self) -> List[str]:
+        return ray.get(self._source_paths_ref)
 
     def estimate_inmemory_data_size(self) -> int:
         # In case of empty projections no data will be read
@@ -616,7 +624,11 @@ class ParquetDatasource(Datasource):
             return None
 
         if not self._partition_columns:
-            return None
+            # If a projection is active but the dataset has no partition columns,
+            # then no partition columns should be included in the output.
+            # Returning [] ensures that no partition columns are added,
+            # `None` is interpreted as including all partition columns.
+            return []
 
         # Extract partition columns that are in the projection map
         partition_cols = [
