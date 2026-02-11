@@ -24,6 +24,7 @@
 #include "ray/ray_syncer/ray_syncer_bidi_reactor.h"
 #include "ray/ray_syncer/ray_syncer_bidi_reactor_base.h"
 #include "ray/rpc/authentication/authentication_token.h"
+#include "ray/rpc/authentication/authentication_token_validator.h"
 
 namespace ray::syncer {
 
@@ -41,6 +42,7 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
       std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
       std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token,
+      ray::rpc::AuthenticationTokenValidator &auth_token_validator,
       size_t max_batch_size,
       uint64_t max_batch_delay_ms);
 
@@ -67,6 +69,9 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
   /// Authentication token for validation, will be nullptr if token authentication is
   /// disabled
   std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token_;
+
+  /// Validator for authentication token
+  ray::rpc::AuthenticationTokenValidator &auth_token_validator_;
 
   /// Track if Finish() has been called to avoid using a reactor that is terminating
   std::atomic<bool> finished_{false};

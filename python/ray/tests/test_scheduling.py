@@ -12,11 +12,14 @@ import pytest
 import ray
 import ray.cluster_utils
 import ray.util.accelerators
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.internal_api import memory_summary
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     MetricSamplePattern,
     PrometheusTimeseries,
+    SignalActor,
+    wait_for_condition,
+)
+from ray._private.internal_api import memory_summary
+from ray._private.test_utils import (
     get_metric_check_condition,
     object_memory_usage,
 )
