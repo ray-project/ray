@@ -337,6 +337,8 @@ def configure_component_logger(
         stream_handler.setFormatter(serve_formatter)
         stream_handler.addFilter(log_to_stderr_filter)
         stream_handler.addFilter(ServeContextFilter())
+        if logging_config.enable_access_log is False:
+            stream_handler.addFilter(log_access_log_filter)
         logger.addHandler(stream_handler)
 
     # Skip setting up file handler and stdout/stderr redirect if `stream_handler_only`
