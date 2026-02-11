@@ -1,8 +1,6 @@
 import os
 from unittest.mock import MagicMock
 
-import pytest
-
 from ray._private.log_monitor import LogMonitor
 
 
