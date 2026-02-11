@@ -88,7 +88,19 @@ def infer_schema_from_files(
         ValueError: If schema cannot be inferred.
     """
     if provided_schema:
-        return provided_schema
+        # Ensure partition columns are included in provided schema
+        schema = provided_schema
+        for col in partition_cols:
+            if col not in schema.names:
+                # Infer type from partition values in file actions if available
+                col_type = pa.string()  # Default to string if no values found
+                for a in add_actions:
+                    pv = getattr(a, "partition_values", None) or {}
+                    if col in pv and pv[col] is not None:
+                        col_type = infer_partition_type(pv[col])
+                        break
+                schema = schema.append(pa.field(col, col_type))
+        return schema
     if not add_actions:
         raise ValueError("Cannot infer schema from empty file list")
 
@@ -105,27 +117,18 @@ def infer_schema_from_files(
     if len(schema) == 0:
         raise ValueError(f"Cannot infer schema from file with no columns: {first.path}")
 
-    # Add partition columns to schema if missing
-    # Prefer types from provided_schema if available to avoid type drift
-    partition_types = {}
-    if provided_schema:
-        for col in partition_cols:
-            if col in provided_schema.names:
-                partition_types[col] = provided_schema.field(col).type
-
+    # Add partition columns to schema if missing.
+    # Infer partition column types from partition values in file actions.
     for col in partition_cols:
         if col in schema.names:
             continue
-        # Use type from provided_schema if available, else infer from partition values
-        if col in partition_types:
-            col_type = partition_types[col]
-        else:
-            col_type = pa.string()
-            for a in add_actions:
-                pv = getattr(a, "partition_values", None) or {}
-                if col in pv and pv[col] is not None:
-                    col_type = infer_partition_type(pv[col])
-                    break
+        # Infer type from partition values in file actions
+        col_type = pa.string()  # Default to string if no values found
+        for a in add_actions:
+            pv = getattr(a, "partition_values", None) or {}
+            if col in pv and pv[col] is not None:
+                col_type = infer_partition_type(pv[col])
+                break
         schema = schema.append(pa.field(col, col_type))
 
     return schema
@@ -183,13 +186,17 @@ def create_table_with_files(
 
 
 def _build_partition_delete_predicate(
-    file_actions: List["AddAction"], partition_cols: List[str]
+    file_actions: List["AddAction"],
+    partition_cols: List[str],
+    schema: Optional[pa.Schema] = None,
 ) -> Optional[str]:
     """Build SQL delete predicate for partitions being overwritten.
 
     Args:
         file_actions: List of AddAction objects with partition_values.
         partition_cols: List of partition column names.
+        schema: Optional PyArrow schema to determine column types. Required to
+            distinguish float NaN from string "NaN" values.
 
     Returns:
         SQL predicate string matching partitions to delete, or None if no partitions.
@@ -202,6 +209,13 @@ def _build_partition_delete_predicate(
         format_sql_value,
         quote_identifier,
     )
+
+    # Build mapping of partition column names to their types
+    partition_col_types = {}
+    if schema:
+        for col in partition_cols:
+            if col in schema.names:
+                partition_col_types[col] = schema.field(col).type
 
     # Extract unique partition value combinations from file actions
     partition_combinations = set()
@@ -230,12 +244,16 @@ def _build_partition_delete_predicate(
         for i, col in enumerate(partition_cols):
             val = combo[i]
             if val is not None:
-                # Handle "NaN" string for NaN float partitions
+                # Handle "NaN" string: distinguish float NaN from string "NaN"
                 if val == "NaN":
-                    # Delta Lake stores NaN as string "NaN" in partition metadata
-                    # SQL NaN comparison: NaN != NaN is true (IEEE 754), so use col != col
-                    # This correctly matches NaN values in float columns
-                    ands.append(f"{quote_identifier(col)} != {quote_identifier(col)}")
+                    col_type = partition_col_types.get(col)
+                    if col_type and pa.types.is_floating(col_type):
+                        # Float NaN: SQL NaN comparison: NaN != NaN is true (IEEE 754)
+                        # Use col != col to correctly match NaN values in float columns
+                        ands.append(f"{quote_identifier(col)} != {quote_identifier(col)}")
+                    else:
+                        # String "NaN": treat as regular string value
+                        ands.append(f"{quote_identifier(col)} = {format_sql_value(val)}")
                 else:
                     # format_sql_value handles string conversion and quoting
                     ands.append(f"{quote_identifier(col)} = {format_sql_value(val)}")
@@ -265,7 +283,22 @@ def commit_to_existing_table(
         schema: PyArrow schema (or None to infer from files).
         filesystem: PyArrow filesystem for reading files.
     """
-    # For OVERWRITE mode, delete existing data
+    # Get existing schema once (used for both partition delete predicate and validation)
+    existing_schema = to_pyarrow_schema(table.schema())
+
+    # Validate schema compatibility BEFORE deleting data in overwrite mode.
+    # This prevents data loss if validation fails.
+    if file_actions:
+        incoming = infer_schema_from_files(
+            file_actions, inputs.partition_cols, filesystem, schema
+        )
+    else:
+        incoming = schema
+
+    if incoming is not None and len(incoming) > 0:
+        validate_schema_type_compatibility(existing_schema, incoming)
+
+    # For OVERWRITE mode, delete existing data after validation passes.
     if inputs.mode == "overwrite":
         partition_overwrite_mode = inputs.write_kwargs.get(
             "partition_overwrite_mode", "static"
@@ -277,8 +310,9 @@ def commit_to_existing_table(
             )
         if partition_overwrite_mode == "dynamic" and inputs.partition_cols:
             # Dynamic partition overwrite: only delete partitions being written
+            # Use existing schema to determine partition column types for NaN handling
             pred = _build_partition_delete_predicate(
-                file_actions, inputs.partition_cols
+                file_actions, inputs.partition_cols, existing_schema
             )
             if pred:
                 table.delete(pred)
@@ -289,18 +323,6 @@ def commit_to_existing_table(
         else:
             # Static partition overwrite: delete all data
             table.delete()
-
-    # Validate schema compatibility (allows missing cols; new cols must be evolved prior).
-    existing_schema = to_pyarrow_schema(table.schema())
-    if file_actions:
-        incoming = infer_schema_from_files(
-            file_actions, inputs.partition_cols, filesystem, schema
-        )
-    else:
-        incoming = schema
-
-    if incoming is not None and len(incoming) > 0:
-        validate_schema_type_compatibility(existing_schema, incoming)
 
     table.create_write_transaction(
         actions=file_actions,

@@ -510,6 +510,68 @@ def pyarrow_type_to_partition_python_type(pa_type: pa.DataType) -> Optional[Type
     return None
 
 
+def normalize_partition_filters(
+    partition_filters: Optional[List[tuple]],
+) -> Optional[List[tuple]]:
+    """Normalize partition filter values to strings per delta-rs requirements.
+
+    delta-rs (Delta Lake Rust implementation) requires partition filter values
+    to be strings. This method converts various Python types to the expected
+    string format.
+
+    Reference: https://delta-io.github.io/delta-rs/python/api/deltalake.html#deltalake.DeltaTable.file_uris
+
+    Args:
+        partition_filters: List of (column, op, value) tuples where:
+            - column: Partition column name
+            - op: Operator ("=", "!=", "in", "not in")
+            - value: Filter value (will be converted to string)
+
+    Returns:
+        Normalized partition filters with string values, or None if input is None.
+
+    Raises:
+        ValueError: If partition filter format is invalid.
+    """
+    if partition_filters is None:
+        return None
+
+    normalized = []
+    for filter_tuple in partition_filters:
+        if len(filter_tuple) != 3:
+            raise ValueError(
+                f"Partition filter must be (column, op, value) tuple, got: {filter_tuple}"
+            )
+        column, op, value = filter_tuple
+
+        # Validate operator
+        valid_ops = {"=", "!=", "in", "not in"}
+        if op not in valid_ops:
+            raise ValueError(
+                f"Invalid partition filter operator '{op}'. Valid: {valid_ops}"
+            )
+
+        # Validate that "in" and "not in" operators receive list/tuple
+        if op in {"in", "not in"}:
+            if not isinstance(value, (list, tuple)):
+                raise ValueError(
+                    f"Operator '{op}' requires a list or tuple value, got {type(value).__name__}: {value}"
+                )
+
+        # Normalize value to string
+        if value is None:
+            normalized_value = ""  # NULL represented as empty string in delta-rs
+        elif isinstance(value, (list, tuple)):
+            # For "in" and "not in" operators
+            normalized_value = ["" if v is None else str(v) for v in value]
+        else:
+            normalized_value = str(value)
+
+        normalized.append((column, op, normalized_value))
+
+    return normalized
+
+
 def create_filesystem_from_storage_options(
     path: str, storage_options: Optional[Dict[str, str]] = None
 ) -> Optional[pa_fs.FileSystem]:

@@ -4455,9 +4455,15 @@ def read_delta(
     )
 
     # Get the parquet file paths from the DeltaTable with partition filters applied
+    # Normalize partition filter values to strings as required by delta-rs
     # Reference: https://delta-io.github.io/delta-rs/python/api/deltalake.html#deltalake.DeltaTable.file_uris
     if partition_filters is not None:
-        paths = dt.file_uris(partition_filters=partition_filters)
+        from ray.data._internal.datasource.delta.utils import (
+            normalize_partition_filters,
+        )
+
+        normalized_filters = normalize_partition_filters(partition_filters)
+        paths = dt.file_uris(partition_filters=normalized_filters)
     else:
         paths = dt.file_uris()
 
