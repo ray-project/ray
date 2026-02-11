@@ -112,7 +112,7 @@ class UvProcessor:
             python,
             "-m",
             "uv",
-            "version",
+            "--version",
         ]
 
         try:
