@@ -427,8 +427,7 @@ TEST_F(RayEventRecorderTest, TestStopFlushesAllBatches) {
     rpc::JobTableData data;
     data.set_job_id("job_" + std::to_string(i));
     std::vector<std::unique_ptr<RayEventInterface>> events;
-    events.push_back(
-        std::make_unique<RayDriverJobDefinitionEvent>(data, "test_session"));
+    events.push_back(std::make_unique<RayDriverJobDefinitionEvent>(data, "test_session"));
     recorder_->AddEvents(std::move(events));
   }
 
