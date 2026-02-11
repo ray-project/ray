@@ -14,7 +14,6 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusTrigger,
-    GangContext,
     HandleMetricReport,
     ReplicaID,
     ReplicaMetricReport,
@@ -57,6 +56,7 @@ from ray.serve._private.utils import (
     get_random_string,
 )
 from ray.serve.config import GangSchedulingConfig
+from ray.serve.context import GangContext
 from ray.serve.schema import ReplicaRank
 from ray.util.placement_group import validate_placement_group
 

@@ -10,7 +10,7 @@ from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray import ObjectRef, cloudpickle
@@ -30,7 +30,6 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     DeploymentTargetInfo,
     Duration,
-    GangContext,
     GangPlacementGroupRequest,
     GangReservationResult,
     ReplicaID,
@@ -87,6 +86,9 @@ from ray.serve.schema import (
 )
 from ray.util import metrics as ray_metrics
 from ray.util.placement_group import PlacementGroup
+
+if TYPE_CHECKING:
+    from ray.serve.context import GangContext
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -326,7 +328,7 @@ class ActorReplicaWrapper:
         self._assign_rank_callback: Optional[Callable[[ReplicaID], ReplicaRank]] = None
         self._rank: Optional[ReplicaRank] = None
         # Gang context for the replica.
-        self._gang_context: Optional[GangContext] = None
+        self._gang_context: Optional["GangContext"] = None
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
         self._placement_group: PlacementGroup = None
@@ -405,7 +407,7 @@ class ActorReplicaWrapper:
         return self._rank
 
     @property
-    def gang_context(self) -> Optional[GangContext]:
+    def gang_context(self) -> Optional["GangContext"]:
         return self._gang_context
 
     @property
@@ -586,7 +588,7 @@ class ActorReplicaWrapper:
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
         gang_placement_group: Optional[PlacementGroup] = None,
         gang_replica_rank: Optional[int] = None,
-        gang_context: Optional[GangContext] = None,
+        gang_context: Optional["GangContext"] = None,
     ) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
 
@@ -1397,7 +1399,7 @@ class DeploymentReplica:
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
         gang_placement_group: Optional[PlacementGroup] = None,
         gang_replica_rank: Optional[int] = None,
-        gang_context: Optional[GangContext] = None,
+        gang_context: Optional["GangContext"] = None,
     ) -> ReplicaSchedulingRequest:
         """
         Start a new actor for current DeploymentReplica instance.
@@ -1462,7 +1464,7 @@ class DeploymentReplica:
         return self._actor.rank
 
     @property
-    def gang_context(self) -> Optional[GangContext]:
+    def gang_context(self) -> Optional["GangContext"]:
         """Get the gang context for this replica."""
         return self._actor.gang_context
 
@@ -3167,6 +3169,9 @@ class DeploymentState:
             f"to {self._id} using gang scheduling "
             f"(gang_size={gang_size}, {num_gangs} gang(s))."
         )
+
+        # Lazy import to avoid circular imports
+        from ray.serve.context import GangContext
 
         for gang_pg in gang_pgs.values():
             # Pre-generate replica IDs for all members of this gang
