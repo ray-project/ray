@@ -97,9 +97,14 @@ def _estimate_list_contents(
 
     first_elem_type = type(items[0])
 
-    # Check homogeneity: if first and last element are the same type,
-    # assume all elements are (a reasonable heuristic for JSON data).
-    is_homogeneous = length < 3 or type(items[-1]) is first_elem_type
+    # Check homogeneity: verify first, middle, and last elements share the
+    # same type. This is a heuristic for JSON data where arrays are typically
+    # type-uniform. Checking three positions catches most mixed-type cases
+    # (e.g., [1, {"nested": ...}, 2]) at negligible cost.
+    is_homogeneous = length < 3 or (
+        type(items[-1]) is first_elem_type
+        and type(items[length // 2]) is first_elem_type
+    )
     if not is_homogeneous:
         return None
 
