@@ -498,8 +498,8 @@ def get_node_to_connect_for_driver(
         The node info of the node to connect to.
     """
     node_to_connect_info = None
-    possible_node_ids = find_node_ids()
     start_time = time.time()
+    possible_node_ids = []
     filtered_node_to_connect_infos = []
     while not possible_node_ids or not filtered_node_to_connect_infos:
         time_left = timeout_seconds - (time.time() - start_time)
