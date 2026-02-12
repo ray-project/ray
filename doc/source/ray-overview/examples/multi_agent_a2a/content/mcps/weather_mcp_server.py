@@ -1,4 +1,3 @@
-# Save the following code as `weather_mcp_server.py`.
 from typing import Any
 import httpx
 from fastapi import FastAPI
