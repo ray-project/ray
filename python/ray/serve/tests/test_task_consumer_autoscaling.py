@@ -101,7 +101,7 @@ class TestTaskConsumerQueueAutoscaling:
         # Wait for initial replica to be running
         wait_for_condition(
             lambda: get_num_running_replicas(controller, deployment_name, app_name)
-            >= 1,
+            == 1,
             timeout=30,
         )
 
