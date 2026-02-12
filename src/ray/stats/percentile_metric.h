@@ -20,6 +20,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "ray/stats/metric.h"
@@ -83,8 +84,32 @@ class PercentileMetric {
                                                   double max_expected_value,
                                                   int memory_bytes = 1024) {
     auto tracker = PercentileTracker::Create(memory_bytes, max_expected_value);
-    return std::shared_ptr<PercentileMetric>(
+    auto metric = std::shared_ptr<PercentileMetric>(
         new PercentileMetric(name, description, unit, std::move(tracker)));
+
+    // Register this metric for periodic flushing
+    RegisterMetricForFlushing(metric);
+
+    return metric;
+  }
+
+  /**
+    Flush all registered PercentileMetric instances.
+
+    This should be called periodically (e.g., every few seconds) to update all percentile
+    gauge metrics. This is typically called by the metrics collection/export system.
+   */
+  static void FlushAll() {
+    absl::MutexLock lock(&registry_mutex_);
+    for (auto it = registered_metrics_.begin(); it != registered_metrics_.end();) {
+      if (auto metric = it->lock()) {
+        metric->Flush();
+        ++it;
+      } else {
+        // Metric has been destroyed, remove from registry
+        it = registered_metrics_.erase(it);
+      }
+    }
   }
 
   /**
@@ -215,6 +240,16 @@ class PercentileMetric {
   Gauge p99_gauge_;
   Gauge max_gauge_;
   Gauge mean_gauge_;
+
+  // Static registry for periodic flushing
+  static void RegisterMetricForFlushing(std::shared_ptr<PercentileMetric> metric) {
+    absl::MutexLock lock(&registry_mutex_);
+    registered_metrics_.push_back(std::weak_ptr<PercentileMetric>(metric));
+  }
+
+  inline static absl::Mutex registry_mutex_;
+  inline static std::vector<std::weak_ptr<PercentileMetric>> registered_metrics_
+      ABSL_GUARDED_BY(registry_mutex_);
 };
 
 }  // namespace stats

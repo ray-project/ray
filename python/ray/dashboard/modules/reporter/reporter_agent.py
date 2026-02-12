@@ -629,6 +629,54 @@ class ReporterAgent(
                 batch_data_points,
             )
 
+    def _export_exponential_histogram_data(
+        self,
+        metric: Metric,
+    ) -> None:
+        """
+        Export exponential histogram data points to OpenTelemetry Metric Recorder.
+
+        Exponential histograms use logarithmically-spaced buckets that dynamically
+        adjust to the data range, making them ideal for long-tail latency distributions.
+        They provide better accuracy than fixed-bucket histograms while using less memory.
+
+        The exponential histogram format includes:
+        - sum: sum of all recorded values
+        - count: total number of recorded values
+        - scale: controls bucket granularity (higher = more buckets)
+        - positive/negative buckets: counts per logarithmic bucket
+        """
+        data_points = metric.exponential_histogram.data_points
+        if not data_points:
+            return
+
+        # Register the exponential histogram metric
+        self._open_telemetry_metric_recorder.register_exponential_histogram_metric(
+            metric.name,
+            metric.description,
+        )
+
+        # Record data points with their tags
+        for data_point in data_points:
+            if data_point.count == 0:
+                continue
+
+            tags = {tag.key: tag.value.string_value for tag in data_point.attributes}
+
+            # Record the exponential histogram data
+            # The OpenTelemetry Python SDK will handle the exponential bucketing
+            self._open_telemetry_metric_recorder.record_exponential_histogram_data(
+                metric.name,
+                tags,
+                data_point.sum,
+                data_point.count,
+                data_point.scale,
+                data_point.positive.bucket_counts
+                if data_point.HasField("positive")
+                else [],
+                data_point.positive.offset if data_point.HasField("positive") else 0,
+            )
+
     def _export_number_data(
         self,
         metric: Metric,
@@ -679,6 +727,8 @@ class ReporterAgent(
                 for metric in scope_metrics.metrics:
                     if metric.WhichOneof("data") == "histogram":
                         self._export_histogram_data(metric)
+                    elif metric.WhichOneof("data") == "exponential_histogram":
+                        self._export_exponential_histogram_data(metric)
                     else:
                         self._export_number_data(metric)
 

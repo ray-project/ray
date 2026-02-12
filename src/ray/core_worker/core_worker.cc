@@ -41,6 +41,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/rpc/event_aggregator_client.h"
+#include "ray/stats/percentile_metric.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
 #include "ray/util/subreaper.h"
@@ -842,6 +843,8 @@ void CoreWorker::RecordMetrics() {
   // Record worker heap memory metrics.
   memory_store_->RecordMetrics();
   reference_counter_->RecordMetrics();
+  // Flush all percentile metrics to update their gauge values
+  ray::stats::PercentileMetric::FlushAll();
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
