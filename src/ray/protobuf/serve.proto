@@ -29,6 +29,9 @@ message AutoscalingPolicy {
 
   // The cloudpickled policy definition.
   bytes _serialized_policy_def = 2;
+
+  // Keyword arguments for class-based policies (cloudpickled dict).
+  bytes policy_kwargs = 3;
 }
 
 // Configuration options for Serve's replica autoscaler.
