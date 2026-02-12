@@ -366,7 +366,7 @@ py_test(
 
 py_test(
     name = "test_agg_e2e",
-    size = "enormous",
+    size = "medium",
     srcs = ["tests/test_agg_e2e.py"],
     tags = [
         "exclusive",
@@ -466,7 +466,7 @@ py_test(
 
 py_test(
     name = "test_consumption",
-    size = "enormous",
+    size = "large",
     srcs = ["tests/test_consumption.py"],
     tags = [
         "exclusive",
