@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -114,3 +114,22 @@ class Tokenizer(Preprocessor):
             f"{self.__class__.__name__}(columns={self._columns!r}, "
             f"tokenization_fn={name}, output_columns={self._output_columns!r})"
         )
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if (
+            "_tokenization_fn" not in self.__dict__
+            and "tokenization_fn" in self.__dict__
+        ):
+            self._tokenization_fn = self.__dict__.pop("tokenization_fn")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+
+        if "_columns" not in self.__dict__:
+            self._columns = []
+        if "_tokenization_fn" not in self.__dict__:
+            self._tokenization_fn = simple_split_tokenizer
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns

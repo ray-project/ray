@@ -1,5 +1,5 @@
 from collections import Counter
-from typing import TYPE_CHECKING, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -197,6 +197,27 @@ class HashingVectorizer(Preprocessor):
             f"output_columns={self._output_columns!r})"
         )
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_num_features" not in self.__dict__ and "num_features" in self.__dict__:
+            self._num_features = self.__dict__.pop("num_features")
+        if (
+            "_tokenization_fn" not in self.__dict__
+            and "tokenization_fn" in self.__dict__
+        ):
+            self._tokenization_fn = self.__dict__.pop("tokenization_fn")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+
+        if "_columns" not in self.__dict__:
+            self._columns = []
+        if "_tokenization_fn" not in self.__dict__:
+            self._tokenization_fn = simple_split_tokenizer
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
+
 
 @PublicAPI(stability="alpha")
 class CountVectorizer(Preprocessor):
@@ -391,3 +412,26 @@ class CountVectorizer(Preprocessor):
             f"tokenization_fn={fn_name}, max_features={self._max_features!r}, "
             f"output_columns={self._output_columns!r})"
         )
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if (
+            "_tokenization_fn" not in self.__dict__
+            and "tokenization_fn" in self.__dict__
+        ):
+            self._tokenization_fn = self.__dict__.pop("tokenization_fn")
+        if "_max_features" not in self.__dict__ and "max_features" in self.__dict__:
+            self._max_features = self.__dict__.pop("max_features")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+
+        if "_columns" not in self.__dict__:
+            self._columns = []
+        if "_tokenization_fn" not in self.__dict__:
+            self._tokenization_fn = simple_split_tokenizer
+        if "_max_features" not in self.__dict__:
+            self._max_features = None
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
