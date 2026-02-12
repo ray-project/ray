@@ -2,8 +2,7 @@ import importlib
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
-from pydantic import BaseModel, Field
-
+from ray._common.pydantic_compat import BaseModel, Field
 from ray.serve._private.constants import (
     DEFAULT_CONSUMER_CONCURRENCY,
     SERVE_LOGGER_NAME,
