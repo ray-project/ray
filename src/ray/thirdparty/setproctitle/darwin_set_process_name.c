@@ -154,28 +154,39 @@ static bool darwin_pthread_setname_np(const char* name) {
 
 bool darwin_set_process_title(const char * title) {
 
-    enum {
-        has_nothing,
-        has_launch_services
-    } state = has_nothing;
-    bool ret = false;
+//     enum {
+//         has_nothing,
+//         has_launch_services
+//     } state = has_nothing;
+//     bool ret = false;
 
-    launch_services_t launch_services;
+//     launch_services_t launch_services;
     
-    DONE_IF(!launch_services_init(&launch_services));
-    ++state;
+//     DONE_IF(!launch_services_init(&launch_services));
+//     ++state;
 
-    DONE_IF(!launch_services_set_process_title(&launch_services, title));
+//     DONE_IF(!launch_services_set_process_title(&launch_services, title));
 
-    (void)darwin_pthread_setname_np(title); 
+//     (void)darwin_pthread_setname_np(title); 
 
-    ret = true;
+//     ret = true;
 
-done:
-    switch(state) {
-        case has_launch_services: launch_services_destroy(&launch_services);
-        case has_nothing: ;
-    }
+// done:
+//     switch(state) {
+//         case has_launch_services: launch_services_destroy(&launch_services);
+//         case has_nothing: ;
+//     }
 
-    return ret;
+//     return ret;
+
+
+    // RAY CODEBASE CUSTOMIZATION:
+    // Skip the expensive Launch Services IPC calls (LSSetApplicationInformationItem)
+    // which cause system hangs when called frequently. Just set the thread name
+    // which is sufficient for Ray's needs and is a cheap local operation.
+    // This functions implementation now departs significantly from setproctitle's 
+    // implementation.
+    (void)darwin_pthread_setname_np(title);
+
+    return true;
 }
