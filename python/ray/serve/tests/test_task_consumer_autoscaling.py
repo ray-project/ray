@@ -129,6 +129,94 @@ class TestTaskConsumerQueueAutoscaling:
 
         serve.delete(app_name)
 
+    def test_task_consumer_scale_from_and_to_zero(
+        self, external_redis, serve_instance  # noqa: F811
+    ):
+        """Test that TaskConsumer deployments can scale down to zero.
+
+        Verifies:
+        1. Replicas scale up when messages pile up in the queue
+        2. Replicas scale down to 0 when the queue drains
+        """
+        redis_address = os.environ.get("RAY_REDIS_ADDRESS")
+        app_name = "scale_to_zero_app"
+        deployment_name = "ScaleToZeroConsumer"
+
+        processor_config = TaskProcessorConfig(
+            queue_name="scale_to_zero_queue",
+            adapter_config=CeleryAdapterConfig(
+                broker_url=f"redis://{redis_address}/0",
+                backend_url=f"redis://{redis_address}/1",
+            ),
+        )
+
+        signal = SignalActor.remote()
+
+        @serve.deployment(
+            name=deployment_name,
+            max_ongoing_requests=1,
+            autoscaling_config=AutoscalingConfig(
+                min_replicas=0,
+                max_replicas=5,
+                target_ongoing_requests=1,
+                upscale_delay_s=0,
+                downscale_delay_s=0,
+                downscale_to_zero_delay_s=5,
+                metrics_interval_s=0.1,
+                look_back_period_s=0.5,
+                policy=AutoscalingPolicy(
+                    policy_function="ray.serve.async_inference_autoscaling_policy:AsyncInferenceAutoscalingPolicy",
+                    policy_kwargs={
+                        "broker_url": f"redis://{redis_address}/0",
+                        "queue_name": "scale_to_zero_queue",
+                        "poll_interval_s": 1,
+                    },
+                ),
+            ),
+        )
+        @task_consumer(task_processor_config=processor_config)
+        class ScaleToZeroConsumer:
+            def __init__(self, signal_actor):
+                self._signal = signal_actor
+
+            @task_handler(name="process")
+            def process(self, data):
+                ray.get(self._signal.wait.remote())
+
+        _ = serve.run(
+            ScaleToZeroConsumer.bind(signal),
+            name=app_name,
+            route_prefix="/scale_to_zero",
+        )
+
+        controller = serve_instance._controller
+
+        wait_for_condition(
+            lambda: get_num_running_replicas(controller, deployment_name, app_name)
+            == 0,
+            timeout=60,
+        )
+
+        enqueue_task.remote(processor_config, "data_0")
+
+        wait_for_condition(
+            lambda: get_num_running_replicas(controller, deployment_name, app_name)
+            == 1,
+            timeout=60,
+        )
+
+        # Release the signal to let all tasks drain
+        ray.get(signal.send.remote())
+
+        # Wait for replicas to scale down to 0
+        wait_for_condition(
+            lambda: get_num_running_replicas(controller, deployment_name, app_name)
+            == 0,
+            timeout=60,
+        )
+
+        serve.delete(app_name)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
