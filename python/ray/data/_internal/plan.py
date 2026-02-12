@@ -387,6 +387,9 @@ class ExecutionPlan:
             self._cache.set_schema(self._logical_plan.dag, schema)
         return schema
 
+    def cache_schema(self, schema: Union[type, "pyarrow.lib.Schema"]):
+        self._cache.set_schema(self._logical_plan.dag, schema)
+
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
         return self._logical_plan.dag.infer_metadata().input_files
