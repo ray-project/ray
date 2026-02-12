@@ -318,16 +318,18 @@ class PercentileTracker {
    */
   std::unique_ptr<PercentileHistogram> SwapHistogram() {
     auto old_histogram = std::move(histogram_);
-    histogram_ = std::make_unique<PercentileHistogram>(&bin_scheme_);
+    histogram_ = std::make_unique<PercentileHistogram>(bin_scheme_.get());
     return old_histogram;
   }
 
  private:
   PercentileTracker(int num_bins, double max_value)
-      : bin_scheme_(num_bins, max_value),
-        histogram_(std::make_unique<PercentileHistogram>(&bin_scheme_)) {}
+      : bin_scheme_(std::make_shared<LinearBinScheme>(num_bins, max_value)),
+        histogram_(std::make_unique<PercentileHistogram>(bin_scheme_.get())) {}
 
-  LinearBinScheme bin_scheme_;
+  // Store bin_scheme in shared_ptr to avoid dangling pointers when PercentileTracker is
+  // moved
+  std::shared_ptr<LinearBinScheme> bin_scheme_;
   std::unique_ptr<PercentileHistogram> histogram_;
 };
 
