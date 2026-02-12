@@ -1,8 +1,8 @@
-import importlib
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
 from ray._common.pydantic_compat import BaseModel, Field
+from ray._common.utils import import_attr
 from ray.serve._private.constants import (
     DEFAULT_CONSUMER_CONCURRENCY,
     SERVE_LOGGER_NAME,
@@ -105,11 +105,9 @@ def _import_broker_class(broker_type: str):
             f"Supported types: {list(_BROKER_REGISTRY.keys())}"
         )
 
-    module_path, class_name = entry["import"].rsplit(".", 1)
     try:
-        module = importlib.import_module(module_path)
-        return getattr(module, class_name)
-    except ImportError as e:
+        return import_attr(entry["import"])
+    except (ImportError, ModuleNotFoundError) as e:
         raise ImportError(
             f"Broker {broker_type!r} requires package {entry['package']!r}. "
             f"Install it with: pip install {entry['package']}"
@@ -122,8 +120,12 @@ def _create_broker(
     broker_kwargs: Optional[Dict[str, Any]] = None,
 ):
     """Create a broker instance from the given config."""
-    broker_cls = _import_broker_class(broker_type)
-    entry = _BROKER_REGISTRY[broker_type]
+    entry = _BROKER_REGISTRY.get(broker_type)
+    if entry is None:
+        raise ValueError(
+            f"Unsupported broker_type: {broker_type!r}. "
+            f"Supported types: {list(_BROKER_REGISTRY.keys())}"
+        )
 
     kwargs = dict(broker_kwargs) if broker_kwargs else {}
 
@@ -135,6 +137,8 @@ def _create_broker(
             f"Broker {broker_type!r} requires the following keys in "
             f"broker_kwargs: {missing}"
         )
+
+    broker_cls = _import_broker_class(broker_type)
 
     # Inject the queue/topic name under the broker-specific parameter name.
     queue_param = entry["queue_param"]
@@ -211,6 +215,9 @@ class TaskiqAdapterConfig(BaseModel):
             "the taskiq broker documentation for available parameters."
         ),
     )
+
+    # TODO(harshit): Support additional result backends (e.g., MongoDB, PostgreSQL, DynamoDB).
+    # See: https://taskiq-python.github.io/available-components/result-backends.html
     result_backend_url: Optional[str] = Field(
         default=None,
         description=(
