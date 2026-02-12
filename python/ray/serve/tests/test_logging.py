@@ -944,6 +944,52 @@ class TestLoggingAPI:
             with pytest.raises(AssertionError):
                 check_log_file(resp["logs_path"], [".*model_not_show.*"])
 
+    @pytest.mark.parametrize("enable_access_log", [True, False])
+    def test_access_log_in_stderr(self, serve_and_ray_shutdown, enable_access_log):
+        """Test that access logs in stderr respect the enable_access_log setting.
+
+        Regression test: the log_access_log_filter was previously only applied
+        to the file handler (memory_handler), not the stream handler (stderr).
+        Since RAY_SERVE_LOG_TO_STDERR defaults to True, access logs appeared in
+        stderr even when enable_access_log=False.
+        """
+        logger = logging.getLogger("ray.serve")
+
+        @serve.deployment(
+            logging_config={"enable_access_log": enable_access_log},
+        )
+        class Model:
+            def __call__(self, req: starlette.requests.Request):
+                logger.info("user_log_should_appear")
+                return "ok"
+
+        serve.run(Model.bind())
+        url = get_application_url(use_localhost=True)
+
+        f = io.StringIO()
+        with redirect_stderr(f):
+            for _ in range(5):
+                resp = httpx.get(url)
+                assert resp.status_code == 200
+
+            # Give logs time to flush.
+            time.sleep(2)
+
+            stderr_output = f.getvalue()
+
+            # Normal user logs should still appear in stderr regardless
+            # of the enable_access_log setting.
+            assert "user_log_should_appear" in stderr_output
+
+            if enable_access_log:
+                # Access logs should appear in stderr when enabled.
+                # HTTP requests produce "GET / 200" format (not "CALL __call__ OK"
+                # which only appears for DeploymentHandle calls).
+                assert "GET / 200" in stderr_output
+            else:
+                # Access logs should NOT appear in stderr when disabled.
+                assert "GET / 200" not in stderr_output
+
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
     def test_additional_log_standard_attrs(self, serve_and_ray_shutdown, encoding_type):
         """Test additional log standard attrs"""

@@ -8,6 +8,7 @@ from ray.data._internal.logical.interfaces import (
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
+    import pyarrow
 
     from ray.data.block import Schema
 
@@ -115,6 +116,7 @@ class Download(AbstractOneToOne):
         uri_column_names: List[str],
         output_bytes_column_names: List[str],
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ):
         super().__init__("Download", input_op, can_modify_num_rows=False)
         if len(uri_column_names) != len(output_bytes_column_names):
@@ -125,3 +127,4 @@ class Download(AbstractOneToOne):
         self.uri_column_names = uri_column_names
         self.output_bytes_column_names = output_bytes_column_names
         self.ray_remote_args = ray_remote_args or {}
+        self.filesystem = filesystem

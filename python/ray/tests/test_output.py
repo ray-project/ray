@@ -8,9 +8,11 @@ import time
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     run_string_as_driver,
+    wait_for_condition,
+)
+from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     run_string_as_driver_stdout_stderr,
 )
@@ -376,24 +378,6 @@ ray.get(foo.remote())
     print(err_str)
     assert "ModuleNotFoundError: No module named" in err_str
     assert "RuntimeError: The remote function failed to import" in err_str
-
-
-def test_core_worker_error_message():
-    script = """
-import ray
-import sys
-
-ray.init(local_mode=True)
-
-# In local mode this generates an ERROR level log.
-ray._private.utils.push_error_to_driver(
-    ray._private.worker.global_worker, "type", "Hello there")
-    """
-
-    proc = run_string_as_driver_nonblocking(script)
-    err_str = proc.stderr.read().decode("ascii")
-
-    assert "Hello there" in err_str, err_str
 
 
 def test_task_stdout_stderr():

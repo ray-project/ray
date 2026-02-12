@@ -659,6 +659,16 @@ RAY_CONFIG(int, max_io_workers, 4)
 /// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
+/// Maximum size (bytes) of a single spilled file (i.e. one spill worker request).
+/// When > 0, the raylet caps the total bytes fused into a single spill request.
+/// This helps avoid generating very large spill files that may be hard to delete promptly
+/// when multiple object references keep them alive (to avoid disk out of space).
+/// Trade-off: smaller caps reduce spill fusion and can lower effective spill throughput
+/// due to higher per-file overhead. If spilling cannot keep up with allocation under
+/// memory pressure, this may increase the likelihood of object store OOMs.
+/// Set to -1 to disable this limit.
+RAY_CONFIG(int64_t, max_spilling_file_size_bytes, -1)
+
 /// If set to less than 1.0, Ray will start spilling objects when existing primary objects
 /// take more than this percentage of the available memory.
 RAY_CONFIG(float, object_spilling_threshold, 0.8)

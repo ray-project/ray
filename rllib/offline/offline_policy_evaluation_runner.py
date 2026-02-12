@@ -14,9 +14,6 @@ import gymnasium as gym
 import numpy
 
 import ray
-from ray.air._internal.torch_utils import (
-    convert_ndarray_batch_to_torch_tensor_batch,
-)
 from ray.data.iterator import DataIterator
 from ray.rllib.connectors.env_to_module import EnvToModulePipeline
 from ray.rllib.core import (
@@ -116,6 +113,12 @@ class MiniBatchEpisodeRayDataIterator(MiniBatchRayDataIterator):
         _batch: Dict[EpisodeID, Dict[str, numpy.ndarray]],
     ) -> Dict[EpisodeID, Dict[str, TensorType]]:
         """Converts a batch of episodes to torch tensors."""
+        # Avoid torch import error when framework is tensorflow.
+        # Note (artur): This can be removed when we remove tf support.
+        from ray.data.util.torch_utils import (
+            convert_ndarray_batch_to_torch_tensor_batch,
+        )
+
         return [
             convert_ndarray_batch_to_torch_tensor_batch(
                 episode, device=self._device, dtypes=torch.float32

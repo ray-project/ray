@@ -333,7 +333,8 @@ def test_num_replicas_auto_api(serve_instance, use_options):
         "initial_replicas": None,
         "aggregation_function": "mean",
         "policy": {
-            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+            "policy_kwargs": {},
         },
     }
 
@@ -399,7 +400,8 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         "initial_replicas": None,
         "aggregation_function": "mean",
         "policy": {
-            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+            "policy_kwargs": {},
         },
     }
 
