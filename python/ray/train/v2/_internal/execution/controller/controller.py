@@ -224,7 +224,9 @@ class TrainController:
         try:
             self._controller_callback_manager.invoke(hook_name, *args, **context)
         except ControllerError as error:
-            failure_decision = self._make_failure_decision(error)
+            failure_decision = self._failure_policy.make_decision(
+                training_failed_error=error,
+            )
             # Avoid re-entering controller callback hooks while handling a callback failure.
             return self._execute_failure_decision(
                 failure_decision,
@@ -232,18 +234,6 @@ class TrainController:
                 invoke_failure_decision_callbacks=invoke_failure_decision_callbacks,
             )
         return None
-
-    def _make_failure_decision(
-        self, training_failed_error: TrainingFailedError
-    ) -> FailureDecision:
-        controller_state = self.get_state()
-        if isinstance(controller_state, ShuttingDownState) and isinstance(
-            controller_state.next_state, ErroredState
-        ):
-            return FailureDecision.RAISE
-        return self._failure_policy.make_decision(
-            training_failed_error=training_failed_error,
-        )
 
     def _execute_resize_decision(
         self, decision: ResizeDecision
@@ -261,7 +251,9 @@ class TrainController:
                 self._shutdown_worker_group()
             except Exception as e:
                 controller_error = ControllerError(e)
-                failure_decision = self._make_failure_decision(controller_error)
+                failure_decision = self._failure_policy.make_decision(
+                    training_failed_error=controller_error,
+                )
                 return self._execute_failure_decision(
                     failure_decision,
                     training_failed_error=controller_error,
@@ -273,7 +265,9 @@ class TrainController:
         )
 
         if optional_controller_error:
-            failure_decision = self._make_failure_decision(optional_controller_error)
+            failure_decision = self._failure_policy.make_decision(
+                training_failed_error=optional_controller_error,
+            )
             return self._execute_failure_decision(
                 failure_decision,
                 training_failed_error=optional_controller_error,
@@ -317,28 +311,6 @@ class TrainController:
             )
             if failure_result:
                 return failure_result
-
-        if isinstance(controller_state, ShuttingDownState):
-            if isinstance(controller_state.next_state, ErroredState):
-                logger.warning(
-                    "Another error occurred during shutdown after a training error. "
-                    "This error is being ignored to preserve the original "
-                    "training error. Error: %s",
-                    training_failed_error,
-                )
-                return TrainControllerLoopIterationResult(
-                    run_attempt_id=self._get_run_attempt_id(),
-                    previous_state=controller_state,
-                    next_state=controller_state.next_state,
-                    training_failed_error=controller_state.next_state.training_failed_error,
-                )
-
-            return TrainControllerLoopIterationResult(
-                run_attempt_id=self._get_run_attempt_id(),
-                previous_state=controller_state,
-                next_state=ErroredState(training_failed_error=training_failed_error),
-                training_failed_error=training_failed_error,
-            )
 
         # TODO: What should we do here?
         # This currently never happens because there must be errors.
@@ -469,19 +441,53 @@ class TrainController:
         if failure_result:
             self._set_state(failure_result.next_state)
 
-    def _shutdown(self) -> Optional["TrainControllerLoopIterationResult"]:
+    def _shutdown(self) -> "TrainControllerLoopIterationResult":
+        """Execute shutdown and return the final state transition.
+
+        Shutdown errors are never retried. If an error occurs during shutdown:
+        - If we're already shutting down after a training error
+          (next_state is ErroredState), the original error is preserved.
+        - Otherwise the shutdown error becomes the training failure.
+        """
+        controller_state = self.get_state()
+        assert isinstance(controller_state, ShuttingDownState)
+
+        shutdown_error = None
+
+        # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
         if self._worker_group:
             try:
                 self._shutdown_worker_group()
             except Exception as e:
-                controller_error = ControllerError(e)
-                failure_decision = self._make_failure_decision(controller_error)
-                return self._execute_failure_decision(
-                    failure_decision,
-                    training_failed_error=controller_error,
+                shutdown_error = ControllerError(e)
+
+        if not shutdown_error:
+            try:
+                self._controller_callback_manager.invoke("before_controller_shutdown")
+            except ControllerError as e:
+                shutdown_error = e
+
+        if shutdown_error:
+            if isinstance(controller_state.next_state, ErroredState):
+                logger.warning(
+                    "Another error occurred during shutdown after a training error. "
+                    "This error is being ignored to preserve the original "
+                    "training error. Error: %s",
+                    shutdown_error,
+                )
+            else:
+                return TrainControllerLoopIterationResult(
+                    run_attempt_id=self._get_run_attempt_id(),
+                    previous_state=controller_state,
+                    next_state=ErroredState(training_failed_error=shutdown_error),
+                    training_failed_error=shutdown_error,
                 )
 
-        return self._run_controller_hook("before_controller_shutdown")
+        return TrainControllerLoopIterationResult(
+            run_attempt_id=self._get_run_attempt_id(),
+            previous_state=controller_state,
+            next_state=controller_state.next_state,
+        )
 
     def _shutdown_worker_group(self):
         """Shutdown the worker group and set the worker group to None."""
@@ -584,7 +590,9 @@ class TrainController:
                 raise
             except Exception as e:
                 training_failed_error = ControllerError(e)
-                failure_decision = self._make_failure_decision(training_failed_error)
+                failure_decision = self._failure_policy.make_decision(
+                    training_failed_error=training_failed_error,
+                )
                 return self._execute_failure_decision(
                     failure_decision, training_failed_error=training_failed_error
                 )
@@ -599,7 +607,9 @@ class TrainController:
                 )
             if worker_group_status.errors:
                 worker_group_error = worker_group_status.get_worker_group_error()
-                failure_decision = self._make_failure_decision(worker_group_error)
+                failure_decision = self._failure_policy.make_decision(
+                    training_failed_error=worker_group_error,
+                )
                 return self._execute_failure_decision(
                     failure_decision, training_failed_error=worker_group_error
                 )
@@ -632,15 +642,7 @@ class TrainController:
                 ),
             )
         elif isinstance(controller_state, ShuttingDownState):
-            # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
-            failure_result = self._shutdown()
-            if failure_result:
-                return failure_result
-            return TrainControllerLoopIterationResult(
-                run_attempt_id=self._get_run_attempt_id(),
-                previous_state=controller_state,
-                next_state=controller_state.next_state,
-            )
+            return self._shutdown()
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
 
