@@ -1,9 +1,11 @@
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 
 import mypy.api as mypy_api
+import pyright
 import pytest
 
 # Paths are relative to the directory where Bazel is run in the CI
@@ -26,8 +28,15 @@ def test_typing_bad():
 
 def test_typing_actor_async():
     typing_actor_async_tmp_path = create_tmp_copy(TYPING_ACTOR_ASYNC_PATH)
-    out, msg, status_code = mypy_api.run([typing_actor_async_tmp_path])
-    assert status_code == 0, f"Mypy check failed. stdout:\n{out}\n\nstderr:\n{msg}"
+    result = pyright.run(
+        typing_actor_async_tmp_path,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert result.returncode == 0, (
+        f"Pyright check failed. stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}"
+    )
 
 
 def create_tmp_copy(file_path: str) -> str:
