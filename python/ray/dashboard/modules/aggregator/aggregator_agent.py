@@ -113,7 +113,7 @@ class AggregatorAgent(
         )
 
         self._events_export_addr = (
-            dashboard_agent.events_export_addr or EVENTS_EXPORT_ADDR
+            "localhost:8125"
         )
 
         self._event_processing_enabled = False
