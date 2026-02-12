@@ -53,6 +53,24 @@
 #include "ray/util/macros.h"
 #include "ray/util/subreaper.h"
 
+#ifdef __APPLE__
+extern char **environ;
+
+// macOS doesn't come with execvpe.
+// https://stackoverflow.com/questions/7789750/execve-with-path-search
+int execvpe(const char *program, char *const argv[], char *const envp[]) {
+  char **saved = environ;
+  int rc;
+  // Mutating environ is generally unsafe, but this logic only runs on the
+  // start of a worker process. There should be no concurrent access to the
+  // environment.
+  environ = const_cast<char **>(envp);
+  rc = execvp(program, argv);
+  environ = saved;
+  return rc;
+}
+#endif
+
 namespace ray {
 
 Process::~Process() {
