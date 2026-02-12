@@ -77,7 +77,7 @@ KTO
 kubectl
 Kubernetes
 Kueue
-[Ll]angfuse
+Langfuse
 lakehouse(s)?
 LGBM
 LLMServer

@@ -11,12 +11,12 @@ llm_config = LLMConfig(
     accelerator_type="L4",
     deployment_config=dict(
         autoscaling_config=dict(
-            num_replicas=1,  # use 1 replica for now
+            num_replicas=1,
         )
     ),
     # vLLM engine flags.
     engine_kwargs=dict(
-        # Qwen3 supports 262,144 context natively; but you need a GPU with large memory to serve.
+        # Qwen3 supports 262,144 context natively, but that requires more GPU memory.
         max_model_len=65536,
         # Qwen models use custom chat templates; needed for some Hugging Face repos.
         trust_remote_code=True,
