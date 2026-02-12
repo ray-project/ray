@@ -484,7 +484,7 @@ class AmdGpuProvider(GpuProvider):
                     power_watts = self._pyamdsmi.smi_get_device_average_power(i)
                     if power_watts >= 0:
                         power_mw = int(power_watts * 1000)
-                except (AttributeError, Exception) as e:
+                except Exception as e:
                     logger.debug(f"Failed to retrieve AMD GPU power: {e}")
 
                 info = GpuUtilizationInfo(
