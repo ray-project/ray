@@ -112,9 +112,7 @@ class AggregatorAgent(
             common_metric_tags=self._common_tags
         )
 
-        self._events_export_addr = (
-            "localhost:8125"
-        )
+        self._events_export_addr = "localhost:8125"
 
         self._event_processing_enabled = False
         if PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE and self._events_export_addr:
