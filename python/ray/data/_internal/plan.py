@@ -175,7 +175,7 @@ class ExecutionPlan:
         # cheap.
         plan_str = ""
         plan_max_depth = 0
-        if not self._cache.cache_is_fresh(self._logical_plan.dag):
+        if not self._cache.has_iterator_cache(self._logical_plan.dag):
             # using dataset as source here, so don't generate source operator in generate_plan_string
             plan_str, plan_max_depth = self.generate_plan_string(
                 self._logical_plan.dag, including_source=False
@@ -369,7 +369,6 @@ class ExecutionPlan:
         Returns:
             The schema of the output dataset.
         """
-        schema = None
         schema = self._cache.get_schema(self._logical_plan.dag)
         if schema is None:
             schema = self._logical_plan.dag.infer_schema()

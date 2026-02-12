@@ -147,7 +147,7 @@ def _get_execution_dag(
 
 
 def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
-    if plan._cache.cache_is_fresh(plan._logical_plan.dag):
+    if plan._cache.has_computed_output(plan._logical_plan.dag) is not None:
         return plan._cache.get_stats()
     # For Datasets created from "read_xxx", `plan._in_stats` contains useless data.
     # For Datasets created from "from_xxx", we need to use `plan._in_stats` as

@@ -7205,6 +7205,7 @@ class ExecutionCache:
         self._stats: Optional[DatasetStats] = None
 
         # --- Metadata layer (from streaming iteration) ---
+        self._metadata_cached = False
         self._schema: Optional["Schema"] = None
         self._num_rows: Optional[int] = None
         self._size_bytes: Optional[int] = None
@@ -7220,6 +7221,9 @@ class ExecutionCache:
 
     def has_computed_output(self, dag: "LogicalOperator") -> bool:
         return self.get_bundle(dag) is not None
+
+    def has_iterator_cache(self, dag: "LogicalOperator") -> bool:
+        return self.cache_is_fresh(dag) and self._metadata_cached
 
     def get_operator(self) -> "LogicalOperator":
         return self._operator
@@ -7268,6 +7272,7 @@ class ExecutionCache:
         num_rows: Optional[int],
         size_bytes: Optional[int],
     ) -> None:
+        self._metadata_cached = True
         self._operator = dag
         self._schema = schema
         self._num_rows = num_rows
