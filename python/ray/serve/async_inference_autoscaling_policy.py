@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import Any, Dict, Optional, Tuple, Union
 
+from ray.serve._private.broker import Broker
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.config import AutoscalingContext
 
@@ -52,29 +53,15 @@ class AsyncInferenceAutoscalingPolicy:
 
     def __init__(
         self,
-        broker_url: str = None,
-        queue_name: str = None,
+        broker_url: str,
+        queue_name: str,
         rabbitmq_management_url: Optional[str] = None,
-        poll_interval_s: Optional[float] = None,
+        poll_interval_s: float = DEFAULT_ASYNC_INFERENCE_QUEUE_POLL_INTERVAL_S,
     ):
-        if not broker_url or not queue_name:
-            raise ValueError(
-                "AsyncInferenceAutoscalingPolicy requires 'broker_url' and "
-                "'queue_name' in policy_kwargs. Example:\n"
-                "  AutoscalingPolicy(\n"
-                "      policy_function=AsyncInferenceAutoscalingPolicy,\n"
-                '      policy_kwargs={"broker_url": "redis://...", '
-                '"queue_name": "my_queue"},\n'
-                "  )"
-            )
         self._broker_url = broker_url
         self._queue_name = queue_name
         self._rabbitmq_management_url = rabbitmq_management_url
-        self._poll_interval_s = (
-            poll_interval_s
-            if poll_interval_s is not None
-            else DEFAULT_ASYNC_INFERENCE_QUEUE_POLL_INTERVAL_S
-        )
+        self._poll_interval_s = poll_interval_s
 
         self._queue_length: int = 0
         self._broker = None
@@ -86,8 +73,6 @@ class AsyncInferenceAutoscalingPolicy:
         if self._started:
             return
         self._started = True
-
-        from ray.serve._private.broker import Broker
 
         if self._rabbitmq_management_url is not None:
             self._broker = Broker(
