@@ -1,5 +1,6 @@
 import json
 import time
+from datetime import datetime
 
 import pytest
 
@@ -9,6 +10,7 @@ from ray.data._internal.datasource.kafka_datasource import (
     _add_authentication_to_config,
     _build_consumer_config_for_discovery,
     _build_consumer_config_for_read,
+    _datetime_to_ms,
 )
 
 pytest.importorskip("kafka")
@@ -155,6 +157,34 @@ def test_build_consumer_config_for_read():
     assert config_with_auth["sasl_plain_password"] == "pass"
 
 
+def test_datetime_to_ms_without_timezone():
+    """Test that datetimes without timezone info are treated as UTC."""
+    assert _datetime_to_ms(datetime(1970, 1, 1, 0, 0, 0)) == 0
+    assert _datetime_to_ms(datetime(2025, 1, 1, 0, 0, 0)) == 1735689600000
+
+
+def test_datetime_to_ms_with_timezone():
+    """Test that timezone-aware datetimes are converted to UTC correctly."""
+    from datetime import timezone
+
+    assert _datetime_to_ms(datetime(1970, 1, 1, 0, 0, 0, tzinfo=timezone.utc)) == 0
+    assert (
+        _datetime_to_ms(datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc))
+        == 1735689600000
+    )
+
+
+def test_read_kafka_datetime_validation():
+    """Test that start_offset > end_offset with datetimes raises ValueError."""
+    with pytest.raises(ValueError, match="start_offset must be less than end_offset"):
+        ray.data.read_kafka(
+            topics="test-topic",
+            bootstrap_servers="localhost:9092",
+            start_offset=datetime(2025, 6, 1),
+            end_offset=datetime(2025, 1, 1),
+        )
+
+
 # Integration Tests (require Kafka container)
 
 
@@ -167,7 +197,7 @@ def test_read_kafka_basic(bootstrap_server, kafka_producer, ray_start_regular_sh
     kafka_producer.flush()
 
     # Wait a bit for messages to be committed
-    time.sleep(1)
+    time.sleep(0.3)
 
     # Read from Kafka
     ds = ray.data.read_kafka(
@@ -226,7 +256,7 @@ def test_read_kafka_with_offsets(
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.send(topic, value=message)
     kafka_producer.flush()
-    time.sleep(1)
+    time.sleep(0.3)
 
     ds = ray.data.read_kafka(
         topics=[topic],
@@ -260,7 +290,7 @@ def test_read_kafka_multiple_partitions(
         partition = i % 3
         kafka_producer.send(topic, value=message, partition=partition)
     kafka_producer.flush()
-    time.sleep(1)
+    time.sleep(0.3)
 
     # Read from all partitions
     ds = ray.data.read_kafka(
@@ -289,7 +319,7 @@ def test_read_kafka_multiple_topics(
         kafka_producer.send(topic2, value=message)
 
     kafka_producer.flush()
-    time.sleep(1)
+    time.sleep(0.3)
 
     # Read from both topics
     ds = ray.data.read_kafka(
@@ -314,7 +344,7 @@ def test_read_kafka_with_message_headers(
         ]
         kafka_producer.send(topic, value=message, headers=headers)
     kafka_producer.flush()
-    time.sleep(1)
+    time.sleep(0.3)
 
     ds = ray.data.read_kafka(
         topics=[topic],
@@ -360,7 +390,7 @@ def test_read_kafka_offset_exceeds_available_messages(
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.send(topic, value=message)
     kafka_producer.flush()
-    time.sleep(1)
+    time.sleep(0.3)
 
     # Try to read up to offset 200 (way beyond available messages)
     # This should timeout and only return the 50 available messages
@@ -420,7 +450,7 @@ def test_read_kafka_invalid_offsets(
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.send(topic, value=message)
     kafka_producer.flush()
-    time.sleep(1)
+    time.sleep(0.3)
 
     with pytest.raises(ValueError, match=expected_error):
         ds = ray.data.read_kafka(
@@ -430,6 +460,121 @@ def test_read_kafka_invalid_offsets(
             end_offset=end_offset,
         )
         ds.take_all()
+
+
+def test_read_kafka_with_datetime_offsets(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Test reading Kafka messages using datetime-based start and end offsets."""
+    topic = "test-datetime-offsets"
+
+    msg_ts = _datetime_to_ms(datetime(2025, 1, 15))
+    time_before = datetime(2025, 1, 1)
+    time_after = datetime(2025, 2, 1)
+
+    for i in range(3):
+        kafka_producer.send(topic, value={"id": i}, timestamp_ms=msg_ts)
+    kafka_producer.flush()
+    # Brief wait for consumer-side metadata propagation after flush()
+    time.sleep(0.3)
+
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset=time_before,
+        end_offset=time_after,
+    )
+    records = ds.take_all()
+    assert len(records) == 3
+
+
+def test_read_kafka_datetime_partial_range(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Test that only messages within the datetime range are returned."""
+    topic = "test-datetime-partial-range"
+
+    # First batch at Jan 1 2025, second batch at Feb 1 2025
+    batch1_ts = _datetime_to_ms(datetime(2025, 1, 1))
+    batch2_ts = _datetime_to_ms(datetime(2025, 2, 1))
+    boundary_time = datetime(2025, 1, 15)  # Between the two batches
+
+    kafka_producer.send(topic, value={"batch": 1, "id": 0}, timestamp_ms=batch1_ts)
+    kafka_producer.send(topic, value={"batch": 1, "id": 1}, timestamp_ms=batch1_ts)
+    kafka_producer.send(topic, value={"batch": 2, "id": 0}, timestamp_ms=batch2_ts)
+    kafka_producer.send(topic, value={"batch": 2, "id": 1}, timestamp_ms=batch2_ts)
+    kafka_producer.flush()
+    # Brief wait for consumer-side metadata propagation after flush()
+    time.sleep(0.3)
+
+    # Read only the second batch using boundary_time as start
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset=boundary_time,
+        end_offset="latest",
+    )
+    records = ds.take_all()
+    assert len(records) == 2
+
+    # Read only the first batch using boundary_time as end
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset="earliest",
+        end_offset=boundary_time,
+    )
+    records = ds.take_all()
+    assert len(records) == 2
+
+
+def test_read_kafka_datetime_after_all_messages(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Test datetime start_offset after all messages returns 0 rows."""
+    topic = "test-datetime-after-all"
+
+    kafka_producer.send(topic, value={"id": 0})
+    kafka_producer.flush()
+    # Brief wait for consumer-side metadata propagation after flush()
+    time.sleep(0.3)
+
+    future_time = datetime(2099, 1, 1)
+
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset=future_time,
+        end_offset="latest",
+    )
+    records = ds.take_all()
+    assert len(records) == 0
+
+
+def test_read_kafka_datetime_before_all_messages(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Test datetime end_offset before all messages returns 0 rows."""
+    topic = "test-datetime-before-all"
+
+    kafka_producer.send(topic, value={"id": 0})
+    kafka_producer.flush()
+    # Brief wait for consumer-side metadata propagation after flush()
+    time.sleep(0.3)
+
+    past_time = datetime(1970, 1, 2)
+
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset="earliest",
+        end_offset=past_time,
+    )
+    records = ds.take_all()
+    # All messages have timestamps after 1970, so offsets_for_times will
+    # return the first offset. This means end_offset resolves to the
+    # beginning, yielding 0 rows.
+    assert len(records) == 0
 
 
 if __name__ == "__main__":
