@@ -1,10 +1,10 @@
 import asyncio
 import collections
 import datetime
-import threading
-import time
 import logging
 import re
+import threading
+import time
 import unittest
 from dataclasses import replace
 from typing import Any, Callable, Dict, Iterable, Optional, Tuple
@@ -797,6 +797,7 @@ def test_setting_initial_size_for_actor_pool():
     )
     ray.shutdown()
 
+
 def test_actor_pool_scale_logs_include_map_worker_cls_name(
     ray_start_regular_shared, caplog, propagate_logs
 ):
@@ -844,6 +845,7 @@ def test_actor_pool_scale_logs_include_map_worker_cls_name(
                 r"\(reason=scale down test",
                 caplog.text,
             ), f"Expected scale-down log with map worker name; got: {caplog.text}"
+
 
 def _create_bundle_with_single_row(row):
     block = pa.Table.from_pylist([row])
