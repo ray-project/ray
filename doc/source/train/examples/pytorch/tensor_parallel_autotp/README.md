@@ -617,6 +617,11 @@ def train_func(config):
     steps_per_epoch = len(dataloader)
     if world_rank == 0:
         logger.info(f"Dataloader created: {steps_per_epoch} steps per epoch")
+    if steps_per_epoch == 0:
+        raise ValueError(
+            "Dataloader is empty. Increase dataset_percentage or reduce batch_size_per_gpu."
+        )
+    log_interval = config.get("log_interval", 10)
 
     # Training loop
     engine.train()
@@ -653,7 +658,12 @@ def train_func(config):
             num_batches += 1
 
             # Log progress
-            if world_rank == 0 and step % config.get("log_interval", 10) == 0:
+            if (
+                world_rank == 0
+                and log_interval is not None
+                and log_interval > 0
+                and step % log_interval == 0
+            ):
                 logger.info(
                     f"Epoch: {epoch} Step: {step + 1}/{steps_per_epoch} Loss: {loss_value:.4f}"
                 )
@@ -664,8 +674,15 @@ def train_func(config):
                     logger.info(f"Debug steps finished. Stopping epoch {epoch}.")
                 break
 
+        if num_batches == 0:
+            if world_rank == 0:
+                logger.warning(
+                    f"Epoch {epoch} processed zero batches. Skipping checkpoint and continuing."
+                )
+            continue
+
         # Calculate average loss for epoch
-        avg_loss = running_loss / num_batches if num_batches > 0 else 0.0
+        avg_loss = running_loss / num_batches
 
         # Save checkpoint at end of epoch
         save_checkpoint(engine, epoch, step, avg_loss)
