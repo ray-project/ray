@@ -323,11 +323,11 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
                     f"`bins` must be an integer or a dict of integers, got {bins}"
                 )
 
-        self.stat_computation_plan.add_aggregator(
+        self._stat_computation_plan.add_aggregator(
             aggregator_fn=Min,
             columns=columns,
         )
-        self.stat_computation_plan.add_aggregator(
+        self._stat_computation_plan.add_aggregator(
             aggregator_fn=Max,
             columns=columns,
         )
@@ -338,7 +338,7 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         self._validate_bins_columns()
 
     def _fit_execute(self, dataset: "Dataset"):
-        stats = self.stat_computation_plan.compute(dataset)
+        stats = self._stat_computation_plan.compute(dataset)
         self.stats_ = post_fit_processor(stats, self.bins, self.right)
         return self
 

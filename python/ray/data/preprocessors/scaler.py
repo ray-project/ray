@@ -99,11 +99,11 @@ class StandardScaler(SerializablePreprocessorBase):
         )
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self.stat_computation_plan.add_aggregator(
+        self._stat_computation_plan.add_aggregator(
             aggregator_fn=Mean,
             columns=self._columns,
         )
-        self.stat_computation_plan.add_aggregator(
+        self._stat_computation_plan.add_aggregator(
             aggregator_fn=lambda col: Std(col, ddof=0),
             columns=self._columns,
         )

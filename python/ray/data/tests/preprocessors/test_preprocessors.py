@@ -184,7 +184,7 @@ def test_fit_twice_clears_stale_stats():
             # Dynamically detect columns from the dataset schema
             schema = ds.schema()
             column_names = list(schema.names)
-            self.stat_computation_plan.add_aggregator(
+            self._stat_computation_plan.add_aggregator(
                 aggregator_fn=Mean,
                 columns=column_names,
             )

@@ -266,8 +266,8 @@ class TestSimpleImputerSerialization:
         # Verify type and state
         assert isinstance(deserialized, SimpleImputer)
         assert deserialized._fitted
-        assert deserialized.columns == ["temp", "humidity"]
-        assert deserialized.strategy == "mean"
+        assert deserialized.get_input_columns() == ["temp", "humidity"]
+        assert deserialized._strategy == "mean"
 
         # Verify stats are preserved
         assert "mean(temp)" in deserialized.stats_
@@ -486,8 +486,8 @@ class TestSimpleImputerSerialization:
         deserialized = SimpleImputer.deserialize(serialized)
 
         assert deserialized.stats_ == {}
-        assert deserialized.strategy == "constant"
-        assert deserialized.fill_value == 0
+        assert deserialized._strategy == "constant"
+        assert deserialized._fill_value == 0
         assert deserialized._is_fittable is False
 
     def test_edge_case_none_values(self):

@@ -1432,7 +1432,7 @@ class TestEncoderSerialization:
         deserialized = SerializablePreprocessor.deserialize(serialized)
         assert isinstance(deserialized, OrdinalEncoder)
         assert deserialized._fitted
-        assert deserialized.get_input_columns() == ["category", "grade"]
+        assert deserialized.columns == ["category", "grade"]
         assert deserialized._encode_lists is True  # default value
 
         # Test functional equivalence
@@ -1459,7 +1459,7 @@ class TestEncoderSerialization:
         deserialized = SerializablePreprocessor.deserialize(serialized)
         assert isinstance(deserialized, OneHotEncoder)
         assert deserialized._fitted
-        assert deserialized.get_input_columns() == ["category"]
+        assert deserialized.columns == ["category"]
         assert deserialized._max_categories == {"category": 3}
 
         # Test functional equivalence
@@ -1486,7 +1486,7 @@ class TestEncoderSerialization:
         deserialized = SerializablePreprocessor.deserialize(serialized)
         assert isinstance(deserialized, MultiHotEncoder)
         assert deserialized._fitted
-        assert deserialized.get_input_columns() == ["tags"]
+        assert deserialized.columns == ["tags"]
         assert deserialized._max_categories == {"tags": 5}
 
         # Test functional equivalence
@@ -1579,7 +1579,7 @@ class TestEncoderSerialization:
         deserialized = SerializablePreprocessor.deserialize(serialized)
         assert isinstance(deserialized, Categorizer)
         assert deserialized._fitted
-        assert deserialized.get_input_columns() == ["category", "grade"]
+        assert deserialized.columns == ["category", "grade"]
 
         # Test functional equivalence
         test_df = pd.DataFrame({"category": ["A", "B"], "grade": ["high", "low"]})

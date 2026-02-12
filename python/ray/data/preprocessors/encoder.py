@@ -168,8 +168,32 @@ class OrdinalEncoder(SerializablePreprocessorBase):
             columns, output_columns
         )
 
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @columns.setter
+    def columns(self, value: List[str]) -> None:
+        self._columns = value
+
+    @property
+    def encode_lists(self) -> bool:
+        return self._encode_lists
+
+    @encode_lists.setter
+    def encode_lists(self, value: bool) -> None:
+        self._encode_lists = value
+
+    @property
+    def output_columns(self) -> Optional[List[str]]:
+        return self._output_columns
+
+    @output_columns.setter
+    def output_columns(self, value: Optional[List[str]]) -> None:
+        self._output_columns = value
+
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self.stat_computation_plan.add_callable_stat(
+        self._stat_computation_plan.add_callable_stat(
             stat_fn=lambda key_gen: compute_unique_value_indices(
                 dataset=dataset,
                 columns=self._columns,
@@ -413,8 +437,32 @@ class OneHotEncoder(SerializablePreprocessorBase):
             columns, output_columns
         )
 
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @columns.setter
+    def columns(self, value: List[str]) -> None:
+        self._columns = value
+
+    @property
+    def max_categories(self) -> Optional[Dict[str, int]]:
+        return self._max_categories
+
+    @max_categories.setter
+    def max_categories(self, value: Optional[Dict[str, int]]) -> None:
+        self._max_categories = value
+
+    @property
+    def output_columns(self) -> Optional[List[str]]:
+        return self._output_columns
+
+    @output_columns.setter
+    def output_columns(self, value: Optional[List[str]]) -> None:
+        self._output_columns = value
+
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self.stat_computation_plan.add_callable_stat(
+        self._stat_computation_plan.add_callable_stat(
             stat_fn=lambda key_gen: compute_unique_value_indices(
                 dataset=dataset,
                 columns=self._columns,
@@ -661,8 +709,32 @@ class MultiHotEncoder(SerializablePreprocessorBase):
             columns, output_columns
         )
 
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @columns.setter
+    def columns(self, value: List[str]) -> None:
+        self._columns = value
+
+    @property
+    def max_categories(self) -> Optional[Dict[str, int]]:
+        return self._max_categories
+
+    @max_categories.setter
+    def max_categories(self, value: Optional[Dict[str, int]]) -> None:
+        self._max_categories = value
+
+    @property
+    def output_columns(self) -> Optional[List[str]]:
+        return self._output_columns
+
+    @output_columns.setter
+    def output_columns(self, value: Optional[List[str]]) -> None:
+        self._output_columns = value
+
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self.stat_computation_plan.add_callable_stat(
+        self._stat_computation_plan.add_callable_stat(
             stat_fn=lambda key_gen: compute_unique_value_indices(
                 dataset=dataset,
                 columns=self._columns,
@@ -790,8 +862,24 @@ class LabelEncoder(SerializablePreprocessorBase):
         self._label_column = label_column
         self._output_column = output_column or label_column
 
+    @property
+    def label_column(self) -> str:
+        return self._label_column
+
+    @label_column.setter
+    def label_column(self, value: str) -> None:
+        self._label_column = value
+
+    @property
+    def output_columns(self) -> Optional[str]:
+        return self._output_columns
+
+    @output_columns.setter
+    def output_columns(self, value: Optional[str]) -> None:
+        self._output_columns = value
+
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self.stat_computation_plan.add_callable_stat(
+        self._stat_computation_plan.add_callable_stat(
             stat_fn=lambda key_gen: compute_unique_value_indices(
                 dataset=dataset,
                 columns=[self._label_column],
@@ -958,6 +1046,30 @@ class Categorizer(SerializablePreprocessorBase):
             columns, output_columns
         )
 
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @columns.setter
+    def columns(self, value: List[str]) -> None:
+        self._columns = value
+
+    @property
+    def dtypes(self) -> Optional[Dict[str, pd.CategoricalDtype]]:
+        return self._dtypes
+
+    @dtypes.setter
+    def dtypes(self, value: Optional[Dict[str, pd.CategoricalDtype]]) -> None:
+        self._dtypes = value
+
+    @property
+    def output_columns(self) -> Optional[List[str]]:
+        return self._output_columns
+
+    @output_columns.setter
+    def output_columns(self, value: Optional[List[str]]) -> None:
+        self._output_columns = value
+
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         columns_to_get = [
             column for column in self._columns if column not in self._dtypes
@@ -969,7 +1081,7 @@ class Categorizer(SerializablePreprocessorBase):
         def callback(unique_indices: Dict[str, Dict]) -> pd.CategoricalDtype:
             return pd.CategoricalDtype(unique_indices.keys())
 
-        self.stat_computation_plan.add_callable_stat(
+        self._stat_computation_plan.add_callable_stat(
             stat_fn=lambda key_gen: compute_unique_value_indices(
                 dataset=dataset,
                 columns=columns_to_get,

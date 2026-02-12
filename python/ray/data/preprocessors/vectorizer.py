@@ -289,7 +289,7 @@ class CountVectorizer(Preprocessor):
                 for (col, counts) in zip(self.columns, top_counts)
             }
 
-        self.stat_computation_plan.add_callable_stat(
+        self._stat_computation_plan.add_callable_stat(
             stat_fn=lambda key_gen: stat_fn(key_gen),
             stat_key_fn=lambda col: f"token_counts({col})",
             columns=self.columns,
