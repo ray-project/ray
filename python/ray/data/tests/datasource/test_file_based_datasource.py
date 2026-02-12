@@ -322,12 +322,16 @@ def test_file_extensions(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_datasource(datasource)
     assert ds.input_files() == [csv_path]
 
+
 def test_file_extensions_no_match_raises(ray_start_regular_shared, tmp_path):
     txt_path = os.path.join(tmp_path, "file.txt")
     with open(txt_path, "w") as file:
         file.write("ham")
 
-    with pytest.raises(ValueError, match="No input files"):
+    with pytest.raises(
+        ValueError,
+        match="No input files found to read with the following file extensions",
+    ):
         MockFileBasedDatasource([txt_path], file_extensions=["csv"])
 
 
