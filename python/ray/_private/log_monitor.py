@@ -220,8 +220,13 @@ class LogMonitor:
                         else:
                             raise e
 
-            if proc_alive:
+            if proc_alive and os.path.isfile(file_info.filename):
+                # Only add back to closed_file_infos if file still exists
                 self.closed_file_infos.append(file_info)
+            else:
+                # File no longer exists, remove from log_filenames to prevent orphaned entries
+                # This matches the pattern used in open_closed_files()
+                self.log_filenames.discard(file_info.filename)
 
         self.can_open_more_files = True
 
@@ -256,7 +261,40 @@ class LogMonitor:
         # runtime_env setup process is logged here
         if RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED:
             monitor_log_paths += glob.glob(f"{self.logs_dir}/runtime_env*.log")
-        for file_path in monitor_log_paths:
+
+        # Convert to set for efficient lookup
+        current_files = set(monitor_log_paths)
+
+        # Clean up stale file entries that no longer exist
+        stale_files = self.log_filenames - current_files
+        if stale_files:
+            self.log_filenames.difference_update(stale_files)
+
+            # Properly close file handles before removing stale files
+            # from open_file_infos and closed_file_infos
+            new_open_file_infos = []
+            for info in self.open_file_infos:
+                if info.filename in stale_files:
+                    if info.file_handle and not info.file_handle.closed:
+                        try:
+                            info.file_handle.close()
+                        except Exception:
+                            logger.debug(
+                                f"Failed to close file handle for {info.filename}"
+                            )
+                        info.file_handle = None
+                else:
+                    new_open_file_infos.append(info)
+            self.open_file_infos = new_open_file_infos
+
+            new_closed_file_infos = []
+            for info in self.closed_file_infos:
+                if info.filename not in stale_files:
+                    new_closed_file_infos.append(info)
+            self.closed_file_infos = new_closed_file_infos
+
+        # Add new files that are not already being tracked
+        for file_path in current_files:
             if os.path.isfile(file_path) and file_path not in self.log_filenames:
                 worker_match = WORKER_LOG_PATTERN.match(file_path)
                 if worker_match:
