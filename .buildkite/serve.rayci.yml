@@ -247,6 +247,7 @@ steps:
         --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=1
         --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
         --test-env=RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
+        --test-arg=-vv
     depends_on: servebuild-multipy
 
   - label: ":ray-serve: serve: direct ingress tests (same loop)"
@@ -262,6 +263,7 @@ steps:
         --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
         --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
         --test-env=RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
+        --test-arg=-vv
     depends_on: servebuild-multipy
 
   # - label: ":ray-serve: serve: doc gpu tests"
