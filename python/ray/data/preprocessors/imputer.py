@@ -167,11 +167,11 @@ class SimpleImputer(SerializablePreprocessorBase):
         self._fill_value = value
 
     @property
-    def output_columns(self) -> Optional[List[str]]:
+    def output_columns(self) -> List[str]:
         return self._output_columns
 
     @output_columns.setter
-    def output_columns(self, value: Optional[List[str]]) -> None:
+    def output_columns(self, value: List[str]) -> None:
         self._output_columns = value
 
     def _fit(self, dataset: "Dataset") -> SerializablePreprocessorBase:

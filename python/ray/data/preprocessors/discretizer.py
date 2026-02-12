@@ -255,11 +255,11 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         self._dtypes = value
 
     @property
-    def output_columns(self) -> Optional[List[str]]:
+    def output_columns(self) -> List[str]:
         return self._output_columns
 
     @output_columns.setter
-    def output_columns(self, value: Optional[List[str]]) -> None:
+    def output_columns(self, value: List[str]) -> None:
         return self._output_columns
 
     _is_fittable = False
