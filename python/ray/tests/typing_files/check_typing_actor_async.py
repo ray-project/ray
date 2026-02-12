@@ -1,8 +1,8 @@
 import ray
 from ray import ObjectRef
-from ray.actor import ActorClass, ActorProxy
 
 
+@ray.remote
 class AsyncActor:
 
     @ray.method
@@ -24,7 +24,7 @@ class AsyncActor:
         return x
 
 
-actor = ray.remote(AsyncActor).remote()
+actor = AsyncActor.remote()
 
 ref_add: ObjectRef[int] = actor.add.remote(1, 2)
 ref_mul: ObjectRef[int] = actor.mul.remote(2, 3)

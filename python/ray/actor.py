@@ -17,9 +17,9 @@ from typing import (
 )
 
 try:
-    from typing import Concatenate, Never, ParamSpec
+    from typing import Never, ParamSpec
 except ImportError:
-    from typing_extensions import Concatenate, Never, ParamSpec
+    from typing_extensions import Never, ParamSpec
 
 import ray._common.signature as signature
 import ray._private.ray_constants as ray_constants
