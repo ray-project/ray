@@ -76,16 +76,66 @@ def test_read_single_file(ray_start_regular_shared, filesystem, dir_path, endpoi
     if write_filesystem is None:
         write_filesystem = pyarrow.fs.LocalFileSystem()
 
+    file_uri = os.path.join(dir_path, "file.txt")
+
     # PyArrow filesystems expect paths without schemes. `FileBasedDatasource` handles
     # this internally, but we need to manually strip the scheme for the test setup.
-    write_path = strip_scheme(os.path.join(dir_path, "file.txt"))
+    write_path = strip_scheme(file_uri)
     with write_filesystem.open_output_stream(write_path) as f:
         f.write(b"spam")
 
-    datasource = MockFileBasedDatasource(dir_path, filesystem=filesystem)
+    datasource = MockFileBasedDatasource(file_uri, filesystem=filesystem)
     tasks = datasource.get_read_tasks(1)
-
     rows = execute_read_tasks(tasks)
+
+    assert rows == [{"data": b"spam"}]
+
+
+def test_read_single_directory_local(ray_start_regular_shared, tmp_path):
+    dir_path = os.path.join(tmp_path, "dir")
+    os.mkdir(dir_path)
+
+    p1 = os.path.join(dir_path, "a.txt")
+    with open(p1, "wb") as f:
+        f.write(b"a")
+
+    p2 = os.path.join(dir_path, "b.txt")
+    with open(p2, "wb") as f:
+        f.write(b"b")
+
+    datasource = MockFileBasedDatasource(dir_path)
+    rows = execute_read_tasks(datasource.get_read_tasks(1))
+
+    assert sorted(rows, key=lambda r: r["data"]) == [{"data": b"a"}, {"data": b"b"}]
+
+
+def test_read_dir_and_file_mixed(ray_start_regular_shared, tmp_path):
+    dir_path = os.path.join(tmp_path, "dir")
+    os.mkdir(dir_path)
+
+    p1 = os.path.join(dir_path, "a.txt")
+    with open(p1, "wb") as f:
+        f.write(b"a")
+
+    p2 = os.path.join(tmp_path, "c.txt")
+    with open(p2, "wb") as f:
+        f.write(b"c")
+
+    datasource = MockFileBasedDatasource([dir_path, p2])
+    rows = execute_read_tasks(datasource.get_read_tasks(1))
+
+    assert sorted(rows, key=lambda r: r["data"]) == [{"data": b"a"}, {"data": b"c"}]
+
+
+def test_single_file_infinite_target_max_block_size(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default, tmp_path
+):
+    path = os.path.join(tmp_path, "file.txt")
+    with open(path, "wb") as f:
+        f.write(b"spam")
+
+    datasource = MockFileBasedDatasource(path)
+    rows = execute_read_tasks(datasource.get_read_tasks(1))
 
     assert rows == [{"data": b"spam"}]
 
@@ -271,6 +321,14 @@ def test_file_extensions(ray_start_regular_shared, tmp_path):
     datasource = MockFileBasedDatasource([csv_path, txt_path], file_extensions=["csv"])
     ds = ray.data.read_datasource(datasource)
     assert ds.input_files() == [csv_path]
+
+def test_file_extensions_no_match_raises(ray_start_regular_shared, tmp_path):
+    txt_path = os.path.join(tmp_path, "file.txt")
+    with open(txt_path, "w") as file:
+        file.write("ham")
+
+    with pytest.raises(ValueError, match="No input files"):
+        MockFileBasedDatasource([txt_path], file_extensions=["csv"])
 
 
 def test_flaky_read_task_retries(ray_start_regular_shared, tmp_path):
