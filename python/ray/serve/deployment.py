@@ -71,6 +71,14 @@ class Deployment:
     One or more deployments can be composed together into an `Application` which is
     then run via `serve.run` or a config file.
 
+    User-defined Methods:
+        check_health():
+            [Optional] Define this method to implement custom application-level
+            health checks. Ray Serve calls this periodically (default 10s).
+            If it raises an exception, the replica is marked as UNHEALTHY
+            and restarted. Useful for detecting internal engine crashes
+            (like vLLM AsyncEngineDeadError) that leave the actor process alive.
+
     Example:
 
     .. code-block:: python
