@@ -177,17 +177,90 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         ] = None,
         output_columns: Optional[List[str]] = None,
     ):
-        self.columns = columns
-        self.bins = bins
-        self.right = right
-        self.include_lowest = include_lowest
-        self.duplicates = duplicates
-        self.dtypes = dtypes
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._columns = columns
+        self._bins = bins
+        self._right = right
+        self._include_lowest = include_lowest
+        self._duplicates = duplicates
+        self._dtypes = dtypes
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
         self._validate_bins_columns()
+
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @columns.setter
+    def columns(self, value: List[str]) -> None:
+        self._columns = value
+
+    @property
+    def bins(
+        self,
+    ) -> Union[
+        Iterable[float],
+        pd.IntervalIndex,
+        Dict[str, Union[Iterable[float], pd.IntervalIndex]],
+    ]:
+        return self._bins
+
+    @bins.setter
+    def bins(
+        self,
+        value: Union[
+            Iterable[float],
+            pd.IntervalIndex,
+            Dict[str, Union[Iterable[float], pd.IntervalIndex]],
+        ],
+    ) -> None:
+        self._bins = value
+
+    @property
+    def right(self) -> bool:
+        return self._right
+
+    @right.setter
+    def right(self, value: bool) -> None:
+        self._right = value
+
+    @property
+    def include_lowest(self) -> bool:
+        return self._include_lowest
+
+    @include_lowest.setter
+    def include_lowest(self, value: bool) -> None:
+        self._include_lowest = value
+
+    @property
+    def duplicates(self) -> str:
+        return self._duplicates
+
+    @duplicates.setter
+    def duplicates(self, value: str) -> None:
+        self._duplicates = value
+
+    @property
+    def dtypes(
+        self,
+    ) -> Optional[Dict[str, Union[pd.CategoricalDtype, Type[np.integer]]]]:
+        return self._dtypes
+
+    @dtypes.setter
+    def dtypes(
+        self, value: Optional[Dict[str, Union[pd.CategoricalDtype, Type[np.integer]]]]
+    ) -> None:
+        self._dtypes = value
+
+    @property
+    def output_columns(self) -> Optional[List[str]]:
+        return self._output_columns
+
+    @output_columns.setter
+    def output_columns(self, value: Optional[List[str]]) -> None:
+        return self._output_columns
 
     _is_fittable = False
 
