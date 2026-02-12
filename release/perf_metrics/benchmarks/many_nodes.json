@@ -1,14 +1,14 @@
 {
-    "_dashboard_memory_usage_mb": 93.601792,
+    "_dashboard_memory_usage_mb": 115.93728,
     "_dashboard_test_success": true,
-    "_peak_memory": 2.34,
-    "_peak_process_memory": "PID\tMEM\tCOMMAND\n3115\t0.61GiB\t/home/ray/anaconda3/lib/python3.10/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/\n2638\t0.31GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n5058\t0.16GiB\tpython distributed/test_many_tasks.py --num-tasks=1000\n3328\t0.14GiB\tray-dashboard-NodeHead-0 (/home/ray/anaconda3/bin/python3.10 -c \"from multiprocessing.spawn import s\n3810\t0.12GiB\t/home/ray/anaconda3/bin/python3.10 -u /home/ray/anaconda3/lib/python3.10/site-packages/ray/dashboard\n2789\t0.1GiB\t/usr/bin/python3 /app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/product/\n1088\t0.09GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n3244\t0.09GiB\t/home/ray/anaconda3/bin/python3.10 /home/ray/anaconda3/lib/python3.10/site-packages/ray/dashboard/da\n3812\t0.08GiB\t/home/ray/anaconda3/bin/python3.10 -u /home/ray/anaconda3/lib/python3.10/site-packages/ray/_private/\n3326\t0.08GiB\tray-dashboard-EventHead-0 (/home/ray/anaconda3/bin/python3.10 -c \"from multiprocessing.spawn import",
+    "_peak_memory": 2.5,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n3427\t0.62GiB\t/home/ray/anaconda3/lib/python3.10/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/\n2760\t0.37GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n17152\t0.17GiB\tpython distributed/test_many_tasks.py --num-tasks=1000\n3662\t0.16GiB\tray-dashboard-NodeHead-0 (/home/ray/anaconda3/bin/python3.10 -c \"from multiprocessing.spawn import s\n4158\t0.12GiB\tray::DashboardAgent\n3660\t0.11GiB\tray-dashboard-EventHead-0 (/home/ray/anaconda3/bin/python3.10 -c \"from multiprocessing.spawn import\n3023\t0.11GiB\t/app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/python3_9_x86_64-unknown-\n3578\t0.11GiB\t/home/ray/anaconda3/bin/python3.10 /home/ray/anaconda3/lib/python3.10/site-packages/ray/dashboard/da\n1086\t0.1GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n17312\t0.08GiB\tray::DashboardTester.run",
     "num_tasks": 1000,
     "perf_metrics": [
         {
             "perf_metric_name": "tasks_per_second",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 379.30168512953065
+            "perf_metric_value": 302.9857172164898
         },
         {
             "perf_metric_name": "used_cpus_by_deadline",
@@ -18,20 +18,20 @@
         {
             "perf_metric_name": "dashboard_p50_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 7.417
+            "perf_metric_value": 6.98
         },
         {
             "perf_metric_name": "dashboard_p95_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 25.72
+            "perf_metric_value": 116.561
         },
         {
             "perf_metric_name": "dashboard_p99_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 55.245
+            "perf_metric_value": 176.997
         }
     ],
-    "tasks_per_second": 379.30168512953065,
-    "time": 302.63642382621765,
+    "tasks_per_second": 302.9857172164898,
+    "time": 303.3004856109619,
     "used_cpus": 250.0
 }
