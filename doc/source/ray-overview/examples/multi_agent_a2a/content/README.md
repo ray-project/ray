@@ -191,7 +191,7 @@ Start Ray Serve and deploy all services with a single command in the terminal:
 
 
 ```python
-!serve run serve_multi_config.yaml 
+!serve run serve_multi_config.yaml  --non-blocking
 ```
 
 This command deploys all the following services:
