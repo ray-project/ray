@@ -999,7 +999,7 @@ class Categorizer(SerializablePreprocessorBase):
                 col: {"categories": list(dtype.categories), "ordered": dtype.ordered}
                 for col, dtype in self._dtypes.items()
             }
-            if hasattr(self, "dtypes") and self._dtypes
+            if hasattr(self, "_dtypes") and self._dtypes
             else None,
         }
 
