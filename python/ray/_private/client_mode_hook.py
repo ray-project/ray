@@ -4,9 +4,9 @@ from contextlib import contextmanager
 from functools import wraps
 from typing import Any, Callable, TypeVar, cast
 
-F = TypeVar("F", bound=Callable[..., Any])
-
 from ray._private.auto_init_hook import auto_init_ray
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 # Attr set on func defs to mark they have been converted to client mode.
 RAY_CLIENT_MODE_ATTR = "__ray_client_mode_key__"
