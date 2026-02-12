@@ -359,6 +359,25 @@ class AutoscalingPolicy(BaseModel):
         description="Policy function can be a string import path or a function callable. "
         "If it's a string import path, it must be of the form `path.to.module:function_name`. ",
     )
+    policy_kwargs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Keyword arguments passed to the policy class constructor when "
+            "policy_function refers to a class. Ignored when policy_function "
+            "is a plain function. Values must be JSON-serializable."
+        ),
+    )
+
+    @validator("policy_kwargs", always=True)
+    def policy_kwargs_json_serializable(cls, v):
+        if isinstance(v, bytes):
+            return v
+        if v is not None:
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError(f"policy_kwargs is not JSON-serializable: {str(e)}.")
+        return v
 
     def __init__(self, **kwargs):
         serialized_policy_def = kwargs.pop("_serialized_policy_def", None)
