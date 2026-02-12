@@ -51,7 +51,7 @@ def test_system_exception(caplog, propagate_logs, ray_start_regular_shared):
 
     with pytest.raises(FakeException) as exc_info:
         with patch(
-            "ray.data._internal.plan.ExecutionPlan.execute",
+            "ray.data.dataset.ExecutionCache.get_bundle",
             side_effect=FakeException(),
         ):
             ray.data.range(1).materialize()
