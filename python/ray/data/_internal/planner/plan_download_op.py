@@ -326,8 +326,8 @@ class PartitionActor:
                     "exist. Is the specified download column correct?"
                 )
 
-        # If target block size is unbounded, pass the block through as-is.
-        if self._target_nbytes is None:
+        # If target block size is unbounded or block is empty, pass through.
+        if self._target_nbytes is None or block.num_rows == 0:
             yield block
             return
 
@@ -429,23 +429,22 @@ class PartitionActor:
             # Return zeros for all URIs if resolution fails.
             return [0] * len(uris)
 
-        # Use ThreadPoolExecutor for concurrent size fetching.
-        file_sizes: List[Optional[int]] = [None] * len(paths)
+        # _resolve_paths_and_filesystem may return fewer paths than input
+        # URIs (e.g. skipping invalid ones). Always return a list sized to
+        # the original input so callers can safely zip with row indices.
+        file_sizes: List[Optional[int]] = [0] * len(uris)
         with ThreadPoolExecutor(max_workers=URI_DOWNLOAD_MAX_WORKERS) as executor:
-            # Submit all size fetch tasks.
             future_to_file_index = {
                 executor.submit(get_file_size, uri_path, fs): file_index
                 for file_index, uri_path in enumerate(paths)
             }
 
-            # Collect results as they complete (order doesn't matter).
             for future in as_completed(future_to_file_index):
                 file_index = future_to_file_index[future]
                 try:
                     size = future.result()
-                    file_sizes[file_index] = size
+                    file_sizes[file_index] = size if size is not None else 0
                 except Exception as e:
                     logger.warning(f"Error fetching file size for download: {e}")
-                    file_sizes[file_index] = None
 
         return file_sizes

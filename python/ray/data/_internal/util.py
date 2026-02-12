@@ -1854,7 +1854,15 @@ class OnlineLogNormalEstimator:
         self._total_observations += 1
 
     def update_batch(self, values: List[Optional[float]]) -> None:
-        """Incorporate a batch of observations, skipping None values."""
+        """Incorporate a batch of observations, skipping None and non-positive
+        values.
+
+        Applies standard per-observation EWMA decay: each observation decays
+        the prior by ``decay``, so a batch of N values decays old history by
+        ``decay^N``. This is the standard EWMA formulation — the effective
+        memory window is ``1 / (1 - decay)`` observations regardless of how
+        they are batched.
+        """
         for v in values:
             if v is not None:
                 self.update(v)
@@ -1885,7 +1893,11 @@ class OnlineLogNormalEstimator:
         ``scipy.stats.lognorm`` is parameterized as:
             s     = sigma    (shape — std dev in log-space)
             scale = e^mean  (scale — median in original space)
+
+        Raises:
+            ImportError: If scipy is not installed.
         """
+        _check_import(self, module="scipy", package="scipy")
         from scipy.stats import lognorm
 
         return lognorm(s=self._stddev, scale=math.exp(self._mean))
