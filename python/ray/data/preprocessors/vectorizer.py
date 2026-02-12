@@ -131,24 +131,56 @@ class HashingVectorizer(Preprocessor):
         output_columns: Optional[List[str]] = None,
     ):
         super().__init__()
-        self.columns = columns
-        self.num_features = num_features
-        self.tokenization_fn = tokenization_fn or simple_split_tokenizer
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._columns = columns
+        self._num_features = num_features
+        self._tokenization_fn = tokenization_fn or simple_split_tokenizer
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @columns.setter
+    def columns(self, value: List[str]) -> None:
+        self._columns = value
+
+    @property
+    def num_features(self) -> int:
+        return self._num_features
+
+    @num_features.setter
+    def num_features(self, value: int) -> None:
+        self._num_features = value
+
+    @property
+    def tokenization_fn(self) -> Callable[[str], List[str]]:
+        return self._tokenization_fn
+
+    @tokenization_fn.setter
+    def tokenization_fn(self, value: Callable[[str], List[str]]) -> None:
+        self._tokenization_fn = value
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
+    @output_columns.setter
+    def output_columns(self, value: List[str]) -> None:
+        self._output_columns = value
+
     def _transform_pandas(self, df: pd.DataFrame):
         def hash_count(tokens: List[str]) -> Counter:
-            hashed_tokens = [simple_hash(token, self.num_features) for token in tokens]
+            hashed_tokens = [simple_hash(token, self._num_features) for token in tokens]
             return Counter(hashed_tokens)
 
-        for col, output_col in zip(self.columns, self.output_columns):
-            tokenized = df[col].map(self.tokenization_fn)
+        for col, output_col in zip(self._columns, self._output_columns):
+            tokenized = df[col].map(self._tokenization_fn)
             hashed = tokenized.map(hash_count)
             # Create a list to store the hash columns
             hash_columns = []
-            for i in range(self.num_features):
+            for i in range(self._num_features):
                 series = hashed.map(lambda counts: counts[i])
                 series.name = f"hash_{i}"
                 hash_columns.append(series)
@@ -158,11 +190,11 @@ class HashingVectorizer(Preprocessor):
         return df
 
     def __repr__(self):
-        fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
+        fn_name = getattr(self._tokenization_fn, "__name__", self._tokenization_fn)
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"num_features={self.num_features!r}, tokenization_fn={fn_name}, "
-            f"output_columns={self.output_columns!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"num_features={self._num_features!r}, tokenization_fn={fn_name}, "
+            f"output_columns={self._output_columns!r})"
         )
 
 
@@ -250,27 +282,59 @@ class CountVectorizer(Preprocessor):
         output_columns: Optional[List[str]] = None,
     ):
         super().__init__()
-        self.columns = columns
-        self.tokenization_fn = tokenization_fn or simple_split_tokenizer
-        self.max_features = max_features
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._columns = columns
+        self._tokenization_fn = tokenization_fn or simple_split_tokenizer
+        self._max_features = max_features
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
+
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @columns.setter
+    def columns(self, value: List[str]) -> None:
+        self._columns = value
+
+    @property
+    def tokenization_fn(self) -> Callable[[str], List[str]]:
+        return self._tokenization_fn
+
+    @tokenization_fn.setter
+    def tokenization_fn(self, value: Callable[[str], List[str]]) -> None:
+        self._tokenization_fn = value
+
+    @property
+    def max_features(self) -> Optional[int]:
+        return self._max_features
+
+    @max_features.setter
+    def max_features(self, value: Optional[int]) -> None:
+        self._max_features = value
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
+    @output_columns.setter
+    def output_columns(self, value: List[str]) -> None:
+        self._output_columns = value
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         def stat_fn(key_gen):
             def get_pd_value_counts(df: pd.DataFrame) -> List[Counter]:
                 def get_token_counts(col):
-                    token_series = df[col].apply(self.tokenization_fn)
+                    token_series = df[col].apply(self._tokenization_fn)
                     tokens = token_series.sum()
                     return Counter(tokens)
 
-                return {col: [get_token_counts(col)] for col in self.columns}
+                return {col: [get_token_counts(col)] for col in self._columns}
 
             value_counts = dataset.map_batches(
                 get_pd_value_counts, batch_format="pandas"
             )
-            total_counts = {col: Counter() for col in self.columns}
+            total_counts = {col: Counter() for col in self._columns}
             for batch in value_counts.iter_batches(batch_size=None):
                 for col, counters in batch.items():
                     for counter in counters:
@@ -280,29 +344,29 @@ class CountVectorizer(Preprocessor):
                 return Counter(dict(counter.most_common(n)))
 
             top_counts = [
-                most_common(counter, self.max_features)
+                most_common(counter, self._max_features)
                 for counter in total_counts.values()
             ]
 
             return {
                 key_gen(col): counts  # noqa
-                for (col, counts) in zip(self.columns, top_counts)
+                for (col, counts) in zip(self._columns, top_counts)
             }
 
         self._stat_computation_plan.add_callable_stat(
             stat_fn=lambda key_gen: stat_fn(key_gen),
             stat_key_fn=lambda col: f"token_counts({col})",
-            columns=self.columns,
+            columns=self._columns,
         )
 
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
         result_columns = []
-        for col, output_col in zip(self.columns, self.output_columns):
+        for col, output_col in zip(self._columns, self._output_columns):
             token_counts = self.stats_[f"token_counts({col})"]
             sorted_tokens = [token for (token, count) in token_counts.most_common()]
-            tokenized = df[col].map(self.tokenization_fn).map(Counter)
+            tokenized = df[col].map(self._tokenization_fn).map(Counter)
 
             # Create a list to store token frequencies
             token_columns = []
@@ -321,9 +385,9 @@ class CountVectorizer(Preprocessor):
         return df
 
     def __repr__(self):
-        fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
+        fn_name = getattr(self._tokenization_fn, "__name__", self._tokenization_fn)
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"tokenization_fn={fn_name}, max_features={self.max_features!r}, "
-            f"output_columns={self.output_columns!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"tokenization_fn={fn_name}, max_features={self._max_features!r}, "
+            f"output_columns={self._output_columns!r})"
         )
