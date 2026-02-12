@@ -6,8 +6,10 @@ from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from ray.serve._private.common import (
+    AUTOSCALING_LOG_TIMESTAMP_FORMAT,
     RUNNING_REQUESTS_KEY,
     ApplicationName,
+    ApplicationSnapshot,
     AsyncInferenceTaskQueueMetricReport,
     AutoscalingSnapshotError,
     AutoscalingStatus,
@@ -723,15 +725,9 @@ class DeploymentAutoscalingState:
         else:
             time_since_last_collected_metrics_s = None
 
-        if target_replicas > current_replicas:
-            scaling_status_raw = AutoscalingStatus.UPSCALE
-        elif target_replicas < current_replicas:
-            scaling_status_raw = AutoscalingStatus.DOWNSCALE
-        else:
-            scaling_status_raw = AutoscalingStatus.STABLE
-
-        scaling_status = AutoscalingStatus.format_scaling_status(scaling_status_raw)
-
+        scaling_status = AutoscalingStatus.get_formatted_status(
+            target_replicas, current_replicas
+        )
         look_back_period_s = self._config.look_back_period_s
         metrics_health = DeploymentSnapshot.format_metrics_health_text(
             time_since_last_collected_metrics_s=time_since_last_collected_metrics_s,
@@ -746,9 +742,11 @@ class DeploymentAutoscalingState:
         policy = ctx.config.policy.get_policy()
         policy_name_str = f"{policy.__module__}.{policy.__name__}"
         return DeploymentSnapshot(
-            timestamp_str=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            app=self._deployment_id.app_name,
-            deployment=self._deployment_id.name,
+            timestamp_str=time.strftime(
+                AUTOSCALING_LOG_TIMESTAMP_FORMAT, time.gmtime()
+            ),
+            app_name=self._deployment_id.app_name,
+            deployment_name=self._deployment_id.name,
             current_replicas=current_replicas,
             target_replicas=target_replicas,
             min_replicas=min_replicas,
@@ -867,6 +865,7 @@ class ApplicationAutoscalingState:
         # user defined policy returns a dictionary of state that is persisted between autoscaling decisions
         # content of the dictionary is determined by the user defined policy but is keyed by deployment id
         self._policy_state: Optional[Dict[DeploymentID, Dict]] = None
+        self._cached_application_snapshot: Optional[ApplicationSnapshot] = None
 
     @property
     def deployments(self):
@@ -900,6 +899,42 @@ class ApplicationAutoscalingState:
 
     def has_policy(self) -> bool:
         return self._policy is not None
+
+    def _create_application_snapshot(
+        self,
+        *,
+        autoscaling_contexts: Dict[DeploymentID, AutoscalingContext],
+        decisions: Dict[DeploymentID, int],
+    ) -> ApplicationSnapshot:
+        """Create a fully-populated ApplicationSnapshot using data from
+        app-level autoscaling decision.
+        """
+        total_current = sum(
+            autoscaling_contexts[dep_id].current_num_replicas
+            for dep_id in autoscaling_contexts
+        )
+        total_target = sum(decisions.values())
+
+        scaling_status = AutoscalingStatus.get_formatted_status(
+            total_target, total_current
+        )
+
+        errors: List[str] = []
+
+        policy_name_str = f"{self._policy.__module__}.{self._policy.__name__}"
+
+        return ApplicationSnapshot(
+            timestamp_str=time.strftime(
+                AUTOSCALING_LOG_TIMESTAMP_FORMAT, time.gmtime()
+            ),
+            app_name=self._app_name,
+            num_deployments=len(decisions),
+            total_current_replicas=total_current,
+            total_target_replicas=total_target,
+            scaling_status=scaling_status,
+            policy_name=policy_name_str,
+            errors=errors,
+        )
 
     def register_deployment(
         self,
@@ -1028,6 +1063,11 @@ class ApplicationAutoscalingState:
                     if not _skip_bound_check
                     else math.ceil(num_replicas)
                 )
+            self._cached_application_snapshot = self._create_application_snapshot(
+                autoscaling_contexts=autoscaling_contexts,
+                decisions=results,
+            )
+
             return results
         else:
             # Using deployment-level policy
@@ -1118,6 +1158,10 @@ class ApplicationAutoscalingState:
         """
         for dep_state in self._deployment_autoscaling_states.values():
             dep_state.drop_stale_handle_metrics(alive_serve_actor_ids)
+
+    def get_application_snapshot(self) -> Optional[ApplicationSnapshot]:
+        """Return the cached application snapshot if available."""
+        return self._cached_application_snapshot
 
 
 class AutoscalingStateManager:
@@ -1312,3 +1356,12 @@ class AutoscalingStateManager:
             return None
         dep_state = app_state._deployment_autoscaling_states.get(deployment_id)
         return dep_state.get_deployment_snapshot() if dep_state else None
+
+    def get_application_snapshot(
+        self, app_name: ApplicationName
+    ) -> Optional[ApplicationSnapshot]:
+        """Get the cached application snapshot for an app with app-level policy."""
+        app_state = self._app_autoscaling_states.get(app_name)
+        if not app_state or not app_state.has_policy():
+            return None
+        return app_state.get_application_snapshot()
