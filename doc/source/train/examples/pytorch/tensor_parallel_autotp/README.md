@@ -342,7 +342,6 @@ def setup_model_with_autotp(
     dp_size: int,
     world_rank: int,
     world_size: int,
-    device: torch.device,
     config: dict,
 ):
     """
@@ -409,7 +408,7 @@ def setup_model_with_autotp(
     # [3] Enable AutoTP instrumentation BEFORE model creation
     set_autotp_mode(training=True)
 
-    # [4] Load pretrained model weights and place model on the target device
+    # [4] Load pretrained model weights on CPU
     # Sync seeds to ensure non-TP parameters (embeddings, layer norms) are identical across ranks
     seed = config.get("seed", 42)
     torch.manual_seed(seed)
@@ -419,7 +418,7 @@ def setup_model_with_autotp(
         model_name,
         trust_remote_code=True,
         torch_dtype=dtype,
-    ).to(device)
+    )
 
     # [5] Apply TP sharding with deepspeed.tp_model_init()
     model = deepspeed.tp_model_init(
@@ -487,6 +486,7 @@ def setup_model_with_autotp(
     )
 
     # [9] Initialize DeepSpeed engine
+    # DeepSpeed handles model device placement during initialize()
     engine, optimizer, _, _ = deepspeed.initialize(
         model=model,
         optimizer=optimizer,
@@ -597,7 +597,6 @@ def train_func(config):
         dp_size=dp_size,
         world_rank=world_rank,
         world_size=world_size,
-        device=device,
         config=config,
     )
     start_epoch = load_checkpoint(engine)
