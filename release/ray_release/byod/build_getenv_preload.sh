@@ -20,6 +20,7 @@ cat > getenv_preload.c << 'GETENV_EOF'
 #include <stdlib.h>
 #include <string.h>
 #include <execinfo.h>
+#include <pthread.h>
 
 #define MAX_FRAMES 64
 #define SKIP_FRAMES 1
@@ -27,6 +28,7 @@ cat > getenv_preload.c << 'GETENV_EOF'
 
 static char log_buf[LOG_BUF_SIZE];
 static size_t log_pos;
+static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void buf_append(const char *fmt, ...) {
   if (log_pos >= LOG_BUF_SIZE) return;
@@ -88,40 +90,48 @@ static void log_backtrace_append(const char *tag) {
 }
 
 char *getenv(const char *name) {
+  pthread_mutex_lock(&log_mutex);
   log_pos = 0;
   buf_append("[getenv_preload] getenv name=%s\n", name ? name : "(null)");
   log_backtrace_append("getenv");
   buf_flush();
+  pthread_mutex_unlock(&log_mutex);
   return getenv_real(name);
 }
 
 int setenv(const char *name, const char *value, int overwrite) {
+  pthread_mutex_lock(&log_mutex);
   log_pos = 0;
   buf_append("[getenv_preload] setenv name=%s value=%s overwrite=%d\n",
              name ? name : "(null)", value ? value : "(null)", overwrite);
   log_backtrace_append("setenv");
   buf_flush();
+  pthread_mutex_unlock(&log_mutex);
   return setenv_real(name, value, overwrite);
 }
 
 int putenv(char *string) {
+  pthread_mutex_lock(&log_mutex);
   log_pos = 0;
   buf_append("[getenv_preload] putenv string=%s\n", string ? string : "(null)");
   log_backtrace_append("putenv");
   buf_flush();
+  pthread_mutex_unlock(&log_mutex);
   return putenv_real(string);
 }
 
 int unsetenv(const char *name) {
+  pthread_mutex_lock(&log_mutex);
   log_pos = 0;
   buf_append("[getenv_preload] unsetenv name=%s\n", name ? name : "(null)");
   log_backtrace_append("unsetenv");
   buf_flush();
+  pthread_mutex_unlock(&log_mutex);
   return unsetenv_real(name);
 }
 GETENV_EOF
 
 # Linux only (release BYOD images are Linux)
-gcc -shared -fPIC -o getenv_trace_preload.so getenv_preload.c -ldl -Wall
+gcc -shared -fPIC -o getenv_trace_preload.so getenv_preload.c -ldl -lpthread -Wall
 rm -f getenv_preload.c
 echo "Installed $INSTALL_DIR/getenv_trace_preload.so"
