@@ -1765,7 +1765,7 @@ Status CoreWorker::PushError(const JobID &job_id,
                              std::string_view type,
                              std::string_view error_message,
                              double timestamp) {
-  return raylet_ipc_client_->PushError(job_id, type, error_message, timestamp);
+  return raylet_ipc_client_->PushError(job_id, std::string(type), std::string(error_message), timestamp);
 }
 
 json CoreWorker::OverrideRuntimeEnv(const json &child,
