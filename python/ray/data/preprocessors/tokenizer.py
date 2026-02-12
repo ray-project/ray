@@ -70,23 +70,47 @@ class Tokenizer(Preprocessor):
         output_columns: Optional[List[str]] = None,
     ):
         super().__init__()
-        self.columns = columns
+        self._columns = columns
         # TODO(matt): Add a more robust default tokenizer.
-        self.tokenization_fn = tokenization_fn or simple_split_tokenizer
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._tokenization_fn = tokenization_fn or simple_split_tokenizer
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @columns.setter
+    def columns(self, value: List[str]) -> None:
+        self._columns = value
+
+    @property
+    def tokenization_fn(self) -> Callable[[str], List[str]]:
+        return self._tokenization_fn
+
+    @tokenization_fn.setter
+    def tokenization_fn(self, value: Callable[[str], List[str]]) -> None:
+        self._tokenization_fn = value
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
+    @output_columns.setter
+    def output_columns(self, value: List[str]) -> None:
+        self._output_columns = value
+
     def _transform_pandas(self, df: pd.DataFrame):
         def column_tokenizer(s: pd.Series):
-            return s.map(self.tokenization_fn)
+            return s.map(self._tokenization_fn)
 
-        df[self.output_columns] = df.loc[:, self.columns].transform(column_tokenizer)
+        df[self._output_columns] = df.loc[:, self._columns].transform(column_tokenizer)
         return df
 
     def __repr__(self):
-        name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
+        name = getattr(self._tokenization_fn, "__name__", self._tokenization_fn)
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"tokenization_fn={name}, output_columns={self.output_columns!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"tokenization_fn={name}, output_columns={self._output_columns!r})"
         )
