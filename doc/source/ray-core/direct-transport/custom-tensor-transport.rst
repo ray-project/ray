@@ -53,6 +53,30 @@ The following diagram shows when each method is called during a tensor transfer:
 Note that Ray will not call `send_multiple_tensors` for one-sided transports.
 
 
+.. code-block:: text
+
+   Source Actor                                                  Destination Actor
+   ============                                                  =================
+        |                                                               |
+   1. User ray.puts tensor                                              |
+        |                                                               |
+   2. extract_tensor_transport_metadata                                 |
+        |                                                               |
+        | ---- transport_metadata ---->                                 |
+        |                                                               |
+   3. get_communicator_metadata                                         |
+        |                                                               |
+        | ------------------------------------ comm metadata -------->  |
+        |                                                               |
+        |                                          5. recv_multiple_tensors
+        | ------------ tensors --------- -----------------------------> |
+        |                                                               |
+        |                         (transfer complete)                   |
+        |                                                               |
+   6. garbage_collect                                                   |
+   (when ref goes out of scope)                                         |
+
+
 Transport identification methods
 --------------------------------
 
@@ -101,7 +125,7 @@ Ray creates this metadata on the source actor when the tensor is first created, 
         # the device of the tensor, currently, all tensors in the list must have the same device type
         tensor_device: Optional[torch.device] = None
 
-You can extend this class to store transport-specific metadata. For example, if your send or recv needs a source address, you can store it here.
+You can extend this class to store transport-specific metadata. For example, if your send or recv needs a source buffer metadata, you can store it here.
 
 .. code-block:: python
 
@@ -236,7 +260,8 @@ garbage_collect
 ^^^^^^^^^^^^^^^
 
 Cleans up resources when Ray decides to free the RDT object. Ray calls this on the source actor after Ray's distributed reference counting protocol determines the object is out of scope.
-Use this to release any resources your transport allocated, such as deregistering memory buffers. Ray doesn't hold the tensor after returning it to the user on the recv side.
+Use this to release any resources your transport allocated, such as deregistering memory buffers. Ray doesn't hold the tensor after returning it to the user on the recv side, so it can
+be garbage collected whenever the user stops using it.
 
 .. code-block:: python
 
@@ -310,11 +335,11 @@ Custom tensor transports have the following limitations:
 
 - **Actor restarts aren't supported.** Your actor doesn't have access to the custom transport after a restart.
 
-- **Registration must happen before actor creation.** You must create your actor on the same process where you registered the custom tensor transport. For example, you can't use your custom transport with an actor if you registered the custom transport on the driver and created the actor inside a task.
+- **Register transports before actor creation.** If you register a transport after creating an actor, that actor can't use the new transport.
 
-- **Actors only access transports registered before their creation.** If you register a transport after creating an actor, that actor can't use the new transport.
+- **Out-of-order actors** If you have an out-of-order actor (such as an async actor) and the process where you submit the actor task is different from where you created the actor, Ray can't guarantee it has registered your custom transport on the actor at task execution time.
 
-- **Out-of-order actors** If you have an out-of-order actor (such as an async actor) and the process where you submit the actor task is different from where you created the actor, Ray can't guarantee it has registered your custom transport on the actor at task submission time.
+- **Actor creation and task submission from different processes** If the process where you submit an actor task is different from where you created the actor, Ray can't guarantee it has registered your custom transport on the actor at task execution time.
 
 For general RDT limitations, see :ref:`limitations <limitations>`.
 
