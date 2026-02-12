@@ -247,6 +247,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --build-name servebuild-py3.10 --python-version 3.10
         --test-env=RAY_SERVE_ENABLE_HA_PROXY=1
+        --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=0
         --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
         --test-env=RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
         --test-env=SERVE_SOCKET_REUSE_PORT_ENABLED=1
