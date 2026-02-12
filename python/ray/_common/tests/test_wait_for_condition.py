@@ -263,7 +263,7 @@ class TestEdgeCases:
         """Test behavior with zero timeout."""
 
         def slow_condition():
-            time.sleep(10)
+            time.sleep(0.1)
             return True
 
         with pytest.raises(RuntimeError):
