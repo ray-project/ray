@@ -34,9 +34,9 @@ def test_typing_actor_async():
         stderr=subprocess.PIPE,
         text=True,
     )
-    assert result.returncode == 0, (
-        f"Pyright check failed. stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}"
-    )
+    assert (
+        result.returncode == 0
+    ), f"Pyright check failed. stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}"
 
 
 def create_tmp_copy(file_path: str) -> str:
