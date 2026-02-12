@@ -1,0 +1,5 @@
+# Requirements for ray[llm-azure] - Azure Blob Storage support
+# Keep this in sync with the definition in setup.py for ray[llm-azure]
+-r llm-requirements.txt
+adlfs>=2023.1.0
+azure-identity>=1.12.0

@@ -15,3 +15,9 @@ typer
 meson
 pybind11
 hf_transfer
+
+# Cloud storage dependencies are optional. Install via:
+#   pip install ray[llm-s3]    # For AWS S3 (boto3)
+#   pip install ray[llm-gcp]   # For Google Cloud Storage
+#   pip install ray[llm-azure] # For Azure Blob Storage
+# See llm-s3-requirements.txt, llm-gcp-requirements.txt, llm-azure-requirements.txt
