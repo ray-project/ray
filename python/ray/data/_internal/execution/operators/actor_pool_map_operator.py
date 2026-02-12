@@ -166,8 +166,8 @@ class ActorPoolMapOperator(MapOperator):
         # tell which operator they belong to. To fix that, we dynamically create a new
         # class per operator with a unique name.
         self._map_worker_cls = type(f"MapWorker({self.name})", (_MapWorker,), {})
-        # Similarly, we set the actor class name to include operator name to disambiguate 
-        # logs in the Actor Pool 
+        # Similarly, we set the actor class name to include operator name to disambiguate
+        # logs in the Actor Pool
         self._map_worker_cls_name = f"MapWorker({self.name})"
 
         self._actor_pool = _ActorPool(
@@ -988,7 +988,7 @@ class _ActorPool(AutoscalingActorPool):
 
     def initial_size(self) -> int:
         return self._initial_size
-    
+
     def map_worker_cls_name(self) -> str:
         return self._map_worker_cls_name
 
@@ -1330,7 +1330,6 @@ class _ActorPool(AutoscalingActorPool):
             running=self.num_alive_actors(),
             pending=self.num_pending_actors(),
             restarting=self.num_restarting_actors(),
-
         )
 
     def per_actor_resource_usage(self) -> ExecutionResources:
