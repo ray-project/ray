@@ -2,13 +2,12 @@ import asyncio
 import logging
 from typing import Any, Dict, Optional, Tuple, Union
 
-from ray.serve._private.constants import (
-    RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S,
-    SERVE_LOGGER_NAME,
-)
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.config import AutoscalingContext
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+DEFAULT_ASYNC_INFERENCE_QUEUE_POLL_INTERVAL_S = 10.0
 
 
 class AsyncInferenceAutoscalingPolicy:
@@ -46,17 +45,36 @@ class AsyncInferenceAutoscalingPolicy:
         queue_name: Name of the queue to monitor.
         rabbitmq_management_url: RabbitMQ HTTP management API URL. Only required
             for RabbitMQ brokers (e.g. ``http://guest:guest@localhost:15672/api/``).
+        poll_interval_s: How often (in seconds) to poll the broker for queue
+            length. Defaults to 10s. Lower values increase responsiveness
+            but add broker load.
     """
 
     def __init__(
         self,
-        broker_url: str,
-        queue_name: str,
+        broker_url: str = None,
+        queue_name: str = None,
         rabbitmq_management_url: Optional[str] = None,
+        poll_interval_s: Optional[float] = None,
     ):
+        if not broker_url or not queue_name:
+            raise ValueError(
+                "AsyncInferenceAutoscalingPolicy requires 'broker_url' and "
+                "'queue_name' in policy_kwargs. Example:\n"
+                "  AutoscalingPolicy(\n"
+                "      policy_function=AsyncInferenceAutoscalingPolicy,\n"
+                '      policy_kwargs={"broker_url": "redis://...", '
+                '"queue_name": "my_queue"},\n'
+                "  )"
+            )
         self._broker_url = broker_url
         self._queue_name = queue_name
         self._rabbitmq_management_url = rabbitmq_management_url
+        self._poll_interval_s = (
+            poll_interval_s
+            if poll_interval_s is not None
+            else DEFAULT_ASYNC_INFERENCE_QUEUE_POLL_INTERVAL_S
+        )
 
         self._queue_length: int = 0
         self._broker = None
@@ -68,11 +86,7 @@ class AsyncInferenceAutoscalingPolicy:
         if self._started:
             return
         self._started = True
-        loop = asyncio.get_running_loop()
-        self._task = loop.create_task(self._poll_queue())
 
-    async def _poll_queue(self) -> None:
-        """Background loop that periodically queries the broker for queue length."""
         from ray.serve._private.broker import Broker
 
         if self._rabbitmq_management_url is not None:
@@ -82,6 +96,17 @@ class AsyncInferenceAutoscalingPolicy:
         else:
             self._broker = Broker(self._broker_url)
 
+        loop = asyncio.get_running_loop()
+        self._task = loop.create_task(self._poll_queue())
+
+    def __del__(self):
+        if self._task is not None:
+            self._task.cancel()
+        if self._broker is not None:
+            self._broker.close()
+
+    async def _poll_queue(self) -> None:
+        """Background loop that periodically queries the broker for queue length."""
         while True:
             try:
                 queues = await self._broker.queues([self._queue_name])
@@ -96,9 +121,7 @@ class AsyncInferenceAutoscalingPolicy:
                 logger.warning(
                     f"Failed to get queue length for '{self._queue_name}': {e}"
                 )
-            await asyncio.sleep(
-                RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S
-            )
+            await asyncio.sleep(self._poll_interval_s)
 
     def __call__(
         self, ctx: AutoscalingContext
