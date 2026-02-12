@@ -368,3 +368,52 @@ py_test(
         ci_require("pytest"),
     ],
 )
+
+py_binary(
+    name = "push_release_test_image",
+    srcs = ["push_release_test_image.py"],
+    data = [
+        "//release:aws2gce_iam.json",
+        "//release:azure_docker_login.sh",
+    ],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ":image_tags_lib",
+        "//ci/ray_ci:ray_ci_lib",
+        "//release:ray_release",
+        ci_require("bazel-runfiles"),
+        ci_require("click"),
+    ],
+)
+
+py_test(
+    name = "test_push_release_test_image",
+    size = "small",
+    srcs = ["test_push_release_test_image.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":image_tags_lib",
+        ":push_release_test_image",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_push_release_test_image_diff",
+    size = "small",
+    srcs = ["test_push_release_test_image_diff.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":push_release_test_image",
+        "//ci/ray_ci:ray_ci_lib",
+        ci_require("pytest"),
+    ],
+)

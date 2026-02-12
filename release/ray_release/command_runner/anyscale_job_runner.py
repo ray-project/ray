@@ -25,7 +25,11 @@ from ray_release.exception import (
     TestCommandTimeout,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
-from ray_release.job_manager.anyscale_job_manager import AnyscaleJobManager
+from ray_release.job_manager.anyscale_job_manager import (
+    JOB_FAILED,
+    JOB_STATE_UNKNOWN,
+    AnyscaleJobManager,
+)
 from ray_release.logger import logger
 from ray_release.reporter.artifacts import DEFAULT_ARTIFACTS_DIR
 from ray_release.util import (
@@ -156,14 +160,16 @@ class AnyscaleJobRunner(CommandRunner):
             f"python wait_cluster.py {num_nodes} {timeout}", timeout=timeout + 30
         )
 
-    def _handle_command_output(self, job_state: int, raise_on_timeout: bool = True):
-        if job_state == -1:
+    def _handle_command_output(
+        self, job_return_code: int, raise_on_timeout: bool = True
+    ):
+        if job_return_code == JOB_FAILED:
             raise JobOutOfRetriesError(
                 "Job returned non-success state: 'FAILED' "
                 "(command has not been ran or no logs could have been obtained)."
             )
 
-        if job_state == -2:
+        if job_return_code == JOB_STATE_UNKNOWN:
             raise JobBrokenError("Job state is 'UNKNOWN'.")
 
         # First try to obtain the output.json from S3.
@@ -326,14 +332,14 @@ class AnyscaleJobRunner(CommandRunner):
             working_dir = azure_file_path
             logger.info(f"Working dir uploaded to {working_dir}")
 
-        job_state, time_taken = self.job_manager.run_and_wait(
+        job_return_code, time_taken = self.job_manager.run_and_wait(
             full_command,
             full_env,
             working_dir=working_dir,
             upload_path=self.upload_path,
             timeout=int(timeout),
         )
-        self._handle_command_output(job_state, raise_on_timeout=raise_on_timeout)
+        self._handle_command_output(job_return_code, raise_on_timeout=raise_on_timeout)
 
         return time_taken
 

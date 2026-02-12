@@ -27,6 +27,7 @@ NLP
 PDFs
 PIL
 [Pp]ipelined
+[Pp]olars
 Predibase('s)?
 [Pp]refetch
 [Pp]refetching

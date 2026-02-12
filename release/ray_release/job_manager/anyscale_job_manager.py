@@ -66,10 +66,14 @@ def _convert_compute_config(old_config: Dict[str, Any]) -> ComputeConfig:
     )
 
 
+JOB_SUCCEEDED = 0
+JOB_FAILED = -1
+JOB_STATE_UNKNOWN = -2
+
 job_status_to_return_code = {
-    JobState.SUCCEEDED: 0,
-    JobState.FAILED: -1,
-    JobState.UNKNOWN: -2,
+    JobState.SUCCEEDED: JOB_SUCCEEDED,
+    JobState.FAILED: JOB_FAILED,
+    JobState.UNKNOWN: JOB_STATE_UNKNOWN,
 }
 terminal_state = set(job_status_to_return_code.keys())
 
@@ -199,7 +203,7 @@ class AnyscaleJobManager:
         self._terminate_job()
         unregister_handler(terminate_handler)
 
-    def _wait_job(self, timeout: int):
+    def _wait_job(self, timeout: int) -> Tuple[int, float]:
         # The context ensures the job always either finishes normally
         # or is terminated.
         with self._terminate_job_context():

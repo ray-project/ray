@@ -574,6 +574,23 @@ def test_get_byod_image_tag_runtime_env_only(mock_get_byod_base_image_tag):
     hash_value = dict_hash(custom_info)
     assert test.get_byod_image_tag() == f"test-image-{hash_value}"
 
+    # A different test with the same runtime_env but a different run script
+    # should produce the same image tag (run script doesn't affect the image).
+    test2 = _stub_test(
+        {
+            "name": "linux://other_test",
+            "cluster": {
+                "byod": {
+                    "runtime_env": ["MY_VAR=123"],
+                },
+            },
+            "run": {
+                "script": "python different_script.py",
+            },
+        }
+    )
+    assert test2.get_byod_image_tag() == f"test-image-{hash_value}"
+
 
 @patch("ray_release.test.Test.get_byod_base_image_tag")
 def test_get_byod_image_tag_with_runtime_env_and_script(mock_get_byod_base_image_tag):
