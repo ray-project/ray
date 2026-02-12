@@ -71,7 +71,6 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRAINING_ITERATION
 
@@ -153,6 +152,7 @@ def _remote_fn(env_runner, new_task: int):
 
 class EnvTaskCallback(RLlibCallback):
     """Custom callback implementing `on_train_result()` for changing the envs' maps."""
+
     def __init__(self):
         super().__init__()
         self.patience_limit: int = 3
@@ -186,10 +186,7 @@ class EnvTaskCallback(RLlibCallback):
                     f"2=hardest), b/c R={current_return} on current task."
                 )
                 algorithm.env_runner_group.foreach_env_runner(
-                    func=partial(
-                        _remote_fn,
-                        new_task=int(self.curriculum_task_key)
-                    )
+                    func=partial(_remote_fn, new_task=int(self.curriculum_task_key))
                 )
 
             # Hardest task was solved (1.0) -> report this in the results dict.
@@ -202,8 +199,10 @@ class EnvTaskCallback(RLlibCallback):
         #   patience is saturated,
         # we go back to task=0.
         if current_return == 0.0:
-            if (self.curriculum_task_key > 0 and
-                self.curriculum_patience >= self.patience_limit):
+            if (
+                self.curriculum_task_key > 0
+                and self.curriculum_patience >= self.patience_limit
+            ):
                 print(
                     f"Training iteration: {result[TRAINING_ITERATION]}: "
                     f"policy seemed to have collapsed: {current_return=}. "
@@ -263,5 +262,5 @@ if __name__ == "__main__":
         base_config=base_config,
         args=args,
         stop=stop,
-        success_metric={"task_solved": 1.0}
+        success_metric={"task_solved": 1.0},
     )
