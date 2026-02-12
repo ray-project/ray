@@ -17,9 +17,9 @@ from typing import (
 )
 
 try:
-    from typing import Concatenate, ParamSpec
+    from typing import Concatenate, Never, ParamSpec
 except ImportError:
-    from typing_extensions import Concatenate, ParamSpec
+    from typing_extensions import Concatenate, Never, ParamSpec
 
 import ray._common.signature as signature
 import ray._private.ray_constants as ray_constants
@@ -2400,7 +2400,7 @@ class ActorHandle(Generic[T]):
 
         return object_refs
 
-    def __getattr__(self, item: str) -> Any:
+    def __getattr__(self, item: str) -> Never:
         """Handle dynamic attribute access for actor methods.
 
         This method is called when accessing attributes that don't exist as direct

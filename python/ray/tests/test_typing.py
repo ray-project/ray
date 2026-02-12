@@ -15,8 +15,7 @@ TYPING_ACTOR_ASYNC_PATH = "python/ray/tests/typing_files/check_typing_actor_asyn
 def test_typing_good():
     typing_good_tmp_path = create_tmp_copy(TYPING_GOOD_PATH)
     out, msg, status_code = mypy_api.run([typing_good_tmp_path])
-    print(out)
-    assert status_code == 0, msg
+    assert status_code == 0, out
 
 
 def test_typing_bad():
@@ -28,8 +27,7 @@ def test_typing_bad():
 def test_typing_actor_async():
     typing_actor_async_tmp_path = create_tmp_copy(TYPING_ACTOR_ASYNC_PATH)
     out, msg, status_code = mypy_api.run([typing_actor_async_tmp_path])
-    print(out)
-    assert status_code == 0, msg
+    assert status_code == 0, f"Mypy check failed. stdout:\n{out}\n\nstderr:\n{msg}"
 
 
 def create_tmp_copy(file_path: str) -> str:
