@@ -742,7 +742,6 @@ result = trainer.fit()
 print("Training completed successfully!")
 print(f"Final metrics: {result.metrics}")
 
-# Ray Train V2 resume pattern:
 # Reuse the same RunConfig(name, storage_path). train_func() will receive the
 # latest checkpoint from ray.train.get_checkpoint() and continue automatically.
 RUN_RESUME_DEMO = False
