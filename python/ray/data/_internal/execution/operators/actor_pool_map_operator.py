@@ -165,10 +165,11 @@ class ActorPoolMapOperator(MapOperator):
         # HACK: Without this, all actors show up as `_MapWorker` in Grafana, so we can’t
         # tell which operator they belong to. To fix that, we dynamically create a new
         # class per operator with a unique name.
-        self._map_worker_cls = type(f"MapWorker({self.name})", (_MapWorker,), {})
+        map_worker_cls_name = f"MapWorker({self.name})"
+        self._map_worker_cls = type(map_worker_cls_name, (_MapWorker,), {})
         # Similarly, we set the actor class name to include operator name to disambiguate
         # logs in the Actor Pool
-        self._map_worker_cls_name = f"MapWorker({self.name})"
+        self._map_worker_cls_name = map_worker_cls_name
 
         self._actor_pool = _ActorPool(
             self._start_actor,
@@ -891,7 +892,7 @@ class _ActorPool(AutoscalingActorPool):
         max_actor_concurrency: int,
         max_tasks_in_flight_per_actor: int,
         _enable_actor_pool_on_exit_hook: bool = False,
-        _map_worker_cls_name: str = "",
+        _map_worker_cls_name: Optional[str] = None,
     ):
         """Initialize the actor pool.
 
@@ -942,7 +943,7 @@ class _ActorPool(AutoscalingActorPool):
         # Map from actor handle to its logical ID.
         self._actor_to_logical_id: Dict[ray.actor.ActorHandle, str] = {}
         self._enable_actor_pool_on_exit_hook = _enable_actor_pool_on_exit_hook
-        self._map_worker_cls_name = _map_worker_cls_name
+        self._map_worker_cls_name = _map_worker_cls_name or ""
         # Cached values for actor / task counts
         self._num_restarting_actors: int = 0
         self._num_active_actors: int = 0
@@ -989,6 +990,7 @@ class _ActorPool(AutoscalingActorPool):
     def initial_size(self) -> int:
         return self._initial_size
 
+    @property
     def map_worker_cls_name(self) -> str:
         return self._map_worker_cls_name
 
@@ -1037,7 +1039,7 @@ class _ActorPool(AutoscalingActorPool):
             target_num_actors = req.delta
 
             logger.debug(
-                f"Scaling up {self.map_worker_cls_name()} actor pool by {target_num_actors} (reason={req.reason}, "
+                f"Scaling up{' ' + self.map_worker_cls_name} actor pool by {target_num_actors} (reason={req.reason}, "
                 f"{self.get_actor_info()})"
             )
 
@@ -1060,7 +1062,7 @@ class _ActorPool(AutoscalingActorPool):
 
             if num_released > 0:
                 logger.debug(
-                    f"Scaled down {self.map_worker_cls_name()} actor pool by {num_released} "
+                    f"Scaled down{' ' + self.map_worker_cls_name} actor pool by {num_released} "
                     f"(reason={req.reason}; {self.get_actor_info()})"
                 )
 
