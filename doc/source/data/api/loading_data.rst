@@ -179,6 +179,15 @@ Lance
 
    read_lance
 
+LeRobot
+^^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_lerobot
+
 MCAP (Message Capture)
 ^^^^^^^^^^^^^^^^^^^^^^
 

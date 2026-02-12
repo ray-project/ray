@@ -2,6 +2,7 @@ name: "databuild-py$PYTHON"
 froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON"]
 dockerfile: ci/docker/data.build.Dockerfile
 srcs:
+  - ci/docker/data.build.Dockerfile
   - ci/env/install-dependencies.sh
   - python/requirements.txt
   - python/requirements_compiled.txt

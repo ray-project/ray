@@ -20,6 +20,10 @@ pytest-mock
 decord
 snowflake-connector-python>=3.15.0
 pyiceberg[sql-sqlite]==0.10.0
+# LeRobot dataset support
+av  # PyAV for video decoding
+torchcodec  # TorchCodec for video decoding (preferred backend)
+huggingface_hub  # For downloading LeRobot datasets from HuggingFace
 clickhouse-connect
 kafka-python
 pybase64

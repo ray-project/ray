@@ -239,6 +239,13 @@ if setup_spec.type == SetupType.RAY:
             pandas_dep,
             *pyarrow_deps,
             "fsspec",
+            "av",  # For LeRobot video decoding (PyAV backend)
+            "torchcodec",  # For LeRobot video decoding (TorchCodec backend - preferred)
+            "huggingface_hub",  # For LeRobot dataset downloading
+            "datasets",  # For LeRobot dataset metadata
+            "torch",  # For LeRobot tensor operations
+            "torchvision",  # For LeRobot image transforms
+            "Pillow",  # For LeRobot image processing
         ],
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,

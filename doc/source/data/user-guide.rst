@@ -25,6 +25,7 @@ shows you how to achieve several tasks.
     working-with-tensors
     working-with-pytorch
     working-with-llms
+    working-with-robotics
     monitoring-your-workload
     execution-configurations
     batch_inference

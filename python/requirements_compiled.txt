@@ -2256,6 +2256,9 @@ torch==2.3.0
     #   deepspeed
     #   fairscale
     #   linear-operator
+torchcodec==0.2.0
+    # via -r python/requirements/ml/data-test-requirements.txt
+    # Note: Required for LeRobot video decoding
     #   mosaicml
     #   pyro-ppl
     #   pytorch-lightning
