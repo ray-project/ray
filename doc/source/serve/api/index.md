@@ -90,6 +90,9 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.autoscaling_policy.async_inference_autoscaling_policy
    serve.config.AggregationFunction
    serve.config.RequestRouterConfig
+   serve.config.GangSchedulingConfig
+   serve.config.GangPlacementStrategy
+   serve.config.GangRuntimeFailurePolicy
 ```
 
 ### Schemas
@@ -138,10 +141,12 @@ See the [model composition guide](serve-model-composition) for how to update cod
 
    serve.get_replica_context
    serve.context.ReplicaContext
+   serve.context.GangContext
    serve.get_multiplexed_model_id
    serve.get_app_handle
    serve.get_deployment_handle
    serve.grpc_util.RayServegRPCContext
+   serve.grpc_util.gRPCInputStream
    serve.exceptions.BackPressureError
    serve.exceptions.RayServeException
    serve.exceptions.RequestCancelledError

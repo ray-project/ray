@@ -9,7 +9,11 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._common.test_utils import async_wait_for_condition, wait_for_condition
+from ray._common.test_utils import (
+    async_wait_for_condition,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private import ray_constants
 from ray._private.state_api_test_utils import (
     PidActor,
@@ -19,7 +23,6 @@ from ray._private.state_api_test_utils import (
     verify_tasks_running_or_terminated,
 )
 from ray._private.test_utils import (
-    run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_aggregator_agent_if_enabled,
 )
