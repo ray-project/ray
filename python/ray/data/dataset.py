@@ -7237,14 +7237,14 @@ class ExecutionCache:
 
     def get_schema(self, dag: "LogicalOperator") -> Optional["Schema"]:
         if self.cache_is_fresh(dag):
-            if self._bundle is not None:
+            if self._bundle is not None and self._bundle.schema is not None:
                 return self._bundle.schema
             return self._schema
         return None
 
     def get_num_rows(self, dag: "LogicalOperator") -> Optional[int]:
         if self.cache_is_fresh(dag):
-            if self._bundle is not None:
+            if self._bundle is not None and self._bundle.num_rows() is not None:
                 return self._bundle.num_rows()
             return self._num_rows
         return None
