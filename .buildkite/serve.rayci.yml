@@ -245,9 +245,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servebuild-py3.10 --python-version 3.10
         --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=1
-        --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
-        --test-env=RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
-        --test-arg=-vv
+        --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=6
     depends_on: servebuild-multipy
 
   - label: ":ray-serve: serve: direct ingress tests (same loop)"
@@ -260,10 +258,8 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servebuild-py3.10 --python-version 3.10
         --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=1
-        --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
+        --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=6
         --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
-        --test-env=RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
-        --test-arg=-vv
     depends_on: servebuild-multipy
 
   # - label: ":ray-serve: serve: doc gpu tests"

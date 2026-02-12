@@ -2440,87 +2440,87 @@ def test_get_deployment_config(_skip_if_ff_not_enabled, serve_instance):
     assert isinstance(deployment_config, DeploymentConfig)
 
 
-# def test_stuck_requests_are_force_killed(_skip_if_ff_not_enabled, serve_instance):
-#     """This test is really slow, because it waits for the ports to be released from TIME_WAIT state.
-#     The ports are in TIME_WAIT state because the replicas are force-killed and the ports are not
-#     released immediately."""
-#     import socket
+def test_stuck_requests_are_force_killed(_skip_if_ff_not_enabled, serve_instance):
+    """This test is really slow, because it waits for the ports to be released from TIME_WAIT state.
+    The ports are in TIME_WAIT state because the replicas are force-killed and the ports are not
+    released immediately."""
+    import socket
 
-#     def _can_bind_to_port(port):
-#         """Check if we can bind to the port (not just if nothing is listening)."""
-#         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-#         try:
-#             sock.bind(("0.0.0.0", port))
-#             sock.close()
-#             return True
-#         except OSError:
-#             sock.close()
-#             return False
+    def _can_bind_to_port(port):
+        """Check if we can bind to the port (not just if nothing is listening)."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("0.0.0.0", port))
+            sock.close()
+            return True
+        except OSError:
+            sock.close()
+            return False
 
-#     signal = SignalActor.remote()
+    signal = SignalActor.remote()
 
-#     @serve.deployment(
-#         name="stuck-requests-deployment",
-#         graceful_shutdown_timeout_s=1,
-#     )
-#     class StuckRequestsTest:
-#         async def __call__(self):
-#             # This request will never complete - it waits forever
-#             await signal.wait.remote()
-#             return "ok"
+    @serve.deployment(
+        name="stuck-requests-deployment",
+        graceful_shutdown_timeout_s=1,
+    )
+    class StuckRequestsTest:
+        async def __call__(self):
+            # This request will never complete - it waits forever
+            await signal.wait.remote()
+            return "ok"
 
-#     serve.run(
-#         StuckRequestsTest.bind(),
-#         name="stuck-requests-deployment",
-#         route_prefix="/stuck-requests-deployment",
-#     )
+    serve.run(
+        StuckRequestsTest.bind(),
+        name="stuck-requests-deployment",
+        route_prefix="/stuck-requests-deployment",
+    )
 
-#     # Collect all ports used by the application before deleting it
-#     http_ports = get_http_ports(route_prefix="/stuck-requests-deployment")
-#     grpc_ports = get_grpc_ports(route_prefix="/stuck-requests-deployment")
+    # Collect all ports used by the application before deleting it
+    http_ports = get_http_ports(route_prefix="/stuck-requests-deployment")
+    grpc_ports = get_grpc_ports(route_prefix="/stuck-requests-deployment")
 
-#     http_url = get_application_url("HTTP", app_name="stuck-requests-deployment")
+    http_url = get_application_url("HTTP", app_name="stuck-requests-deployment")
 
-#     with ThreadPoolExecutor() as executor:
-#         # Send requests that will hang forever (signal is never sent)
-#         futures = [executor.submit(httpx.get, http_url, timeout=60) for _ in range(2)]
+    with ThreadPoolExecutor() as executor:
+        # Send requests that will hang forever (signal is never sent)
+        futures = [executor.submit(httpx.get, http_url, timeout=60) for _ in range(2)]
 
-#         # Wait for requests to be received by the replica
-#         wait_for_condition(
-#             lambda: ray.get(signal.cur_num_waiters.remote()) == 2, timeout=10
-#         )
+        # Wait for requests to be received by the replica
+        wait_for_condition(
+            lambda: ray.get(signal.cur_num_waiters.remote()) == 2, timeout=10
+        )
 
-#         # Delete the deployment - requests are still stuck
-#         serve.delete("stuck-requests-deployment", _blocking=False)
+        # Delete the deployment - requests are still stuck
+        serve.delete("stuck-requests-deployment", _blocking=False)
 
-#         # Verify the application is eventually deleted (replica was force-killed).
-#         # This should complete within graceful_shutdown_timeout_s (35s) + buffer.
-#         wait_for_condition(
-#             lambda: "stuck-requests-deployment" not in serve.status().applications,
-#             timeout=10,
-#         )
+        # Verify the application is eventually deleted (replica was force-killed).
+        # This should complete within graceful_shutdown_timeout_s (35s) + buffer.
+        wait_for_condition(
+            lambda: "stuck-requests-deployment" not in serve.status().applications,
+            timeout=10,
+        )
 
-#         # The stuck requests should fail (connection closed or similar)
-#         for future in futures:
-#             try:
-#                 result = future.result(timeout=5)
-#                 # If we get a response, it should be an error (not 200)
-#                 assert result.status_code != 200
-#             except Exception:
-#                 # Expected - request failed due to force-kill
-#                 pass
+        # The stuck requests should fail (connection closed or similar)
+        for future in futures:
+            try:
+                result = future.result(timeout=5)
+                # If we get a response, it should be an error (not 200)
+                assert result.status_code != 200
+            except Exception:
+                # Expected - request failed due to force-kill
+                pass
 
-#     # Wait until all ports can be bound (not just until nothing is listening).
-#     # This ensures the ports are fully released from TIME_WAIT state.
-#     def all_ports_can_be_bound():
-#         for port in http_ports + grpc_ports:
-#             if not _can_bind_to_port(port):
-#                 return False
-#         return True
+    # Wait until all ports can be bound (not just until nothing is listening).
+    # This ensures the ports are fully released from TIME_WAIT state.
+    def all_ports_can_be_bound():
+        for port in http_ports + grpc_ports:
+            if not _can_bind_to_port(port):
+                return False
+        return True
 
-#     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
-#     wait_for_condition(all_ports_can_be_bound, timeout=120)
+    # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
+    wait_for_condition(all_ports_can_be_bound, timeout=120)
 
 
 if __name__ == "__main__":
