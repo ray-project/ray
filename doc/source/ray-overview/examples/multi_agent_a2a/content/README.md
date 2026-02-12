@@ -182,8 +182,16 @@ First, to get Google Search API keys, visit the [Google Cloud Console](https://c
 Set up environment variables following the [Anyscale Workspace environment variables](https://docs.anyscale.com/development/workspace-defaults#env-var) guide.
 
 ```bash
-GOOGLE_API_KEY=<your-google-api-key>
-GOOGLE_CSE_ID=<your-custom-search-engine-id>
+export GOOGLE_API_KEY=<your-google-api-key>
+export GOOGLE_CSE_ID=<your-custom-search-engine-id>
+```
+
+In a notebook:
+
+
+```python
+%env GOOGLE_API_KEY=<your-google-api-key>
+%env GOOGLE_CSE_ID=<your-custom-search-engine-id>
 ```
 
 ### Deploy all services locally
@@ -191,7 +199,7 @@ Start Ray Serve and deploy all services with a single command in the terminal:
 
 
 ```python
-!serve run serve_multi_config.yaml  --non-blocking
+!serve run serve_multi_config.yaml --non-blocking
 ```
 
 This command deploys all the following services:
@@ -282,6 +290,14 @@ export BASE_URL="https://<service-name>-<id>.cld-<cluster-id>.s.anyscaleuserdata
 export ANYSCALE_API_TOKEN="<your-anyscale-api-token>"
 ```
 
+In a notebook:
+
+
+```python
+%env BASE_URL="https://<service-name>-<id>.cld-<cluster-id>.s.anyscaleuserdata.com"
+%env ANYSCALE_API_TOKEN="<your-anyscale-api-token>"
+```
+
 > Note: Don't include a trailing `/` at the end of `BASE_URL` (after `.anyscaleuserdata.com`).
 
 **Test services individually (with curl):**
@@ -326,11 +342,16 @@ Run each of the following curl commands separately and check their responses:
 
 ### Run the test suite against production
 
-You can run the full test suite against your production deployment:
+You can run the full test suite against your production deployment. Set a preventive timeout:
 ```bash
-export BASE_URL="https://<service-name>-<id>.cld-<cluster-id>.s.anyscaleuserdata.com"
-export ANYSCALE_API_TOKEN="<your-anyscale-api-token>"
 export TEST_TIMEOUT_SECONDS="2000"
+```
+
+In a notebook:
+
+
+```python
+%env TEST_TIMEOUT_SECONDS="2000"
 ```
 
 
