@@ -1432,6 +1432,10 @@ class ServeController:
         ]
 
         if not apps:
+            # When HAProxy is enabled and there are no apps, return empty target groups
+            # so that all requests fall through to the default_backend (404)
+            if self._ha_proxy_enabled and from_proxy_manager:
+                return []
             return proxy_target_groups
 
         # Create target groups for each application
