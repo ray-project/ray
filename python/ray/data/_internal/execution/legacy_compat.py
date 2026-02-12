@@ -90,7 +90,7 @@ def execute_to_legacy_bundle_iterator(
             self._size_bytes += bundle.size_bytes()
             return bundle
 
-    return CacheMetadataIterator(bundle_iter)
+    return CacheMetadataIterator(bundle_iter, plan._logical_plan.dag)
 
 
 def execute_to_ref_bundle(

@@ -208,7 +208,7 @@ class ExecutionPlan:
         else:
             # Get schema of output blocks.
             schema = self.schema(fetch_if_missing=False)
-            count = self._cache.get_num_rows()
+            count = self._cache.get_num_rows(self._logical_plan.dag)
 
         if schema is None:
             schema_str = "Unknown schema"
@@ -321,8 +321,9 @@ class ExecutionPlan:
     def copy(self) -> "ExecutionPlan":
         """Create a shallow copy of this execution plan.
 
-        This copy can be executed without mutating the original, but clearing the copy
-        will also clear the original.
+        This copy can be executed/cleared without mutating the original,
+        but the copied cache data initially shares references with the
+        original.
 
         Returns:
             A shallow copy of this execution plan.
@@ -331,14 +332,12 @@ class ExecutionPlan:
             self._in_stats,
             data_context=self._context,
         )
-        plan_copy._cache = self._cache
+        plan_copy._cache = self._cache.copy()
         plan_copy._dataset_name = self._dataset_name
         return plan_copy
 
     def deep_copy(self) -> "ExecutionPlan":
         """Create a deep copy of this execution plan.
-
-        This copy can be executed AND cleared without mutating the original.
 
         Returns:
             A deep copy of this execution plan.
@@ -371,7 +370,7 @@ class ExecutionPlan:
             The schema of the output dataset.
         """
         schema = None
-        if self._cache.cache_is_fresh():
+        if self._cache.cache_is_fresh(self._logical_plan.dag):
             schema = self._cache.get_schema(self._logical_plan.dag)
         if schema is None:
             schema = self._logical_plan.dag.infer_schema()
@@ -425,10 +424,9 @@ class ExecutionPlan:
         """
         self._has_started_execution = True
 
-        if self._cache.get_bundle(self._logical_plan.dag) is not None:
-            bundle = self._cache.get_bundle(self._logical_plan.dag)
-            stats = self._cache.get_stats()
-            return bundle, stats, None
+        cached_bundle = self._cache.get_bundle(self._logical_plan.dag)
+        if cached_bundle is not None:
+            return iter([cached_bundle]), self._cache.get_stats(), None
 
         from ray.data._internal.execution.legacy_compat import (
             execute_to_legacy_bundle_iterator,
@@ -586,7 +584,7 @@ class ExecutionPlan:
         """Whether this plan has a computed snapshot for the final operator, i.e. for
         the output of this plan.
         """
-        return self._cache.has_computed_output()
+        return self._cache.has_computed_output(self._logical_plan.dag)
 
     def require_preserve_order(self) -> bool:
         """Whether this plan requires to preserve order."""

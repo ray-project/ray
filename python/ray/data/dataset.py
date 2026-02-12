@@ -7303,9 +7303,8 @@ class ExecutionCache:
     def copy(self) -> "ExecutionCache":
         new = ExecutionCache()
         new._operator = self._operator
-        if self._bundle is not None:
-            new._bundle = self._bundle
-            new._stats = self._stats
+        new._bundle = self._bundle
+        new._stats = self._stats
         new._schema = self._schema
         new._num_rows = self._num_rows
         new._size_bytes = self._size_bytes
@@ -7314,9 +7313,8 @@ class ExecutionCache:
     def deep_copy(self) -> "ExecutionCache":
         new = ExecutionCache()
         new._operator = copy.copy(self._operator)
-        if self._bundle:
-            new._bundle = copy.copy(self._bundle)
-            new._stats = copy.copy(self._stats)
+        new._bundle = copy.copy(self._bundle)
+        new._stats = copy.copy(self._stats)
         new._schema = copy.copy(self._schema)
         new._num_rows = self._num_rows
         new._size_bytes = self._size_bytes
