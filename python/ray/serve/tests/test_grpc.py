@@ -268,13 +268,13 @@ def test_grpc_request_timeouts(ray_instance, ray_shutdown, streaming: bool):
 
     @serve.deployment
     class HelloModel:
-        def __call__(self, user_message):
-            ray.get(signal_actor.wait.remote())
+        async def __call__(self, user_message):
+            await signal_actor.wait.remote()
             return serve_pb2.UserDefinedResponse(greeting="hello")
 
-        def Streaming(self, user_message):
+        async def Streaming(self, user_message):
             for i in range(10):
-                ray.get(signal_actor.wait.remote())
+                await signal_actor.wait.remote()
                 yield serve_pb2.UserDefinedResponse(greeting="hello")
 
     serve.run(HelloModel.bind())
