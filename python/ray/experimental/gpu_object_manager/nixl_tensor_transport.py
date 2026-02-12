@@ -392,7 +392,7 @@ class NixlTensorTransport(TensorTransportManager):
                 self._tensor_desc_cache[key].metadata_count += 1
             else:
                 mem_type = "cuda" if tensor.is_cuda else "cpu"
-                gpu_id = tensor.get_device()
+                gpu_id = max(tensor.get_device(), 0)
                 reg_desc = self.get_nixl_agent().register_memory(
                     [
                         (
