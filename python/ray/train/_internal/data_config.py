@@ -1,8 +1,13 @@
 import copy
-from collections import defaultdict
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
+from collections import Counter, defaultdict
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
 
 from ray.actor import ActorHandle
+from ray.train._internal.device_mesh_config import (
+    DeviceMeshConfig,
+    DPConfig,
+    get_data_shard_mapping,
+)
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -24,6 +29,7 @@ class DataConfig:
             Union["ExecutionOptions", Dict[str, "ExecutionOptions"]]
         ] = None,
         enable_shard_locality: bool = True,
+        device_mesh_config: Optional[DeviceMeshConfig] = None,
     ):
         """Construct a DataConfig.
 
@@ -39,6 +45,13 @@ class DataConfig:
                 base your options off ``DataConfig.default_ingest_options()``.
             enable_shard_locality: If true, dataset sharding across Train workers will
                 consider locality to minimize cross-node data transfer. Enabled by default.
+            device_mesh_config: Device mesh configuration for advanced parallelism
+                strategies. This configuration determines how data should be sharded
+                across workers based on their parallel dimensions (TP, PP, DP, etc.).
+                Workers in the same data shard receive the same data. If None, defaults
+                to ``DeviceMeshConfig(dp=DPConfig(replicate="auto"))``, which means
+                each worker receives a unique data shard (standard data parallel behavior).
+                See :class:`DeviceMeshConfig` for details.
         """
         from ray.data import ExecutionOptions
 
@@ -63,6 +76,10 @@ class DataConfig:
             self._execution_options.update(execution_options)
 
         self._enable_shard_locality = enable_shard_locality
+        # If None, use default config where each worker gets a unique data shard.
+        if device_mesh_config is None:
+            device_mesh_config = DeviceMeshConfig(dp=DPConfig(replicate="auto"))
+        self._device_mesh_config = device_mesh_config
 
         self._num_train_cpus = 0.0
         self._num_train_gpus = 0.0
@@ -80,6 +97,11 @@ class DataConfig:
     def _get_execution_options(self, dataset_name: str) -> "ExecutionOptions":
         """Return a copy of the configured execution options for a given dataset name."""
         return copy.deepcopy(self._execution_options[dataset_name])
+
+    @property
+    def device_mesh_config(self) -> DeviceMeshConfig:
+        """Return the device mesh configuration."""
+        return self._device_mesh_config
 
     @DeveloperAPI
     def configure(
@@ -109,6 +131,10 @@ class DataConfig:
         )
 
         output = [{} for _ in range(world_size)]
+        # Map {world_rank: (data_shard_id, rank_in_shard)}
+        data_shard_mapping: Dict[int, Tuple[int, int]] = get_data_shard_mapping(
+            self._device_mesh_config, world_size
+        )
 
         for dataset_name, dataset in datasets.items():
             if dataset.name is None:
@@ -119,7 +145,11 @@ class DataConfig:
         else:
             datasets_to_split = set(self._datasets_to_split)
 
-        locality_hints = worker_node_ids if self._enable_shard_locality else None
+        locality_hints = (
+            _pick_locality_hints_for_each_split(data_shard_mapping, worker_node_ids)
+            if self._enable_shard_locality
+            else None
+        )
         for name, ds in datasets.items():
             execution_options = self._get_execution_options(name)
 
@@ -170,3 +200,26 @@ class DataConfig:
             preserve_order=ctx.execution_options.preserve_order,
             verbose_progress=ctx.execution_options.verbose_progress,
         )
+
+
+def _pick_locality_hints_for_each_split(
+    data_shard_mapping: Dict[int, Tuple[int, int]],
+    world_node_ids: Optional[List["NodeIdStr"]],
+) -> Optional[List["NodeIdStr"]]:
+    if world_node_ids is None:
+        return None
+    assert len(data_shard_mapping) == len(world_node_ids)
+    data_shard_to_node_ids = defaultdict(list)
+    for world_rank, (data_shard_id, rank_in_shard) in data_shard_mapping.items():
+        assert world_rank >= 0 and world_rank < len(world_node_ids)
+        data_shard_to_node_ids[data_shard_id].append(world_node_ids[world_rank])
+    n_data_shards = len(data_shard_to_node_ids)
+    assert len(world_node_ids) % n_data_shards == 0
+    replicas_per_data_shard = len(world_node_ids) // n_data_shards
+    result_node_ids = []
+    for i in range(n_data_shards):
+        assert len(data_shard_to_node_ids[i]) == replicas_per_data_shard
+        count = Counter(data_shard_to_node_ids[i])
+        most_common_node_id, _ = count.most_common(1)[0]
+        result_node_ids.append(most_common_node_id)
+    return result_node_ids
