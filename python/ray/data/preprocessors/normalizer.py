@@ -99,7 +99,7 @@ class Normalizer(Preprocessor):
     def __init__(
         self,
         columns: List[str],
-        norm="l2",
+        norm: str = "l2",
         *,
         output_columns: Optional[List[str]] = None,
     ):
