@@ -737,15 +737,16 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         # Complexity is O(launching + running + nodes + requests * nodes).
         available_resources_per_node = self._get_available_resources_per_node()
 
-        # Running replicas don't change during scheduling, so compute once.
-        node_to_running_replicas = self._get_node_to_running_replicas()
+        # Seed with running replicas; updated incrementally as replicas are
+        # scheduled so that newly occupied nodes are treated as non-idle.
+        node_to_assigned_replicas = self._get_node_to_running_replicas()
 
         for scheduling_request in all_scheduling_requests:
             target_node = self._pack_schedule_replica(
                 scheduling_request,
                 all_node_labels,
                 available_resources_per_node,
-                node_to_running_replicas,
+                node_to_assigned_replicas,
             )
             # Incrementally update available resources for the target node.
             # This is slightly conservative compared to recomputing from
@@ -758,10 +759,12 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                     - scheduling_request.required_resources
                 )
 
-            # Initialize the node to running replicas if it doesn't exist
-            if target_node and target_node not in node_to_running_replicas:
-                node_to_running_replicas[target_node] = set()
-                node_to_running_replicas[target_node].add(scheduling_request.replica_id)
+            # Mark the node as non-idle so subsequent replicas prefer it.
+            if target_node and target_node not in node_to_assigned_replicas:
+                node_to_assigned_replicas[target_node] = set()
+                node_to_assigned_replicas[target_node].add(
+                    scheduling_request.replica_id
+                )
 
     def _schedule_with_spread_strategy(self):
         """Tries to schedule pending replicas using the SPREAD strategy."""
@@ -780,7 +783,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         scheduling_request: ReplicaSchedulingRequest,
         all_node_labels: Dict[str, Dict[str, str]],
         available_resources_per_node: Dict[str, Resources],
-        node_to_running_replicas: Dict[str, Set[ReplicaID]],
+        node_to_assigned_replicas: Dict[str, Set[ReplicaID]],
     ) -> Optional[str]:
         """Attempts to schedule a single request on the best available node.
 
@@ -789,8 +792,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             all_node_labels: Labels for all active nodes.
             available_resources_per_node: Pre-computed available resources
                 per node.
-            node_to_running_replicas: Pre-computed mapping of node IDs to
-                running replica IDs.
+            node_to_assigned_replicas: Mapping of node IDs to replica IDs
+                (both running and newly scheduled in this batch).
 
         Returns:
             The target node ID if scheduling succeeded, None otherwise.
@@ -803,7 +806,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             target_node = self._find_best_fit_node_for_pack(
                 required_resources,
                 available_resources_per_node,
-                node_to_running_replicas,
+                node_to_assigned_replicas,
                 required_labels_list=required_labels,
                 node_labels=all_node_labels,
             )
@@ -956,7 +959,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         self,
         required_resources: Resources,
         available_resources_per_node: Dict[str, Resources],
-        node_to_running_replicas: Dict[str, Set[ReplicaID]],
+        node_to_assigned_replicas: Dict[str, Set[ReplicaID]],
         required_labels_list: Optional[List[Dict[str, str]]] = None,
         node_labels: Optional[Dict[str, Dict[str, str]]] = None,
     ) -> Optional[str]:
@@ -969,8 +972,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         Args:
             required_resources: Resources needed for this replica.
             available_resources_per_node: Available resources per node.
-            node_to_running_replicas: Pre-computed mapping of node IDs
-                to running replica IDs.
+            node_to_assigned_replicas: Mapping of node IDs to replica IDs
+                (both running and newly scheduled in this batch).
             required_labels_list: Label selectors to filter nodes.
             node_labels: Labels for each node.
 
@@ -990,12 +993,12 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         non_idle_nodes = {
             node_id: res
             for node_id, res in available_resources_per_node.items()
-            if len(node_to_running_replicas.get(node_id, set())) > 0
+            if len(node_to_assigned_replicas.get(node_id, set())) > 0
         }
         idle_nodes = {
             node_id: res
             for node_id, res in available_resources_per_node.items()
-            if len(node_to_running_replicas.get(node_id, set())) == 0
+            if len(node_to_assigned_replicas.get(node_id, set())) == 0
         }
 
         # 1. Prefer non-idle nodes
