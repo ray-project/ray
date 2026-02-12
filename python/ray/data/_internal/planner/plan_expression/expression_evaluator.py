@@ -99,11 +99,15 @@ def _pa_decode_dict_string_array(x: Union[pa.Array, pa.ChunkedArray]) -> Any:
 def _to_pa_string_input(x: Any) -> Any:
     if isinstance(x, str):
         return pa.scalar(x)
-    elif _is_pa_string_like(x) and isinstance(x, (pa.Array, pa.ChunkedArray)):
-        x = _pa_decode_dict_string_array(x)
-    else:
-        raise
-    return x
+    if isinstance(x, (pa.Array, pa.ChunkedArray)) and _is_pa_string_like(x):
+        return _pa_decode_dict_string_array(x)
+    actual_type = (
+        str(x.type) if isinstance(x, (pa.Array, pa.ChunkedArray)) else type(x).__name__
+    )
+    raise TypeError(
+        "Expected string or string-like pyarrow Array/ChunkedArray for string "
+        f"concatenation, got {actual_type}."
+    )
 
 
 def _pa_add_or_concat(left: Any, right: Any) -> Any:
