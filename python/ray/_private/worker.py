@@ -2982,11 +2982,11 @@ def get(
 @PublicAPI
 @client_mode_hook
 def put(
-    value: Any,
+    value: R,
     *,
     _owner: Optional["ray.actor.ActorHandle"] = None,
     _tensor_transport: Optional[str] = None,
-) -> "ray.ObjectRef":
+) -> "ray.ObjectRef[R]":
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
