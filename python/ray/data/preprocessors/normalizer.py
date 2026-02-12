@@ -121,25 +121,13 @@ class Normalizer(Preprocessor):
     def columns(self) -> List[str]:
         return self._columns
 
-    @columns.setter
-    def columns(self, value: List[str]) -> None:
-        self._columns = value
-
     @property
     def norm(self) -> str:
         return self._norm
 
-    @norm.setter
-    def norm(self, value: str) -> None:
-        self._norm = value
-
     @property
     def output_columns(self) -> List[str]:
         return self._output_columns
-
-    @output_columns.setter
-    def output_columns(self, value: List[str]) -> None:
-        self._output_columns = value
 
     def _transform_pandas(self, df: pd.DataFrame):
         columns = df.loc[:, self._columns]

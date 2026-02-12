@@ -172,25 +172,13 @@ class OrdinalEncoder(SerializablePreprocessorBase):
     def columns(self) -> List[str]:
         return self._columns
 
-    @columns.setter
-    def columns(self, value: List[str]) -> None:
-        self._columns = value
-
     @property
     def encode_lists(self) -> bool:
         return self._encode_lists
 
-    @encode_lists.setter
-    def encode_lists(self, value: bool) -> None:
-        self._encode_lists = value
-
     @property
     def output_columns(self) -> Optional[List[str]]:
         return self._output_columns
-
-    @output_columns.setter
-    def output_columns(self, value: Optional[List[str]]) -> None:
-        self._output_columns = value
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         self._stat_computation_plan.add_callable_stat(
@@ -441,25 +429,13 @@ class OneHotEncoder(SerializablePreprocessorBase):
     def columns(self) -> List[str]:
         return self._columns
 
-    @columns.setter
-    def columns(self, value: List[str]) -> None:
-        self._columns = value
-
     @property
     def max_categories(self) -> Dict[str, int]:
         return self._max_categories
 
-    @max_categories.setter
-    def max_categories(self, value: Dict[str, int]) -> None:
-        self._max_categories = value
-
     @property
     def output_columns(self) -> List[str]:
         return self._output_columns
-
-    @output_columns.setter
-    def output_columns(self, value: List[str]) -> None:
-        self._output_columns = value
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         self._stat_computation_plan.add_callable_stat(
@@ -713,25 +689,13 @@ class MultiHotEncoder(SerializablePreprocessorBase):
     def columns(self) -> List[str]:
         return self._columns
 
-    @columns.setter
-    def columns(self, value: List[str]) -> None:
-        self._columns = value
-
     @property
     def max_categories(self) -> Dict[str, int]:
         return self._max_categories
 
-    @max_categories.setter
-    def max_categories(self, value: Dict[str, int]) -> None:
-        self._max_categories = value
-
     @property
     def output_columns(self) -> List[str]:
         return self._output_columns
-
-    @output_columns.setter
-    def output_columns(self, value: List[str]) -> None:
-        self._output_columns = value
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         self._stat_computation_plan.add_callable_stat(
@@ -866,17 +830,9 @@ class LabelEncoder(SerializablePreprocessorBase):
     def label_column(self) -> str:
         return self._label_column
 
-    @label_column.setter
-    def label_column(self, value: str) -> None:
-        self._label_column = value
-
     @property
     def output_column(self) -> str:
         return self._output_column
-
-    @output_column.setter
-    def output_column(self, value: str) -> None:
-        self._output_column = value
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         self._stat_computation_plan.add_callable_stat(
@@ -1050,25 +1006,13 @@ class Categorizer(SerializablePreprocessorBase):
     def columns(self) -> List[str]:
         return self._columns
 
-    @columns.setter
-    def columns(self, value: List[str]) -> None:
-        self._columns = value
-
     @property
     def dtypes(self) -> Optional[Dict[str, pd.CategoricalDtype]]:
         return self._dtypes
 
-    @dtypes.setter
-    def dtypes(self, value: Optional[Dict[str, pd.CategoricalDtype]]) -> None:
-        self._dtypes = value
-
     @property
     def output_columns(self) -> List[str]:
         return self._output_columns
-
-    @output_columns.setter
-    def output_columns(self, value: List[str]) -> None:
-        self._output_columns = value
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         columns_to_get = [

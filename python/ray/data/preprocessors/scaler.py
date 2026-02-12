@@ -102,17 +102,9 @@ class StandardScaler(SerializablePreprocessorBase):
     def columns(self) -> List[str]:
         return self._columns
 
-    @columns.setter
-    def columns(self, value: List[str]) -> None:
-        self._columns = value
-
     @property
     def output_columns(self) -> List[str]:
         return self._output_columns
-
-    @output_columns.setter
-    def output_columns(self, value: List[str]) -> None:
-        self._output_columns = value
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         self._stat_computation_plan.add_aggregator(
@@ -283,17 +275,9 @@ class MinMaxScaler(SerializablePreprocessorBase):
     def columns(self) -> List[str]:
         return self._columns
 
-    @columns.setter
-    def columns(self, value: List[str]) -> None:
-        self._columns = value
-
     @property
     def output_columns(self) -> List[str]:
         return self._output_columns
-
-    @output_columns.setter
-    def output_columns(self, value: List[str]) -> None:
-        self._output_columns = value
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         aggregates = [Agg(col) for Agg in [Min, Max] for col in self._columns]
@@ -408,17 +392,9 @@ class MaxAbsScaler(SerializablePreprocessorBase):
     def columns(self) -> List[str]:
         return self._columns
 
-    @columns.setter
-    def columns(self, value: List[str]) -> None:
-        self._columns = value
-
     @property
     def output_columns(self) -> List[str]:
         return self._output_columns
-
-    @output_columns.setter
-    def output_columns(self, value: List[str]) -> None:
-        self._output_columns = value
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         aggregates = [AbsMax(col) for col in self._columns]
@@ -557,33 +533,17 @@ class RobustScaler(SerializablePreprocessorBase):
     def columns(self) -> List[str]:
         return self._columns
 
-    @columns.setter
-    def columns(self, value: List[str]) -> None:
-        self._columns = value
-
     @property
     def quantile_range(self) -> Tuple[float, float]:
         return self._quantile_range
-
-    @quantile_range.setter
-    def quantile_range(self, value: Tuple[float, float]) -> None:
-        self._quantile_range = value
 
     @property
     def output_columns(self) -> List[str]:
         return self._output_columns
 
-    @output_columns.setter
-    def output_columns(self, value: List[str]) -> None:
-        self._output_columns = value
-
     @property
     def quantile_precision(self) -> int:
         return self._quantile_precision
-
-    @quantile_precision.setter
-    def quantile_precision(self, value: int) -> None:
-        self._quantile_precision = value
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         quantiles = [

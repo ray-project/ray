@@ -142,33 +142,17 @@ class HashingVectorizer(Preprocessor):
     def columns(self) -> List[str]:
         return self._columns
 
-    @columns.setter
-    def columns(self, value: List[str]) -> None:
-        self._columns = value
-
     @property
     def num_features(self) -> int:
         return self._num_features
-
-    @num_features.setter
-    def num_features(self, value: int) -> None:
-        self._num_features = value
 
     @property
     def tokenization_fn(self) -> Callable[[str], List[str]]:
         return self._tokenization_fn
 
-    @tokenization_fn.setter
-    def tokenization_fn(self, value: Callable[[str], List[str]]) -> None:
-        self._tokenization_fn = value
-
     @property
     def output_columns(self) -> List[str]:
         return self._output_columns
-
-    @output_columns.setter
-    def output_columns(self, value: List[str]) -> None:
-        self._output_columns = value
 
     def _transform_pandas(self, df: pd.DataFrame):
         def hash_count(tokens: List[str]) -> Counter:
@@ -314,33 +298,17 @@ class CountVectorizer(Preprocessor):
     def columns(self) -> List[str]:
         return self._columns
 
-    @columns.setter
-    def columns(self, value: List[str]) -> None:
-        self._columns = value
-
     @property
     def tokenization_fn(self) -> Callable[[str], List[str]]:
         return self._tokenization_fn
-
-    @tokenization_fn.setter
-    def tokenization_fn(self, value: Callable[[str], List[str]]) -> None:
-        self._tokenization_fn = value
 
     @property
     def max_features(self) -> Optional[int]:
         return self._max_features
 
-    @max_features.setter
-    def max_features(self, value: Optional[int]) -> None:
-        self._max_features = value
-
     @property
     def output_columns(self) -> List[str]:
         return self._output_columns
-
-    @output_columns.setter
-    def output_columns(self, value: List[str]) -> None:
-        self._output_columns = value
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         def stat_fn(key_gen):

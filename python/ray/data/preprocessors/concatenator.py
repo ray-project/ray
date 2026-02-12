@@ -95,19 +95,39 @@ class Concatenator(Preprocessor):
         flatten: bool = False,
     ):
         super().__init__()
-        self.columns = columns
-        self.output_column_name = output_column_name
-        self.dtype = dtype
-        self.raise_if_missing = raise_if_missing
-        self.flatten = flatten
+        self._columns = columns
+        self._output_column_name = output_column_name
+        self._dtype = dtype
+        self._raise_if_missing = raise_if_missing
+        self._flatten = flatten
+
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def output_column_name(self) -> str:
+        return self._output_column_name
+
+    @property
+    def dtype(self) -> Optional[np.dtype]:
+        return self._dtype
+
+    @property
+    def raise_if_missing(self) -> bool:
+        return self._raise_if_missing
+
+    @property
+    def flatten(self) -> bool:
+        return self._flatten
 
     def _validate(self, df: pd.DataFrame) -> None:
-        missing_columns = set(self.columns) - set(df)
+        missing_columns = set(self._columns) - set(df)
         if missing_columns:
             message = (
-                f"Missing columns specified in '{self.columns}': {missing_columns}"
+                f"Missing columns specified in '{self._columns}': {missing_columns}"
             )
-            if self.raise_if_missing:
+            if self._raise_if_missing:
                 raise ValueError(message)
             else:
                 logger.warning(message)
@@ -115,33 +135,33 @@ class Concatenator(Preprocessor):
     def _transform_pandas(self, df: pd.DataFrame):
         self._validate(df)
 
-        if self.flatten:
-            concatenated = df[self.columns].to_numpy()
+        if self._flatten:
+            concatenated = df[self._columns].to_numpy()
             concatenated = [
                 np.concatenate(
                     [
                         np.atleast_1d(elem)
-                        if self.dtype is None
-                        else np.atleast_1d(elem).astype(self.dtype)
+                        if self._dtype is None
+                        else np.atleast_1d(elem).astype(self._dtype)
                         for elem in row
                     ]
                 )
                 for row in concatenated
             ]
         else:
-            concatenated = df[self.columns].to_numpy(dtype=self.dtype)
+            concatenated = df[self._columns].to_numpy(dtype=self._dtype)
 
-        df = df.drop(columns=self.columns)
+        df = df.drop(columns=self._columns)
         # Use a Pandas Series for column assignment to get more consistent
         # behavior across Pandas versions.
-        df.loc[:, self.output_column_name] = pd.Series(list(concatenated))
+        df.loc[:, self._output_column_name] = pd.Series(list(concatenated))
         return df
 
     def get_input_columns(self) -> List[str]:
-        return self.columns
+        return self._columns
 
     def get_output_columns(self) -> List[str]:
-        return [self.output_column_name]
+        return [self._output_column_name]
 
     def __repr__(self):
         default_values = {
@@ -164,5 +184,5 @@ class Concatenator(Preprocessor):
         super().__setstate__(state)
         # flatten is a recent field, to ensure backwards compatibility
         # assign a default in case it is missing in the serialized state
-        if not hasattr(self, "flatten"):
-            self.flatten = False
+        if not hasattr(self, "flatten") and not hasattr(self, "_flatten"):
+            self._flatten = False

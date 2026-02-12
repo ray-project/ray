@@ -146,33 +146,17 @@ class SimpleImputer(SerializablePreprocessorBase):
     def columns(self) -> List[str]:
         return self._columns
 
-    @columns.setter
-    def columns(self, value: List[str]) -> None:
-        self._columns = value
-
     @property
     def strategy(self) -> str:
         return self._strategy
-
-    @strategy.setter
-    def strategy(self, value: str) -> None:
-        self._strategy = value
 
     @property
     def fill_value(self) -> Optional[Union[str, Number]]:
         return self._fill_value
 
-    @fill_value.setter
-    def fill_value(self, value: Optional[Union[str, Number]]) -> None:
-        self._fill_value = value
-
     @property
     def output_columns(self) -> List[str]:
         return self._output_columns
-
-    @output_columns.setter
-    def output_columns(self, value: List[str]) -> None:
-        self._output_columns = value
 
     def _fit(self, dataset: "Dataset") -> SerializablePreprocessorBase:
         if self._strategy == "mean":

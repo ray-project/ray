@@ -93,25 +93,13 @@ class FeatureHasher(Preprocessor):
     def columns(self) -> List[str]:
         return self._columns
 
-    @columns.setter
-    def columns(self, value: List[str]) -> None:
-        self._columns = value
-
     @property
     def num_features(self) -> int:
         return self._num_features
 
-    @num_features.setter
-    def num_features(self, value: int) -> None:
-        self._num_features = value
-
     @property
     def output_column(self) -> str:
         return self._output_column
-
-    @output_column.setter
-    def output_column(self, value: str) -> None:
-        self._output_column = value
 
     def _transform_pandas(self, df: pd.DataFrame):
         # TODO(matt): Use sparse matrix for efficiency.

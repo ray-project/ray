@@ -73,10 +73,6 @@ class Chain(Preprocessor):
     def preprocessors(self) -> Tuple[Preprocessor, ...]:
         return self._preprocessors
 
-    @preprocessors.setter
-    def preprocessors(self, value: Tuple[Preprocessor, ...]) -> None:
-        self._preprocessors = value
-
     def _fit(self, ds: "Dataset") -> Preprocessor:
         for preprocessor in self._preprocessors[:-1]:
             ds = preprocessor.fit_transform(ds)

@@ -81,25 +81,13 @@ class Tokenizer(Preprocessor):
     def columns(self) -> List[str]:
         return self._columns
 
-    @columns.setter
-    def columns(self, value: List[str]) -> None:
-        self._columns = value
-
     @property
     def tokenization_fn(self) -> Callable[[str], List[str]]:
         return self._tokenization_fn
 
-    @tokenization_fn.setter
-    def tokenization_fn(self, value: Callable[[str], List[str]]) -> None:
-        self._tokenization_fn = value
-
     @property
     def output_columns(self) -> List[str]:
         return self._output_columns
-
-    @output_columns.setter
-    def output_columns(self, value: List[str]) -> None:
-        self._output_columns = value
 
     def _transform_pandas(self, df: pd.DataFrame):
         def column_tokenizer(s: pd.Series):

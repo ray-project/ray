@@ -212,10 +212,6 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
     def columns(self) -> List[str]:
         return self._columns
 
-    @columns.setter
-    def columns(self, value: List[str]) -> None:
-        self._columns = value
-
     @property
     def bins(
         self,
@@ -226,40 +222,17 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
     ]:
         return self._bins
 
-    @bins.setter
-    def bins(
-        self,
-        value: Union[
-            Iterable[float],
-            pd.IntervalIndex,
-            Dict[str, Union[Iterable[float], pd.IntervalIndex]],
-        ],
-    ) -> None:
-        self._bins = value
-
     @property
     def right(self) -> bool:
         return self._right
-
-    @right.setter
-    def right(self, value: bool) -> None:
-        self._right = value
 
     @property
     def include_lowest(self) -> bool:
         return self._include_lowest
 
-    @include_lowest.setter
-    def include_lowest(self, value: bool) -> None:
-        self._include_lowest = value
-
     @property
     def duplicates(self) -> str:
         return self._duplicates
-
-    @duplicates.setter
-    def duplicates(self, value: str) -> None:
-        self._duplicates = value
 
     @property
     def dtypes(
@@ -267,19 +240,9 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
     ) -> Optional[Dict[str, Union[pd.CategoricalDtype, Type[np.integer]]]]:
         return self._dtypes
 
-    @dtypes.setter
-    def dtypes(
-        self, value: Optional[Dict[str, Union[pd.CategoricalDtype, Type[np.integer]]]]
-    ) -> None:
-        self._dtypes = value
-
     @property
     def output_columns(self) -> List[str]:
         return self._output_columns
-
-    @output_columns.setter
-    def output_columns(self, value: List[str]) -> None:
-        self._output_columns = value
 
     _is_fittable = False
 
