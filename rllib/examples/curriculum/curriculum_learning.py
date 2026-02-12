@@ -178,6 +178,8 @@ class EnvTaskCallback(RLlibCallback):
         current_return = result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
 
         if current_return > args.upgrade_task_threshold:
+            self.curriculum_patience = 0
+
             if self.curriculum_task_key < 2:
                 self.curriculum_task_key += 1
                 print(
@@ -186,7 +188,7 @@ class EnvTaskCallback(RLlibCallback):
                     f"2=hardest), b/c R={current_return} on current task."
                 )
                 algorithm.env_runner_group.foreach_env_runner(
-                    func=partial(_remote_fn, new_task=int(self.curriculum_task_key))
+                    func=partial(_remote_fn, new_task=self.curriculum_task_key)
                 )
 
             # Hardest task was solved (1.0) -> report this in the results dict.
@@ -199,6 +201,7 @@ class EnvTaskCallback(RLlibCallback):
         #   patience is saturated,
         # we go back to task=0.
         if current_return == 0.0:
+            self.curriculum_patience += 1
             if (
                 self.curriculum_task_key > 0
                 and self.curriculum_patience >= self.patience_limit
@@ -214,8 +217,6 @@ class EnvTaskCallback(RLlibCallback):
                 algorithm.env_runner_group.foreach_env_runner(
                     func=partial(_remote_fn, new_task=self.curriculum_task_key)
                 )
-
-            self.curriculum_patience += 1
 
 
 if __name__ == "__main__":
