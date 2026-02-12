@@ -96,7 +96,7 @@ class Rendezvous:
             )
 
     @property
-    def store(self) -> ray.ActorHandle:
+    def store(self) -> ray.actor.ActorHandle:
         return self._store
 
     def get_nccl_id(self, timeout_s: int = 180) -> str:
@@ -1126,24 +1126,12 @@ class NCCLGroup(BaseGroup):
             evt.record(cupy.cuda.get_current_stream())
             self._stream.wait_event(evt)
 
-    def _ensure_tensor_liveness(
-        self, tensor: cupy.ndarray | torch.Tensor, stream: cupy.cuda.Stream
-    ) -> None:
-        """Ensure tensor is not freed before work on `stream` finishes.
-
-        For CuPy tensors, we use an event so the current stream waits for the
-        communication stream. For torch tensors, we delegate to
-        `tensor.record_stream`, which integrates with CUDACachingAllocator.
-        """
-        if isinstance(tensor, cupy.ndarray):
-            # CuPy arrays do not support record_stream. Use an event to ensure
-            # the current stream waits for the communication stream to finish.
-            with nccl_util.Device(self._device):
-                evt = cupy.cuda.Event()
-                evt.record(stream)
-                cupy.cuda.get_current_stream().wait_event(evt)
-        elif torch_available() and isinstance(tensor, torch.Tensor):
-            tensor.record_stream(torch.cuda.ExternalStream(stream.ptr))
+    def _sync_stream_after_communication(self) -> None:
+        """Let current stream wait for communication stream for the device."""
+        with nccl_util.Device(self._device):
+            evt = cupy.cuda.Event()
+            evt.record(self._stream)
+            cupy.cuda.get_current_stream().wait_event(evt)
 
     @staticmethod
     def _destroy_store(group_key: str) -> None:
@@ -1187,8 +1175,6 @@ class NCCLGroup(BaseGroup):
         self, tensor: cupy.ndarray | torch.Tensor
     ) -> None:
         """Check the tensor is on GPU and on the current device."""
-        if not nccl_util.is_gpu_tensor(tensor):
-            raise RuntimeError("Tensor must be a GPU tensor.")
         tensor_device = nccl_util.get_tensor_device(tensor)
         if tensor_device != self._device:
             raise RuntimeError(
@@ -1218,8 +1204,7 @@ class NCCLGroup(BaseGroup):
         collective_fn(input_tensor, output_tensor, self._comm, self._stream)
         # record the stream to avoid tensor being freed in another stream before
         # the collective is completed.
-        self._ensure_tensor_liveness(input_tensor, self._stream)
-        self._ensure_tensor_liveness(output_tensor, self._stream)
+        self._sync_stream_after_communication()
 
         if postprocess_fn:
             postprocess_fn()
@@ -1233,4 +1218,4 @@ class NCCLGroup(BaseGroup):
         p2p_fn(tensor, self._comm, self._stream, peer_rank)
         # record the stream to avoid tensor being freed in another stream before
         # the send/recv is completed.
-        self._ensure_tensor_liveness(tensor, self._stream)
+        self._sync_stream_after_communication()
