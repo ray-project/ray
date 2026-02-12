@@ -640,7 +640,7 @@ class TestScalerSerialization:
         # Test deserialization
         deserialized = SerializablePreprocessorBase.deserialize(serialized)
         assert deserialized.__class__.__name__ == scaler_class.__name__
-        assert deserialized.get_input_columns() == ["feature1", "feature2"]
+        assert deserialized.columns == ["feature1", "feature2"]
         assert deserialized._fitted
 
         # Verify stats are preserved after deserialization
@@ -678,7 +678,7 @@ class TestScalerSerialization:
         deserialized = SerializablePreprocessorBase.deserialize(serialized)
 
         # Verify output columns are preserved
-        assert deserialized.get_output_columns() == [
+        assert deserialized.output_columns == [
             "scaled_feature1",
             "scaled_feature2",
         ]
@@ -709,7 +709,7 @@ class TestScalerSerialization:
 
         # Verify it's still unfitted
         assert not deserialized._fitted
-        assert deserialized.get_input_columns() == ["feature1", "feature2"]
+        assert deserialized.columns == ["feature1", "feature2"]
         assert deserialized.__class__.__name__ == scaler_class.__name__
 
         # Should raise error when trying to transform
