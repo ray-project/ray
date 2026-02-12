@@ -7269,6 +7269,8 @@ class ExecutionCache:
         num_rows: Optional[int],
         size_bytes: Optional[int],
     ) -> None:
+        if dag != self._operator:
+            self.clear()
         self._metadata_cached = True
         self._operator = dag
         self._schema = schema
@@ -7276,12 +7278,16 @@ class ExecutionCache:
         self._size_bytes = size_bytes
 
     def set_schema(self, dag: "LogicalOperator", schema: "Schema") -> None:
+        if dag != self._operator:
+            self.clear()
         self._operator = dag
         self._schema = schema
 
     def set_from_execution(
         self, dag: "LogicalOperator", bundle: RefBundle, stats: DatasetStats
     ) -> None:
+        if dag != self._operator:
+            self.clear()
         self._operator = dag
         self._bundle = bundle
         self._stats = stats
@@ -7309,6 +7315,7 @@ class ExecutionCache:
         new._schema = self._schema
         new._num_rows = self._num_rows
         new._size_bytes = self._size_bytes
+        new._metadata_cached = self._metadata_cached
         return new
 
     def deep_copy(self) -> "ExecutionCache":
@@ -7319,4 +7326,5 @@ class ExecutionCache:
         new._schema = copy.copy(self._schema)
         new._num_rows = self._num_rows
         new._size_bytes = self._size_bytes
+        new._metadata_cached = self._metadata_cached
         return new
