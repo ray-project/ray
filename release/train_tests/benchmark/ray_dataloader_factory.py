@@ -2,7 +2,7 @@ import logging
 import threading
 import time
 from abc import abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import ray
 import ray.train
@@ -36,7 +36,9 @@ class SpillMetricsMonitor:
 
     def __init__(self, poll_interval_s: float = 60.0):
         self._poll_interval_s = poll_interval_s
-        self._spill_rates_gb_min: List[float] = []
+        self._count = 0
+        self._sum_gb_min = 0.0
+        self._max_gb_min = 0.0
         self._lock = threading.Lock()
 
         self._thread = threading.Thread(target=self._poll_loop, daemon=True)
@@ -49,12 +51,8 @@ class SpillMetricsMonitor:
         return memory_info.store_stats.spilled_bytes_total
 
     def _poll_loop(self) -> None:
-        try:
-            prev_spilled_bytes = self._get_spilled_bytes()
-            prev_time = time.monotonic()
-        except Exception as e:
-            logger.warning(f"SpillMetricsMonitor: failed initial poll: {e}")
-            return
+        prev_spilled_bytes: Optional[int] = None
+        prev_time: Optional[float] = None
 
         while True:
             time.sleep(self._poll_interval_s)
@@ -62,13 +60,16 @@ class SpillMetricsMonitor:
                 current_bytes = self._get_spilled_bytes()
                 current_time = time.monotonic()
 
-                delta_bytes = current_bytes - prev_spilled_bytes
-                delta_time = current_time - prev_time
+                if prev_spilled_bytes is not None and prev_time is not None:
+                    delta_bytes = current_bytes - prev_spilled_bytes
+                    delta_time = current_time - prev_time
 
-                if delta_time > 0 and delta_bytes >= 0:
-                    rate_gb_min = (delta_bytes / (1024**3)) / delta_time * 60
-                    with self._lock:
-                        self._spill_rates_gb_min.append(rate_gb_min)
+                    if delta_time > 0 and delta_bytes >= 0:
+                        rate_gb_min = (delta_bytes / (1024**3)) / delta_time * 60
+                        with self._lock:
+                            self._count += 1
+                            self._sum_gb_min += rate_gb_min
+                            self._max_gb_min = max(self._max_gb_min, rate_gb_min)
 
                 prev_spilled_bytes = current_bytes
                 prev_time = current_time
@@ -77,14 +78,16 @@ class SpillMetricsMonitor:
 
     def get_metrics(self) -> Dict[str, float]:
         with self._lock:
-            rates = list(self._spill_rates_gb_min)
+            count = self._count
+            sum_gb_min = self._sum_gb_min
+            max_gb_min = self._max_gb_min
 
-        if not rates:
+        if count == 0:
             return {}
 
         return {
-            "object_store_spilling_peak_gb_min": round(max(rates), 4),
-            "object_store_spilling_avg_gb_min": round(sum(rates) / len(rates), 4),
+            "object_store_spilling_peak_gb_min": round(max_gb_min, 4),
+            "object_store_spilling_avg_gb_min": round(sum_gb_min / count, 4),
         }
 
 
