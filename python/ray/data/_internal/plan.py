@@ -179,12 +179,14 @@ class ExecutionPlan:
         has_iterator_cache = self._cache.has_iterator_cache(self._logical_plan.dag)
         has_execution_cache = self._cache.has_computed_output(self._logical_plan.dag)
 
-        if not has_iterator_cache and not has_execution_cache:
-            # using dataset as source here, so don't generate source operator in generate_plan_string
+        if not has_execution_cache:
+            # using dataset as source here, so don't generate
+            # source operator in generate_plan_string
             plan_str, plan_max_depth = self.generate_plan_string(
                 self._logical_plan.dag, including_source=False
             )
 
+        if not has_iterator_cache and not has_execution_cache:
             # This plan hasn't executed any operators.
             has_n_ary_operator = False
             dag = self._logical_plan.dag
