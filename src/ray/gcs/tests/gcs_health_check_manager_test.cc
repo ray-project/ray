@@ -265,6 +265,8 @@ TEST_F(GcsHealthCheckManagerTest, NoRegister) {
   ASSERT_TRUE(dead_nodes.count(node_id));
 }
 
+// Dummy change.
+
 TEST_F(GcsHealthCheckManagerTest, StressTest) {
 #ifdef _RAY_TSAN_BUILD
   GTEST_SKIP() << "Disabled in tsan because of performance";
