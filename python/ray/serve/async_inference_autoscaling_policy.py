@@ -11,7 +11,7 @@ from ray.serve.config import AutoscalingContext
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class QueueBasedAutoscalingPolicy:
+class AsyncInferenceAutoscalingPolicy:
     """Autoscaling policy that scales replicas based on message queue length.
 
     Polls a message broker (Redis or RabbitMQ) for queue length and combines
@@ -29,7 +29,7 @@ class QueueBasedAutoscalingPolicy:
                 min_replicas=1,
                 max_replicas=10,
                 policy=AutoscalingPolicy(
-                    policy_function=QueueBasedAutoscalingPolicy,
+                    policy_function=AsyncInferenceAutoscalingPolicy,
                     policy_kwargs={
                         "broker_url": "redis://localhost:6379/0",
                         "queue_name": "my_queue",

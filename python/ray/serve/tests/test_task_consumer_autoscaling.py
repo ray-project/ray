@@ -73,7 +73,7 @@ class TestTaskConsumerQueueAutoscaling:
                 metrics_interval_s=0.1,
                 look_back_period_s=0.5,
                 policy=AutoscalingPolicy(
-                    policy_function="ray.serve.queue_autoscaling_policy:QueueBasedAutoscalingPolicy",
+                    policy_function="ray.serve.async_inference_autoscaling_policy:AsyncInferenceAutoscalingPolicy",
                     policy_kwargs={
                         "broker_url": f"redis://{redis_address}/0",
                         "queue_name": "autoscaling_test_queue",
