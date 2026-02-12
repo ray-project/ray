@@ -381,11 +381,12 @@ class ExecutionPlan:
             # the plan is read-only even if `fetch_if_missing` is False.
 
             iter_ref_bundles, _, executor = self.execute_to_iterator()
-            # Make sure executor is fully shutdown upon exiting
-            with executor:
-                schema = _take_first_non_empty_schema(
-                    bundle.schema for bundle in iter_ref_bundles
-                )
+            if executor is not None:
+                # Make sure executor is fully shutdown upon exiting
+                with executor:
+                    schema = _take_first_non_empty_schema(
+                        bundle.schema for bundle in iter_ref_bundles
+                    )
         if schema is not None:
             self.cache_schema(schema)
         return schema
