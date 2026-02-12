@@ -1521,6 +1521,7 @@ DATA_GRAFANA_ROWS = [
         panels=[
             CLUSTER_CPU_UTILIZATION_PANEL,
             CLUSTER_GPU_UTILIZATION_PANEL,
+            CLUSTER_MEMORY_UTILIZATION_PANEL,
             CLUSTER_OBJECT_STORE_MEMORY_UTILIZATION_PANEL,
         ],
         collapsed=True,
