@@ -34,19 +34,10 @@ def unix_socket_delete(unix_socket):
 @pytest.fixture
 def delete_default_temp_dir():
     def delete_default_temp_dir_once():
-        print(
-            f"[Kunchd] Attempting to delete default temp dir: {ray._common.utils.get_default_ray_temp_dir()}"
-        )
-        try:
-            shutil.rmtree(ray._common.utils.get_default_ray_temp_dir())
-        except Exception as e:
-            print(f"[Kunchd] Error deleting default temp dir: {e}")
-        # shutil.rmtree(ray._common.utils.get_default_ray_temp_dir(), ignore_errors=True)
-        exists = os.path.exists(ray._common.utils.get_default_ray_temp_dir())
-        print(f"[Kunchd] Default temp dir exists: {exists}")
-        return not exists
+        shutil.rmtree(ray._common.utils.get_ray_temp_dir(), ignore_errors=True)
+        return not os.path.exists(ray._common.utils.get_ray_temp_dir())
 
-    wait_for_condition(delete_default_temp_dir_once, timeout=20)
+    wait_for_condition(delete_default_temp_dir_once)
     yield
 
 
@@ -164,9 +155,6 @@ def test_session_dir_uniqueness():
     session_dirs = set()
     for i in range(2):
         ray.init(num_cpus=1)
-        print(
-            f"[Kunchd] Adding session dir: {ray._private.worker._global_node.get_session_dir_path}"
-        )
         session_dirs.add(ray._private.worker._global_node.get_session_dir_path)
         ray.shutdown()
     assert len(session_dirs) == 2
@@ -191,7 +179,6 @@ def test_head_temp_dir_shared_with_worker(ray_start_cluster):
     assert len(nodes) == 2, "Expected 2 nodes in the cluster"
 
     # Check that both nodes' temp directories are under the head's temp_dir
-    # TODO(Kunchd): We need an actual way of verifying second node doesn't have another directory
     assert os.path.isdir(
         os.path.join(head_temp_dir, "session_latest")
     ), "Head node session directory not found in specified temp_dir"
