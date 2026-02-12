@@ -3960,10 +3960,10 @@ class Dataset:
         if self._logical_plan.dag.infer_metadata().size_bytes is not None:
             return self._logical_plan.dag.infer_metadata().size_bytes
 
-        metadata = self._plan.execute().metadata
-        if not metadata or metadata[0].size_bytes is None:
-            return None
-        return sum(m.size_bytes for m in metadata)
+        cached = self._plan._cache.get_size_bytes(self._logical_plan.dag)
+        if cached is not None:
+            return cached
+        return self._plan.execute().size_bytes()
 
     @ConsumptionAPI
     @PublicAPI(api_group=IM_API_GROUP)
@@ -7245,7 +7245,7 @@ class ExecutionCache:
     def get_num_rows(self, dag: "LogicalOperator") -> Optional[int]:
         if self.cache_is_fresh(dag):
             if self._bundle is not None:
-                return sum(m.num_rows for m in self._bundle.metadata)
+                return self._bundle.num_rows()
             return self._num_rows
         return None
 
