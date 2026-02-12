@@ -12,7 +12,7 @@ from uuid import uuid4
 import pytest
 
 import ray
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, get_localhost_ip
 from ray._common.test_utils import (
     FakeTimer,
     SignalActor,
@@ -1370,7 +1370,7 @@ async def test_bootstrap_address(job_manager, monkeypatch):
     cluster might be started with http://ip:{dashboard_port} from previous
     runs.
     """
-    ip = ray._private.ray_constants.DEFAULT_DASHBOARD_IP
+    ip = get_localhost_ip()
     port = ray._private.ray_constants.DEFAULT_DASHBOARD_PORT
 
     monkeypatch.setenv("RAY_ADDRESS", f"http://{build_address(ip, port)}")
