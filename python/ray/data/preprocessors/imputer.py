@@ -136,11 +136,43 @@ class SimpleImputer(SerializablePreprocessorBase):
                     '`fill_value` must be set when using "constant" strategy.'
                 )
 
-        self.output_columns = (
+        self._output_columns = (
             SerializablePreprocessorBase._derive_and_validate_output_columns(
                 columns, output_columns
             )
         )
+
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @columns.setter
+    def columns(self, value: List[str]) -> None:
+        self._columns = value
+
+    @property
+    def strategy(self) -> str:
+        return self._strategy
+
+    @strategy.setter
+    def strategy(self, value: str) -> None:
+        self._strategy = value
+
+    @property
+    def fill_value(self) -> Optional[Union[str, Number]]:
+        return self._fill_value
+
+    @fill_value.setter
+    def fill_value(self, value: Optional[Union[str, Number]]) -> None:
+        self._fill_value = value
+
+    @property
+    def output_columns(self) -> Optional[List[str]]:
+        return self._output_columns
+
+    @output_columns.setter
+    def output_columns(self, value: Optional[List[str]]) -> None:
+        self._output_columns = value
 
     def _fit(self, dataset: "Dataset") -> SerializablePreprocessorBase:
         if self._strategy == "mean":
@@ -161,7 +193,7 @@ class SimpleImputer(SerializablePreprocessorBase):
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
-        for column, output_column in zip(self._columns, self.output_columns):
+        for column, output_column in zip(self._columns, self._output_columns):
             value = self._get_fill_value(column)
 
             if value is None:
@@ -209,22 +241,24 @@ class SimpleImputer(SerializablePreprocessorBase):
         return (
             f"{self.__class__.__name__}(columns={self._columns!r}, "
             f"strategy={self._strategy!r}, fill_value={self._fill_value!r}, "
-            f"output_columns={self.output_columns!r})"
+            f"output_columns={self._output_columns!r})"
         )
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
             "columns": self._columns,
-            "output_columns": self.output_columns,
+            "output_columns": self._output_columns,
             "_fitted": getattr(self, "_fitted", None),
             "strategy": self._strategy,
-            "fill_value": getattr(self, "_fill_value", None),
+            "fill_value": getattr(
+                self, "_fill_value", getattr(self, "fill_value", None)
+            ),
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
         self._columns = fields["columns"]
-        self.output_columns = fields["output_columns"]
+        self._output_columns = fields["output_columns"]
         self._strategy = fields["strategy"]
         # optional fields
         self._fitted = fields.get("_fitted")
