@@ -677,18 +677,13 @@ void CoreWorker::Exit(
                                          creation_task_exception_pb_bytes);
 }
 
-void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
-                           std::string_view detail) {
+void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type, std::string_view detail) {
   RAY_LOG(DEBUG) << "ForceExit called: exit_type=" << static_cast<int>(exit_type)
                  << ", detail=" << detail;
 
   ShutdownReason reason = ConvertExitTypeToShutdownReason(exit_type, true);
   shutdown_coordinator_->RequestShutdown(
-      /*force_shutdown=*/true,
-      reason,
-      detail,
-      std::chrono::milliseconds{0},
-      nullptr);
+      /*force_shutdown=*/true, reason, detail, std::chrono::milliseconds{0}, nullptr);
 
   RAY_LOG(DEBUG) << "ForceExit: shutdown request completed";
 }
@@ -1765,7 +1760,8 @@ Status CoreWorker::PushError(const JobID &job_id,
                              std::string_view type,
                              std::string_view error_message,
                              double timestamp) {
-  return raylet_ipc_client_->PushError(job_id, std::string(type), std::string(error_message), timestamp);
+  return raylet_ipc_client_->PushError(
+      job_id, std::string(type), std::string(error_message), timestamp);
 }
 
 json CoreWorker::OverrideRuntimeEnv(const json &child,
