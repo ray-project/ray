@@ -512,7 +512,7 @@ class ExecutionPlan:
         if not self.has_computed_output():
             from ray.data._internal.execution.legacy_compat import (
                 _get_initial_stats_from_plan,
-                execute_to_legacy_block_list,
+                execute_to_ref_bundle,
             )
 
             if (
@@ -544,16 +544,11 @@ class ExecutionPlan:
             else:
                 # Make sure executor is properly shutdown
                 with self.create_executor() as executor:
-                    blocks = execute_to_legacy_block_list(
+                    bundle = execute_to_ref_bundle(
                         executor,
                         self,
                         dataset_uuid=self._dataset_uuid,
                         preserve_order=preserve_order,
-                    )
-                    bundle = RefBundle(
-                        tuple(blocks.iter_blocks_with_metadata()),
-                        owns_blocks=blocks._owned_by_consumer,
-                        schema=blocks.get_schema(),
                     )
 
                 stats = executor.get_stats()
