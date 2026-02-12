@@ -7225,9 +7225,6 @@ class ExecutionCache:
     def has_iterator_cache(self, dag: "LogicalOperator") -> bool:
         return self.cache_is_fresh(dag) and self._metadata_cached
 
-    def get_operator(self) -> "LogicalOperator":
-        return self._operator
-
     def get_bundle(self, dag: "LogicalOperator") -> Optional[RefBundle]:
         if self.cache_is_fresh(dag):
             return self._bundle

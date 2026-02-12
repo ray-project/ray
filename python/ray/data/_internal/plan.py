@@ -94,7 +94,7 @@ class ExecutionPlan:
         return (
             f"ExecutionPlan("
             f"dataset_uuid={self._dataset_uuid}, "
-            f"snapshot_operator={self._cache.get_operator()}"
+            f"snapshot_operator={self._cache._operator}"
             f")"
         )
 
