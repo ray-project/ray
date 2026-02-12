@@ -9,18 +9,27 @@ This document explains how Ray's object spilling mechanism works and outlines it
 Overview
 --------
 
-Object spilling is Ray's mechanism for handling memory pressure in the Plasma object store. When the object store is full and new objects need to be created (for example, via ``ray.put()`` or task return values), Ray automatically *spills* existing objects from shared memory to external storage (local disk or cloud storage such as S3). When a spilled object is needed again, it is transparently restored back into the object store.
+Ray stores task outputs and ``ray.put()`` values as **objects** in the Plasma object store, a shared-memory region on each node. An object goes through the following lifecycle:
 
-The mechanism involves four major components:
+1. **Creation**: ``ray.put()`` or a task return triggers a ``Create`` RPC to the Plasma store, which allocates space in shared memory for the serialized object.
+2. **Pinning**: The CoreWorker sends a ``PinObjectIDs`` RPC to the local Raylet, which holds a reference to the object (preventing eviction) for as long as it may be needed.
+3. **Consumption**: Other tasks and ``ray.get()`` calls read the pinned object directly from shared memory via zero-copy access.
+4. **Deletion**: When the object owner determines the object is no longer referenced, the Raylet unpins it and frees the shared memory.
+
+This works well when the working set fits in memory. However, when the Plasma store is **full** and new objects need to be created, allocation fails — blocking ``ray.put()`` and task returns until space is freed.
+
+**Object spilling** solves this by extending the object lifecycle with an external storage tier: when memory pressure is detected, pinned objects are automatically *spilled* from shared memory to external storage (local disk or S3). When a spilled object is needed again, it is transparently *restored* back into Plasma. This allows the effective object store capacity to exceed physical memory, at the cost of I/O latency for accessing spilled objects.
+
+.. note::
+
+   Object spilling is fully fully abstracted away to user applications. No application-level code changes are required to handle memory pressure.
+
+The spilling mechanism involves four major components:
 
 1. **CreateRequestQueue** (Plasma store thread): detects memory pressure and triggers spilling.
 2. **LocalObjectManager** (Raylet main thread): orchestrates object pinning, spill scheduling, restore, and deletion.
 3. **WorkerPool** (Raylet main thread): manages a pool of IO worker processes for spill/restore/delete operations.
 4. **External Storage** (Python IO worker processes): performs the actual I/O against the storage backend.
-
-.. note::
-
-   Object spilling is fully transparent to user applications. No application-level code changes are required to handle memory pressure.
 
 
 Architecture
@@ -98,16 +107,51 @@ The following diagram shows the high-level architecture and data flow:
    The Plasma store and the Raylet main event loop run in **separate threads**. The spill callback bridges them by posting work from the store thread to the main thread. Only ``IsSpillingInProgress()`` is called cross-thread (using ``std::atomic``).
 
 
-Triggering Spilling: CreateRequestQueue
-----------------------------------------
+Triggering Spilling
+-------------------
 
-When a ``ray.put()`` or task return creates an object, the CoreWorker asks the Plasma store to allocate space. If the store is full, the `CreateRequestQueue <https://github.com/ray-project/ray/blob/master/src/ray/object_manager/plasma/create_request_queue.h#L34>`__ manages queued creation requests and triggers spilling.
+Object spilling can be triggered by any operation that adds objects to the Plasma store. At the user API level, this includes:
 
-The key decision logic lives in `ProcessRequests <https://github.com/ray-project/ray/blob/master/src/ray/object_manager/plasma/create_request_queue.cc#L85>`__:
+- ``ray.put(obj)`` — explicitly places an object into the object store.
+- **Task return values** — the return value of a remote task is serialized and stored in Plasma.
+- **Object transfer** — when ``ray.get()`` fetches a remote object, the object is copied into the local Plasma store on the receiving node.
+
+**Note on Primary Copies:** Spilling is performed only on **primary copies** of objects.
+
+- **Primary Copy**: The initial copy of an object, usually stored on the node where the task that created it executed. The owner of the object (CoreWorker) manages its lifetime.
+- **Secondary Copy**: A copy of an object transferred to another node (e.g., for ``ray.get`` or as a task argument). These are treated as cached replicas.
+
+When memory pressure occurs, Ray prioritizes **evicting** secondary copies (which can be re-fetched) before resorting to spilling primary copies.
+
+Internally, there are **three code paths** that trigger spilling. The first is *reactive* — spilling is triggered because allocation has already failed. The other two are *proactive* — they check a memory threshold and spill preemptively to avoid OOM in the first place.
+
+.. list-table::
+   :widths: 15 30 55
+   :header-rows: 1
+
+   * - Trigger
+     - When it fires
+     - Condition
+   * - **OOM on Create**
+     - A ``Create`` RPC to Plasma fails with ``OutOfMemory`` (`source <https://github.com/ray-project/ray/blob/master/src/ray/object_manager/plasma/create_request_queue.cc#L117>`__)
+     - Reactive: allocation already failed, must spill to make room
+   * - **Periodic threshold**
+     - Every ``free_objects_period_milliseconds`` (default 1000 ms) (`source <https://github.com/ray-project/ray/blob/master/src/ray/raylet/node_manager.cc#L427>`__)
+     - Proactive: primary object bytes / capacity >= ``object_spilling_threshold`` (default 0.8)
+   * - **Object sealed**
+     - Whenever a new object is sealed in Plasma (`SealObjects <https://github.com/ray-project/ray/blob/master/src/ray/object_manager/plasma/store.cc#L278>`__ → `HandleObjectLocal <https://github.com/ray-project/ray/blob/master/src/ray/raylet/node_manager.cc#L2451>`__)
+     - Proactive: same threshold check as above, triggered immediately on the new object
+
+All three paths converge on ``LocalObjectManager::SpillObjectUptoMaxThroughput()``.
+
+Reactive: OOM on Object Creation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When the Plasma store cannot allocate space for a new object, the `CreateRequestQueue <https://github.com/ray-project/ray/blob/master/src/ray/object_manager/plasma/create_request_queue.h#L34>`__ manages the queued request and kicks off a recovery sequence. The key decision logic lives in `ProcessRequests <https://github.com/ray-project/ray/blob/master/src/ray/object_manager/plasma/create_request_queue.cc#L85>`__:
 
 1. **Try to allocate** the object in shared memory.
-2. If allocation fails with ``OutOfMemory`` and the disk is full (checked via ``FileSystemMonitor``), return ``OutOfDisk`` immediately.
-3. **Trigger global GC** if configured.
+2. If allocation fails with ``OutOfMemory`` and the disk is full (checked via ``FileSystemMonitor``), return ``OutOfDisk`` immediately — there is nowhere to spill to.
+3. **Trigger global GC** if configured — this may free Python-side references, allowing Plasma objects to be unpinned.
 4. **Call** ``spill_objects_callback_()``. This callback is registered in `main.cc <https://github.com/ray-project/ray/blob/master/src/ray/raylet/main.cc#L752>`__ and runs **on the Plasma store thread**. It does two things:
 
    .. code-block:: cpp
@@ -122,7 +166,7 @@ The key decision logic lives in `ProcessRequests <https://github.com/ray-project
         return local_object_manager->IsSpillingInProgress();
       }
 
-   Based on the return value, CreateRequestQueue decides what to do next:
+   Based on the return value, ``CreateRequestQueue`` decides what to do next:
 
    - **``true``** (spilling is in progress): reset the OOM timer, return ``TransientObjectStoreFull``. The Plasma store will retry ``ProcessRequests()`` after ``delay_on_oom_ms``, giving spill operations time to free memory.
    - **``false``** (no active spills): enter the **grace period** (``oom_grace_period_s``). During the grace period, retries continue — this accounts for global GC latency and the delay between spilling completing and space actually being freed in the object store.
@@ -130,6 +174,27 @@ The key decision logic lives in `ProcessRequests <https://github.com/ray-project
 5. If the **grace period expires** without progress, try the **fallback allocator** as a last resort. The fallback allocator uses ``mmap`` to allocate the object directly on the local filesystem instead of shared memory — this is slower but avoids blocking the caller indefinitely. If that also fails (e.g. disk full), return ``OutOfDisk``.
 
 The Plasma store retries ``ProcessCreateRequests()`` periodically (controlled by ``delay_on_oom_ms``) as long as the queue is non-empty and status is not OK. See `PlasmaStore::ProcessCreateRequests <https://github.com/ray-project/ray/blob/master/src/ray/object_manager/plasma/store.cc#L508>`__.
+
+Proactive: Threshold-Based Spilling
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The reactive OOM path only fires *after* the store is already full. To avoid hitting that cliff, Ray also **proactively** spills objects before the store is full. `NodeManager::SpillIfOverPrimaryObjectsThreshold <https://github.com/ray-project/ray/blob/master/src/ray/raylet/node_manager.cc#L2400>`__ checks whether the fraction of primary object bytes in the store exceeds ``object_spilling_threshold`` (default 0.8), and if so, calls ``SpillObjectUptoMaxThroughput()``.
+
+This check is invoked from two places:
+
+1. **Periodic timer** (`node_manager.cc <https://github.com/ray-project/ray/blob/master/src/ray/raylet/node_manager.cc#L427>`__): runs every ``free_objects_period_milliseconds`` (default 1000 ms). This is the steady-state proactive spilling path — even without any new object creation, the system periodically checks and spills if needed.
+
+2. **Object sealed event** (`HandleObjectLocal <https://github.com/ray-project/ray/blob/master/src/ray/raylet/node_manager.cc#L2451>`__): every time a new object is sealed in Plasma (via `SealObjects <https://github.com/ray-project/ray/blob/master/src/ray/object_manager/plasma/store.cc#L278>`__), the ``add_object_callback_`` posts ``HandleObjectLocal()`` to the Raylet main thread, which calls ``SpillIfOverPrimaryObjectsThreshold()`` at the end. This ensures that spilling reacts immediately when a large object pushes memory usage over the threshold, rather than waiting up to 1 second for the next periodic check.
+
+
+Alternatives to Spilling
+------------------------
+
+Ray includes other mechanisms to handle memory pressure aside from spilling:
+
+1. **Eviction (Secondary Copies)**: As mentioned above, Ray creates replicas of objects on other nodes when they are needed for tasks or ``ray.get``. These **secondary copies** are evictable. When the object store is full, Ray deletes these copies (LRU) to free space before attempting to spill primary objects.
+
+2. **Fallback Allocation (Mmap)**: If spilling is too slow or the object store is fragmented, Ray may use **fallback allocation**. This occurs when a create request fails with OOM even after attempting to spill. The object is allocated directly on the filesystem (using ``mmap``) rather than in the shared memory pool. This avoids application deadlock but offers lower performance than shared memory.
 
 
 Object Pinning
@@ -186,25 +251,43 @@ Spill Scheduling
 
 The `LocalObjectManager <https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.h#L46>`__ orchestrates all spill operations.
 
-SpillObjectUptoMaxThroughput
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Strategy: Optimistic Batching
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-`SpillObjectUptoMaxThroughput <https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L169>`__ is the entry point called when memory pressure is detected. It tries to saturate all available IO workers by calling ``TryToSpillObjects()`` in a loop until either no more objects can be spilled or all workers are busy (``num_active_workers_ >= max_active_workers_``).
+The core tension in spill scheduling is between **latency** and **efficiency**:
 
-TryToSpillObjects
+- Spilling should start as soon as possible when memory is under pressure — delaying risks blocking object creation.
+- But fusing multiple objects into a single spill file amortizes I/O overhead (fewer syscalls, sequential writes), so larger batches are more efficient.
+
+Ray resolves this with an **optimistic batching** strategy: spill immediately with whatever objects are available, but defer tiny batches when other spills are already in flight. The reasoning is:
+
+- In-flight spills will soon free memory, reducing the urgency.
+- Waiting gives time for more objects to accumulate, improving the next batch's efficiency.
+- When **no** spills are in progress, even a small batch is dispatched immediately — there is nothing to wait for.
+
+The entry point is `SpillObjectUptoMaxThroughput <https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L169>`__, called when memory pressure is detected. It aggressively tries to saturate all available IO workers by calling ``TryToSpillObjects()`` in a loop until either no more objects can be spilled or all workers are busy (``num_active_workers_ >= max_active_workers_``).
+
+Batch Construction
+~~~~~~~~~~~~~~~~~~
+
+`TryToSpillObjects <https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L186>`__ constructs a single spill batch. It iterates through ``pinned_objects_``, skipping objects that are not currently spillable (``is_plasma_object_spillable_`` checks that the object is not actively used by a worker process), and accumulates candidates until one of the following limits is reached:
+
+- ``max_fused_object_count_`` objects have been collected, **or**
+- ``max_spilling_file_size_bytes_`` would be exceeded by adding the next object (when enabled, i.e. > 0; the first object is always included even if it alone exceeds the limit), **or**
+- all pinned objects have been checked.
+
+Deferral Decision
 ~~~~~~~~~~~~~~~~~
 
-`TryToSpillObjects <https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L186>`__ selects which objects to spill in a single batch:
+After constructing the candidate batch, ``TryToSpillObjects`` decides whether to spill now or defer. Spilling is **deferred** (returns ``false``) when **all three** of the following conditions hold simultaneously (see `source <https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L220>`__):
 
-1. Iterates through ``pinned_objects_``, checking ``is_plasma_object_spillable_(id)`` for each (this ensures the object is not actively used by a worker process).
-2. Accumulates objects until one of the following limits is reached:
+1. The scan visited all pinned objects without hitting ``max_fused_object_count_`` — the candidate batch is small, not limited by fusion constraints.
+2. The total bytes to spill (``bytes_to_spill``) is below ``min_spilling_size_``.
+3. There are already objects being spilled (``objects_pending_spill_`` is non-empty).
 
-   - ``max_fused_object_count_`` objects have been collected, **or**
-   - ``max_spilling_file_size_bytes_`` would be exceeded by adding the next object (when enabled, i.e. > 0). The first object is always included even if it alone exceeds the limit, **or**
-   - all pinned objects have been checked.
+In other words: the batch is small, smaller than the minimum threshold, and other spills are already making progress — so waiting is safe. If **any** condition is not met — the batch hit a fusion limit (indicating enough objects to justify a spill), or the batch is large enough, or no other spills are in progress — spilling proceeds immediately.
 
-3. **Batching optimization**: if the accumulated bytes are less than ``min_spilling_size_`` and other spills are already in progress, it returns ``false`` to wait for current spills to complete before starting a small batch. This gives the system time to accumulate more objects for better batching.
-4. Calls ``SpillObjectsInternal()`` with the selected batch.
+Once the decision is to spill, ``SpillObjectsInternal()`` is called with the selected batch.
 
 SpillObjectsInternal
 ~~~~~~~~~~~~~~~~~~~~
@@ -227,26 +310,34 @@ Python IO Workers and External Storage
 
 IO workers are specialized Python processes that perform the actual I/O operations. They are spawned and managed by the `WorkerPool <https://github.com/ray-project/ray/blob/master/src/ray/raylet/worker_pool.h#L280>`__.
 
+The ``WorkerPool`` manages all worker processes on a node, including regular task workers, driver processes, and IO workers. Regular workers and IO workers are tracked in separate data structures: regular task workers go into the ``State::idle`` set, while IO workers have their own dedicated ``IOWorkerState`` (`source <https://github.com/ray-project/ray/blob/master/src/ray/raylet/worker_pool.h#L619>`__), each of which maintains an ``idle_io_workers`` set, a ``pending_io_tasks`` queue, and a ``started_io_workers`` count. This separation ensures that IO workers are never assigned regular tasks and vice versa.
+
 Worker Types and Pool Management
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-There are two dedicated IO worker types:
+IO workers handle three types of operations:
 
-- ``SPILL_WORKER``: handles ``SpillObjects`` RPCs.
-- ``RESTORE_WORKER``: handles ``RestoreSpilledObjects`` RPCs.
-- Delete operations reuse idle spill or restore workers (whichever pool has more idle workers).
+- **Spill**: write objects from Plasma to external storage.
+- **Restore**: read a previously spilled object from external storage back into Plasma.
+- **Delete**: remove spill files from external storage when all objects within them have gone out of scope.
 
-When `PopSpillWorker <https://github.com/ray-project/ray/blob/master/src/ray/raylet/worker_pool.cc#L990>`__ is called:
+Each operation type maps to an ``IOWorkerState``:
 
-- If an idle worker is available, it is returned immediately via the callback.
-- If no idle workers exist, the callback is queued and `TryStartIOWorkers <https://github.com/ray-project/ray/blob/master/src/ray/raylet/worker_pool.cc#L1750>`__ starts new Python worker processes up to ``max_io_workers``.
+- ``SPILL_WORKER`` (`spill_io_worker_state <https://github.com/ray-project/ray/blob/master/src/ray/raylet/worker_pool.h#L658>`__): a dedicated pool that handles ``SpillObjects`` RPCs.
+- ``RESTORE_WORKER`` (`restore_io_worker_state <https://github.com/ray-project/ray/blob/master/src/ray/raylet/worker_pool.h#L660>`__): a dedicated pool that handles ``RestoreSpilledObjects`` RPCs.
+- Delete operations do not have a dedicated pool. `PopDeleteWorker <https://github.com/ray-project/ray/blob/master/src/ray/raylet/worker_pool.cc#L1063>`__ compares the number of idle workers in the spill and restore pools, and borrows a worker from whichever pool has more idle workers available. After the delete completes, the worker is returned to its original pool.
 
-When the spill operation completes, the worker is returned to the pool via ``PushSpillWorker``. If pending tasks are queued, the worker is immediately assigned to the next task instead of going idle.
+When `PopSpillWorker <https://github.com/ray-project/ray/blob/master/src/ray/raylet/worker_pool.cc#L990>`__ (or ``PopRestoreWorker``) is called:
+
+- If an idle IO worker of the matching type is available in its ``idle_io_workers`` set, it is returned immediately via the callback.
+- If no idle IO workers exist, the callback is queued in ``pending_io_tasks`` and `TryStartIOWorkers <https://github.com/ray-project/ray/blob/master/src/ray/raylet/worker_pool.cc#L1750>`__ spawns new Python IO worker processes up to ``max_io_workers`` per type.
+
+When the operation completes, the worker is returned to its pool via ``PushSpillWorker`` (or ``PushRestoreWorker``). If pending tasks are queued, the worker is immediately assigned to the next task instead of going idle.
 
 Object Fusion Format
 ~~~~~~~~~~~~~~~~~~~~
 
-Multiple objects are fused into a single file to reduce I/O overhead and filesystem fragmentation. The `_write_multiple_objects <https://github.com/ray-project/ray/blob/master/python/ray/_private/external_storage.py#L133>`__ method writes each object with a 24-byte header:
+Rather than writing each object to its own file, multiple objects from a single spill batch are **fused** into a single file. This reduces I/O overhead (fewer ``open``/``close`` syscalls) and filesystem fragmentation. The `_write_multiple_objects <https://github.com/ray-project/ray/blob/master/python/ray/_private/external_storage.py#L133>`__ method writes objects sequentially, each prefixed with a 24-byte header:
 
 .. code-block:: text
 
@@ -265,11 +356,20 @@ Multiple objects are fused into a single file to reduce I/O overhead and filesys
    │  ...                                                 │
    └──────────────────────────────────────────────────────┘
 
-Each object's location is tracked via a URL with offset and size:
+The header's three 8-byte fields (``addr_len``, ``metadata_len``, ``buf_len``) encode the sizes of the three variable-length sections that follow: the serialized owner address (needed for ``ReportObjectSpilled``), the object metadata, and the object data buffer. During restore, the IO worker reads this header first to determine how many bytes to read for each section.
+
+Since multiple objects share a single file, each individual object needs to be addressable independently — for example, object 3 in a fused file might be restored while objects 1 and 2 are still alive. Ray solves this with a **spill URL** that encodes the object's position within the file:
 
 .. code-block:: text
 
    /tmp/ray/spill/ray_spilled_objects_<node_id>/<uuid>-multi-<count>?offset=<N>&size=<M>
+
+The URL has two parts:
+
+- **Base URL** (the path before ``?``): identifies the spill file. This is the same for all objects fused into the same file. It is also the key used by ``url_ref_count_`` to track how many live objects reference the file — the file is only deleted when this count reaches zero.
+- **Query parameters** (``offset`` and ``size``): the byte offset and total size (header + data) of this specific object within the file. The restore IO worker seeks to the offset and reads exactly ``size`` bytes.
+
+This URL is stored in ``spilled_objects_url_`` on the spilling node and reported to the object directory via ``ReportObjectSpilled()``, making it discoverable by any node in the cluster that needs to restore the object.
 
 Storage Backends
 ~~~~~~~~~~~~~~~~
@@ -299,17 +399,42 @@ After the IO worker successfully writes objects to external storage, `OnObjectSp
 Object Restore
 --------------
 
-When a spilled object is needed again (for example, a task on this or another node reads it), the object directory returns the spilled URL, and `AsyncRestoreSpilledObject <https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L464>`__ is called:
+When a spilled object is needed again, it must be restored back into the Plasma store (or streamed directly over the network) before it can be used. Restore is triggered whenever a node determines that a required object is not available in any node's in-memory Plasma store but has a known spilled URL.
+
+Triggering Restore
+~~~~~~~~~~~~~~~~~~
+
+At the user API level, the following operations can trigger a restore if the referenced object has been spilled:
+
+- ``ray.get(ref)`` — blocking get on a spilled object.
+- ``ray.wait(refs)`` — waiting for spilled objects to become available.
+- **Task scheduling** — a task's input arguments are spilled; the scheduler must restore them before the task can run.
+- **Actor task arguments** — an actor receives a task whose arguments are spilled.
+- ``await ref`` — async Python get on a spilled object.
+
+All of these operations go through the same internal path: the Raylet's `LeaseDependencyManager <https://github.com/ray-project/ray/blob/master/src/ray/raylet/lease_dependency_manager.cc>`__ issues an ``ObjectManager::Pull`` request for the missing object. The `PullManager <https://github.com/ray-project/ray/blob/master/src/ray/object_manager/pull_manager.cc#L446>`__ then consults the object directory for the object's location. If the object has been spilled, the directory returns the spilled URL (reported earlier by ``OnObjectSpilled`` → ``ReportObjectSpilled``), and the ``PullManager`` decides how to restore it based on the storage backend.
+
+Additionally, a **periodic retry timer** (`ObjectManager::Tick <https://github.com/ray-project/ray/blob/master/src/ray/object_manager/object_manager.cc#L828>`__) re-evaluates all active pull requests, retrying restores that previously failed.
+
+Two Restore Paths
+~~~~~~~~~~~~~~~~~
+
+The restore path depends on the storage backend:
+
+**Filesystem storage** (spilled to local disk): the spill file only exists on the node that spilled the object. If the requesting node is the same node, it restores locally via `AsyncRestoreSpilledObject <https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L464>`__. If the requesting node is a *different* node, it sends a pull request to the spilling node; the spilling node reads the object directly from disk and streams it over the network via `PushFromFilesystem <https://github.com/ray-project/ray/blob/master/src/ray/object_manager/object_manager.cc#L409>`__ — **without** restoring the object into its own Plasma store. This avoids unnecessary memory pressure on the spilling node.
+
+**Cloud storage** (S3, GCS, etc.): the spill file is accessible from any node. The requesting node restores the object locally via ``AsyncRestoreSpilledObject`` using the cloud URL directly. No cross-node RPC is needed.
+
+Restore Mechanics
+~~~~~~~~~~~~~~~~~
+
+`AsyncRestoreSpilledObject <https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L464>`__ performs the local restore:
 
 1. **Deduplication**: if the same object is already being restored (``objects_pending_restore_`` contains the ID), the call is a no-op to avoid duplicate restores.
 2. Pops a restore worker from the IO worker pool.
 3. Sends a ``RestoreSpilledObjectsRequest`` RPC with the spilled URL and object ID.
-4. The Python IO worker reads the file at the specified offset, parses the header, and puts the object back into the Plasma store via ``core_worker.put_file_like_object()``.
+4. The Python IO worker reads the file at the specified offset, parses the 24-byte header, and puts the object back into the Plasma store via ``core_worker.put_file_like_object()``.
 5. On completion, updates restore metrics and invokes the callback.
-
-.. note::
-
-   For filesystem-based spilling, restores can only happen from the node that spilled the object (since the file is local). For cloud storage (S3), any node can restore the object directly from the remote storage.
 
 
 Object Deletion and Cleanup
@@ -330,15 +455,15 @@ When the object owner frees the object (via pub/sub eviction notification or own
 Phase 2: Batch Cleanup of Spilled Files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-`ProcessSpilledObjectsDeleteQueue <https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L523>`__ processes the delete queue in batches:
+`ProcessSpilledObjectsDeleteQueue <https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L523>`__ drains the ``spilled_object_pending_delete_`` queue up to a batch size limit. For each object:
 
-1. For each object in ``spilled_object_pending_delete_``:
+1. If the object is **still being spilled** (``objects_pending_spill_`` contains the ID): **break out of the loop entirely** — the queue is FIFO, so no subsequent entries are processed either. The object is not removed from the queue; it remains at the front and will be retried next time the function is called. This is a deliberate simplification: deletion is low priority compared to spilling, and the spill will eventually complete, at which point the next call will make progress. No data structures are modified for this object.
 
-   - If the object is **still being spilled**: stop processing (preserves FIFO order; the spill will complete eventually).
-   - If the object **has a spilled URL**: decrement ``url_ref_count_[base_url]``. If the ref count reaches zero, add the URL to the delete list.
-   - Remove the object from ``local_objects_`` and ``spilled_objects_url_``.
+2. If the object **has a spilled URL** (found in ``spilled_objects_url_``): parse the URL to extract the ``base_url`` (the file path without offset/size query parameters) and decrement ``url_ref_count_[base_url]``. If the ref count reaches zero, add the URL to the list of files to delete and remove the ref count entry. Remove the object from ``spilled_objects_url_`` and ``local_objects_``.
 
-2. If there are URLs to delete, call `DeleteSpilledObjects <https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L579>`__, which pops a delete worker and sends a ``DeleteSpilledObjectsRequest`` RPC. Failed deletions are retried up to 3 times.
+3. If the object **does not have a spilled URL** (it was freed while still being spilled, and the spill has since completed without recording a URL for it — or was rolled back): remove it from ``pinned_objects_`` (if present) and ``local_objects_`` to prevent a memory leak.
+
+After processing the queue, if there are any URLs to delete (i.e., one or more files have had their ref counts drop to zero), `DeleteSpilledObjects <https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L579>`__ is called. This function pops a delete worker from the IO worker pool and sends a ``DeleteSpilledObjectsRequest`` RPC containing the list of URLs to delete. The delete worker receives the full list of file URLs and deletes each one — for filesystem storage, this is a simple ``os.remove(path)`` call per file (`source <https://github.com/ray-project/ray/blob/master/python/ray/_private/external_storage.py#L364>`__). The decision of *which* files to delete has already been made by the C++ side (via ref counting); the Python IO worker unconditionally deletes every URL it receives. If the RPC fails (e.g., worker crash), the entire batch is retried up to 3 times.
 
 .. note::
 
