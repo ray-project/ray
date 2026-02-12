@@ -15,7 +15,7 @@ from .resource_utilization_gauge import (
     RollingLogicalUtilizationGauge,
 )
 from .util import cap_resource_request_to_limits
-from ray._private.ray_constants import env_bool, env_float, env_integer
+from ray._common.utils import env_bool, env_float, env_integer
 from ray.data._internal.cluster_autoscaler import ClusterAutoscaler
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data._internal.execution.util import memory_string
