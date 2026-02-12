@@ -3305,6 +3305,147 @@ def block_slice_data():
     }
 
 
+class TestUnifyTensorArrays:
+    """Tests for unify_tensor_arrays and tensor concatenation type unification."""
+
+    def test_same_type_instance_noop(self):
+        """Arrays already sharing the same type instance are returned as-is."""
+        from ray.data._internal.tensor_extensions.arrow import unify_tensor_arrays
+
+        data = np.ones((3, 4, 4), dtype=np.int64)
+        original_arr = ArrowTensorArray.from_numpy(data)
+
+        # Create a table and extract the column - this shares the type instance
+        table = pa.table({"tensor": original_arr})
+        arr_from_table = table["tensor"].chunk(0)
+
+        assert arr_from_table.type is original_arr.type
+        arrays = [original_arr, arr_from_table]
+
+        unified = unify_tensor_arrays(arrays)
+        assert unified is arrays  # No-op, same list returned
+
+    def test_same_shape_fixed_tensors_share_type(self):
+        """Same-shape fixed tensors with different type instances share one type."""
+        from ray.data._internal.tensor_extensions.arrow import (
+            get_arrow_extension_fixed_shape_tensor_types,
+            unify_tensor_arrays,
+        )
+
+        arrays = []
+        for i in range(5):
+            data = np.ones((3, 4, 4), dtype=np.int64) * i
+            arrays.append(ArrowTensorArray.from_numpy(data))
+
+        # Each array has its own type instance
+        assert len({id(arr.type) for arr in arrays}) == 5
+
+        unified = unify_tensor_arrays(arrays)
+
+        # All unified arrays share the same type instance
+        assert len({id(arr.type) for arr in unified}) == 1
+        # Type is still fixed-shape (not variable-shaped)
+        fixed_types = get_arrow_extension_fixed_shape_tensor_types()
+        assert isinstance(unified[0].type, fixed_types)
+        # Data preserved
+        for i, arr in enumerate(unified):
+            np.testing.assert_array_equal(arr.to_numpy(), np.ones((3, 4, 4)) * i)
+
+    def test_same_ndim_variable_tensors_share_type(self):
+        """Same-ndim variable-shaped tensors share one type instance."""
+        from ray.data._internal.tensor_extensions.arrow import unify_tensor_arrays
+
+        arrays = []
+        for i in range(5):
+            data = [np.ones((3 + i, 4 + i), dtype=np.float32) for _ in range(2)]
+            arrays.append(ArrowVariableShapedTensorArray.from_numpy(data))
+
+        assert len({id(arr.type) for arr in arrays}) == 5
+        assert all(arr.type.ndim == 2 for arr in arrays)
+
+        unified = unify_tensor_arrays(arrays)
+
+        assert len({id(arr.type) for arr in unified}) == 1
+        assert isinstance(unified[0].type, ArrowVariableShapedTensorType)
+        assert unified[0].type.ndim == 2
+
+    def test_different_shapes_unify_to_variable(self):
+        """Different fixed shapes unify to variable-shaped tensor."""
+        from ray.data._internal.tensor_extensions.arrow import unify_tensor_arrays
+
+        arrays = []
+        for i in range(5):
+            shape = (3,) + (2 + i, 2 + i)
+            data = np.ones(shape, dtype=np.float32)
+            arrays.append(ArrowTensorArray.from_numpy(data))
+
+        unified = unify_tensor_arrays(arrays)
+
+        assert len({id(arr.type) for arr in unified}) == 1
+        assert isinstance(unified[0].type, ArrowVariableShapedTensorType)
+
+    def test_different_ndims_unify_with_padding(self):
+        """Variable-shaped tensors with different ndims unify with shape padding."""
+        from ray.data._internal.tensor_extensions.arrow import unify_tensor_arrays
+
+        arrays = []
+        for i in range(10):
+            if i % 2 == 0:
+                data = [np.ones((32, 32), dtype=np.float32) for _ in range(5)]
+            else:
+                data = [np.ones((32, 32, 3), dtype=np.float32) for _ in range(5)]
+            arrays.append(ArrowVariableShapedTensorArray.from_numpy(data))
+
+        unified = unify_tensor_arrays(arrays)
+
+        # All share same type instance
+        assert len({id(arr.type) for arr in unified}) == 1
+        assert isinstance(unified[0].type, ArrowVariableShapedTensorType)
+        assert unified[0].type.ndim == 3  # Unified to max ndim
+
+        # Verify padding: 2D tensors become (1, 32, 32), 3D stay (32, 32, 3)
+        all_arrays = []
+        for arr in unified:
+            all_arrays.extend(arr.to_numpy())
+
+        num_padded_2d = sum(1 for a in all_arrays if a.shape == (1, 32, 32))
+        num_3d = sum(1 for a in all_arrays if a.shape == (32, 32, 3))
+        assert num_padded_2d == 25
+        assert num_3d == 25
+
+    def test_unsupported_type_raises_error(self):
+        """Unsupported tensor type raises ValueError."""
+        from ray.data._internal.tensor_extensions.arrow import unify_tensor_arrays
+
+        # Create a regular pyarrow array (not a tensor extension type)
+        regular_array = pa.array([1, 2, 3])
+
+        with pytest.raises(ValueError, match="unsupported tensor type"):
+            unify_tensor_arrays([regular_array])
+
+    def test_mixed_fixed_and_variable_shaped(self):
+        """Mixed fixed-shape and variable-shaped tensors unify correctly."""
+        from ray.data._internal.tensor_extensions.arrow import unify_tensor_arrays
+
+        arrays = []
+        # Add fixed-shape tensors
+        for i in range(3):
+            data = np.ones((2, 4, 4), dtype=np.float32) * i
+            arrays.append(ArrowTensorArray.from_numpy(data))
+
+        # Add variable-shaped tensors with different shapes
+        for i in range(3):
+            data = [np.ones((3 + i, 3 + i), dtype=np.float32) for _ in range(2)]
+            arrays.append(ArrowVariableShapedTensorArray.from_numpy(data))
+
+        unified = unify_tensor_arrays(arrays)
+
+        # All share same type instance
+        assert len({id(arr.type) for arr in unified}) == 1
+        # Should be variable-shaped since shapes differ
+        assert isinstance(unified[0].type, ArrowVariableShapedTensorType)
+
+
 if __name__ == "__main__":
     import sys
 
