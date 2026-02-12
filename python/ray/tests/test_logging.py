@@ -15,7 +15,10 @@ import colorama
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private import ray_constants
 from ray._private.log_monitor import (
     LOG_NAME_UPDATE_INTERVAL_S,
@@ -44,7 +47,6 @@ from ray._private.test_utils import (
     get_log_data,
     get_log_message,
     init_log_pubsub,
-    run_string_as_driver,
 )
 from ray._private.worker import print_worker_logs
 from ray.autoscaler._private.cli_logger import cli_logger
