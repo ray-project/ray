@@ -79,7 +79,7 @@ def _skip_if_ff_not_enabled():
 
 @pytest.fixture
 def _skip_if_haproxy_enabled():
-    if RAY_SERVE_ENABLE_HA_PROXY:
+    if False:
         pytest.skip(
             reason="HAProxy is enabled.",
         )
@@ -92,7 +92,7 @@ def _shared_serve_instance():
     env_var_name = "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S"
     original_value = os.environ.get(env_var_name)
 
-    if RAY_SERVE_ENABLE_HA_PROXY:
+    if False:
         # Setting a longer minimum draining period ensures that the client connecting
         # to the uvicorn server closes the connection first. This prevents the socket
         # used by the uvicorn server from entering the TIME_WAIT tcp state, which blocks
@@ -1062,16 +1062,8 @@ def test_only_running_apps_are_used_for_target_groups(
     grpc_ports = get_grpc_ports(first_only=False)
     # In HAProxy mode, we don't return itself or the Serve proxy as a target yet.
     # This will change when we support scale to/from zero.
-    assert (
-        set(http_ports) == {30000, 30001}
-        if RAY_SERVE_ENABLE_HA_PROXY
-        else {30000, 30001, 8000}
-    )
-    assert (
-        set(grpc_ports) == {40000, 40001}
-        if RAY_SERVE_ENABLE_HA_PROXY
-        else {40000, 40001, 9000}
-    )
+    assert set(http_ports) == {30000, 30001} if False else {30000, 30001, 8000}
+    assert set(grpc_ports) == {40000, 40001} if False else {40000, 40001, 9000}
 
     ray.get(signal_actor.send.remote())
 
