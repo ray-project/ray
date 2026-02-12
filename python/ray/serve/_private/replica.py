@@ -70,6 +70,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
+    RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS,
+    RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S,
+    RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
@@ -119,8 +122,9 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
-from ray.serve._private.proxy_request_response import ResponseStatus
+from ray.serve._private.proxy_request_response import ResponseStatus, gRPCStreamingType
 from ray.serve._private.replica_response_generator import ReplicaResponseGenerator
+from ray.serve._private.rolling_window_accumulator import RollingWindowAccumulator
 from ray.serve._private.serialization import RPCSerializer
 from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve._private.thirdparty.get_asgi_route_name import (
@@ -138,7 +142,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig, HTTPOptions, gRPCOptions
-from ray.serve.context import _get_in_flight_requests
+from ray.serve.context import GangContext, _get_in_flight_requests
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import (
     BackPressureError,
@@ -256,6 +260,7 @@ ReplicaMetadata = Tuple[
     ReplicaRank,  # rank
     Optional[List[str]],  # route_patterns
     Optional[List[DeploymentID]],  # outbound_deployments
+    bool,  # has_user_routing_stats_method
 ]
 
 
@@ -299,6 +304,7 @@ class ReplicaMetricsManager:
         event_loop: asyncio.BaseEventLoop,
         autoscaling_config: Optional[AutoscalingConfig],
         ingress: bool,
+        max_ongoing_requests: int,
     ):
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
@@ -309,6 +315,7 @@ class ReplicaMetricsManager:
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
         self._num_ongoing_requests = 0
+        self._max_ongoing_requests = max_ongoing_requests
         # Store event loop for scheduling async tasks from sync context
         self._event_loop = event_loop or asyncio.get_event_loop()
 
@@ -383,6 +390,26 @@ class ReplicaMetricsManager:
             ),
             boundaries=REQUEST_LATENCY_BUCKETS_MS,
         )
+
+        # Replica utilization tracking with rolling window.
+        # Tracks total user code execution time over a rolling window to calculate
+        # utilization as: user_code_time / (window_duration * max_ongoing_requests).
+        self._user_code_time_accumulator = RollingWindowAccumulator(
+            window_duration_s=RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S,
+            num_buckets=RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS,
+        )
+        self._replica_utilization_gauge = metrics.Gauge(
+            "serve_replica_utilization_percent",
+            description=(
+                "Percentage of replica capacity utilized by user code execution "
+                "over a rolling window. Calculated as: "
+                "user_code_time / (window_duration * max_ongoing_requests)."
+            ),
+        )
+        self._utilization_report_interval_s = (
+            RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S
+        )
+        self._event_loop.create_task(self._report_utilization_forever())
 
         self.set_autoscaling_config(autoscaling_config)
 
@@ -701,8 +728,56 @@ class ReplicaMetricsManager:
         """Get current total queue length of requests for this replica."""
         return self._num_ongoing_requests
 
+    def set_max_ongoing_requests(self, max_ongoing_requests: int) -> None:
+        """Update max_ongoing_requests when deployment config changes."""
+        self._max_ongoing_requests = max_ongoing_requests
+
+    async def _report_utilization_forever(self) -> None:
+        """Background task to emit utilization gauge continuously."""
+        consecutive_errors = 0
+        while True:
+            try:
+                await asyncio.sleep(self._utilization_report_interval_s)
+                utilization = self._calculate_utilization()
+                self._replica_utilization_gauge.set(utilization)
+                consecutive_errors = 0
+            except Exception:
+                logger.exception("Unexpected error reporting utilization metrics.")
+
+                # Exponential backoff starting at 1s and capping at 10s.
+                backoff_time_s = min(10, 2**consecutive_errors)
+                consecutive_errors += 1
+                await asyncio.sleep(backoff_time_s)
+
+    def _calculate_utilization(self) -> float:
+        """Calculate current utilization percentage based on rolling window.
+
+        Utilization is calculated as:
+            user_code_time / (window_duration * max_ongoing_requests)
+
+        This represents the percentage of the replica's theoretical maximum
+        capacity that was used for executing user code.
+        """
+        total_user_code_time_ms = self._user_code_time_accumulator.get_total()
+
+        # Max capacity = window_duration_ms * max_ongoing_requests
+        window_duration_ms = RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S * 1000
+        max_capacity_ms = window_duration_ms * self._max_ongoing_requests
+
+        if max_capacity_ms > 0:
+            utilization_percent = (total_user_code_time_ms / max_capacity_ms) * 100
+            # Cap at 100% (can theoretically exceed if requests overlap heavily)
+            utilization_percent = min(utilization_percent, 100.0)
+        else:
+            utilization_percent = 0.0
+
+        return utilization_percent
+
     def record_request_metrics(self, *, route: str, latency_ms: float, was_error: bool):
         """Records per-request metrics."""
+        # Track latency for utilization calculation (rolling window).
+        self._user_code_time_accumulator.add(latency_ms)
+
         if self._cached_metrics_enabled:
             self._cached_latencies[route].append(latency_ms)
             if was_error:
@@ -934,6 +1009,8 @@ class ReplicaBase(ABC):
         # Flipped to `True` once graceful shutdown is initiated. May be used by replica
         # subclass implementations.
         self._shutting_down = False
+        # Gang context for this replica.
+        self._gang_context: Optional[GangContext] = None
 
         # Will be populated with the wrapped ASGI app if the user callable is an
         # `ASGIAppReplicaWrapper` (i.e., they are using the FastAPI integration).
@@ -948,6 +1025,7 @@ class ReplicaBase(ABC):
             event_loop=self._event_loop,
             autoscaling_config=self._deployment_config.autoscaling_config,
             ingress=ingress,
+            max_ongoing_requests=self._deployment_config.max_ongoing_requests,
         )
 
         # Start event loop monitoring for the replica's main event loop.
@@ -998,6 +1076,11 @@ class ReplicaBase(ABC):
             if hasattr(self._user_callable_asgi_app, "routes"):
                 route_patterns = extract_route_patterns(self._user_callable_asgi_app)
 
+        has_user_routing_stats_method = (
+            self._user_callable_wrapper is not None
+            and self._user_callable_wrapper.has_user_routing_stats_method
+        )
+
         return (
             self._version.deployment_config,
             self._version,
@@ -1009,6 +1092,7 @@ class ReplicaBase(ABC):
             current_rank,
             route_patterns,
             self.list_outbound_deployments(),
+            has_user_routing_stats_method,
         )
 
     def get_dynamically_created_handles(self) -> Set[DeploymentID]:
@@ -1070,6 +1154,7 @@ class ReplicaBase(ABC):
             rank=rank,
             world_size=world_size,
             handle_registration_callback=register_handle_callback,
+            gang_context=self._gang_context,
         )
 
     def _configure_logger_and_profilers(
@@ -1382,8 +1467,13 @@ class ReplicaBase(ABC):
         raise NotImplementedError
 
     async def initialize(
-        self, deployment_config: Optional[DeploymentConfig], rank: Optional[ReplicaRank]
+        self,
+        deployment_config: Optional[DeploymentConfig],
+        rank: Optional[ReplicaRank],
+        gang_context: Optional[GangContext] = None,
     ):
+        if gang_context is not None:
+            self._gang_context = gang_context
         if rank is not None:
             self._rank = rank
             self._set_internal_replica_context(
@@ -1459,6 +1549,9 @@ class ReplicaBase(ABC):
 
             self._metrics_manager.set_autoscaling_config(
                 deployment_config.autoscaling_config
+            )
+            self._metrics_manager.set_max_ongoing_requests(
+                deployment_config.max_ongoing_requests
             )
             if logging_config_changed:
                 self._configure_logger_and_profilers(deployment_config.logging_config)
@@ -2056,21 +2149,34 @@ class Replica(ReplicaBase):
         raise NotImplementedError("unary_stream not implemented.")
 
     def _direct_ingress_service_handler_factory(
-        self, service_method: str, stream: bool
+        self, service_method: str, streaming_type: gRPCStreamingType
     ) -> Callable:
-        if stream:
+        if streaming_type == gRPCStreamingType.UNARY_STREAM:
 
             async def handler(*args, **kwargs):
                 return await self._direct_ingress_unary_stream(
                     service_method, *args, **kwargs
                 )
 
-        else:
+        elif streaming_type == gRPCStreamingType.UNARY_UNARY:
 
             async def handler(*args, **kwargs):
                 return await self._direct_ingress_unary_unary(
                     service_method, *args, **kwargs
                 )
+
+        elif streaming_type == gRPCStreamingType.STREAM_UNARY:
+
+            async def handler(*args, **kwargs):
+                raise NotImplementedError("stream_unary not implemented.")
+
+        elif streaming_type == gRPCStreamingType.STREAM_STREAM:
+
+            async def handler(*args, **kwargs):
+                raise NotImplementedError("stream_stream not implemented.")
+
+        else:
+            raise ValueError(f"Unsupported streaming type: {streaming_type}")
 
         return handler
 
@@ -2311,38 +2417,23 @@ class Replica(ReplicaBase):
                 raise asyncio.CancelledError
 
     async def perform_graceful_shutdown(self):
-        if not RAY_SERVE_ENABLE_DIRECT_INGRESS or not self._ingress:
-            # if direct ingress is not enabled or the replica is not an ingress replica,
-            # we can just call the super method to perform the graceful shutdown.
-            await super().perform_graceful_shutdown()
-            return
-
-        # set the shutting down flag to True to signal ALBs with failing health checks
-        # to stop sending traffic to this replica.
-        self._shutting_down = True
-
-        # If the replica was never initialized it never served traffic, so we
-        # can skip the wait period.
-        if self._user_callable_initialized:
-            # in order to gracefully shutdown the replica, we need to wait for the
-            # requests to drain and for PROXY_MIN_DRAINING_PERIOD_S to pass.
-            # this is necessary because we want to give ALB time to update its
-            # target group to remove the replica from it and to mark this replica
-            # as unhealthy.
-            # TODO(abrar): the code below assumes that once ALB marks a replica target
-            # as unhealthy, it will not send traffic to it. This is not true because
-            # ALB can send traffic to a replica if all targets are unhealthy.
-            # The correct way to handle is this we start the cooldown period since
-            # the last request finished and wait for the cooldown period to pass.
+        if (
+            RAY_SERVE_ENABLE_DIRECT_INGRESS
+            and self._ingress
+            and self._user_callable_initialized
+        ):
+            # In direct ingress mode, we need to wait at least
+            # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give external load
+            # balancers (e.g., ALB) time to deregister the replica, in addition to
+            # waiting for requests to drain.
             await asyncio.gather(
                 asyncio.sleep(RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S),
-                self._drain_ongoing_requests(),
+                super().perform_graceful_shutdown(),
             )
-            logger.info(
-                f"Replica {self._replica_id} successfully drained ongoing requests."
-            )
+        else:
+            await super().perform_graceful_shutdown()
 
-        await self.shutdown()
+        # Cancel direct ingress HTTP/gRPC server tasks if they exist.
         if self._direct_ingress_http_server_task:
             self._direct_ingress_http_server_task.cancel()
         if self._direct_ingress_grpc_server_task:
@@ -2427,7 +2518,10 @@ class ReplicaActor:
         return self._replica_impl.list_outbound_deployments()
 
     async def initialize_and_get_metadata(
-        self, deployment_config: DeploymentConfig = None, rank: ReplicaRank = None
+        self,
+        deployment_config: DeploymentConfig = None,
+        rank: ReplicaRank = None,
+        gang_context: GangContext = None,
     ) -> ReplicaMetadata:
         """Handles initializing the replica.
 
@@ -2440,7 +2534,7 @@ class ReplicaActor:
         """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
-        await self._replica_impl.initialize(deployment_config, rank)
+        await self._replica_impl.initialize(deployment_config, rank, gang_context)
         return self._replica_impl.get_metadata()
 
     async def check_health(self):
@@ -2955,6 +3049,11 @@ class UserCallableWrapper:
             return self._call_user_health_check()
 
         return None
+
+    @property
+    def has_user_routing_stats_method(self) -> bool:
+        """Whether the user has defined a record_routing_stats method."""
+        return self._user_record_routing_stats is not None
 
     def call_user_record_routing_stats(self) -> Optional[concurrent.futures.Future]:
         self._raise_if_not_initialized("call_user_record_routing_stats")
