@@ -61,6 +61,7 @@ from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.uc_datasource import UnityCatalogConnector
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
+from ray.data._internal.datasource.zarr_datasource import ZarrDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
@@ -1909,6 +1910,93 @@ def read_numpy(
     return read_datasource(
         datasource,
         parallelism=parallelism,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_zarr(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Dict[str, Any] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Read Zarr arrays into a :class:`~ray.data.Dataset`.
+
+    Each Zarr chunk becomes one block in the Dataset. Supports both single
+    arrays and groups containing multiple arrays.
+
+    Examples:
+        Read a single Zarr array.
+
+        >>> import ray
+        >>> ds = ray.data.read_zarr("/path/to/array.zarr")  # doctest: +SKIP
+
+        Read all arrays in a group.
+
+        >>> ds = ray.data.read_zarr("/path/to/group.zarr")  # doctest: +SKIP
+
+        Read from multiple stores.
+
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        ...     ["store1.zarr", "store2.zarr"])
+
+        Read from S3 with a custom filesystem.
+
+        >>> import pyarrow.fs as pafs  # doctest: +SKIP
+        >>> s3 = pafs.S3FileSystem(anonymous=True)  # doctest: +SKIP
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        ...     "s3://bucket/path.zarr",
+        ...     filesystem=s3)
+
+    Args:
+        paths: A single file/directory path or a list of paths.
+            Supports local paths and URIs for remote storage (``s3://``, ``gs://``,
+            ``abfs://``, etc.). The filesystem is inferred from the URI scheme
+            if not provided.
+        filesystem: The PyArrow filesystem implementation to read from. If not
+            specified, the filesystem is inferred from the path scheme.
+            See `PyArrow FileSystem <https://arrow.apache.org/docs/python/filesystems.html>`_
+            for available options.
+        num_cpus: The number of CPUs to reserve for each parallel read task.
+        num_gpus: The number of GPUs to reserve for each parallel read task.
+        memory: The heap memory in bytes to reserve for each parallel read task.
+        ray_remote_args: Additional kwargs passed to :func:`ray.remote` in read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        :class:`~ray.data.Dataset` with one row per chunk and columns:
+
+        - ``array_name`` (str): Path to the array within the store
+          (e.g., ``"group/arr"``), or empty string for single-array stores.
+        - ``data`` (bytes): Raw chunk data. Reconstruct with
+          ``np.frombuffer(row["data"], dtype=row["dtype"]).reshape(row["shape"])``.
+        - ``shape`` (list[int]): Shape of this chunk (may be smaller than the
+          array's chunk size for edge chunks).
+        - ``dtype`` (str): NumPy dtype string (e.g., ``"float64"``).
+        - ``chunk_index`` (list[int]): Position of this chunk in the chunk grid
+          (e.g., ``[0, 2]`` for row 0, column 2).
+    """
+    datasource = ZarrDatasource(paths, filesystem=filesystem)
+    return read_datasource(
+        datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )

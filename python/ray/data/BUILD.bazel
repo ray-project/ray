@@ -832,6 +832,20 @@ py_test(
 )
 
 py_test(
+    name = "test_zarr",
+    size = "medium",
+    srcs = ["tests/test_zarr.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_pandas",
     size = "small",
     srcs = ["tests/datasource/test_pandas.py"],
