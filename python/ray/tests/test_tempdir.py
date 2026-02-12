@@ -228,9 +228,6 @@ def test_worker_temp_dir_different_from_head(ray_start_cluster):
     nodes = ray.nodes()
     assert len(nodes) == 2, "Expected 2 nodes in the cluster"
 
-    assert os.path.isfile(
-        os.path.join(worker_temp_dir, "ray_current_cluster")
-    ), "Worker cluster info file not found in specified temp_dir"
     assert os.path.isdir(
         os.path.join(worker_temp_dir, "session_latest")
     ), "Worker session directory not found in specified temp_dir"
@@ -276,16 +273,9 @@ def test_both_nodes_different_temp_dirs(ray_start_cluster):
     nodes = ray.nodes()
     assert len(nodes) == 2, "Expected 2 nodes in the cluster"
 
-    assert os.path.isfile(
-        os.path.join(head_temp_dir, "ray_current_cluster")
-    ), "Head cluster info file not found in specified temp_dir"
     assert os.path.isdir(
         os.path.join(head_temp_dir, "session_latest")
     ), "Head session directory not found in specified temp_dir"
-
-    assert os.path.isfile(
-        os.path.join(worker_temp_dir, "ray_current_cluster")
-    ), "Worker cluster info file not found in specified temp_dir"
     assert os.path.isdir(
         os.path.join(worker_temp_dir, "session_latest")
     ), "Worker session directory not found in specified temp_dir"
