@@ -164,7 +164,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Serve LLM Dashboard",
-  "uid": "rayServeLlmDashboard",
+  "title": "LLM Dashboard",
+  "uid": "rayLlmDashboard",
   "version": 1
 }
