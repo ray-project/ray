@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 import click
 
@@ -11,17 +11,21 @@ from ray_release.byod.build_context import BuildContext
 @click.option("--base-image", type=str, required=True)
 @click.option("--post-build-script", type=str)
 @click.option("--python-depset", type=str)
+@click.option("--env", "envs", type=str, multiple=True)
 def main(
     image_name: str,
     base_image: str,
     post_build_script: Optional[str],
     python_depset: Optional[str],
+    envs: Tuple[str, ...],
 ):
-    if not post_build_script and not python_depset:
+    if not post_build_script and not python_depset and not envs:
         raise click.UsageError(
-            "Either post_build_script or python_depset must be provided"
+            "At least one of post_build_script, python_depset, or env must be provided"
         )
     build_context: BuildContext = {}
+    if envs:
+        build_context["envs"] = dict(e.split("=", 1) for e in envs)
     if post_build_script:
         build_context["post_build_script"] = post_build_script
     if python_depset:

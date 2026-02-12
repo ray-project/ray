@@ -57,10 +57,6 @@ class LogicalOperator(Operator):
     def input_dependencies(self, value: List["LogicalOperator"]) -> None:
         self._input_dependencies = value
 
-    @property
-    def output_dependencies(self) -> List["LogicalOperator"]:
-        return super().output_dependencies  # type: ignore
-
     def post_order_iter(self) -> Iterator["LogicalOperator"]:
         return super().post_order_iter()  # type: ignore
 
@@ -78,6 +74,8 @@ class LogicalOperator(Operator):
             else:
                 # Keep underscore-prefixed keys to preserve legacy export schema.
                 args[f"_{key}"] = value
+        # Preserve legacy export shape even though output deps are no longer tracked.
+        args["_output_dependencies"] = []
         return args
 
     def infer_schema(self) -> Optional["Schema"]:
