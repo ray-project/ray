@@ -678,7 +678,7 @@ void CoreWorker::Exit(
 }
 
 void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
-                           std::string_view detail) {  // Changed: read-only param
+                           std::string_view detail) {
   RAY_LOG(DEBUG) << "ForceExit called: exit_type=" << static_cast<int>(exit_type)
                  << ", detail=" << detail;
 
@@ -686,9 +686,9 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
   shutdown_coordinator_->RequestShutdown(
       /*force_shutdown=*/true,
       reason,
-      std::string(detail),
+      detail,
       std::chrono::milliseconds{0},
-      nullptr);  // Convert for function
+      nullptr);
 
   RAY_LOG(DEBUG) << "ForceExit: shutdown request completed";
 }
@@ -1762,8 +1762,8 @@ TaskID CoreWorker::GetCallerId() const {
 }
 
 Status CoreWorker::PushError(const JobID &job_id,
-                             const std::string &type,
-                             const std::string &error_message,
+                             std::string_view type,
+                             std::string_view error_message,
                              double timestamp) {
   return raylet_ipc_client_->PushError(job_id, type, error_message, timestamp);
 }
