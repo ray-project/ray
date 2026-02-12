@@ -53,10 +53,10 @@ class PowerTransformer(Preprocessor):
         output_columns: Optional[List[str]] = None,
     ):
         super().__init__()
-        self.columns = columns
-        self.method = method
-        self.power = power
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._columns = columns
+        self._method = method
+        self._power = power
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
@@ -66,37 +66,69 @@ class PowerTransformer(Preprocessor):
                 f"Supported values are: {self._valid_methods}"
             )
 
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @columns.setter
+    def columns(self, value: List[str]) -> None:
+        self._columns = value
+
+    @property
+    def method(self) -> str:
+        return self._method
+
+    @method.setter
+    def method(self, value: str) -> None:
+        self._method = value
+
+    @property
+    def power(self) -> float:
+        return self._power
+
+    @power.setter
+    def power(self, value: float) -> None:
+        self._power = value
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
+    @output_columns.setter
+    def output_columns(self, value: List[str]) -> None:
+        self._output_columns = value
+
     def _transform_pandas(self, df: pd.DataFrame):
         def column_power_transformer(s: pd.Series):
-            if self.method == "yeo-johnson":
+            if self._method == "yeo-johnson":
                 result = np.zeros_like(s, dtype=np.float64)
                 pos = s >= 0  # binary mask
 
-                if self.power != 0:
-                    result[pos] = (np.power(s[pos] + 1, self.power) - 1) / self.power
+                if self._power != 0:
+                    result[pos] = (np.power(s[pos] + 1, self._power) - 1) / self._power
                 else:
                     result[pos] = np.log(s[pos] + 1)
 
-                if self.power != 2:
-                    result[~pos] = -(np.power(-s[~pos] + 1, 2 - self.power) - 1) / (
-                        2 - self.power
+                if self._power != 2:
+                    result[~pos] = -(np.power(-s[~pos] + 1, 2 - self._power) - 1) / (
+                        2 - self._power
                     )
                 else:
                     result[~pos] = -np.log(-s[~pos] + 1)
                 return result
 
             else:  # box-cox
-                if self.power != 0:
-                    return (np.power(s, self.power) - 1) / self.power
+                if self._power != 0:
+                    return (np.power(s, self._power) - 1) / self._power
                 else:
                     return np.log(s)
 
-        df[self.output_columns] = df[self.columns].transform(column_power_transformer)
+        df[self._output_columns] = df[self._columns].transform(column_power_transformer)
         return df
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"power={self.power!r}, method={self.method!r}, "
-            f"output_columns={self.output_columns!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"power={self._power!r}, method={self._method!r}, "
+            f"output_columns={self._output_columns!r})"
         )

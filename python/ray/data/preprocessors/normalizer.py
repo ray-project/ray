@@ -104,8 +104,8 @@ class Normalizer(Preprocessor):
         output_columns: Optional[List[str]] = None,
     ):
         super().__init__()
-        self.columns = columns
-        self.norm = norm
+        self._columns = columns
+        self._norm = norm
 
         if norm not in self._norm_fns:
             raise ValueError(
@@ -113,20 +113,44 @@ class Normalizer(Preprocessor):
                 f"Supported values are: {self._norm_fns.keys()}"
             )
 
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
-    def _transform_pandas(self, df: pd.DataFrame):
-        columns = df.loc[:, self.columns]
-        column_norms = self._norm_fns[self.norm](columns)
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
 
-        df[self.output_columns] = columns.div(column_norms, axis=0)
+    @columns.setter
+    def columns(self, value: List[str]) -> None:
+        self._columns = value
+
+    @property
+    def norm(self) -> str:
+        return self._norm
+
+    @norm.setter
+    def norm(self, value: str) -> None:
+        self._norm = value
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
+    @output_columns.setter
+    def output_columns(self, value: List[str]) -> None:
+        self._output_columns = value
+
+    def _transform_pandas(self, df: pd.DataFrame):
+        columns = df.loc[:, self._columns]
+        column_norms = self._norm_fns[self._norm](columns)
+
+        df[self._output_columns] = columns.div(column_norms, axis=0)
         return df
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"norm={self.norm!r}, "
-            f"output_columns={self.output_columns!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"norm={self._norm!r}, "
+            f"output_columns={self._output_columns!r})"
         )
