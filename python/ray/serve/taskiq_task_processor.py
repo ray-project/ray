@@ -246,6 +246,7 @@ class TaskiqTaskProcessorAdapter(TaskProcessorAdapter):
 
     def initialize(self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY):
         """Initialize the taskiq broker and result backend."""
+        self._consumer_concurrency = consumer_concurrency
         adapter_config: TaskiqAdapterConfig = self._config.adapter_config
 
         # Create the broker using the factory function
