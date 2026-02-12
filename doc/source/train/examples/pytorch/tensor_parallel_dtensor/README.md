@@ -372,14 +372,16 @@ def setup_model_with_tp(
 
 ## 4. Checkpointing
 
-With tensor parallelism, each worker holds a shard of the model. Checkpointing saves each shard independently, and Ray Train aggregates them into a single checkpoint.
+With tensor parallelism and FSDP2, each worker holds a shard of the model and optimizer state. For this setup, use PyTorch [Distributed Checkpoint (DCP)](https://pytorch.org/docs/stable/distributed.checkpoint.html) APIs so sharded state dicts are saved and restored correctly.
 
-In this example, each rank writes `model_rank{world_rank}.pt` and `optimizer_rank{world_rank}.pt`, while rank 0 additionally writes `metadata.json` (for `epoch`/`step`). Calling `ray.train.report(..., checkpoint=...)` on all workers lets Ray package these per-rank files into one logical checkpoint artifact.
+In this example, `dcp.save` and `dcp.load` handle the distributed state dicts, and rank 0 additionally writes `metadata.json` for `epoch`/`step`. Calling `ray.train.report(..., checkpoint=...)` on all workers lets Ray package the distributed checkpoint into one logical artifact.
 
-On restore, each worker loads its own shard file based on `world_rank` (instead of materializing the full model on every worker), then resumes from `metadata.json`. This keeps checkpoint I/O and memory overhead low and aligns naturally with DTensor/FSDP sharding.
+On restore, each worker loads its local shard through DCP and resumes from `metadata.json`. This avoids materializing a full model copy on each worker and aligns naturally with DTensor/FSDP sharding.
 
 
 ```python
+import torch.distributed.checkpoint as dcp
+from torch.distributed.checkpoint.state_dict import get_state_dict, set_state_dict
 from ray.train import Checkpoint
 
 
@@ -393,15 +395,14 @@ def save_checkpoint(
 ) -> None:
     """Save checkpoint and report to Ray Train."""
     with tempfile.TemporaryDirectory() as checkpoint_dir:
-        # Each rank saves its model/optimizer shard
-        torch.save(
-            model.state_dict(),
-            os.path.join(checkpoint_dir, f"model_rank{world_rank}.pt"),
-        )
-        torch.save(
-            optimizer.state_dict(),
-            os.path.join(checkpoint_dir, f"optimizer_rank{world_rank}.pt"),
-        )
+        model_state_dict, optimizer_state_dict = get_state_dict(model, optimizer)
+        state_dict = {
+            "model": model_state_dict,
+            "optimizer": optimizer_state_dict,
+        }
+
+        # Save distributed model/optimizer shards.
+        dcp.save(state_dict=state_dict, checkpoint_id=checkpoint_dir)
 
         # Save metadata (from rank 0 only)
         if world_rank == 0:
@@ -416,21 +417,27 @@ def save_checkpoint(
 def load_checkpoint(
     model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
-    world_rank: int,
-    device: torch.device,
 ) -> int:
-    """Load worker-local model/optimizer shards from the latest Ray Train checkpoint."""
+    """Load model/optimizer shards from the latest Ray Train checkpoint."""
     checkpoint = ray.train.get_checkpoint()
     if checkpoint is None:
         return 0
 
     with checkpoint.as_directory() as checkpoint_dir:
-        model_path = os.path.join(checkpoint_dir, f"model_rank{world_rank}.pt")
-        optimizer_path = os.path.join(checkpoint_dir, f"optimizer_rank{world_rank}.pt")
         metadata_path = os.path.join(checkpoint_dir, "metadata.json")
 
-        model.load_state_dict(torch.load(model_path, map_location=device))
-        optimizer.load_state_dict(torch.load(optimizer_path, map_location=device))
+        model_state_dict, optimizer_state_dict = get_state_dict(model, optimizer)
+        state_dict = {
+            "model": model_state_dict,
+            "optimizer": optimizer_state_dict,
+        }
+        dcp.load(state_dict=state_dict, checkpoint_id=checkpoint_dir)
+        set_state_dict(
+            model,
+            optimizer,
+            model_state_dict=state_dict["model"],
+            optim_state_dict=state_dict["optimizer"],
+        )
 
         start_epoch = 0
         if os.path.exists(metadata_path):
@@ -486,7 +493,7 @@ def train_func(config):
         weight_decay=config.get("weight_decay", 0.01),
         foreach=False,
     )
-    start_epoch = load_checkpoint(model, optimizer, world_rank, device)
+    start_epoch = load_checkpoint(model, optimizer)
 
     dtype = get_mixed_precision_dtype()
 
@@ -640,7 +647,6 @@ result = trainer.fit()
 print("Training completed successfully!")
 print(f"Final metrics: {result.metrics}")
 
-# Ray Train V2 resume pattern:
 # Reuse the same RunConfig(name, storage_path). train_func() will receive the
 # latest checkpoint from ray.train.get_checkpoint() and continue automatically.
 RUN_RESUME_DEMO = False
