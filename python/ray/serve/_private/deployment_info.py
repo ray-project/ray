@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional
 
 import ray
-from ray.serve._private.common import TargetCapacityDirection, TaskConsumerQueueConfig
+from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve.generated.serve_pb2 import (
     DeploymentInfo as DeploymentInfoProto,
@@ -23,7 +23,6 @@ class DeploymentInfo:
         ingress: bool = False,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
-        task_consumer_queue_config: Optional[TaskConsumerQueueConfig] = None,
     ):
         self.deployment_config = deployment_config
         self.replica_config = replica_config
@@ -43,9 +42,6 @@ class DeploymentInfo:
 
         self.target_capacity = target_capacity
         self.target_capacity_direction = target_capacity_direction
-
-        # Configuration for task consumer queue-based autoscaling
-        self.task_consumer_queue_config = task_consumer_queue_config
 
     def __getstate__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
@@ -75,7 +71,6 @@ class DeploymentInfo:
             ingress=self.ingress,
             target_capacity=self.target_capacity,
             target_capacity_direction=self.target_capacity_direction,
-            task_consumer_queue_config=self.task_consumer_queue_config,
         )
 
     def set_target_capacity(
@@ -171,7 +166,6 @@ class DeploymentInfo:
             data["target_capacity_direction"] = TargetCapacityDirectionProto.UNSET
         else:
             data["target_capacity_direction"] = self.target_capacity_direction.name
-
         return DeploymentInfoProto(**data)
 
     def to_dict(self):

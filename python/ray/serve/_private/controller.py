@@ -33,7 +33,6 @@ from ray.serve._private.common import (
     RequestRoutingInfo,
     RunningReplicaInfo,
     TargetCapacityDirection,
-    TaskConsumerQueueConfig,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -1074,25 +1073,18 @@ class ServeController:
             deployment_args_deserialized = []
             for deployment_args_bytes in deployment_args_list:
                 args = DeploymentArgs.FromString(deployment_args_bytes)
-                deserialized = {
-                    "deployment_name": args.deployment_name,
-                    "deployment_config_proto_bytes": args.deployment_config,
-                    "replica_config_proto_bytes": args.replica_config,
-                    "deployer_job_id": args.deployer_job_id,
-                    "ingress": args.ingress,
-                    "route_prefix": (
-                        args.route_prefix if args.HasField("route_prefix") else None
-                    ),
-                }
-
-                if args.HasField("task_consumer_queue_config"):
-                    deserialized[
-                        "task_consumer_queue_config"
-                    ] = TaskConsumerQueueConfig.from_proto(
-                        args.task_consumer_queue_config
-                    )
-
-                deployment_args_deserialized.append(deserialized)
+                deployment_args_deserialized.append(
+                    {
+                        "deployment_name": args.deployment_name,
+                        "deployment_config_proto_bytes": args.deployment_config,
+                        "replica_config_proto_bytes": args.replica_config,
+                        "deployer_job_id": args.deployer_job_id,
+                        "ingress": args.ingress,
+                        "route_prefix": (
+                            args.route_prefix if args.HasField("route_prefix") else None
+                        ),
+                    }
+                )
             name_to_deployment_args[name] = deployment_args_deserialized
 
         name_to_application_args_deserialized = {}

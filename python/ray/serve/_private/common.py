@@ -14,7 +14,6 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatus as DeploymentStatusProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
     DeploymentStatusTrigger as DeploymentStatusTriggerProto,
-    TaskConsumerQueueConfig as TaskConsumerQueueConfigProto,
 )
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.util.annotations import PublicAPI
@@ -1084,56 +1083,3 @@ class AsyncInferenceTaskQueueMetricReport:
 
 class AutoscalingSnapshotError(str, Enum):
     METRICS_UNAVAILABLE = "METRICS_UNAVAILABLE"
-
-
-@dataclass
-class TaskConsumerQueueConfig:
-    """Configuration for task consumer queue-based autoscaling.
-
-    Extracted from TaskProcessorAdapter.get_queue_monitor_config() and stored
-    in DeploymentInfo to enable the controller to create QueueMonitor actors.
-
-    Attributes:
-        broker_url: URL of the message broker (e.g., redis://localhost:6379/0)
-        queue_name: Name of the queue to monitor
-        rabbitmq_management_url: RabbitMQ Management Plugin API URL
-            (e.g., http://guest:guest@localhost:15672/api/).
-            Only needed for RabbitMQ brokers.
-    """
-
-    broker_url: str
-    queue_name: str
-    rabbitmq_management_url: Optional[str] = None
-
-    def __eq__(self, other):
-        if not isinstance(other, TaskConsumerQueueConfig):
-            return False
-        return (
-            self.broker_url == other.broker_url
-            and self.queue_name == other.queue_name
-            and self.rabbitmq_management_url == other.rabbitmq_management_url
-        )
-
-    @staticmethod
-    def from_proto(
-        proto: TaskConsumerQueueConfigProto,
-    ) -> "TaskConsumerQueueConfig":
-        return TaskConsumerQueueConfig(
-            broker_url=proto.broker_url,
-            queue_name=proto.queue_name,
-            rabbitmq_management_url=(
-                proto.rabbitmq_management_url
-                if proto.HasField("rabbitmq_management_url")
-                else None
-            ),
-        )
-
-    def to_proto(self) -> TaskConsumerQueueConfigProto:
-        proto_kwargs = {
-            "broker_url": self.broker_url,
-            "queue_name": self.queue_name,
-        }
-        if self.rabbitmq_management_url is not None:
-            proto_kwargs["rabbitmq_management_url"] = self.rabbitmq_management_url
-
-        return TaskConsumerQueueConfigProto(**proto_kwargs)

@@ -458,13 +458,6 @@ DEFAULT_AUTOSCALING_POLICY_NAME = (
     "ray.serve.autoscaling_policy:default_autoscaling_policy"
 )
 
-# The autoscaling policy used for TaskConsumer deployments with queue-based scaling.
-DEFAULT_ASYNC_INFERENCE_AUTOSCALING_POLICY_NAME = (
-    "ray.serve.autoscaling_policy:async_inference_autoscaling_policy"
-)
-
-DEFAULT_RABBITMQ_MANAGEMENT_URL = "http://guest:guest@localhost:15672/api/"
-
 # Feature flag to enable collecting all queued and ongoing request
 # metrics at handles instead of replicas. ON by default.
 RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = get_env_bool(

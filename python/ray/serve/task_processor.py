@@ -8,7 +8,6 @@ from celery import Celery
 from celery.signals import task_failure, task_unknown
 
 from ray.serve import get_replica_context
-from ray.serve._private.common import TaskConsumerQueueConfig
 from ray.serve._private.constants import (
     DEFAULT_CONSUMER_CONCURRENCY,
     SERVE_LOGGER_NAME,
@@ -256,24 +255,6 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         More details can be found here: https://docs.celeryq.dev/en/stable/reference/celery.app.control.html#celery.app.control.Control.ping
         """
         return self._app.control.ping()
-
-    @staticmethod
-    def get_queue_monitor_config(
-        task_processor_config: TaskProcessorConfig,
-    ) -> TaskConsumerQueueConfig:
-        """Return queue monitor config for Celery adapter.
-
-        Returns configuration needed to create a QueueMonitor actor for
-        queue-based autoscaling.
-        """
-        adapter_config = task_processor_config.adapter_config
-        return TaskConsumerQueueConfig(
-            broker_url=adapter_config.broker_url,
-            queue_name=task_processor_config.queue_name,
-            rabbitmq_management_url=getattr(
-                adapter_config, "rabbitmq_management_url", None
-            ),
-        )
 
     def _handle_task_failure(
         self,

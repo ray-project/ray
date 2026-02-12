@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, call
 
 import pytest
 
-from ray.serve._private.common import TaskConsumerQueueConfig
 from ray.serve.api import deployment
 from ray.serve.schema import (
     CeleryAdapterConfig,
@@ -54,13 +53,6 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
 
     def health_check_sync(self) -> List[Dict]:
         pass
-
-    @staticmethod
-    def get_queue_monitor_config(task_processor_config):
-        return TaskConsumerQueueConfig(
-            broker_url=task_processor_config.adapter_config.broker_url,
-            queue_name=task_processor_config.queue_name,
-        )
 
 
 @pytest.fixture

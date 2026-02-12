@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, Union
 
 import ray
 import ray.util.serialization_addons
-from ray.serve._private.common import DeploymentID, TaskConsumerQueueConfig
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -39,17 +39,6 @@ def get_deploy_args(
 
     deployment_config.version = version
 
-    # Extract queue config from TaskConsumer deployments. This must happen here
-    # (in user's process) because replica_config.deployment_def may require user
-    # dependencies that are not available in the controller's runtime env.
-    task_consumer_queue_config = None
-    if replica_config.deployment_def is not None:
-        task_consumer_queue_config = getattr(
-            replica_config.deployment_def,
-            "_task_consumer_queue_config",
-            None,
-        )
-
     controller_deploy_args = {
         "deployment_name": name,
         "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
@@ -59,7 +48,6 @@ def get_deploy_args(
         "ingress": ingress,
         "serialized_autoscaling_policy_def": serialized_autoscaling_policy_def,
         "serialized_request_router_cls": serialized_request_router_cls,
-        "task_consumer_queue_config": task_consumer_queue_config,
     }
 
     return controller_deploy_args
@@ -73,7 +61,6 @@ def deploy_args_to_deployment_info(
     app_name: Optional[str] = None,
     ingress: bool = False,
     route_prefix: Optional[str] = None,
-    task_consumer_queue_config: Optional[TaskConsumerQueueConfig] = None,
     **kwargs,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
@@ -103,7 +90,6 @@ def deploy_args_to_deployment_info(
         start_time_ms=int(time.time() * 1000),
         route_prefix=route_prefix,
         ingress=ingress,
-        task_consumer_queue_config=task_consumer_queue_config,
     )
 
 
