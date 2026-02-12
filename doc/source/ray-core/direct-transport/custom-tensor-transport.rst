@@ -51,29 +51,32 @@ The following diagram shows when each method is called during a tensor transfer:
 
 
 Note that Ray will not call `send_multiple_tensors` for one-sided transports.
-
+The following diagram shows where each method is called in the ray.put / ray.get case supported by one-sided transports.
 
 .. code-block:: text
 
    Source Actor                                                  Destination Actor
    ============                                                  =================
         |                                                               |
-   1. User ray.puts tensor                                              |
+   1. User ray.put's tensor                                             |
         |                                                               |
    2. extract_tensor_transport_metadata                                 |
         |                                                               |
-        | ---- transport_metadata ---->                                 |
         |                                                               |
-   3. get_communicator_metadata                                         |
+   3. User passes ref to another actor                                  |
+        | ---- transport_metadata ---------------------------------->   |
         |                                                               |
-        | ------------------------------------ comm metadata -------->  |
         |                                                               |
-        |                                          5. recv_multiple_tensors
+        |                                                               |
+        |                                                               |
+        |                                          4. User ray.get's on object ref
+                                                         get_communicator_metadata
+        |                                                    recv_multiple_tensors
         | ------------ tensors --------- -----------------------------> |
         |                                                               |
         |                         (transfer complete)                   |
         |                                                               |
-   6. garbage_collect                                                   |
+   5. garbage_collect                                                   |
    (when ref goes out of scope)                                         |
 
 
