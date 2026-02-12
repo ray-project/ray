@@ -260,7 +260,7 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
 
     @output_columns.setter
     def output_columns(self, value: List[str]) -> None:
-        return self._output_columns
+        self._output_columns = value
 
     _is_fittable = False
 

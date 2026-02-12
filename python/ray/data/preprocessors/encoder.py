@@ -875,7 +875,7 @@ class LabelEncoder(SerializablePreprocessorBase):
         return self._output_column
 
     @output_column.setter
-    def output_columns(self, value: str) -> None:
+    def output_column(self, value: str) -> None:
         self._output_column = value
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:

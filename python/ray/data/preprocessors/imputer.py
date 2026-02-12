@@ -234,7 +234,7 @@ class SimpleImputer(SerializablePreprocessorBase):
         else:
             raise ValueError(
                 f"Strategy {self._strategy} is not supported. "
-                "Supported values are: {self._valid_strategies}"
+                f"Supported values are: {self._valid_strategies}"
             )
 
     def __repr__(self):

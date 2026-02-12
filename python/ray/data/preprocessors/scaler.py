@@ -103,7 +103,7 @@ class StandardScaler(SerializablePreprocessorBase):
         return self._columns
 
     @columns.setter
-    def columns(self, value: List[str]):
+    def columns(self, value: List[str]) -> None:
         self._columns = value
 
     @property
@@ -284,7 +284,7 @@ class MinMaxScaler(SerializablePreprocessorBase):
         return self._columns
 
     @columns.setter
-    def columns(self, value: List[str]):
+    def columns(self, value: List[str]) -> None:
         self._columns = value
 
     @property
@@ -409,7 +409,7 @@ class MaxAbsScaler(SerializablePreprocessorBase):
         return self._columns
 
     @columns.setter
-    def columns(self, value: List[str]):
+    def columns(self, value: List[str]) -> None:
         self._columns = value
 
     @property
@@ -549,7 +549,7 @@ class RobustScaler(SerializablePreprocessorBase):
         self._quantile_range = quantile_range
         self._quantile_precision = quantile_precision
 
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
@@ -558,7 +558,7 @@ class RobustScaler(SerializablePreprocessorBase):
         return self._columns
 
     @columns.setter
-    def columns(self, value: List[str]):
+    def columns(self, value: List[str]) -> None:
         self._columns = value
 
     @property
@@ -624,13 +624,13 @@ class RobustScaler(SerializablePreprocessorBase):
 
             return (s - s_median) / diff
 
-        df[self.output_columns] = df[self._columns].transform(column_robust_scaler)
+        df[self._output_columns] = df[self._columns].transform(column_robust_scaler)
         return df
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
             "columns": self._columns,
-            "output_columns": self.output_columns,
+            "output_columns": self._output_columns,
             "quantile_range": self._quantile_range,
             "quantile_precision": self._quantile_precision,
             "_fitted": getattr(self, "_fitted", None),
@@ -639,7 +639,7 @@ class RobustScaler(SerializablePreprocessorBase):
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
         self._columns = fields["columns"]
-        self.output_columns = fields["output_columns"]
+        self._output_columns = fields["output_columns"]
         self._quantile_range = fields["quantile_range"]
         self._quantile_precision = fields["quantile_precision"]
         # optional fields
@@ -649,5 +649,5 @@ class RobustScaler(SerializablePreprocessorBase):
         return (
             f"{self.__class__.__name__}(columns={self._columns!r}, "
             f"quantile_range={self._quantile_range!r}), "
-            f"output_columns={self.output_columns!r})"
+            f"output_columns={self._output_columns!r})"
         )
