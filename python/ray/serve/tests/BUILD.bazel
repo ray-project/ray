@@ -113,6 +113,7 @@ py_test_module_list(
         "test_deployment_scheduler.py",
         "test_deployment_topology.py",
         "test_failure.py",
+        "test_gang_scheduling.py",
         "test_grpc_e2e.py",
         "test_grpc_replica_wrapper.py",
         "test_handle.py",
@@ -509,6 +510,7 @@ py_test_module_list(
     env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},
     files = [
         "test_deployment_scheduler.py",
+        "test_gang_scheduling.py",
         "test_standalone_2.py",
     ],
     name_suffix = "_with_pack_scheduling",
