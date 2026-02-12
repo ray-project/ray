@@ -58,7 +58,7 @@ class RayEventPublisher(RayEventPublisherInterface):
     """
 
     # Cap the exponent to avoid computing unnecessarily large intermediate
-    _MAX_BACKOFF_EXPONENT = 63
+    _MAX_BACKOFF_EXPONENT = 30
 
     def __init__(
         self,
