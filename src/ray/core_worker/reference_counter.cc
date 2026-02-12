@@ -1241,7 +1241,8 @@ void ReferenceCounter::CleanupBorrowersOnRefRemoved(
 
 void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
                                          const rpc::Address &addr,
-                                         const ObjectID &contained_in_id) {
+                                         const ObjectID &contained_in_id,
+                                         const ObjectID &generator_id) {
   const ObjectID &object_id = ref_it->first;
   RAY_LOG(DEBUG).WithField(object_id).WithField(WorkerID::FromBinary(addr.worker_id()))
       << "WaitForRefRemoved object, dest worker";
@@ -1255,6 +1256,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
   request->set_contained_in_id(contained_in_id.Binary());
   request->set_intended_worker_id(addr.worker_id());
   request->set_subscriber_worker_id(rpc_address_.worker_id());
+  if (!generator_id.IsNil()) request->set_generator_id(generator_id.Binary());
 
   // If the message is published, this callback will be invoked.
   const auto message_published_callback = [this, addr, object_id](
@@ -1295,14 +1297,16 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
 
 void ReferenceCounter::AddNestedObjectIds(const ObjectID &object_id,
                                           const std::vector<ObjectID> &inner_ids,
-                                          const rpc::Address &owner_address) {
+                                          const rpc::Address &owner_address,
+                                          const ObjectID &generator_id) {
   absl::MutexLock lock(&mutex_);
-  AddNestedObjectIdsInternal(object_id, inner_ids, owner_address);
+  AddNestedObjectIdsInternal(object_id, inner_ids, owner_address, generator_id);
 }
 
 void ReferenceCounter::AddNestedObjectIdsInternal(const ObjectID &object_id,
                                                   const std::vector<ObjectID> &inner_ids,
-                                                  const rpc::Address &owner_address) {
+                                                  const rpc::Address &owner_address,
+                                                  const ObjectID &generator_id) {
   RAY_CHECK(!WorkerID::FromBinary(owner_address.worker_id()).IsNil());
   auto it = object_id_refs_.find(object_id);
   if (owner_address.worker_id() == rpc_address_.worker_id()) {
@@ -1347,7 +1351,7 @@ void ReferenceCounter::AddNestedObjectIdsInternal(const ObjectID &object_id,
             inner_it->second.mutable_borrow()->borrowers.insert(owner_address).second;
         if (inserted) {
           // Wait for it to remove its reference.
-          WaitForRefRemoved(inner_it, owner_address, object_id);
+          WaitForRefRemoved(inner_it, owner_address, object_id, generator_id);
         }
       } else {
         inner_it->second.mutable_borrow()->stored_in_objects.emplace(object_id,
