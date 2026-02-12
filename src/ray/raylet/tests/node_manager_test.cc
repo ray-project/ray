@@ -424,7 +424,7 @@ class NodeManagerTest : public ::testing::Test {
     placement_group_resource_manager_ =
         std::make_unique<NewPlacementGroupResourceManager>(*cluster_resource_scheduler_);
 
-    node_manager_ = std::make_shared<NodeManager>(
+    node_manager_ = std::make_unique<NodeManager>(
         io_service_,
         raylet_node_id_,
         "test_node_name",
@@ -477,7 +477,7 @@ class NodeManagerTest : public ::testing::Test {
   std::shared_ptr<plasma::PlasmaClientInterface> mock_store_client_ =
       std::make_shared<plasma::FakePlasmaClient>();
 
-  std::shared_ptr<NodeManager> node_manager_;
+  std::unique_ptr<NodeManager> node_manager_;
   MockWorkerPool mock_worker_pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;

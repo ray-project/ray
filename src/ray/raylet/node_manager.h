@@ -139,8 +139,7 @@ enum RayletShutdownState : std::uint8_t {
 
 class NodeManager : public rpc::NodeManagerServiceHandler,
                     public syncer::ReporterInterface,
-                    public syncer::ReceiverInterface,
-                    public std::enable_shared_from_this<NodeManager> {
+                    public syncer::ReceiverInterface {
  public:
   /// Create a node manager.
   ///
