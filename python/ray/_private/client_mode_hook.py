@@ -2,6 +2,9 @@ import os
 import threading
 from contextlib import contextmanager
 from functools import wraps
+from typing import Any, Callable, TypeVar, cast
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 from ray._private.auto_init_hook import auto_init_ray
 
@@ -79,7 +82,7 @@ def enable_client_mode():
         _explicitly_disable_client_mode()
 
 
-def client_mode_hook(func: callable):
+def client_mode_hook(func: F) -> F:
     """Decorator for whether to use the 'regular' ray version of a function,
     or the Ray Client version of that function.
 
@@ -103,7 +106,7 @@ def client_mode_hook(func: callable):
                 return getattr(ray, func.__name__)(*args, **kwargs)
         return func(*args, **kwargs)
 
-    return wrapper
+    return cast(F, wrapper)
 
 
 def client_mode_should_convert():
