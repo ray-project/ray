@@ -287,10 +287,12 @@ void RayletClient::CommitBundleResources(
 }
 
 void RayletClient::CancelResourceReserve(
-    const BundleSpecification &bundle_spec,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
     const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) {
   rpc::CancelResourceReserveRequest request;
-  request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
+  for (const auto &bundle_spec : bundle_specs) {
+    request.add_bundle_specs()->CopyFrom(bundle_spec->GetMessage());
+  }
   INVOKE_RPC_CALL(NodeManagerService,
                   CancelResourceReserve,
                   request,

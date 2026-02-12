@@ -387,16 +387,16 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
       const rpc::StatusCallback callback);
 
-  /// Cacnel prepared or committed resources from a node.
+  /// Cancel prepared or committed resources from a node.
   /// Nodes will be in charge of tracking state of a bundle.
   /// This method is supposed to be idempotent.
   ///
-  /// \param bundle A description of the bundle to return.
+  /// \param bundle_specs The bundles to cancel resource reservations for.
   /// \param node The node that the worker will be returned for.
   /// \param max_retry The maximum times cancel request can be retried.
   /// \param retry_cnt The number of times the cancel request is retried.
   void CancelResourceReserve(
-      const std::shared_ptr<const BundleSpecification> &bundle_spec,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
       int max_retry,
       int current_retry_cnt);
