@@ -7270,7 +7270,7 @@ class ExecutionCache:
         size_bytes: Optional[int],
     ) -> None:
         if dag != self._operator:
-            self.clear()
+            self._clear_op_dependents()
         self._metadata_cached = True
         self._operator = dag
         self._schema = schema
@@ -7279,7 +7279,7 @@ class ExecutionCache:
 
     def set_schema(self, dag: "LogicalOperator", schema: "Schema") -> None:
         if dag != self._operator:
-            self.clear()
+            self._clear_op_dependents()
         self._operator = dag
         self._schema = schema
 
@@ -7287,7 +7287,7 @@ class ExecutionCache:
         self, dag: "LogicalOperator", bundle: RefBundle, stats: DatasetStats
     ) -> None:
         if dag != self._operator:
-            self.clear()
+            self._clear_op_dependents()
         self._operator = dag
         self._bundle = bundle
         self._stats = stats
@@ -7295,17 +7295,16 @@ class ExecutionCache:
     # --- Lifecycle ---
 
     def clear(self) -> None:
+        self._stats = None
+        self._clear_op_dependents()
+
+    def _clear_op_dependents(self) -> None:
         self._operator = None
         self._bundle = None
-        self._stats = None
-
-        # NOTE (kyuds): theoretically you should clear this
-        # but previous behavior left this alone. Currently
-        # snapshot clears are for dataset lineage serialization
-        # and I don't think this information is needed anyways.
         self._schema = None
         self._num_rows = None
         self._size_bytes = None
+        self._metadata_cached = False
 
     def copy(self) -> "ExecutionCache":
         new = ExecutionCache()
