@@ -370,8 +370,7 @@ class ExecutionPlan:
             The schema of the output dataset.
         """
         schema = None
-        if self._cache.cache_is_fresh(self._logical_plan.dag):
-            schema = self._cache.get_schema(self._logical_plan.dag)
+        schema = self._cache.get_schema(self._logical_plan.dag)
         if schema is None:
             schema = self._logical_plan.dag.infer_schema()
         if schema is None and fetch_if_missing:
