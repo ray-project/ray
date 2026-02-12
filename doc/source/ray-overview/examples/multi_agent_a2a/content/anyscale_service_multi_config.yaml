@@ -8,7 +8,7 @@ logging_config:
 applications:
 - name: llm
   route_prefix: /llm
-  import_path: ray_serve_all_deployments:llm_app
+  import_path: llm.llm_deploy_qwen:app
   runtime_env: {}
 - name: mcp_web_search
   route_prefix: /mcp-web-search
