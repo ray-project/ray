@@ -97,6 +97,43 @@ class TorchVisionPreprocessor(Preprocessor):
         self._torchvision_transform = transform
         self._batched = batched
 
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @columns.setter
+    def columns(self, value: List[str]) -> None:
+        self._columns = value
+
+    @property
+    def torchvision_transform(
+        self,
+    ) -> Callable[[Union["np.ndarray", "torch.Tensor"]], "torch.Tensor"]:
+        return self._torchvision_transform
+
+    @torchvision_transform.setter
+    def torchvision_transform(
+        self,
+        value: Callable[[Union["np.ndarray", "torch.Tensor"]], "torch.Tensor"],
+    ) -> None:
+        self._torchvision_transform = value
+
+    @property
+    def batched(self) -> bool:
+        return self._batched
+
+    @batched.setter
+    def batched(self, value: bool) -> None:
+        self._batched = value
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
+    @output_columns.setter
+    def output_columns(self, value: List[str]) -> None:
+        self._output_columns = value
+
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
