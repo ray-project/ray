@@ -384,7 +384,7 @@ class ExecutionPlan:
                     bundle.schema for bundle in iter_ref_bundles
                 )
         if schema is not None:
-            self._cache.set_schema(self._logical_plan.dag, schema)
+            self.cache_schema(schema)
         return schema
 
     def cache_schema(self, schema: Union[type, "pyarrow.lib.Schema"]):
