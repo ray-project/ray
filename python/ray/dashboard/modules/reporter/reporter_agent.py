@@ -1506,6 +1506,8 @@ class ReporterAgent(
                 gram_total += gpu["memory_total"]
                 gpu_index = gpu.get("index")
                 gpu_name = gpu.get("name")
+                gpu_power_mw = gpu.get("power_mw")
+                gpu_temperature_c = gpu.get("temperature_c")
 
                 gram_available = gram_total - gram_used
 
@@ -1542,19 +1544,19 @@ class ReporterAgent(
                         gram_available_record,
                     ]
                     # Optional GPU power and temperature (e.g. NVIDIA, AMD)
-                    if gpu.get("power_mw") is not None:
+                    if gpu_power_mw is not None:
                         gpu_records_to_add.append(
                             Record(
                                 gauge=METRICS_GAUGES["node_gpu_power_milliwatts"],
-                                value=gpu["power_mw"],
+                                value=gpu_power_mw,
                                 tags=gpu_tags,
                             )
                         )
-                    if gpu.get("temperature_c") is not None:
+                    if gpu_temperature_c is not None:
                         gpu_records_to_add.append(
                             Record(
                                 gauge=METRICS_GAUGES["node_gpu_temperature_celsius"],
-                                value=gpu["temperature_c"],
+                                value=gpu_temperature_c,
                                 tags=gpu_tags,
                             )
                         )
