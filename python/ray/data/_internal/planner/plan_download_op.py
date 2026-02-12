@@ -1,5 +1,6 @@
 import logging
 import math
+import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterator, List, Optional
 from urllib.parse import urlparse
@@ -19,7 +20,11 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.logical.operators import Download
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.util import RetryingPyFileSystem, make_async_gen
+from ray.data._internal.util import (
+    OnlineLogNormalEstimator,
+    RetryingPyFileSystem,
+    make_async_gen,
+)
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
@@ -274,12 +279,25 @@ def download_bytes_threaded(
 
 
 class PartitionActor:
-    """Actor that partitions download operations based on estimated file sizes.
+    """Actor that partitions download operations based on online file-size
+    estimation.
 
-    For multiple URI columns, estimates the combined size across all columns.
+    Uses an :class:`OnlineLogNormalEstimator` that is updated on every
+    incoming block, providing adaptive partition sizing that reacts to distribution shifts across the dataset.
+
+    For multiple URI columns, a single estimator tracks the combined
+    per-row file size across all columns.
     """
 
-    INIT_SAMPLE_BATCH_SIZE = 25
+    # Number of URIs to sample on the very first block (bootstrap).
+    INIT_SAMPLE_SIZE = 25
+    # Number of URIs to sample on subsequent blocks (maintenance).
+    SAMPLE_SIZE = 10
+    # Quantile of the fitted distribution used as the conservative
+    # per-row byte estimate. Higher values → smaller, safer partitions.
+    _QUANTILE = 0.90
+    # Minimum rows per partition — can't go below 1.
+    _MIN_ROWS = 1
 
     def __init__(
         self,
@@ -290,13 +308,16 @@ class PartitionActor:
         self._uri_column_names = uri_column_names
         self._data_context = data_context
         self._filesystem = filesystem
-        self._batch_size_estimate = None
+        # None means "unbounded block size" — skip partitioning.
+        self._target_nbytes = data_context.target_max_block_size
+        self._estimator: OnlineLogNormalEstimator = OnlineLogNormalEstimator()
+        self._blocks_seen: int = 0
 
     def __call__(self, block: pa.Table) -> Iterator[pa.Table]:
         if not isinstance(block, pa.Table):
             block = BlockAccessor.for_block(block).to_arrow()
 
-        # Validate all URI columns exist
+        # Validate all URI columns exist.
         for uri_column_name in self._uri_column_names:
             if uri_column_name not in block.column_names:
                 raise ValueError(
@@ -305,51 +326,84 @@ class PartitionActor:
                     "exist. Is the specified download column correct?"
                 )
 
-        if self._batch_size_estimate is None:
-            self._batch_size_estimate = self._estimate_nrows_per_partition(block)
+        # If target block size is unbounded, pass the block through as-is.
+        if self._target_nbytes is None:
+            yield block
+            return
 
-        yield from _arrow_batcher(block, self._batch_size_estimate)
+        # Sample file sizes and update the estimator on every block.
+        self._sample_and_update(block)
+        self._blocks_seen += 1
 
-    def _estimate_nrows_per_partition(self, block: pa.Table) -> int:
-        sampled_file_sizes_by_column = {}
-        for uri_column_name in self._uri_column_names:
-            # Extract URIs from PyArrow table for sampling
-            uris = block.column(uri_column_name).to_pylist()
-            sample_uris = uris[: self.INIT_SAMPLE_BATCH_SIZE]
-            sampled_file_sizes = self._sample_sizes(sample_uris)
-            sampled_file_sizes_by_column[uri_column_name] = sampled_file_sizes
+        nrows = self._estimate_nrows(block.num_rows)
+        yield from _arrow_batcher(block, nrows)
 
-        # If we sample HTTP URIs, or if an error occurs during sampling, then the file
-        # sizes might be `None`. In these cases, we replace the `file_size` with 0.
-        sampled_file_sizes_by_column = {
-            uri_column_name: [
-                file_size if file_size is not None else 0
-                for file_size in sampled_file_sizes
-            ]
-            for uri_column_name, sampled_file_sizes in sampled_file_sizes_by_column.items()
-        }
+    def _estimate_nrows(self, block_num_rows: int) -> int:
+        """Conservatively estimate rows per partition from the fitted
+        distribution. Early on (few observations, wide distribution)
+        the quantile is large → small, safe partitions. As data
+        accumulates the estimate tightens toward optimal throughput.
 
-        # This is some fancy Python code to compute the file size of each row.
-        row_sizes = [
-            sum(file_sizes_in_row)
-            for file_sizes_in_row in zip(*sampled_file_sizes_by_column.values())
-        ]
+        When no observations are available, falls back to the block's
+        own row count (matching the old behaviour).
+        """
+        if self._target_nbytes is None or not self._estimator.has_observations:
+            return block_num_rows
 
-        target_nbytes_per_partition = self._data_context.target_max_block_size
-        avg_nbytes_per_row = sum(row_sizes) / len(row_sizes)
-        if avg_nbytes_per_row == 0:
-            logger.warning(
-                "Estimated average row size is 0. Falling back to using the number of "
-                "rows in the block as the partition size."
-            )
-            return len(block)
+        # ppf(q) returns the value x such that P(X ≤ x) = q.
+        # For example, ppf(0.90) gives the file size that 90% of files
+        # are expected to be at or below — a conservative upper estimate.
+        conservative_row_bytes = float(self._estimator.distribution.ppf(self._QUANTILE))
 
-        nrows_per_partition = math.floor(
-            target_nbytes_per_partition / avg_nbytes_per_row
+        if conservative_row_bytes <= 0:
+            return block_num_rows
+
+        nrows = math.floor(self._target_nbytes / conservative_row_bytes)
+        return max(self._MIN_ROWS, min(nrows, block_num_rows))
+
+    def _sample_and_update(self, block: pa.Table) -> None:
+        """Sample file sizes from the block and feed them to the estimator.
+
+        Uses a larger sample on the first block to bootstrap the estimate,
+        then smaller random samples on subsequent blocks to track drift.
+        """
+        sample_size = (
+            self.INIT_SAMPLE_SIZE if self._blocks_seen == 0 else self.SAMPLE_SIZE
         )
-        return nrows_per_partition
 
-    def _sample_sizes(self, uris: List[str]) -> List[int]:
+        total_uris_in_block = block.num_rows
+        if total_uris_in_block == 0:
+            return
+
+        uri_sample_size = min(sample_size, total_uris_in_block)
+        sampled_indices = random.sample(range(total_uris_in_block), uri_sample_size)
+        indices_array = pa.array(sampled_indices, type=pa.int32())
+
+        # Use pa.Table.take for zero-copy row selection, then extract URIs
+        # per column for size sampling. Accumulate per-row sizes as a
+        # PyArrow array so the summation across columns stays vectorized.
+        sampled_block = block.take(indices_array)
+        uri_sample_sizes_in_bytes = pa.array([0] * uri_sample_size, type=pa.int64())
+
+        for uri_column_name in self._uri_column_names:
+            sampled_uris = sampled_block.column(uri_column_name).to_pylist()
+            file_sizes = self._sample_sizes(sampled_uris)
+            # Replace None with 0 and clamp negatives, then add to running sum.
+            sizes_array = pa.array(
+                [
+                    file_size if file_size is not None and file_size > 0 else 0
+                    for file_size in file_sizes
+                ],
+                type=pa.int64(),
+            )
+            uri_sample_sizes_in_bytes = pa.compute.add(
+                uri_sample_sizes_in_bytes, sizes_array
+            )
+
+        # Feed combined per-row sizes into the estimator.
+        self._estimator.update_batch(uri_sample_sizes_in_bytes.to_pylist())
+
+    def _sample_sizes(self, uris: List[str]) -> List[Optional[int]]:
         """Fetch file sizes in parallel using ThreadPoolExecutor."""
 
         def get_file_size(uri_path, fs):
@@ -358,12 +412,13 @@ class PartitionActor:
             except Exception:
                 return None
 
-        # If no URIs, return empty list
+        # If no URIs, return empty list.
         if not uris:
             return []
 
-        # Get the filesystem from the URIs (assumes all URIs use same filesystem for sampling)
-        # This is for sampling the file sizes which doesn't require a full resolution of the paths.
+        # Get the filesystem from the URIs (assumes all URIs use same
+        # filesystem for sampling). This is for sampling the file sizes
+        # which doesn't require a full resolution of the paths.
         try:
             paths, fs = _resolve_paths_and_filesystem(uris, filesystem=self._filesystem)
             fs = RetryingPyFileSystem.wrap(
@@ -371,29 +426,26 @@ class PartitionActor:
             )
         except Exception as e:
             logger.warning(f"Failed to resolve URIs for size sampling: {e}")
-            # Return zeros for all URIs if resolution fails
+            # Return zeros for all URIs if resolution fails.
             return [0] * len(uris)
 
-        # Use ThreadPoolExecutor for concurrent size fetching
-        file_sizes = [None] * len(paths)
+        # Use ThreadPoolExecutor for concurrent size fetching.
+        file_sizes: List[Optional[int]] = [None] * len(paths)
         with ThreadPoolExecutor(max_workers=URI_DOWNLOAD_MAX_WORKERS) as executor:
-            # Submit all size fetch tasks
+            # Submit all size fetch tasks.
             future_to_file_index = {
                 executor.submit(get_file_size, uri_path, fs): file_index
                 for file_index, uri_path in enumerate(paths)
             }
 
-            # Collect results as they complete (order doesn't matter)
+            # Collect results as they complete (order doesn't matter).
             for future in as_completed(future_to_file_index):
                 file_index = future_to_file_index[future]
                 try:
                     size = future.result()
-                    file_sizes[file_index] = size if size is not None else 0
+                    file_sizes[file_index] = size
                 except Exception as e:
                     logger.warning(f"Error fetching file size for download: {e}")
-                    file_sizes[file_index] = 0
+                    file_sizes[file_index] = None
 
-        assert all(
-            fs is not None for fs in file_sizes
-        ), "File size sampling did not complete for all paths"
         return file_sizes
