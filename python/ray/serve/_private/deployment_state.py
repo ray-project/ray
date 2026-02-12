@@ -43,6 +43,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FAIL_ON_RANK_ERROR,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
+    RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
@@ -2245,6 +2246,14 @@ class DeploymentState:
 
         self.replica_average_ongoing_requests: Dict[str, float] = {}
 
+        # Cache the last-reported health gauge value and timestamp per replica.
+        # This avoids redundant Gauge.set() calls on every control loop
+        # iteration, which are expensive at scale (O(num_replicas) Cython
+        # FFI calls per loop).  We only call Gauge.set() when the value
+        # changes or the cache entry is older than _HEALTH_GAUGE_REPORT_INTERVAL_S
+        # (to ensure the metric is re-exported within each Prometheus scrape window).
+        self._health_gauge_cache: Dict[str, Tuple[int, float]] = {}
+
         self.health_check_gauge = metrics.Gauge(
             "serve_deployment_replica_healthy",
             description=(
@@ -3213,6 +3222,31 @@ class DeploymentState:
         )
         self._curr_status_info = self._curr_status_info.update_message(message)
 
+    def _set_health_gauge(self, replica_unique_id: str, value: int) -> None:
+        """Set the health-check gauge for *replica_unique_id*, skipping the
+        (expensive) Cython ``Gauge.set()`` call when the value hasn't changed
+        and was recently reported.
+
+        In large clusters this avoids O(num_replicas) redundant FFI calls on
+        every control-loop iteration while still refreshing the metric often
+        enough for Prometheus export.
+        """
+        now = time.time()
+        cached = self._health_gauge_cache.get(replica_unique_id)
+        if (
+            cached is not None
+            and cached[0] == value
+            and (now - cached[1]) < RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S
+        ):
+            return
+        self.health_check_gauge.set(value, tags={"replica": replica_unique_id})
+        self._health_gauge_cache[replica_unique_id] = (value, now)
+
+    def _clear_health_gauge_cache(self, replica_unique_id: str) -> None:
+        """Remove a replica from the health-gauge cache (after it has
+        fully stopped and been removed from tracking)."""
+        self._health_gauge_cache.pop(replica_unique_id, None)
+
     def stop_replicas(self, replicas_to_stop: Set[ReplicaID]) -> None:
         for replica in self._replicas.remove(replicas_to_stop):
             self._stop_replica(replica)
@@ -3227,12 +3261,7 @@ class DeploymentState:
         replica.stop(graceful=graceful_stop)
         self._replicas.add(ReplicaState.STOPPING, replica)
         self._deployment_scheduler.on_replica_stopping(replica.replica_id)
-        self.health_check_gauge.set(
-            0,
-            tags={
-                "replica": replica.replica_id.unique_id,
-            },
-        )
+        self._set_health_gauge(replica.replica_id.unique_id, 0)
 
     def check_and_update_replicas(self):
         """
@@ -3259,24 +3288,14 @@ class DeploymentState:
 
             if is_healthy:
                 self._replicas.add(replica.actor_details.state, replica)
-                self.health_check_gauge.set(
-                    1,
-                    tags={
-                        "replica": replica.replica_id.unique_id,
-                    },
-                )
+                self._set_health_gauge(replica.replica_id.unique_id, 1)
                 routing_stats = replica.pull_routing_stats()
                 replica.record_routing_stats(routing_stats)
             else:
                 logger.warning(
                     f"Replica {replica.replica_id} failed health check, stopping it."
                 )
-                self.health_check_gauge.set(
-                    0,
-                    tags={
-                        "replica": replica.replica_id.unique_id,
-                    },
-                )
+                self._set_health_gauge(replica.replica_id.unique_id, 0)
                 self._stop_replica(
                     replica, graceful_stop=not self.FORCE_STOP_UNHEALTHY_REPLICAS
                 )
@@ -3383,6 +3402,7 @@ class DeploymentState:
                 # Release rank only after replica is successfully stopped
                 # This ensures rank is available during draining/graceful shutdown
                 replica_id = replica.replica_id.unique_id
+                self._clear_health_gauge_cache(replica_id)
                 if self._rank_manager.has_replica_rank(replica_id):
                     # Only release rank if assigned. Replicas that failed allocation
                     # or never reached RUNNING state won't have ranks.

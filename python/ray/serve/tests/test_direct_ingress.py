@@ -16,8 +16,7 @@ from starlette.responses import PlainTextResponse
 
 import ray
 from ray import serve
-from ray._common.test_utils import Semaphore, SignalActor
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import Semaphore, SignalActor, wait_for_condition
 from ray.actor import ActorHandle
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private.common import DeploymentID
@@ -2320,7 +2319,8 @@ def test_get_serve_instance_details_json_serializable(
                                     "upscale_delay_s": 30.0,
                                     "aggregation_function": "mean",
                                     "policy": {
-                                        "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+                                        "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+                                        "policy_kwargs": {},
                                     },
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
