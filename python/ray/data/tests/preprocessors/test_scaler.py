@@ -678,10 +678,7 @@ class TestScalerSerialization:
         deserialized = SerializablePreprocessorBase.deserialize(serialized)
 
         # Verify output columns are preserved
-        assert deserialized.output_columns == [
-            "scaled_feature1",
-            "scaled_feature2",
-        ]
+        assert deserialized.output_columns == ["scaled_feature1", "scaled_feature2"]
 
         # Test functional equivalence
         test_df = pd.DataFrame(

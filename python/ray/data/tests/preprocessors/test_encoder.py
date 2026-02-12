@@ -1433,7 +1433,7 @@ class TestEncoderSerialization:
         assert isinstance(deserialized, OrdinalEncoder)
         assert deserialized._fitted
         assert deserialized.columns == ["category", "grade"]
-        assert deserialized._encode_lists is True  # default value
+        assert deserialized.encode_lists is True  # default value
 
         # Test functional equivalence
         test_df = pd.DataFrame({"category": ["A", "B"], "grade": ["high", "low"]})
@@ -1460,7 +1460,7 @@ class TestEncoderSerialization:
         assert isinstance(deserialized, OneHotEncoder)
         assert deserialized._fitted
         assert deserialized.columns == ["category"]
-        assert deserialized._max_categories == {"category": 3}
+        assert deserialized.max_categories == {"category": 3}
 
         # Test functional equivalence
         test_df = pd.DataFrame({"category": ["A", "B", "C"]})
@@ -1487,7 +1487,7 @@ class TestEncoderSerialization:
         assert isinstance(deserialized, MultiHotEncoder)
         assert deserialized._fitted
         assert deserialized.columns == ["tags"]
-        assert deserialized._max_categories == {"tags": 5}
+        assert deserialized.max_categories == {"tags": 5}
 
         # Test functional equivalence
         test_df = pd.DataFrame({"tags": [["red", "car"], ["blue", "bike"]]})
@@ -1513,8 +1513,8 @@ class TestEncoderSerialization:
         deserialized = SerializablePreprocessor.deserialize(serialized)
         assert isinstance(deserialized, LabelEncoder)
         assert deserialized._fitted
-        assert deserialized._label_column == "target"
-        assert deserialized._output_column == "target"  # default
+        assert deserialized.label_column == "target"
+        assert deserialized.output_column == "target"  # default
 
         # Test functional equivalence
         test_df = pd.DataFrame({"target": ["cat", "dog", "bird"]})
@@ -1545,23 +1545,23 @@ class TestEncoderSerialization:
         # Test deserialization
         deserialized = SerializablePreprocessor.deserialize(serialized)
         assert isinstance(deserialized, Categorizer)
-        assert deserialized.get_input_columns() == ["category", "grade"]
+        assert deserialized.columns == ["category", "grade"]
 
         # Test dtypes preservation
-        assert len(deserialized._dtypes) == 2
-        assert isinstance(deserialized._dtypes["category"], pd.CategoricalDtype)
-        assert isinstance(deserialized._dtypes["grade"], pd.CategoricalDtype)
+        assert len(deserialized.dtypes) == 2
+        assert isinstance(deserialized.dtypes["category"], pd.CategoricalDtype)
+        assert isinstance(deserialized.dtypes["grade"], pd.CategoricalDtype)
 
         # Check category preservation
-        assert list(deserialized._dtypes["category"].categories) == ["male", "female"]
-        assert deserialized._dtypes["category"].ordered is False
+        assert list(deserialized.dtypes["category"].categories) == ["male", "female"]
+        assert deserialized.dtypes["category"].ordered is False
 
-        assert list(deserialized._dtypes["grade"].categories) == [
+        assert list(deserialized.dtypes["grade"].categories) == [
             "high",
             "medium",
             "low",
         ]
-        assert deserialized._dtypes["grade"].ordered is True
+        assert deserialized.dtypes["grade"].ordered is True
 
     def test_categorizer_fitted_serialization(self):
         """Test Categorizer save/load functionality after fitting."""

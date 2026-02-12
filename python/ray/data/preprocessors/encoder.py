@@ -871,12 +871,12 @@ class LabelEncoder(SerializablePreprocessorBase):
         self._label_column = value
 
     @property
-    def output_columns(self) -> str:
-        return self._output_columns
+    def output_column(self) -> str:
+        return self._output_column
 
-    @output_columns.setter
+    @output_column.setter
     def output_columns(self, value: str) -> None:
-        self._output_columns = value
+        self._output_column = value
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         self._stat_computation_plan.add_callable_stat(
