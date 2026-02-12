@@ -377,5 +377,38 @@ def test_nixl_agent_reuse_with_partial_tensors(ray_start_regular):
     del ref2, ref3
 
 
+@ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+class StorageTestActor:
+    def produce_views(self):
+        tensor = torch.tensor([[1, 1], [2, 2]], dtype=torch.float32).to("cuda")
+        views = [tensor[0], tensor[1]]
+        refs = ray.put(views, _tensor_transport="nixl")
+
+        nixl_transport = get_tensor_transport_manager("NIXL")
+        storage_key = tensor.storage().data_ptr()
+        assert storage_key in nixl_transport._tensor_desc_cache
+        assert len(nixl_transport._tensor_desc_cache) == 1
+        # metadata_count should be 2 (one per ray.put)
+        assert nixl_transport._tensor_desc_cache[storage_key].metadata_count == 2
+
+        return refs
+
+    def consume(self, ref):
+        return ray.get(ref)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_storage_level_registration(ray_start_regular):
+    """Test that views sharing the same storage result in a single NIXL registration."""
+
+    actors = [StorageTestActor.remote() for _ in range(2)]
+    src_actor, dst_actor = actors[0], actors[1]
+
+    refs = src_actor.produce_views.remote()
+
+    tensors = ray.get(dst_actor.consume.remote(refs))
+    assert [tensor.tolist() for tensor in tensors] == [[1, 1], [2, 2]]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

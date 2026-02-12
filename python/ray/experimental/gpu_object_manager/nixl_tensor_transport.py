@@ -46,7 +46,6 @@ class NixlTransportMetadata(TensorTransportMetadata):
 class TensorDesc:
     reg_desc: Any  # nixlRegDList
     metadata_count: int  # tracks the number of NIXL metadata containing the tensor
-    nbytes: int  # the number of bytes in the tensor
 
 
 class NixlTensorTransport(TensorTransportManager):
@@ -55,7 +54,7 @@ class NixlTensorTransport(TensorTransportManager):
         self._nixl_agent = None
         self._aborted_transfer_obj_ids = set()
         self._aborted_transfer_obj_ids_lock = threading.Lock()
-        # Mapping from tensor data pointer to the NIXL descriptor, reference count, and nbytes.
+        # Mapping from tensor storage data pointer to the NIXL descriptor and reference count.
         # Unlike _managed_meta_nixl, we only deregister tensors when ALL metadata containing the tensor is freed.
         self._tensor_desc_cache: Dict[int, TensorDesc] = {}
         # Mapping from object ID to the NIXL managed meta.
@@ -151,13 +150,6 @@ class NixlTensorTransport(TensorTransportManager):
                     if not t.is_contiguous():
                         raise ValueError(
                             "All tensors in an RDT object must be contiguous."
-                        )
-                    if (
-                        t.data_ptr() in self._tensor_desc_cache
-                        and self._tensor_desc_cache[t.data_ptr()].nbytes != t.nbytes
-                    ):
-                        raise ValueError(
-                            "Tensors in an RDT object can not be partially overlapping with already registered tensors"
                         )
                     tensor_meta.append((t.shape, t.dtype))
                     devices.add(t.device)
@@ -329,7 +321,7 @@ class NixlTensorTransport(TensorTransportManager):
             self._managed_meta_nixl.pop(obj_id, None)
             tensors = gpu_object_store.get_object(obj_id)
             for tensor in tensors:
-                key = tensor.data_ptr()
+                key = tensor.storage().data_ptr()
                 if key in self._tensor_desc_cache:
                     tensor_desc = self._tensor_desc_cache[key]
                     tensor_desc.metadata_count -= 1
@@ -391,17 +383,19 @@ class NixlTensorTransport(TensorTransportManager):
 
     def _add_tensor_descs(self, tensors: List["torch.Tensor"]):
         """
-        If this is the first time the tensor is being added, we register the memory with NIXL.
-        Otherwise, we increment the reference count.
+        If this is the first time the tensor is being registered, we register the
+        full underlying pytorch storage object with NIXL. Otherwise, we increment the reference count.
         """
         for tensor in tensors:
-            key = tensor.data_ptr()
+            key = tensor.storage().data_ptr()
             if key in self._tensor_desc_cache:
-                if tensor.nbytes != self._tensor_desc_cache[key].nbytes:
-                    raise ValueError(
-                        "Tensors in an RDT object cannot partially overlap with each other."
-                    )
                 self._tensor_desc_cache[key].metadata_count += 1
             else:
-                reg_desc = self.get_nixl_agent().register_memory([tensor])
-                self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1, tensor.nbytes)
+                storage = tensor.storage()
+                mem_type = "cuda" if tensor.is_cuda else "cpu"
+                gpu_id = tensor.get_device()
+                reg_desc = self.get_nixl_agent().register_memory(
+                    [(storage.data_ptr(), storage.nbytes(), gpu_id, "")],
+                    mem_type=mem_type,
+                )
+                self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1)
