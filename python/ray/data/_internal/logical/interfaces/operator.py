@@ -1,5 +1,5 @@
 import copy
-from typing import Callable, Iterator, List
+from typing import Callable, Iterator, List, Optional
 
 
 class Operator:
@@ -10,7 +10,7 @@ class Operator:
 
     def __init__(
         self,
-        name: str,
+        name: Optional[str],
         input_dependencies: List["Operator"],
     ):
         self._name = name
@@ -20,7 +20,7 @@ class Operator:
         self._wire_output_deps(input_dependencies)
 
     @property
-    def name(self) -> str:
+    def name(self) -> Optional[str]:
         return self._name
 
     @property
