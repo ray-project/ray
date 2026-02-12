@@ -318,7 +318,9 @@ class NixlTensorTransport(TensorTransportManager):
                     if key in self._cached_memory_registrations:
                         continue
                     with self._cache_lock:
-                        nixl_agent.deregister_memory(self._tensor_desc_cache[key].reg_desc)
+                        nixl_agent.deregister_memory(
+                            self._tensor_desc_cache[key].reg_desc
+                        )
                         self._tensor_desc_cache.pop(key)
                         self._nixl_agent_meta_version += 1
 
