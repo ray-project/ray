@@ -58,15 +58,34 @@ class _AbstractKBinsDiscretizer(Preprocessor):
                 "in it."
             )
 
+    def _get_attr_with_fallback(self, private_name: str, public_name: str):
+        if hasattr(self, private_name):
+            return getattr(self, private_name)
+        return getattr(self, public_name, None)
+
     def __repr__(self):
-        attr_str = ", ".join(
-            [
-                f"{attr_name}={attr_value!r}"
-                for attr_name, attr_value in vars(self).items()
-                if not attr_name.startswith("_")
-            ]
+        columns = self._get_attr_with_fallback("_columns", "columns")
+        bins = self._get_attr_with_fallback("_bins", "bins")
+        right = self._get_attr_with_fallback("_right", "right")
+        include_lowest = self._get_attr_with_fallback(
+            "_include_lowest", "include_lowest"
         )
-        return f"{self.__class__.__name__}({attr_str})"
+        duplicates = self._get_attr_with_fallback("_duplicates", "duplicates")
+        dtypes = self._get_attr_with_fallback("_dtypes", "dtypes")
+        output_columns = self._get_attr_with_fallback(
+            "_output_columns", "output_columns"
+        )
+
+        return (
+            f"{self.__class__.__name__}("
+            f"columns={columns!r}, "
+            f"bins={bins!r}, "
+            f"right={right!r}, "
+            f"include_lowest={include_lowest!r}, "
+            f"duplicates={duplicates!r}, "
+            f"dtypes={dtypes!r}, "
+            f"output_columns={output_columns!r})"
+        )
 
 
 @PublicAPI(stability="alpha")
