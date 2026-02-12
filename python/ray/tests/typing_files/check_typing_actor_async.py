@@ -4,7 +4,6 @@ from ray import ObjectRef
 
 @ray.remote
 class AsyncActor:
-
     @ray.method
     async def add(self, a: int, b: int) -> int:
         return a + b

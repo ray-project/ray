@@ -302,74 +302,88 @@ class _MethodDecorator:
     @overload
     def __call__(
         self, __method: Callable[[Any, _T0], Awaitable[_Ret]]
-    ) -> _RemoteMethod0[_Ret, _T0]: ...
+    ) -> _RemoteMethod0[_Ret, _T0]:
+        ...
 
     @overload
     def __call__(
         self, __method: Callable[[Any, _T0], _Ret]
-    ) -> _RemoteMethod0[_Ret, _T0]: ...
+    ) -> _RemoteMethod0[_Ret, _T0]:
+        ...
 
     @overload
     def __call__(
         self, __method: Callable[[Any, _T0, _T1], Awaitable[_Ret]]
-    ) -> _RemoteMethod1[_Ret, _T0, _T1]: ...
+    ) -> _RemoteMethod1[_Ret, _T0, _T1]:
+        ...
 
     @overload
     def __call__(
         self, __method: Callable[[Any, _T0, _T1], _Ret]
-    ) -> _RemoteMethod1[_Ret, _T0, _T1]: ...
+    ) -> _RemoteMethod1[_Ret, _T0, _T1]:
+        ...
 
     @overload
     def __call__(
         self, __method: Callable[[Any, _T0, _T1, _T2], Awaitable[_Ret]]
-    ) -> _RemoteMethod2[_Ret, _T0, _T1, _T2]: ...
+    ) -> _RemoteMethod2[_Ret, _T0, _T1, _T2]:
+        ...
 
     @overload
     def __call__(
         self, __method: Callable[[Any, _T0, _T1, _T2], _Ret]
-    ) -> _RemoteMethod2[_Ret, _T0, _T1, _T2]: ...
+    ) -> _RemoteMethod2[_Ret, _T0, _T1, _T2]:
+        ...
 
     @overload
     def __call__(
         self, __method: Callable[[Any, _T0, _T1, _T2, _T3], Awaitable[_Ret]]
-    ) -> _RemoteMethod3[_Ret, _T0, _T1, _T2, _T3]: ...
+    ) -> _RemoteMethod3[_Ret, _T0, _T1, _T2, _T3]:
+        ...
 
     @overload
     def __call__(
         self, __method: Callable[[Any, _T0, _T1, _T2, _T3], _Ret]
-    ) -> _RemoteMethod3[_Ret, _T0, _T1, _T2, _T3]: ...
+    ) -> _RemoteMethod3[_Ret, _T0, _T1, _T2, _T3]:
+        ...
 
     @overload
     def __call__(
         self, __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4], Awaitable[_Ret]]
-    ) -> _RemoteMethod4[_Ret, _T0, _T1, _T2, _T3, _T4]: ...
+    ) -> _RemoteMethod4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+        ...
 
     @overload
     def __call__(
         self, __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4], _Ret]
-    ) -> _RemoteMethod4[_Ret, _T0, _T1, _T2, _T3, _T4]: ...
+    ) -> _RemoteMethod4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+        ...
 
     @overload
     def __call__(
         self, __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5], Awaitable[_Ret]]
-    ) -> _RemoteMethod5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]: ...
+    ) -> _RemoteMethod5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]:
+        ...
 
     @overload
     def __call__(
         self, __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5], _Ret]
-    ) -> _RemoteMethod5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]: ...
+    ) -> _RemoteMethod5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]:
+        ...
 
     @overload
     def __call__(
         self,
         __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6], Awaitable[_Ret]],
-    ) -> _RemoteMethod6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]: ...
+    ) -> _RemoteMethod6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+        ...
 
     @overload
     def __call__(
         self,
         __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6], _Ret],
-    ) -> _RemoteMethod6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]: ...
+    ) -> _RemoteMethod6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+        ...
 
     @overload
     def __call__(
@@ -377,13 +391,15 @@ class _MethodDecorator:
         __method: Callable[
             [Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7], Awaitable[_Ret]
         ],
-    ) -> _RemoteMethod7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]: ...
+    ) -> _RemoteMethod7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
+        ...
 
     @overload
     def __call__(
         self,
         __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7], _Ret],
-    ) -> _RemoteMethod7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]: ...
+    ) -> _RemoteMethod7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
+        ...
 
     @overload
     def __call__(
@@ -391,13 +407,15 @@ class _MethodDecorator:
         __method: Callable[
             [Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8], Awaitable[_Ret]
         ],
-    ) -> _RemoteMethod8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]: ...
+    ) -> _RemoteMethod8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+        ...
 
     @overload
     def __call__(
         self,
         __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8], _Ret],
-    ) -> _RemoteMethod8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]: ...
+    ) -> _RemoteMethod8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+        ...
 
     @overload
     def __call__(
@@ -406,7 +424,8 @@ class _MethodDecorator:
             [Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9],
             Awaitable[_Ret],
         ],
-    ) -> _RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]: ...
+    ) -> _RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+        ...
 
     @overload
     def __call__(
@@ -414,17 +433,18 @@ class _MethodDecorator:
         __method: Callable[
             [Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9], _Ret
         ],
-    ) -> _RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]: ...
+    ) -> _RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+        ...
 
     @overload
     def __call__(
         self, __method: Callable[[Any], Awaitable[_Ret]]
-    ) -> _RemoteMethodNoArgs[_Ret]: ...
+    ) -> _RemoteMethodNoArgs[_Ret]:
+        ...
 
     @overload
-    def __call__(
-        self, __method: Callable[[Any], _Ret]
-    ) -> _RemoteMethodNoArgs[_Ret]: ...
+    def __call__(self, __method: Callable[[Any], _Ret]) -> _RemoteMethodNoArgs[_Ret]:
+        ...
 
     def __call__(self, __method):  # type: ignore[misc]
         ...
