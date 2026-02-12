@@ -321,7 +321,7 @@ class NixlTensorTransport(TensorTransportManager):
             self._managed_meta_nixl.pop(obj_id, None)
             tensors = gpu_object_store.get_object(obj_id)
             for tensor in tensors:
-                key = tensor.storage().data_ptr()
+                key = tensor.untyped_storage().data_ptr()
                 if key in self._tensor_desc_cache:
                     tensor_desc = self._tensor_desc_cache[key]
                     tensor_desc.metadata_count -= 1
@@ -387,15 +387,21 @@ class NixlTensorTransport(TensorTransportManager):
         full underlying pytorch storage object with NIXL. Otherwise, we increment the reference count.
         """
         for tensor in tensors:
-            key = tensor.storage().data_ptr()
+            key = tensor.untyped_storage().data_ptr()
             if key in self._tensor_desc_cache:
                 self._tensor_desc_cache[key].metadata_count += 1
             else:
-                storage = tensor.storage()
                 mem_type = "cuda" if tensor.is_cuda else "cpu"
                 gpu_id = tensor.get_device()
                 reg_desc = self.get_nixl_agent().register_memory(
-                    [(storage.data_ptr(), storage.nbytes(), gpu_id, "")],
+                    [
+                        (
+                            tensor.untyped_storage().data_ptr(),
+                            tensor.untyped_storage().nbytes(),
+                            gpu_id,
+                            "",
+                        )
+                    ],
                     mem_type=mem_type,
                 )
                 self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1)

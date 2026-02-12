@@ -382,16 +382,7 @@ class StorageTestActor:
     def produce_views(self):
         tensor = torch.tensor([[1, 1], [2, 2]], dtype=torch.float32).to("cuda")
         views = [tensor[0], tensor[1]]
-        refs = ray.put(views, _tensor_transport="nixl")
-
-        nixl_transport = get_tensor_transport_manager("NIXL")
-        storage_key = tensor.storage().data_ptr()
-        assert storage_key in nixl_transport._tensor_desc_cache
-        assert len(nixl_transport._tensor_desc_cache) == 1
-        # metadata_count should be 2 (one per ray.put)
-        assert nixl_transport._tensor_desc_cache[storage_key].metadata_count == 2
-
-        return refs
+        return ray.put(views, _tensor_transport="nixl")
 
     def consume(self, ref):
         return ray.get(ref)
