@@ -2,6 +2,7 @@ name: "ml$BUILD_VARIANT-py$PYTHON"
 froms: ["cr.ray.io/rayproject/oss-ci-base_$BASE_TYPE-py$PYTHON"]
 dockerfile: ci/docker/ml.build.Dockerfile
 srcs:
+  - ci/env/install-hdfs.sh
   - python/deplocks/ci/ml-$BUILD_VARIANT-ci_depset_py$PYTHON.lock
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_$BASE_TYPE-py$PYTHON

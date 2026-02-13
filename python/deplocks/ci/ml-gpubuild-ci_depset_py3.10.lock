@@ -30,6 +30,12 @@ absl-py==1.4.0 \
     #   tensorflow-datasets
     #   tensorflow-metadata
     #   tensorflow-probability
+accelerate==0.28.0 \
+    --hash=sha256:32019a49f4b3a85cc179ac4e38e9e2971f1a997dee026be0512816499464c4d5 \
+    --hash=sha256:8ae25f8a8dc4cf12283842c469113836300545fb0dfa46fef331fb0a2ac8b421
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/train-requirements.txt
 adagio==0.2.4 \
     --hash=sha256:c6c4d812f629fc3141284a0b3cfe483731b28da3a1b18f3d5498695ff87dcc12 \
     --hash=sha256:e58abc4539184a65faf9956957d3787616bedeb1303ac5c9b1a201d8af6b87d7
@@ -548,6 +554,33 @@ cachetools==5.5.2 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   aim
     #   google-auth
+catboost==1.2.8 \
+    --hash=sha256:063020755d21de4f5434663a9b1d7cc1507c5b9254e2e8cd9cce9cd3b9ba4bbe \
+    --hash=sha256:0cc4b735c641011f4c4a10c8113619fe2407866ee33b0d37fd53d9f52fab6cff \
+    --hash=sha256:29526147f37aa356b94bd06513cf36ebcd5a83a9186cee25a8223b104c016b9b \
+    --hash=sha256:29f93b4a89ef807e74c16882623c89f1fb781346e1f4fafb29b6949ab4603e14 \
+    --hash=sha256:319086796084fee5e4254300dc81aad1ae0b201cb576a9e87e6c7d030483be7e \
+    --hash=sha256:35a70d32809a21d06dc0ba161bafdd0450ea71fe176a12ee85d7535883b22624 \
+    --hash=sha256:4a1d1aca5caecd919ec476f72c7abd98a704c24fda35506d4d7d71f77f07cb29 \
+    --hash=sha256:54677216e1fef3abfafd62b6dcb9dd151a31cb77b28bc399cff9386287d064cb \
+    --hash=sha256:5ac7c03a619d8eb86d70ec5748c1c9f09d4085033e3a760bf2f7c2892513c8a8 \
+    --hash=sha256:777987e1483824f93b9cb904860ef46dfb3cd184f879e47413bc7163b9514830 \
+    --hash=sha256:810e00c9b570d449ebb2406183b9e1f8b8ce275b4eedeba750b24f088932264b \
+    --hash=sha256:8409c8a2e547469070d73681aa615b5e0b0d78367203d201b2f2b25c33cdcbad \
+    --hash=sha256:8985dd217fe79161b05ed251c5f8a18130e2330d5c77559ac91b99b0cf781e6b \
+    --hash=sha256:8d2b58781c7ff2f974bde857da0d10d867366979193a4e7052746330a8b76b55 \
+    --hash=sha256:910d2596f114a073cb33a145f6114ffb5455b07581a29ec49f67d148cce52999 \
+    --hash=sha256:932542f8b416b43ee07f912a9a964635ccca7397da16b61475c76ae4ae96a1df \
+    --hash=sha256:9950130cac0a2a9c806386eb98c996d62bdedd638453082bb21a50bf11bf5e27 \
+    --hash=sha256:9c04ab1df71501d75cad80757f33d60bab2704b2450401d2c8cf3f3bcb6bd9f8 \
+    --hash=sha256:a2b59f01c9b1631b8be03637bb7d48a4b1ef657c5d797ad0a9eba40e2be7c4cd \
+    --hash=sha256:a72681c50cbfe2fa4a6f85934bc707e0f7ff50a10a51801317418adf09d57cef \
+    --hash=sha256:af140777a4062aabb4aed6731aee0737c6137dcdd5f7354b5d3b11033c1586ae \
+    --hash=sha256:b639da2386c364e2db52f11ade3335fbde11e139ba79bb47a34cb320d236c95b \
+    --hash=sha256:b661840dc65e6ab4e62484dbf1556fed7736bb9196c6b5a3abb003cea39f0f91 \
+    --hash=sha256:c27ed511bbcd78256cbe7de94ba7f2141d8fc3f95e6fa8f66c190f03f80fdac5 \
+    --hash=sha256:f486ae782a8a91b94e697f75270f5d6da53ab35ee55730a8787643d6be6dd8ef
+    # via hebo
 celery==5.5.3 \
     --hash=sha256:0b5761a07057acee94694464ca482416b959568904c9dfa41ce8413a7d65d525 \
     --hash=sha256:6c972ae7968c2b5281227f01c3a3f984037d21c5129d07bf3550cc2afc6b10a5
@@ -985,6 +1018,7 @@ decorator==5.1.1 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ipython
     #   moviepy
+    #   paramz
     #   tensorflow-probability
 deepspeed==0.17.2 \
     --hash=sha256:d9b636e5c7b7b3cb6d0694d145cdbb6cc97665ec8faf0180e6f7dcc4987a5251
@@ -1439,18 +1473,36 @@ googleapis-common-protos==1.72.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   google-api-core
+gpy==1.9.9 \
+    --hash=sha256:04faf0c24eacc4dea60727c50a48a07ddf9b5751a3b73c382105e2a31657c7ed \
+    --hash=sha256:216e292c96e3d37f76bd135240a9d81f3815fa2b547c9df1525f7f71c95bfdf1 \
+    --hash=sha256:3b30fa21219b97116482cb1645113ba3ba377090246fefe259656dcaddd74655 \
+    --hash=sha256:41e0c9e81a7ccd16096d59374717d2724ec7ef5b16dbb302a53a2c72191c8325 \
+    --hash=sha256:567dda4c9fdcc3caf38319729426cbb487bff61cca586867c74e01e0cf616081 \
+    --hash=sha256:795c28b2e32ea56bc5e34843ef85651d0b1e3e8370e82a7c31a02d5b90e8b184 \
+    --hash=sha256:882ca501a6fbbf8229b8231db021f5fdd2d3a5c699bde5a6e7c7715065a7309e \
+    --hash=sha256:b3a1e58dbe74dec74b0c416c18f136444859b33d13f99d5b843c1e03b6f0f6c2 \
+    --hash=sha256:ec4435a475dc3744cffc34d803f964955ae2371213387344878a08b21c476ded
+    # via hebo
 gpytorch==1.14.3 \
     --hash=sha256:3341b6fd71b67b8df1c6e59229e1d675775929125cf72d391dacdb7f98bbeab5 \
     --hash=sha256:7f52f6bdf20c24e13aac95744853986a8d440a138fa8d7fec6e1084ae50c6bf7
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   botorch
+    #   hebo
 graphemeu==0.7.2 \
     --hash=sha256:1444520f6899fd30114fc2a39f297d86d10fa0f23bf7579f772f8bc7efaa2542 \
     --hash=sha256:42bbe373d7c146160f286cd5f76b1a8ad29172d7333ce10705c5cc282462a4f8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   alive-progress
+graphviz==0.20.3 \
+    --hash=sha256:09d6bc81e6a9fa392e7ba52135a9d49f1ed62526f96499325930e87ca1b5925d \
+    --hash=sha256:81f848f2904515d8cd359cc611faba817598d2feaac4027b266aa3eda7b3dde5
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   catboost
 greenlet==3.0.1 ; (python_full_version < '3.13' and platform_machine == 'AMD64') or (python_full_version < '3.13' and platform_machine == 'WIN32') or (python_full_version < '3.13' and platform_machine == 'aarch64') or (python_full_version < '3.13' and platform_machine == 'amd64') or (python_full_version < '3.13' and platform_machine == 'ppc64le') or (python_full_version < '3.13' and platform_machine == 'win32') or (python_full_version < '3.13' and platform_machine == 'x86_64') \
     --hash=sha256:0a02d259510b3630f330c86557331a3b0e0c79dac3d166e449a39363beaae174 \
     --hash=sha256:0b6f9f8ca7093fd4433472fd99b5650f8a26dcd8ba410e14094c1e44cd3ceddd \
@@ -1628,6 +1680,9 @@ h5py==3.12.1 \
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   keras
     #   tensorflow
+hebo==0.3.2 \
+    --hash=sha256:8c7cd27f2cd0f1f572092d85085294c76f1acb0e907d9cea26d36ba6335ed351
+    # via -r python/requirements/ml/tune-requirements.txt
 hf-xet==1.2.0 ; platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' \
     --hash=sha256:10bfab528b968c70e062607f663e21e34e2bba349e8038db546646875495179e \
     --hash=sha256:210d577732b519ac6ede149d2f2f34049d44e8622bf14eb3d63bbcd2d4b332dc \
@@ -1735,6 +1790,7 @@ huggingface-hub==0.36.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/train-requirements.txt
+    #   accelerate
     #   datasets
     #   evaluate
     #   timm
@@ -2546,6 +2602,7 @@ matplotlib==3.10.7 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
+    #   catboost
     #   prophet
     #   pymoo
     #   zoopt
@@ -3206,10 +3263,12 @@ numpy==2.2.6 \
     --hash=sha256:fee4236c876c4e8369388054d02d0e9bb84821feb1a64dd59e137e6511a551f8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   accelerate
     #   aim
     #   ale-py
     #   autograd
     #   bayesian-optimization
+    #   catboost
     #   cma
     #   cmdstanpy
     #   configspace
@@ -3223,8 +3282,10 @@ numpy==2.2.6 \
     #   dm-tree
     #   etils
     #   evaluate
+    #   gpy
     #   gymnasium
     #   h5py
+    #   hebo
     #   hpbandster
     #   hyperopt
     #   imageio
@@ -3249,6 +3310,7 @@ numpy==2.2.6 \
     #   opt-einsum
     #   optuna
     #   pandas
+    #   paramz
     #   patsy
     #   pettingzoo
     #   prophet
@@ -3623,6 +3685,7 @@ packaging==24.2 \
     --hash=sha256:c228a6dc5e932d346bc5739379109d49e8853dd8223571c7c5b55260edc0b97f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   accelerate
     #   aim
     #   datasets
     #   deepspeed
@@ -3711,9 +3774,11 @@ pandas==2.3.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ax-platform
+    #   catboost
     #   cmdstanpy
     #   datasets
     #   evaluate
+    #   hebo
     #   nevergrad
     #   prophet
     #   qpd
@@ -3728,6 +3793,9 @@ pandocfilters==1.5.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   nbconvert
+paramz==0.9.6 \
+    --hash=sha256:4916be6f77f457316bcac8460be9c226026aed81fe7be302b32c0ba74e2ac6dd
+    # via gpy
 parso==0.8.3 \
     --hash=sha256:8c07be290bb59f03588915921e29e8a50002acaf2cdc5fa0e0114f91709fafa0 \
     --hash=sha256:c001d4636cd3aecdaf33cbb40aebb59b094be2a74c556778ef5576c175e19e75
@@ -3865,6 +3933,7 @@ plotly==5.23.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ax-platform
+    #   catboost
 pluggy==1.3.0 \
     --hash=sha256:cf61ae8f126ac6f7c451172cf30e3e43d3ca77615509771b3a984a0730651e12 \
     --hash=sha256:d89c696a773f8bd377d18e5ecda92b7a3793cbe66c87060a6fb58c7b6e1061f7
@@ -4054,6 +4123,7 @@ psutil==5.9.6 \
     --hash=sha256:ff18b8d1a784b810df0b0fff3bcb50ab941c3b8e2c8de5726f9c71c601c611aa
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   accelerate
     #   aim
     #   deepspeed
     #   ipykernel
@@ -4400,6 +4470,7 @@ pymoo==0.6.1.6 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   botorch
+    #   hebo
 pymunk==6.2.1 \
     --hash=sha256:02adec146811918e6e2c69157d67a8e71a23d355f3448f2d585ee5198423ebbf \
     --hash=sha256:0303eae52578038e1692b746b4cfe625e284445340363645f1c04bd2b5e1b6fc \
@@ -4625,6 +4696,7 @@ pyyaml==6.0.3 \
     --hash=sha256:fc09d0aa354569bc501d4e787133afc08552722d3ab34836a80547331bb5d4a0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   accelerate
     #   datasets
     #   huggingface-hub
     #   jupyter-events
@@ -5194,6 +5266,7 @@ safetensors==0.4.3 \
     --hash=sha256:fef5d70683643618244a4f5221053567ca3e77c2531e42ad48ae05fae909f542
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   accelerate
     #   timm
     #   transformers
 scikit-learn==1.5.2 \
@@ -5228,6 +5301,7 @@ scikit-learn==1.5.2 \
     #   ax-platform
     #   bayesian-optimization
     #   gpytorch
+    #   hebo
 scipy==1.14.1 \
     --hash=sha256:0c2f95de3b04e26f5f3ad5bb05e74ba7f68b837133a4492414b3afd79dfe540e \
     --hash=sha256:1729560c906963fc8389f6aac023739ff3983e727b1a4d87696b7bf108316a79 \
@@ -5267,15 +5341,18 @@ scipy==1.14.1 \
     #   ax-platform
     #   bayesian-optimization
     #   botorch
+    #   catboost
     #   configspace
     #   directsearch
     #   dm-control
+    #   gpy
     #   gpytorch
     #   hpbandster
     #   hyperopt
     #   jaxlib
     #   linear-operator
     #   open-spiel
+    #   paramz
     #   pymoo
     #   ray
     #   scikit-learn
@@ -5364,10 +5441,13 @@ six==1.16.0 \
     #   asttokens
     #   astunparse
     #   bleach
+    #   catboost
     #   fs
     #   google-pasta
+    #   gpy
     #   ml-collections
     #   opencensus
+    #   paramz
     #   promise
     #   pytest-remotedata
     #   python-dateutil
@@ -5800,9 +5880,11 @@ torch==2.3.0+cu121 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-gpu-requirements.txt
+    #   accelerate
     #   botorch
     #   deepspeed
     #   fairscale
+    #   hebo
     #   linear-operator
     #   mosaicml
     #   nixl

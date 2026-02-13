@@ -39,6 +39,7 @@ steps:
       RAYCI_IS_GPU_BUILD: "true"
       RAYCI_LIGHTNING_2: "true"
     tags: cibase
+    depends_on: oss-ci-base_gpu-multipy
 
   - name: mlgpubuild-multipy
     label: "wanda: mlgpubuild-py{{matrix}}"

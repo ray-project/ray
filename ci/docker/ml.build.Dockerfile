@@ -24,4 +24,6 @@ set -x
 
 uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
+./ci/env/install-hdfs.sh
+
 EOF
