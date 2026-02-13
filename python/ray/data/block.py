@@ -250,10 +250,21 @@ _BLOCK_STATS_FIELD_NAMES = {f.name for f in fields(BlockStats)}
 class BlockMetadata(BlockStats):
     """Metadata about the block."""
 
-    #: The pyarrow schema or types of the block elements, or None.
-    #: The list of file paths used to generate this block, or
-    #: the empty list if indeterminate.
-    input_files: List[str] = field(default_factory=list)
+    # The list of file paths used to generate this block, or
+    # the empty list if indeterminate.
+    input_files: Tuple[str] = field(default_factory=tuple)
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        input_files = self.input_files
+
+        if input_files is None:
+            input_files = tuple()
+        elif not isinstance(input_files, tuple):
+            input_files = tuple(input_files)
+
+        object.__setattr__(self, "input_files", input_files)
 
     def to_stats(self):
         return BlockStats(
@@ -272,7 +283,7 @@ class BlockMetadataWithSchema(BlockMetadata):
             num_rows=metadata.num_rows,
             exec_stats=metadata.exec_stats,
         )
-        self.schema = schema
+        object.__setattr__(self, "schema", schema)
 
     def from_block(
         block: Block, stats: Optional["BlockExecStats"] = None
@@ -435,7 +446,7 @@ class BlockAccessor:
         return BlockMetadata(
             num_rows=self.num_rows(),
             size_bytes=self.size_bytes(),
-            input_files=input_files,
+            input_files=tuple(input_files) if input_files is not None else None,
             exec_stats=exec_stats,
         )
 

@@ -12,7 +12,7 @@ from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
-@dataclass
+@dataclass(frozen=True)
 class BlockSlice:
     """A slice of a block."""
 
@@ -58,7 +58,7 @@ class RefBundle:
     # a list with length equal to len(blocks). Individual entries can be None to
     # represent a full block (equivalent to BlockSlice(0, num_rows)).
     # Pass None during construction to initialize all slices as None (full blocks).
-    slices: Optional[List[Optional[BlockSlice]]] = None
+    slices: Optional[Tuple[Optional[BlockSlice], ...]] = None
 
     # This attribute is used by the split() operator to assign bundles to logical
     # output splits. It is otherwise None.
@@ -77,8 +77,11 @@ class RefBundle:
             object.__setattr__(self, "blocks", tuple(self.blocks))
 
         if self.slices is None:
-            self.slices = [None] * len(self.blocks)
+            self.slices = (None,) * len(self.blocks)
         else:
+            if not isinstance(self.slices, tuple):
+                object.__setattr__(self, "slices", tuple(self.slices))
+
             assert len(self.blocks) == len(
                 self.slices
             ), "Number of blocks and slices must match"
@@ -290,14 +293,14 @@ class RefBundle:
             blocks=tuple(consumed_blocks),
             schema=self.schema,
             owns_blocks=False,
-            slices=consumed_slices if consumed_slices else None,
+            slices=tuple(consumed_slices) if consumed_slices else None,
         )
 
         remaining_bundle = RefBundle(
             blocks=tuple(remaining_blocks),
             schema=self.schema,
             owns_blocks=False,
-            slices=remaining_slices if remaining_slices else None,
+            slices=tuple(remaining_slices) if remaining_slices else None,
         )
 
         return sliced_bundle, remaining_bundle
@@ -340,6 +343,8 @@ class RefBundle:
         )
 
     def __hash__(self) -> int:
+        print(f">>> [DBG] RefBundle.__hash__:\n{self.blocks}\n{self.slices}\n{self.schema}")
+
         return hash(
             tuple([
                 *self.blocks,
