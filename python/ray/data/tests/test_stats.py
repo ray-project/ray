@@ -1572,9 +1572,9 @@ def test_runtime_metrics(ray_start_regular_shared):
             print("runtime_metrics raw:\n", metrics_str)
             print("runtime_metrics parsed:", metrics_dict)
             print(
-                "runtime_metrics mismatch:",
-                {"name": name, "time_s": time_s, "total_time": total_time},
+                f"runtime_metrics mismatch for '{name}': {time_s}s > {total_time}s (tolerance: {TOLERANCE}s)"
             )
+
         assert time_s <= total_time + TOLERANCE
         # Check percentage, this is done with some expected loss of precision
         # due to rounding in the intital output.
