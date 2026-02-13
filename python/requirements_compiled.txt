@@ -2540,7 +2540,7 @@ werkzeug==2.3.8
     #   moto
     #   pytest-httpserver
     #   tensorboard
-wheel==0.45.1
+wheel==0.46.2
     # via
     #   -r python/requirements/test-requirements.txt
     #   astunparse
