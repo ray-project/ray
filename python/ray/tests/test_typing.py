@@ -33,6 +33,7 @@ def test_typing_actor_async():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        cwd=tempfile.gettempdir(),
     )
     assert (
         result.returncode == 0
