@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from typing import Any, Dict, Optional, Tuple, Union
 
 from ray.serve._private.broker import Broker
@@ -16,6 +17,17 @@ class AsyncInferenceAutoscalingPolicy:
 
     Polls a message broker (Redis or RabbitMQ) for queue length and combines
     it with HTTP request load to compute the desired number of replicas.
+
+    Polling uses one-shot async tasks instead of an infinite background loop.
+    An infinite ``while True`` coroutine holds a strong reference to ``self``
+    through the coroutine, and the event loop keeps the task alive, so
+    ``__del__`` would never fire after the framework drops the policy on
+    redeploy/deregistration — leaking both the poller and the broker
+    connection. Instead, each poll is a single one-shot task kicked off from
+    ``__call__`` when the poll interval has elapsed. The task completes
+    naturally after one poll, so there is at most one short-lived in-flight
+    task at any time and no cleanup is needed when the policy is
+    garbage-collected.
 
     This policy is intended for use with ``@task_consumer`` deployments.
     Pass it as a class-based policy via ``AutoscalingPolicy``:
@@ -64,15 +76,14 @@ class AsyncInferenceAutoscalingPolicy:
         self._poll_interval_s = poll_interval_s
 
         self._queue_length: int = 0
-        self._broker = None
+        self._broker: Optional[Broker] = None
         self._task: Optional[asyncio.Task] = None
-        self._started: bool = False
+        self._last_poll_time: float = 0.0
 
-    def _ensure_started(self) -> None:
-        """Lazily start the background queue polling task."""
-        if self._started:
+    def _ensure_broker(self) -> None:
+        """Lazily initialize the broker connection."""
+        if self._broker is not None:
             return
-        self._started = True
 
         if self._rabbitmq_management_url is not None:
             self._broker = Broker(
@@ -81,37 +92,34 @@ class AsyncInferenceAutoscalingPolicy:
         else:
             self._broker = Broker(self._broker_url)
 
-        loop = asyncio.get_running_loop()
-        self._task = loop.create_task(self._poll_queue())
-
-    def __del__(self):
-        if self._task is not None:
-            self._task.cancel()
-        if self._broker is not None:
-            self._broker.close()
-
-    async def _poll_queue(self) -> None:
-        """Background loop that periodically queries the broker for queue length."""
-        while True:
-            try:
-                queues = await self._broker.queues([self._queue_name])
-                if queues is not None:
-                    for q in queues:
-                        if q.get("name") == self._queue_name:
-                            queue_length = q.get("messages")
-                            if queue_length is not None:
-                                self._queue_length = queue_length
-                            break
-            except Exception as e:
-                logger.warning(
-                    f"Failed to get queue length for '{self._queue_name}': {e}"
-                )
-            await asyncio.sleep(self._poll_interval_s)
+    async def _poll_once(self) -> None:
+        """Single one-shot poll of the broker for queue length."""
+        try:
+            queues = await self._broker.queues([self._queue_name])
+            if queues is not None:
+                for q in queues:
+                    if q.get("name") == self._queue_name:
+                        queue_length = q.get("messages")
+                        if queue_length is not None:
+                            self._queue_length = queue_length
+                        break
+        except Exception as e:
+            logger.warning(f"Failed to get queue length for '{self._queue_name}': {e}")
 
     def __call__(
         self, ctx: AutoscalingContext
     ) -> Tuple[Union[int, float], Dict[str, Any]]:
-        self._ensure_started()
+        self._ensure_broker()
+
+        # Clear completed poll task so a new one can be started.
+        if self._task is not None and self._task.done():
+            self._task = None
+
+        # Start a new poll if the interval has elapsed and no poll is in-flight.
+        now = time.monotonic()
+        if self._task is None and (now - self._last_poll_time) >= self._poll_interval_s:
+            self._last_poll_time = now
+            self._task = asyncio.get_running_loop().create_task(self._poll_once())
 
         num_running_replicas = ctx.current_num_replicas
         total_workload = ctx.total_num_requests + self._queue_length
