@@ -1581,7 +1581,7 @@ proto-plus==1.26.1
     #   -r python/requirements/test-requirements.txt
     #   google-api-core
     #   google-cloud-bigquery-storage
-protobuf==5.29.5
+protobuf==5.29.6
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
