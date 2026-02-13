@@ -1,5 +1,5 @@
 """
-Research agent that uses a Web Search MCP server (google_search + fetch_url)
+Research agent that uses a Web Search MCP server (brave_search + fetch_url)
 to perform online research and gather sources.
 """
 
@@ -31,12 +31,12 @@ PROMPT = (
     "You are a careful research assistant.\n"
     "\n"
     "You can use MCP tools for online research:\n"
-    "- google_search(query, num_results)\n"
+    "- brave_search(query, num_results)\n"
     "- fetch_url(url, max_length, start_index, raw, ignore_robots_txt)\n"
     "\n"
     "Rules:\n"
     "- Break the task into sub-questions.\n"
-    "- Use google_search first to find relevant sources.\n"
+    "- Use brave_search first to find relevant sources.\n"
     "- Use fetch_url to read primary sources and confirm details.\n"
     "- Don't fabricate. If you can't verify something, say so.\n"
     "- In the final answer, include sources as a short bullet list of URLs.\n"
