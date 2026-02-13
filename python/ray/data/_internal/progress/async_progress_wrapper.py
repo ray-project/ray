@@ -1,3 +1,4 @@
+import concurrent.futures
 import logging
 import threading
 import time
@@ -165,8 +166,6 @@ class AsyncExecutionProgressManagerWrapper(BaseExecutionProgressManager):
 
     def _wait_for_pending_operations(self):
         """Wait for pending operations with timeout."""
-        import concurrent.futures
-
         with self._lock:
             num_pending = len(self._pending_futures)
 
