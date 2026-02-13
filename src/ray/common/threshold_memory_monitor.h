@@ -21,7 +21,7 @@
 #include <thread>
 
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/common/memory_monitor.h"
+#include "ray/common/memory_monitor_interface.h"
 
 namespace ray {
 
@@ -33,7 +33,7 @@ namespace ray {
  * It checks the memory usage periodically and invokes the callback.
  * This class is thread safe.
  */
-class ThresholdMemoryMonitor : public MemoryMonitor {
+class ThresholdMemoryMonitor : public MemoryMonitorInterface {
  public:
   /**
    * @param kill_workers_callback function to execute when the memory usage limit is
@@ -54,6 +54,24 @@ class ThresholdMemoryMonitor : public MemoryMonitor {
 
   ~ThresholdMemoryMonitor() override;
 
+  /**
+   * @brief Notifies this memory monitor that the worker killing event has completed.
+   *        This rearms the memory monitor to be able to trigger the kill callback again.
+   */
+  void SetWorkerKillingCompleted() override;
+
+  /**
+   * @brief Notifies this memory monitor that the worker killing event has started.
+   *        The memory monitor will not fire the callback until the worker killing event
+   * has completed.
+   */
+  void SetWorkerKillingInProgress() override;
+
+  /**
+   * @return True if the worker killing event is in progress, false otherwise.
+   */
+  bool GetWorkerKillingInProgress() override;
+
  private:
   /**
    * @brief Checks if the memory usage is above the threshold.
@@ -63,6 +81,13 @@ class ThresholdMemoryMonitor : public MemoryMonitor {
    */
   bool IsUsageAboveThreshold(const SystemMemorySnapshot &system_memory,
                              int64_t threshold_bytes);
+
+  /// Callback function that executes at each monitoring interval,
+  /// on a dedicated thread managed by this class.
+  KillWorkersCallback kill_workers_callback_;
+
+  /// Flag to indicate that the worker killing event is in progress.
+  std::atomic<bool> worker_killing_in_progress_;
 
   /// The threshold in bytes that triggers the callback.
   /// Computed by: max(total_memory * usage_threshold, total_memory -

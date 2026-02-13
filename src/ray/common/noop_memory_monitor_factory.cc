@@ -15,14 +15,14 @@
 #include <memory>
 
 #include "ray/common/memory_monitor_factory.h"
+#include "ray/common/memory_monitor_interface.h"
 #include "ray/common/noop_memory_monitor.h"
-#include "ray/util/logging.h"
 
 namespace ray {
 
-std::unique_ptr<MemoryMonitor> MemoryMonitorFactory::Create(
-    KillWorkersCallback kill_workers_callback) {
-  return std::make_unique<NoopMemoryMonitor>(std::move(kill_workers_callback));
+std::unique_ptr<MemoryMonitorInterface> MemoryMonitorFactory::Create(
+    KillWorkersCallback _) {
+  return std::make_unique<NoopMemoryMonitor>();
 }
 
 }  // namespace ray

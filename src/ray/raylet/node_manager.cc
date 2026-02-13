@@ -40,8 +40,9 @@
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/lease/lease.h"
-#include "ray/common/memory_monitor.h"
 #include "ray/common/memory_monitor_factory.h"
+#include "ray/common/memory_monitor_interface.h"
+#include "ray/common/memory_monitor_utils.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
@@ -3058,7 +3059,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
                 << "worker pid: " << worker_being_killed->GetProcess().GetId();
           } else {
             ProcessesMemorySnapshot process_memory_snapshot =
-                MemoryMonitor::TakePerProcessMemorySnapshot();
+                MemoryMonitorUtils::TakePerProcessMemorySnapshot();
             std::vector<std::shared_ptr<WorkerInterface>> workers =
                 worker_pool_.GetAllRegisteredWorkers();
             if (workers.empty()) {
@@ -3084,7 +3085,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
             } else {
               // Compute the memory usage threshold
               int64_t total_memory_bytes = system_memory.total_bytes;
-              int64_t computed_threshold_bytes = MemoryMonitor::GetMemoryThreshold(
+              int64_t computed_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
                   total_memory_bytes,
                   RayConfig::instance().memory_usage_threshold(),
                   RayConfig::instance().min_memory_free_bytes());
@@ -3210,7 +3211,7 @@ std::string NodeManager::CreateOomKillMessageDetails(
       worker->IpAddress(),
       worker->WorkerId().Hex(),
       worker->IpAddress(),
-      MemoryMonitor::TopNMemoryDebugString(10, process_memory_snapshot));
+      MemoryMonitorUtils::TopNMemoryDebugString(10, process_memory_snapshot));
 }
 
 std::string NodeManager::CreateOomKillMessageSuggestions(

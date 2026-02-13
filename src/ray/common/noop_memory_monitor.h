@@ -13,7 +13,7 @@
 // limitations under the License.
 #pragma once
 
-#include "ray/common/memory_monitor.h"
+#include "ray/common/memory_monitor_interface.h"
 
 namespace ray {
 
@@ -22,22 +22,18 @@ namespace ray {
  *
  * Used on platforms where memory monitoring is not supported (e.g., non-Linux).
  */
-class NoopMemoryMonitor : public MemoryMonitor {
+class NoopMemoryMonitor : public MemoryMonitorInterface {
  public:
-  /**
-   * @param kill_workers_callback function to execute when the memory usage limit is
-   *        exceeded.
-   */
-  NoopMemoryMonitor(KillWorkersCallback kill_workers_callback)
-      : MemoryMonitor(std::move(kill_workers_callback)) {
-    // No-op: does not start any periodic monitoring
-  }
-
+  NoopMemoryMonitor() = default;
   NoopMemoryMonitor(const NoopMemoryMonitor &) = delete;
   NoopMemoryMonitor &operator=(const NoopMemoryMonitor &) = delete;
-  NoopMemoryMonitor(NoopMemoryMonitor &&) = default;
-  NoopMemoryMonitor &operator=(NoopMemoryMonitor &&) = default;
+  NoopMemoryMonitor(NoopMemoryMonitor &&) = delete;
+  NoopMemoryMonitor &operator=(NoopMemoryMonitor &&) = delete;
   ~NoopMemoryMonitor() = default;
+
+  void SetWorkerKillingCompleted() override {}
+  void SetWorkerKillingInProgress() override {}
+  bool GetWorkerKillingInProgress() override { return false; }
 };
 
 }  // namespace ray

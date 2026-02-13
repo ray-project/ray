@@ -25,56 +25,13 @@
 #include <vector>
 
 #include "ray/common/asio/periodical_runner.h"
+#include "ray/common/memory_monitor_interface.h"
 #include "ray/util/process.h"
 
 namespace ray {
 
-/// A snapshot of aggregated memory usage
-/// across the system.
-struct SystemMemorySnapshot {
-  int64_t used_bytes;
-
-  /// The total memory available on the system. >= used_bytes.
-  int64_t total_bytes;
-
-  friend std::ostream &operator<<(std::ostream &os,
-                                  const SystemMemorySnapshot &memory_snapshot);
-};
-
-/// A snapshot of per-process memory usage.
-using ProcessesMemorySnapshot = absl::flat_hash_map<pid_t, int64_t>;
-
-/// Callback that runs at each monitoring interval.
-///
-/// \param system_memory snapshot of system memory information.
-using KillWorkersCallback =
-    std::function<void(const SystemMemorySnapshot &system_memory)>;
-
-/// Base class for memory monitor implementations.
-/// Monitors the memory usage of the node.
-/// All implementations of the memory monitor must be thread safe.
-/**
- * @brief Base class for memory monitor implementations.
- *
- * Monitors the memory usage of the node.
- * All implementations of the memory monitor must be thread safe.
- */
-class MemoryMonitor {
+class MemoryMonitorUtils {
  public:
-  /**
-   * @param kill_workers_callback Function to execute when the memory usage limit is
-   *        exceeded.
-   */
-  MemoryMonitor(KillWorkersCallback kill_workers_callback);
-
-  virtual ~MemoryMonitor() = default;
-
-  /**
-   * @brief Notifies this memory monitor that the worker killing event has completed.
-   *        This rearms the memory monitor to be able to trigger the kill callback again.
-   */
-  void SetWorkerKillingCompleted();
-
   /**
    * @param top_n The number of top memory-using processes.
    * @param process_memory_snapshot The snapshot of per process memory usage.
@@ -122,22 +79,7 @@ class MemoryMonitor {
                                     float usage_threshold,
                                     int64_t min_memory_free_bytes);
 
-  static constexpr char kDefaultCgroupPath[] = "/sys/fs/cgroup";
-
  private:
-  static constexpr char kCgroupsV1MemoryMaxPath[] = "memory/memory.limit_in_bytes";
-  static constexpr char kCgroupsV1MemoryUsagePath[] = "memory/memory.usage_in_bytes";
-  static constexpr char kCgroupsV1MemoryStatPath[] = "memory/memory.stat";
-  static constexpr char kCgroupsV1MemoryStatInactiveFileKey[] = "total_inactive_file";
-  static constexpr char kCgroupsV1MemoryStatActiveFileKey[] = "total_active_file";
-  static constexpr char kCgroupsV2MemoryMaxPath[] = "memory.max";
-  static constexpr char kCgroupsV2MemoryUsagePath[] = "memory.current";
-  static constexpr char kCgroupsV2MemoryStatPath[] = "memory.stat";
-  static constexpr char kCgroupsV2MemoryStatInactiveFileKey[] = "inactive_file";
-  static constexpr char kCgroupsV2MemoryStatActiveFileKey[] = "active_file";
-  static constexpr char kProcDirectory[] = "/proc";
-  static constexpr char kCommandlinePath[] = "cmdline";
-
   /**
    * @brief Gets memory information from the given cgroup.
    *
@@ -242,46 +184,36 @@ class MemoryMonitor {
   static const std::vector<std::tuple<pid_t, int64_t>> GetTopNMemoryUsage(
       uint32_t top_n, const ProcessesMemorySnapshot &all_usage);
 
-  /// Flag to indicate that the worker killing event is in progress.
-  std::atomic<bool> worker_killing_in_progress_;
+ private:
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupFilesValidReturnsWorkingSet);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupFilesValidKeyLastReturnsWorkingSet);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupFilesValidNegativeWorkingSet);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupFilesValidMissingFieldReturnskNull);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupNonexistentStatFileReturnskNull);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupNonexistentUsageFileReturnskNull);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestGetPidsFromDirOnlyReturnsNumericFilenames);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestGetPidsFromNonExistentDirReturnsEmpty);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestGetCommandLinePidExistReturnsValid);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestGetCommandLineMissingFileReturnsEmpty);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestShortStringNotTruncated);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestLongStringTruncated);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestTopNLessThanNReturnsMemoryUsedDesc);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestTopNMoreThanNReturnsAllDesc);
 
-  FRIEND_TEST(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidReturnsWorkingSet);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidKeyLastReturnsWorkingSet);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidNegativeWorkingSet);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidMissingFieldReturnskNull);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupNonexistentStatFileReturnskNull);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupNonexistentUsageFileReturnskNull);
-  FRIEND_TEST(MemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues);
-  FRIEND_TEST(MemoryMonitorTest, TestGetPidsFromDirOnlyReturnsNumericFilenames);
-  FRIEND_TEST(MemoryMonitorTest, TestGetPidsFromNonExistentDirReturnsEmpty);
-  FRIEND_TEST(MemoryMonitorTest, TestGetCommandLinePidExistReturnsValid);
-  FRIEND_TEST(MemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty);
-  FRIEND_TEST(MemoryMonitorTest, TestShortStringNotTruncated);
-  FRIEND_TEST(MemoryMonitorTest, TestLongStringTruncated);
-  FRIEND_TEST(MemoryMonitorTest, TestTopNLessThanNReturnsMemoryUsedDesc);
-  FRIEND_TEST(MemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc);
-
- protected:
-  /**
-   * @brief Notifies this memory monitor that the worker killing event has started.
-   *        The memory monitor will not fire the callback until the worker killing event
-   * has completed.
-   */
-  void SetWorkerKillingInProgress();
-
-  /**
-   * @return True if the worker killing event is in progress, false otherwise.
-   */
-  bool GetWorkerKillingInProgress();
-
-  static constexpr int64_t kNull = -1;
-  /// The logging frequency. Decoupled from how often the monitor runs.
-  static constexpr uint32_t kLogIntervalMs = 5000;
-
-  /// Callback function that executes at each monitoring interval,
-  /// on a dedicated thread managed by this class.
-  const KillWorkersCallback kill_workers_callback_;
+  static constexpr char kCgroupsV1MemoryMaxPath[] = "memory/memory.limit_in_bytes";
+  static constexpr char kCgroupsV1MemoryUsagePath[] = "memory/memory.usage_in_bytes";
+  static constexpr char kCgroupsV1MemoryStatPath[] = "memory/memory.stat";
+  static constexpr char kCgroupsV1MemoryStatInactiveFileKey[] = "total_inactive_file";
+  static constexpr char kCgroupsV1MemoryStatActiveFileKey[] = "total_active_file";
+  static constexpr char kCgroupsV2MemoryMaxPath[] = "memory.max";
+  static constexpr char kCgroupsV2MemoryUsagePath[] = "memory.current";
+  static constexpr char kCgroupsV2MemoryStatPath[] = "memory.stat";
+  static constexpr char kCgroupsV2MemoryStatInactiveFileKey[] = "inactive_file";
+  static constexpr char kCgroupsV2MemoryStatActiveFileKey[] = "active_file";
+  static constexpr char kProcDirectory[] = "/proc";
+  static constexpr char kCommandlinePath[] = "cmdline";
 };
 
 }  // namespace ray

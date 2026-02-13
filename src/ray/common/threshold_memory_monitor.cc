@@ -15,6 +15,7 @@
 #include "ray/common/threshold_memory_monitor.h"
 
 #include "absl/strings/str_format.h"
+#include "ray/common/memory_monitor_utils.h"
 #include "ray/util/logging.h"
 #include "ray/util/thread_utils.h"
 
@@ -25,7 +26,8 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
                                                int64_t min_memory_free_bytes,
                                                uint64_t monitor_interval_ms,
                                                const std::string root_cgroup_path)
-    : MemoryMonitor(std::move(kill_workers_callback)),
+    : kill_workers_callback_(std::move(kill_workers_callback)),
+      worker_killing_in_progress_(false),
       root_cgroup_path_(root_cgroup_path),
       io_service_(/*enable_metrics=*/false,
                   /*running_on_single_thread=*/true,
@@ -41,8 +43,8 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
   RAY_CHECK_LE(usage_threshold, 1)
       << "Invalid configuration: usage_threshold must be <= 1";
   int64_t total_memory_bytes =
-      MemoryMonitor::TakeSystemMemorySnapshot(root_cgroup_path_).total_bytes;
-  computed_threshold_bytes_ = MemoryMonitor::GetMemoryThreshold(
+      MemoryMonitorUtils::TakeSystemMemorySnapshot(root_cgroup_path_).total_bytes;
+  computed_threshold_bytes_ = MemoryMonitorUtils::GetMemoryThreshold(
       total_memory_bytes, usage_threshold, min_memory_free_bytes);
   float computed_threshold_fraction = static_cast<float>(computed_threshold_bytes_) /
                                       static_cast<float>(total_memory_bytes);
@@ -58,7 +60,7 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
     runner_->RunFnPeriodically(
         [this] {
           SystemMemorySnapshot cur_memory_snapshot =
-              TakeSystemMemorySnapshot(root_cgroup_path_);
+              MemoryMonitorUtils::TakeSystemMemorySnapshot(root_cgroup_path_);
 
           bool is_usage_above_threshold =
               IsUsageAboveThreshold(cur_memory_snapshot, computed_threshold_bytes_);
@@ -84,19 +86,32 @@ ThresholdMemoryMonitor::~ThresholdMemoryMonitor() {
   }
 }
 
+void ThresholdMemoryMonitor::SetWorkerKillingCompleted() {
+  worker_killing_in_progress_.store(false);
+}
+
+void ThresholdMemoryMonitor::SetWorkerKillingInProgress() {
+  worker_killing_in_progress_.store(true);
+}
+
+bool ThresholdMemoryMonitor::GetWorkerKillingInProgress() {
+  return worker_killing_in_progress_.load();
+}
+
 bool ThresholdMemoryMonitor::IsUsageAboveThreshold(
     const SystemMemorySnapshot &system_memory, int64_t threshold_bytes) {
   int64_t used_memory_bytes = system_memory.used_bytes;
   int64_t total_memory_bytes = system_memory.total_bytes;
-  if (total_memory_bytes == kNull || used_memory_bytes == kNull) {
-    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+  if (total_memory_bytes == MemoryMonitorInterface::kLogIntervalMs ||
+      used_memory_bytes == MemoryMonitorInterface::kLogIntervalMs) {
+    RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
         << "Unable to capture node memory. Monitor will not be able "
         << "to detect memory usage above threshold.";
     return false;
   }
   bool is_usage_above_threshold = used_memory_bytes > threshold_bytes;
   if (is_usage_above_threshold) {
-    RAY_LOG_EVERY_MS(INFO, kLogIntervalMs) << absl::StrFormat(
+    RAY_LOG_EVERY_MS(INFO, MemoryMonitorInterface::kLogIntervalMs) << absl::StrFormat(
         "Node memory usage above threshold, used: %d, threshold_bytes: %d, "
         "total bytes: %d, threshold fraction: %f",
         used_memory_bytes,

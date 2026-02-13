@@ -16,7 +16,7 @@
 
 #include <memory>
 
-#include "ray/common/memory_monitor.h"
+#include "ray/common/memory_monitor_interface.h"
 
 namespace ray {
 
@@ -39,7 +39,8 @@ class MemoryMonitorFactory {
    * @param kill_workers_callback function to execute when the memory usage is refreshed.
    * @return a unique pointer to the memory monitor instance.
    */
-  static std::unique_ptr<MemoryMonitor> Create(KillWorkersCallback kill_workers_callback);
+  static std::unique_ptr<MemoryMonitorInterface> Create(
+      KillWorkersCallback kill_workers_callback);
 };
 
 }  // namespace ray

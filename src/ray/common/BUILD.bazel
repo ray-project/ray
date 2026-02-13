@@ -76,9 +76,9 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "memory_monitor_test_utils",
-    srcs = ["memory_monitor_test_utils.cc"],
-    hdrs = ["memory_monitor_test_utils.h"],
+    name = "memory_monitor_test_fixture",
+    srcs = ["memory_monitor_test_fixture.cc"],
+    hdrs = ["memory_monitor_test_fixture.h"],
     target_compatible_with = [
         "@platforms//os:linux",
     ],
@@ -93,12 +93,9 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "memory_monitor",
-    srcs = [
-        "memory_monitor.cc",
-    ],
+    name = "memory_monitor_interface",
     hdrs = [
-        "memory_monitor.h",
+        "memory_monitor_interface.h",
     ],
     visibility = [
         ":__subpackages__",
@@ -106,12 +103,35 @@ ray_cc_library(
     ],
     deps = [
         ":asio",
-        ":ray_config",
         "//src/ray/util:process",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "memory_monitor_utils",
+    srcs = [
+        "memory_monitor_utils.cc",
+    ],
+    hdrs = [
+        "memory_monitor_utils.h",
+    ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/raylet:__subpackages__",
+    ],
+    deps = [
+        ":asio",
+        ":memory_monitor_interface",
+        ":ray_config",
+        "//src/ray/util:logging",
+        "//src/ray/util:process",
+        "@boost//:algorithm",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_prod",
-        "@nlohmann_json",
     ],
 )
 
@@ -129,7 +149,8 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         ":asio",
-        ":memory_monitor",
+        ":memory_monitor_interface",
+        ":memory_monitor_utils",
         ":ray_config",
         "//src/ray/util:logging",
         "//src/ray/util:process",
@@ -146,7 +167,7 @@ ray_cc_library(
     ],
     visibility = [":__subpackages__"],
     deps = [
-        ":memory_monitor",
+        ":memory_monitor_interface",
     ],
 )
 
@@ -168,7 +189,7 @@ ray_cc_library(
         "//src/ray/raylet:__subpackages__",
     ],
     deps = [
-        ":memory_monitor",
+        ":memory_monitor_interface",
         ":noop_memory_monitor",
         "//src/ray/util:logging",
     ] + select({

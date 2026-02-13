@@ -15,13 +15,14 @@
 #include <memory>
 
 #include "ray/common/memory_monitor_factory.h"
+#include "ray/common/memory_monitor_interface.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/threshold_memory_monitor.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 
-std::unique_ptr<MemoryMonitor> MemoryMonitorFactory::Create(
+std::unique_ptr<MemoryMonitorInterface> MemoryMonitorFactory::Create(
     KillWorkersCallback kill_workers_callback) {
   return std::make_unique<ThresholdMemoryMonitor>(
       std::move(kill_workers_callback),
