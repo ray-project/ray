@@ -343,6 +343,9 @@ class RefBundle:
         )
 
     def __eq__(self, other: "RefBundle"):
+        if self is other:
+            return True
+
         return (
             self.blocks == other.blocks
             and self.slices == other.slices
