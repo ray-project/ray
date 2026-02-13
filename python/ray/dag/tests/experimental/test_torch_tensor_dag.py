@@ -267,6 +267,8 @@ def test_torch_tensor_nccl(
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
 
+    compiled_dag.teardown()
+
 
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -368,6 +370,8 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
         shape = (10 * (i + 1),)
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
+
+    compiled_dag.teardown()
 
 
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
