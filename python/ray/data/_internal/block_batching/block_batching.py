@@ -2,6 +2,7 @@ from typing import Callable, Iterator, Optional, TypeVar
 
 from ray.data._internal.block_batching.interfaces import Batch
 from ray.data._internal.block_batching.util import (
+    _MappingIterator,
     blocks_to_batches,
     collate,
     format_batches,
@@ -47,7 +48,7 @@ def batch_blocks(
     if collate_fn is not None:
         batch_iter = collate(batch_iter, collate_fn=collate_fn, stats=stats)
 
-    return _UserTimingIterator(_UnwrappingIterator(batch_iter), stats)
+    return _UserTimingIterator(_MappingIterator(batch_iter, lambda batch: batch.data), stats)
 
 
 class _UserTimingIterator(Iterator[DataBatch]):
@@ -91,21 +92,3 @@ class _UserTimingIterator(Iterator[DataBatch]):
 
         self._active_timer = self._stats.iter_user_s.timer()
         self._active_timer.__enter__()
-
-
-class _UnwrappingIterator(Iterator[DataBatch]):
-    """Iterator that unwraps `Batch` into underlying `DataBatch`."""
-
-    def __init__(
-        self,
-        batches: Iterator["Batch"],
-    ):
-        self._batches_iter = batches
-
-    def __iter__(self) -> "_UnwrappingIterator":
-        return self
-
-    def __next__(self) -> DataBatch:
-        batch = next(self._batches_iter)
-
-        return batch.data

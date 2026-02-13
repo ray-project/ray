@@ -1,8 +1,9 @@
 import dataclasses
+import functools
 import logging
 import threading
 from contextlib import nullcontext
-from typing import Any, Callable, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Generic, Iterator, List, Optional, Tuple, TypeVar
 
 import ray
 from ray.actor import ActorHandle
@@ -19,6 +20,27 @@ from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
+
+I = TypeVar("I")
+O = TypeVar("O")
+
+
+class _MappingIterator(Iterator[O], Generic[I, O]):
+    """Iterator that applies a transform function to each element.
+
+    Unlike a generator, local variables in __next__ go out of scope when the method
+    returns, avoiding holding references to yielded values.
+    """
+
+    def __init__(self, input_iter: Iterator[I], transform_fn: Callable[[I], O]):
+        self._input_iter = input_iter
+        self._transform_fn = transform_fn
+
+    def __iter__(self) -> "_MappingIterator[I, O]":
+        return self
+
+    def __next__(self) -> O:
+        return self._transform_fn(next(self._input_iter))
 
 
 def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
@@ -167,42 +189,38 @@ class _BatchingIterator(Iterator[Batch]):
                 raise StopIteration
 
 
+def _format_batch(
+    batch: Batch,
+    batch_format: Optional[str],
+    stats: Optional[DatasetStats],
+) -> Batch:
+    with stats.iter_format_batch_s.timer() if stats else nullcontext():
+        formatted_data = BlockAccessor.for_block(batch.data).to_batch_format(
+            batch_format
+        )
+    return dataclasses.replace(batch, data=formatted_data)
+
+
 def format_batches(
     batch_iter: Iterator[Batch],
     batch_format: Optional[str],
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[Batch]:
     """Given an iterator of batches, returns an iterator of formatted batches."""
-    return _BatchFormattingIterator(batch_iter, batch_format, stats)
+    return _MappingIterator(
+        batch_iter,
+        functools.partial(_format_batch, batch_format=batch_format, stats=stats),
+    )
 
 
-class _BatchFormattingIterator(Iterator[Batch]):
-    """Iterator that formats batches.
-
-    Unlike a generator, local variables in __next__ go out of scope when the method
-    returns, avoiding holding references to yielded values.
-    """
-
-    def __init__(
-        self,
-        batch_iter: Iterator[Batch],
-        batch_format: Optional[str],
-        stats: Optional[DatasetStats] = None,
-    ):
-        self._batch_iter = batch_iter
-        self._batch_format = batch_format
-        self._stats = stats
-
-    def __iter__(self) -> "_BatchFormattingIterator":
-        return self
-
-    def __next__(self) -> Batch:
-        batch = next(self._batch_iter)
-        with self._stats.iter_format_batch_s.timer() if self._stats else nullcontext():
-            formatted_data = BlockAccessor.for_block(batch.data).to_batch_format(
-                self._batch_format
-            )
-        return dataclasses.replace(batch, data=formatted_data)
+def _collate_batch(
+    batch: Batch,
+    collate_fn: Callable[[DataBatch], Any],
+    stats: Optional[DatasetStats],
+) -> CollatedBatch:
+    with stats.iter_collate_batch_s.timer() if stats else nullcontext():
+        collated_data = collate_fn(batch.data)
+    return CollatedBatch(metadata=batch.metadata, data=collated_data)
 
 
 def collate(
@@ -214,34 +232,20 @@ def collate(
     if not isinstance(batch_iter, Iterator):
         batch_iter = iter(batch_iter)
 
-    return _CollatingIterator(batch_iter, collate_fn, stats)
+    return _MappingIterator(
+        batch_iter,
+        functools.partial(_collate_batch, collate_fn=collate_fn, stats=stats),
+    )
 
 
-class _CollatingIterator(Iterator[CollatedBatch]):
-    """Iterator that applies collate_fn to batches.
-
-    Unlike a generator, local variables in __next__ go out of scope when the method
-    returns, avoiding holding references to yielded values.
-    """
-
-    def __init__(
-        self,
-        batch_iter: Iterator[Batch],
-        collate_fn: Callable[[DataBatch], Any],
-        stats: Optional[DatasetStats] = None,
-    ):
-        self._batch_iter = batch_iter
-        self._collate_fn = collate_fn
-        self._stats = stats
-
-    def __iter__(self) -> "_CollatingIterator":
-        return self
-
-    def __next__(self) -> CollatedBatch:
-        batch = next(self._batch_iter)
-        with self._stats.iter_collate_batch_s.timer() if self._stats else nullcontext():
-            collated_data = self._collate_fn(batch.data)
-        return CollatedBatch(metadata=batch.metadata, data=collated_data)
+def _finalize_batch(
+    batch: CollatedBatch,
+    finalize_fn: Callable[[Any], Any],
+    stats: Optional[DatasetStats],
+) -> CollatedBatch:
+    with stats.iter_finalize_batch_s.timer() if stats else nullcontext():
+        finalized_data = finalize_fn(batch.data)
+    return dataclasses.replace(batch, data=finalized_data)
 
 
 def finalize_batches(
@@ -253,36 +257,10 @@ def finalize_batches(
     if not isinstance(batch_iter, Iterator):
         batch_iter = iter(batch_iter)
 
-    return _FinalizingIterator(batch_iter, finalize_fn, stats)
-
-
-class _FinalizingIterator(Iterator[CollatedBatch]):
-    """Iterator that applies finalize_fn to batches.
-
-    Unlike a generator, local variables in __next__ go out of scope when the method
-    returns, avoiding holding references to yielded values.
-    """
-
-    def __init__(
-        self,
-        batch_iter: Iterator[CollatedBatch],
-        finalize_fn: Callable[[Any], Any],
-        stats: Optional[DatasetStats] = None,
-    ):
-        self._batch_iter = batch_iter
-        self._finalize_fn = finalize_fn
-        self._stats = stats
-
-    def __iter__(self) -> "_FinalizingIterator":
-        return self
-
-    def __next__(self) -> CollatedBatch:
-        batch = next(self._batch_iter)
-        with (
-            self._stats.iter_finalize_batch_s.timer() if self._stats else nullcontext()
-        ):
-            finalized_data = self._finalize_fn(batch.data)
-        return dataclasses.replace(batch, data=finalized_data)
+    return _MappingIterator(
+        batch_iter,
+        functools.partial(_finalize_batch, finalize_fn=finalize_fn, stats=stats),
+    )
 
 
 PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
