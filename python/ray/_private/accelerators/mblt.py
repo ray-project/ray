@@ -41,44 +41,25 @@ class MBLTAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_num_accelerators() -> int:
-        """Detects the number of MBLT devices on the current machine."""
         try:
             from qbruntime.accelerator import Accelerator
-    
+            max_probe = _hint_num_from_os() or 256
+            
             count = 0
             dev_no = 0
-            while True:
+            for dev_no in range(max_probe):
                 try:
                     acc = Accelerator(dev_no)
                     cores = acc.get_available_cores()
-                    if cores:
-                        count += 1
-                    dev_no += 1
+
+                    if not cores:
+                        break
+                    count += 1
                 except Exception:
-                    break
-    
-            if count > 0:
-                return count
-        except Exception as e:
-            logger.debug("qbruntime probe failed: %s", e)
-            
-        try:
-            devs: List[str] = []
-            for pattern in _MBLT_DEV_PATTERNS:
-                devs.extend(glob.glob(pattern))
-            if devs:
-                return len(devs)
-        except Exception as e:
-            logger.debug("Could not detect MBLT devices via /dev glob: %s", e)
-
-        try:
-            out = subprocess.check_output(_MBLT_PCI_FILTER, text=True).strip()
-            if out:
-                return len(out.splitlines())
-        except Exception as e:
-            logger.debug("Could not detect MBLT devices via lspci: %s", e)
-
-        return 0
+                    beak
+            return count
+        except Exception:
+            return 0
 
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
