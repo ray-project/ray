@@ -300,7 +300,9 @@ class TestResourceManager:
 
     def test_object_store_usage(self, restore_data_context):
         input = make_ref_bundles([[x] for x in range(1)])[0]
-        input.size_bytes = MagicMock(return_value=1)
+        # Set block metadata size_bytes to 1 (rather than mocking the method on the
+        # instance, which doesn't survive dataclasses.replace in OpBufferQueue.pop).
+        input.blocks[0][1].size_bytes = 1
 
         o1 = InputDataBuffer(DataContext.get_current(), [input])
         o2 = mock_map_op(o1)
@@ -367,7 +369,10 @@ class TestResourceManager:
 
         # Objects in the current operator's internal inqueue count towards the previous
         # operator's object store memory usage.
-        o3.metrics.on_input_queued(topo[o2].output_queue.pop())
+        # NOTE: `pop()` returns a copy of the bundle (via `dataclasses.replace`), so we
+        # must use the returned reference for subsequent o3 metric calls.
+        o3_input = topo[o2].output_queue.pop()
+        o3.metrics.on_input_queued(o3_input)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 1
@@ -375,8 +380,8 @@ class TestResourceManager:
 
         # Task inputs count toward the previous operator's object store memory
         # usage. During no-sample phase, pending task outputs uses fallback estimate.
-        o3.metrics.on_input_dequeued(input)
-        o3.metrics.on_task_submitted(0, input)
+        o3.metrics.on_input_dequeued(o3_input)
+        o3.metrics.on_task_submitted(0, o3_input)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 1
@@ -386,7 +391,7 @@ class TestResourceManager:
         assert op3_usage == expected_pending_output
 
         # Task inputs no longer count once the task is finished.
-        o3.metrics.on_output_queued(input)
+        o3.metrics.on_output_queued(o3_input)
         o3.metrics.on_task_finished(0, None)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
