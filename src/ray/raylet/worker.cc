@@ -110,6 +110,10 @@ WorkerID Worker::WorkerId() const { return worker_id_; }
 const ProcessInterface &Worker::GetProcess() const { return *proc_; }
 
 void Worker::SetProcess(std::unique_ptr<ProcessInterface> proc) {
+  RAY_CHECK(proc != nullptr) << absl::StrFormat(
+      "Failed to set process for worker: %s because the process is null. "
+      "Was the process spawned successfully?",
+      worker_id_.Hex());
   RAY_CHECK(proc_ == nullptr || proc_->IsNull()) << absl::StrFormat(
       "Failed to set process: %d on worker: %s because it already has a process: %d",
       proc->GetId(),
