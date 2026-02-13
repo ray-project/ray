@@ -9,7 +9,7 @@ This guide explains how Ray Serve schedules deployment replicas across your clus
 | Goal | Solution | Example |
 |------|----------|---------|
 | Multi-GPU inference with tensor parallelism | `placement_group_bundles` + `STRICT_PACK` | vLLM with `tensor_parallel_size=4` |
-| Target specific GPU types or zones | Custom resources in `ray_actor_options` | Schedule on A100 nodes only |
+| Target specific GPU types or zones | `label_selector` in `ray_actor_options` | Schedule on A100 nodes only |
 | Limit replicas per node for high availability | `max_replicas_per_node` | Max 2 replicas of each deployment per node |
 | Reduce cloud costs by packing nodes | `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1` | Many small models sharing nodes |
 | Reserve resources for worker actors | `placement_group_bundles` | Replica spawns Ray Data workers |
@@ -214,7 +214,7 @@ The replica actor is scheduled in the first bundle, so the resources specified i
 
 You can use label selectors in [`ray_actor_options`](../api/doc/ray.serve.deployment_decorator.rst) to target replicas to specific nodes. This is the recommended approach for controlling which nodes run your replicas.
 
-Then configure your deployment to require the specific resource:
+Then configure your deployment to require the specific labels:
 
 ```{literalinclude} ../doc_code/replica_scheduling.py
 :start-after: __label_selectors_start__
@@ -238,6 +238,7 @@ By default, a `label_selector` acts as a hard constraint. If no node matches the
 :start-after: __fallback_strategy_start__
 :end-before: __fallback_strategy_end__
 :language: python
+
 This allows you to express preferences. For example, when using PACK scheduling, the scheduler will attempt to find a node that matches the `label_selector` first. If no available node is found, the scheduler will retry scheduling using the rules defined in your fallback strategy.
 
 Label selectors and fallback strategies offer several advantages for Ray Serve deployments:
@@ -283,7 +284,7 @@ export RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES="TPU,custom_accelerator"
 ray start --head
 ```
 
-When pack scheduling sorts replicas by resource requirements, the priority order is:
+When pack scheduling is enabled, the scheduler first filters the cluster to find nodes that match the `label_selector` (if specified). It then sorts the pending replicas by resource requirements to pack them efficiently. The priority order for sorting replicas is:
 1. Custom resources in `RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES` (in order)
 2. GPU
 3. CPU
