@@ -797,10 +797,12 @@ class DataContext:
 
     @staticmethod
     @contextlib.contextmanager
-    def with_current(context: "DataContext"):
+    def current(context: "DataContext"):
         prev = DataContext._set_current(context)
-        yield
-        DataContext._set_current(prev)
+        try:
+            yield
+        finally:
+            DataContext._set_current(prev)
 
     @staticmethod
     def _set_current(context: "DataContext") -> "DataContext":
