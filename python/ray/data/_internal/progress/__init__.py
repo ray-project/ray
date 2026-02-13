@@ -113,8 +113,8 @@ def get_progress_manager(
         progress_manager = AsyncExecutionProgressManagerWrapper(
             progress_manager,
             max_workers=1,
-            stall_warning_threshold=10.0,
-            shutdown_timeout=5.0,
+            stall_warning_threshold=ctx.async_progress_stall_warning_threshold,
+            shutdown_timeout=ctx.async_progress_shutdown_timeout,
         )
 
     return progress_manager
