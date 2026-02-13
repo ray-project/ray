@@ -245,13 +245,13 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servebuild-py3.10 --python-version 3.10
         --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=1
-        --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=6
+        --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
       
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests:test_direct_ingress_with_grpc serve
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 1
         --build-name servebuild-py3.10 --python-version 3.10
         --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=1
-        --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=6
+        --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
     depends_on: servebuild-multipy
 
   - label: ":ray-serve: serve: direct ingress tests (same loop)"
@@ -264,7 +264,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servebuild-py3.10 --python-version 3.10
         --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=1
-        --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=6
+        --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
         --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
     depends_on: servebuild-multipy
 
