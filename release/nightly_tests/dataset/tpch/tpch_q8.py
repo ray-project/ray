@@ -8,14 +8,25 @@ def main(args):
     def benchmark_fn():
         from datetime import datetime
 
-        # Load all required tables
-        region = load_table("region", args.sf)
-        nation = load_table("nation", args.sf)
-        supplier = load_table("supplier", args.sf)
-        customer = load_table("customer", args.sf)
-        orders = load_table("orders", args.sf)
-        lineitem = load_table("lineitem", args.sf)
-        part = load_table("part", args.sf)
+        # Load all required tables with early column pruning to reduce
+        # intermediate data size (projection pushes down to Parquet reader)
+        region = load_table("region", args.sf).select_columns(["r_regionkey", "r_name"])
+        nation = load_table("nation", args.sf).select_columns(
+            ["n_nationkey", "n_name", "n_regionkey"]
+        )
+        supplier = load_table("supplier", args.sf).select_columns(
+            ["s_suppkey", "s_nationkey"]
+        )
+        customer = load_table("customer", args.sf).select_columns(
+            ["c_custkey", "c_nationkey"]
+        )
+        orders = load_table("orders", args.sf).select_columns(
+            ["o_orderkey", "o_custkey", "o_orderdate"]
+        )
+        lineitem = load_table("lineitem", args.sf).select_columns(
+            ["l_orderkey", "l_partkey", "l_suppkey", "l_extendedprice", "l_discount"]
+        )
+        part = load_table("part", args.sf).select_columns(["p_partkey", "p_type"])
 
         # Q8 parameters
         date1 = datetime(1995, 1, 1)
@@ -30,7 +41,7 @@ def main(args):
         # Join region with nation
         nation_region = region_filtered.join(
             nation,
-            num_partitions=32,  # Empirical value to balance parallelism and shuffle overhead
+            num_partitions=16,  # Empirical value to balance parallelism and shuffle overhead
             join_type="inner",
             on=("r_regionkey",),
             right_on=("n_regionkey",),
@@ -39,7 +50,7 @@ def main(args):
         # Join customer with nation (use suffix to avoid conflicts)
         customer_nation = customer.join(
             nation_region,
-            num_partitions=32,
+            num_partitions=16,
             join_type="inner",
             on=("c_nationkey",),
             right_on=("n_nationkey",),
@@ -49,7 +60,7 @@ def main(args):
 
         supplier_nation = supplier.join(
             nation,
-            num_partitions=32,
+            num_partitions=16,
             join_type="inner",
             on=("s_nationkey",),
             right_on=("n_nationkey",),
@@ -66,7 +77,7 @@ def main(args):
         )
         orders_customer = orders_filtered.join(
             customer_nation,
-            num_partitions=32,
+            num_partitions=16,
             join_type="inner",
             on=("o_custkey",),
             right_on=("c_custkey",),
@@ -75,7 +86,7 @@ def main(args):
         # Join lineitem with orders
         lineitem_orders = lineitem.join(
             orders_customer,
-            num_partitions=32,
+            num_partitions=16,
             join_type="inner",
             on=("l_orderkey",),
             right_on=("o_orderkey",),
@@ -84,7 +95,7 @@ def main(args):
         # Join with part
         lineitem_part = lineitem_orders.join(
             part_filtered,
-            num_partitions=32,
+            num_partitions=16,
             join_type="inner",
             on=("l_partkey",),
             right_on=("p_partkey",),
@@ -93,7 +104,7 @@ def main(args):
         # Join with supplier (use suffix to avoid conflicts with customer nation columns)
         ds = lineitem_part.join(
             supplier_nation,
-            num_partitions=32,
+            num_partitions=16,
             join_type="inner",
             on=("l_suppkey",),
             right_on=("s_suppkey",),

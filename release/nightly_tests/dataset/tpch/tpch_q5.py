@@ -8,13 +8,24 @@ def main(args):
     def benchmark_fn():
         from datetime import datetime
 
-        # Load all required tables
-        region = load_table("region", args.sf)
-        nation = load_table("nation", args.sf)
-        supplier = load_table("supplier", args.sf)
-        customer = load_table("customer", args.sf)
-        orders = load_table("orders", args.sf)
-        lineitem = load_table("lineitem", args.sf)
+        # Load all required tables with early column pruning to reduce
+        # intermediate data size (projection pushes down to Parquet reader)
+        region = load_table("region", args.sf).select_columns(["r_regionkey", "r_name"])
+        nation = load_table("nation", args.sf).select_columns(
+            ["n_nationkey", "n_name", "n_regionkey"]
+        )
+        supplier = load_table("supplier", args.sf).select_columns(
+            ["s_suppkey", "s_nationkey"]
+        )
+        customer = load_table("customer", args.sf).select_columns(
+            ["c_custkey", "c_nationkey"]
+        )
+        orders = load_table("orders", args.sf).select_columns(
+            ["o_orderkey", "o_custkey", "o_orderdate"]
+        )
+        lineitem = load_table("lineitem", args.sf).select_columns(
+            ["l_orderkey", "l_suppkey", "l_extendedprice", "l_discount"]
+        )
 
         # Q5 parameters
         date = datetime(1994, 1, 1)
@@ -24,7 +35,7 @@ def main(args):
 
         nation_region = region_filtered.join(
             nation,
-            num_partitions=32,  # Empirical value to balance parallelism and shuffle overhead
+            num_partitions=16,  # Empirical value to balance parallelism and shuffle overhead
             join_type="inner",
             on=("r_regionkey",),
             right_on=("n_regionkey",),
@@ -80,7 +91,7 @@ def main(args):
         )
         orders_customer = orders_filtered.join(
             customer_nation,
-            num_partitions=32,
+            num_partitions=16,
             join_type="inner",
             on=("o_custkey",),
             right_on=("c_custkey",),
@@ -88,7 +99,7 @@ def main(args):
 
         lineitem_orders = lineitem.join(
             orders_customer,
-            num_partitions=32,
+            num_partitions=16,
             join_type="inner",
             on=("l_orderkey",),
             right_on=("o_orderkey",),
@@ -96,7 +107,7 @@ def main(args):
 
         ds = lineitem_orders.join(
             supplier_nation,
-            num_partitions=32,
+            num_partitions=16,
             join_type="inner",
             on=("l_suppkey", "n_nationkey_cust"),
             right_on=("s_suppkey", "n_nationkey_supp"),

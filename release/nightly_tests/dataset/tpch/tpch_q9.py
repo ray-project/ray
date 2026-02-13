@@ -6,13 +6,29 @@ from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
 
 def main(args):
     def benchmark_fn():
-        # Load all required tables
-        part = load_table("part", args.sf)
-        supplier = load_table("supplier", args.sf)
-        partsupp = load_table("partsupp", args.sf)
-        orders = load_table("orders", args.sf)
-        lineitem = load_table("lineitem", args.sf)
-        nation = load_table("nation", args.sf)
+        # Load all required tables with early column pruning to reduce
+        # intermediate data size (projection pushes down to Parquet reader)
+        part = load_table("part", args.sf).select_columns(["p_partkey", "p_name"])
+        supplier = load_table("supplier", args.sf).select_columns(
+            ["s_suppkey", "s_nationkey"]
+        )
+        partsupp = load_table("partsupp", args.sf).select_columns(
+            ["ps_partkey", "ps_suppkey", "ps_supplycost"]
+        )
+        orders = load_table("orders", args.sf).select_columns(
+            ["o_orderkey", "o_orderdate"]
+        )
+        lineitem = load_table("lineitem", args.sf).select_columns(
+            [
+                "l_orderkey",
+                "l_partkey",
+                "l_suppkey",
+                "l_quantity",
+                "l_extendedprice",
+                "l_discount",
+            ]
+        )
+        nation = load_table("nation", args.sf).select_columns(["n_nationkey", "n_name"])
 
         # Q9 parameters
         part_name_pattern = "green"
@@ -20,7 +36,7 @@ def main(args):
         # Join partsupp with supplier
         partsupp_supplier = partsupp.join(
             supplier,
-            num_partitions=32,  # Empirical value to balance parallelism and shuffle overhead
+            num_partitions=16,  # Empirical value to balance parallelism and shuffle overhead
             join_type="inner",
             on=("ps_suppkey",),
             right_on=("s_suppkey",),
@@ -29,7 +45,7 @@ def main(args):
         # Join with part (filter will be applied after join to avoid UDF expression issues)
         partsupp_part = partsupp_supplier.join(
             part,
-            num_partitions=32,
+            num_partitions=16,
             join_type="inner",
             on=("ps_partkey",),
             right_on=("p_partkey",),
@@ -43,7 +59,7 @@ def main(args):
         # Join supplier with nation
         partsupp_nation = partsupp_part.join(
             nation,
-            num_partitions=32,
+            num_partitions=16,
             join_type="inner",
             on=("s_nationkey",),
             right_on=("n_nationkey",),
@@ -51,7 +67,7 @@ def main(args):
 
         lineitem_orders = lineitem.join(
             orders,
-            num_partitions=32,
+            num_partitions=16,
             join_type="inner",
             on=("l_orderkey",),
             right_on=("o_orderkey",),
@@ -61,7 +77,7 @@ def main(args):
         # Using multi-key join is more efficient than join + filter
         ds = lineitem_orders.join(
             partsupp_nation,
-            num_partitions=32,
+            num_partitions=16,
             join_type="inner",
             on=("l_partkey", "l_suppkey"),
             right_on=("ps_partkey", "ps_suppkey"),
