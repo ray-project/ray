@@ -7,7 +7,7 @@ from .backpressure_policy import BackpressurePolicy
 from .downstream_capacity_backpressure_policy import (
     get_available_object_store_budget_fraction,
 )
-from ray._private.ray_constants import env_float
+from ray._common.utils import env_float
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,

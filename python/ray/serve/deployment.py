@@ -12,7 +12,7 @@ from ray.serve._private.config import (
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, GangSchedulingConfig
 from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import PublicAPI
 
@@ -237,6 +237,9 @@ class Deployment:
         _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,
         max_constructor_retry_count: Default[int] = DEFAULT.VALUE,
+        gang_scheduling_config: Default[
+            Union[Dict, GangSchedulingConfig, None]
+        ] = DEFAULT.VALUE,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -255,8 +258,8 @@ class Deployment:
         # `num_replicas="auto"`
         if max_ongoing_requests is None:
             raise ValueError("`max_ongoing_requests` must be non-null, got None.")
+
         if num_replicas == "auto":
-            num_replicas = None
             max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
                 max_ongoing_requests, autoscaling_config
             )
@@ -303,7 +306,7 @@ class Deployment:
                 "future!"
             )
 
-        elif num_replicas not in [DEFAULT.VALUE, None]:
+        elif num_replicas not in [DEFAULT.VALUE, None, "auto"]:
             new_deployment_config.num_replicas = num_replicas
 
         if user_config is not DEFAULT.VALUE:
@@ -385,6 +388,23 @@ class Deployment:
                 logging_config = logging_config.dict()
             new_deployment_config.logging_config = logging_config
 
+        if gang_scheduling_config is not DEFAULT.VALUE:
+            new_deployment_config.gang_scheduling_config = gang_scheduling_config
+
+        gc = new_deployment_config.gang_scheduling_config
+        if gc is not None and num_replicas == "auto":
+            raise ValueError(
+                'num_replicas="auto" is not allowed when '
+                "gang_scheduling_config is provided. Set "
+                "num_replicas to a fixed multiple of gang_size."
+            )
+        if gc is not None and isinstance(new_deployment_config.num_replicas, int):
+            if new_deployment_config.num_replicas % gc.gang_size != 0:
+                raise ValueError(
+                    f"num_replicas ({new_deployment_config.num_replicas}) must "
+                    f"be a multiple of gang_size ({gc.gang_size})."
+                )
+
         new_replica_config = ReplicaConfig.create(
             func_or_class,
             init_args=_init_args,
@@ -456,6 +476,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
         "logging_config": d._deployment_config.logging_config,
         "request_router_config": d._deployment_config.request_router_config,
+        "gang_scheduling_config": d._deployment_config.gang_scheduling_config,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -517,6 +538,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         health_check_timeout_s=s.health_check_timeout_s,
         logging_config=s.logging_config,
         request_router_config=s.request_router_config,
+        gang_scheduling_config=s.gang_scheduling_config,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()
