@@ -91,17 +91,15 @@ def test_read_single_file(ray_start_regular_shared, filesystem, dir_path, endpoi
     assert rows == [{"data": b"spam"}]
 
 
-def test_read_single_directory_local(ray_start_regular_shared, tmp_path):
-    dir_path = os.path.join(tmp_path, "dir")
-    os.mkdir(dir_path)
+def test_read_single_directory(ray_start_regular_shared, tmp_path):
+    dir_path = tmp_path / "dir"
+    dir_path.mkdir()
 
-    p1 = os.path.join(dir_path, "a.txt")
-    with open(p1, "wb") as f:
-        f.write(b"a")
+    p1 = dir_path / "a.txt"
+    p1.write_bytes(b"a")
 
-    p2 = os.path.join(dir_path, "b.txt")
-    with open(p2, "wb") as f:
-        f.write(b"b")
+    p2 = dir_path / "b.txt"
+    p2.write_bytes(b"b")
 
     datasource = MockFileBasedDatasource(dir_path)
     rows = execute_read_tasks(datasource.get_read_tasks(1))
@@ -110,16 +108,14 @@ def test_read_single_directory_local(ray_start_regular_shared, tmp_path):
 
 
 def test_read_dir_and_file_mixed(ray_start_regular_shared, tmp_path):
-    dir_path = os.path.join(tmp_path, "dir")
-    os.mkdir(dir_path)
+    dir_path = tmp_path / "dir"
+    dir_path.mkdir()
 
-    p1 = os.path.join(dir_path, "a.txt")
-    with open(p1, "wb") as f:
-        f.write(b"a")
+    p1 = dir_path / "a.txt"
+    p1.write_bytes(b"a")
 
-    p2 = os.path.join(tmp_path, "c.txt")
-    with open(p2, "wb") as f:
-        f.write(b"c")
+    p2 = tmp_path / "c.txt"
+    p2.write_bytes(b"c")
 
     datasource = MockFileBasedDatasource([dir_path, p2])
     rows = execute_read_tasks(datasource.get_read_tasks(1))
@@ -130,9 +126,8 @@ def test_read_dir_and_file_mixed(ray_start_regular_shared, tmp_path):
 def test_single_file_infinite_target_max_block_size(
     ray_start_regular_shared, target_max_block_size_infinite_or_default, tmp_path
 ):
-    path = os.path.join(tmp_path, "file.txt")
-    with open(path, "wb") as f:
-        f.write(b"spam")
+    path = tmp_path / "file.txt"
+    path.write_bytes(b"spam")
 
     datasource = MockFileBasedDatasource(path)
     rows = execute_read_tasks(datasource.get_read_tasks(1))
@@ -324,9 +319,8 @@ def test_file_extensions(ray_start_regular_shared, tmp_path):
 
 
 def test_file_extensions_no_match_raises(ray_start_regular_shared, tmp_path):
-    txt_path = os.path.join(tmp_path, "file.txt")
-    with open(txt_path, "w") as file:
-        file.write("ham")
+    txt_path = tmp_path / "file.txt"
+    txt_path.write_bytes(b"ham")
 
     with pytest.raises(
         ValueError,
