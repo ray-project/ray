@@ -1,7 +1,7 @@
 import collections
 import logging
 import time
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, field
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -227,7 +227,7 @@ class _BlockExecStatsBuilder:
 
 
 @DeveloperAPI
-@dataclass
+@dataclass(frozen=True)
 class BlockStats:
     """Statistics about the block produced"""
 
@@ -252,7 +252,7 @@ _BLOCK_STATS_FIELD_NAMES = {f.name for f in fields(BlockStats)}
 
 
 @DeveloperAPI
-@dataclass
+@dataclass(frozen=True)
 class BlockMetadata(BlockStats):
     """Metadata about the block."""
 
@@ -266,15 +266,8 @@ class BlockMetadata(BlockStats):
             **{key: self.__getattribute__(key) for key in _BLOCK_STATS_FIELD_NAMES}
         )
 
-    def __post_init__(self):
-        super().__post_init__()
-
-        if self.input_files is None:
-            self.input_files = []
-
-
 @DeveloperAPI(stability="alpha")
-@dataclass
+@dataclass(frozen=True)
 class BlockMetadataWithSchema(BlockMetadata):
     schema: Optional[Schema] = None
 
