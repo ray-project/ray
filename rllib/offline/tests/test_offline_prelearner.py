@@ -47,32 +47,11 @@ def config():
             observation_space=observation_space,
             action_space=action_space,
         )
-        .api_stack(
-            enable_env_runner_and_connector_v2=True,
-            enable_rl_module_and_learner=True,
-        )
-        .offline_data(
-            input_=[EPISODES_DATA_PATH],
-            dataset_num_iters_per_learner=1,
-        )
         .training(
-            train_batch_size_per_learner=256,
+            train_batch_size_per_learner=64,
         )
     )
     return config
-
-
-@pytest.fixture
-def offline_prelearner(config):
-    algo = config.build()
-    offline_prelearner = OfflinePreLearner(
-        config=config,
-        module_spec=algo.offline_data.module_spec,
-        module_state=algo.offline_data.learner_handles[0].get_state(
-            component=COMPONENT_RL_MODULE,
-        )[COMPONENT_RL_MODULE],
-    )
-    return offline_prelearner
 
 
 class TestOfflinePreLearner:
@@ -85,6 +64,7 @@ class TestOfflinePreLearner:
 
         config.offline_data(
             input_=[SAMPLE_BATCH_DATA_PATH],
+            dataset_num_iters_per_learner=1,
             # Note, for the data we need to read a JSON file.
             input_read_method="read_json",
             # Note, this has to be set to `True`.
@@ -138,8 +118,21 @@ class TestOfflinePreLearner:
                 == config.train_batch_size_per_learner
             )
 
-    def test_offline_prelearner_convert_to_episodes(self, offline_prelearner):
+    def test_offline_prelearner_convert_to_episodes(self, config):
         """Tests conversion from column data to episodes."""
+        config.offline_data(
+            input_=[EPISODES_DATA_PATH],
+            dataset_num_iters_per_learner=1,
+        )
+
+        algo = config.build()
+        offline_prelearner = OfflinePreLearner(
+            config=config,
+            module_spec=algo.offline_data.module_spec,
+            module_state=algo.offline_data.learner_handles[0].get_state(
+                component=COMPONENT_RL_MODULE,
+            )[COMPONENT_RL_MODULE],
+        )
 
         # Create the dataset.
         data = ray.data.read_parquet(EPISODES_DATA_PATH)
@@ -156,6 +149,8 @@ class TestOfflinePreLearner:
         data = ray.data.read_parquet(EPISODES_DATA_PATH)
 
         config.offline_data(
+            input_=[EPISODES_DATA_PATH],
+            dataset_num_iters_per_learner=1,
             ignore_final_observation=True,
         )
 
@@ -178,10 +173,21 @@ class TestOfflinePreLearner:
             for eps in episodes
         )
 
-    def test_offline_prelearner_convert_from_old_sample_batch_to_episodes(
-        self, offline_prelearner
-    ):
+    def test_offline_prelearner_convert_from_old_sample_batch_to_episodes(self, config):
         """Tests conversion from `SampleBatch` data to episodes."""
+        config.offline_data(
+            input_=[EPISODES_DATA_PATH],
+            dataset_num_iters_per_learner=1,
+        )
+
+        algo = config.build()
+        offline_prelearner = OfflinePreLearner(
+            config=config,
+            module_spec=algo.offline_data.module_spec,
+            module_state=algo.offline_data.learner_handles[0].get_state(
+                component=COMPONENT_RL_MODULE,
+            )[COMPONENT_RL_MODULE],
+        )
         # Create the dataset.
         data = ray.data.read_json(SAMPLE_BATCH_DATA_PATH)
 
@@ -198,6 +204,7 @@ class TestOfflinePreLearner:
 
         config.offline_data(
             input_=[SAMPLE_BATCH_DATA_PATH],
+            dataset_num_iters_per_learner=1,
             # Note, the default is `read_parquet`.
             input_read_method="read_json",
             # Signal that we want to read in old `SampleBatch` data.
@@ -245,7 +252,7 @@ class TestOfflinePreLearner:
                 == config.train_batch_size_per_learner
             )
 
-    def test_offline_prelearner_sample_from_episode_data(self):
+    def test_offline_prelearner_sample_from_episode_data(self, config):
         """Test sampling and writing of complete epsidoes.
 
         Creates episodes and writes them to disk with PPO.
@@ -254,7 +261,7 @@ class TestOfflinePreLearner:
         Deletes the generated data on disk after the test.
         """
         episodes_output_path = "/tmp/cartpole-v1_episodes/"
-        config = (
+        ppo_config = (
             PPOConfig()
             .environment(
                 env="CartPole-v1",
@@ -276,12 +283,13 @@ class TestOfflinePreLearner:
         )
 
         # Record episodes.
-        algo = config.build()
+        algo = ppo_config.build()
         algo.train()
 
         # Set input data and the episode read flag.
         config.offline_data(
             input_=[episodes_output_path],
+            dataset_num_iters_per_learner=1,
             input_read_episodes=True,
             input_read_batch_size=1,
         )

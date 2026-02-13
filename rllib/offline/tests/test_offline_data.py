@@ -209,7 +209,6 @@ class TestOfflineData(unittest.TestCase):
                 action_space=self.action_space,
             )
         )
-        # Explicitly request to use a different schema.
         # Create the `OfflineData` instance. Note, this tests reading
         # the files.
         offline_data = OfflineData(config)
