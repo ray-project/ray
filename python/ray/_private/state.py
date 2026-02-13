@@ -1167,11 +1167,6 @@ def wait_for_nodes(
     Raises:
         TimeoutError: If timeout expires before reaching target nodes.
         ray.exceptions.RaySystemError: If Ray is not initialized.
-
-    Example:
-        >>> import ray
-        >>> ray.init()
-        >>> ray.wait_for_nodes(num_nodes=4, timeout=300)  # 1 head + 3 workers
     """
     start_time = time.time()
     next_log_time = start_time + log_interval_s
