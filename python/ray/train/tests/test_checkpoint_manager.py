@@ -4,6 +4,7 @@ from typing import List
 
 import pytest
 
+from ray._private.dict import flatten_dict
 from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.checkpoint_manager import _CheckpointManager, _TrainingResult
 from ray.train.constants import TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE
@@ -60,6 +61,49 @@ def test_limited_checkpoints(checkpoint_paths: List[str]):
 
     assert Path(checkpoint_paths[8]).exists()
     assert Path(checkpoint_paths[9]).exists()
+
+
+@pytest.mark.parametrize(
+    "metrics_fn",
+    [
+        lambda v: {"nested": {"sub": {"attr": v}}},
+        lambda v: {"nested": {"sub/attr": v}},
+        lambda v: {"nested/sub": {"attr": v}},
+        lambda v: {"nested/sub/attr": v},
+        lambda v: {"attr": v},
+    ],
+)
+@pytest.mark.parametrize("keep", list(range(1, 3)))
+@pytest.mark.parametrize("score_attr", [True, False])
+def test_precomputed_metrics_only_keep_latest_n_checkpoints(
+    metrics_fn,
+    keep,
+    score_attr,
+    checkpoint_paths: List[str],
+):
+    manager = _CheckpointManager(
+        checkpoint_config=CheckpointConfig(
+            num_to_keep=keep,
+            checkpoint_score_attribute=list(flatten_dict(metrics_fn(0)).keys())[0]
+            if score_attr
+            else None,
+        )
+    )
+
+    for i in range(10):
+        manager.register_checkpoint(
+            _TrainingResult(
+                checkpoint=Checkpoint.from_directory(checkpoint_paths[i]),
+                metrics=metrics_fn(i),
+            )
+        )
+        expected_stored_count = min(i + 1, keep)
+        if score_attr:
+            assert len(manager._flat_metrics_pre_computed) == expected_stored_count
+        else:
+            assert len(manager._flat_metrics_pre_computed) == 0
+
+        assert len(manager.best_checkpoint_results) == expected_stored_count
 
 
 @pytest.mark.parametrize("order", ["min", "max"])
@@ -161,6 +205,108 @@ def test_keep_latest_checkpoint(checkpoint_paths):
 
 
 @pytest.mark.parametrize(
+    "metrics_fn",
+    [
+        lambda v: {"nested": {"sub": {"attr": v}}},
+        lambda v: {"nested": {"sub/attr": v}},
+        lambda v: {"nested/sub": {"attr": v}},
+        lambda v: {"nested/sub/attr": v},
+    ],
+)
+def test_nested_keep_best_checkpoint(checkpoint_paths, metrics_fn):
+    manager = _CheckpointManager(
+        checkpoint_config=CheckpointConfig(
+            num_to_keep=2,
+            checkpoint_score_attribute="nested/sub/attr",
+            checkpoint_score_order="max",
+        )
+    )
+
+    manager.register_checkpoint(
+        _TrainingResult(
+            checkpoint=Checkpoint.from_directory(checkpoint_paths[0]),
+            metrics=metrics_fn(3.0),
+        )
+    )
+    manager.register_checkpoint(
+        _TrainingResult(
+            checkpoint=Checkpoint.from_directory(checkpoint_paths[1]),
+            metrics=metrics_fn(2.0),
+        )
+    )
+    manager.register_checkpoint(
+        _TrainingResult(
+            checkpoint=Checkpoint.from_directory(checkpoint_paths[2]),
+            metrics=metrics_fn(1.0),
+        )
+    )
+
+    assert len(manager.best_checkpoint_results) == 2
+    assert (
+        len(
+            set(manager._flat_metrics_pre_computed.keys())
+            - {manager.latest_checkpoint_result.checkpoint}
+        )
+        == 2
+    )
+
+    assert manager._get_checkpoint_score(manager.best_checkpoint_results[0]) == (
+        True,
+        2.0,
+    )
+    assert manager._get_checkpoint_score(manager.best_checkpoint_results[1]) == (
+        True,
+        3.0,
+    )
+
+    # The latest checkpoint with the lowest score should not be deleted yet.
+    assert (
+        flatten_dict(manager.latest_checkpoint_result.metrics)["nested/sub/attr"] == 1.0
+    )
+
+    # The latest checkpoint with the lowest score should not be deleted yet.
+    assert Path(checkpoint_paths[2]).exists()
+
+    manager.register_checkpoint(
+        _TrainingResult(
+            checkpoint=Checkpoint.from_directory(checkpoint_paths[3]),
+            metrics=metrics_fn(0.0),
+        )
+    )
+    assert len(manager.best_checkpoint_results) == 2
+    assert (
+        len(
+            set(manager._flat_metrics_pre_computed.keys())
+            - {manager.latest_checkpoint_result.checkpoint}
+        )
+        == 2
+    )
+
+    assert manager._get_checkpoint_score(manager.best_checkpoint_results[0]) == (
+        True,
+        2.0,
+    )
+    assert manager._get_checkpoint_score(manager.best_checkpoint_results[1]) == (
+        True,
+        3.0,
+    )
+
+    # A newer checkpoint came in. Even though the new one has a lower score, there are
+    # already num_to_keep better checkpoints, so the previous one should be deleted.
+    assert not Path(checkpoint_paths[2]).exists()
+
+    # Quick sanity check to make sure that the new checkpoint is kept.
+    assert (
+        flatten_dict(manager.latest_checkpoint_result.metrics)["nested/sub/attr"] == 0.0
+    )
+    assert Path(checkpoint_paths[3]).exists()
+
+    # The original 2 checkpoints should still exist
+    assert Path(checkpoint_paths[0]).exists()
+    assert Path(checkpoint_paths[1]).exists()
+
+
+@pytest.mark.parametrize(
     "metrics",
     [
         {"nested": {"sub": {"attr": 5}}},
@@ -221,6 +367,68 @@ def test_only_store_score_attr(has_score_attr, checkpoint_paths, monkeypatch):
         assert manager.best_checkpoint_results[0].metrics == {"score": 1.0}
         assert manager.best_checkpoint_results[0].checkpoint.path == checkpoint_paths[1]
         assert manager.best_checkpoint_results[1].metrics == {"score": 3.0}
+        assert manager.best_checkpoint_results[1].checkpoint.path == checkpoint_paths[0]
+        assert manager.best_checkpoint_results[2].metrics == {}
+        assert manager.best_checkpoint_results[2].checkpoint.path == checkpoint_paths[2]
+    else:
+        assert manager.best_checkpoint_results[0].metrics == {}
+        assert manager.best_checkpoint_results[0].checkpoint.path == checkpoint_paths[0]
+        assert manager.best_checkpoint_results[1].metrics == {}
+        assert manager.best_checkpoint_results[1].checkpoint.path == checkpoint_paths[1]
+        assert manager.best_checkpoint_results[2].metrics == {}
+        assert manager.best_checkpoint_results[2].checkpoint.path == checkpoint_paths[2]
+
+
+@pytest.mark.parametrize("has_score_attr", [True, False])
+@pytest.mark.parametrize(
+    "metrics_fn",
+    [
+        lambda v: {"nested": {"sub": {"attr": v}}},
+        lambda v: {"nested": {"sub/attr": v}},
+        lambda v: {"nested/sub": {"attr": v}},
+        lambda v: {"nested/sub/attr": v},
+    ],
+)
+def test_only_store_nested_score_attr(
+    has_score_attr, metrics_fn, checkpoint_paths, monkeypatch
+):
+    monkeypatch.setenv(TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE, "1")
+
+    # Set up CheckpointManager.
+    if has_score_attr:
+        checkpoint_config = CheckpointConfig(
+            num_to_keep=None,
+            checkpoint_score_attribute="nested/sub/attr",
+            checkpoint_score_order="max",
+        )
+    else:
+        checkpoint_config = CheckpointConfig(num_to_keep=None)
+    manager = _CheckpointManager(checkpoint_config=checkpoint_config)
+
+    # Ensure we insert TrainingResults with score in the right order.
+    manager.register_checkpoint(
+        _TrainingResult(
+            checkpoint=Checkpoint.from_directory(checkpoint_paths[0]),
+            metrics=metrics_fn(3.0),
+        )
+    )
+    manager.register_checkpoint(
+        _TrainingResult(
+            checkpoint=Checkpoint.from_directory(checkpoint_paths[1]),
+            metrics={**metrics_fn(1.0), "another_unsaved_metric": 6.0},
+        )
+    )
+    manager.register_checkpoint(
+        _TrainingResult(
+            checkpoint=Checkpoint.from_directory(checkpoint_paths[2]),
+            metrics={"another_unsaved_metric": 1.0},
+        )
+    )
+    assert len(manager.best_checkpoint_results) == 3
+    if has_score_attr:
+        assert manager.best_checkpoint_results[0].metrics == {"nested/sub/attr": 1.0}
+        assert manager.best_checkpoint_results[0].checkpoint.path == checkpoint_paths[1]
+        assert manager.best_checkpoint_results[1].metrics == {"nested/sub/attr": 3.0}
         assert manager.best_checkpoint_results[1].checkpoint.path == checkpoint_paths[0]
         assert manager.best_checkpoint_results[2].metrics == {}
         assert manager.best_checkpoint_results[2].checkpoint.path == checkpoint_paths[2]
