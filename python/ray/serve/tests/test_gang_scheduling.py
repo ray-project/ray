@@ -6,9 +6,12 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
+from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.test_utils import check_apps_running
 from ray.serve.config import GangPlacementStrategy, GangSchedulingConfig
+from ray.serve.context import _get_global_client
 from ray.tests.conftest import *  # noqa
+from ray.util.placement_group import get_current_placement_group, placement_group_table
 
 
 class TestGangScheduling:
@@ -379,6 +382,239 @@ class TestGangScheduling:
         )
 
         serve.delete("gang_context_app")
+        serve.shutdown()
+
+
+class TestGangResourceReservation:
+    @pytest.mark.parametrize(
+        "ray_actor_options, placement_group_bundles, gang_placement_strategy, "
+        "expected_bundles, expected_strategy, expect_same_node",
+        [
+            # Case 1: Only ray_actor_options — one flat bundle per replica, PACK
+            (
+                {"num_cpus": 0.25},
+                None,
+                "PACK",
+                [{"CPU": 0.25}, {"CPU": 0.25}],
+                "PACK",
+                True,
+            ),
+            # Case 2: placement_group_bundles — flattened into the gang PG, PACK
+            (
+                {"num_cpus": 0},
+                [{"CPU": 0.25}] * 2,
+                "PACK",
+                [{"CPU": 0.25}] * 4,
+                "PACK",
+                True,
+            ),
+            # Case 3: placement_group_bundles + SPREAD strategy
+            (
+                {"num_cpus": 0},
+                [{"CPU": 0.25}] * 2,
+                "SPREAD",
+                [{"CPU": 0.25}] * 4,
+                "SPREAD",
+                False,
+            ),
+        ],
+    )
+    def test_gang_resource_reservation(
+        self,
+        ray_cluster,
+        ray_actor_options,
+        placement_group_bundles,
+        gang_placement_strategy,
+        expected_bundles,
+        expected_strategy,
+        expect_same_node,
+    ):
+        """Verifies the gang PG has the correct bundles, strategy, and
+        that per-replica bundles are placed according to the strategy."""
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        deployment_kwargs = {
+            "num_replicas": 2,
+            "ray_actor_options": ray_actor_options,
+            "gang_scheduling_config": GangSchedulingConfig(
+                gang_size=2,
+                gang_placement_strategy=gang_placement_strategy,
+            ),
+        }
+        if placement_group_bundles is not None:
+            deployment_kwargs["placement_group_bundles"] = placement_group_bundles
+
+        @serve.deployment(**deployment_kwargs)
+        class GangDeployment:
+            def get_pg_info(self):
+                pg = get_current_placement_group()
+                if pg is None:
+                    return None
+                pg_table = placement_group_table(pg)
+                return {
+                    "bundle_specs": pg.bundle_specs,
+                    "strategy": pg_table["strategy"],
+                    "bundles_to_node_id": pg_table["bundles_to_node_id"],
+                }
+
+            def __call__(self):
+                return "ok"
+
+        app = GangDeployment.bind()
+        handle = serve.run(app, name="gang_reservation_app")
+        wait_for_condition(
+            check_apps_running,
+            apps=["gang_reservation_app"],
+        )
+
+        for _ in range(20):
+            pg_info = handle.get_pg_info.remote().result()
+            assert pg_info is not None
+            assert pg_info["bundle_specs"] == expected_bundles
+            assert pg_info["strategy"] == expected_strategy
+
+            bundles_per_replica = (
+                len(placement_group_bundles) if placement_group_bundles else 1
+            )
+            gang_size = 2
+
+            for replica_idx in range(gang_size):
+                start = replica_idx * bundles_per_replica
+                replica_nodes = {
+                    pg_info["bundles_to_node_id"][i]
+                    for i in range(start, start + bundles_per_replica)
+                }
+                if expect_same_node:
+                    assert len(replica_nodes) == 1
+                else:
+                    assert len(replica_nodes) == bundles_per_replica
+
+        serve.delete("gang_reservation_app")
+        serve.shutdown()
+
+    def test_gang_label_selector(self, ray_cluster):
+        """
+        Verifies that placement_group_bundle_label_selector steers gang bundles
+        onto the labeled node.
+        """
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1, labels={"accelerator": "tpu"})
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment(
+            num_replicas=2,
+            ray_actor_options={"num_cpus": 0},
+            placement_group_bundles=[{"CPU": 0.25}],
+            placement_group_bundle_label_selector=[{"accelerator": "tpu"}],
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class LabeledGangDeployment:
+            def get_pg_info(self):
+                pg = get_current_placement_group()
+                if pg is None:
+                    return None
+                pg_table = placement_group_table(pg)
+                return {
+                    "bundle_specs": pg.bundle_specs,
+                    "bundles_to_node_id": pg_table["bundles_to_node_id"],
+                    "node_labels": ray.get_runtime_context().get_node_labels(),
+                }
+
+            def __call__(self):
+                return "ok"
+
+        app = LabeledGangDeployment.bind()
+        handle = serve.run(app, name="label_selector_app")
+        wait_for_condition(
+            check_apps_running,
+            apps=["label_selector_app"],
+        )
+
+        labeled_node_id = None
+        for node in ray.nodes():
+            if node["Labels"].get("accelerator") == "tpu":
+                labeled_node_id = node["NodeID"]
+                break
+        assert labeled_node_id is not None
+
+        for _ in range(20):
+            pg_info = handle.get_pg_info.remote().result()
+            assert pg_info is not None
+            assert pg_info["bundle_specs"] == [{"CPU": 0.25}, {"CPU": 0.25}]
+            # Replica actor itself should be on the labeled node
+            assert pg_info["node_labels"].get("accelerator") == "tpu"
+            # All bundles in the gang PG should be on the labeled node
+            for node_id in pg_info["bundles_to_node_id"].values():
+                assert node_id == labeled_node_id
+
+        serve.delete("label_selector_app")
+        serve.shutdown()
+
+
+class TestGangControllerRecovery:
+    def test_gang_context_recovery(self, ray_cluster):
+        """Verifies that the controller recovers gang_context after a crash."""
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment(
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class D:
+            def __call__(self):
+                return "ok"
+
+        serve.run(D.bind(), name="app")
+        wait_for_condition(check_apps_running, apps=["app"])
+
+        deployment_id = DeploymentID(name="D", app_name="app")
+        controller = _get_global_client()._controller
+
+        # Record controller-side gang_context before crash
+        replicas = ray.get(
+            controller._dump_replica_states_for_testing.remote(deployment_id)
+        )
+        running = replicas.get([ReplicaState.RUNNING])
+        assert len(running) == 4
+        gang_ctx_before = {r.replica_id.unique_id: r.gang_context for r in running}
+        assert all(gc is not None for gc in gang_ctx_before.values())
+
+        # Kill the controller and wait for its recovery
+        ray.kill(controller, no_restart=False)
+        wait_for_condition(check_apps_running, apps=["app"], timeout=60)
+
+        # Verify the new controller recovered gang_context for all replicas
+        new_controller = _get_global_client()._controller
+
+        def controller_recovered_gang_context():
+            replicas = ray.get(
+                new_controller._dump_replica_states_for_testing.remote(deployment_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            if len(running) != 4:
+                return False
+            for r in running:
+                before = gang_ctx_before.get(r.replica_id.unique_id)
+                if r.gang_context is None or r.gang_context != before:
+                    return False
+            return True
+
+        wait_for_condition(controller_recovered_gang_context, timeout=60)
+
+        serve.delete("app")
         serve.shutdown()
 
 

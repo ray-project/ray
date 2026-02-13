@@ -114,6 +114,7 @@ class MockReplicaActorWrapper:
         self._assign_rank_callback = None
         self._ingress = False
         self._gang_context = None
+        self._gang_replica_rank = None
 
     @property
     def is_cross_language(self) -> bool:
@@ -254,6 +255,7 @@ class MockReplicaActorWrapper:
     ):
         self.started = True
         self._gang_context = gang_context
+        self._gang_replica_rank = gang_replica_rank
         self._assign_rank_callback = assign_rank_callback
         self._rank = assign_rank_callback(self._replica_id.unique_id, node_id=-1)
         replica_rank_context[self._replica_id.unique_id] = self._rank

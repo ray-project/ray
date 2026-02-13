@@ -1068,6 +1068,24 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
     ) -> GangReservationResult:
         """Create gang placement groups for a single deployment.
 
+        Example:
+        - Case 1: Per-replica bundles are defined
+        gang_size=2, replica_placement_group_bundles=[{"GPU":1,"CPU":1},{"CPU":1}]
+
+        Requested gang placement group:
+        [{"GPU":1,"CPU":1}, {"CPU":1}, {"GPU":1,"CPU":1}, {"CPU":1}]
+         ^^^^^^^ replica 0 ^^^^^^^^^^  ^^^^^^^^ replica 1 ^^^^^^^^^
+        Replica 0 actor → bundle index 0, replica 1 actor → bundle index 2.
+        Remaining bundles (1, 3) are used by child tasks/actors.
+
+        - Case 2: Per-replica bundles are not defined
+        gang_size=2, replica_resource_dict={"CPU":2,"GPU":1}
+
+        Requested gang placement group:
+        [{"CPU":2,"GPU":1}, {"CPU":2,"GPU":1}]
+         ^^^ replica 0 ^^^  ^^^ replica 1 ^^^
+        Replica 0 actor → bundle index 0, replica 1 actor → bundle index 1.
+
         Args:
             deployment_id: The deployment to create gangs for.
             request: Contains gang config and number of replicas to add.
@@ -1091,9 +1109,45 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             )
         num_gangs = request.num_replicas_to_add // gang_size
 
+        per_replica_bundles = request.replica_placement_group_bundles
+        has_pg_bundles = (
+            per_replica_bundles is not None and len(per_replica_bundles) > 0
+        )
+
+        # Flatten per-replica bundles to form a placement group to atomically reserve resources
+        # required for each gang
         gang_pgs: List[PlacementGroup] = []
         for gang_index in range(num_gangs):
-            bundles = [request.replica_resource_dict.copy() for _ in range(gang_size)]
+            if has_pg_bundles:
+                bundles = [
+                    bundle.copy()
+                    for _ in range(gang_size)
+                    for bundle in per_replica_bundles
+                ]
+                label_selector = (
+                    [
+                        selector.copy()
+                        for _ in range(gang_size)
+                        for selector in request.replica_pg_bundle_label_selector
+                    ]
+                    if request.replica_pg_bundle_label_selector is not None
+                    else None
+                )
+                fallback_strategy = (
+                    [
+                        strategy.copy()
+                        for _ in range(gang_size)
+                        for strategy in request.replica_pg_fallback_strategy
+                    ]
+                    if request.replica_pg_fallback_strategy is not None
+                    else None
+                )
+            else:
+                bundles = [
+                    request.replica_resource_dict.copy() for _ in range(gang_size)
+                ]
+                label_selector = None
+                fallback_strategy = None
 
             pg_name = (
                 f"{GANG_PG_NAME_PREFIX}{deployment_id.app_name}"
@@ -1108,15 +1162,16 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                         strategy=request.gang_placement_strategy,
                         target_node_id=None,
                         name=pg_name,
-                        bundle_label_selector=None,
+                        bundle_label_selector=label_selector,
+                        fallback_strategy=fallback_strategy,
                     )
                 )
                 gang_pgs.append(pg)
             except Exception:
-                # Follow the same pattern as single-replica PG creation
-                # failure: log and skip this gang so the controller can
-                # make progress with the other gangs. The missing
-                # replicas will be retried on the next reconciliation loop.
+                # Follow the same pattern as single-replica PG creation failure:
+                # log and skip this gang so the controller can make progress with
+                # the other gangs. The missing replicas will be retried on the next
+                # reconciliation loop.
                 logger.exception(
                     f"Failed to create gang placement group "
                     f"{gang_index} for {deployment_id}."

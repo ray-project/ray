@@ -950,6 +950,7 @@ class ActorReplicaWrapper:
                         self._route_patterns,
                         self._outbound_deployments,
                         self._has_user_routing_stats_method,
+                        self._gang_context,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -2580,13 +2581,6 @@ class DeploymentState:
         )
         return max(0, delta)
 
-    def get_replica_resource_dict(self) -> Dict[str, float]:
-        return (
-            self._target_state.info.replica_config.resource_dict.copy()
-            if self._target_state is not None
-            else {}
-        )
-
     def get_active_node_ids(self) -> Set[str]:
         """Get the node ids of all running replicas in this deployment.
 
@@ -3164,6 +3158,12 @@ class DeploymentState:
         num_gangs = len(gang_pgs)
         replicas_to_add = num_gangs * gang_size
 
+        # When per-replica PG bundles are defined, each replica occupies multiple
+        # consecutive bundles in the gang PG.  The actor for replica i is placed at
+        # bundle i * bundles_per_replica.
+        pg_bundles = self._target_state.info.replica_config.placement_group_bundles
+        bundles_per_replica = len(pg_bundles) if pg_bundles else 1
+
         logger.info(
             f"Adding {replicas_to_add} replica{'s' * (replicas_to_add > 1)} "
             f"to {self._id} using gang scheduling "
@@ -3198,7 +3198,7 @@ class DeploymentState:
                     self._target_state.info,
                     assign_rank_callback=self._rank_manager.assign_rank,
                     gang_placement_group=gang_pg,
-                    gang_replica_rank=bundle_index,
+                    gang_replica_rank=bundle_index * bundles_per_replica,
                     gang_context=gang_context,
                 )
 
@@ -4522,12 +4522,22 @@ class DeploymentStateManager:
             if deployment_state._replicas.count(states=[ReplicaState.STOPPING]) > 0:
                 continue
 
+            replica_config = deployment_state._target_state.info.replica_config
             gang_requests[deployment_id] = GangPlacementGroupRequest(
                 deployment_id=deployment_id,
                 gang_size=gang_config.gang_size,
                 gang_placement_strategy=gang_config.gang_placement_strategy.value,
                 num_replicas_to_add=num_replicas_to_add,
-                replica_resource_dict=deployment_state.get_replica_resource_dict(),
+                replica_resource_dict=replica_config.resource_dict.copy(),
+                replica_placement_group_bundles=(
+                    replica_config.placement_group_bundles
+                ),
+                replica_pg_bundle_label_selector=(
+                    replica_config.placement_group_bundle_label_selector
+                ),
+                replica_pg_fallback_strategy=(
+                    replica_config.placement_group_fallback_strategy
+                ),
             )
 
         if not gang_requests:
