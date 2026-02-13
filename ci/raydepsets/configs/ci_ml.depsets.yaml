@@ -13,6 +13,7 @@ depsets:
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
     requirements:
+      - python/requirements/ml/ml-requirements.txt
       - python/requirements/ml/dl-cpu-requirements.txt
       - python/requirements/ml/train-requirements.txt
       - python/requirements/ml/train-test-requirements.txt
@@ -37,6 +38,7 @@ depsets:
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
     requirements:
+      - python/requirements/ml/ml-requirements.txt
       - python/requirements/ml/dl-gpu-requirements.txt
       - python/requirements/ml/train-requirements.txt
       - python/requirements/ml/train-test-requirements.txt
