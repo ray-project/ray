@@ -83,6 +83,9 @@ def _setup_jax_distributed_environment(
     if "tpu" in jax_platforms.split(","):
         jax.distributed.initialize(master_addr_with_port, num_workers, index)
         logger.info("Initialized JAX distributed on TPU.")
+    elif "cpu" in jax_platforms.split(","):
+        jax.distributed.initialize(master_addr_with_port, num_workers, index)
+        logger.info("Initialized JAX distributed on CPU.")
 
     if "cuda" in jax_platforms.split(","):
         if num_gpus_per_worker > 0:

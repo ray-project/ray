@@ -1,22 +1,28 @@
 import os
 import sys
 
+import jax
+import jax.numpy as jnp
+import numpy as np
 import pytest
+from jax.sharding import Mesh, NamedSharding, PartitionSpec
 
 import ray
+from ray import train
 from ray.tests.conftest import _ray_start_cluster
-from ray.train import RunConfig, ScalingConfig, UserCallback
+from ray.train import CheckpointConfig, RunConfig, ScalingConfig, UserCallback
 from ray.train.v2._internal.constants import (
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
     is_v2_enabled,
 )
 from ray.train.v2.jax import JaxTrainer
+from ray.train.v2.jax.checkpoint import JaxCheckpointManager
 
 assert is_v2_enabled()
 
 
-@pytest.fixture
-def ray_tpu_single_host():
+@pytest.fixture(scope="module")
+def _ray_tpu_single_host_cluster():
     """Start a mock single-host TPU Ray cluster with 2x4 v6e (8 chips per host)."""
     with _ray_start_cluster() as cluster:
         # Simulate one node with 8 TPU chips.
@@ -25,15 +31,22 @@ def ray_tpu_single_host():
             resources={"TPU": 8, "accelerator_type:TPU-V6E": 1},
             env_vars={"TPU_ACCELERATOR_TYPE": "v6e-8"},
         )
-
-        ray.init(address=cluster.address)
-
         yield cluster
-        ray.shutdown()
+
+
+@pytest.fixture
+def ray_tpu_single_host(_ray_tpu_single_host_cluster):
+    """
+    Initialize Ray with the single-host TPU cluster.
+    Each test gets a fresh Ray client connection for isolation.
+    """
+    ray.init(address=_ray_tpu_single_host_cluster.address)
+    yield _ray_tpu_single_host_cluster
+    ray.shutdown()
 
 
 @pytest.fixture(scope="module")
-def ray_tpu_multi_host():
+def _ray_tpu_multi_host_cluster():
     """
     Simulates a Ray cluster with two multi-host TPU v4-16 slices.
     """
@@ -121,9 +134,18 @@ def ray_tpu_multi_host():
             labels=slice_b_worker_labels,
         )
 
-        ray.init(address=cluster.address)
         yield cluster
-        ray.shutdown()
+
+
+@pytest.fixture
+def ray_tpu_multi_host(_ray_tpu_multi_host_cluster):
+    """
+    Initialize Ray with the multi-host TPU cluster.
+    Each test gets a fresh Ray client connection for isolation.
+    """
+    ray.init(address=_ray_tpu_multi_host_cluster.address)
+    yield _ray_tpu_multi_host_cluster
+    ray.shutdown()
 
 
 @pytest.fixture(autouse=True)
@@ -133,11 +155,6 @@ def reduce_health_check_interval(monkeypatch):
 
 
 def train_func():
-    import jax
-
-    import ray
-    from ray import train
-
     train_ctx = train.get_context()
     rank = train_ctx.get_world_rank()
 
@@ -452,6 +469,272 @@ def test_scaling_config_validation():
             accelerator_type="TPU-V4",
             label_selector={"subcluster": "my_subcluster"},
         )
+
+
+def _generate_array_with_sharding(mesh, sharding, shape, value=None):
+    """Helper function to generate a sharded array."""
+    if value is None:
+        data = np.arange(np.prod(shape)).reshape(shape)
+    else:
+        data = np.full(shape, value)
+
+    indices_map = sharding.addressable_devices_indices_map(shape)
+    local_devices = jax.local_devices()
+    local_arrays = []
+    for d in local_devices:
+        idx = indices_map[d]
+        local_arrays.append(jax.device_put(data[idx], d))
+
+    return jax.make_array_from_single_device_arrays(shape, sharding, local_arrays)
+
+
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version (0.4.13) is not supported in python 3.12+",
+)
+def test_tpu_checkpointing_single_host(ray_tpu_single_host, tmp_path):
+    """
+    Tests that the JaxTrainer correctly handles sharded checkpoints using
+    JaxCheckpointManager.
+    """
+    actor_name = "test_tpu_checkpointing_single_host"
+    verify_actor = VerificationActor.options(name=actor_name).remote()
+
+    def train_func_checkpointing():
+
+        # Setup mesh
+        devices = jax.devices()
+        mesh = Mesh(devices, axis_names=("x",))
+
+        # Create sharded array
+        sharding = NamedSharding(mesh, PartitionSpec("x"))
+        shape = (8, 8)
+        w = _generate_array_with_sharding(mesh, sharding, shape, value=0)
+        train_state = {"w": w}
+
+        storage_context = train.get_context().get_storage()
+
+        # Config to keep only the best checkpoint (min loss)
+        checkpoint_config = CheckpointConfig(
+            num_to_keep=1,
+            checkpoint_score_attribute="loss",
+            checkpoint_score_order="min",
+        )
+
+        manager = JaxCheckpointManager(
+            storage_context=storage_context,
+            checkpoint_config=checkpoint_config,
+        )
+
+        # 3 steps:
+        # Step 0: loss 0.5
+        # Step 1: loss 0.1 (Best)
+        # Step 2: loss 0.3
+        losses = [0.5, 0.1, 0.3]
+
+        for step, loss in enumerate(losses):
+            # Create a new w for each step so we can verify the best one is restored.
+            # Step 0: all 0s
+            # Step 1: all 1s (Best)
+            # Step 2: all 2s
+            w = _generate_array_with_sharding(mesh, sharding, shape, value=step)
+            train_state = {"w": w}
+            metrics = {"loss": loss}
+            manager.save(step, train_state, metrics)
+
+        manager.wait_until_finished()
+
+        # Step 1 should be the one kept
+        best_step = manager.best_step()
+        assert best_step == 1
+        expected_metrics = {"loss": 0.1}
+
+        stored_metrics = manager.orbax_manager.metrics(best_step)
+        assert stored_metrics == expected_metrics
+
+        # Also verify we can restore the best step
+        restore_target = {
+            "w": _generate_array_with_sharding(mesh, sharding, shape, value=-1)
+        }
+
+        restored, _ = manager.restore(restore_target, best_step)
+
+        # Verify restored value matches step 1 (all 1s)
+        expected_w = _generate_array_with_sharding(
+            mesh, sharding, shape, value=best_step
+        )
+
+        is_equal = bool(jnp.array_equal(restored["w"], expected_w))
+        train.report({"is_equal": is_equal})
+
+    trainer = JaxTrainer(
+        train_loop_per_worker=train_func_checkpointing,
+        scaling_config=ScalingConfig(
+            use_tpu=True,
+            num_workers=1,
+            resources_per_worker={"TPU": 8},
+            accelerator_type="TPU-V6E",
+        ),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            callbacks=[CustomMetricsCallback(actor_name)],
+            worker_runtime_env={"env_vars": {"JAX_PLATFORMS": "cpu"}},
+        ),
+    )
+
+    result = trainer.fit()
+    assert result.error is None
+
+    # Verify reports
+    reports = ray.get(verify_actor.get_reports.remote())
+    assert len(reports) == 1
+    assert reports[0]["is_equal"] is True
+
+
+def _mock_multi_host_sync(tmp_path):
+    """
+    Mock multi-host sync for CPU multi-process simulation.
+    """
+    import pickle
+    import time
+
+    import jax.experimental.multihost_utils as mhu
+
+    barrier_dir = os.path.join(tmp_path, "barriers")
+    os.makedirs(barrier_dir, exist_ok=True)
+
+    def mock_sync(name, **kwargs):
+        token = name.replace("/", "_").replace(":", "_")
+        worker_token = f"{token}_{jax.process_index()}"
+        with open(os.path.join(barrier_dir, worker_token), "w") as f:
+            f.write("1")
+
+        while True:
+            files = os.listdir(barrier_dir)
+            relevant = [f for f in files if f.startswith(token + "_")]
+            if len(relevant) >= 2:  # num_workers
+                break
+            time.sleep(0.1)
+
+    def mock_broadcast(x, **kwargs):
+        mock_broadcast.counter = getattr(mock_broadcast, "counter", 0) + 1
+        token = f"broadcast_{mock_broadcast.counter}"
+
+        if jax.process_index() == 0:
+            with open(os.path.join(barrier_dir, token), "wb") as f:
+                pickle.dump(x, f)
+            mock_sync(token)
+            return x
+        else:
+            mock_sync(token)
+            with open(os.path.join(barrier_dir, token), "rb") as f:
+                return pickle.load(f)
+
+    mhu.sync_global_devices = mock_sync
+    mhu.broadcast_one_to_all = mock_broadcast
+    mhu.assert_equal = lambda x, **kwargs: None
+
+
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version (0.4.13) is not supported in python 3.12+",
+)
+def test_tpu_checkpointing_multi_host(ray_tpu_multi_host, tmp_path):
+    """
+    Tests that the JaxTrainer correctly handles sharded checkpoints using
+    JaxCheckpointManager.
+    """
+    actor_name = "test_tpu_checkpointing_multi_host"
+    verify_actor = VerificationActor.options(name=actor_name).remote()
+
+    def train_func_checkpointing():
+
+        # Setup mesh
+        devices = jax.devices()
+
+        if devices[0].platform == "cpu":
+            # JAX's CPU backend does not support multiprocess collective operations in jax 0.4.*
+            _mock_multi_host_sync(tmp_path)
+
+        devices = np.array(devices).reshape((4, 2))
+        mesh = Mesh(devices, axis_names=("x", "y"))
+        shape = (8, 8)
+
+        # Create sharded array
+        sharding_save = NamedSharding(mesh, PartitionSpec("x", "y"))
+        sharding_restore = NamedSharding(mesh, PartitionSpec("y", "x"))
+
+        w_save = _generate_array_with_sharding(mesh, sharding_save, shape)
+
+        train_state = {"w": w_save}
+
+        storage_context = train.get_context().get_storage()
+
+        manager = JaxCheckpointManager(
+            storage_context=storage_context,
+        )
+
+        # single step
+        manager.save(0, train_state)
+
+        manager.wait_until_finished()
+
+        restore_target = {
+            "w": _generate_array_with_sharding(mesh, sharding_restore, shape, value=-1)
+        }
+
+        restored, _ = manager.restore(restore_target)
+
+        # Verify values are correct
+        # Use a manual check for equality to avoid JAX collectives on the CPU backend
+        def check_equal(jax_arr, expected_np_arr):
+            for shard in jax_arr.addressable_shards:
+                local_data = np.array(shard.data)
+                if not np.array_equal(local_data, expected_np_arr[shard.index]):
+                    return False
+            return True
+
+        expected_data = np.arange(np.prod(shape)).reshape(shape)
+        is_equal = check_equal(restored["w"], expected_data)
+
+        # Verify sharding is correct (should match sharding_restore)
+        is_resharded = restored["w"].sharding == sharding_restore
+
+        train.report({"is_equal": is_equal, "is_resharded": is_resharded})
+
+    trainer = JaxTrainer(
+        train_loop_per_worker=train_func_checkpointing,
+        scaling_config=ScalingConfig(
+            use_tpu=True,
+            accelerator_type="TPU-V4",
+            topology="2x2x2",
+            num_workers=2,
+            resources_per_worker={"TPU": 4},
+        ),
+        # By default, when running on the CPU backend, JAX only provides 1 virtual device per host.
+        # Setting xla_force_host_platform_device_count=4 simulates 4 devices per worker on CPU
+        # to match the 4 TPU chips per host in a v4-16 slice.
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            callbacks=[CustomMetricsCallback(actor_name)],
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
+                    "XLA_FLAGS": "--xla_force_host_platform_device_count=4",
+                }
+            },
+        ),
+    )
+
+    result = trainer.fit()
+    assert result.error is None
+
+    # Verify reports
+    reports = ray.get(verify_actor.get_reports.remote())
+    assert len(reports) == 2
+    for report in reports:
+        assert report["is_equal"] is True
+        assert report["is_resharded"] is True
 
 
 if __name__ == "__main__":
