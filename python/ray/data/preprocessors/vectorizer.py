@@ -197,6 +197,10 @@ class HashingVectorizer(Preprocessor):
 
         if "_columns" not in self.__dict__:
             self._columns = []
+        if "_num_features" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized HashingVectorizer: missing required field 'num_features'."
+            )
         if "_tokenization_fn" not in self.__dict__:
             self._tokenization_fn = simple_split_tokenizer
         if "_output_columns" not in self.__dict__:
