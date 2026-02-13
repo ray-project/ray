@@ -1,7 +1,7 @@
 import collections
 import logging
 import time
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, field
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -224,7 +224,7 @@ class _BlockExecStatsBuilder:
 
 
 @DeveloperAPI
-@dataclass
+@dataclass(frozen=True)
 class BlockStats:
     """Statistics about the block produced"""
 
@@ -246,29 +246,22 @@ _BLOCK_STATS_FIELD_NAMES = {f.name for f in fields(BlockStats)}
 
 
 @DeveloperAPI
-@dataclass
+@dataclass(frozen=True)
 class BlockMetadata(BlockStats):
     """Metadata about the block."""
 
     #: The pyarrow schema or types of the block elements, or None.
     #: The list of file paths used to generate this block, or
     #: the empty list if indeterminate.
-    input_files: Optional[List[str]]
+    input_files: List[str] = field(default_factory=list)
 
     def to_stats(self):
         return BlockStats(
             **{key: self.__getattribute__(key) for key in _BLOCK_STATS_FIELD_NAMES}
         )
 
-    def __post_init__(self):
-        super().__post_init__()
-
-        if self.input_files is None:
-            self.input_files = []
-
-
 @DeveloperAPI(stability="alpha")
-@dataclass
+@dataclass(frozen=True)
 class BlockMetadataWithSchema(BlockMetadata):
     schema: Optional[Schema] = None
 
