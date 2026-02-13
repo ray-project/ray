@@ -185,6 +185,43 @@ def create_table_with_files(
     )
 
 
+def _quote_identifier(identifier: str) -> str:
+    """Quote SQL identifiers safely for Delta delete predicates."""
+    return f'"{identifier.replace("\"", "\"\"")}"'
+
+
+def _format_sql_value(value: Any, col_type: Optional[pa.DataType] = None) -> str:
+    """Format SQL literals for Delta delete predicates."""
+    if value is None:
+        return "NULL"
+
+    if isinstance(value, str):
+        if col_type is not None:
+            if pa.types.is_integer(col_type):
+                try:
+                    return str(int(value))
+                except (TypeError, ValueError):
+                    pass
+            if pa.types.is_floating(col_type):
+                try:
+                    return str(float(value))
+                except (TypeError, ValueError):
+                    pass
+            if pa.types.is_boolean(col_type):
+                if value.lower() in {"true", "1"}:
+                    return "TRUE"
+                if value.lower() in {"false", "0"}:
+                    return "FALSE"
+        return "'" + value.replace("'", "''") + "'"
+
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, (int, float)):
+        return str(value)
+
+    return "'" + str(value).replace("'", "''") + "'"
+
+
 def _build_partition_delete_predicate(
     file_actions: List["AddAction"],
     partition_cols: List[str],
@@ -203,12 +240,6 @@ def _build_partition_delete_predicate(
     """
     if not partition_cols or not file_actions:
         return None
-
-    # Import here to avoid circular dependency
-    from ray.data._internal.datasource.delta.upsert import (
-        format_sql_value,
-        quote_identifier,
-    )
 
     # Build mapping of partition column names to their types
     partition_col_types = {}
@@ -250,17 +281,25 @@ def _build_partition_delete_predicate(
                     if col_type and pa.types.is_floating(col_type):
                         # Float NaN: SQL NaN comparison: NaN != NaN is true (IEEE 754)
                         # Use col != col to correctly match NaN values in float columns
-                        ands.append(f"{quote_identifier(col)} != {quote_identifier(col)}")
+                        ands.append(
+                            f"{_quote_identifier(col)} != {_quote_identifier(col)}"
+                        )
                     else:
                         # String "NaN": treat as regular string value
-                        ands.append(f"{quote_identifier(col)} = {format_sql_value(val)}")
+                        ands.append(
+                            f"{_quote_identifier(col)} = "
+                            f"{_format_sql_value(val, col_type)}"
+                        )
                 else:
                     # format_sql_value handles string conversion and quoting
-                    ands.append(f"{quote_identifier(col)} = {format_sql_value(val)}")
+                    ands.append(
+                        f"{_quote_identifier(col)} = "
+                        f"{_format_sql_value(val, partition_col_types.get(col))}"
+                    )
             else:
                 # NULL partition values must be explicitly checked with IS NULL
                 # Skipping them would cause over-deletion (matching all non-NULL values)
-                ands.append(f"{quote_identifier(col)} IS NULL")
+                ands.append(f"{_quote_identifier(col)} IS NULL")
         if ands:
             ors.append(f"({' AND '.join(ands)})")
 

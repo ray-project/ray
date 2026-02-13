@@ -966,9 +966,12 @@ def compute_parquet_statistics(table: pa.Table) -> str:
         name = table.schema.field(i).name
         col_type = col.type
 
-        null_count = pc.sum(pc.is_null(col)).as_py()
-        if null_count is not None and null_count >= 0:
-            null_counts[name] = null_count
+        # Delta expects nested nullCount entries to be objects by child field;
+        # emit nullCount only for non-nested columns to avoid malformed stats.
+        if not pa.types.is_nested(col_type):
+            null_count = pc.sum(pc.is_null(col)).as_py()
+            if null_count is not None and null_count >= 0:
+                null_counts[name] = null_count
 
         if (
             is_numeric_type(col_type)

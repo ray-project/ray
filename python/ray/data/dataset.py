@@ -4481,53 +4481,17 @@ class Dataset:
         """
         from ray.data._internal.datasource.delta import DeltaDatasink
 
-        # PR 1: Validate only append mode
-        if mode != "append":
-            raise ValueError(
-                f"PR 1: Only 'append' mode is supported. Got mode='{mode}'. "
-                "Other modes will be added in PR 2."
-            )
-
-        # PR 1: Partitioning not supported
-        if partition_cols:
-            raise ValueError(
-                "PR 1: partition_cols not supported. Partitioning will be added in PR 3."
-            )
-
-        # PR 1: Schema evolution not supported
-        if "schema_mode" in write_kwargs:
-            raise ValueError(
-                "PR 1: schema_mode not supported. Schema evolution will be added in PR 4."
-            )
-
-        # PR 1: Upsert not supported
+        # Upsert support is added in a later stage.
         if "upsert_kwargs" in write_kwargs:
             raise ValueError(
-                "PR 1: upsert_kwargs not supported. Upsert mode will be added in PR 6."
+                "upsert_kwargs can only be specified with SaveMode.UPSERT"
             )
-
-        # PR 1: Partition overwrite not supported
-        if "partition_overwrite_mode" in write_kwargs:
-            raise ValueError(
-                "PR 1: partition_overwrite_mode not supported. "
-                "Partition overwrite modes will be added in PR 7."
-            )
-
-        # PR 1: File buffering not supported
-        if "target_file_size_bytes" in write_kwargs:
-            raise ValueError(
-                "PR 1: target_file_size_bytes not supported. "
-                "File buffering will be added in PR 8."
-            )
-
-        # PR 1: Only append mode, no partitioning
         datasink = DeltaDatasink(
             path,
             mode=mode,
-            partition_cols=[],  # PR 1: No partitioning
+            partition_cols=partition_cols,
             filesystem=filesystem,
             schema=schema,
-            schema_mode="merge",  # PR 1: Not used, but required parameter
             **write_kwargs,
         )
         self.write_datasink(

@@ -16,6 +16,7 @@ from .committer import (
     commit_to_existing_table,
     create_table_with_files,
     validate_file_actions,
+    validate_partition_columns_match_existing,
 )
 from .fs import make_fs_config, worker_filesystem
 from .writer import DeltaFileWriter
@@ -27,6 +28,8 @@ from ray.data._internal.datasource.delta.utils import (
     normalize_commit_properties,
     to_pyarrow_schema,
     try_get_deltatable,
+    validate_partition_column_names,
+    validate_partition_columns_in_table,
     validate_schema_type_compatibility,
 )
 from ray.data._internal.execution.interfaces import TaskContext
@@ -128,9 +131,11 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         self.table_uri = path
         self.mode = self._validate_mode(mode)
-        # PR 1: No partitioning support yet
-        self.partition_cols = []
+        self.partition_cols = validate_partition_column_names(partition_cols or [])
         self.schema = schema
+        self.schema_mode = self._validate_schema_mode(
+            write_kwargs.get("schema_mode", "merge")
+        )
         self.write_kwargs = write_kwargs
 
         self._skip_write = False
@@ -145,8 +150,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         # per-worker cache (used in write())
         self._worker_fs: Optional[pa_fs.FileSystem] = None
-        # PR 1: No file buffering support
-        self._target_file_size_bytes: Optional[int] = None
+        self._target_file_size_bytes: Optional[int] = write_kwargs.get(
+            "target_file_size_bytes"
+        )
         if (
             self._target_file_size_bytes is not None
             and self._target_file_size_bytes <= 0
@@ -182,19 +188,55 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
     def _validate_mode(self, mode: Any) -> SaveMode:
         """Validate and normalize write mode to SaveMode enum."""
+        allowed = [
+            SaveMode.APPEND,
+            SaveMode.OVERWRITE,
+            SaveMode.IGNORE,
+            SaveMode.ERROR,
+        ]
+        allowed_set = set(allowed)
+        allowed_values = [m.value for m in allowed]
         if isinstance(mode, SaveMode):
-            if mode != SaveMode.APPEND:
-                raise ValueError(f"PR 1: Only APPEND mode is supported. Got {mode}")
+            if mode not in allowed_set:
+                raise ValueError(
+                    f"Invalid mode '{mode.value}'. Supported: {allowed_values}"
+                )
             return mode
         if isinstance(mode, str):
-            m = mode.lower()
-            if m != "append":
+            try:
+                normalized = SaveMode(mode.lower())
+            except ValueError:
                 raise ValueError(
-                    f"PR 1: Only 'append' mode is supported. Got mode='{mode}'. "
-                    "Other modes will be added in PR 2."
+                    f"Invalid mode '{mode}'. Supported: {allowed_values}"
                 )
-            return SaveMode.APPEND
+            if normalized not in allowed_set:
+                raise ValueError(
+                    f"Invalid mode '{mode}'. Supported: {allowed_values}"
+                )
+            return normalized
         raise ValueError(f"Invalid mode type: {type(mode).__name__}")
+
+    def _validate_schema_mode(self, schema_mode: Any) -> str:
+        allowed = {"merge", "error"}
+        if not isinstance(schema_mode, str) or schema_mode not in allowed:
+            raise ValueError(
+                f"Invalid schema_mode '{schema_mode}'. Supported: {sorted(allowed)}"
+            )
+        return schema_mode
+
+    def _validate_partition_cols_in_schema(self, schema: pa.Schema) -> None:
+        if not self.partition_cols:
+            return
+        schema_cols = set(schema.names)
+        missing = [c for c in self.partition_cols if c not in schema_cols]
+        if missing:
+            raise ValueError(f"Missing partition columns: {missing}")
+        for col in self.partition_cols:
+            col_type = schema.field(col).type
+            if pa.types.is_nested(col_type):
+                raise ValueError(f"Partition column '{col}' has nested type {col_type}")
+            if pa.types.is_dictionary(col_type):
+                raise ValueError(f"Partition column '{col}' has dictionary type")
 
     def on_write_start(self, schema: Optional[pa.Schema] = None) -> None:
         """Initialize table for writing and validate constraints."""
@@ -204,13 +246,25 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         existing = try_get_deltatable(self.table_uri, self.storage_options)
         self._table_existed_at_start = existing is not None
 
-        # PR 1: Basic schema validation for append mode
+        if existing:
+            if self.mode == SaveMode.ERROR:
+                raise ValueError(f"Delta table already exists at {self.table_uri}")
+            if self.mode == SaveMode.IGNORE:
+                self._skip_write = True
+                return
+            if self.partition_cols:
+                validate_partition_columns_match_existing(existing, self.partition_cols)
+            else:
+                self.partition_cols = list(existing.metadata().partition_columns or [])
+
+        if self.partition_cols and self.schema is not None:
+            self._validate_partition_cols_in_schema(self.schema)
+
         if existing and self.schema is not None:
             existing_schema = to_pyarrow_schema(existing.schema())
-            # PR 1: Only validate compatibility, no schema evolution
             validate_schema_type_compatibility(existing_schema, self.schema)
 
-        self._skip_write = False  # PR 1: Only append mode, no skip logic
+        self._skip_write = False
 
     def write(self, blocks: Iterable[Block], ctx: TaskContext) -> DeltaWriteResult:
         """Phase 1: Write Parquet files and return metadata for commit."""
@@ -235,7 +289,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             write_uuid=write_uuid,
             write_kwargs=self.write_kwargs,
             written_files=written_files,
-            target_file_size_bytes=None,  # PR 1: No file buffering
+            target_file_size_bytes=self._target_file_size_bytes,
         )
 
         try:
@@ -244,7 +298,8 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 if t.num_rows == 0:
                     continue
 
-                # PR 1: No partitioning validation needed
+                if self.partition_cols:
+                    validate_partition_columns_in_table(self.partition_cols, t)
                 self._validate_block_against_declared_schema(t)
                 block_schemas.append(t.schema)
 
@@ -278,6 +333,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         existing = self._handle_races(existing, written_files)
 
+        if self._skip_write:
+            return
+
         if not actions:
             self._handle_empty(existing, write_uuid)
             return
@@ -310,8 +368,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         )
 
         try:
-            # PR 1: Only append mode - commit to existing table or create new
-            if self._table_existed_at_start:
+            if self._table_existed_at_start or existing is not None:
                 commit_to_existing_table(
                     inputs, existing, actions, self.schema, self._driver_fs()
                 )
@@ -410,8 +467,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     ) -> Optional["DeltaTable"]:
         """Validate race conditions and raise errors or cleanup as needed.
 
-        PR 1: Only APPEND mode is supported. Handles basic race conditions.
-
         Args:
             existing: Current DeltaTable instance (may be None if table doesn't exist).
             written_files: List of files written by workers (for cleanup on error).
@@ -422,17 +477,24 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         Raises:
             ValueError: If race condition is detected and cannot be handled gracefully.
         """
-        # PR 1: Only APPEND mode - handle race conditions
         if self._table_existed_at_start and existing is None:
-            # Table was deleted during write - cleanup and raise error
             self._cleanup_files_driver(written_files)
             raise ValueError(
                 f"Delta table was deleted at {self.table_uri} after write started."
             )
 
         if not self._table_existed_at_start and existing is not None:
-            # Table was created during write - use it
-            # PR 1: No partition validation needed (no partitioning support)
+            if self.mode == SaveMode.ERROR:
+                self._cleanup_files_driver(written_files)
+                raise ValueError(f"Delta table already exists at {self.table_uri}")
+            if self.mode == SaveMode.IGNORE:
+                self._cleanup_files_driver(written_files)
+                self._skip_write = True
+                return existing
+            if self.partition_cols:
+                validate_partition_columns_match_existing(existing, self.partition_cols)
+            else:
+                self.partition_cols = list(existing.metadata().partition_columns or [])
             self._table_existed_at_start = True
             return existing
 
@@ -440,8 +502,26 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
     def _handle_empty(self, existing, write_uuid: Optional[str]):
         """Handle empty writes (no files written)."""
-        # PR 1: Only APPEND mode - empty writes are idempotent (do nothing)
-        return
+        commit_props = _build_commit_properties(self.write_kwargs, write_uuid)
+        write_kwargs_for_commit = dict(self.write_kwargs)
+        write_kwargs_for_commit["commit_properties"] = commit_props
+        inputs = CommitInputs(
+            table_uri=self.table_uri,
+            mode=self.mode.value,
+            partition_cols=self.partition_cols,
+            storage_options=self.storage_options,
+            write_kwargs=write_kwargs_for_commit,
+        )
+
+        if existing is None:
+            if self.schema is not None:
+                create_table_with_files(inputs, [], self.schema, self._driver_fs())
+            return
+
+        if self.mode == SaveMode.OVERWRITE:
+            commit_to_existing_table(
+                inputs, existing, [], self.schema, self._driver_fs()
+            )
 
     def _cleanup_files_driver(self, file_paths: List[str]) -> None:
         """Clean up files on driver."""
