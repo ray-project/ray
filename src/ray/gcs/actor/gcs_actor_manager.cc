@@ -295,6 +295,7 @@ void GcsActorManager::HandleReportActorOutOfScope(
         actor_id,
         GenActorOutOfScopeCause(actor),
         /*force_kill=*/false,
+        /*no_restart=*/true,
         [reply, send_reply_callback]() {
           GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
         },
@@ -641,11 +642,10 @@ void GcsActorManager::HandleKillActorViaGcs(rpc::KillActorViaGcsRequest request,
   if (it != registered_actors_.end()) {
     bool force_kill = request.force_kill();
     bool no_restart = request.no_restart();
-    if (no_restart) {
-      DestroyActor(actor_id, GenKilledByApplicationCause(GetActor(actor_id)));
-    } else {
-      KillActor(actor_id, force_kill);
-    }
+    DestroyActor(actor_id,
+                 GenKilledByApplicationCause(GetActor(actor_id)),
+                 force_kill,
+                 no_restart);
 
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
@@ -976,6 +976,7 @@ void GcsActorManager::PollOwnerForActorRefDeleted(
           DestroyActor(actor_id,
                        GenActorRefDeletedCause(GetActor(actor_id)),
                        /*force_kill=*/false,
+                       /*no_restart=*/true,
                        nullptr,
                        timeout_ms);
         }
@@ -985,13 +986,14 @@ void GcsActorManager::PollOwnerForActorRefDeleted(
 void GcsActorManager::DestroyActor(const ActorID &actor_id,
                                    const rpc::ActorDeathCause &death_cause,
                                    bool force_kill,
+                                   bool no_restart,
                                    std::function<void()> done_callback,
                                    int64_t graceful_shutdown_timeout_ms) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id)
-      << "Destroying actor, force_kill=" << force_kill
+      << "Destroying actor, force_kill=" << force_kill << ", no_restart=" << no_restart
       << ", timeout_ms=" << graceful_shutdown_timeout_ms;
-  actor_to_restart_for_lineage_reconstruction_callbacks_.erase(actor_id);
+
   auto it = registered_actors_.find(actor_id);
   if (it == registered_actors_.end()) {
     RAY_LOG(INFO).WithField(actor_id) << "Tried to destroy actor that does not exist";
@@ -1001,10 +1003,40 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     return;
   }
 
-  gcs_actor_scheduler_->OnActorDestruction(it->second);
-
-  it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
   const auto actor = it->second;
+  if (!no_restart) {
+    if (actor->GetState() == rpc::ActorTableData::DEAD ||
+        actor->GetState() == rpc::ActorTableData::DEPENDENCIES_UNREADY) {
+      return;
+    }
+
+    // The actor is still alive or pending creation.
+    const auto &node_id = actor->GetNodeID();
+    const auto &worker_id = actor->GetWorkerID();
+    auto node_it = created_actors_.find(node_id);
+    if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
+      // The actor has already been created. Destroy the process by force-killing
+      // it.
+      NotifyRayletToKillActor(actor, death_cause, force_kill);
+    } else {
+      const auto &lease_id = actor->GetLeaseSpecification().LeaseId();
+      RAY_LOG(DEBUG).WithField(actor->GetActorID()).WithField(lease_id)
+          << "The actor hasn't been created yet, cancel scheduling lease";
+      if (!worker_id.IsNil()) {
+        // The actor is in phase of creating, so we need to notify the core
+        // worker exit to avoid process and resource leak.
+        NotifyRayletToKillActor(actor, death_cause, force_kill);
+      }
+      CancelActorInScheduling(actor);
+      RestartActor(actor_id, /*need_reschedule=*/true, death_cause);
+    }
+    return;
+  }
+
+  // no_restart=true: permanently destroy the actor.
+  actor_to_restart_for_lineage_reconstruction_callbacks_.erase(actor_id);
+  gcs_actor_scheduler_->OnActorDestruction(actor);
+  actor->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
 
   // Cancel existing timer only on force_kill to interrupt graceful shutdown.
   // For idempotent graceful calls, keep the original timer running.
@@ -1866,47 +1898,6 @@ void GcsActorManager::NotifyRayletToKillActor(const std::shared_ptr<GcsActor> &a
           RAY_LOG(INFO).WithField(actor_id) << "Killed actor successfully.";
         }
       });
-}
-
-void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
-  RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
-      << "Killing actor, force_kill = " << force_kill;
-  auto it = registered_actors_.find(actor_id);
-  if (it == registered_actors_.end()) {
-    RAY_LOG(INFO) << "Tried to kill actor that does not exist " << actor_id;
-    return;
-  }
-
-  const auto &actor = it->second;
-  if (actor->GetState() == rpc::ActorTableData::DEAD ||
-      actor->GetState() == rpc::ActorTableData::DEPENDENCIES_UNREADY) {
-    return;
-  }
-
-  // The actor is still alive or pending creation.
-  const auto &node_id = actor->GetNodeID();
-  const auto &worker_id = actor->GetWorkerID();
-  auto node_it = created_actors_.find(node_id);
-  if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
-    // The actor has already been created. Destroy the process by force-killing
-    // it.
-    NotifyRayletToKillActor(
-        actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill);
-  } else {
-    const auto &lease_id = actor->GetLeaseSpecification().LeaseId();
-    RAY_LOG(DEBUG).WithField(actor->GetActorID()).WithField(lease_id)
-        << "The actor hasn't been created yet, cancel scheduling lease";
-    if (!worker_id.IsNil()) {
-      // The actor is in phase of creating, so we need to notify the core
-      // worker exit to avoid process and resource leak.
-      NotifyRayletToKillActor(
-          actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill);
-    }
-    CancelActorInScheduling(actor);
-    RestartActor(actor_id,
-                 /*need_reschedule=*/true,
-                 GenKilledByApplicationCause(GetActor(actor_id)));
-  }
 }
 
 void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor) {

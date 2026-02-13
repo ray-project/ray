@@ -294,13 +294,16 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   ///
   /// \param[in] actor_id The actor id to destroy.
   /// \param[in] death_cause The reason why actor is destroyed.
-  /// \param[in] force_kill Whether destory the actor forcelly.
+  /// \param[in] force_kill Whether destory the actor forcefully.
+  /// \param[in] no_restart If true, permanently destroy the actor. If false,
+  ///            allow restart based on max_restarts policy.
   /// \param[in] done_callback Called when destroy finishes.
   /// \param[in] graceful_shutdown_timeout_ms Timeout in ms for graceful shutdown.
   ///            If graceful shutdown doesn't complete, falls back to force kill.
   void DestroyActor(const ActorID &actor_id,
                     const rpc::ActorDeathCause &death_cause,
                     bool force_kill = true,
+                    bool no_restart = true,
                     std::function<void()> done_callback = nullptr,
                     int64_t graceful_shutdown_timeout_ms = -1);
 
@@ -336,12 +339,6 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   ///
   /// \param actor The actor to be removed.
   void RemoveActorFromOwner(const std::shared_ptr<GcsActor> &actor);
-
-  /// Kill the specified actor.
-  ///
-  /// \param actor_id ID of the actor to kill.
-  /// \param force_kill Whether to force kill an actor by killing the worker.
-  void KillActor(const ActorID &actor_id, bool force_kill);
 
   /// Notify Raylet to kill the specified actor.
   ///
