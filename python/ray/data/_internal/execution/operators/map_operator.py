@@ -757,7 +757,7 @@ def _map_task(
     ctx.kwargs.update(kwargs)
 
     with (
-        DataContext.with_current(data_context),
+        DataContext.current(data_context),
         TaskContext.current(ctx)
     ):
         stats = BlockExecStats.builder()
