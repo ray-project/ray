@@ -2430,16 +2430,7 @@ class Dataset:
         if any(p <= 0 for p in proportions):
             raise ValueError("proportions must be bigger than 0")
 
-        ds = self
-        dataset_length = ds._meta_count()
-        if dataset_length is None:
-            # Materialize once so split_at_indices() can reuse the computed snapshot.
-            # Calling count() first would execute the upstream pipeline for counting,
-            # then execute it again for the split.
-            ds = ds.materialize()
-            dataset_length = ds._meta_count()
-            if dataset_length is None:
-                dataset_length = ds.count()
+        ds, dataset_length = self._get_dataset_length_for_split(self)
         cumulative_proportions = np.cumsum(proportions)
         split_indices = [
             int(dataset_length * proportion) for proportion in cumulative_proportions
@@ -2526,14 +2517,21 @@ class Dataset:
             self._validate_test_size_float(test_size)
             return ds.split_proportionately([1 - test_size])
         else:
-            ds_length = ds._meta_count()
-            if ds_length is None:
-                # Materialize once so split_at_indices() doesn't re-execute the
-                # upstream pipeline after a separate count() run.
-                ds = ds.materialize()
-                ds_length = ds._meta_count()
+            ds, ds_length = self._get_dataset_length_for_split(ds)
             ds_length = self._validate_test_size_int(test_size, ds, ds_length=ds_length)
             return ds.split_at_indices([ds_length - test_size])
+
+    def _get_dataset_length_for_split(self, ds: "Dataset") -> Tuple["Dataset", int]:
+        dataset_length = ds._meta_count()
+        if dataset_length is None:
+            # Materialize once so split_at_indices() can reuse the computed snapshot.
+            # Calling count() first would execute the upstream pipeline for counting,
+            # then execute it again for the split.
+            ds = ds.materialize()
+            dataset_length = ds._meta_count()
+            if dataset_length is None:
+                dataset_length = ds.count()
+        return ds, dataset_length
 
     def _stratified_train_test_split(
         self, ds: "Dataset", test_size: Union[int, float], stratify: str
