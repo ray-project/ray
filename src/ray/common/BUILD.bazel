@@ -181,14 +181,14 @@ ray_cc_library(
     ],
     deps = [
         ":memory_monitor_interface",
+        ":noop_memory_monitor",
     ] + select({
         ":is_linux": [
             ":ray_config",
             ":threshold_memory_monitor",
+            "//src/ray/util:logging",
         ],
-        "//conditions:default": [
-            ":noop_memory_monitor",
-        ],
+        "//conditions:default": [],
     }),
 )
 
