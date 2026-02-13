@@ -3,7 +3,6 @@ import logging
 import threading
 import time
 import typing
-from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
@@ -35,7 +34,7 @@ class AsyncExecutionProgressManagerWrapper(BaseExecutionProgressManager):
         self._shutdown_timeout = shutdown_timeout
 
         # ThreadPoolExecutor for async operations
-        self._executor = ThreadPoolExecutor(
+        self._executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=max_workers, thread_name_prefix="async_progress"
         )
 
