@@ -344,13 +344,13 @@ class RefBundle:
 
     def __hash__(self) -> int:
         return hash(
-            tuple([
+            (
                 *self.blocks,
                 *self.slices,
                 self.schema,
                 self.owns_blocks,
                 self.output_split_idx,
-            ])
+            )
         )
 
     def __len__(self) -> int:
