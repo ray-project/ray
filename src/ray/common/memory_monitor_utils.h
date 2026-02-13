@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "ray/common/memory_monitor_interface.h"
+#include "ray/util/compat.h"
 
 namespace ray {
 

@@ -97,8 +97,8 @@ bool ThresholdMemoryMonitor::IsUsageAboveThreshold(
     const SystemMemorySnapshot &system_memory, int64_t threshold_bytes) {
   int64_t used_memory_bytes = system_memory.used_bytes;
   int64_t total_memory_bytes = system_memory.total_bytes;
-  if (total_memory_bytes == MemoryMonitorInterface::kLogIntervalMs ||
-      used_memory_bytes == MemoryMonitorInterface::kLogIntervalMs) {
+  if (total_memory_bytes == MemoryMonitorInterface::kNull ||
+      used_memory_bytes == MemoryMonitorInterface::kNull) {
     RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
         << "Unable to capture node memory. Monitor will not be able "
         << "to detect memory usage above threshold.";
