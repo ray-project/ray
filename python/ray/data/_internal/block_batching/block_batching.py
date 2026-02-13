@@ -1,6 +1,5 @@
 from typing import Callable, Iterator, Optional, TypeVar
 
-from ray.data._internal.block_batching.interfaces import Batch
 from ray.data._internal.block_batching.util import (
     _MappingIterator,
     blocks_to_batches,
@@ -48,7 +47,9 @@ def batch_blocks(
     if collate_fn is not None:
         batch_iter = collate(batch_iter, collate_fn=collate_fn, stats=stats)
 
-    return _UserTimingIterator(_MappingIterator(batch_iter, lambda batch: batch.data), stats)
+    return _UserTimingIterator(
+        _MappingIterator(batch_iter, lambda batch: batch.data), stats
+    )
 
 
 class _UserTimingIterator(Iterator[DataBatch]):
