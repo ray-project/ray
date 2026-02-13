@@ -1,3 +1,4 @@
+from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
@@ -79,13 +80,16 @@ def test_ref_bundle_num_rows_size_bytes():
     assert bundle.num_rows() == 15
     assert bundle.size_bytes() == 150
     # After slice
-    bundle.slices = [
-        BlockSlice(start_offset=2, end_offset=6),  # 4 rows
-        BlockSlice(start_offset=0, end_offset=2),  # 2 rows
-    ]
+    sliced = replace(
+        bundle,
+        slices=(
+            BlockSlice(start_offset=2, end_offset=6),  # 4 rows
+            BlockSlice(start_offset=0, end_offset=2),  # 2 rows
+        ),
+    )
 
-    assert bundle.num_rows() == 6
-    assert bundle.size_bytes() == 60
+    assert sliced.num_rows() == 6
+    assert sliced.size_bytes() == 60
 
 
 @pytest.mark.parametrize(
@@ -138,13 +142,13 @@ def test_slice_ref_bundle_basic():
     assert consumed.num_rows() == 8
     assert remaining.num_rows() == 2
 
-    assert consumed.slices == [
+    assert consumed.slices == (
         BlockSlice(start_offset=0, end_offset=6),
         BlockSlice(start_offset=0, end_offset=2),
-    ]
-    assert remaining.slices == [
+    )
+    assert remaining.slices == (
         BlockSlice(start_offset=2, end_offset=4),
-    ]
+    )
 
 
 def test_slice_ref_bundle_should_raise_error_if_needed_rows_is_not_less_than_num_rows():
@@ -192,15 +196,15 @@ def test_slice_ref_bundle_with_existing_slices():
     consumed, remaining = bundle.slice(7)
 
     assert consumed.num_rows() == 7
-    assert consumed.slices == [
+    assert consumed.slices == (
         BlockSlice(start_offset=2, end_offset=9),
-    ]
+    )
     assert consumed.size_bytes() == 70
     assert remaining.num_rows() == 4
-    assert remaining.slices == [
+    assert remaining.slices == (
         BlockSlice(start_offset=9, end_offset=10),
         BlockSlice(start_offset=0, end_offset=3),
-    ]
+    )
     assert remaining.size_bytes() == 40
 
 
@@ -325,13 +329,13 @@ def test_slice_ref_bundle_with_none_slices():
     assert remaining.num_rows() == 2
 
     # The None slices should be converted to explicit BlockSlice objects
-    assert consumed.slices == [
+    assert consumed.slices == (
         BlockSlice(start_offset=0, end_offset=6),
         BlockSlice(start_offset=0, end_offset=2),
-    ]
-    assert remaining.slices == [
+    )
+    assert remaining.slices == (
         BlockSlice(start_offset=2, end_offset=4),
-    ]
+    )
 
 
 def test_ref_bundle_str():
@@ -415,12 +419,12 @@ def test_merge_ref_bundles():
     # blocks.
     assert merged.owns_blocks is False
     assert len(merged.blocks) == 4
-    assert merged.slices == [
+    assert merged.slices == (
         BlockSlice(start_offset=0, end_offset=1),
         BlockSlice(start_offset=1, end_offset=2),
         BlockSlice(start_offset=2, end_offset=3),
         BlockSlice(start_offset=3, end_offset=4),
-    ]
+    )
 
 
 def test_ref_bundle_eq_and_hash():
