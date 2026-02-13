@@ -118,15 +118,25 @@ class _ClientContext:
         # Apply UV hook client-side before connection.
         # See: https://github.com/ray-project/ray/issues/57991
         runtime_env = ray_init_kwargs.get("runtime_env")
+        runtime_env_from_job_config = False
         if runtime_env is None and job_config and job_config.runtime_env:
             runtime_env = job_config.runtime_env
+            runtime_env_from_job_config = True
 
         runtime_env = _apply_uv_hook_for_client(runtime_env)
 
         if runtime_env is not None:
-            ray_init_kwargs["runtime_env"] = runtime_env
-            if job_config:
-                job_config.set_runtime_env(runtime_env)
+            # Only update ray_init_kwargs if runtime_env came from there originally
+            # to avoid overriding already-uploaded URIs from job_config
+            if not runtime_env_from_job_config:
+                ray_init_kwargs["runtime_env"] = runtime_env
+                if job_config:
+                    job_config.set_runtime_env(runtime_env)
+            else:
+                # If runtime_env came from job_config, only update ray_init_kwargs
+                # to pass the UV-modified env, but don't modify job_config to preserve
+                # any already-uploaded URIs
+                ray_init_kwargs["runtime_env"] = runtime_env
 
         # NOTE(architkulkarni): Custom env_hook is not supported with Ray Client.
         # However, UV hook is now applied client-side above.
