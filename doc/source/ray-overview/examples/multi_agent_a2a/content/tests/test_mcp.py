@@ -37,7 +37,7 @@ async def test_web_search_mcp() -> bool:
         tools = await mcp_list_tools(mcp_url, TIMEOUT)
 
         # 1) Web search tool call
-        search_tool = "google_search" if "google_search" in tools else ""
+        search_tool = "brave_search" if "brave_search" in tools else ""
         search_args = {"query": "Ray Serve HTTP proxy", "num_results": 3}
         search_dump, search_text = await mcp_call_tool(mcp_url, search_tool, search_args, TIMEOUT)
 
@@ -64,7 +64,7 @@ async def test_web_search_mcp() -> bool:
 
         duration_ms = (time.perf_counter() - start) * 1000
 
-        # Pass if fetch works; search is optional (requires GOOGLE_API_KEY)
+        # Pass if fetch works; search is optional (requires BRAVE_API_KEY)
         is_valid = fetch_ok
         search_status = "ok" if search_ok else ("not configured" if search_not_configured else "fail")
         detail = f"fetch={fetch_tool}:{'ok' if fetch_ok else 'fail'} search={search_tool}:{search_status}"

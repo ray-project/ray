@@ -2,12 +2,11 @@
 Web search + URL fetch MCP server deployed with Ray Serve.
 
 Tools exposed:
-  - google_search: Uses Google Custom Search JSON API (CSE)
+  - brave_search: Uses Brave Search API
   - fetch_url: Fetches a URL and returns simplified markdown (or raw) content, with optional robots.txt checks
 
 Environment variables:
-  - GOOGLE_API_KEY: Google API key for Custom Search JSON API
-  - GOOGLE_CSE_ID: Custom Search Engine ID ("cx")
+  - BRAVE_API_KEY: Brave Search API subscription token
   - WEB_SEARCH_USER_AGENT: User-Agent string used for outbound HTTP requests
   - WEB_SEARCH_PROXY_URL: Optional proxy URL (passed to httpx AsyncClient)
   - WEB_SEARCH_IGNORE_ROBOTS_TXT: "true"/"false" (default: false)
@@ -31,13 +30,10 @@ from ray import serve
 # Config
 # ----------------------------------------------------------------------
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID", "")
+BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
 
-if not GOOGLE_API_KEY:
-    raise ValueError("GOOGLE_API_KEY environment variable is required")
-if not GOOGLE_CSE_ID:
-    raise ValueError("GOOGLE_CSE_ID environment variable is required")
+if not BRAVE_API_KEY:
+    raise ValueError("BRAVE_API_KEY environment variable is required")
 
 DEFAULT_USER_AGENT = "ModelContextProtocol/1.0 (WebSearch; +https://github.com/modelcontextprotocol/servers)"
 USER_AGENT = os.getenv("WEB_SEARCH_USER_AGENT", DEFAULT_USER_AGENT)
@@ -46,7 +42,7 @@ PROXY_URL = os.getenv("WEB_SEARCH_PROXY_URL") or None
 
 IGNORE_ROBOTS_TXT = (os.getenv("WEB_SEARCH_IGNORE_ROBOTS_TXT", "false").strip().lower() in {"1", "true", "yes"})
 
-GOOGLE_SEARCH_URL_TMPL = "https://www.googleapis.com/customsearch/v1?key={key}&cx={engine}&q={query}"
+BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
 
 
 # ----------------------------------------------------------------------
@@ -128,12 +124,15 @@ def _truncate(content: str, *, max_length: int, start_index: int) -> tuple[str, 
     return chunk, ""
 
 
-async def _http_get_text(url: str, *, user_agent: str, timeout_s: float = 30.0) -> tuple[str, str]:
+async def _http_get_text(url: str, *, user_agent: str, timeout_s: float = 30.0, headers: dict | None = None) -> tuple[str, str]:
     """
     Fetch URL. Returns (text, content_type).
     """
+    request_headers = {"User-Agent": user_agent}
+    if headers:
+        request_headers.update(headers)
     async with httpx.AsyncClient(proxy=PROXY_URL, timeout=timeout_s, follow_redirects=True) as client:
-        resp = await client.get(url, headers={"User-Agent": user_agent})
+        resp = await client.get(url, headers=request_headers)
         resp.raise_for_status()
         return resp.text, (resp.headers.get("content-type") or "")
 
@@ -146,17 +145,16 @@ mcp = FastMCP("web_search", stateless_http=True)
 
 
 @mcp.tool()
-async def google_search(query: str, num_results: int = 10) -> str:
+async def brave_search(query: str, num_results: int = 10) -> str:
     """
-    Search the web via Google Custom Search JSON API (CSE).
+    Search the web through the Brave Search API.
 
-    Requires env vars:
-      - GOOGLE_API_KEY
-      - GOOGLE_CSE_ID
+    Requires env var:
+      - BRAVE_API_KEY
 
     Args:
       query: Search query string.
-      num_results: Total number of results to return (1-100). Uses pagination (max 10 per request).
+      num_results: Total number of results to return (1-20).
 
     Returns:
       JSON string: [{"title": "...", "link": "...", "snippet": "..."}, ...]
@@ -167,42 +165,35 @@ async def google_search(query: str, num_results: int = 10) -> str:
     num_results = int(num_results)
     if num_results < 1:
         return "num_results must be >= 1."
-    if num_results > 100:
-        num_results = 100  # API limit
+    if num_results > 20:
+        num_results = 20  # Brave API max per request
 
+    brave_headers = {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": BRAVE_API_KEY,
+    }
+    params = f"?q={quote_plus(query)}&count={num_results}"
+    url = f"{BRAVE_SEARCH_URL}{params}"
+
+    try:
+        text, _ = await _http_get_text(url, user_agent=USER_AGENT, headers=brave_headers)
+        data = json.loads(text)
+    except httpx.HTTPStatusError as e:
+        return f"Brave search request failed: HTTP {e.response.status_code}"
+    except Exception:
+        return "Brave search request failed. Check server logs for details."
+
+    web_results = (data.get("web") or {}).get("results") or []
     results: list[dict[str, Any]] = []
-    pages = (num_results + 9) // 10
-
-    for page in range(pages):
-        start = page * 10 + 1  # 1-indexed
-        current_num = min(10, num_results - page * 10)
-        url = GOOGLE_SEARCH_URL_TMPL.format(
-            key=GOOGLE_API_KEY,
-            engine=GOOGLE_CSE_ID,
-            query=quote_plus(query),
+    for item in web_results:
+        results.append(
+            {
+                "title": item.get("title", ""),
+                "link": item.get("url", ""),
+                "snippet": item.get("description", ""),
+            }
         )
-        url += f"&num={current_num}&start={start}"
-
-        try:
-            text, _ = await _http_get_text(url, user_agent=USER_AGENT)
-            data = json.loads(text)
-        except httpx.HTTPStatusError as e:
-            return f"Google search request failed: HTTP {e.response.status_code}"
-        except Exception:
-            return "Google search request failed. Check server logs for details."
-
-        items = data.get("items") or []
-        if not items:
-            break
-
-        for item in items:
-            results.append(
-                {
-                    "title": item.get("title", ""),
-                    "link": item.get("link", ""),
-                    "snippet": item.get("snippet", ""),
-                }
-            )
 
     return json.dumps(results, ensure_ascii=False)
 
@@ -293,4 +284,3 @@ class WebSearchMCP:
 
 
 app = WebSearchMCP.bind()
-
