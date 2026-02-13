@@ -31,36 +31,51 @@ compile_pip_dependencies() {
 
     cd "${WORKSPACE_DIR}"
 
+    # Fetch uv binary from bazel WORKSPACE
+    if [[ "${OSTYPE}" == darwin* ]]; then
+      UV_TARGET="uv_aarch64-darwin"
+      UV_SUBDIR="uv-aarch64-apple-darwin"
+    else
+      UV_TARGET="uv_x86_64-linux"
+      UV_SUBDIR="uv-x86_64-unknown-linux-gnu"
+    fi
+    # uv binary is fetched from bazel WORKSPACE
+    bazel fetch @${UV_TARGET}//...
+    UV_BIN="$(bazel info output_base)/external/${UV_TARGET}/${UV_SUBDIR}/uv"
+
     echo "Target file: $TARGET"
-    pip install "pip-tools==7.4.1" "wheel==0.45.1"
+    "$UV_BIN" pip install "pip-tools==7.4.1" "wheel==0.45.1"
 
     # Required packages to lookup e.g. dragonfly-opt
     HAS_TORCH=0
     python -c "import torch" 2>/dev/null && HAS_TORCH=1
-    pip install --no-cache-dir numpy torch
+    "$UV_BIN" pip install --no-cache-dir numpy torch
 
-    pip-compile --verbose --resolver=backtracking \
-      --pip-args --no-deps --strip-extras --no-header \
-      --unsafe-package ray \
-      --unsafe-package pip \
-      --unsafe-package setuptools \
-      -o "python/$TARGET" \
-      python/requirements.txt \
-      python/requirements/lint-requirements.txt \
-      python/requirements/test-requirements.txt \
-      python/requirements/cloud-requirements.txt \
-      python/requirements/docker/ray-docker-requirements.txt \
-      python/requirements/ml/core-requirements.txt \
-      python/requirements/ml/data-requirements.txt \
-      python/requirements/ml/data-test-requirements.txt \
-      python/requirements/ml/dl-cpu-requirements.txt \
-      python/requirements/ml/rllib-requirements.txt \
-      python/requirements/ml/rllib-test-requirements.txt \
-      python/requirements/ml/train-requirements.txt \
-      python/requirements/ml/train-test-requirements.txt \
-      python/requirements/ml/tune-requirements.txt \
-      python/requirements/ml/tune-test-requirements.txt \
-      python/requirements/security-requirements.txt
+    # --python-version for the minimum py version we support
+    # --python for the python version we want to compile for
+    "$UV_BIN" pip compile --verbose --strip-extras --no-header --universal \
+    --unsafe-package ray --unsafe-package pip --unsafe-package setuptools \
+    --index-strategy unsafe-best-match \
+    --python-version 3.10 \
+    --python 3.11 \
+    --emit-index-url \
+    -o "python/$TARGET" \
+    python/requirements.txt \
+    python/requirements/lint-requirements.txt \
+    python/requirements/test-requirements.txt \
+    python/requirements/cloud-requirements.txt \
+    python/requirements/docker/ray-docker-requirements.txt \
+    python/requirements/ml/core-requirements.txt \
+    python/requirements/ml/data-requirements.txt \
+    python/requirements/ml/data-test-requirements.txt \
+    python/requirements/ml/dl-cpu-requirements.txt \
+    python/requirements/ml/rllib-requirements.txt \
+    python/requirements/ml/rllib-test-requirements.txt \
+    python/requirements/ml/train-requirements.txt \
+    python/requirements/ml/train-test-requirements.txt \
+    python/requirements/ml/tune-requirements.txt \
+    python/requirements/ml/tune-test-requirements.txt \
+    python/requirements/security-requirements.txt
 
     # Delete local installation
     sed -i "/@ file/d" "python/$TARGET"
