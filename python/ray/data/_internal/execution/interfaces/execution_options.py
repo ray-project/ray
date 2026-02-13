@@ -309,7 +309,6 @@ class ExecutionOptions:
         if exclude_resources is None:
             exclude_resources = ExecutionResources.zero()
         self.exclude_resources = exclude_resources
-        self._locality_with_output = False
         if locality_with_output:
             self.locality_with_output = locality_with_output
         self.preserve_order = preserve_order
@@ -361,7 +360,6 @@ class ExecutionOptions:
 
     @property
     def locality_with_output(self) -> bool:
-        """Deprecated and no-op. Always returns False."""
         return False
 
     @locality_with_output.setter
@@ -374,7 +372,6 @@ class ExecutionOptions:
                 DeprecationWarning,
                 stacklevel=2,
             )
-        self._locality_with_output = False
 
 
 def safe_or(value: Optional[Any], alt: Any) -> Any:
