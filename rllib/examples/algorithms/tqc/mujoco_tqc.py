@@ -16,13 +16,13 @@ This example:
 
 How to run this script
 ----------------------
-`python humanoid_tqc.py --num-env-runners=4`
+`python mujoco_tqc.py --num-env-runners=4`
 
 For faster training, use GPU acceleration and more parallelism:
-`python humanoid_tqc.py --num-learners=1 --num-gpus-per-learner=1 --num-env-runners=8`
+`python mujoco_tqc.py --num-learners=1 --num-gpus-per-learner=1 --num-env-runners=8`
 
 To scale up with distributed learning using multiple learners and env-runners:
-`python humanoid_tqc.py --num-learners=2 --num-env-runners=16`
+`python mujoco_tqc.py --num-learners=2 --num-env-runners=16`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -51,10 +51,11 @@ from ray.rllib.examples.utils import (
 
 parser = add_rllib_example_script_args(
     default_timesteps=1_000_000,
-    default_reward=12_000.0,
+    default_reward=800.0,
     default_iters=2_000,
 )
 parser.set_defaults(
+    env="Humanoid-v4",
     num_env_runners=4,
     num_envs_per_env_runner=8,
     num_learners=1,
@@ -66,15 +67,15 @@ args = parser.parse_args()
 
 config = (
     TQCConfig()
-    .environment("Humanoid-v4")
+    .environment(args.env)
     .env_runners(
         num_env_runners=args.num_env_runners,
         num_envs_per_env_runner=args.num_envs_per_env_runner,
     )
     .learners(
         num_learners=args.num_learners,
-        num_gpus_per_learner=1,
-        num_aggregator_actors_per_learner=2,
+        # RLlib's off-policy algorithms don't support distributed aggregator actors
+        num_aggregator_actors_per_learner=0,
     )
     .training(
         initial_alpha=1.001,
@@ -92,11 +93,11 @@ config = (
         top_quantiles_to_drop_per_net=2,
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
-            "capacity": 1000000,
+            "capacity": 1_000_000,
             "alpha": 0.6,
             "beta": 0.4,
         },
-        num_steps_sampled_before_learning_starts=10000,
+        num_steps_sampled_before_learning_starts=10_000,
     )
     .rl_module(
         model_config=DefaultModelConfig(
