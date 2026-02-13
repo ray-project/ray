@@ -6,7 +6,7 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
-from ray.data.util.expression_utils import get_setting_with_copy_warning
+from ray.data.util.expression_utils import _get_setting_with_copy_warning
 from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
@@ -287,7 +287,7 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
     Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray.
     """
     # Get the SettingWithCopyWarning class if available
-    SettingWithCopyWarning = get_setting_with_copy_warning()
+    SettingWithCopyWarning = _get_setting_with_copy_warning()
 
     from ray.data._internal.tensor_extensions.pandas import (
         TensorArray,
@@ -327,7 +327,7 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
 def _cast_tensor_columns_to_ndarrays(df: "pd.DataFrame") -> "pd.DataFrame":
     """Cast all tensor extension columns in df to NumPy ndarrays."""
     # Get the SettingWithCopyWarning class if available
-    SettingWithCopyWarning = get_setting_with_copy_warning()
+    SettingWithCopyWarning = _get_setting_with_copy_warning()
     from ray.data._internal.tensor_extensions.pandas import TensorDtype
 
     # Try to convert any tensor extension columns to ndarray columns.
