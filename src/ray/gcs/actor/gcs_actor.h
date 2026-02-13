@@ -168,6 +168,10 @@ class GcsActor {
       *actor_table_data_.mutable_label_selector() =
           ray::LabelSelector(task_spec_->label_selector()).ToStringMap();
     }
+    if (task_spec_->fallback_strategy().options_size() > 0) {
+      actor_table_data_.mutable_fallback_strategy()->CopyFrom(
+          task_spec_->fallback_strategy());
+    }
     lease_spec_ = std::make_unique<LeaseSpecification>(*task_spec_);
     RefreshMetrics();
   }

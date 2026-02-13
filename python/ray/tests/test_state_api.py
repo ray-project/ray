@@ -2697,7 +2697,10 @@ def test_list_get_tasks_label_selector(ray_start_cluster):
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
-    @ray.remote(label_selector={"region": "us-west4"})
+    @ray.remote(
+        label_selector={"region": "us-west4"},
+        fallback_strategy=[{"label_selector": {"region": "us-west5"}}],
+    )
     def foo():
         import time
 
@@ -2710,6 +2713,22 @@ def test_list_get_tasks_label_selector(ray_start_cluster):
     def verify():
         task = get_task(call_ref)
         assert task["label_selector"] == {"region": "us-west4"}
+        expected_fallback = {
+            "options": [
+                {
+                    "label_selector": {
+                        "label_constraints": [
+                            {
+                                "label_key": "region",
+                                "operator": "LABEL_OPERATOR_IN",
+                                "label_values": ["us-west5"],
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+        assert task["fallback_strategy"] == expected_fallback
         return True
 
     wait_for_condition(verify)
@@ -2732,7 +2751,10 @@ def test_list_actor_tasks_label_selector(ray_start_cluster):
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
-    @ray.remote(label_selector={"region": "us-west4"})
+    @ray.remote(
+        label_selector={"region": "us-west4"},
+        fallback_strategy=[{"label_selector": {"region": "us-west5"}}],
+    )
     class Actor:
         def method(self):
             import time
@@ -2747,6 +2769,22 @@ def test_list_actor_tasks_label_selector(ray_start_cluster):
         assert len(actors) == 1
         actor = actors[0]
         assert actor["label_selector"] == {"region": "us-west4"}
+        expected_fallback = {
+            "options": [
+                {
+                    "label_selector": {
+                        "label_constraints": [
+                            {
+                                "label_key": "region",
+                                "operator": "LABEL_OPERATOR_IN",
+                                "label_values": ["us-west5"],
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+        assert actor["fallback_strategy"] == expected_fallback
         return True
 
     wait_for_condition(verify)

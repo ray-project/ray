@@ -658,6 +658,8 @@ message TaskInfoEntry {
   optional string call_site = 27;
   // The key-value label constraints of the node to schedule this task or actor on.
   map<string, string> label_selector = 28;
+
+  optional FallbackStrategy fallback_strategy = 29;
 }
 
 message TaskAttempt {
