@@ -2,8 +2,6 @@
 
 from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
-from ray.util.annotations import DeveloperAPI
-
 if TYPE_CHECKING:
     from ray.data.expressions import Expr
 
