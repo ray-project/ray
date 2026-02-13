@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 from ray.data.preprocessor import Preprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
@@ -119,3 +119,13 @@ class Chain(Preprocessor):
         # TODO (jiaodong): We should revisit if our Chain preprocessor is
         # still optimal with context of lazy execution.
         return self._preprocessors[0]._determine_transform_to_use()
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        if "_preprocessors" not in self.__dict__ and "preprocessors" in self.__dict__:
+            self._preprocessors = self.__dict__.pop("preprocessors")
+
+        if "_preprocessors" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized Chain preprocessor: missing required field 'preprocessors'."
+            )

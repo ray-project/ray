@@ -1,5 +1,5 @@
 import collections
-from typing import List
+from typing import Any, Dict, List
 
 import pandas as pd
 
@@ -135,3 +135,23 @@ class FeatureHasher(Preprocessor):
             f"num_features={self._num_features!r}, "
             f"output_column={self._output_column!r})"
         )
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_num_features" not in self.__dict__ and "num_features" in self.__dict__:
+            self._num_features = self.__dict__.pop("num_features")
+        if "_output_column" not in self.__dict__ and "output_column" in self.__dict__:
+            self._output_column = self.__dict__.pop("output_column")
+
+        if "_columns" not in self.__dict__:
+            self._columns = []
+        if "_num_features" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized FeatureHasher preprocessor: missing required field 'num_features'."
+            )
+        if "_output_column" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized FeatureHasher preprocessor: missing required field 'output_column'."
+            )
