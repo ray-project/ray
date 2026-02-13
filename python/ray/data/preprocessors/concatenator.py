@@ -204,7 +204,7 @@ class Concatenator(Preprocessor):
         if "_output_column_name" not in self.__dict__:
             self._output_column_name = "concat_out"
         if "_dtype" not in self.__dict__:
-            self._max_features = None
+            self._dtype = None
         if "_raise_if_missing" not in self.__dict__:
             self._raise_if_missing = False
         if "_flatten" not in self.__dict__:

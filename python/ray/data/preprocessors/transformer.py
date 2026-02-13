@@ -132,7 +132,7 @@ class PowerTransformer(Preprocessor):
             self._columns = []
         if "_power" not in self.__dict__:
             raise ValueError(
-                "Invalid serialized HashingVectorizer: missing required field 'power'."
+                "Invalid serialized PowerTransformer: missing required field 'power'."
             )
         if "_method" not in self.__dict__:
             self._method = "yeo-johnson"
