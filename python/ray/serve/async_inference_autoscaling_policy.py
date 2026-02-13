@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import math
 from typing import Any, Dict, Optional, Tuple, Union
 
 from ray.serve._private.broker import Broker
@@ -118,13 +117,8 @@ class AsyncInferenceAutoscalingPolicy:
         total_workload = ctx.total_num_requests + self._queue_length
         config = ctx.config
 
-        if ctx.current_num_replicas == 0:
-            if total_workload > 0:
-                return max(
-                    math.ceil(1 * ctx.config.get_upscaling_factor()),
-                    ctx.target_num_replicas,
-                ), {"queue_length": self._queue_length}
-            return ctx.target_num_replicas, {"queue_length": self._queue_length}
+        if num_running_replicas == 0:
+            return 1 if total_workload > 0 else 0, {"queue_length": self._queue_length}
 
         target_num_requests = (
             config.get_target_ongoing_requests() * num_running_replicas
