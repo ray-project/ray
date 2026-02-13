@@ -63,7 +63,7 @@ def stats_from_legacy_state(state: Dict[str, Any], is_root: bool = False) -> Sta
             else:
                 new_state["lifetime_sum"] = 0.0
 
-            # old lifetime sum checkpoints always track a througput
+            # old lifetime sum checkpoints always track a throughput
             if state.get("throughput_stats") is not None:
                 new_state["track_throughputs"] = True
             else:
@@ -187,7 +187,7 @@ class MetricsLogger:
         Note that calling this method does NOT cause an actual underlying value list
         reduction, even though reduced values are being returned. It'll keep all
         internal structures as-is. By default, this returns a single reduced value or, if
-        the Stats object has no reduce method, a list of values. When when compile is False,
+        the Stats object has no reduce method, a list of values. When compile is `False`,
         the result is a list of one or more values.
 
         Args:
