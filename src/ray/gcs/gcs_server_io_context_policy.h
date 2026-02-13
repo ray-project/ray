@@ -18,6 +18,7 @@
 #include <string_view>
 #include <type_traits>
 
+#include "ray/gcs/gcs_kv_manager.h"
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/gcs_task_manager.h"
 #include "ray/observability/ray_event_recorder.h"
@@ -48,7 +49,7 @@ struct GcsServerIOContextPolicy {
     } else if constexpr (std::is_same_v<T, GcsInternalKVManager>) {
       return IndexOf("internal_kv_io_context");
     } else if constexpr (std::is_same_v<T, GcsNodeManager>) {
-      return IndexOf("node_manager_io_context"); 
+      return IndexOf("node_manager_io_context");
     } else {
       // default io context
       return -1;
