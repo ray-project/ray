@@ -529,7 +529,10 @@ py_test(
     name = "test_gpu_examples",
     size = "large",
     srcs = ["tests/test_gpu_examples.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     tags = [
         "exclusive",
         "team:ml",
