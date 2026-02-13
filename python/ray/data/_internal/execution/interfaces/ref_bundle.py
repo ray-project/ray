@@ -26,7 +26,7 @@ class BlockSlice:
         return self.end_offset - self.start_offset
 
 
-@dataclass
+@dataclass(frozen=True)
 class RefBundle:
     """A group of data block references and their metadata.
 
@@ -77,7 +77,7 @@ class RefBundle:
             object.__setattr__(self, "blocks", tuple(self.blocks))
 
         if self.slices is None:
-            self.slices = (None,) * len(self.blocks)
+            object.__setattr__(self, "slices", (None,) * len(self.blocks))
         else:
             if not isinstance(self.slices, tuple):
                 object.__setattr__(self, "slices", tuple(self.slices))
@@ -108,11 +108,6 @@ class RefBundle:
                 raise ValueError(
                     "The size in bytes of the block must be known: {}".format(b)
                 )
-
-    def __setattr__(self, key, value):
-        if hasattr(self, key) and key in ["blocks", "owns_blocks"]:
-            raise ValueError(f"The `{key}` field of RefBundle cannot be updated.")
-        object.__setattr__(self, key, value)
 
     @property
     def block_refs(self) -> List[ObjectRef[Block]]:
@@ -200,7 +195,9 @@ class RefBundle:
                 for loc in obj_meta.locs:
                     preferred_locs[loc] += obj_meta.size
 
-            self._cached_preferred_locations = preferred_locs
+            # NOTE: We're working around object being immutable to update cached
+            #       values (safe)
+            object.__setattr__(self, "_cached_preferred_locations", preferred_locs)
 
         return self._cached_preferred_locations
 
@@ -219,7 +216,9 @@ class RefBundle:
                 for ref in self.block_refs
             }
 
-            self._cached_object_meta = object_metas
+            # NOTE: We're working around object being immutable to update cached
+            #       values (safe)
+            object.__setattr__(self, "_cached_object_meta", object_metas)
 
         return self._cached_object_meta
 
