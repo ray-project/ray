@@ -1863,7 +1863,7 @@ py_test(
 
 py_test(
     name = "test_monotonically_increasing_id",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_monotonically_increasing_id.py"],
     tags = [
         "exclusive",
