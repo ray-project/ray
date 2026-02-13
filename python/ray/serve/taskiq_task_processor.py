@@ -381,7 +381,8 @@ class TaskiqTaskProcessorAdapter(TaskProcessorAdapter):
     ) -> TaskResult:
         """Enqueue a task by name. Returns immediately with PENDING status."""
         return self._run_async(
-            self._enqueue_task_async(task_name, args, kwargs, **options)
+            self._enqueue_task_async(task_name, args, kwargs, **options),
+            timeout=30.0,
         )
 
     async def _enqueue_task_async(
@@ -411,7 +412,7 @@ class TaskiqTaskProcessorAdapter(TaskProcessorAdapter):
 
     def get_task_status_sync(self, task_id: str) -> TaskResult:
         """Retrieve the current status of a task from the result backend."""
-        return self._run_async(self._get_task_status_async(task_id))
+        return self._run_async(self._get_task_status_async(task_id), timeout=30.0)
 
     async def _get_task_status_async(self, task_id: str) -> TaskResult:
         if self._result_backend is None:
