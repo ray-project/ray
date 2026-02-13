@@ -1155,7 +1155,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                     f"per aggregator (50% of available cluster memory / "
                     f"{num_aggregators} aggregators). This may lead to OOMs "
                     f"if the actual dataset is larger. Consider scaling up "
-                    f"the cluster or reducing num_partitions."
+                    f"the cluster or increasing num_partitions."
                 )
             else:
                 logger.warning(
