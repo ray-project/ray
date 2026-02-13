@@ -32,7 +32,11 @@ def connect(
     ray_init_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if ray.is_connected():
-        ignore_reinit_error = ray_init_kwargs.get("ignore_reinit_error", False)
+        ignore_reinit_error = (
+            ray_init_kwargs.get("ignore_reinit_error", False)
+            if ray_init_kwargs is not None
+            else False
+        )
         if ignore_reinit_error:
             logger.info(
                 "Calling ray.init() again after it has already been called. "

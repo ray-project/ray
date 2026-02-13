@@ -320,11 +320,34 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     parser = _create_uv_run_parser()
     (options, command) = _parse_args(parser, cmdline[2:])
 
-    if cmdline[-len(command) :] != command:
+    # Find where the command starts in the original cmdline.
+    # optparse may split --opt=value into ['--opt', 'value'] for unknown options,
+    # so we can't simply compare suffix by list equality.  Match backwards,
+    # collapsing --opt=value when needed.
+    ci = len(cmdline) - 1
+    ki = len(command) - 1
+    while ki >= 0 and ci >= 0:
+        if cmdline[ci] == command[ki]:
+            ci -= 1
+            ki -= 1
+        elif "=" in cmdline[ci] and ki >= 1:
+            opt, val = cmdline[ci].split("=", 1)
+            if command[ki] == val and command[ki - 1] == opt:
+                ci -= 1
+                ki -= 2
+            else:
+                raise AssertionError(
+                    f"uv run command {command} is not a suffix of command line {cmdline}"
+                )
+        else:
+            raise AssertionError(
+                f"uv run command {command} is not a suffix of command line {cmdline}"
+            )
+    if ki >= 0:
         raise AssertionError(
             f"uv run command {command} is not a suffix of command line {cmdline}"
         )
-    uv_run_args = cmdline[: -len(command)]
+    uv_run_args = cmdline[: ci + 1]
 
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process.
