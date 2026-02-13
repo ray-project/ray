@@ -491,13 +491,17 @@ class TaskiqTaskProcessorAdapter(TaskProcessorAdapter):
             self._consumer_task.result(timeout=timeout)
         except TimeoutError:
             logger.warning(f"Taskiq consumer did not stop within {timeout}s.")
-        except Exception:
-            pass  # Consumer exited with an error; we're shutting down anyway.
+        except Exception as e:
+            logger.warning(f"Taskiq consumer task exited with an exception: {e}")
 
         # Shut down the broker connections.
         if self._broker_started:
-            self._run_async(self._broker.shutdown())
-            self._broker_started = False
+            try:
+                self._run_async(self._broker.shutdown())
+            except Exception as e:
+                logger.warning(f"Failed to shut down taskiq broker: {e}")
+            finally:
+                self._broker_started = False
 
         self._consumer_task = None
         self._finish_event = None
