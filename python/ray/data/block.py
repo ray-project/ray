@@ -1,7 +1,7 @@
 import collections
 import logging
 import time
-from dataclasses import dataclass, fields, field
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -270,6 +270,7 @@ class BlockMetadata(BlockStats):
         return BlockStats(
             **{key: self.__getattribute__(key) for key in _BLOCK_STATS_FIELD_NAMES}
         )
+
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True)
