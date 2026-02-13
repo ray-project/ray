@@ -1035,7 +1035,9 @@ class _ActorPool(AutoscalingActorPool):
         if not self._can_apply(req):
             return 0
 
-        map_worker_cls_name = (self.map_worker_cls_name + " ") or ""
+        map_worker_cls_name = (
+            (self.map_worker_cls_name + " ") if self.map_worker_cls_name else ""
+        )
 
         if req.delta > 0:
             target_num_actors = req.delta
