@@ -27,6 +27,7 @@ def test_api_functions():
         "shutdown",
         "method",
         "nodes",
+        "wait_for_nodes",
         "timeline",
         "cluster_resources",
         "available_resources",
