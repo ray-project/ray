@@ -96,12 +96,28 @@ soft_affinity_app = SoftAffinityDeployment.bind()
 
 # __label_selector_main_start__
 if __name__ == "__main__":
+    # RayCluster with resources to run example tests.
     ray.init(
         labels={
             "ray.io/accelerator-type": "A100",
-        }
+            "zone": "us-west-2b",
+        },
+        num_cpus=16,
+        num_gpus=1,
+        resources={"my_custom_resource": 10},
     )
+
+    # Deploy all Serve examples.
     serve.run(a100_app, name="a100", route_prefix="/a100")
+
+    serve.run(MyDeployment.options(max_replicas_per_node=6).bind(), name="max_replicas", route_prefix="/max_replicas")
+
+    serve.run(multi_cpu_app, name="multi_cpu", route_prefix="/multi_cpu")
+
+    serve.run(pg_label_app, name="pg_label", route_prefix="/pg_label")
+
+    serve.run(custom_resource_app, name="custom", route_prefix="/custom")
+
     serve.shutdown()
     ray.shutdown()
 # __label_selector_main_end__
