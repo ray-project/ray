@@ -59,6 +59,7 @@ aiohttp==3.13.3
     #   google-auth
     #   pytest-aiohttp
     #   s3fs
+    #   taskiq
     #   torch-geometric
 aiohttp-cors==0.7.0
     # via -r python/requirements.txt
@@ -95,6 +96,7 @@ anyio==4.12.0
     #   httpx
     #   jupyter-server
     #   starlette
+    #   taskiq
     #   watchfiles
 appdirs==1.4.4
     # via fs
@@ -845,6 +847,8 @@ isoduration==20.11.0
     # via jsonschema
 itsdangerous==2.1.2
     # via flask
+izulu==0.50.0
+    # via taskiq
 jax==0.4.22 ; python_version < "3.12" and sys_platform != "darwin"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 jaxlib==0.4.22 ; python_version < "3.12" and sys_platform != "darwin"
@@ -1414,6 +1418,7 @@ packaging==24.2
     #   snowflake-connector-python
     #   sphinx
     #   statsmodels
+    #   taskiq
     #   tensorboardx
     #   tensordict
     #   tensorflow
@@ -1615,6 +1620,8 @@ pybase64==1.4.2
     # via -r python/requirements/ml/data-test-requirements.txt
 pycparser==2.21
     # via cffi
+pycron==3.2.0
+    # via taskiq
 pycurl==7.45.4
     # via -r python/requirements/cloud-requirements.txt
 pydantic==2.12.4
@@ -1627,6 +1634,7 @@ pydantic==2.12.4
     #   gradio
     #   mlflow-skinny
     #   pyiceberg
+    #   taskiq
     #   wandb
 pydantic-core==2.41.5
     # via pydantic
@@ -2166,6 +2174,10 @@ tabulate==0.9.0
     #   -r python/requirements/cloud-requirements.txt
     #   jupyter-cache
     #   knack
+taskiq==0.12.1
+    # via -r python/requirements.txt
+taskiq-dependencies==1.5.7
+    # via taskiq
 tblib==3.0.0
     # via
     #   -r python/requirements/docker/ray-docker-requirements.txt
