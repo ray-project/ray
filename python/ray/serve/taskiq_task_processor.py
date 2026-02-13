@@ -380,6 +380,7 @@ class TaskiqTaskProcessorAdapter(TaskProcessorAdapter):
         self, task_name: str, args=None, kwargs=None, **options
     ) -> TaskResult:
         """Enqueue a task by name. Returns immediately with PENDING status."""
+        self._ensure_broker_started()
         return self._run_async(
             self._enqueue_task_async(task_name, args, kwargs, **options),
             timeout=30.0,
