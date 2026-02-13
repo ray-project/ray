@@ -1,6 +1,7 @@
 import collections
 import logging
 import sys
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -345,9 +346,18 @@ class PandasBlockBuilder(TableBlockBuilder):
         return BlockType.PANDAS
 
 
-# This is to be compatible with pyarrow.lib.schema
-# TODO (kfstorm): We need a format-independent way to represent schema.
-PandasBlockSchema = collections.namedtuple("PandasBlockSchema", ["names", "types"])
+# NOTE: This has to be compatible with pyarrow.lib.schema
+@dataclass(frozen=True)
+class PandasBlockSchema:
+
+    names: Tuple[str]
+    types: Tuple["pandas.DataType"]
+
+    def __post_init__(self):
+        if not isinstance(self.names, tuple):
+            object.__setattr__(self, "names", tuple(self.names))
+        if not isinstance(self.types, tuple):
+            object.__setattr__(self, "types", tuple(self.types))
 
 
 class PandasBlockAccessor(TableBlockAccessor):
@@ -414,7 +424,8 @@ class PandasBlockAccessor(TableBlockAccessor):
     def schema(self) -> PandasBlockSchema:
         dtypes = self._table.dtypes
         schema = PandasBlockSchema(
-            names=dtypes.index.tolist(), types=dtypes.values.tolist()
+            names=tuple(dtypes.index.tolist()),
+            types=tuple(dtypes.values.tolist()),
         )
         # Column names with non-str types of a pandas DataFrame is not
         # supported by Ray Dataset.
