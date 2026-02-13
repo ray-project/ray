@@ -48,7 +48,6 @@ def submit_batch_jobs(
     timeout_s: int = 10 * 60,
     retry_interval_s: int = 1,
 ) -> bool:
-    max_submit_retries = 50000
     job_ids = []
     for i in range(num_jobs):
         # Cycle through clients arbitrarily
@@ -56,9 +55,6 @@ def submit_batch_jobs(
         job_id = client.submit_job(
             entrypoint="echo hello",
         )
-        if job_id is None:
-            print("submit_job failed after retries")
-            return False
         job_ids.append(job_id)
         print(f"submitted job: {job_id}")
 

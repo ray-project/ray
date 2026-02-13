@@ -157,6 +157,13 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
         << "ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW). Ray's gRPC servers require "
         << "client certificates when TLS is enabled.";
 #endif
+  } else {
+    exporter_options_.use_ssl_credentials = false;
+    exporter_options_.ssl_credentials_cacert_as_string.clear();
+#ifdef ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW
+    exporter_options_.ssl_client_cert_string.clear();
+    exporter_options_.ssl_client_key_string.clear();
+#endif
   }
   auto exporter = std::make_unique<OpenTelemetryMetricExporter>(exporter_options_);
 
