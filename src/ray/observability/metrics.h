@@ -27,4 +27,23 @@ inline ray::stats::Count GetRayEventRecorderDroppedEventsCounterMetric() {
   };
 }
 
+inline ray::stats::Count GetRayEventRecorderEventsSentCounterMetric() {
+  return ray::stats::Count{
+      /*name=*/"ray_event_recorder_events_sent",
+      /*description=*/"Number of events successfully sent by the ray event recorder.",
+      /*unit=*/"",
+      /*tag_keys=*/{"Source"},
+  };
+}
+
+inline ray::stats::Count GetRayEventRecorderEventsFailedToSendCounterMetric() {
+  return ray::stats::Count{
+      /*name=*/"ray_event_recorder_events_failed_to_send",
+      /*description=*/
+      "Number of events that the event recorder failed to send after all retries.",
+      /*unit=*/"",
+      /*tag_keys=*/{"Source"},
+  };
+}
+
 }  // namespace ray
