@@ -44,14 +44,21 @@ class Dashboard:
         gcs_address: GCS address of the cluster.
         cluster_id_hex: Cluster ID hex string.
         node_ip_address: The IP address of the dashboard.
-        serve_frontend: If configured, frontend HTML
-            is not served from the dashboard.
         log_dir: Log directory of dashboard.
         logging_level: The logging level (e.g. logging.INFO, logging.DEBUG)
         logging_format: The format string for log messages
         logging_filename: The name of the log file
         logging_rotate_bytes: Max size in bytes before rotating log file
         logging_rotate_backup_count: Number of backup files to keep when rotating
+        temp_dir: Specify the path of the temporary directory use by Ray process
+        session_dir: Specify the path of the session directory of the cluster under the temp_dir
+        minimal: Whether or not it will load the minimal modules.
+        serve_frontend: Whether to serve the frontend HTML from the dashboard.
+        modules_to_load: Specify the list of module names in [module_1],[module_2] format.
+            E.g., JobHead,StateHead...
+            If nothing is specified, all modules are loaded.
+        proxy_server_url: The url to redirect api requests to
+            Ex: --proxy-server-url=http://historyserver:8080
     """
 
     def __init__(
@@ -73,6 +80,7 @@ class Dashboard:
         minimal: bool = False,
         serve_frontend: bool = True,
         modules_to_load: Optional[Set[str]] = None,
+        proxy_server_url: Optional[str] = None,
     ):
         self.dashboard_head = dashboard_head.DashboardHead(
             http_host=host,
@@ -92,6 +100,7 @@ class Dashboard:
             minimal=minimal,
             serve_frontend=serve_frontend,
             modules_to_load=modules_to_load,
+            proxy_server_url=proxy_server_url,
         )
 
     async def run(self):
@@ -226,6 +235,14 @@ if __name__ == "__main__":
         default="",
         help="The filepath to dump dashboard stderr.",
     )
+    parser.add_argument(
+        "--proxy-server-url",
+        required=False,
+        type=str,
+        default="",
+        help="The proxy server url to redirect requests to"
+        "Ex: --proxy-server-url=http://historyserver:8080 ",
+    )
 
     args = parser.parse_args()
 
@@ -279,6 +296,7 @@ if __name__ == "__main__":
             minimal=args.minimal,
             serve_frontend=(not args.disable_frontend),
             modules_to_load=modules_to_load,
+            proxy_server_url=args.proxy_server_url,
         )
 
         def sigterm_handler():
