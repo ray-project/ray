@@ -143,6 +143,7 @@ steps:
       - manylinux-x86_64
       - servebuild-multipy
       - forge
+      - ray-wheel-build
 
   - label: ":ray-serve: serve: doc tests"
     tags:
