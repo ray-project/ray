@@ -24,7 +24,7 @@ def main(args):
 
         nation_region = region_filtered.join(
             nation,
-            num_partitions=16,
+            num_partitions=32,  # Empirical value to balance parallelism and shuffle overhead
             join_type="inner",
             on=("r_regionkey",),
             right_on=("n_regionkey",),
@@ -80,7 +80,7 @@ def main(args):
         )
         orders_customer = orders_filtered.join(
             customer_nation,
-            num_partitions=16,
+            num_partitions=32,
             join_type="inner",
             on=("o_custkey",),
             right_on=("c_custkey",),
@@ -88,7 +88,7 @@ def main(args):
 
         lineitem_orders = lineitem.join(
             orders_customer,
-            num_partitions=16,
+            num_partitions=32,
             join_type="inner",
             on=("l_orderkey",),
             right_on=("o_orderkey",),
@@ -96,7 +96,7 @@ def main(args):
 
         ds = lineitem_orders.join(
             supplier_nation,
-            num_partitions=16,
+            num_partitions=32,
             join_type="inner",
             on=("l_suppkey", "n_nationkey_cust"),
             right_on=("s_suppkey", "n_nationkey_supp"),
