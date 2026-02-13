@@ -14,17 +14,12 @@
 
 #include "ray/common/memory_monitor_utils.h"
 
-#include <sys/sysinfo.h>
-
 #include <boost/filesystem.hpp>
-#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string>
-#include <utility>
 
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/cgroup2/cgroup_test_utils.h"
 #include "ray/common/id.h"
 #include "ray/common/memory_monitor_test_fixture.h"

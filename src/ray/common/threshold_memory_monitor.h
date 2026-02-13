@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <gtest/gtest_prod.h>
-
 #include <cstdint>
 #include <memory>
 #include <thread>
@@ -55,22 +53,19 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
   ~ThresholdMemoryMonitor() override;
 
   /**
-   * @brief Notifies this memory monitor that the worker killing event has completed.
-   *        This rearms the memory monitor to be able to trigger the kill callback again.
+   * @brief Enables the memory monitor to trigger the kill callback.
    */
-  void SetWorkerKillingCompleted() override;
+  void Enable() override;
 
   /**
-   * @brief Notifies this memory monitor that the worker killing event has started.
-   *        The memory monitor will not fire the callback until the worker killing event
-   * has completed.
+   * @brief Disables the memory monitor from triggering the kill callback.
    */
-  void SetWorkerKillingInProgress() override;
+  void Disable() override;
 
   /**
-   * @return True if the worker killing event is in progress, false otherwise.
+   * @return True if the memory monitor is enabled, false otherwise.
    */
-  bool GetWorkerKillingInProgress() override;
+  bool IsEnabled() override;
 
  private:
   /**

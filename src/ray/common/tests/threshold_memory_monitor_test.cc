@@ -14,29 +14,17 @@
 
 #include "ray/common/threshold_memory_monitor.h"
 
-#include <sys/mman.h>
-#include <sys/sysinfo.h>
-#include <sys/wait.h>
-#include <unistd.h>
-
 #include <atomic>
-#include <boost/filesystem.hpp>
 #include <boost/thread/latch.hpp>
 #include <chrono>
-#include <filesystem>
-#include <fstream>
 #include <memory>
 #include <string>
 #include <thread>
 #include <utility>
 
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/cgroup2/cgroup_test_utils.h"
-#include "ray/common/id.h"
 #include "ray/common/memory_monitor_interface.h"
 #include "ray/common/memory_monitor_test_fixture.h"
-#include "ray/util/process.h"
 
 namespace ray {
 

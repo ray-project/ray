@@ -14,18 +14,13 @@
 
 #pragma once
 
-#include <gtest/gtest_prod.h>
+#include <sys/types.h>
 
 #include <cstdint>
 #include <functional>
-#include <memory>
 #include <ostream>
-#include <string>
-#include <tuple>
-#include <vector>
 
-#include "ray/common/asio/periodical_runner.h"
-#include "ray/util/process.h"
+#include "absl/container/flat_hash_map.h"
 
 namespace ray {
 
@@ -62,29 +57,28 @@ using KillWorkersCallback =
 /**
  * @brief implementations of this interface monitors the memory usage of the node
  * and triggers the kill worker callback when it deems the system is under memory
- * pressure. All implementations of the memory monitor must be thread safe.
+ * pressure.
+ *
+ * @note All implementations of the memory monitor must be thread safe.
  */
 class MemoryMonitorInterface {
  public:
   virtual ~MemoryMonitorInterface() = default;
 
   /**
-   * @brief Notifies this memory monitor that the worker killing event has completed.
-   *        This rearms the memory monitor to be able to trigger the kill callback again.
+   * @brief Enables the memory monitor to trigger the kill callback.
    */
-  virtual void SetWorkerKillingCompleted() = 0;
+  virtual void Enable() = 0;
 
   /**
-   * @brief Notifies this memory monitor that the worker killing event has started.
-   *        The memory monitor will not fire the callback until the worker killing event
-   * has completed.
+   * @brief Disables the memory monitor from triggering the kill callback.
    */
-  virtual void SetWorkerKillingInProgress() = 0;
+  virtual void Disable() = 0;
 
   /**
-   * @return True if the worker killing event is in progress, false otherwise.
+   * @return True if the memory monitor is enabled, false otherwise.
    */
-  virtual bool GetWorkerKillingInProgress() = 0;
+  virtual bool IsEnabled() = 0;
 
   static constexpr char kDefaultCgroupPath[] = "/sys/fs/cgroup";
   static constexpr int64_t kNull = -1;

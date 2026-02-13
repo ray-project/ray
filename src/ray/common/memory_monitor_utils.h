@@ -17,16 +17,11 @@
 #include <gtest/gtest_prod.h>
 
 #include <cstdint>
-#include <functional>
-#include <memory>
-#include <ostream>
 #include <string>
 #include <tuple>
 #include <vector>
 
-#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/memory_monitor_interface.h"
-#include "ray/util/process.h"
 
 namespace ray {
 

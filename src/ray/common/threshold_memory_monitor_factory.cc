@@ -18,7 +18,6 @@
 #include "ray/common/memory_monitor_interface.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/threshold_memory_monitor.h"
-#include "ray/util/logging.h"
 
 namespace ray {
 

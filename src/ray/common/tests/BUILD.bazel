@@ -117,7 +117,6 @@ ray_cc_test(
         "@platforms//os:linux",
     ],
     deps = [
-        "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:memory_monitor_test_fixture",
         "//src/ray/common:memory_monitor_utils",
@@ -143,12 +142,9 @@ ray_cc_test(
         "@platforms//os:linux",
     ],
     deps = [
-        "//src/ray/common:id",
         "//src/ray/common:memory_monitor_interface",
         "//src/ray/common:memory_monitor_test_fixture",
-        "//src/ray/common:memory_monitor_utils",
         "//src/ray/common:threshold_memory_monitor",
-        "@boost//:filesystem",
         "@boost//:thread",
         "@com_google_googletest//:gtest_main",
     ],

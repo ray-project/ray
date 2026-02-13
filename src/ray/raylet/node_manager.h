@@ -901,7 +901,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   Throttler global_gc_throttler_;
 
   /// Target being evicted or null if no target
-  std::shared_ptr<WorkerInterface> worker_being_killed;
+  std::shared_ptr<WorkerInterface> worker_being_killed_;
 
   ray::observability::MetricInterface &memory_manager_worker_eviction_total_count_;
 

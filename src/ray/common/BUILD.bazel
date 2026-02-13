@@ -102,10 +102,7 @@ ray_cc_library(
         "//src/ray/raylet:__subpackages__",
     ],
     deps = [
-        ":asio",
-        "//src/ray/util:process",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_googletest//:gtest_prod",
     ],
 )
 
@@ -122,11 +119,8 @@ ray_cc_library(
         "//src/ray/raylet:__subpackages__",
     ],
     deps = [
-        ":asio",
         ":memory_monitor_interface",
-        ":ray_config",
         "//src/ray/util:logging",
-        "//src/ray/util:process",
         "@boost//:algorithm",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -151,12 +145,9 @@ ray_cc_library(
         ":asio",
         ":memory_monitor_interface",
         ":memory_monitor_utils",
-        ":ray_config",
         "//src/ray/util:logging",
-        "//src/ray/util:process",
-        "@com_google_absl//absl/strings",
+        "//src/ray/util:thread_utils",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_prod",
     ],
 )
 
@@ -190,14 +181,14 @@ ray_cc_library(
     ],
     deps = [
         ":memory_monitor_interface",
-        ":noop_memory_monitor",
-        "//src/ray/util:logging",
     ] + select({
         ":is_linux": [
             ":ray_config",
             ":threshold_memory_monitor",
         ],
-        "//conditions:default": [],
+        "//conditions:default": [
+            ":noop_memory_monitor",
+        ],
     }),
 )
 

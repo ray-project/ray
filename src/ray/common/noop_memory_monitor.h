@@ -31,9 +31,9 @@ class NoopMemoryMonitor : public MemoryMonitorInterface {
   NoopMemoryMonitor &operator=(NoopMemoryMonitor &&) = delete;
   ~NoopMemoryMonitor() = default;
 
-  void SetWorkerKillingCompleted() override {}
-  void SetWorkerKillingInProgress() override {}
-  bool GetWorkerKillingInProgress() override { return false; }
+  void Enable() override {}
+  void Disable() override {}
+  bool IsEnabled() override { return true; }
 };
 
 }  // namespace ray

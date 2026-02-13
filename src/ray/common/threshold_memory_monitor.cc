@@ -42,6 +42,12 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
       << "Invalid configuration: usage_threshold must be >= 0";
   RAY_CHECK_LE(usage_threshold, 1)
       << "Invalid configuration: usage_threshold must be <= 1";
+  if (monitor_interval_ms <= 0) {
+    RAY_LOG(INFO) << "MemoryMonitor disabled. Specify "
+                  << "`RAY_memory_monitor_refresh_ms` > 0 to enable the monitor.";
+    return;
+  }
+
   int64_t total_memory_bytes =
       MemoryMonitorUtils::TakeSystemMemorySnapshot(root_cgroup_path_).total_bytes;
   computed_threshold_bytes_ = MemoryMonitorUtils::GetMemoryThreshold(
@@ -56,26 +62,21 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
       total_memory_bytes,
       monitor_interval_ms);
 
-  if (monitor_interval_ms > 0) {
-    runner_->RunFnPeriodically(
-        [this] {
-          SystemMemorySnapshot cur_memory_snapshot =
-              MemoryMonitorUtils::TakeSystemMemorySnapshot(root_cgroup_path_);
+  runner_->RunFnPeriodically(
+      [this] {
+        SystemMemorySnapshot cur_memory_snapshot =
+            MemoryMonitorUtils::TakeSystemMemorySnapshot(root_cgroup_path_);
 
-          bool is_usage_above_threshold =
-              IsUsageAboveThreshold(cur_memory_snapshot, computed_threshold_bytes_);
+        bool is_usage_above_threshold =
+            IsUsageAboveThreshold(cur_memory_snapshot, computed_threshold_bytes_);
 
-          if (is_usage_above_threshold && !GetWorkerKillingInProgress()) {
-            SetWorkerKillingInProgress();
-            kill_workers_callback_(cur_memory_snapshot);
-          }
-        },
-        monitor_interval_ms,
-        "MemoryMonitor.CheckIsMemoryUsageAboveThreshold");
-  } else {
-    RAY_LOG(INFO) << "MemoryMonitor disabled. Specify "
-                  << "`memory_monitor_refresh_ms` > 0 to enable the monitor.";
-  }
+        if (is_usage_above_threshold && IsEnabled()) {
+          Disable();
+          kill_workers_callback_(cur_memory_snapshot);
+        }
+      },
+      monitor_interval_ms,
+      "MemoryMonitor.CheckIsMemoryUsageAboveThreshold");
 }
 
 ThresholdMemoryMonitor::~ThresholdMemoryMonitor() {
@@ -86,17 +87,11 @@ ThresholdMemoryMonitor::~ThresholdMemoryMonitor() {
   }
 }
 
-void ThresholdMemoryMonitor::SetWorkerKillingCompleted() {
-  worker_killing_in_progress_.store(false);
-}
+void ThresholdMemoryMonitor::Enable() { worker_killing_in_progress_.store(false); }
 
-void ThresholdMemoryMonitor::SetWorkerKillingInProgress() {
-  worker_killing_in_progress_.store(true);
-}
+void ThresholdMemoryMonitor::Disable() { worker_killing_in_progress_.store(true); }
 
-bool ThresholdMemoryMonitor::GetWorkerKillingInProgress() {
-  return worker_killing_in_progress_.load();
-}
+bool ThresholdMemoryMonitor::IsEnabled() { return !worker_killing_in_progress_.load(); }
 
 bool ThresholdMemoryMonitor::IsUsageAboveThreshold(
     const SystemMemorySnapshot &system_memory, int64_t threshold_bytes) {
