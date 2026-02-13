@@ -118,6 +118,10 @@ def check_agent_register(raylet_proc, agent_pid):
         time.sleep(1)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 @pytest.mark.parametrize(
     "ray_start_regular",
     [{"_system_config": {"agent_register_timeout_ms": 5000}}],
@@ -151,17 +155,33 @@ def test_basic(ray_start_regular):
 
     check_agent_register(raylet_proc, agent_pid)
 
-    # Check kv keys are set.
-    logger.info("Check kv keys are set.")
+    # Check dashboard address kv key is set.
+    logger.info("Check dashboard kv keys are set.")
     dashboard_address = ray.experimental.internal_kv._internal_kv_get(
         ray_constants.DASHBOARD_ADDRESS, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
     )
     assert dashboard_address is not None
-    key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
-    agent_addr = ray.experimental.internal_kv._internal_kv_get(
-        key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
-    )
-    assert agent_addr is not None
+
+    # Check agent port info is available in GcsNodeInfo
+    logger.info("Check agent port info in GcsNodeInfo.")
+
+    def is_agent_port_available():
+        nodes = ray.nodes()
+        for node in nodes:
+            if node["NodeID"] == node_id:
+                port = node.get("MetricsAgentPort", 0)
+                logger.info(
+                    f"Node {node_id} MetricsAgentPort: {port}, "
+                    f"DashboardAgentListenPort: {node.get('DashboardAgentListenPort', 0)}, "
+                    f"RuntimeEnvAgentPort: {node.get('RuntimeEnvAgentPort', 0)}"
+                )
+                return port > 0
+        logger.info(
+            f"Node {node_id} not found in nodes: {[n['NodeID'] for n in nodes]}"
+        )
+        return False
+
+    wait_for_condition(is_agent_port_available, timeout=30)
 
 
 @pytest.mark.skipif(
@@ -386,14 +406,16 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
                 raise ex
             assert dump_info["result"] is True
 
-            # Get agent ip and http port
+            # Get agent ip and http port from GcsNodeInfo
             node_id_hex = ray_start_with_dashboard["node_id"]
-            agent_addr = ray.experimental.internal_kv._internal_kv_get(
-                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id_hex}",
-                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            )
-            assert agent_addr is not None
-            node_ip, http_port, _ = json.loads(agent_addr)
+            node_ip = None
+            http_port = None
+            for node in ray.nodes():
+                if node["NodeID"] == node_id_hex:
+                    node_ip = node["NodeManagerAddress"]
+                    http_port = node.get("DashboardAgentListenPort", 0)
+                    break
+            assert node_ip is not None and http_port > 0
 
             response = requests.get(
                 f"http://{build_address(node_ip, http_port)}"

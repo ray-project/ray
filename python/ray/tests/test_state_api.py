@@ -18,7 +18,6 @@ from click.testing import CliRunner
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.state as global_state
-import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import find_free_port, parse_address
 from ray._common.test_utils import (
     SignalActor,
@@ -1645,6 +1644,15 @@ Integration tests
 """
 
 
+def is_dashboard_agent_ready(node_id_hex: str) -> bool:
+    """Wait for the dashboard agent to be ready by checking MetricsAgentPort."""
+    nodes = ray.nodes()
+    for node in nodes:
+        if node["NodeID"] == node_id_hex:
+            return node.get("MetricsAgentPort", 0) > 0
+    return False
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "event_routing_config", ["default", "aggregator"], indirect=True
@@ -1724,16 +1732,10 @@ async def test_state_data_source_client(ray_start_cluster):
     Test runtime env
     """
     wait_for_condition(lambda: len(ray.nodes()) == 2)
+
     for node in ray.nodes():
         node_id = node["NodeID"]
-        key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
-
-        def get_addr():
-            return ray.experimental.internal_kv._internal_kv_get(
-                key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
-            )
-
-        wait_for_condition(lambda: get_addr() is not None)
+        wait_for_condition(lambda nid=node_id: is_dashboard_agent_ready(nid))
         result = await client.get_runtime_envs_info(
             node["NodeManagerAddress"], node["RuntimeEnvAgentPort"]
         )
@@ -1851,7 +1853,9 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     client = state_source_client(cluster.address)
 
     [node] = ray.nodes()
-    ip, port = node["NodeManagerAddress"], int(node["NodeManagerPort"])
+    ip = node["NodeManagerAddress"]
+    port = int(node["NodeManagerPort"])
+    runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
 
     @ray.remote
     def long_running_task(obj):  # noqa
@@ -1892,16 +1896,7 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     """
     for node in ray.nodes():
         node_id = node["NodeID"]
-        ip = node["NodeManagerAddress"]
-        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
-        key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
-
-        def get_addr():
-            return ray.experimental.internal_kv._internal_kv_get(
-                key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
-            )
-
-        wait_for_condition(lambda: get_addr() is not None)
+        wait_for_condition(lambda nid=node_id: is_dashboard_agent_ready(nid))
 
     @ray.remote
     class Actor:

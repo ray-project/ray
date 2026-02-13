@@ -342,8 +342,81 @@ class JobSupervisor:
             await _start_signal_actor.wait.remote()
 
         node = ray._private.worker.global_worker.node
-        driver_agent_http_address = f"http://{build_address(node.node_ip_address, node.dashboard_agent_listen_port)}"
         driver_node_id = ray.get_runtime_context().get_node_id()
+
+        # Wait for dashboard agent port to be available in GcsNodeInfo.
+        # The port may not be immediately available if the agent is still starting up.
+        # After PR #59800, port info is read from GcsNodeInfo which may have a delay.
+        #
+        # CRITICAL: We cannot rely on node.dashboard_agent_listen_port as it's cached
+        # from node initialization. We must read from GCS directly each time.
+        max_retries = 60  # 60 seconds timeout (CI can be slow)
+        retry_interval = 1  # 1 second between retries
+        dashboard_agent_port = 0
+
+        from ray import NodeID
+        from ray.core.generated import gcs_pb2
+        from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
+
+        # Get GCS client to read fresh data
+        gcs_client = ray._private.worker.global_worker.gcs_client
+        node_id_obj = NodeID.from_hex(driver_node_id)
+
+        # Create NodeSelector to filter by node_id
+        node_selector = GetAllNodeInfoRequest.NodeSelector()
+        node_selector.node_id = node_id_obj.binary()
+
+        for i in range(max_retries):
+            try:
+                # Read directly from GCS (not from cached node object)
+                # IMPORTANT: sync get_all_node_info uses node_selectors, not node_id
+                node_info_dict = gcs_client.get_all_node_info(
+                    timeout=5,
+                    node_selectors=[node_selector],
+                    state_filter=gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE,
+                )
+                if node_id_obj in node_info_dict:
+                    node_info = node_info_dict[node_id_obj]
+                    dashboard_agent_port = node_info.dashboard_agent_listen_port
+
+                    if dashboard_agent_port > 0:
+                        self._logger.info(
+                            f"Dashboard agent port ready: {dashboard_agent_port} "
+                            f"(attempt {i+1})"
+                        )
+                        break
+            except Exception as e:
+                self._logger.debug(
+                    f"Failed to read from GCS (attempt {i+1}/{max_retries}): {e}"
+                )
+
+            if i % 10 == 0:  # Log every 10 seconds
+                self._logger.info(
+                    f"Waiting for dashboard agent port (attempt {i+1}/{max_retries})..."
+                )
+            await asyncio.sleep(retry_interval)
+
+        if dashboard_agent_port <= 0:
+            error_msg = (
+                f"Dashboard agent port is still not available after {max_retries} seconds. "
+                f"The dashboard agent may have failed to start. "
+                f"Check dashboard_agent.log for details. "
+                f"Current port value: {dashboard_agent_port}"
+            )
+            self._logger.error(error_msg)
+            # Don't raise exception, allow job to continue with invalid address
+            # This maintains backward compatibility if dashboard is not critical
+            # Use the port from node object as last resort fallback (may be 0)
+            dashboard_agent_port = node.dashboard_agent_listen_port
+            if dashboard_agent_port <= 0:
+                self._logger.warning(
+                    "Using port 0 for driver_agent_http_address. "
+                    "Job logs and some dashboard features may not work correctly."
+                )
+
+        driver_agent_http_address = (
+            f"http://{build_address(node.node_ip_address, dashboard_agent_port)}"
+        )
 
         await self._job_info_client.put_status(
             self._job_id,
