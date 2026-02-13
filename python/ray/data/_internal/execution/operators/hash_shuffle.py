@@ -1164,8 +1164,8 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                     f"infer_metadata(). Falling back to default cap of "
                     f"{estimated_aggregator_memory_required / GiB:.1f}GiB "
                     f"per aggregator. This may lead to OOMs if the actual "
-                    f"dataset is larger than "
-                    f"{estimated_aggregator_memory_required * num_partitions / GiB:.1f}GiB."
+                    f"dataset is large. Consider increasing num_partitions "
+                    f"to reduce per-partition memory pressure."
                 )
 
         remote_args = {
