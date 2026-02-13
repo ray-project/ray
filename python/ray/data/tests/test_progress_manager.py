@@ -198,6 +198,9 @@ class TestGetProgressManager:
 
         manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
+        if isinstance(manager, AsyncProgressManagerWrapper):
+            manager = manager._wrapped
+
         assert isinstance(manager, expected_type)
 
 
