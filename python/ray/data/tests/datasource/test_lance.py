@@ -244,6 +244,73 @@ def test_lance_read_with_version(data_path):
     ]
 
 
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_write_with_namespace(data_path):
+    """Test writing to Lance using DirectoryNamespace.
+
+    This test verifies that:
+    1. Tables can be created using namespace with table_id
+    2. URI and storage_options are retrieved from namespace
+    3. Create, append, and overwrite modes work with namespace
+    """
+    pytest.importorskip("lance_namespace")
+
+    from ray.data._internal.datasource.lance_datasink import LanceDatasink
+
+    schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
+    table_id = ["test_table"]
+
+    # Test create mode with DirectoryNamespace
+    datasink = LanceDatasink(
+        table_id=table_id,
+        schema=schema,
+        mode="create",
+        namespace_impl="dir",
+        namespace_properties={"root": data_path},
+    )
+
+    # Write initial data
+    ray.data.range(10).map(
+        lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
+    ).write_datasink(datasink)
+
+    # Verify data was written
+    ds = lance.dataset(datasink.uri)
+    assert ds.count_rows() == 10
+    assert ds.schema == schema
+
+    # Test append mode with namespace
+    datasink_append = LanceDatasink(
+        table_id=table_id,
+        mode="append",
+        namespace_impl="dir",
+        namespace_properties={"root": data_path},
+    )
+
+    ray.data.range(15).filter(lambda x: x["id"] >= 10).map(
+        lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
+    ).write_datasink(datasink_append)
+
+    ds = lance.dataset(datasink.uri)
+    assert ds.count_rows() == 15
+
+    # Test overwrite mode with namespace
+    datasink_overwrite = LanceDatasink(
+        table_id=table_id,
+        schema=schema,
+        mode="overwrite",
+        namespace_impl="dir",
+        namespace_properties={"root": data_path},
+    )
+
+    ray.data.range(5).map(
+        lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
+    ).write_datasink(datasink_overwrite)
+
+    ds = lance.dataset(datasink.uri)
+    assert ds.count_rows() == 5
+
+
 if __name__ == "__main__":
     import sys
 
