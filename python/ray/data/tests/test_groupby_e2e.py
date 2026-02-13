@@ -10,16 +10,17 @@ import pytest
 from packaging.version import parse as parse_version
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     combine_chunks,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_nan
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.aggregate import (
     AbsMax,
     AggregateFn,
+    AsList,
     Count,
     CountDistinct,
     Max,
@@ -32,6 +33,7 @@ from ray.data.aggregate import (
 )
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
 from ray.tests.conftest import *  # noqa
@@ -466,6 +468,80 @@ def test_groupby_tabular_sum(
         expected,
         result,
     )
+
+
+@pytest.mark.parametrize("num_parts", [1, 10])
+@pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
+def test_as_list_e2e(
+    ray_start_regular_shared_2_cpus,
+    batch_format,
+    num_parts,
+    disable_fallback_to_object_extension,
+):
+    ds = ray.data.range(10)
+    ds = ds.with_column("group_key", col("id") % 3).repartition(num_parts)
+
+    # Listing all elements per group:
+    result = ds.groupby("group_key").aggregate(AsList(on="id")).take_all()
+
+    for i in range(len(result)):
+        result[i]["list(id)"] = sorted(result[i]["list(id)"])
+
+    assert sorted(result, key=lambda x: x["group_key"]) == [
+        {"group_key": 0, "list(id)": [0, 3, 6, 9]},
+        {"group_key": 1, "list(id)": [1, 4, 7]},
+        {"group_key": 2, "list(id)": [2, 5, 8]},
+    ]
+
+
+@pytest.mark.parametrize("num_parts", [1, 10])
+@pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
+def test_as_list_with_nulls(
+    ray_start_regular_shared_2_cpus,
+    batch_format,
+    num_parts,
+    disable_fallback_to_object_extension,
+):
+    # Test with nulls included (default behavior: ignore_nulls=False)
+    ds = ray.data.from_items(
+        [
+            {"group": "A", "value": 1},
+            {"group": "A", "value": None},
+            {"group": "A", "value": 3},
+            {"group": "B", "value": None},
+            {"group": "B", "value": 5},
+        ]
+    ).repartition(num_parts)
+
+    # Default: nulls are included in the list
+    result = ds.groupby("group").aggregate(AsList(on="value")).take_all()
+    result_sorted = sorted(result, key=lambda x: x["group"])
+
+    # Sort the lists for comparison (None values will be at the end in sorted order)
+    for r in result_sorted:
+        # Separate None and non-None values for sorting
+        non_nulls = sorted([v for v in r["list(value)"] if v is not None])
+        nulls = [v for v in r["list(value)"] if v is None]
+        r["list(value)"] = non_nulls + nulls
+
+    assert result_sorted == [
+        {"group": "A", "list(value)": [1, 3, None]},
+        {"group": "B", "list(value)": [5, None]},
+    ]
+
+    # With ignore_nulls=True: nulls are excluded from the list
+    result = (
+        ds.groupby("group").aggregate(AsList(on="value", ignore_nulls=True)).take_all()
+    )
+    result_sorted = sorted(result, key=lambda x: x["group"])
+
+    for r in result_sorted:
+        r["list(value)"] = sorted(r["list(value)"])
+
+    assert result_sorted == [
+        {"group": "A", "list(value)": [1, 3]},
+        {"group": "B", "list(value)": [5]},
+    ]
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -1197,7 +1273,7 @@ def test_groupby_map_groups_multicolumn_with_nan(
     )
 
 
-def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension):
+def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension, capsys):
     """
     The partial function name should show up as
     +- Sort
@@ -1221,7 +1297,9 @@ def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension):
         {"x_add_5": 25},
         {"x_add_5": 25},
     ]
-    assert "MapBatches(func)" in ds.__repr__()
+    ds.explain()
+    captured = capsys.readouterr()
+    assert "MapBatches(func)" in captured.out
 
 
 def test_map_groups_generator_udf(ray_start_regular_shared_2_cpus):

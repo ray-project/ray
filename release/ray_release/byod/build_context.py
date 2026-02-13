@@ -6,6 +6,22 @@ from typing import Dict, List, Optional
 
 from typing_extensions import TypedDict
 
+_INSTALL_PYTHON_DEPS_SCRIPT = """\
+#!/bin/bash
+
+set -euo pipefail
+
+LOCK_FILE="${1:-python_depset.lock}"
+
+if [[ ! -f "${LOCK_FILE}" ]]; then
+    echo "Lock file ${LOCK_FILE} does not exist" >/dev/stderr
+    exit 1
+fi
+
+uv pip install --system --no-deps --index-strategy unsafe-best-match \\
+    -r "${LOCK_FILE}"
+"""
+
 
 class BuildContext(TypedDict, total=False):
     """
@@ -17,6 +33,7 @@ class BuildContext(TypedDict, total=False):
         post_build_script_digest: SHA256 digest of the post-build script.
         python_depset: Filename of the Python dependencies lock file.
         python_depset_digest: SHA256 digest of the Python dependencies lock file.
+        install_python_deps_script_digest: SHA256 digest of the install script.
     """
 
     envs: Dict[str, str]
@@ -26,6 +43,7 @@ class BuildContext(TypedDict, total=False):
 
     python_depset: str
     python_depset_digest: str
+    install_python_deps_script_digest: str
 
 
 def make_build_context(
@@ -60,6 +78,9 @@ def make_build_context(
         ctx["python_depset"] = python_depset
         path = os.path.join(base_dir, python_depset)
         ctx["python_depset_digest"] = _sha256_file(path)
+        ctx["install_python_deps_script_digest"] = _sha256_str(
+            _INSTALL_PYTHON_DEPS_SCRIPT
+        )
 
     return ctx
 
@@ -108,10 +129,8 @@ def fill_build_context_dir(
             os.path.join(source_dir, ctx["python_depset"]),
             os.path.join(context_dir, "python_depset.lock"),
         )
-        shutil.copy(
-            os.path.join(source_dir, "install_python_deps.sh"),
-            os.path.join(context_dir, "install_python_deps.sh"),
-        )
+        with open(os.path.join(context_dir, "install_python_deps.sh"), "w") as f:
+            f.write(_INSTALL_PYTHON_DEPS_SCRIPT)
         dockerfile.append("COPY install_python_deps.sh /tmp/install_python_deps.sh")
         dockerfile.append("COPY python_depset.lock python_depset.lock")
         dockerfile.append("RUN bash /tmp/install_python_deps.sh python_depset.lock")
@@ -132,4 +151,9 @@ def fill_build_context_dir(
 def _sha256_file(path: str) -> str:
     with open(path, "rb") as f:
         digest = hashlib.sha256(f.read()).hexdigest()
+    return f"sha256:{digest}"
+
+
+def _sha256_str(content: str) -> str:
+    digest = hashlib.sha256(content.encode()).hexdigest()
     return f"sha256:{digest}"

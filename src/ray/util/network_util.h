@@ -64,16 +64,6 @@ std::string GetNodeIpAddressFromPerspective(
 /// \return true if the host is resolved to IPv6, false if IPv4.
 bool IsIPv6(const std::string &host);
 
-/// Get localhost loopback IP with IPv4/IPv6 support.
-/// Tries to resolve "localhost" to IPv4 first, then IPv6.
-/// \return The localhost loopback IP (e.g., "127.0.0.1" or "::1").
-std::string GetLocalhostIP();
-
-/// Get the IP address to bind to all network interfaces.
-/// Tries to resolve "localhost" to IPv4 first, then IPv6.
-/// \return "0.0.0.0" for IPv4 or "::" for IPv6
-std::string GetAllInterfacesIP();
-
 /// Check whether the given port is available for the specified address family.
 /// Notice, the check could be non-authentic if there're concurrent port assignments.
 /// \param family The address family to check (AF_INET for IPv4, AF_INET6 for IPv6).

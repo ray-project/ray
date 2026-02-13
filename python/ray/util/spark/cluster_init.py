@@ -551,7 +551,7 @@ def _setup_ray_cluster(
         port_exclude_list.append(ray_dashboard_agent_port)
 
         dashboard_options = [
-            f"--dashboard-host={ray_head_ip}",
+            "--dashboard-host=0.0.0.0",
             f"--dashboard-port={ray_dashboard_port}",
             f"--dashboard-agent-listen-port={ray_dashboard_agent_port}",
         ]

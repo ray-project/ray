@@ -105,7 +105,7 @@ Saving tensor data
 ------------------
 
 Save tensor data with formats like Parquet, NumPy, and JSON. To view all supported
-formats, see the :ref:`Input/Output reference <input-output>`.
+formats, see the :ref:`Saving Data API <saving-data-api>`.
 
 .. tab-set::
 
