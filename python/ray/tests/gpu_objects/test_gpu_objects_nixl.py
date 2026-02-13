@@ -5,6 +5,7 @@ import torch
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.experimental.gpu_object_manager.util import get_tensor_transport_manager
 
 
 @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
@@ -45,9 +46,6 @@ class GPUTestActor:
         return sum
 
     def gc(self):
-        from ray.experimental.gpu_object_manager.util import (
-            get_tensor_transport_manager,
-        )
 
         tensor = torch.tensor([1, 2, 3]).to("cuda")
         ref = ray.put(tensor, _tensor_transport="nixl")
@@ -88,9 +86,6 @@ class GPUTestActor:
         return gpu_object_manager.gpu_object_store.get_num_objects()
 
     def get_num_managed_meta_nixl(self):
-        from ray.experimental.gpu_object_manager.util import (
-            get_tensor_transport_manager,
-        )
 
         return get_tensor_transport_manager("NIXL")._get_num_managed_meta_nixl()
 
@@ -313,6 +308,73 @@ def test_shared_tensor_deduplication(ray_start_regular):
     """
     actor = GPUTestActor.remote()
     ray.get(actor.put_shared_tensor_lists.remote())
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_agent_reuse(ray_start_regular):
+    """
+    We reuse nixl remote agent by default. The receiver should successfully receive
+    all tensors while the sender may trigger GC in between.
+    """
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    src_actor, dst_actor = actors[0], actors[1]
+
+    ref1 = src_actor.echo.remote(torch.tensor([1, 2, 3]).to("cuda"), "cuda")
+    assert ray.get(dst_actor.sum.remote(ref1, "cuda")) == 6
+
+    # Trigger another transfer. The receiver successfully gets
+    # the latest tensor (nixl agent is reused internally).
+    ref2 = src_actor.echo.remote(torch.tensor([4, 5, 6]).to("cuda"), "cuda")
+    assert ray.get(dst_actor.sum.remote(ref2, "cuda")) == 15
+
+    del ref1, ref2
+
+    # Wait for GC to free the tensors on the sender.
+    wait_for_condition(
+        lambda: ray.get(src_actor.get_num_managed_meta_nixl.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+    # Transfer after GC. The receiver successfully gets
+    # the latest tensor (nixl agent is reset internally).
+    ref3 = src_actor.echo.remote(torch.tensor([7, 8, 9]).to("cuda"), "cuda")
+    assert ray.get(dst_actor.sum.remote(ref3, "cuda")) == 24
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_agent_reuse_with_partial_tensors(ray_start_regular):
+    """
+    We reuse nixl remote agent by default. The receiver should successfully choose
+    and receive part of the tensors.
+    """
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    src_actor, dst_actor = actors[0], actors[1]
+
+    ref1 = src_actor.echo.remote(torch.tensor([1, 2, 3, 4, 5, 6]).to("cuda"), "cuda")
+    assert ray.get(dst_actor.sum.remote(ref1, "cuda")) == 21
+
+    del ref1
+
+    # Wait for GC to free the tensors on the sender.
+    wait_for_condition(
+        lambda: ray.get(src_actor.get_num_managed_meta_nixl.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+    # Create the second tensor at the sender. The memory address of
+    # this tensor may overlap with the first tensor (de-registered).
+    ref2 = src_actor.echo.remote(torch.tensor([1, 2, 3]).to("cuda"), "cuda")
+
+    # Create the third tensor at the sender. The memory address of
+    # this tensor may overlap with the first tensor (de-registered).
+    ref3 = src_actor.echo.remote(torch.tensor([4, 5, 6]).to("cuda"), "cuda")
+    # Trigger the transfer. The receiver successfully gets
+    # the third tensor (nixl agent is reset internally).
+    assert ray.get(dst_actor.sum.remote(ref3, "cuda")) == 15
+
+    del ref2, ref3
 
 
 if __name__ == "__main__":
