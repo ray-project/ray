@@ -633,6 +633,7 @@ class DataContext:
         DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
     )
     enable_rich_progress_bars: bool = DEFAULT_ENABLE_RICH_PROGRESS_BARS
+    enable_async_progress_updates: bool = True
     enable_get_object_locations_for_metrics: bool = (
         DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
     )
