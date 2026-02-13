@@ -190,8 +190,6 @@ python/ray/_private/services.py
     DOC101: Function `start_raylet`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `start_raylet`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Function `start_raylet`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [cluster_id: str, socket_to_use: Optional[int]].
-    DOC101: Function `determine_plasma_store_config`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `determine_plasma_store_config`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [temp_dir: str].
     DOC101: Function `start_monitor`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `start_monitor`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [autoscaler_v2: bool, fate_share: Optional[bool]].
     DOC101: Function `start_ray_client_server`: Docstring contains fewer arguments than in function signature.

@@ -272,7 +272,6 @@ def main(
         )
     if not test_targets:
         print("--- No tests to run", file=sys.stderr)
-        sys.exit(0)
 
     print(f"+++ Running {len(test_targets)} tests", file=sys.stderr)
     success = container.run_tests(
