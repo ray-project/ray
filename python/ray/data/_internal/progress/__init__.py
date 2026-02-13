@@ -45,7 +45,7 @@ def get_progress_manager(
                 "enable_operator_progress_bars = True`."
             )
 
-    async_enabled = ctx.enable_async_progress_updates
+    async_enabled = ctx.enable_async_progress_manager_wrapper
     rich_enabled = ctx.enable_rich_progress_bars
     use_ray_tqdm = ctx.use_ray_tqdm
     worker = ray._private.worker
