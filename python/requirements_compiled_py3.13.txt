@@ -465,7 +465,7 @@ directsearch==1.0
     # via nevergrad
 distlib==0.3.7
     # via virtualenv
-distributed==2024.8.1 ; python_version < "3.12"
+distributed==2026.1.0 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   dask
