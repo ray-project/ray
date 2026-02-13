@@ -344,6 +344,8 @@ class RefBundle:
     def __eq__(self, other: "RefBundle"):
         if self is other:
             return True
+        elif not isinstance(other, RefBundle):
+            return False
 
         return (
             self.blocks == other.blocks
