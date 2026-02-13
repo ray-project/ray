@@ -1,4 +1,6 @@
 """Test util.collective APIs for gloo."""
+import sys
+
 import numpy as np
 import pytest
 import torch
@@ -826,3 +828,7 @@ def test_sendrecv_invalid_rank(ray_start_single_node, backend, dst_rank=3):
     actors = create_collective_workers(world_size, backend=backend)
     with pytest.raises(ValueError):
         ray.get([a.do_send.remote(dst_rank=dst_rank) for a in actors])
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -2,9 +2,7 @@
 import os
 import sys
 
-import cupy as cp
 import pytest
-import torch
 
 import ray
 import ray.util.collective as col
@@ -14,6 +12,17 @@ if sys.platform != "linux":
     pytest.skip("Skipping, requires Linux.", allow_module_level=True)
 
 USE_GPU = os.environ.get("RAY_PYTEST_USE_GPU") == "1"
+
+# Import GPU libraries after skip logic to avoid ImportError during test collection
+try:
+    import cupy as cp
+    import torch
+except ImportError:
+    if USE_GPU:
+        raise
+    # If GPU tests are skipped, these imports are not needed
+    cp = None
+    torch = None
 
 pytestmark = pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
 
@@ -796,3 +805,7 @@ def test_create_collective_group_driver_only(ray_start_single_node_2_gpus):
     results = ray.get([a.do_allreduce.remote(group_name=group_name) for a in actors])
     for r in results:
         assert (r == cp.ones((10,), dtype=cp.float32) * world_size).all()
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))
