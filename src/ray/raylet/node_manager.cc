@@ -3041,14 +3041,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           if (worker_being_killed_ != nullptr) {
             // If the worker previously being killed has not died yet, wait until it is
             // killed, before selecting a new worker to kill to prevent double killing.
-            if (!worker_being_killed_->GetProcess().IsAlive()) {
-              RAY_LOG(INFO)
-                      .WithField(worker_being_killed_->WorkerId())
-                      .WithField(worker_being_killed_->GetGrantedLeaseId())
-                  << "Worker evicted and process killed to reclaim memory. "
-                  << "worker pid: " << worker_being_killed_->GetProcess().GetId();
-              worker_being_killed_ = nullptr;
-            } else {
+            if (worker_being_killed_->GetProcess().IsAlive()) {
               RAY_LOG_EVERY_MS(INFO, 1000)
                       .WithField(worker_being_killed_->GetGrantedLeaseId())
                       .WithField(worker_being_killed_->WorkerId())
@@ -3057,6 +3050,13 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
                   << "worker pid: " << worker_being_killed_->GetProcess().GetId();
               memory_monitor_->Enable();
               return;
+            } else {
+              RAY_LOG(INFO)
+                      .WithField(worker_being_killed_->WorkerId())
+                      .WithField(worker_being_killed_->GetGrantedLeaseId())
+                  << "Worker evicted and process killed to reclaim memory. "
+                  << "worker pid: " << worker_being_killed_->GetProcess().GetId();
+              worker_being_killed_ = nullptr;
             }
           }
 
