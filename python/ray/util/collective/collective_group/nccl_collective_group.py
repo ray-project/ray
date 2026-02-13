@@ -895,8 +895,8 @@ class NCCLGroup(BaseGroup):
         different devices, the API will raise an error.
 
         NCCLGroup ensures the synchronization safety between current stream and the dedicated
-        communication stream. If the tensors to be communication are also being modified on a
-        stream other than current stream, undefined behaviors may happen.
+        communication stream. If the tensors being involved in a collective are also being
+        modified on a stream other than current stream, undefined behaviors may happen.
         """
         super(NCCLGroup, self).__init__(world_size, rank, group_name)
 

@@ -1599,3 +1599,18 @@ def ray_start_cluster_with_zero_copy_tensors(monkeypatch):
 
         # Shutdown Ray after tests complete
         ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_single_node_2_gpus():
+    # Please start this fixture in a cluster with 2 GPUs.
+    address_info = ray.init(num_gpus=2)
+    yield address_info
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_single_node():
+    address_info = ray.init(num_cpus=8)
+    yield address_info
+    ray.shutdown()

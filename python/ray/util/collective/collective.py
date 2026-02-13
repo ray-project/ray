@@ -255,6 +255,9 @@ def init_collective_group(
         _group_mgr.create_collective_group(
             backend, world_size, rank, group_name, gloo_timeout
         )
+        # TODO(tianyi): remove it when multigpu is deprecated.
+        if backend == types.Backend.NCCL:
+            _group_mgr.create_multigpu_nccl_group(world_size, rank, group_name)
 
 
 def create_collective_group(
@@ -975,7 +978,6 @@ def _check_rank_valid(g, rank: int):
         )
 
 
-# TODO(tianyi): remove it when multigpu is deprecated
 def _check_tensor_list_input(tensor_list):
     """Check if the input is a list of supported tensor types."""
     if not isinstance(tensor_list, list):
