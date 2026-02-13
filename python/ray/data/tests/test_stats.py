@@ -1566,7 +1566,7 @@ def test_runtime_metrics(ray_start_regular_shared):
     TOLERANCE = 0.02
 
     for name, (time_s, percent) in metrics_dict.items():
-        if name in {"Scheduling", "Total"}:
+        if name == "Scheduling":
             continue
         if time_s > total_time + TOLERANCE:
             print("runtime_metrics raw:\n", metrics_str)
