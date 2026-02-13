@@ -57,6 +57,9 @@
 				},
 				"alert": {
 					"type": "string"
+				},
+				"using_sdk_2026": {
+					"type": "boolean"
 				}
 			},
 			"required": [
