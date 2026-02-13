@@ -62,10 +62,6 @@ class Preprocessor(abc.ABC):
     def stat_computation_plan(self):
         return self._stat_computation_plan
 
-    @stat_computation_plan.setter
-    def stat_computation_plan(self, value):
-        self._stat_computation_plan = value
-
     class FitStatus(str, Enum):
         """The fit status of preprocessor."""
 

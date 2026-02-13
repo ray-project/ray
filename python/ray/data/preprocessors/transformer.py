@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -116,3 +116,23 @@ class PowerTransformer(Preprocessor):
             f"power={self._power!r}, method={self._method!r}, "
             f"output_columns={self._output_columns!r})"
         )
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_power" not in self.__dict__ and "power" in self.__dict__:
+            self._power = self.__dict__.pop("power")
+        if "_method" not in self.__dict__ and "method" in self.__dict__:
+            self._method = self.__dict__.pop("method")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+
+        if "_columns" not in self.__dict__:
+            self._columns = []
+        if "_power" not in self.__dict__:
+            self._power = 1.0
+        if "_method" not in self.__dict__:
+            self._method = "yeo-johnson"
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
