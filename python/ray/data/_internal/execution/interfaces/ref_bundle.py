@@ -343,8 +343,6 @@ class RefBundle:
         )
 
     def __hash__(self) -> int:
-        print(f">>> [DBG] RefBundle.__hash__:\n{self.blocks}\n{self.slices}\n{self.schema}")
-
         return hash(
             tuple([
                 *self.blocks,
