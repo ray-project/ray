@@ -279,7 +279,7 @@ class BlockMetadataWithSchema(BlockMetadata):
             exec_stats=metadata.exec_stats,
             task_exec_stats=metadata.task_exec_stats,
         )
-        self.schema = schema
+        object.__setattr__(self, "schema", schema)
 
     def from_block(
         block: Block,
@@ -451,7 +451,7 @@ class BlockAccessor:
         return BlockMetadata(
             num_rows=self.num_rows(),
             size_bytes=self.size_bytes(),
-            input_files=input_files,
+            input_files=tuple(input_files) if input_files is not None else None,
             exec_stats=block_exec_stats,
             task_exec_stats=task_exec_stats,
         )
