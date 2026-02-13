@@ -991,7 +991,7 @@ class _ActorPool(AutoscalingActorPool):
         return self._initial_size
 
     @property
-    def map_worker_cls_name(self) -> str:
+    def map_worker_cls_name(self) -> Optional[str]:
         return self._map_worker_cls_name
 
     def get_actor_id(self, actor: ActorHandle) -> str:
