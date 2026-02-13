@@ -130,6 +130,11 @@ def _apply_default_params(
         ctx.capacity_adjusted_min_replicas,
         ctx.capacity_adjusted_max_replicas,
     )
+
+    # If curr num replicas is 0 and the policy wants to scale up (e.g. based on internal signals like queue length), bypass the delay logic for immediate scale-up.
+    if ctx.current_num_replicas == 0 and bounded_num_replicas > 0:
+        return bounded_num_replicas, policy_state
+
     # Apply delay logic
     # Only send the internal state here to avoid overwriting the custom policy state.
     final_num_replicas, updated_state = _apply_delay_logic(
