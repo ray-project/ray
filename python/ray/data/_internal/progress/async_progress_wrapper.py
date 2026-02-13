@@ -53,7 +53,7 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
         )
         self._monitor_thread.start()
 
-        logger.debug("AsyncExecutionProgressManagerWrapper initialized")
+        logger.debug("AsyncProgressManagerWrapper initialized")
 
     def start(self) -> None:
         """Non-blocking start operation."""
@@ -70,8 +70,7 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
     def close_with_finishing_description(self, desc: str, success: bool) -> None:
         """Close with finishing description (synchronous with timeout)."""
         logger.debug(
-            f"Closing AsyncExecutionProgressManagerWrapper "
-            f"(desc={desc}, success={success})"
+            f"Closing AsyncProgressManagerWrapper " f"(desc={desc}, success={success})"
         )
 
         with self._lock:
@@ -97,7 +96,7 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
         self._executor.shutdown(wait=False)
         self._pending_futures.clear()
 
-        logger.debug("AsyncExecutionProgressManagerWrapper closed")
+        logger.debug("AsyncProgressManagerWrapper closed")
 
     def update_total_progress(self, new_rows: int, total_rows: Optional[int]) -> None:
         """Non-blocking update of total progress."""
@@ -228,6 +227,6 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
 
     def __repr__(self):
         return (
-            f"AsyncExecutionProgressManagerWrapper("
+            f"AsyncProgressManagerWrapper("
             f"wrapped={self._wrapped.__class__.__name__})"
         )

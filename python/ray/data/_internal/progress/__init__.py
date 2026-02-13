@@ -103,14 +103,14 @@ def get_progress_manager(
     # Wrap with async wrapper to prevent terminal I/O from blocking executor (default : True)
     if async_enabled:
         from ray.data._internal.progress.async_progress_wrapper import (
-            AsyncExecutionProgressManagerWrapper,
+            AsyncProgressManagerWrapper,
         )
 
         logger.debug(
             f"Wrapping {progress_manager.__class__.__name__} with "
-            f"AsyncExecutionProgressManagerWrapper"
+            f"AsyncProgressManagerWrapper"
         )
-        progress_manager = AsyncExecutionProgressManagerWrapper(
+        progress_manager = AsyncProgressManagerWrapper(
             progress_manager,
             max_workers=1,
             stall_warning_threshold=ctx.async_progress_stall_warning_threshold,
