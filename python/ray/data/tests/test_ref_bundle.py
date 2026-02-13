@@ -146,9 +146,7 @@ def test_slice_ref_bundle_basic():
         BlockSlice(start_offset=0, end_offset=6),
         BlockSlice(start_offset=0, end_offset=2),
     )
-    assert remaining.slices == (
-        BlockSlice(start_offset=2, end_offset=4),
-    )
+    assert remaining.slices == (BlockSlice(start_offset=2, end_offset=4),)
 
 
 def test_slice_ref_bundle_should_raise_error_if_needed_rows_is_not_less_than_num_rows():
@@ -196,9 +194,7 @@ def test_slice_ref_bundle_with_existing_slices():
     consumed, remaining = bundle.slice(7)
 
     assert consumed.num_rows() == 7
-    assert consumed.slices == (
-        BlockSlice(start_offset=2, end_offset=9),
-    )
+    assert consumed.slices == (BlockSlice(start_offset=2, end_offset=9),)
     assert consumed.size_bytes() == 70
     assert remaining.num_rows() == 4
     assert remaining.slices == (
@@ -333,9 +329,7 @@ def test_slice_ref_bundle_with_none_slices():
         BlockSlice(start_offset=0, end_offset=6),
         BlockSlice(start_offset=0, end_offset=2),
     )
-    assert remaining.slices == (
-        BlockSlice(start_offset=2, end_offset=4),
-    )
+    assert remaining.slices == (BlockSlice(start_offset=2, end_offset=4),)
 
 
 def test_ref_bundle_str():
@@ -460,7 +454,7 @@ def test_ref_bundle_eq_and_hash():
     # Non-RefBundle comparison returns False (not TypeError)
     assert bundle != "not a bundle"
     assert bundle != 42
-    assert bundle != None
+    assert bundle != None  # noqa: E711
 
     # Differing any field should break equality and hash
     diff_bundle_1 = replace(bundle, owns_blocks=False)
