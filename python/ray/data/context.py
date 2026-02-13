@@ -812,7 +812,7 @@ class DataContext:
         remote workers used for parallelization.
         """
         global _default_context
-        if (
+        if context and (
             not _default_context
             or _default_context.dataset_logger_id != context.dataset_logger_id
         ):
