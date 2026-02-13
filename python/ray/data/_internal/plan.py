@@ -57,11 +57,11 @@ class ExecutionPlan:
             data_context: :class:`~ray.data.context.DataContext`
                 object to use for execution.
         """
-        from ray.data.dataset import ExecutionCache
+        from ray.data.dataset import _ExecutionCache
 
         self._in_stats = stats
         # Cache for holding data from previous execution or iteration.
-        self._cache = ExecutionCache()
+        self._cache = _ExecutionCache()
 
         # Set when a Dataset is constructed with this plan
         self._dataset_uuid = None

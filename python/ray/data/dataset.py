@@ -7181,7 +7181,7 @@ def _block_to_arrow(block: Block):
     return block.to_arrow()
 
 
-class ExecutionCache:
+class _ExecutionCache:
     """Consolidated cache for Dataset execution results.
 
     Caches the output bundle, execution stats, and lightweight metadata
@@ -7213,7 +7213,7 @@ class ExecutionCache:
     # --- Consolidated Getters ---
 
     def cache_is_fresh(self, dag: "LogicalOperator") -> bool:
-        # This ExecutionCache is only fresh if the current logical
+        # This _ExecutionCache is only fresh if the current logical
         # plan dag ends with the same operator. Otherwise, the plan
         # has changed, so there may have been a change in schema,
         # count, etc.
@@ -7306,8 +7306,8 @@ class ExecutionCache:
         self._size_bytes = None
         self._metadata_cached = False
 
-    def copy(self) -> "ExecutionCache":
-        new = ExecutionCache()
+    def copy(self) -> "_ExecutionCache":
+        new = _ExecutionCache()
         new._operator = self._operator
         new._bundle = self._bundle
         new._stats = self._stats
@@ -7317,8 +7317,8 @@ class ExecutionCache:
         new._metadata_cached = self._metadata_cached
         return new
 
-    def deep_copy(self) -> "ExecutionCache":
-        new = ExecutionCache()
+    def deep_copy(self) -> "_ExecutionCache":
+        new = _ExecutionCache()
         new._operator = copy.copy(self._operator)
         new._bundle = copy.copy(self._bundle)
         new._stats = copy.copy(self._stats)
