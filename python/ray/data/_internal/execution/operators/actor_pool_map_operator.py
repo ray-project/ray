@@ -943,7 +943,7 @@ class _ActorPool(AutoscalingActorPool):
         # Map from actor handle to its logical ID.
         self._actor_to_logical_id: Dict[ray.actor.ActorHandle, str] = {}
         self._enable_actor_pool_on_exit_hook = _enable_actor_pool_on_exit_hook
-        self._map_worker_cls_name = _map_worker_cls_name or ""
+        self._map_worker_cls_name = _map_worker_cls_name
         # Cached values for actor / task counts
         self._num_restarting_actors: int = 0
         self._num_active_actors: int = 0
@@ -1035,11 +1035,12 @@ class _ActorPool(AutoscalingActorPool):
         if not self._can_apply(req):
             return 0
 
+        map_worker_cls_name = (self.map_worker_cls_name + " ") or ""
+
         if req.delta > 0:
             target_num_actors = req.delta
-
             logger.debug(
-                f"Scaling up{' ' + self.map_worker_cls_name} actor pool by {target_num_actors} (reason={req.reason}, "
+                f"Scaling up {map_worker_cls_name}actor pool by {target_num_actors} (reason={req.reason}, "
                 f"{self.get_actor_info()})"
             )
 
@@ -1062,7 +1063,7 @@ class _ActorPool(AutoscalingActorPool):
 
             if num_released > 0:
                 logger.debug(
-                    f"Scaled down{' ' + self.map_worker_cls_name} actor pool by {num_released} "
+                    f"Scaled down {map_worker_cls_name}actor pool by {num_released} "
                     f"(reason={req.reason}; {self.get_actor_info()})"
                 )
 
