@@ -461,10 +461,18 @@ class TrainController:
             except Exception as e:
                 shutdown_error = ControllerError(e)
 
-        if not shutdown_error:
-            try:
-                self._controller_callback_manager.invoke("before_controller_shutdown")
-            except ControllerError as e:
+        try:
+            self._controller_callback_manager.invoke("before_controller_shutdown")
+        except ControllerError as e:
+            if shutdown_error:
+                logger.warning(
+                    "An additional error occurred in the before_controller_shutdown "
+                    "callback after a worker group shutdown error. "
+                    "This error is being ignored to preserve the original "
+                    "shutdown error. Error: %s",
+                    e,
+                )
+            else:
                 shutdown_error = e
 
         if shutdown_error:
