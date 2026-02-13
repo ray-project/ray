@@ -13,10 +13,7 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# get progress manager as constructor. Call Threadpoolexecutor for async job.
-# don't touch streaming executor.
-# from __init__ get progress manager, add async parametor (maybe) and wrap it there.
-# no need async for logging and noop
+
 class AsyncExecutionProgressManagerWrapper(BaseExecutionProgressManager):
     """
     Async wrapper for progress managers that prevents terminal I/O from blocking
@@ -195,9 +192,6 @@ class AsyncExecutionProgressManagerWrapper(BaseExecutionProgressManager):
 
         while not self._shutdown:
             time.sleep(check_interval)
-
-            if self._shutdown:
-                break
 
             with self._lock:
                 time_since_update = time.time() - self._last_successful_update

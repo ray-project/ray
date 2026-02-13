@@ -634,6 +634,8 @@ class DataContext:
     )
     enable_rich_progress_bars: bool = DEFAULT_ENABLE_RICH_PROGRESS_BARS
     enable_async_progress_updates: bool = True
+    async_progress_stall_warning_threshold: float = 10.0
+    async_progress_shutdown_timeout: float = 5.0
     enable_get_object_locations_for_metrics: bool = (
         DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
     )
