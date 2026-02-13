@@ -1565,7 +1565,16 @@ def test_runtime_metrics(ray_start_regular_shared):
     # due to rounding (e.g., 2.265s rounds to 2.27s for operator but 2.26s for total)
     TOLERANCE = 0.02
 
-    for time_s, percent in metrics_dict.values():
+    for name, (time_s, percent) in metrics_dict.items():
+        if name in {"Scheduling", "Total"}:
+            continue
+        if time_s > total_time + TOLERANCE:
+            print("runtime_metrics raw:\n", metrics_str)
+            print("runtime_metrics parsed:", metrics_dict)
+            print(
+                "runtime_metrics mismatch:",
+                {"name": name, "time_s": time_s, "total_time": total_time},
+            )
         assert time_s <= total_time + TOLERANCE
         # Check percentage, this is done with some expected loss of precision
         # due to rounding in the intital output.
