@@ -423,6 +423,73 @@ def test_merge_ref_bundles():
     ]
 
 
+def test_ref_bundle_eq_and_hash():
+    """Tests that `__eq__` and `__hash__` use field-based comparison, so that
+    copies (e.g. from dataclasses.replace) are equal to the original and
+    usable as dict keys."""
+
+    from dataclasses import replace
+
+    ref_a = ObjectRef(b"1" * 28)
+    meta = BlockMetadata(num_rows=10, size_bytes=100, exec_stats=None, input_files=None)
+
+    bundle = RefBundle(
+        blocks=[(ref_a, meta)],
+        owns_blocks=True,
+        schema="schema",
+        slices=[BlockSlice(start_offset=0, end_offset=5)],
+        output_split_idx=1,
+    )
+
+    # A dataclasses.replace copy should be equal and have the same hash
+    copy = replace(bundle)
+    assert copy is not bundle
+    assert copy == bundle
+    assert hash(copy) == hash(bundle)
+
+    # Equal bundles work as dict keys
+    d = {bundle: "value"}
+    assert d[copy] == "value"
+
+    # Differing any field should break equality
+    diff_bundle_1 = replace(bundle, owns_blocks=False)
+    assert bundle != diff_bundle_1 and hash(bundle) != hash(diff_bundle_1)
+
+    diff_bundle_2 = replace(bundle, output_split_idx=2)
+    assert bundle != diff_bundle_2 and hash(bundle) != hash(diff_bundle_2)
+
+    diff_bundle_3 = replace(bundle, schema="other")
+    assert bundle != diff_bundle_3 and hash(bundle) != hash(diff_bundle_3)
+
+    diff_bundle_4 = replace(bundle, slices=(None,))
+    assert bundle != diff_bundle_4 and hash(bundle) != hash(diff_bundle_4)
+
+    # Differing blocks or meta should not match too
+    ref_b = ObjectRef(b"2" * 28)
+
+    deff_block_ref_bundle = RefBundle(
+        blocks=[(ref_b, meta)],
+        owns_blocks=True,
+        schema="schema",
+        slices=[BlockSlice(start_offset=0, end_offset=5)],
+        output_split_idx=1,
+    )
+
+    assert bundle != deff_block_ref_bundle
+
+    diff_meta = replace(meta, num_rows=11)
+
+    deff_block_meta_bundle = RefBundle(
+        blocks=[(ref_a, diff_meta)],
+        owns_blocks=True,
+        schema="schema",
+        slices=[BlockSlice(start_offset=0, end_offset=5)],
+        output_split_idx=1,
+    )
+
+    assert bundle != deff_block_meta_bundle
+
+
 if __name__ == "__main__":
     import sys
 
