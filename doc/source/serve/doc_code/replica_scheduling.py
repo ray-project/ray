@@ -13,14 +13,6 @@ class MyDeployment:
 app = MyDeployment.bind()
 # __max_replicas_per_node_end__
 
-if __name__ == "__main__":
-    ray.init()
-    # doing this because cluster has only one node
-    serve.run(MyDeployment.options(max_replicas_per_node=6).bind())
-    serve.shutdown()
-    ray.shutdown()
-
-
 # __placement_group_start__
 from ray import serve
 
@@ -50,13 +42,6 @@ def PlacementGroupBundleLabelSelector(request):
 
 pg_label_app = PlacementGroupBundleLabelSelector.bind()
 # __placement_group_labels_end__
-
-if __name__ == "__main__":
-    ray.init()
-    serve.run(multi_cpu_app)
-    serve.shutdown()
-    ray.shutdown()
-
 
 # __label_selectors_start__
 from ray import serve
@@ -107,17 +92,15 @@ if __name__ == "__main__":
         resources={"my_custom_resource": 10},
     )
 
-    # Deploy all Serve examples.
     serve.run(a100_app, name="a100", route_prefix="/a100")
+# __label_selector_main_end__
 
+    # Run remaining doc code.
     serve.run(MyDeployment.options(max_replicas_per_node=6).bind(), name="max_replicas", route_prefix="/max_replicas")
 
     serve.run(multi_cpu_app, name="multi_cpu", route_prefix="/multi_cpu")
 
     serve.run(pg_label_app, name="pg_label", route_prefix="/pg_label")
 
-    serve.run(custom_resource_app, name="custom", route_prefix="/custom")
-
     serve.shutdown()
     ray.shutdown()
-# __label_selector_main_end__
