@@ -1,0 +1,3787 @@
+{
+  "query_summary": {
+    "Q1: bug-labeled issues": {
+      "total_count": 107,
+      "returned_count": 100,
+      "issue_numbers": [
+        61045,
+        61016,
+        60991,
+        60970,
+        60910,
+        60904,
+        60862,
+        60855,
+        60846,
+        60773,
+        60725,
+        60685,
+        60681,
+        60665,
+        60638,
+        60613,
+        60591,
+        60579,
+        60570,
+        60552,
+        60534,
+        60498,
+        60494,
+        60491,
+        60463,
+        60453,
+        60441,
+        60402,
+        60399,
+        60363,
+        60316,
+        60291,
+        60251,
+        60205,
+        60122,
+        60056,
+        60013,
+        59997,
+        59967,
+        59966,
+        59951,
+        59946,
+        59930,
+        59914,
+        59913,
+        59851,
+        59804,
+        59796,
+        59782,
+        59767,
+        59764,
+        59681,
+        59667,
+        59661,
+        59650,
+        59646,
+        59642,
+        59640,
+        59612,
+        59582,
+        59547,
+        59518,
+        59503,
+        59485,
+        59404,
+        59403,
+        59394,
+        59391,
+        59381,
+        59343,
+        59342,
+        59265,
+        59249,
+        59193,
+        59191,
+        59140,
+        59131,
+        59127,
+        59115,
+        59110,
+        59076,
+        59050,
+        59037,
+        58999,
+        58976,
+        58975,
+        58919,
+        58869,
+        58849,
+        58815,
+        58750,
+        58735,
+        58696,
+        58681,
+        58679,
+        58668,
+        58625,
+        58483,
+        58481,
+        58430
+      ]
+    },
+    "Q2a: deadlock issues": {
+      "total_count": 6,
+      "returned_count": 6,
+      "issue_numbers": [
+        60954,
+        60919,
+        59661,
+        59518,
+        59115,
+        58426
+      ]
+    },
+    "Q2b: crash issues": {
+      "total_count": 22,
+      "returned_count": 22,
+      "issue_numbers": [
+        60685,
+        60651,
+        60512,
+        60494,
+        60359,
+        60205,
+        59966,
+        59831,
+        59642,
+        59626,
+        59522,
+        59404,
+        59403,
+        59394,
+        59342,
+        59325,
+        59265,
+        59193,
+        59142,
+        59115,
+        59035,
+        58880
+      ]
+    },
+    "Q2c: hang issues": {
+      "total_count": 12,
+      "returned_count": 12,
+      "issue_numbers": [
+        60910,
+        60566,
+        60150,
+        59764,
+        59738,
+        59661,
+        59573,
+        59522,
+        59518,
+        59342,
+        58703,
+        58426
+      ]
+    },
+    "Q2d: ray.get issues": {
+      "total_count": 26,
+      "returned_count": 26,
+      "issue_numbers": [
+        61012,
+        60954,
+        60685,
+        60681,
+        60494,
+        60445,
+        60435,
+        60122,
+        60043,
+        60013,
+        59914,
+        59857,
+        59831,
+        59778,
+        59667,
+        59626,
+        59522,
+        59518,
+        59342,
+        59339,
+        59249,
+        59127,
+        59101,
+        58750,
+        58481,
+        58402
+      ]
+    },
+    "Q3a: memory leak issues": {
+      "total_count": 6,
+      "returned_count": 6,
+      "issue_numbers": [
+        60970,
+        60949,
+        59792,
+        59573,
+        59394,
+        58815
+      ]
+    },
+    "Q3b: actor fail issues": {
+      "total_count": 31,
+      "returned_count": 31,
+      "issue_numbers": [
+        61012,
+        60910,
+        60873,
+        60855,
+        60685,
+        60681,
+        60651,
+        60129,
+        60122,
+        60013,
+        59857,
+        59805,
+        59778,
+        59667,
+        59642,
+        59626,
+        59522,
+        59518,
+        59503,
+        59381,
+        59343,
+        59342,
+        59339,
+        59327,
+        59265,
+        59249,
+        59064,
+        58975,
+        58735,
+        58491,
+        58481
+      ]
+    },
+    "Q4a: object store issues": {
+      "total_count": 21,
+      "returned_count": 21,
+      "issue_numbers": [
+        60919,
+        60855,
+        60683,
+        60588,
+        60498,
+        60453,
+        60431,
+        60129,
+        60024,
+        59997,
+        59914,
+        59887,
+        59642,
+        59569,
+        59522,
+        59404,
+        59339,
+        59249,
+        59191,
+        59127,
+        58926
+      ]
+    },
+    "Q4b: object reference issues": {
+      "total_count": 8,
+      "returned_count": 8,
+      "issue_numbers": [
+        60494,
+        60204,
+        59887,
+        59642,
+        59394,
+        59339,
+        59127,
+        58876
+      ]
+    },
+    "Q5: core-labeled issues": {
+      "total_count": 108,
+      "returned_count": 100,
+      "issue_numbers": [
+        61014,
+        60853,
+        60703,
+        60683,
+        60665,
+        60638,
+        60626,
+        60603,
+        60591,
+        60588,
+        60570,
+        60566,
+        60534,
+        60524,
+        60523,
+        60510,
+        60494,
+        60465,
+        60464,
+        60446,
+        60445,
+        60444,
+        60443,
+        60442,
+        60438,
+        60437,
+        60436,
+        60435,
+        60434,
+        60433,
+        60431,
+        60405,
+        60316,
+        60251,
+        60230,
+        60129,
+        60096,
+        60043,
+        60024,
+        60021,
+        59966,
+        59930,
+        59914,
+        59888,
+        59887,
+        59885,
+        59884,
+        59851,
+        59831,
+        59796,
+        59782,
+        59778,
+        59738,
+        59667,
+        59666,
+        59661,
+        59658,
+        59655,
+        59651,
+        59644,
+        59642,
+        59640,
+        59626,
+        59603,
+        59582,
+        59573,
+        59551,
+        59547,
+        59503,
+        59404,
+        59403,
+        59381,
+        59343,
+        59342,
+        59339,
+        59327,
+        59308,
+        59303,
+        59274,
+        59265,
+        59249,
+        59193,
+        59191,
+        59155,
+        59131,
+        59127,
+        59124,
+        59115,
+        59110,
+        59101,
+        58976,
+        58944,
+        58941,
+        58926,
+        58880,
+        58876,
+        58849,
+        58846,
+        58772,
+        58750
+      ]
+    },
+    "Q1_page2: bug-labeled": {
+      "note": "page 2 fetched"
+    },
+    "Q5_page2: core-labeled": {
+      "note": "page 2 fetched"
+    }
+  },
+  "total_unique_issues": 194,
+  "issues": [
+    {
+      "number": 61045,
+      "title": "[Dashboard] `/api/data/datasets/{job_id}` should query datasets metrics from StatsActor rather than query prometheus",
+      "labels": [
+        "bug",
+        "triage"
+      ],
+      "created_at": "2026-02-13T06:19:43Z",
+      "html_url": "https://github.com/ray-project/ray/issues/61045",
+      "body_preview": "### What happened + What you expected to happen\n\nI noticed that although the Ray Data Overview page in the Dashboard shows the processing progress of each Operator, the metrics displayed afterward appear to be empty.\n\nUsing Developer Mode (F12), I investigated and found that the frontend calls the `/api/data/datasets/{job_id}` endpoint in `data_head`.\n\nThe processing flow consists of two steps:\n1. Retrieve all datasets under the given job and their progress information (e.g., number of processed",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 61016,
+      "title": "[Data] Slow Ray Data groupby/aggregate on small dataset on single-node local cluster",
+      "labels": [
+        "bug",
+        "triage",
+        "community-backlog"
+      ],
+      "created_at": "2026-02-12T08:39:31Z",
+      "html_url": "https://github.com/ray-project/ray/issues/61016",
+      "body_preview": "### What happened + What you expected to happen\n\n**Summary**\n\nExtremely slow Ray Data groupby/aggregate on small dataset on single-node local cluster in Ray 2.49.2.\n\n- 1M rows, two columns: `sectype` (constant string) and `mcap` (float).\n- Pure pandas groupby/sum runs in ~0.06 s.\n- Ray Data `groupby(\"sectype\").aggregate(Sum(\"mcap\"))` takes ~21 s end-to-end on the same box.\n- This is on a large single node (16 CPUs configured for Ray, ~720 GiB RAM), no other load.\n\n### Versions / Dependencies\n\n- ",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 61014,
+      "title": "[core][rdt] Cut down limitations of custom transports",
+      "labels": [
+        "enhancement",
+        "P2",
+        "core"
+      ],
+      "created_at": "2026-02-12T06:49:31Z",
+      "html_url": "https://github.com/ray-project/ray/issues/61014",
+      "body_preview": "### Description\n\nCurrently custom transports have many limitations:\n\n- **Actor restarts aren't supported.** Your actor doesn't have access to the custom transport after a restart.\n\n- **Register transports before actor creation.** If you register a transport after creating an actor, that actor can't use the new transport.\n\n- **Out-of-order actors** If you have an out-of-order actor (such as an async actor) and the process where you submit the actor task is different from where you created the act",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 61012,
+      "title": "[Data] `test_recovery_skips_checkpointed_rows` is flaky",
+      "labels": [
+        "P1",
+        "data",
+        "community-backlog"
+      ],
+      "created_at": "2026-02-12T05:44:38Z",
+      "html_url": "https://github.com/ray-project/ray/issues/61012",
+      "body_preview": "\n```\n2026-02-11T06:36:10Z] _ test_recovery_skips_checkpointed_rows[CheckpointBackend.CLOUD_OBJECT_STORAGE-s3_fs-s3_path-generate_sample_data_parquet1] _\n[2026-02-11T06:36:10Z]\n[2026-02-11T06:36:10Z] ray_start_10_cpus_shared = RayContext(dashboard_url='127.0.0.1:8265', python_version='3.12.9', ray_version='3.0.0.dev0', ray_commit='{{RAY_COMMIT_SHA}}')\n[2026-02-11T06:36:10Z] ds_factory = <function generate_sample_data_parquet.<locals>._generate at 0x7f6f5c3e76a0>\n[2026-02-11T06:36:10Z] backend = <",
+      "found_in_queries": [
+        "Q2d: ray.get issues",
+        "Q3b: actor fail issues"
+      ]
+    },
+    {
+      "number": 60991,
+      "title": "[core] ray.init() on nightly fails  on shared machines with multiple clusters due to race condition (regression from 2.53)",
+      "labels": [
+        "bug",
+        "P1",
+        "community-backlog"
+      ],
+      "created_at": "2026-02-11T23:58:28Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60991",
+      "body_preview": "### What happened + What you expected to happen\n\n1. Start Cluster A (using `ray start --head --port XYZ --temp-dir /tmp/a --block`)\n2. Start Cluster B using (`ray start --head --port ABC --temp-dir /tmp/b --block`)\n3. set `os.environ[\"RAY_ADDRESS\"] = \"ip:ABC\" ` (that of cluster B)\n4. run `ray.init()`, should error out\n\nIt's my understanding that he call chain during `ray.init(connect_only=True)` (in above case for cluster B) will do the following\n1. `ray/_private/node.py` \u2192 `get_node_to_connect_",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60970,
+      "title": "[log_monitor] The log_monitor poses a risk of memory leaks",
+      "labels": [
+        "bug",
+        "triage",
+        "community-backlog"
+      ],
+      "created_at": "2026-02-11T10:15:18Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60970",
+      "body_preview": "### What happened + What you expected to happen\n\nI have identified potential memory leak risks in the log_monitor.py module. Here are the detailed observations:\n\nIssue 1: Unbounded Growth of log_filenames Set\nself.log_filenames: Set[str] = set()\n\nLeak Mechanism:\nNewly discovered log files are added to the log_filenames set within the update_log_filenames() method.\nHowever, when log files are deleted or rotated, their filenames are never removed from the set.\nLong-running Ray clusters generate nu",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q3a: memory leak issues"
+      ]
+    },
+    {
+      "number": 60954,
+      "title": "[core][rdt] Fix deadlock / improve performance for in-order actors through seq no",
+      "labels": [
+        "enhancement",
+        "P1"
+      ],
+      "created_at": "2026-02-11T01:25:18Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60954",
+      "body_preview": "### Description\n\nCurrently for in-order actors there's a possibility of deadlock with RDT tasks under certain circumstances.\n\nSince we submit the send/recv tasks based on when the metadata gets to the driver, not when the downstream task is submitted, the send/recv tasks could end up being submitted a while after other user tasks, meaning they will have later seq no's vs. user tasks. If the user tasks have dependencies pending resolution, they will also block tasks with later seq no's (our send/",
+      "found_in_queries": [
+        "Q2a: deadlock issues",
+        "Q2d: ray.get issues"
+      ]
+    },
+    {
+      "number": 60949,
+      "title": "[Data] `TestConvertPandasToTorch::test_tensor_column_no_memory_leak` is flaky",
+      "labels": [
+        "P1",
+        "data"
+      ],
+      "created_at": "2026-02-10T23:19:19Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60949",
+      "body_preview": "Here's arepro: https://gist.github.com/bveeramani/d24fef6fd1c4987c5c37535433854823\n\nHere are a couple of ways you could address this:\n1. Figure out why there's seemingly a memory leak with pandas and fix it\n2. See if pyarrow resolves the leak. pyarrow is probably better for perfomance anyway: Update `DataIterator.to_torch` to use the \"pyarrow\" batch format instead of pandas, and replace `convert_pandas_to_torch_tensor` with `convert_table_to_torch_tensor`.  \n",
+      "found_in_queries": [
+        "Q3a: memory leak issues"
+      ]
+    },
+    {
+      "number": 60919,
+      "title": "Ray Cluster CPU Utilization Stuck at ~43% with High Concurrency (80,000 concurrent tasks)",
+      "labels": [
+        "community-backlog"
+      ],
+      "created_at": "2026-02-10T10:30:19Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60919",
+      "body_preview": "# Ray Cluster CPU Utilization Stuck at ~43% with High Concurrency (80,000 concurrent tasks)\n\n## Problem Description\n\nWe are experiencing severe performance issues with Ray Data pipeline on a large-scale cluster. The cluster CPU utilization climbs very slowly (taking 30 minutes to reach 43%) and then gets stuck at approximately 43%, preventing efficient resource utilization.\n\n## Environment\n\n- **Ray Version**: 2.53.0 (inferred from file paths)\n- **Python Version**: Not specified\n- **OS**: Linux\n-",
+      "found_in_queries": [
+        "Q2a: deadlock issues",
+        "Q4a: object store issues"
+      ]
+    },
+    {
+      "number": 60910,
+      "title": "[Core] Actor tasks hang when head-of-line task's dependency resolution fails",
+      "labels": [
+        "bug",
+        "triage",
+        "community-backlog",
+        "contribution-welcome"
+      ],
+      "created_at": "2026-02-10T04:31:18Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60910",
+      "body_preview": "### What happened + What you expected to happen\n\nSimilar to #60850, I suspect that when an actor task at the head of the submit queue has its dependency resolution fail, subsequent tasks that have already resolved their dependencies get stuck and never execute.\n\nRelated code:\nhttps://github.com/ray-project/ray/blob/b4d21ea6ecab180ae3fd9ca0dff032b96363309a/src/ray/core_worker/task_submission/actor_task_submitter.cc#L227\n\n\nIt would be great to first verify the issue and write a PR with both a test",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2c: hang issues",
+        "Q3b: actor fail issues"
+      ]
+    },
+    {
+      "number": 60904,
+      "title": "[Core] data missing when enabling Nsys profiling",
+      "labels": [
+        "bug",
+        "triage",
+        "community-backlog"
+      ],
+      "created_at": "2026-02-10T02:57:25Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60904",
+      "body_preview": "### What happened + What you expected to happen\n\nHi, I\u2019m training on Verl on Ray and encountering the following two issues when enabling Nsys profiling:\n\n1. Nsight sometimes fails to persist data to disk, persists to empty files, or captures irrelevant processes.\n\n<img width=\"1338\" height=\"1812\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/01cfc8ae-3c80-4694-be98-7ae3e2804da9\" />\n\n2. Multi-step profiler work sometimes results in incomplete CUDA streams and missing NVTX markers: \nF",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60873,
+      "title": "[Serve][RFC] Gang Scheduling for Ray Serve",
+      "labels": [],
+      "created_at": "2026-02-09T18:29:59Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60873",
+      "body_preview": "## Abstract\n\nThis RFC proposes adding gang scheduling support to Ray Serve, enabling atomic scheduling of replica groups. Gang scheduling ensures that sets of replicas are scheduled together\u2014either all succeed or all fail\u2014which is critical for distributed serving patterns requiring tight coordination between replicas or across multiple deployments.\n\nThe proposal introduces a `GangSchedulingConfig` API that supports:\n\n* BATCHED scheduling strategy (schedule replicas in fixed-size gangs)  \n* Runti",
+      "found_in_queries": [
+        "Q3b: actor fail issues"
+      ]
+    },
+    {
+      "number": 60862,
+      "title": "[Data] When updating the DataContext, a lock needs to be added.",
+      "labels": [
+        "bug",
+        "triage",
+        "community-backlog"
+      ],
+      "created_at": "2026-02-09T11:00:47Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60862",
+      "body_preview": "### What happened + What you expected to happen\n\nDataContext#_set_current\n\n<img width=\"2108\" height=\"1786\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/1c5de6b6-0865-4922-8420-96f58de142b7\" />\n\n### Versions / Dependencies\n\nmaster branch\n\n### Reproduction script\n\nN.A\n\n### Issue Severity\n\nLow: It annoys or frustrates me.",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60855,
+      "title": "[Core] Head node is Active but `node:__internal_head__` resource requests remain Pending indefinitely",
+      "labels": [
+        "bug",
+        "triage",
+        "community-backlog"
+      ],
+      "created_at": "2026-02-09T07:16:00Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60855",
+      "body_preview": "### What happened + What you expected to happen\n\nI am running a Ray Cluster on Kubernetes (KubeRay). The cluster was originally stable on Ray 2.49.1. I attempted to upgrade the head node to 2.53.0, but the upgrade failed due to internal infrastructure issues (IP conflicts and network timeouts), not a Ray bug. Consequently, I rolled back the configuration to 2.49.1.\n\nAfter the rollback, the ray status output shows a contradictory state:\n1. The Autoscaler reports 1 Active headgroup and explicitly ",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q3b: actor fail issues",
+        "Q4a: object store issues"
+      ]
+    },
+    {
+      "number": 60853,
+      "title": "Improve system OOMs debuggability",
+      "labels": [
+        "core"
+      ],
+      "created_at": "2026-02-09T06:45:14Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60853",
+      "body_preview": "Workloads OOMing is often a common pain point when processing a large amount of information. and the current system provides little to help walk users through how to potentially debug their OOMs. \n\nThis issue is created to track the progress on improving the system memory visibility and making the information more interpretable with actionable next steps to improve the overall debugging experience of OOMs.",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60846,
+      "title": "[Serve] replica failed to call reconfigure",
+      "labels": [
+        "bug",
+        "triage",
+        "community-backlog"
+      ],
+      "created_at": "2026-02-08T11:58:05Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60846",
+      "body_preview": "### What happened + What you expected to happen\n\nI deployed my inference model using ray serve and call it concurrently (4 concuerrency). I used `reconfigure` function to initialize my model and left the init function empty. I observed that sometimes my deployment replicas initialized without calling the reconfigure. This would cause `attribute not found` error given that I generate those attributes only in reconfigure function.\n\n### Versions / Dependencies\n\nray 2.47.1\npython 3.10.3\n\n### Reprodu",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60773,
+      "title": "bug with PrioritizedEpisodeReplayBuffer",
+      "labels": [
+        "bug",
+        "triage",
+        "community-backlog"
+      ],
+      "created_at": "2026-02-05T08:42:52Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60773",
+      "body_preview": "### What happened + What you expected to happen\n\nI got the following error.\nFailure # 1 (occurred at 2026-02-04_20-36-47)\n\u001b[36mray::DQN.train()\u001b[39m (pid=2226564, ip=172.17.0.4, actor_id=25e1dce4913c5ba94450e6ee01000000, repr=DQN(env=ale_py:ALE/Alien-v5; env-runners=14; learners=1; multi-agent=False))\n  File \"/root/anaconda3/envs/rllib/lib/python3.13/site-packages/ray/tune/trainable/trainable.py\", line 331, in train\n    raise skipped from exception_cause(skipped)\n  File \"/root/anaconda3/envs/rll",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60725,
+      "title": "Release test llm_serve_correctness failed",
+      "labels": [
+        "bug",
+        "P0",
+        "triage",
+        "release-test",
+        "jailed-test",
+        "llm",
+        "ray-test-bot",
+        "weekly-release-blocker",
+        "stability"
+      ],
+      "created_at": "2026-02-03T18:56:08Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60725",
+      "body_preview": "Release test **llm_serve_correctness** failed. See https://buildkite.com/ray-project/release/builds/42862#019c24bb-79fe-4764-a977-cb7020da5c18 for more details.\n\nManaged by OSS Test Policy",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60703,
+      "title": "Ray Auth Feature Request: Support operator mounted user-provided static auth secret for RayService",
+      "labels": [
+        "enhancement",
+        "triage",
+        "core",
+        "security",
+        "community-backlog",
+        "kubernetes"
+      ],
+      "created_at": "2026-02-03T08:45:12Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60703",
+      "body_preview": "### Description\n\n**Summary**\nAllow users to specify a pre-existing Kubernetes Secret for authentication when using `authOptions.mode: token`, instead of having the operator auto-generate a new secret for each RayCluster.\n\n**Problem Statement**\nWhen using RayService with authentication enabled (`authOptions.mode: token`), the KubeRay operator automatically generates a new auth secret each time a new RayCluster is created. The secret name is derived from the RayCluster name (e.g., `<cluster-name>-",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60685,
+      "title": "[llm] Voxtral-Mini-3B-2507 crashes with vLLM 0.15.0",
+      "labels": [
+        "bug",
+        "llm"
+      ],
+      "created_at": "2026-02-02T23:51:40Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60685",
+      "body_preview": "### What happened + What you expected to happen\n\nThis likely originates on the vLLM side. Needs deeper investigation.\n```\n(ServeReplica:default:LLMServer:mistralai--Voxtral-Mini-3B-2507 pid=272479) ERROR 02-02 15:30:57 [registry.py:767] Error in loading model architecture 'VoxtralForConditionalGeneration'\n(ServeReplica:default:LLMServer:mistralai--Voxtral-Mini-3B-2507 pid=272479) ERROR 02-02 15:30:57 [registry.py:767] Traceback (most recent call last):\n(ServeReplica:default:LLMServer:mistralai--",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2b: crash issues",
+        "Q2d: ray.get issues",
+        "Q3b: actor fail issues"
+      ]
+    },
+    {
+      "number": 60683,
+      "title": "[Core] Prune out-of-date logic to resolve default object_store_memory size",
+      "labels": [
+        "P2",
+        "core"
+      ],
+      "created_at": "2026-02-02T21:56:36Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60683",
+      "body_preview": "The [PR to unify resource isolation config creation](https://github.com/ray-project/ray/pull/59372) has exposed that the current logic to resolve the default object_store_memory contains many old artifacts that needs to be cleaned up.\n\nThis issue will track the following laundry list of items that needs to be improved:\n- [ ] memory resolution logic is currently fragmented across many different function calls (e.g. [resource_and_label_spec for memory resolution](https://github.com/ray-project/ray",
+      "found_in_queries": [
+        "Q4a: object store issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60681,
+      "title": "[data][llm] Multi vllm replica loading fails with runai_streamer on a single instance",
+      "labels": [
+        "bug",
+        "data",
+        "llm",
+        "community-contribution"
+      ],
+      "created_at": "2026-02-02T20:58:08Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60681",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen running multiple vllm replicas on a single instance with runai_streamer turned on, the job fails with the following error because a file directory already exists:\n\n```\n(pid=46961) W0202 12:53:04.916000 46961 anaconda3/lib/python3.12/site-packages/torch/utils/cpp_extension.py:117] No CUDA runtime is found, using CUDA_HOME='/usr/local/cuda'\n2026-02-02 12:53:05,770 WARNING util.py:599 -- The argument ``concurrency`` is deprecated in Ray 2.51. Pl",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2d: ray.get issues",
+        "Q3b: actor fail issues"
+      ]
+    },
+    {
+      "number": 60665,
+      "title": "[Dashboard] tail_job_logs() exits successfully when worker node preemption happens with `RAY_LOG_TO_STDERR=1`",
+      "labels": [
+        "bug",
+        "P1",
+        "usability",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-02-02T10:55:38Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60665",
+      "body_preview": "### What happened + What you expected to happen\n\nRayJob ends successfully when `RAY_LOG_TO_STDERR=1` is set and node preemption kills worker node, even though RayCluster didn't finish execution yet. This is causes a problem because we rely on Ray job cleaning up RayCluster by setting `shutdownAfterJobFinishes=True`.\n\nAs I understand tail_job_logs() exits successfully with no error message when the above happens, which causes the submitter to complete the k8s job successfully. I would expect the ",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60651,
+      "title": "[Serve] Race condition in proxy readiness check causes `AssertionError` in `_copy_future_state`",
+      "labels": [
+        "serve",
+        "stability"
+      ],
+      "created_at": "2026-02-02T01:33:09Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60651",
+      "body_preview": "The Serve controller occasionally crashes with an `AssertionError` in Python's internal `_copy_future_state` function when performing proxy readiness/health checks. This is caused by a race condition in the `wrap_as_future` function in `proxy_state.py`.\n\n### Error Message\n```\n(ServeController pid=124125) Exception in callback <function _chain_future.<locals>._set_state at 0x7c1917ec25f0>\n(ServeController pid=124125) handle: <Handle _chain_future.<locals>._set_state>\n(ServeController pid=124125) ",
+      "found_in_queries": [
+        "Q2b: crash issues",
+        "Q3b: actor fail issues"
+      ]
+    },
+    {
+      "number": 60638,
+      "title": "[tests] ModuleNotFoundError: No module named 'ray._raylet'",
+      "labels": [
+        "bug",
+        "P1",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-31T16:05:33Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60638",
+      "body_preview": "### What happened + What you expected to happen\n\nI used to be able to run unit tests locally, e.g., `pytest python/ray/data/tests/`, but not anymore :( \n\nGetting the following error on fresh pyenv install etc:\n```\npython/ray/__init__.py:85: in <module>\n    import ray._raylet  # noqa: E402\nE   ModuleNotFoundError: No module named 'ray._raylet'\n```\n\nI followed https://docs.ray.io/en/latest/ray-contribute/development.html and has been running things every week after merging master into my dev branc",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60626,
+      "title": "[core][rdt] Cleanup failed tensor descriptors if memory or transfer descriptor registration fails",
+      "labels": [
+        "enhancement",
+        "core",
+        "stability"
+      ],
+      "created_at": "2026-01-31T01:16:28Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60626",
+      "body_preview": "### Description\n\nAddress this issue:\nhttps://github.com/ray-project/ray/pull/60509#discussion_r2729372331\nBasically we want to cleanup failed descriptors and then raise an exception to the user to notify them. Note that NIXL itself will not raise an exception, it just returns None and keeps going: https://github.com/ai-dynamo/nixl/blob/main/src/api/python/_api.py\nHence if we see either reg_descs or xfer_descs is none, you should cleanup the failed transfer descs and raise an error \n\n### Use case",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60613,
+      "title": "[Serve] Autoscaling: Remove duplicate bounds (follow up to #58857)",
+      "labels": [
+        "bug",
+        "triage",
+        "serve",
+        "tech-debt",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-30T18:14:11Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60613",
+      "body_preview": "### What happened + What you expected to happen\n\n This is a follow-up to #58857,  which changes how Serve applies standard autoscaling parameters to custom policies.\n**Problem**\nAfter these changes, replica bounds are applied twice in the autoscaling flow:\nOnce as part of applying standard autoscaling parameters to a policy decision (policy wrapper path), and\nagain as a final clamp when producing the controller\u2019s scaling decision (autoscaling state path).\nThis is idempotent but adds redundant co",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60603,
+      "title": "[Core] add `reigster_collective_backend` api for customized collective libs",
+      "labels": [
+        "enhancement",
+        "usability",
+        "core",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-30T08:38:15Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60603",
+      "body_preview": "### Description\n\nCurrently, only nccl and torch gloo are actively maintained. It's hard to maintain various collective communication libs for each vendor. So this issue is to request such a dynamic registry for customized collective group backends. cc @dayshah @stephanie-wang @Evelynn-V @daiping8 \n\nThe rough design\n1. add `check_backend_availability` as a staticmethod to `BaseGroup`\n2. move torch gloo rendezvous to TorchGLOOGroup constructor (as a new function `rendezvous`)\n        https://githu",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60591,
+      "title": "[Core][Jobs][runtime_env] worker_process_setup_hook runs in driver instead of worker processes",
+      "labels": [
+        "bug",
+        "P2",
+        "@external-author-action-required",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-29T22:23:04Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60591",
+      "body_preview": "### What happened + What you expected to happen\n\n### Description\n\nWhen submitting a Ray job via the **Ray Jobs REST API**, the\n`worker_process_setup_hook` specified in `runtime_env` is executed in the\n**driver process**, rather than in the **worker processes**.\n\nAccording to the documentation:\nhttps://docs.ray.io/en/latest/ray-core/api/doc/ray.runtime_env.RuntimeEnv.html\n\n> worker_process_setup_hook: A callable that runs in the worker process on each worker node.\n\n### Expected behavior\n\n`worker_",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60588,
+      "title": "[Core] Workers can consume more than 1GiB while idle, leading to OOMs",
+      "labels": [
+        "core",
+        "stability"
+      ],
+      "created_at": "2026-01-29T19:41:33Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60588",
+      "body_preview": "In recent investigation of memory usage issues, we noticed that idle worker can consume large amount of memory (>= 1GiB), leading to OOMs. This is unexpected as idle workers should not be executing any workload and should consume very little system resources. \n\nWe already have a PR out to mitigate this issue by killing any idle worker that exceeds a certain memory usage threshold https://github.com/ray-project/ray/pull/60330. However, a more comprehensive investigation is needed to discover exac",
+      "found_in_queries": [
+        "Q4a: object store issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60579,
+      "title": "[Data]  [Bug] RuntimeError: deque mutated during iteration in write operations with high concurrency",
+      "labels": [
+        "bug",
+        "P0",
+        "data",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-29T06:36:44Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60579",
+      "body_preview": "### What happened + What you expected to happen\n\n# [Bug] RuntimeError: deque mutated during iteration in write operations with high concurrency\n\n## Bug Description\n\nRay Data write operations fail with `RuntimeError: deque mutated during iteration` in high-concurrency environments (100+ worker nodes). Root cause: race condition in `OpBufferQueue.pop()` due to incomplete lock protection.\n\n## System Information\n- **Ray Version**: 2.53.0\n- **Python Version**: 3.10\n- **Cluster**: 100 workers \u00d7 224 CP",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60570,
+      "title": "[Core][UV]",
+      "labels": [
+        "bug",
+        "P2",
+        "usability",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-28T20:34:32Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60570",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen Ray is installed as a UV tool it does not seem possible to use the UV runtime_env plugin when in client mode. \n\nThe root cause seems to be that --user installs can't be done in a UV tools environment, and Ray expects to install UV via pip with --user. However, pre-installing UV in the Ray tool environment also runs into problems, because the UV module is not detected by Ray. I think this is due to the fact that [this check](https://github.com",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60566,
+      "title": "[Autoscaler][V2] Invalid status transition from TERMINATION_FAILED to TERMINATED causes autoscaler to hang",
+      "labels": [
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-28T16:54:54Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60566",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen running Ray 2.52.1 with autoscaler v2 on Kubernetes (KubeRay), the autoscaler repeatedly fails with an assertion error when trying to transition an instance from `TERMINATION_FAILED` to `TERMINATED`. This causes the autoscaler to hang and report \"No autoscaling state to report\", preventing any scale-down operations.\n\n**Expected behavior:** The autoscaler should handle the `TERMINATION_FAILED \u2192 TERMINATED` transition gracefully, or clean up st",
+      "found_in_queries": [
+        "Q2c: hang issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60552,
+      "title": "[Train] LocalTrainUtilsFn.report() does not save checkpoint to RunConfig() storage_path",
+      "labels": [
+        "bug",
+        "P1",
+        "train"
+      ],
+      "created_at": "2026-01-27T23:01:08Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60552",
+      "body_preview": "### What happened + What you expected to happen\n\nWhile debugging a Ray Train script with `ScalingConfig.num_workers=0`, I noticed that the `LocalTrainUtilsFn` is being used upon `ray.train.report()` (called from a PyTorch Lightning callback). The report function does not copy the checkpoint directory contents to the configured `storage_path` (a local directory), and because the checkpoint is saved to a temp folder by the Lightning callback, it gets deleted right after. The `Result.get_best_check",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60534,
+      "title": "[autoscaler] Autoscaler container cannot reconnect to head container in case of head container restart",
+      "labels": [
+        "bug",
+        "P1",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-27T15:54:29Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60534",
+      "body_preview": "### What happened + What you expected to happen\n\nFirst of all, thanks for maintaining the project !\n\nWe are using kuberay to deploy our rayclusters. If the head container is failing for some reason (OOM, faulty healthness probe), the autoscaler cannot retrieve cluster's resources anymore.\n\nIt fails with [WrongClusterId error](https://github.com/ray-project/ray/blob/8c4b2b63842f44cb6924f5850808206b7fd52a5e/src/ray/rpc/server_call.h#L297-L300).\n\nCould we redo the handshake to reconnect when we rec",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60524,
+      "title": "[core][rdt] Benchmark time to re-add remote NIXL agent per recv",
+      "labels": [
+        "enhancement",
+        "P1",
+        "core"
+      ],
+      "created_at": "2026-01-27T03:31:36Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60524",
+      "body_preview": "### Description\n\nCurrently we add and remove nixl agents on every recv. This could potentially not be ideal. We should benchmark and figure out if we can avoid removing so that repeated transfers between pairs are faster.\n\n### Use case\n\n_No response_",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60523,
+      "title": "[core][rdt] Simpler cupy nccl backend for RDT",
+      "labels": [
+        "enhancement",
+        "P2",
+        "core"
+      ],
+      "created_at": "2026-01-27T02:57:52Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60523",
+      "body_preview": "### Description\n\nThe current cupy NCCL backend in ray.util.collective is what's used in RDT. There's some unwanted complicated behavior in it - the collective group creation doesn't actually create the collective group, and for p2p ops the collective group is created lazily at the time of the first transfer.\n\nIdeally, we want the collective group to be created when the user calls create collective group, so it doesn't have to be created lazily on the send/recv.\n\n### Use case\n\n_No response_",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60512,
+      "title": "Bayesian Searcher Stability & Modernization (Ax, Optuna, BayesOpt)",
+      "labels": [
+        "tune",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-26T22:56:33Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60512",
+      "body_preview": "# [Roadmap] Modernizing Bayesian Searchers (Ax 1.0.0+ & Stability)\n\nHello, I am excited to share a plan for fixing some problems in the Bayesian Searchers. I have some local fixes to some of these problems and am organizing them now so everyone can benefit. I will try and make my fixes easily verifiable and robust. I have been using Ray quite a lot and have really enjoyed it, so this is my way of giving back.\n\n**Proposal**: I propose to officially support **Ax Platform >= 1.0.0**.\nLegacy version",
+      "found_in_queries": [
+        "Q2b: crash issues"
+      ]
+    },
+    {
+      "number": 60510,
+      "title": "[Core] Separate each pubsub to use different messages and handlers in proto",
+      "labels": [
+        "core"
+      ],
+      "created_at": "2026-01-26T21:58:41Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60510",
+      "body_preview": "We've observed past issues where subscriber messages can cause publishers to fail due to unexpected argument types (e.g. https://github.com/ray-project/ray/issues/58964). This behavior is largely due to the fact that we overload multiple different interfaces (GCS pubsub & object ref pubsub) onto the same pubsub proto, causing the potential for unexpected messages to be sent to the publisher in the first place.\n\nThis introduced two action items:\n1. The control plane logic should not be susceptibl",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60498,
+      "title": "Manual Scaling does not work",
+      "labels": [
+        "bug",
+        "question",
+        "serve",
+        "usability",
+        "docs",
+        "kuberay",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-26T17:03:51Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60498",
+      "body_preview": "### What happened + What you expected to happen\n\n- 1. i want use Manual Scaling  to scale my llm serve, but is does't working .\n```yaml\n  serveConfigV2: |\n    applications:\n    - args:\n        llm_configs:\n          - model_loading_config:\n              model_id: yamadie\n              model_source: /models/Qwen1.5-0.5B-Chat\n            deployment_config:\n              num_replicas: 1\n            runtime_env:\n              env_vars:\n                VLLM_USE_V1: \"1\"\n            engine_kwargs:\n    ",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q4a: object store issues"
+      ]
+    },
+    {
+      "number": 60494,
+      "title": "[Core] Crash in ReferenceCounter::CleanupBorrowersOnRefRemoved due to check failed",
+      "labels": [
+        "bug",
+        "P0",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-26T10:26:49Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60494",
+      "body_preview": "### What happened + What you expected to happen\n\n#### Summary\nWhen a borrower process releases an object reference (ref count reaches 0) and then dies immediately, the owner may crash with a RAY_CHECK failure inside ReferenceCounter::CleanupBorrowersOnRefRemoved() .\n\nThis is caused by a race in the WORKER_REF_REMOVED_CHANNEL pub/sub path: both message_published_callback (published ref-removed reply) and publisher_failed_callback (long-polling connection failure) can be posted to the subscriber I",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2b: crash issues",
+        "Q2d: ray.get issues",
+        "Q4b: object reference issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60491,
+      "title": "[RLlib] ABCMeta TypeError in legacy replay buffer initialization",
+      "labels": [
+        "bug",
+        "triage",
+        "rllib",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-26T07:57:36Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60491",
+      "body_preview": "### What happened + What you expected to happen\n\nIn recent versions of RLlib (2.53), the AlgorithmConfig.validate() method automatically converts the replay_buffer_config[\"type\"] from a string (e.g., \"MultiAgentPrioritizedReplayBuffer\") into the actual Python Class object to ensure validity.\nHowever, the legacy setup path in algorithm.py (specifically within _create_local_replay_buffer_if_necessary) still contains a check:\nif \"EpisodeReplayBuffer\" in config[\"replay_buffer_config\"][\"type\"]:\nBecau",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60465,
+      "title": "[core][rdt] Profiled and documented Ray overheads",
+      "labels": [
+        "enhancement",
+        "P1",
+        "core"
+      ],
+      "created_at": "2026-01-23T23:07:46Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60465",
+      "body_preview": "### Description\n\nFigure out what what the largest Ray system-level bottlenecks are and have documented approaches or plans to get around them.\n\n### Use case\n\n_No response_",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60464,
+      "title": "[core][rdt] Larger scale cross-node Benchmarks",
+      "labels": [
+        "enhancement",
+        "P1",
+        "core"
+      ],
+      "created_at": "2026-01-23T23:04:37Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60464",
+      "body_preview": "### Description\n\nWe currently only have single-node RDT release test benchmarks that run nightly / weekly. It would be great if we could get a multi-node RDMA-enabled (infiniband maybe) cluster in CI consistently running.\n",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60463,
+      "title": "[Serve][LLM] Qwen3-8B Fails with corrupted torch compile cache in multi-replica scenario",
+      "labels": [
+        "bug",
+        "triage",
+        "serve",
+        "llm",
+        "stability"
+      ],
+      "created_at": "2026-01-23T22:56:36Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60463",
+      "body_preview": "### What happened + What you expected to happen\n\nServing qwen3-8b fails fails with torch compile cache corruption on fresh + warm multi-replica cluster. \n\nError: `RuntimeError: Bytes object is corrupted, checksum does not match.`\n\nObserved with ray data <> serve deployment, but this script shows it reproduces with just a serve deployment minimal setup \n\n### Versions / Dependencies\n\nRay nightly\nvLLM 0.13.0\n\n### Reproduction script\n\n```\n#!/usr/bin/env python3\n\"\"\"\nMinimal reproduction for Ray Serve",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60453,
+      "title": "[data] Actor's shutdown hook isn't being called",
+      "labels": [
+        "bug",
+        "question",
+        "triage",
+        "docs",
+        "data",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-23T14:48:13Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60453",
+      "body_preview": "### What happened + What you expected to happen\n\nIt seem like Ray Data does not call the Actor [shutdown hook](https://docs.ray.io/en/latest/ray-core/actors/terminating-actors.html), which I'd expect it to do. \n\n### Versions / Dependencies\n\n`ray==2.53.0`\n\n### Reproduction script\n\n```py\nimport os\n\nimport tempfile\nfrom pathlib import Path\n\nimport ray\n\nlog_file = Path(tempfile.mkdtemp()) / \"log.txt\"\n\nclass Actor:\n    def __init__(self, path: str):\n        self.path = path\n        with open(path, \"a",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q4a: object store issues"
+      ]
+    },
+    {
+      "number": 60446,
+      "title": "[core][rdt] Lineage reconstruction support",
+      "labels": [
+        "enhancement",
+        "P2",
+        "core"
+      ],
+      "created_at": "2026-01-23T04:27:35Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60446",
+      "body_preview": "### Description\n\nRDT currently doesn't support Ray's lineage reconstruction. \n\n(In the short term we should raise an error if lineage reconstruction is triggered for an RDT ref)\n\n\n### Use case\n\n_No response_",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60445,
+      "title": "[core][rdt] User-specified receive buffer on ray.get",
+      "labels": [
+        "enhancement",
+        "P2",
+        "core"
+      ],
+      "created_at": "2026-01-23T04:21:15Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60445",
+      "body_preview": "### Description\n\nIf the user is ray.get-ting an RDT ref, we could allow them to receive into a pre-specified buffer that they already have. Some user applications already have memory ready and want to receive into a specific spot, so this would avoid the extra copy into their buffer after Ray receives.\n\n### Use case\n\n_No response_",
+      "found_in_queries": [
+        "Q2d: ray.get issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60444,
+      "title": "[core][rdt] Allow upfront metadata specification to avoid control plane overhead",
+      "labels": [
+        "enhancement",
+        "P1",
+        "core"
+      ],
+      "created_at": "2026-01-23T04:19:26Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60444",
+      "body_preview": "### Description\n\nIf the user knows the size and shape of the tensors ahead of time, they can specify the metadata upfront. This  means that Ray doesn't have to pass this metadata from the creator to receivers, and transfers will no longer be beholden to Ray system RPC latency.\n\nThere's also an interesting place to go here with reusing previous metadata for transports where you have to register memory.",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60443,
+      "title": "[core][rdt] Receiver side pre-registered memory pool",
+      "labels": [
+        "enhancement",
+        "P1",
+        "core"
+      ],
+      "created_at": "2026-01-23T04:16:19Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60443",
+      "body_preview": "### Description\n\nReceiver side memory registration can be a bottleneck in certain cases. If we can allocate a memory region, mlock it, register it ahead of time, and reuse it for transfers we can avoid the cost of registering memory per recv. This is relevant for one-sided RDMA transports like NIXL.\n\n### Use case\n\n_No response_",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60442,
+      "title": "[core][rdt] Eliminate device synchronization before starting next task for NIXL",
+      "labels": [
+        "enhancement",
+        "P2",
+        "performance",
+        "core"
+      ],
+      "created_at": "2026-01-23T04:13:12Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60442",
+      "body_preview": "### Description\n\nAfter https://github.com/ray-project/ray/pull/59610, we have to synchronize at the end of every NIXL RDT actor task. This means the CPU can't run ahead and start executing subsequent actor tasks that queue up commands. Because of this, there may be some dead space between starting tasks where the GPU is not utilized.\n\nIdeally, we should start the next task while waiting for the cuda synchronize, and then send the PushTaskReply for the previous task back after the synchronization",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60441,
+      "title": "Typeerror: unhashable type: \"list\"",
+      "labels": [
+        "bug",
+        "triage",
+        "rllib",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-23T03:57:37Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60441",
+      "body_preview": "### What happened + What you expected to happen\n\nI'm training a marwil on my offline dataset, when I set the local_mode=True, it runs well, but if you set the local_mode=True, you can not use the gpu to accelerate the training process, so I set delete the local_mode=True, and change the num_gpus from 0 to 1, but I encountered a typerror: unhashable type: 'list' after I doing this. The first element of traceback is from aiohttp import web in /ray./_private/runtime_env/agent/main.py, by the way, I",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60438,
+      "title": "[core][rdt] Support for non-contiguous tensors without copying",
+      "labels": [
+        "enhancement",
+        "P2",
+        "core"
+      ],
+      "created_at": "2026-01-23T00:44:39Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60438",
+      "body_preview": "### Description\n\nWe should be able to split up non-contiguous tensors into contiguous regions. If the memory was already pre-registered we can send off the old metadata handles with different offsets and reconstruct the tensor as contiguous on the other side without incurring.\n\nNote that this needs to be benchmarked, just copying the tensor to make it contiguous could be faster, but it depends on a lot of factors.\n\n### Use case\n\n_No response_",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60437,
+      "title": "[core][rdt] Decrease sender side memory-registration overhead by registering per storage instead of per tensor",
+      "labels": [
+        "enhancement",
+        "P1",
+        "core"
+      ],
+      "created_at": "2026-01-23T00:34:47Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60437",
+      "body_preview": "### Description\n\nMemory registration is a relatively heavy operation. We may be able to decrease how many times we have to do it if we can figure out the underlying storage where the tensors are actually stored, register the memory block once, avoid deregistering the memory, and reuse the already registered memory when the user sends tensors that reuse that memory. We would send offsets with the metadata handle and read according to those offsets.\n\n### Use case\n\n_No response_",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60436,
+      "title": "[core][rdt] Support transfers between different device types",
+      "labels": [
+        "enhancement",
+        "P1",
+        "core"
+      ],
+      "created_at": "2026-01-23T00:24:17Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60436",
+      "body_preview": "### Description\n\nCurrently we don't have a way to do direct GPU <-> Remote CPU RDMA transfers. We want to expose a new option for the RDT API that allows a user to specify receiver device along with the tensor transport.\n\n### Use case\n\n_No response_",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60435,
+      "title": "[core][rdt] Support await on an RDT ref",
+      "labels": [
+        "enhancement",
+        "P1",
+        "core"
+      ],
+      "created_at": "2026-01-23T00:09:10Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60435",
+      "body_preview": "### Description\n\nFor normal ray objects, you can use the `await ref` syntax to get the object in asyncio contexts rather than using ray.get. We should be able to use this with RDT refs as well.\n\n### Use case\n\n_No response_",
+      "found_in_queries": [
+        "Q2d: ray.get issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60434,
+      "title": "[core][rdt] Full support for borrowing for one-sided transports",
+      "labels": [
+        "enhancement",
+        "P2",
+        "core",
+        "stability"
+      ],
+      "created_at": "2026-01-23T00:07:16Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60434",
+      "body_preview": "### Description\n\nToday borrowing is support in one-sided transports if the metadata is ready at the time you borrow. This means it's only guaranteed to work in ray.put scenarios. Ideally it should always work for the case where the owner is not the creator as well.\n\n### Use case\n\n_No response_",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60433,
+      "title": "[core][rdt] UCCL as an RDT backend",
+      "labels": [
+        "enhancement",
+        "P1",
+        "core"
+      ],
+      "created_at": "2026-01-23T00:01:05Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60433",
+      "body_preview": "### Description\n\nWe plan to support UCCL P2P as an RDT backend option. https://github.com/uccl-project/uccl\n\n\n### Use case\n\n_No response_",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60431,
+      "title": "[core][rdt] RDT object memory observability through `ray memory`",
+      "labels": [
+        "enhancement",
+        "P1",
+        "core"
+      ],
+      "created_at": "2026-01-22T23:53:38Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60431",
+      "body_preview": "### Description\n\nCurrently there's no way to view memory used up by RDT objects as they don't get stored in Ray's memory store or object store. There should be a way to see how much space is being used up and what device the object is on.\n\n### Use case\n\n_No response_",
+      "found_in_queries": [
+        "Q4a: object store issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60405,
+      "title": "[Autoscaler][v1] Support label-based node provisioning",
+      "labels": [
+        "enhancement",
+        "P1",
+        "usability",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-22T07:22:32Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60405",
+      "body_preview": "### Description\n\nAutoscaler v1 drops `label_selector` information specified on actors or tasks during scheduling. As a result, label-based node provisioning does not work in Autoscaler v1.\n\nThe same workflow works correctly in Autoscaler v2. However, users who rely on custom `NodeProvider` implementations (especially `BatchingNodeProvider`) often cannot migrate to v2 easily due to architectural differences.\n\nWith the current v1 design, even if an actor explicitly requests a label, the autoscaler",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60402,
+      "title": "[Data]  Ray Data breaks with pandas 3.0.0 due to removed SettingWithCopyWarning",
+      "labels": [
+        "bug",
+        "P0",
+        "data",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-22T06:19:35Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60402",
+      "body_preview": "### What happened + What you expected to happen\n\n```python\nargs = (ExecutionPlan(dataset_uuid=5, snapshot_operator=None),), kwargs = {}\nlog_to_stdout = False, is_user_code_exception = False\nshould_hide_traceback = False\n    def handle_trace(*args, **kwargs):\n        try:\n            return fn(*args, **kwargs)\n        except Exception as e:\n            # Only log the full internal stack trace to stdout when configured\n            # via DataContext, or when the Ray Debugger is enabled.\n           ",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60399,
+      "title": "Offline training using DQN",
+      "labels": [
+        "bug",
+        "question",
+        "P2",
+        "rllib",
+        "rllib-algorithms",
+        "data",
+        "rllib-offline-rl",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-22T03:54:08Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60399",
+      "body_preview": "### What happened + What you expected to happen\n\nDQN is continuing to train despite encountering an error when attempting to read offline data files. \nFor example, when trying to read json files but pointing to a wrong folder with only parquet files as in the attached code: (DQN pid=38556) 2026-01-21 15:51:32,760\tERROR offline_data.py:108\n\nI would like to run purely offline training using DQN. Despite the error, the training continued, making me suspect it defaulted to online training instead of",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60363,
+      "title": "[<Ray component: Core|RLlib|etc...>] bug in ray.rllib.algotirhm.dqn.torch.default_dqn_rl_module",
+      "labels": [
+        "bug",
+        "triage",
+        "rllib",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-21T12:22:10Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60363",
+      "body_preview": "### What happened + What you expected to happen\n\nline 98\n```python\ntorch.rand((B,)) < epsilon,\n```\n\nshould be\n```python\ntorch.rand((B,), device=random_actions.device) < epsilon,\n```\nOr when specifying num_gpus_per_env_runner>0, there will be error of tensor not in the same device. \n\n### Versions / Dependencies\n\npass\n\n### Reproduction script\n\npass\n\n### Issue Severity\n\nNone",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60359,
+      "title": "[Serve] Add controller-managed deployment-scoped actors",
+      "labels": [
+        "serve",
+        "stability"
+      ],
+      "created_at": "2026-01-21T07:15:15Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60359",
+      "body_preview": "## Problem\n\nThe `PrefixCacheAffinityRouter` creates a `PrefixTreeActor` to track prefix cache state across replicas. Currently this actor is created with `lifetime=\"detached\"` which causes stale state to persist after `serve.shutdown()` (reported by @kw-anyscale).\n\nRemoving `lifetime=\"detached\"` fixes the stale state issue, but introduces a fault tolerance problem: the actor is owned by whichever replica/proxy creates it first. If that owner dies, the actor dies, and other replicas get `ActorDie",
+      "found_in_queries": [
+        "Q2b: crash issues"
+      ]
+    },
+    {
+      "number": 60316,
+      "title": "[Core] Ray Client: gRPC flow-control window overflow due to fork in multithreaded proxier process",
+      "labels": [
+        "bug",
+        "P1",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-20T07:24:15Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60316",
+      "body_preview": "### What happened + What you expected to happen\n\n### What happened\n\nWhen using Ray Client in proxy mode, we observe intermittent `overflows local window` errors in gRPC communication between the proxier and specific server processes. This occurs when the proxier spawns specific server processes while handling active gRPC connections:\n\n```\ngrpc._channel._MultiThreadedRendezvous: <_MultiThreadedRendezvous of RPC that terminated with:\n\tstatus = StatusCode.INTERNAL\n\tdetails = \"frame of size 2097017 ",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60291,
+      "title": "[Bug|Serve] Continuous conversation is not possible when testing after serving the model on Ray Serve",
+      "labels": [
+        "bug",
+        "serve",
+        "llm",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-19T11:22:09Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60291",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen continuing a conversation sequentially, the following error appears:\n\n```yaml\nMessage: 'list' object is not an iterator None (Request ID: 4cc82a4a-d11d-470a-94cd-934ce2291215), \nInternal exception: ray.llm._internal.serve.core.configs.openai_api_models.OpenAIHTTPException \n(Request ID: 4cc82a4a-d11d-470a-94cd-934ce2291215), original exception:\n```\n\nTo investigate this error, I checked the logs under\n/tmp/ray/session_latest/logs/serve/replica_",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60251,
+      "title": "[Core] Incorrect Error Message When the Task Return 1 value and num_returns > 1",
+      "labels": [
+        "bug",
+        "P1",
+        "usability",
+        "core"
+      ],
+      "created_at": "2026-01-17T00:23:26Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60251",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen the task has `num_returns` > 1 but the task actually only return 1 result, the task will throw an error like the following:\n```\nTypeError: object of type 'int' has no len()\n```\ninstead of the expected:\n```\n\"Task returned 1 objects, but num_returns=2.\"\n```\n\n\n### Versions / Dependencies\n\nmaster\n\n### Reproduction script\n\n```\n>>> import ray\n>>> ray.init()\n>>> @ray.remote(num_returns=2)\n... def f():\n...     return 1\n... \n>>> x = f.remote()\n```\n\n##",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60230,
+      "title": "[Core] Preload python modules for ray actors",
+      "labels": [
+        "question",
+        "enhancement",
+        "performance",
+        "core",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-16T18:45:37Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60230",
+      "body_preview": "### Description\n\nI'm looking for similar feature to `RAY_preload_python_modules` (for [ref](https://github.com/ray-project/ray/pull/33572)) but for ray actors.\n\nI believe there is no such functionality, we could theoretically load modules inside raylet and spawn ray actors as multiprocessing forks. Happy to help here:)\n\n### Use case\n\nIt would speed up init time by a lot for actors which imports large modules",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60205,
+      "title": "[RLlib] Hierarchical Environment not Compatible with Stateful RLModules",
+      "labels": [
+        "bug",
+        "triage",
+        "rllib",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-16T03:56:19Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60205",
+      "body_preview": "# TL;DR\n\nHierarchical environments are currently incompatible with **stateful RLModules** (e.g., `LSTMEncoder` via `use_lstm=True`). In hierarchical setups where policies operate on different temporal resolutions, RLlib can fail to restore `STATE_OUT` correctly at the start of truncated fragments, leading to an `IndexError` in `InfiniteLookbackBuffer`.\n\n---\n\n## Error message\n\n`AddStatesFromEpisodesToBatch` fails with:\n\n```bash\n  File \"/home/jp/apps/miniconda3/envs/rl/lib/python3.12/site-packages",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2b: crash issues"
+      ]
+    },
+    {
+      "number": 60204,
+      "title": "[Data] Encapsulate optimization rules, logical operators, and datasources within packages",
+      "labels": [
+        "P3",
+        "data"
+      ],
+      "created_at": "2026-01-16T03:49:52Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60204",
+      "body_preview": "Ray Data has subpackages for optimziation rules (`ray.data._internal.logical.rules`), logical operator (`ray.data._internal.logical.operators`), and datasources (`ray.data._internal.datasource`). \n\nDespite defining these subpackages, we import from individual modules. This isn't ideal because the imports become really long and verbose (e.g., `from ray.data._internal.logical.rules.inherit_batch_format import InheritBatchFormatRule` rather than `from ray.data._internal.logical.rules import Inherit",
+      "found_in_queries": [
+        "Q4b: object reference issues"
+      ]
+    },
+    {
+      "number": 60150,
+      "title": "[data] Actor task retries go to same broken actor, causing infinite hang",
+      "labels": [
+        "data"
+      ],
+      "created_at": "2026-01-15T01:08:57Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60150",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen using Ray Data with stateful actors (`map_batches` with a class), if an actor enters a \"broken but alive\" state (e.g., internal subprocess dies but actor process remains alive), task retries go to the **same broken actor** indefinitely, causing the job to hang.\n\n**Expected**: Retries should go to healthy actors or the broken actor should be restarted.\n\n**Actual**: With `actor_task_retry_on_errors=True`, the job hangs forever as retries loop o",
+      "found_in_queries": [
+        "Q2c: hang issues"
+      ]
+    },
+    {
+      "number": 60129,
+      "title": "[EPIC] Add missing fields in ray base events for history server endpoints reconstruction",
+      "labels": [
+        "core",
+        "observability",
+        "tech-debt",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-14T05:23:55Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60129",
+      "body_preview": "# Proto Fields That Need to Be Added\n\n1. DriverJobDefinitionEvent:\n   + type (string) - \"SUBMISSION\" or \"DRIVER\"\n   + submission_id (string)\n\n2. DriverJobLifecycleEvent.StateTransition:\n   + message (string)\n   + error_type (string)\n   + exit_code (int32)\n\n3. ActorDefinitionEvent:\n   + call_site (string)\n\n4. ActorLifecycleEvent.StateTransition:\n   + pid (int32) - Currently only in DEAD state's deathCause\n   + port (int32)\n\n5. NodeDefinitionEvent:\n   + hostname (string)\n\n6. TaskLifecycleEvent:\n  ",
+      "found_in_queries": [
+        "Q3b: actor fail issues",
+        "Q4a: object store issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60122,
+      "title": "[data][llm] MiniMax M2.1 Initialization fails because configuration_minimax_m2.py isn't downloaded by the chat_template_stage.py",
+      "labels": [
+        "bug",
+        "triage",
+        "data",
+        "llm",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-13T23:47:45Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60122",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen trying to run MiniMax M2.1 model through Ray Data LLM batch mode, we get the following error:\n```\nTraceback (most recent call last):\n  File \"/home/ray/anaconda3/lib/python3.12/site-packages/ray/data/exceptions.py\", line 49, in handle_trace\n    return fn(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^\n  File \"/home/ray/anaconda3/lib/python3.12/site-packages/ray/data/_internal/plan.py\", line 547, in execute\n    blocks = execute_to_legacy_block_",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2d: ray.get issues",
+        "Q3b: actor fail issues"
+      ]
+    },
+    {
+      "number": 60096,
+      "title": "[Dashboard] Support Disabling Specific Dashboard Modules via Environment Variables",
+      "labels": [
+        "enhancement",
+        "P1",
+        "performance",
+        "core",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-13T09:51:31Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60096",
+      "body_preview": "### Description\n\n\nCurrently, all functional modules of the Ray Dashboard run independently as subprocesses, each responsible for distinct features. See `python/ray/dashboard/modules`.\n\n```python\n_EXPECTED_DASHBOARD_MODULES = [\n    \"ray.dashboard.modules.usage_stats.usage_stats_head.UsageStatsHead\",\n    \"ray.dashboard.modules.metrics.metrics_head.MetricsHead\",\n    \"ray.dashboard.modules.data.data_head.DataHead\",\n    \"ray.dashboard.modules.event.event_head.EventHead\",\n    \"ray.dashboard.modules.jo",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60056,
+      "title": "[data][llm] DeepSeek v3.2 fails to initialize",
+      "labels": [
+        "bug",
+        "triage",
+        "data",
+        "llm",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-12T18:25:08Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60056",
+      "body_preview": "### What happened + What you expected to happen\n\nDeepSeek v3.2 runs without issue when served with vllm serve (in the same container image), but when going through the Ray execution path, we encounter the following error:\n\n```\nTraceback (most recent call last):\n  File \"/home/ray/anaconda3/lib/python3.12/site-packages/transformers/models/auto/configuration_auto.py\", line 1360, in from_pretrained\n    config_class = CONFIG_MAPPING[config_dict[\"model_type\"]]\n                   ~~~~~~~~~~~~~~^^^^^^^^",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 60043,
+      "title": "[Core] Node-level blocking for unlabeled actors on dedicated nodes",
+      "labels": [
+        "enhancement",
+        "P2",
+        "feature-request",
+        "core",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-12T07:42:01Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60043",
+      "body_preview": "### Description\n\nWhen operating dedicated nodes, there is a common requirement to ensure that only intended workloads are allowed to run on those nodes.\nIn particular, users often want to prevent general that do not specify any scheduling constraints from being scheduled on dedicated nodes.\n\nRay currently provides label-based scheduling via `label_selector` and `NodeLabelSchedulingStrategy`, which allows tasks or actors to explicitly select or avoid certain nodes.\nHowever, this mechanism only ap",
+      "found_in_queries": [
+        "Q2d: ray.get issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60024,
+      "title": "[Data] Worker node Raylet not releasing memory after processing JSONL files",
+      "labels": [
+        "question",
+        "core",
+        "data",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-10T06:54:50Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60024",
+      "body_preview": "ray version: 2.53.0\n\n### Description\nWhen the worker pod is initially created, the memory is about 500 MB, and the raylet is about 80 MB. When a ray job is submitted for a 1GB jsonl dataset, the job ends and the worker memory usage rises to about 1GB, of which the raylet occupies 500MB and is not released.\n### Reappear\n1. Create a cluster and configure 3c3g * 3pod for the worker \n\n<img width=\"1580\" height=\"373\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/c9e8b261-49a7-4068-a36a-6",
+      "found_in_queries": [
+        "Q4a: object store issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60021,
+      "title": "[Core] Support specifying multiple bundle indices when scheduling task/actor to a placement group",
+      "labels": [
+        "enhancement",
+        "P1",
+        "tune",
+        "train",
+        "core",
+        "train-tune"
+      ],
+      "created_at": "2026-01-10T01:18:11Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60021",
+      "body_preview": "### Description\n\nToday, when we want to scheduling a task/actor to a placement group, we cans specify `placement_group_bundle_index` for Ray to schedule the task or actor to a certain bundle in the placement group. The feature ask is to expand on the `placement_group_bundle_index` concept and add support specifying multiple bundle indices during scheduling,  \n\n### Use case\n\nIn Ray Train and Tune, there is a use case where a placement group can be split into head and worker bundles. And for certa",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 60013,
+      "title": "[Data] Dataset Left-Outer join produces empty blocks, causing errors in downstream joins",
+      "labels": [
+        "bug",
+        "P1",
+        "data",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-09T21:15:17Z",
+      "html_url": "https://github.com/ray-project/ray/issues/60013",
+      "body_preview": "### What happened + What you expected to happen\n\nLets say we have three datasets which we want to join together in sequential left joins.\n\njoined_1 = ds_a.join(ds_b)\njoined_2 = joined_1.join(ds_c)\n\ndepending on the data within ds_a and ds_b the joined_1 dataset can have empty data blocks within it based on my tests (see reproduction code below). \n\nif this is the case then the second join will fail for some of the blocks due to a column not found error\n\n```\nTraceback (most recent call last):\n  Fi",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2d: ray.get issues",
+        "Q3b: actor fail issues"
+      ]
+    },
+    {
+      "number": 59997,
+      "title": "[Data] Ray Data metrics keep accumulating in long-running RayCluster, causing severe metrics export overhead",
+      "labels": [
+        "bug",
+        "triage",
+        "data"
+      ],
+      "created_at": "2026-01-09T07:37:14Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59997",
+      "body_preview": "### What happened + What you expected to happen\n\n# Background\n\nIn Retrieval-Augmented Generation(RAG) scenarios, embedding jobs are typically very lightweight, and we trigger ray data task for embedding hourly(incremental documents for hourly task are small).\n\nIn our setup:\n\n- Each embedding task runs for only a few minutes\n- Submitting jobs as RayJobs is inefficient because ray cluster creation and teardown in k8s may take several minutes\n\nTo avoid this overhead, we run a long-lived RayCluster ",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q4a: object store issues"
+      ]
+    },
+    {
+      "number": 59967,
+      "title": "[Data] SessionFileHandler uses cp1252 encoding on windows resulting in logging errors",
+      "labels": [
+        "bug",
+        "triage",
+        "windows",
+        "usability",
+        "data",
+        "observability",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-08T09:15:50Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59967",
+      "body_preview": "### What happened + What you expected to happen\n\n**tldr:**\n1. ray.data wants to log characters (e.g. checkmarks) that can (probably) only be encoded via utf-8\n2. the SessionFileHandler relies on locale to determine the encoding and chooses cp1252 in my case (windows 11)\n3. Then the logger errors on these characters: UnicodeEncodeError: 'charmap' codec can't encode characters in position 58-59: character maps to <undefined>\n\nSuggestion: Use utf-8 as default encoding on windows\n\n**More Info:**\nRun",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 59966,
+      "title": "ray crashes frequently on EulerOS",
+      "labels": [
+        "bug",
+        "P1",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-08T08:13:36Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59966",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen I use ray head to send tasks to worker, the task should be finished properly. However, during the task processing the ray cluster crashes very frequently and transiently.\n\n[gcs_server.out.log](https://github.com/user-attachments/files/24490482/gcs_server.out.log)\n\n### Versions / Dependencies\n\nRay: 2.9.3\nPython: 3.10.16\nHost machine OS: Huawei Cloud EulerOS 2.0 (aarch64)\nDocker container OS: Anolis OS 8.6\nSome Python dependencies:\n    grpc-int",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2b: crash issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59951,
+      "title": "[Data] Ray cannot serialize Arrow string-view arrays",
+      "labels": [
+        "bug",
+        "P1",
+        "data",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-07T22:45:22Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59951",
+      "body_preview": "### What happened + What you expected to happen\n\nIt seems to me that the arrow serialization code lacks support for string-view and binary-view: https://github.com/ray-project/ray/blob/master/python/ray/_private/arrow_serialization.py#L327 .\n\n```\ntest/test_ray.py:38: in test_foo\n    ray.data.from_arrow_refs([ray.put(\n../.venv/lib/python3.13/site-packages/ray/_private/auto_init_hook.py:22: in auto_init_wrapper\n    return fn(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^\n../.venv/lib/python3.13/s",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 59946,
+      "title": "[Data] from_arrow_refs converts an empty table with one column into an empty table with zero columns",
+      "labels": [
+        "bug",
+        "question",
+        "triage",
+        "usability",
+        "data",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-07T20:39:24Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59946",
+      "body_preview": "### What happened + What you expected to happen\n\nI expected the following assertion to succeed but indeed `pd.columns` contains no columns. Do I misunderstand something about Ray's dataframe model?\n\n```python\n\nimport pyarrow as pa\nimport ray\n\nempty_array = pa.array([], pa.int32())\nempty_ref = ray.put(pa.table([empty_array], [\"apples\"]))\nrd = ray.data.from_arrow_refs([empty_ref])\npd = rd.to_pandas()\nassert list(pd.columns) == [\"apples\"], list(pd.columns)\n```\n\n### Versions / Dependencies\n\n```\nRay ",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 59930,
+      "title": "[Core][Dashboard][Autoscaler] ReporterAgent cluster metrics missing when using autoscaler v2 (still reads DEBUG_AUTOSCALING_STATUS)",
+      "labels": [
+        "bug",
+        "P1",
+        "usability",
+        "core",
+        "observability",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-07T13:09:58Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59930",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen running a Ray cluster with autoscaler v2, the dashboard\u2019s ReporterAgent no longer exposes any cluster\u2011level node metrics such as:\ncluster_active_nodes\ncluster_pending_nodes\ncluster_failed_nodes\nIn particular:\nThe autoscaler v2 monitor (ray.autoscaler.v2.monitor.AutoscalerMonitor) periodically calls report_autoscaling_state on the GcsClient with an AutoscalingState protobuf:\n```python\n# ray/autoscaler/v2/monitor.py\n  @staticmethod\n  def _repor",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59914,
+      "title": "[Core] Excessive number of small objects stored in memory",
+      "labels": [
+        "bug",
+        "question",
+        "P1",
+        "performance",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-07T04:15:48Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59914",
+      "body_preview": "### What happened + What you expected to happen\n\nWe're using ray client in an http service in which we use ray.get resolve object response from actor functions, and the memory of the process for client server continues to grow on ray head node.\n\nThe whitebook says \n\n> Objects can be stored in the owner\u2019s in-process memory store or in the distributed object store.\nThe in-process memory store is allocated on the owner\u2019s heap and does not enforce a capacity\nlimit. This is because Ray only stores sm",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2d: ray.get issues",
+        "Q4a: object store issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59913,
+      "title": "[Ray Core] Small RAY_CGRAPH_read_iteration_timeout_s and unstable networks may cause CPU data and GPU data disorder  in  ray compiled graph",
+      "labels": [
+        "bug",
+        "stability",
+        "compiled-graphs",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-07T03:27:38Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59913",
+      "body_preview": "### What happened + What you expected to happen\n\nDuring concurrent load testing of VLLM,  the error \"**RuntimeError: The size of tensor a (32) must match the size of tensor b (33) at non-singleton dimension 0**\" occasionally occurred, which is also described in https://github.com/vllm-project/vllm/issues/15332.   \n\nWe found that the cause of this problem was a mismatch between the SchedulerOutput and IntermediateTensors received by the vllm RayWorkerWrapper process (num_scheduled_tokens in Sched",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 59888,
+      "title": "[core] Cache parsed JSON for frequently-accessed runtime env",
+      "labels": [
+        "core"
+      ],
+      "created_at": "2026-01-06T08:18:14Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59888",
+      "body_preview": "JSON parsing is expensive (~1000ns+ per parse). We parse runtime env JSON in hot paths like `core_worker.cc`:\n\n```cpp\n// core_worker.cc\nparent = std::make_shared<json>(json::parse(job_serialized_runtime_env));\n```\n\n### Files with `json::parse` in hot paths\n\n- `src/ray/core_worker/core_worker.cc`\n- `src/ray/core_worker/context.cc`\n- `src/ray/raylet/main.cc`\n\n### Proposed Solution\n\nCache the parsed JSON result when the serialized runtime env is first set, and reuse it:\n\n```cpp\n// Instead of parsin",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59887,
+      "title": "[core] Use `std::string_view` for read-only string parameters",
+      "labels": [
+        "good-first-issue",
+        "core",
+        "contribution-welcome"
+      ],
+      "created_at": "2026-01-06T08:15:37Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59887",
+      "body_preview": "Many function signatures take `const std::string&` for parameters that are only read (not stored). Using `std::string_view` avoids creating temporary `std::string` objects when the caller has a string literal or substring.\n\n### Example from `task_util.h`\n\n```cpp\n// Before\nTaskSpecBuilder &SetCommonTaskSpec(\n    const TaskID &task_id,\n    const std::string name,  // Copied, then copied again into protobuf\n    ...\n    const std::string &debugger_breakpoint,  // Reference, but could be string_view\n",
+      "found_in_queries": [
+        "Q4a: object store issues",
+        "Q4b: object reference issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59885,
+      "title": "[core] Add `reserve()` calls for vectors with known/estimable sizes",
+      "labels": [
+        "core"
+      ],
+      "created_at": "2026-01-06T08:11:27Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59885",
+      "body_preview": "When building vectors in loops where the final size is known or estimable, we should call `reserve()` upfront to avoid repeated reallocations.\n\n### Current State\n\n- bunch of `.reserve()` calls in `src/ray/`\n- bunch of `push_back` calls in `src/ray/core_worker/` alone (many without reserve)\n\n### Example from [task_manager.cc](https://github.com/ray-project/ray/blob/fc7870426cb1aad42333634fe7a1b6b214d974be/src/ray/core_worker/task_manager.cc#L249-L265)\n\n```cpp\n// Before\nstd::vector<ObjectID> task_",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59884,
+      "title": "[core] Adopt `absl::InlinedVector` for small, frequently-allocated collections",
+      "labels": [
+        "good-first-issue",
+        "core",
+        "contribution-welcome"
+      ],
+      "created_at": "2026-01-06T08:07:52Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59884",
+      "body_preview": "We should use `absl::InlinedVector` for vectors that typically have a small number of elements. This avoids heap allocation for the common case while gracefully handling larger collections.\n\nCurrently, we have 2k+ uses of `std::vector` but only 4 uses of `absl::InlinedVector` in `src/ray/`.\n\n### Target Collections\n\n`std::vector<ObjectID>`, `std::vector<TaskID>`,  `std::vector<ActorID>`\n\nThese ID vectors are typically small (1-10 elements) and allocated frequently in hot paths:\n\n### Example Trans",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59857,
+      "title": "[RFC][Serve] Static Deployment with External Placement Group Support",
+      "labels": [
+        "enhancement",
+        "serve",
+        "usability",
+        "llm"
+      ],
+      "created_at": "2026-01-05T20:21:38Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59857",
+      "body_preview": "## Summary\n\nExtend `@serve.deployment` API to accept an external `PlacementGroup` with explicit replica-to-bundle mapping via a private `_placement_info` parameter. This enables GPU colocation between Serve deployments and other Ray components while preserving Serve's HTTP routing, health checks, and observability.\n\n## Motivation\n\n### The Problem\n\nA subset of RL training workflows require **inference engines and trainers to be placed on the same GPUs** for:\n- Zero-copy weight sync via CUDA IPC\n-",
+      "found_in_queries": [
+        "Q2d: ray.get issues",
+        "Q3b: actor fail issues"
+      ]
+    },
+    {
+      "number": 59851,
+      "title": "[Ray Core | Compatibility Issue] Ray 2.7.0 fails to import pkg_resources._vendor with setuptools >= 80",
+      "labels": [
+        "bug",
+        "P2",
+        "core",
+        "data",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-05T14:13:48Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59851",
+      "body_preview": "### What happened + What you expected to happen\n\n**What happened**:\n\nWhen using Ray 2.7.0 and setuptools >= 80, the following error occurs:\n\n`ModuleNotFoundError: No module named 'pkg_resources._vendor'`\n\n\nCause: setuptools >= 80 removed the pkg_resources._vendor module, which Ray 2.7.0 relies on in several places for importing pkg_resources._vendor.packaging.version.\n\nExpected Behavior: Ray should gracefully handle the absence of pkg_resources._vendor and use packaging.version instead.\n\n**Solut",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59831,
+      "title": "[Core][RDT] Support await on RDT object ref",
+      "labels": [
+        "question",
+        "performance",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-04T10:32:26Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59831",
+      "body_preview": "## Description\nIn work #59472, We've discovered that Ray doesn't appear to support asynchronous RDT.\n\nRay implements the `await` method of `ObjectRef`, which sets a callback function. This part of the code may be missing RDT-related logic.\n\nWe plan to implement asynchronous RDTs for Ray.\n\n## Case\n```python\nimport ray\nimport torch\nimport asyncio\n@ray.remote\nclass sender:\n    @ray.method(tensor_transport=\"nixl\")\n    async def gen(self):\n        return torch.randn(4, 4)\n@ray.remote            \nclas",
+      "found_in_queries": [
+        "Q2b: crash issues",
+        "Q2d: ray.get issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59805,
+      "title": "[RLlib] Support truly asynchronous training for real-time, non-emulated environments (no environment blocking)",
+      "labels": [
+        "enhancement",
+        "triage",
+        "rllib",
+        "usability",
+        "performance",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-02T08:59:48Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59805",
+      "body_preview": "### Description\n\nRLlib algorithms such as PPO and DreamerV3 are fundamentally synchronous in their current implementation: during the training phase, environment stepping is paused until learning completes. This design works well for emulated or pausable environments (e.g., Atari, Mujoco, vectorized envs), but it breaks down for real-time, non-emulated environments where the environment continues running even when the agent does not act.\n\nIn such setups, the agent \u201cfreezes\u201d during training phase",
+      "found_in_queries": [
+        "Q3b: actor fail issues"
+      ]
+    },
+    {
+      "number": 59804,
+      "title": "Can not run TorchTrainer on 3 node with gpu",
+      "labels": [
+        "bug",
+        "question",
+        "triage",
+        "train",
+        "stability",
+        "gpu",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-02T06:42:26Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59804",
+      "body_preview": "### What happened + What you expected to happen\n\nI have  setup a ray cluster with 3 node with gpu.  Each node have a RTX  TITAN please see the following images\n\n<img width=\"648\" height=\"357\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/5a3a89d2-a204-4c39-a9ee-93e8c14ae330\" />\n\nI run the example code  about  'Train: Distributed Model Training', If set the  num_workers=2, the program can not run ,please following images:\n\n<img width=\"2391\" height=\"423\" alt=\"Image\" src=\"https://githu",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 59796,
+      "title": "[Ray Core] Memory monitor uses system memory when CGroup limit >= system memory",
+      "labels": [
+        "bug",
+        "P1",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2026-01-01T04:25:37Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59796",
+      "body_preview": "# [Ray Core] Memory monitor uses system memory when CGroup limit >= system memory\n\n## Related Issues/PRs\n\nRelated to #35989, #42508\n\n## Description\n\nWhen CGroup memory limit is greater than or equal to system memory (or unlimited), Ray's memory monitor uses system memory calculation instead of CGroup memory calculation, causing false OOM kills.\n\n**Problem:**\n\n* Driver killed: \"Out of Memory\" (29.10GB / 30.59GB)\n* Actual RSS: ~9.31 GB\n* ~20GB difference was due to inaccurate system memory calcula",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59792,
+      "title": "[RFC][Serve] Decoupled Routing Primitives for Ray Serve",
+      "labels": [
+        "serve",
+        "feature-request",
+        "llm",
+        "help-wanted",
+        "contribution-welcome"
+      ],
+      "created_at": "2025-12-31T20:23:52Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59792",
+      "body_preview": "## Summary\n\nThis RFC proposes adding two new primitives to Ray Serve's `DeploymentHandle` API: `choose_replica()` (an async context manager) and `dispatch()`. These primitives decouple replica selection from request dispatch, enabling advanced orchestration patterns like Parallel Prefill-Decode (PD) proxies for LLM disaggregated serving. The context manager pattern ensures proper slot reservation cleanup, eliminating resource leaks when dispatch is skipped due to errors or early returns.\n\n## Mot",
+      "found_in_queries": [
+        "Q3a: memory leak issues"
+      ]
+    },
+    {
+      "number": 59782,
+      "title": "[Core][Accelerator] Ray Subprocess Not Properly Terminated Warning When Importing Custom Accelerator Package",
+      "labels": [
+        "bug",
+        "question",
+        "P2",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-31T06:19:03Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59782",
+      "body_preview": "\n## **Describtion**\n\n1. We added a file `xccl_group.py` under [python/ray/experimental/channel](https://github.com/ray-project/ray/tree/master/python/ray/experimental/channel), which is used to adapt the communication protocol of a third-party accelerator (a type of GPU).\n2. At the beginning of `xccl_group.py`, we imported a torch package (`import torch_xpu`) at the module level. We confirmed that this package exists in the python packages list of the environment.\n\n    ```Python\n    import loggi",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59778,
+      "title": "[Ray VLLM] vllm error when all ray workers node start sametime but fine when all ray workers node start by sequence",
+      "labels": [
+        "core",
+        "llm",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-31T04:16:24Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59778",
+      "body_preview": "## vllm error when all ray workers node start sametime but fine when all ray workers node start by sequence\n\n### my env\nvllm: 0.9.2\nRocm\nmodel: deepseek v3.2\nhosts: 4 servers total, 1 of them is master, 3 of them is worker nodes.\nnetwork: there is one CX7 400GB IB network card per server.\n\n## detail\nwhen start the 3 ray workers nodes, vllm will fail, but if start by order, its working.\n\n## logs\nmore logs, please refer the attachment\n`\nWorkerWrapper pid=2361)\u001b[0m k8s19:2361:2361 [0] NCCL INFO Cha",
+      "found_in_queries": [
+        "Q2d: ray.get issues",
+        "Q3b: actor fail issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59767,
+      "title": "[train] update tensorflow/keras example and test to be compatible with keras 3",
+      "labels": [
+        "bug",
+        "triage",
+        "docs",
+        "train"
+      ],
+      "created_at": "2025-12-30T18:52:33Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59767",
+      "body_preview": "### What happened + What you expected to happen\n\nThere is some compatibility issue with Tensorflow and Keras 2: https://keras.io/getting_started/#tensorflow--keras-2-backwards-compatibility\n\nMore context: https://github.com/keras-team/keras/issues/20585\n\nWe should update the train test and doc test examples to be compatible with Keras 3.\n\ne.g. https://github.com/ray-project/ray/blob/master/python/ray/train/examples/tf/tensorflow_mnist_example.py\n\n### Versions / Dependencies\n\nRay: 2.53.0\nPython: ",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 59764,
+      "title": "[Ray LLM] initialize_node() hangs indefinitely when node has insufficient CPU resources",
+      "labels": [
+        "bug",
+        "triage",
+        "serve",
+        "llm",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-30T16:34:39Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59764",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen deploying a vLLM-based LLM server using Ray Serve LLM APIs, the initialization process hangs indefinitely at \"Running tasks to download model files on worker nodes\" message.\n\n**Expected behavior:** The initialization should either succeed, timeout with an error, or fall back to alternative nodes.\n\n**Actual behavior:** The process hangs forever without any error or timeout.\n\n### Versions / Dependencies\n\n- Ray image: anyscale/ray-llm:2.51.1-py3",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2c: hang issues"
+      ]
+    },
+    {
+      "number": 59738,
+      "title": "`symmetric-run` hangs on multi-node SLURM clusters due to falsy empty list check",
+      "labels": [
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-29T03:15:53Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59738",
+      "body_preview": "https://github.com/ray-project/ray/blob/555f06b92196d58806531a3e3ad2c4b14d3214a3/python/ray/scripts/symmetric_run.py#L49\n\n## Summary\n\n`ray symmetric-run` fails on multi-node SLURM clusters because `check_head_node_ready()` uses a truthiness check on the return value of `check_alive([])`, which returns an empty list `[]` on success. Since empty lists are falsy in Python, the check always fails even when GCS is ready.\n\n## Environment\n\n- Ray version: 2.52.1\n- Python version: 3.11\n- OS: Linux (SLURM",
+      "found_in_queries": [
+        "Q2c: hang issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59681,
+      "title": "Additional Overhead in Ray Serve LLM than Bare vLLM images",
+      "labels": [
+        "bug",
+        "P0",
+        "llm"
+      ],
+      "created_at": "2025-12-26T17:31:27Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59681",
+      "body_preview": "### What happened + What you expected to happen\n\nI have been benchmarking Ray Serve LLM and bare vLLM(openai compatible server) and had a few observations.\n\n1. There is a ~200token/s total throughput decrease in Ray Serve LLM.(~30 tok/s difference in output throughput).\n2. Continuing on the above, ~20ms increase in mean TTFT and ~50ms in P90 TTFT.\n3. Also, I can see abrupt variation in Inter-Token Latency, P50 showing 0ms and P90 showing 50ms. Meanwhile, vllm shows a smoother variation, 12ms and",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 59667,
+      "title": "In Ray's large-scale submission of actor tasks, some tasks may be missed.",
+      "labels": [
+        "bug",
+        "question",
+        "P1",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-26T03:14:30Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59667",
+      "body_preview": "### What happened + What you expected to happen\n\nI created a list of 250 actors in my Python script.  I then distributed tasks to them sequentially. The logs show that I distributed tasks 27, 277, and 527 to actor `07de1a4701b8f7d557288f4c10000000`.\nHowever, the actor only executed tasks 27 and 527 in the corresponding Ray logs.  Subsequently, my main thread encountered an error while waiting for task 277.\nThe error message is as follows:\n  At least one of the input arguments for this task could",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2d: ray.get issues",
+        "Q3b: actor fail issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59666,
+      "title": "[core] Make Raylet the sole writer to GCS (remove dashboard agent writes)",
+      "labels": [
+        "P1",
+        "core",
+        "contribution-welcome"
+      ],
+      "created_at": "2025-12-26T02:37:29Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59666",
+      "body_preview": "### Description\n\nCurrently, the dashboard agent still writes its port information directly to GCS.\nhttps://github.com/ray-project/ray/blob/10869d565047ae02b398802e1efaf04109f27249/python/ray/dashboard/agent.py#L237-L253\n\nIdeally, Raylet should be the only component responsible for writing to GCS. After https://github.com/ray-project/ray/pull/59613, The dashboard agent already reports its port information to Raylet, and Raylet aggregates all port info into GcsNodeInfo and register it to GCS.\nhttp",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59661,
+      "title": "[Core] `ray.init()` before TensorFlow import causes tf.data pipeline deadlock on macOS",
+      "labels": [
+        "bug",
+        "P1",
+        "core",
+        "stability",
+        "community-backlog",
+        "contribution-welcome"
+      ],
+      "created_at": "2025-12-25T12:25:07Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59661",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen `ray.init()` is called before TensorFlow is imported, TensorFlow's `tf.data` pipeline hangs indefinitely when iterating over a dataset.\n\n**This hangs:**\n\n```python\nimport ray\nray.init()\nimport tensorflow as tf\nfrom datasets import Dataset\n\ndataset = Dataset.from_dict({\"x\": [[1]*784], \"y\": [0]})\ntf_dataset = dataset.to_tf_dataset(batch_size=1, columns=[\"x\"], label_cols=[\"y\"])\nnext(iter(tf_dataset))  # Hangs forever\n```\n\n**This works:**\n\n```pyt",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2a: deadlock issues",
+        "Q2c: hang issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59658,
+      "title": "[Core] How to change the cwd of a Ray subprocess?",
+      "labels": [
+        "question",
+        "enhancement",
+        "P2",
+        "usability",
+        "core",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-25T08:02:42Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59658",
+      "body_preview": "### Description\n\n_No response_\n\n### Use case\n\ndefault_local_dir uses os.getcwd() as the base directory. How can I change the cwd of Ray subprocesses?",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59655,
+      "title": "[Core] More co-operative logging setup in Python",
+      "labels": [
+        "enhancement",
+        "P1",
+        "usability",
+        "core",
+        "observability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-24T22:31:49Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59655",
+      "body_preview": "### Description\n\nSome sort of environment variable be provided that:\n\n1. disables all ray log handlers that emit to stdout or stderr, including the handler `LoggingConfig` adds to the root logger;\n3. enables propagation of log records, and;\n4. applies the `CoreContextFilter` or comparable (i.e. adds all the ray-associated metadata) to all records going through the `ray` logger.\n  a. Alternatively, make this filter a public class so we can add it to our own handlers.\n\n### Use case\n\nSomewhat relat",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59651,
+      "title": "[Core] Add capability to limit total resource usage per job",
+      "labels": [
+        "enhancement",
+        "P2",
+        "usability",
+        "core",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-24T14:05:52Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59651",
+      "body_preview": "### Description\n\n\nCurrently, Ray only supports limiting logical resource quantities at the task/actor granularity. If users want to limit the total resource usage of a job, the only available option seems to be using placement groups. However, placement groups are more suitable for gang scheduling scenarios and not ideal for simply limiting the total resource consumption of a job.\n\nThere is a need for a more direct and user-friendly mechanism to cap the total amount of resources a job can consum",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59650,
+      "title": "[RayServe] Cannnot connect from another server machine",
+      "labels": [
+        "bug",
+        "question",
+        "serve",
+        "usability",
+        "docs",
+        "observability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-24T13:36:07Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59650",
+      "body_preview": "Hi\nI have just started trying out RayServe.\nI can access the services deployed on the ray server from within the same server machine, but I cannot access them from a different server machine, and an Internal Server Error occurs.\nI would like to at least investigate what is happening internally, but since no server logs are displayed when an error occurs, I am at a loss as to how to investigate.\nIt would be helpful if you could tell me how to display detailed logs.\nBest Regards\n\n### Versions / De",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 59646,
+      "title": "Abnormal GPU Memory Usage (deepspeed&trl)",
+      "labels": [
+        "bug",
+        "question",
+        "triage",
+        "train",
+        "performance",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-24T10:14:02Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59646",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen training with code similar to the official example (deepspeed + huggingface + ray), I noticed that GPU memory usage is higher than normal. With parameters` {num_workers=2, resources_per_worker = {\"GPU\": 1, \"CPU\": 4}}`, the VRAM consumption is 23GB*2. However, for the same code, when I do not use ray, with code `accelerate launch --config_file zero2.yaml trainer.py`(trainer.py is the same as train_func in ray train). the VRAM consumption is 13",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 59644,
+      "title": "[core][rdt] Support borrowing from owner that's not the creator in RDT",
+      "labels": [
+        "enhancement",
+        "P1",
+        "core",
+        "rdt"
+      ],
+      "created_at": "2025-12-24T07:16:19Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59644",
+      "body_preview": "### Description\n\nCurrently borrowing is only guaranteed to work if you're using ray.put and then someone is borrowing the reference. Otherwise it's possible that the tensor transport metadata has not arrived at the owner at the time it's serializing the rdt obj ref for the borrower. See https://github.com/ray-project/ray/pull/59610 for some context.\n\n### Use case\n\n_No response_",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59642,
+      "title": "[Core] Actor Creation got error: Check failed: !WorkerID::FromBinary(worker_addr.worker_id()).IsNil()",
+      "labels": [
+        "bug",
+        "P0",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-24T06:51:48Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59642",
+      "body_preview": "### What happened + What you expected to happen\n\n```bash\n[2025-12-24 11:45:56,015 C 300919 301797] reference_counter.cc:569:  An unexpected system state has occurred. You have likely discovered a bug in Ray. Please report this issue at https://github.com/ray-project/ray/issues and we'll work with you to fix it. Check failed: !WorkerID::FromBinary(worker_addr.worker_id()).IsNil() \n*** StackTrace Information ***\n/data00/home/hejialing.hjl/opensource/ray/python/ray/_raylet.so(+0x16df79a) [0x7efefb9",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2b: crash issues",
+        "Q3b: actor fail issues",
+        "Q4a: object store issues",
+        "Q4b: object reference issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59640,
+      "title": "[<Ray Core>]  Old mutable objects are not released in the Ray compiled graph channel resizing, causing Ray's shared memory usage to continuously increase.",
+      "labels": [
+        "bug",
+        "P1",
+        "performance",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-24T03:55:01Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59640",
+      "body_preview": "### What happened + What you expected to happen\n\nDuring actual load testing of VLLM, we found that as VLLM handled more concurrent requests, the shared memory occupied by Ray on the nodes continued to increase, reaching 900G at one point, and eventually exceeding the pod memory limit (we were running VLLM on a Kubernetes-based platform).\n\nThrough code analysis, we confirmed that this was caused by old objects not being cleaned up and released during channel resizing in the Ray compiled graph. \n\n",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59626,
+      "title": "erros related to Ray in nv-ingest pod of RAG blueprint of NVIDIA",
+      "labels": [
+        "question",
+        "P2",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-23T10:12:01Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59626",
+      "body_preview": "### What happened + What you expected to happen\n\nI am trying to bring up the RAG pipeline using the link \nhttps://github.com/NVIDIA-AI-Blueprints/rag/blob/main/docs/deploy-helm.md \n\nThere is a pod nv-ingest in the helm chart which runs Ray and it is crashing when I try to ingest a PDF from the UI.\n\n[2025-12-23 07:57:11,571 C 4173 4173] task_receiver.cc:151:  An unexpected system state has occurred. You have likely discovered a bug in Ray. Please report this issue at https://github.com/ray-projec",
+      "found_in_queries": [
+        "Q2b: crash issues",
+        "Q2d: ray.get issues",
+        "Q3b: actor fail issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59612,
+      "title": "[LLM] boto3 is missing from dependencies list",
+      "labels": [
+        "bug",
+        "triage",
+        "serve",
+        "usability",
+        "llm",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-22T09:14:12Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59612",
+      "body_preview": "### What happened + What you expected to happen\n\nTrying to use `ray-llm` outside the ray docker image, it results in error message that `boto3` module is not found. It seems that `boto3` is missing from the python dependency list and it happens to work in the majority of cases because `boto3` is preinstalled in the official Ray docker image.\n\nFor the cases where we don't run code through the official docker image. The following code will fail:\n\n```python\nfrom ray.serve.llm import LLMConfig\n```\n\n",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 59603,
+      "title": "[CI] `linux://python/ray/tests:test_task_metrics` is failing/flaky on master.",
+      "labels": [
+        "core",
+        "flaky-tracker",
+        "stability"
+      ],
+      "created_at": "2025-12-20T03:15:55Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59603",
+      "body_preview": "- c2a7f924437291087c72ca19534ec9e2b609f938 FLAKY [Buildkite :ray: core: redis tests [g5_s7]](https://buildkite.com/ray-project/postmerge/builds/15056#019b3538-05bb-437b-ba8f-3f20d4f9a25f)\n- b65503e684caad78689ec2456fe79d296278d22b FLAKY [Buildkite :ray: core: python tests [g5_s4]](https://buildkite.com/ray-project/postmerge/builds/15039#019b326e-da57-4482-8deb-c69493ac03a4)\n- b65503e684caad78689ec2456fe79d296278d22b FAILED [Buildkite :ray: core: redis tests [g5_s7]](https://buildkite.com/ray-pro",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59582,
+      "title": "[Core] Inconsistent context manager behavior between `ray.init(address='auto')` and `ray.init(\"ray://...\")` (Client mode)",
+      "labels": [
+        "bug",
+        "question",
+        "usability",
+        "core",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-19T17:52:06Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59582",
+      "body_preview": "### What happened + What you expected to happen\n\nThere is an inconsistency in how the context manager returned by `ray.init()` behaves depending on whether it is initializing a local/driver connection or a Ray Client connection.\n\n*   **Ray Client (`ray://...`)**: When using `with ray.init(...):`, exiting the context disconnects the client but **leaves the cluster running**. This allows subsequent clients to connect or the cluster to continue processing.\n*   **Driver/Local (`address='auto'` or lo",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59573,
+      "title": "[Ray CLI] Add a CLI command ray kill --actor-id <actor_id> to forcefully terminate actors (including detached ones)",
+      "labels": [
+        "enhancement",
+        "usability",
+        "core",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-19T09:28:40Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59573",
+      "body_preview": "### Description\n\nWhen using Ray actors, especially **detached actors** (lifetime=\"detached\"), they can outlive the driver process that created them. In production or long-running workflows, sometimes these actors get stuck, leak resources (e.g., GPU memory), or hang due to exceptions/bugs.\n\nCurrently, the only ways to terminate such actors are:\n- From Python code: `ray.kill(ray.get_actor(name))` (requires knowing the name and having a live driver connected).\n- Killing the underlying OS process (",
+      "found_in_queries": [
+        "Q2c: hang issues",
+        "Q3a: memory leak issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59569,
+      "title": "[Serve]Ray Serve LLM Deployment Consumes Excessive Local Disk Space When Model is Mounted from S3 Bucket",
+      "labels": [
+        "question",
+        "serve",
+        "performance",
+        "llm",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-19T06:13:13Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59569",
+      "body_preview": "\n\nI'm deploying an LLM inference service using Ray Serve LLM. The model (over 400 GB in size) is stored in an S3 bucket, which is mounted directly into the ray container as a local directory at `/bucket`.\n\nHowever, during deployment, I observe that Ray starts consuming massive amounts of disk space on the root filesystem (`/`), eventually filling it up completely. This leads to the following warning repeatedly appearing in the logs:\n\n```\n(raylet) file_system_monitor.cc:116: /tmp/ray/session is o",
+      "found_in_queries": [
+        "Q4a: object store issues"
+      ]
+    },
+    {
+      "number": 59551,
+      "title": "SLURM issue tracker",
+      "labels": [
+        "docs",
+        "core",
+        "stability"
+      ],
+      "created_at": "2025-12-18T17:06:28Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59551",
+      "body_preview": "This ticket is the master tracker for various issues we've seen reported from SLURM users.\n\nA lot of the issues come simply from the fact that there is no real isolation (networking, filesystem, permissioning) in SLURM.\n\n**Port Management**\n* https://github.com/ray-project/ray/issues/54321\n* Ray currently chooses ports randomly. When there are port collisions, often times the stack trace was not easy to understand (some segfault or raylet died errors). It\u2019d probably be nice to have some sort of ",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59547,
+      "title": "[Core] placement group PACK strategy continuous bundles not scheduled to same nodes.",
+      "labels": [
+        "bug",
+        "question",
+        "P2",
+        "performance",
+        "core",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-18T13:37:07Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59547",
+      "body_preview": "### What happened + What you expected to happen\n\nFrom https://github.com/volcengine/verl/issues/4555, we want to create single placement group across all nodes, but ray placement group [PACK strategy](https://docs.ray.io/en/latest/ray-core/scheduling/placement-group.html#placement-strategy) has no guarantee that continuous bundles are scheduling to same nodes.\nFor example, \n- bundle 0: node-0\n- bundle 1: node-1\n- bundle 2: node-0\n- bundle 3: node-0\n- ...\n\nI encounter this problem when test place",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59522,
+      "title": "[data][llm] LLM Batch Inference Resiliency Thread",
+      "labels": [
+        "enhancement",
+        "P1",
+        "data",
+        "llm",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-17T23:26:46Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59522",
+      "body_preview": "### Description\n\nHi team! I'd like to list a few of the things I'm seeing when scaling up Ray Data LLM to batch sizes of 10 million + prompts (each prompt itself is also quite long, often times over 10k tokens). Thought this would serve as a helpful place for discussion on the resiliency of Ray Data LLM at a large scale.\n\n1) When using Ray Data LLM with the vLLM processor, there seems to be no actor level resiliency during vllm engine failures. When running at a high concurrency (for example 4 r",
+      "found_in_queries": [
+        "Q2b: crash issues",
+        "Q2c: hang issues",
+        "Q2d: ray.get issues",
+        "Q3b: actor fail issues",
+        "Q4a: object store issues"
+      ]
+    },
+    {
+      "number": 59518,
+      "title": "[Data] Actor OOM kill mid-task causes pipeline hang due to missing task cleanup callback",
+      "labels": [
+        "bug",
+        "P0",
+        "data",
+        "stability"
+      ],
+      "created_at": "2025-12-17T21:52:40Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59518",
+      "body_preview": "### What happened + What you expected to happen\n\nWhat happened:\nWhen a Ray Data map_batches actor is OOM killed mid-task, the entire pipeline hangs indefinitely. The symptoms are:\n\n1. The map_batches task fails and Ray OOM kills the actor\n2. The task appears to keep \"running\" and takes much longer than average (hung state)\n3. All nodes stop making progress - no tasks complete\n4. The pipeline never recovers, even with actor restart policies enabled\n\nRoot Cause:\nWhen DataOpTask.on_data_ready() rai",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2a: deadlock issues",
+        "Q2c: hang issues",
+        "Q2d: ray.get issues",
+        "Q3b: actor fail issues"
+      ]
+    },
+    {
+      "number": 59503,
+      "title": "[Core] ray.util.multiprocessing.Pool fails to initialize if Ray cluster resources are not yet ready",
+      "labels": [
+        "bug",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-17T09:02:15Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59503",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen initializing ray.util.multiprocessing.Pool right after starting a Ray cluster, the pool creation can fail because the cluster resource view is temporarily empty or incomplete.\n\n**What happened**\n\n- After starting a Ray cluster, there is a short window where:\n     -  The head node is up and accepting connections.\n     -  But GCS has not yet received resource reports from worker nodes.\n     - As a result, ray._private.state.cluster_resources() ",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q3b: actor fail issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59485,
+      "title": "[Data] `write_parquet` doesn't respect `min_rows_per_file` if you specify partition columns",
+      "labels": [
+        "bug",
+        "P2",
+        "data"
+      ],
+      "created_at": "2025-12-16T21:40:40Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59485",
+      "body_preview": "### What happened + What you expected to happen\n\nIf you specify partition columns, Ray Data might produce files with substantially fewer rows than the specified `min_rows_per_file`. The reason that this happens is because `min_rows_per_file` determines the minimum number of rows per write task. If there are multiple partitions within a write task, then the number of rows written to each file might be too small, even though the task as a whole wrote more than the minimum number of rows.\n\nI don't ",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 59404,
+      "title": "[Core] Multinode ray cluster/vllm deployment failure",
+      "labels": [
+        "bug",
+        "P1",
+        "core",
+        "stability",
+        "compiled-graphs",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-12T13:08:49Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59404",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen I deploy a model using vllm + ray on multiple nodes, after some time, the vllm server crashes with the following log messages:\n\n> \u001b[1;36m(EngineCore_DP0 pid=322563)\u001b[0;0m \u001b[36m(RayWorkerWrapper pid=322780)\u001b[0m [2025-12-12 15:10:48,710 E 322780 345750] raylet_client.cc:199: Error pushing mutable object: RpcError: RPC Error message: Socket closed; RPC Error details:  rpc_code: 14\n\u001b[1;36m(EngineCore_DP0 pid=322563)\u001b[0;0m \u001b[36m(RayWorkerWrapper p",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2b: crash issues",
+        "Q4a: object store issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59403,
+      "title": "[Dashboard]  Dashboard shows dead worker nodes as ALIVE in Cluster page",
+      "labels": [
+        "bug",
+        "P1",
+        "usability",
+        "core",
+        "observability",
+        "community-backlog",
+        "contribution-welcome"
+      ],
+      "created_at": "2025-12-12T08:51:08Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59403",
+      "body_preview": "## Description\n\nWhen a worker node dies (process crashes, network disconnection, etc.), the Dashboard's **Overview -> Node Status** correctly shows no alive workers, but the **Cluster** page still displays the worker node as **ALIVE** status. This inconsistency can persist for an extended period (up to several minutes or longer).\n\n\n\n### Versions / Dependencies\n\nRay:2.49.2\n\n### Reproduction script\n\nThis issue was observed in a normal Ray Data job running on the cluster.\n\n### Issue Severity\n\nNone",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2b: crash issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59394,
+      "title": "[RLlib] Memory leak on Windows in PPO+Gymnasium setting",
+      "labels": [
+        "bug",
+        "triage",
+        "windows",
+        "rllib",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-11T21:34:43Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59394",
+      "body_preview": "### What happened + What you expected to happen\n\nWhile training PPO on some custom Gymnasium envs, I noticed that eventually, after 20M+ steps, Ray would run out of memory.\n\nTrying to isolate this issue, I switched to local_mode and tried a dummy environment. When inspecting with psutil, I noticed RSS climbing indefinitely.\n\nI came up with this hopefully reproducible example.\n\n\n\n### Versions / Dependencies\n\nWindows 11, \nPython 3.12.11, \nRay 2.52.1, \ngymnasium 1.1.1\n\n### Reproduction script\n\n```f",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2b: crash issues",
+        "Q3a: memory leak issues",
+        "Q4b: object reference issues"
+      ]
+    },
+    {
+      "number": 59391,
+      "title": "[Data] Fix broken block-splitting",
+      "labels": [
+        "bug",
+        "P0",
+        "data"
+      ],
+      "created_at": "2025-12-11T19:22:27Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59391",
+      "body_preview": "### What happened + What you expected to happen\n\nAfter recent refactoring of MapTransformFns, block-splitting no longer works correctly:\n\n - Now it\u2019s being applied after block-shaping (as standalone BlockMapTransformFn)\n - Entailing that we over-split blocks that are already shaped up \n\n\nHere\u2019s an example of 2.51 vs 2.46:\n\n - 2.46 produces 200 blocks (expected; each block is split 2x)\n - 2.51 produces 400 blocks (blocks first shaped after reading then also split 2x)\n\nThis entails degradation in ",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 59381,
+      "title": "[Core] AttributeError: 'ray._raylet.CppFunctionDescriptor' object has no attribute 'function_id'.",
+      "labels": [
+        "bug",
+        "question",
+        "P2",
+        "core",
+        "stability",
+        "community-backlog",
+        "contribution-welcome"
+      ],
+      "created_at": "2025-12-11T09:11:26Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59381",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen I use a Cpp driver process to call ray remote to a Python actor, the error occured:\n```bash\n(raylet) Traceback (most recent call last):\n  File \"python/ray/_raylet.pyx\", line 2317, in ray._raylet.task_execution_handler\n  File \"python/ray/_raylet.pyx\", line 2174, in ray._raylet.execute_task_with_cancellation_handler\n  File \"/root/venv/lib/python3.12/site-packages/ray/_private/function_manager.py\", line 341, in get_execution_info\n    function_id",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q3b: actor fail issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59343,
+      "title": "[RuntimeEnv] RAY_RUNTIME_ENV_CREATE_WORKING_DIR isn't propagated when using 'ray job submit'",
+      "labels": [
+        "bug",
+        "P1",
+        "core",
+        "core-runtime-env",
+        "community-backlog",
+        "contribution-welcome"
+      ],
+      "created_at": "2025-12-10T09:13:23Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59343",
+      "body_preview": "### What happened + What you expected to happen\n\nI am using a RayJob to submit a job on autocreated Ray cluster and expected it to shutdown after job completion (success/failure).\n\nI have a pipeline that has a `requirements_lock.txt` and expected my RayJob to install the packages during job submission. The code is packaged into a zipfile and passed into Ray as a workingDirectory as part of the runtime environment. The code, along with the `requirements_lock.txt`, lives in the same zipfile. From ",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q3b: actor fail issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59342,
+      "title": "[Core][RuntimeEnv] Task stuck at PENDING_NODE_ASSIGNMENT if uv env is not resolvable",
+      "labels": [
+        "bug",
+        "P1",
+        "usability",
+        "core",
+        "core-runtime-env",
+        "stability",
+        "community-backlog",
+        "contribution-welcome"
+      ],
+      "created_at": "2025-12-10T08:19:13Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59342",
+      "body_preview": "### What happened + What you expected to happen\n\n**What happened**\n\nI'm using `py_executable` to set up an isolated uv environment for workers. Sometimes the target uv environment is inconsistent, which may result in failures during `uv sync` or `uv run`.\n\nHowever, Ray fails to recognize such errors. It appears that raylet keeps retrying to execute `uv run` (the value of `py_executable`), and my task state gets stuck at `PENDING_NODE_ASSIGNMENT`. Being unaware of what happened to the task preven",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2b: crash issues",
+        "Q2c: hang issues",
+        "Q2d: ray.get issues",
+        "Q3b: actor fail issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59339,
+      "title": "[core] ray.get() is likely hung to force kill actor",
+      "labels": [
+        "question",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-10T06:36:46Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59339",
+      "body_preview": "**Question**: ray cluster start error\n\n**python-core-woroke-001xxxx_1569.log**:\n\n[2025-12-10 04:47:37,669 W 1569 1569] plasma_store_provider.cc:452: Objects 00618f05a32305e8a4f6975825ec1bac3a4279070100000001e1f505 are still not local after 224s. If this message continues to print, ray.get() is likely hung. Please file an issue at https://github.com/ray-project/ray/issues/.\n[2025-12-10 04:47:38,679 W 1569 1569] plasma_store_provider.cc:452: Objects 00618f05a32305e8a4f6975825ec1bac3a42790701000000",
+      "found_in_queries": [
+        "Q2d: ray.get issues",
+        "Q3b: actor fail issues",
+        "Q4a: object store issues",
+        "Q4b: object reference issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59327,
+      "title": "[core] Long recovery time after cluster experienced long IDLE time",
+      "labels": [
+        "question",
+        "serve",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-10T01:57:47Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59327",
+      "body_preview": "We're running Ray Serve + FastAPI on a multi\u2013Mac Mini (Apple Silicon) cluster for ML inference. Overall, Ray has worked great for distributed workloads and multiprocessing, but we\u2019ve encountered a reproducible issue after long idle periods when preparing for production deployment.\n\n### **Issue Summary \u2014 408 Errors After Long Idle (>24h)**\nWhen the system has no incoming requests for >24 hours, the first batch of new requests consistently fails:\n\n- ~66% of requests return HTTP 408\n- These failing",
+      "found_in_queries": [
+        "Q3b: actor fail issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59325,
+      "title": "[Data][LLM] Add `should_continue_on_error` support for ServeDeploymentStage (Data <> Serve)",
+      "labels": [
+        "enhancement",
+        "triage",
+        "data",
+        "llm"
+      ],
+      "created_at": "2025-12-10T01:09:47Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59325",
+      "body_preview": "### Description\n\nFollow-up to #59212. The current `continue_on_error` implementation only handles the case where the vLLM engine runs in the same lifecycle as the Ray Data pipeline (`vLLMEngineStage`). When using Ray Serve handles (`ServeDeploymentStage`), error handling requires a separate implementation due to differences in error propagation.\n\n### Background\n\n`ServeDeploymentStage` accesses the LLM engine via `DeploymentHandle` (RPC calls) rather than in-process. This changes how errors show ",
+      "found_in_queries": [
+        "Q2b: crash issues"
+      ]
+    },
+    {
+      "number": 59308,
+      "title": "[Core][Observability] Add log context for common Ray sync files.",
+      "labels": [
+        "usability",
+        "core",
+        "observability",
+        "tech-debt",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-09T13:56:01Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59308",
+      "body_preview": "Part of umbrella #52468\n\nI\u2019d like to add log context to these files:\n\n> src/ray/common/ray_syncer/node_state.cc\n> src/ray/common/ray_syncer/ray_syncer_bidi_reactor_base.h\n> src/ray/common/ray_syncer/ray_syncer.cc\n> src/ray/common/runtime_env_manager.cc\n\n@fscnick please assign if this scope looks good!",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59303,
+      "title": "[Type Enhance] The improvement of static check of `ray.method`",
+      "labels": [
+        "enhancement",
+        "P2",
+        "usability",
+        "core",
+        "community-backlog",
+        "contribution-welcome"
+      ],
+      "created_at": "2025-12-09T10:30:58Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59303",
+      "body_preview": "### Description\n\nI'm new to Ray, but while reading the docs and source code I noticed that the typing story for actor methods could be improved.  \nThe [official doc](https://docs.ray.io/en/latest/ray-core/actors.html#type-hints-and-static-typing-for-actors) recommends decorating actor methods with `@ray.method` so that static checkers give better auto-completion / type checking for `.remote()` calls. This works for the simplest cases, yet breaks as soon as the method has default arguments.\n\n**Mi",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59274,
+      "title": "[core] Improving the error handling for `@ray.remote` and `@ray.method` with `num_returns`.",
+      "labels": [
+        "usability",
+        "core",
+        "contribution-welcome"
+      ],
+      "created_at": "2025-12-08T21:25:51Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59274",
+      "body_preview": "There are a few inconsistencies in the `ray.remote` and `ray.method` public APIs that need to be fixed and will improve user experience.\n\n- [ ] @ray.remote and @ray.method decorators should fail fast and return an error if `num_returns='streaming'` or `num_returns='dynamic'`, but the python function is not a generator function. \n- [ ] @ray.method decorator should fail fast and return an error if `num_returns` is < 0. ",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59265,
+      "title": "[Feature Request] Improve GPU detection and logging when NVML fails but /dev/nvidia* exists",
+      "labels": [
+        "bug",
+        "P2",
+        "serve",
+        "usability",
+        "core",
+        "observability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-08T16:31:36Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59265",
+      "body_preview": "### What happened + What you expected to happen\n\nRay should:\n1. **Detect that GPU devices are present** (via `/dev/nvidia*` or `CUDA_VISIBLE_DEVICES`)\n2. **Warn clearly** if NVML returns 0 devices but device files exist\n3. **Fallback or suggest** using `--num-gpus=N` when auto-detection fails\n4. **Improve error logging** \u2014 the real crash reason (e.g., \"no GPU available\") is lost in the child process\n\n### Versions / Dependencies\n\n- Ray: 2.52.1\n- Kubernetes: v1.28+\n- GPU: NVIDIA A10\n- Driver: 525.",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2b: crash issues",
+        "Q3b: actor fail issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59249,
+      "title": "Ray timeout causes Qwen3-VL inference failure",
+      "labels": [
+        "bug",
+        "P1",
+        "core",
+        "llm",
+        "stability",
+        "compiled-graphs",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-08T03:01:32Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59249",
+      "body_preview": "### What happened + What you expected to happen\n\nI am using 3 servers to deploy Qwen3-VL-235B, with the Vllm version being 0.12.0. \nThe following error occurred during inference, suspending all requests. The error log is as follows:\n\n12-05 22:34:04 [loggers.py:236] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 0.0 tokens/s, Running: 1 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 0.0%, MM cache hit rate: 0.0%\n(EngineCore_DP0 pid=579) ERROR ",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2d: ray.get issues",
+        "Q3b: actor fail issues",
+        "Q4a: object store issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59193,
+      "title": "Frequent \"node marked dead\" errors after accumulating many succeeded tasks and dead actors in Ray Train",
+      "labels": [
+        "bug",
+        "P1",
+        "train",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-05T05:14:53Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59193",
+      "body_preview": "### What happened + What you expected to happen\n\n1\u3001I'm encountering repeated warnings that nodes are being marked as dead due to missed heartbeats, even though the underlying infrastructure appears healthy:\n\nThe node with node id: 5d0da9d7f80164c7d61df8addb6a5d80a9d36ec3d8f988c0eef6b545 and address: 192.168.10.175 and node name: 192.168.10.175 has been marked dead because the detector has missed too many heartbeats from it. This can happen when a \t(1) raylet crashes unexpectedly (OOM, etc.) \n\t(2",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2b: crash issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59191,
+      "title": "[<Ray component: Core|RLlib|etc...>]",
+      "labels": [
+        "bug",
+        "P1",
+        "core",
+        "stability",
+        "compiled-graphs",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-05T04:06:46Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59191",
+      "body_preview": "### What happened + What you expected to happen\n\n[2025-12-05 11:51:55,584 C 1154169 1154169] (raylet) experimental_mutable_object_provider.cc:154:  An unexpected system state has occurred. You have likely discovered a bug in Ray. Please report this issue at https://github.com/ray-project/ray/issues and we'll work with you to fix it. Check failed: object_manager_->WriteAcquire(info.local_object_id, total_data_size, nullptr, total_metadata_size, info.num_readers, object_backing_store) Status not O",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q4a: object store issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59155,
+      "title": "[core] Deleting the deprecated DynamicGenerator",
+      "labels": [
+        "docs",
+        "core",
+        "tech-debt"
+      ],
+      "created_at": "2025-12-03T22:50:42Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59155",
+      "body_preview": "The Dynamic Generator was deprecated in October 2023 in favor of the newer Streaming Generator. The main rationale is that the Dynamic Generator does not support pipelining by returning values while a task is still executing. \n\n- [X] Mark as deprecated (already done as of [Ray 2.8](https://github.com/ray-project/ray/pull/39914/files#diff-ab5b0b770a064f708435afcf66b29f50d7a075620db292feb5515493f04e147fR5) in October 2023)\n- [ ] Delete the public API.\n- [ ] Delete the docs.\n- [ ] Remove the python",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59142,
+      "title": "[Data] Node fault tolerant hash shuffles",
+      "labels": [
+        "enhancement",
+        "P2",
+        "data",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-03T17:54:24Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59142",
+      "body_preview": "### Description\n\nWe often see `ray.exceptions.ActorDiedError` when running a `groupby` operation, which uses a `HashShuffle`. \n\nIt appears that the `HashShuffleAggregator` has no retries configured by default:\n- https://github.com/ray-project/ray/blob/eeb38c79c1af96df29cbacab7b8a823d489237f3/python/ray/data/_internal/execution/operators/hash_shuffle.py#L1073-L1114\n- https://github.com/ray-project/ray/blob/eeb38c79c1af96df29cbacab7b8a823d489237f3/python/ray/data/_internal/execution/operators/hash",
+      "found_in_queries": [
+        "Q2b: crash issues"
+      ]
+    },
+    {
+      "number": 59140,
+      "title": "[Serve] Very slow first time load for multiplexed models",
+      "labels": [
+        "bug",
+        "question",
+        "serve",
+        "performance",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-03T17:15:48Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59140",
+      "body_preview": "### What happened + What you expected to happen\n\nHi!\nI am developing an inference server which uses the Model Multiplexing feature. \nTo simplify things, I am only using one replica with one model per replica. I noticed that, the first time I call the inference API, the model takes a long time to load. To give some numbers, the model takes approximately 10ms to load in a standalone script (it is a dummy mlflow model), however when loading it the first time with Serve, it takes more than a minute.",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 59131,
+      "title": "[Core] `ClusterSizeBasedLeaseRequestRateLimiter` miscalculation of the alive node number resulted in an excessively small `MaxPendingLeaseRequestsPerSchedulingCategory`",
+      "labels": [
+        "bug",
+        "P1",
+        "performance",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-03T08:32:58Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59131",
+      "body_preview": "### What happened + What you expected to happen\n\n`ClusterSizeBasedLeaseRequestRateLimiter` calculates the `num_alive_nodes_`  by subscribing to NodeInfo.\nIn short, it  +1 for every node that becomes Alive and -1 when a becomes Dead.\nHowever, the subscription starts with a RPC GetAllNodes and then watches subsequent NodeInfo changes.\nNodes that are already Dead in that initial snapshot must not be subtracted, because `ClusterSizeBasedLeaseRequestRateLimiter` never saw them while they were Alive a",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59127,
+      "title": "[Core] The memory occupied by the Experimental MutableObject is not released even after the driver process has exited.",
+      "labels": [
+        "bug",
+        "P1",
+        "core",
+        "stability",
+        "compiled-graphs",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-03T02:46:49Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59127",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen I tested the compiled graph, I found that the memory occupied by the Experimental MutableObject was not released, even after the driver process exited. This memory usage continued until the Ray cluster was destroyed.\n\n**brefore running  the test-object.py**: \nray memory\n======== Object references status: 2025-12-02 20:13:05.141620 ========\nGrouping by node address...        Sorting by object size...        Display allentries per group...\n\n\nTo",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2d: ray.get issues",
+        "Q4a: object store issues",
+        "Q4b: object reference issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59124,
+      "title": "[Dashboard] Difficult to track the Jobs, provide the way to give custom Job name to show and filter the jobs in the dashboard",
+      "labels": [
+        "enhancement",
+        "P2",
+        "dashboard",
+        "usability",
+        "core",
+        "observability",
+        "community-backlog",
+        "contribution-welcome"
+      ],
+      "created_at": "2025-12-03T01:17:48Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59124",
+      "body_preview": "### What happened + What you expected to happen\n\nDifficult to track the Jobs, provide the way to give custom Job name [User provided] to show and filter the jobs in the dashboard\n\n### Versions / Dependencies\n\n Ray\n\n### Reproduction script\n\n .\n\n### Issue Severity\n\nNone",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59115,
+      "title": "[DASHBOARD] Cannot read properties of null in worker tab of a node",
+      "labels": [
+        "bug",
+        "question",
+        "usability",
+        "core",
+        "observability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-02T15:01:48Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59115",
+      "body_preview": "### What happened + What you expected to happen\n\nContext:\nIn my cluster jobs died because the Disk ran full. Only 20kb left, cluster is in complete deadlock (https://discuss.ray.io/t/ray-cluster-deadlocked-after-drive-full/23349/2) \n\n---\n\nI can see on one of the nodes with full drive that it says `WORKERS (2)`. \nSince there are no actors or tasks leftt alive I was wondering what those worker processes are doing. But when i click the button i get a blank screen and this in the browser console.\n\n`",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2a: deadlock issues",
+        "Q2b: crash issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59110,
+      "title": "[Ray CLI] ray start --address can't use local address.",
+      "labels": [
+        "bug",
+        "P2",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-02T07:56:07Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59110",
+      "body_preview": "### What happened + What you expected to happen\n\nI specified the address 127.0.0.1, however, ray start is trying to connect to the public address.\n\n```\nray start --address 127.0.0.1:6379\nLocal node IP: 192.168.255.10\n[2025-12-02 15:54:09,676 W 40836 74459453] rpc_client.h:153: Failed to connect to GCS at address 192.168.255.10:6379 within 5 seconds.\n```\n\n### Versions / Dependencies\n\n2.52.0\n\n### Reproduction script\n\nray start --address 127.0.0.1:6379\n\n### Issue Severity\n\nNone",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59101,
+      "title": "[Core][RDT] High time consumption at registering memory when using RDMA Between CPUs",
+      "labels": [
+        "question",
+        "performance",
+        "core",
+        "community-backlog"
+      ],
+      "created_at": "2025-12-02T01:44:39Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59101",
+      "body_preview": "Hello!\n\nWe have been trying to use RDT-NIXL as a way to transfer CPU tensor between two CPU-only servers equipped with RDMA-capable NICs (RoCE). We found that registering memory is taking a very long time in get tensors.\n\nWhen we use the NIXL of RDT to transmit large data(like 10GB) in blocks, we find that the transmission performance is related to the size of the blocks. Moreover, as the amount of data transmitted each time increases, the time consumed for registering memory also increases, the",
+      "found_in_queries": [
+        "Q2d: ray.get issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 59076,
+      "title": "[Serve] Does not honor min_replicas \"0\" at the start and does not scale down to zero",
+      "labels": [
+        "bug",
+        "regression",
+        "serve",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-30T15:35:49Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59076",
+      "body_preview": "### What happened + What you expected to happen\n\nThis is on Kubernetes, with Ray Service - llmconfig.\n\nWith Ray Version 2.50.1, with following config\n\n`deployment_config:\n            max_ongoing_requests: 11\n\n            autoscaling_config:\n\n              min_replicas: 0\n\n              max_replicas: 6\n\n              target_ongoing_requests: 3\n\n              downscale_to_zero_delay_s: 180\n\n              downscale_delay_s : 60\n\n              look_back_period_s: 15\n\n            ray_actor_options:\n\n",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 59064,
+      "title": "Ray Serve LLM placement groups conflict with vLLM v1 RayDistributedExecutor",
+      "labels": [
+        "serve",
+        "llm",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-28T16:10:22Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59064",
+      "body_preview": "## Summary\n\nWhen using Ray Serve LLM's `build_pd_openai_app` with vLLM v1 engine (vLLM >= 0.10.0), deployment fails due to nested placement group resource exhaustion. Ray Serve LLM pre-allocates GPUs in a placement group, but vLLM v1's `RayDistributedExecutor` attempts to create an inner placement group, causing resource conflicts.\n\n## Environment\n\n- **Ray**: 2.43.0\n- **vLLM**: 0.10.0+ (v1 engine with `VLLM_USE_V1=1`)\n- **Hardware**: AWS p5.48xlarge (8x H100 80GB)\n- **OS**: Ubuntu 24.04\n\n## Repr",
+      "found_in_queries": [
+        "Q3b: actor fail issues"
+      ]
+    },
+    {
+      "number": 59050,
+      "title": "[<Ray component: Core|RLlib|etc...>] Ray 2.52 still uses python ^3.9",
+      "labels": [
+        "bug",
+        "usability",
+        "community-backlog",
+        "reef"
+      ],
+      "created_at": "2025-11-27T23:08:39Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59050",
+      "body_preview": "### What happened + What you expected to happen\n\nIn version 2.52, ray still uses `python=\"^3.9\"` in the `pyproject.toml` file (see [here](https://github.com/ray-project/ray/blob/9527a555280fb9837ce73dabf01559c20656a456/pyproject.toml#L2)).\n\nIf a downstream package is using `ray=\"^2\"` and is on python 3.9, it will now fail to install.\n\nThis should be fixable by using `python=^\"3.10\"` instead.\n\n### Versions / Dependencies\n\nRay version 2.52\nPython 3.9\n\n### Reproduction script\n\nRun `poetry update` i",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 59037,
+      "title": "[RLlib] Wasted compute on double evaluation",
+      "labels": [
+        "bug",
+        "P1",
+        "rllib",
+        "performance",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-27T15:00:13Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59037",
+      "body_preview": "### What happened + What you expected to happen\n\n**Evaluation is running twice in BC.**\n\nIt's fairly easy to reproduce the bug you can just run examples/offline_rl/train_w_bc_finetune_w_ppo.py \n\nI've attached a slightly modified version that skip PPO finetuning and include a callback on_episode_end to better show the problem.\n\n[eval_bug.py](https://github.com/user-attachments/files/23798307/eval_bug.py)\n\nI've also added a print line 2003 of algorithm.py:\n\n```\n                for env_s, ag_s, met",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 59035,
+      "title": "Ray Data GPU scheduling error: fractional GPU quantity (5.3333) computed during actor creation",
+      "labels": [
+        "data",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-27T10:58:51Z",
+      "html_url": "https://github.com/ray-project/ray/issues/59035",
+      "body_preview": "I am running a Ray Data pipeline on Kubernetes using operators that explicitly require GPU (e.g., image watermark detection, video processing). \nHowever, when Ray Data creates actors (ActorPoolMapOperator), it attempts to assign a fractional GPU quantity: 5.333333333333333, which violates the Ray rule that GPU resources >1 must be whole integers. This causes Ray to crash with:\n\nValueError: ('GPU resource quantities >1 must',\n             ' be whole numbers. The specified quantity 5.3333333333333",
+      "found_in_queries": [
+        "Q2b: crash issues"
+      ]
+    },
+    {
+      "number": 58999,
+      "title": "[Serve] [Autoscaling] Policy state not supported for custom application level autoscaling policy",
+      "labels": [
+        "bug",
+        "triage",
+        "serve",
+        "usability",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-26T10:15:53Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58999",
+      "body_preview": "### What happened + What you expected to happen\n\n# What happened\nAccording to [Advanced Serve Autoscaling docs](https://docs.ray.io/en/latest/serve/advanced-guides/advanced-autoscaling.html#application-level-autoscaling), when implementing a custom application level autoscaling policy, the user is expected to return a tuple (decisions, state)\n\n```python\nfrom typing import Dict, Tuple\nfrom ray.serve.config import AutoscalingContext\n\nfrom ray.serve._private.common import DeploymentID\nfrom ray.serv",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 58976,
+      "title": "[Dashboard] Tasks with retries alternate randomly between any of their runs (Both FAILED and RUNNING/SUCCEEDED).",
+      "labels": [
+        "bug",
+        "P1",
+        "dashboard",
+        "usability",
+        "core",
+        "observability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-25T18:32:59Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58976",
+      "body_preview": "### What happened + What you expected to happen\n\nRay Dashboard queries tasks with limit=1 when querying information about their partition. \nOccasionally, this returns a FAILED run from a task that eventually SUCCEEDED.\n\nThe view is not stable, potentially changing with each update on the order of seconds. Makes checking through failed instances difficult as the UI gives no control over which try to look at. Not only that, but we can only look at the try in question for a brief moment before it's",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 58975,
+      "title": "Ray Server LLM fails for voxtral",
+      "labels": [
+        "bug",
+        "serve",
+        "llm",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-25T17:55:42Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58975",
+      "body_preview": "When using ray serve llm(>2.51.1), `voxtral` model fails with the error: [file.txt](https://github.com/user-attachments/files/23752936/file.txt)\n\nThe same configuration works with vllm serve command using version vllm==0.11.0, which is the same as in these ray versions\n\n### Versions / Dependencies\n\nvLLM==0.11.0\nRay>=2.51.0\n\nThe model works properly in versions <2.51.0 (which upgraded vLLM to 0.11.0)\n\n### Reproduction script\n\nServe Config:\n```\n- model_loading_config:\n    model_id: voxtral\n    mod",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q3b: actor fail issues"
+      ]
+    },
+    {
+      "number": 58944,
+      "title": "[core] Reduce the time ray.remote takes.",
+      "labels": [
+        "performance",
+        "core"
+      ],
+      "created_at": "2025-11-24T19:46:37Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58944",
+      "body_preview": "Work items:\n- [X] Prototype to see if offloading protobuf serialization reduces the time that ray.remote takes.\n    - [X] Ran it on a synthetic workload and saw overhead drop by 50%. \n    - [ ] Run it on a ray data release test. \n- Make the instrumented_io_context take in a lambda to dispatch and post that move-captures move-only types.\n   - [X] https://github.com/ray-project/ray/pull/58834\n   - [ ] Break up the asio target in to sub targets and remove circular dependencies (https://github.com/r",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 58941,
+      "title": "[CORE] set default label-filter or resource requirement",
+      "labels": [
+        "enhancement",
+        "P1",
+        "usability",
+        "core",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-24T18:56:01Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58941",
+      "body_preview": "### Description\n\nCurrently the default of all ray tasks is that it needs 1 cpu, thats it. \n\nI would love to be able to modify this. \n\nI would like that per default every remote ask and actor has a label-filter `{'node_kind':'cpu'}`.\n\n### Use case\n\nMy cluster will have abunch of general purpose cpu workers, and some specialized gpu workers with varying complex environments (different ML models from different projects with different needs). \n\nI would like that nearly all remote actors and tasks ju",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 58926,
+      "title": "[Core] Spill tasks to another node when Object Store is overflowing on a node",
+      "labels": [
+        "enhancement",
+        "P1",
+        "core"
+      ],
+      "created_at": "2025-11-23T20:50:21Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58926",
+      "body_preview": "### Description\n\nCurrently, Core isn't factoring Object Store capacity when choosing a node to schedule task on which leads to issues like the one below:\n\n1. Ray Data runs a cluster with 2 nodes: node A has 32Gb total memory, node B has 512Gb total memory\n2. Eventually, node A will run into heavy spill and likely OOD, b/c we will keep scheduling tasks that will be creating more and more objects with primary copies sitting on node A.\n3. In the meantime, node B still has Object Store available and",
+      "found_in_queries": [
+        "Q4a: object store issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 58919,
+      "title": "[Tune] Restoring experiments increases disk usage by a lot",
+      "labels": [
+        "bug",
+        "question",
+        "tune",
+        "triage",
+        "rllib",
+        "performance",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-22T12:41:08Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58919",
+      "body_preview": "### What happened + What you expected to happen\n\nThis week we had to restore a few jobs. Normally each job uses like 0.5 - 3GB of memory in total. However after using `tuner.restore(...)` the new `experiment-state-2025....json` became enormous. Some reached 20-40GB and also the checkpoints (of rllib Algorithms) seemed to increase.\nInstead of ~6G we plan for each job some jobs suddenly took up to 60+GB of memory.\nI see that restoring a job and duplicates the state files which is okay and planable",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 58880,
+      "title": "[Core] Export node id by local file or the endpoint",
+      "labels": [
+        "enhancement",
+        "P1",
+        "usability",
+        "core",
+        "observability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-21T07:52:13Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58880",
+      "body_preview": "### Description\n\nNode id is important for the history server. But we have to get the node id from the command line of the raylet process, which is not convenient.\n\n### Use case\n\nHistory server needs to know the worker node id to persist the log and events.",
+      "found_in_queries": [
+        "Q2b: crash issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 58876,
+      "title": "[RFC] Drop Support for Pydantic v1 in Ray",
+      "labels": [
+        "serve",
+        "performance",
+        "core",
+        "tech-debt"
+      ],
+      "created_at": "2025-11-21T05:45:46Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58876",
+      "body_preview": "## Summary\n\nThis RPC proposes dropping support for Pydantic v1 in Ray and migrating all code to use Pydantic v2 native APIs. This will simplify the codebase, remove technical debt from the compatibility layer, and allow Ray to take advantage of Pydantic v2's performance improvements and modern features.\n\n## Motivation\n\n### Current State\n\nRay currently supports both Pydantic v1 and Pydantic v2 through a compatibility layer (`ray._common.pydantic_compat`). When Pydantic v2 is installed, Ray import",
+      "found_in_queries": [
+        "Q4b: object reference issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 58869,
+      "title": "[Tune] Synch PBT - Trials should be paused on Restore:  ALL Trials continue and no perturbation is done",
+      "labels": [
+        "bug",
+        "tune",
+        "triage",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-21T01:25:25Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58869",
+      "body_preview": "### What happened + What you expected to happen\n\nWhen we use PBT in synch mode and restore the tuning process from a checkpoint then all restored trials are put into a PENDING and soon RUNNING state, however this includes trials that should stay paused.\n\nFor example in belows example the perturbation interval is at `884736`. The first trial was lacking behind and the process was interrupted.\nOn restore all trials are put into PENDING -> RUNNING again, ignoring that the trials at the perturbation",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 58849,
+      "title": "[Core] status Status not OK: ObjectUnknownOwner: An application is trying to access a Ray object whose owner is unknown(3dd79ffe8938fd5bffffffffffffffffffffffff3000000001000000).",
+      "labels": [
+        "bug",
+        "P2",
+        "@external-author-action-required",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-20T08:54:24Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58849",
+      "body_preview": "### What happened + What you expected to happen\n\n```\nsrc/ray/core_worker/core_worker.cc:862 (PID: 2135613, TID: 2135731, errno: 11 (Resource temporarily unavailable)): An unexpected system state has occurred. You have likely discovered a bug in Ray. Please report this issue at https://github.com/ray-project/ray/issues and we'll work with you to fix it. Check failed: status Status not OK: ObjectUnknownOwner: An application is trying to access a Ray object whose owner is unknown(3dd79ffe8938fd5bff",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 58846,
+      "title": "[Core][Observability] Add log context for RPC files (grpc_server, node_manager_client_pool, server_call)",
+      "labels": [
+        "usability",
+        "core",
+        "observability",
+        "tech-debt",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-20T05:35:19Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58846",
+      "body_preview": "Part of umbrella #52468\n\nI\u2019d like to add log context to these files:\n- src/ray/rpc/grpc_server.cc\n- src/ray/rpc/grpc_server.h\n- src/ray/rpc/node_manager/node_manager_client_pool.cc\n- src/ray/rpc/server_call.h\n\n@fscnick please assign if this scope looks good!",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 58815,
+      "title": "[Serve] Controller RSS Memory Leak after Autoscaling Cycles (Ray 2.47.0)",
+      "labels": [
+        "bug",
+        "triage",
+        "serve",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-19T08:13:08Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58815",
+      "body_preview": "### What happened + What you expected to happen\n\nAfter repeated autoscaling up and down, the Ray Serve Controller process shows high RSS memory usage that does not return to its initial level; instead, it remains abnormally elevated. This issue is observed on Ray version 2.47.0. \n\nExpected: When Serve deployments are scaled back to their original configuration (same number/shape as initial), the controller's RSS memory usage should return to the initial value or close to it. \n\nActual: Memory usa",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q3a: memory leak issues"
+      ]
+    },
+    {
+      "number": 58772,
+      "title": "[Core] Ray job will be pending if the working directory contains `stat.py`",
+      "labels": [
+        "question",
+        "P1",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-19T05:40:47Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58772",
+      "body_preview": "### What happened + What you expected to happen\n\nIf the working-dir contains the file `stat.py`, the ray job can be submitted to the ray cluster and allocated CPU, but it will get stuck before executing the job entrypoint.\n\n### Versions / Dependencies\n\nRay v2.51.1\n\n### Reproduction script\n\nCreate a normal Ray Cluster, execute the command: `ray job submit --address=http://localhost:8265 --working-dir=. --entrypoint-num-cpus=1 --date`. The current directory must contain a `stat.py` file.\n\nThis sho",
+      "found_in_queries": [
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 58750,
+      "title": "[Core] Logs are not deduplicated with Ray is initialized in client mode to connect to cluster using `address=`",
+      "labels": [
+        "bug",
+        "P2",
+        "usability",
+        "core-client",
+        "core",
+        "observability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-18T19:25:40Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58750",
+      "body_preview": "### What happened + What you expected to happen\n\nThis happens even when we are connecting to a single cluster.\n\nLogs are still passed to the driver actor. However, logging happens with:\n\n```\n  File \"/usr/lib/python3.12/threading.py\", line 1030, in _bootstrap\n    self._bootstrap_inner()\n  File \"/usr/lib/python3.12/threading.py\", line 1073, in _bootstrap_inner\n    self.run()\n  File \"/usr/lib/python3.12/threading.py\", line 1010, in run\n    self._target(*self._args, **self._kwargs)\n  File \"/venv/lib",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2d: ray.get issues",
+        "Q5: core-labeled issues"
+      ]
+    },
+    {
+      "number": 58735,
+      "title": "Assertion Error when Running Ray Tune with Pytorch",
+      "labels": [
+        "bug",
+        "tune",
+        "triage",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-18T07:31:20Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58735",
+      "body_preview": "\nI am running Ray Tune with Pytorch for hyperparameter tuning and encountering an intermittent AssertionError during execution. \n\nThis happens randomly during some trials.\n\n### Versions / Dependencies\n\nRay version : 2.51.1\nPytorch version: 2.9.1\n\n### Example Failure::\n\n```File \"/opt/conda/miniconda3/lib/python3.11/site-packages/ray/tune/trainable/function_trainable.py\", line 44, in <lambda>\n\n    training_func=lambda: self._trainable_func(self.config),\n                          ^^^^^^^^^^^^^^^^^^",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q3b: actor fail issues"
+      ]
+    },
+    {
+      "number": 58703,
+      "title": "Ray Core and API",
+      "labels": [
+        "question",
+        "P2",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-17T16:16:47Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58703",
+      "body_preview": "### What happened + What you expected to happen\n\nI create a standalone cluster on my pc with single GPU by running the following command:\n```\nray start --head \\\n        --port=6379 \\\n        --dashboard-host=0.0.0.0 \\\n        --dashboard-port=8265 \\\n        --num-gpus=1\n```\n\nThen, I run the following code:\n\n```\nimport torch\nimport ray\n\n\n@ray.remote(num_gpus=1)\ndef mul():\n    a = torch.rand(300,80).cuda()\n    b = torch.rand(80,10).cuda()\n    c = a @ b\n    print(c.sum().detach().cpu().numpy())\n\n\nm",
+      "found_in_queries": [
+        "Q2c: hang issues",
+        "Q5_page2: core-labeled issues (page 2)"
+      ]
+    },
+    {
+      "number": 58696,
+      "title": "[Serve] The request process of the current worker on other workers cannot end when the service copy is automatically published",
+      "labels": [
+        "bug",
+        "triage",
+        "serve",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-17T06:24:22Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58696",
+      "body_preview": "### What happened + What you expected to happen\n\nCurrently, there are two algorithms published to the same worker, such as serve_name1 (executed by multiple processes)and server_name2. Extreme reproduction scenarios: The memory of the limit resource of this worker can be set very small to 5G. At this time, the successful publication of serve_name1 and serve_name2 has occupied a considerable amount of memory. At this time, request the memory of serve_name1 to reach the 0.95 threshold of this work",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 58681,
+      "title": "[Rllib] PPO env sampling is very slow in comparison to ray 2.9.3",
+      "labels": [
+        "bug",
+        "question",
+        "triage",
+        "rllib",
+        "performance",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-16T18:01:08Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58681",
+      "body_preview": "### What happened + What you expected to happen\n\nMy team is currently working on ray 2.9.3 and began looking at updating to a new version and the new api stack a few months ago.  and ran into some issues where the new version was significantly slower than 2.9.3\n\nwe posted about this here: \nhttps://discuss.ray.io/t/advice-on-debugging-extreme-throughput-regression-using-ppo-when-moving-to-new-api-stack/22720\n\nbut never got a response. We did however find the cause and wanted to bring the result b",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 58679,
+      "title": "[Rllib] new API stack uses >2X VRAM of old stack",
+      "labels": [
+        "bug",
+        "P1",
+        "rllib",
+        "performance",
+        "rllib-models",
+        "rllib-gpu-multi-gpu",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-16T16:56:57Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58679",
+      "body_preview": "### What happened + What you expected to happen\n\nA major limiter in our team moving to the new API stack is currently the much higher VRAM memory use, when using the new stack we are unable to use the same model/batch sizes we are using on the old stack.\n\nWe are using an RNN style model using PPO\n\nRLLIB config\n```yml\n# stack switch\nenable_env_runner_and_connector_v2: False\nenable_rl_module_and_learner: False\n\n# new api stack\ntrain_batch_size_per_learner: 12000\nnum_gpus_per_learner: 1\n# old api s",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 58668,
+      "title": "[RLlib] Missing \"__common__\" key from MultiAgentEpisode .get_infos()",
+      "labels": [
+        "bug",
+        "triage",
+        "rllib",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-16T00:03:46Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58668",
+      "body_preview": "### What happened + What you expected to happen\n\nBug: MultiAgentEpisode .get_infos() excludes the` __common__` key in the infos dictionary\nExpected Behavior:  I expect the `__common__` key to be included in the infos returned from get_infos()\n\nUseful Info:\n\nI ran the below reproduction script and put a debug point on the return of the `FlattenObservations` connector.  \n\nFrom there, I checked the value of `episodes[-1].get_infos()`.  The returned dictionary included the \"player1\" and \"player2\" ke",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 58625,
+      "title": "[Compiled Graph] Network instability causes transient request blocking in multiples of RAY_CGRAPH_read_iteration_timeout_s during vLLM v1 API testing",
+      "labels": [
+        "bug",
+        "P1",
+        "performance",
+        "core",
+        "llm",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-14T09:15:05Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58625",
+      "body_preview": "### What happened + What you expected to happen\n\nThe vLLM v1 API defaults to using the Ray Compiled Graph feature. During our testing of the vLLM v1 API (tp4pp4 configuration) with RAY_CGRAPH_read_iteration_timeout_s=10, we observed that individual requests occasionally experience processing times of around 10s, 20s, or 30s, while other requests complete within the normal range of ~800ms.\n\nWe identified a correlation between these prolonged durations and the RAY_CGRAPH_read_iteration_timeout_s p",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5_page2: core-labeled issues (page 2)"
+      ]
+    },
+    {
+      "number": 58491,
+      "title": "[Ray Serve] Ensuring at least some number of replicas is deployed to on-demand nodes",
+      "labels": [
+        "question",
+        "enhancement",
+        "triage",
+        "serve",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-10T05:46:40Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58491",
+      "body_preview": "### Description\n\nWe want to utilize spot instances for ray serve. To ensure no down time, we are thinking of requiring at least some number of node to be on-demand node. However at the Ray serve deployment level, can we do the same for replicas? For example make sure at least some number of replicas for this deployment is deployed to on-demand ray worker node.\n\n### Use case\n\n_No response_",
+      "found_in_queries": [
+        "Q3b: actor fail issues"
+      ]
+    },
+    {
+      "number": 58483,
+      "title": "[Tune] PBT + buffered training leads to KeyError as controller tries to CONTINUE",
+      "labels": [
+        "bug",
+        "tune",
+        "triage",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-09T21:09:46Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58483",
+      "body_preview": "### What happened + What you expected to happen\n\nIf there are mutliple buffered results for PBT in the step where the perturbation interval happens it will lead to a KeyError.\nFor the buffered results where the perturbation interval is not yet reached PBT, will return `CONTINUE` as it decision.This decision will be queued by the TuneController at `_process_trial_result` into `_queued_trial_decisions`.  At PBT level `_exploit` schedules a trial stop and the actors are cleared, however `TuneContro",
+      "found_in_queries": [
+        "Q1: bug-labeled issues"
+      ]
+    },
+    {
+      "number": 58481,
+      "title": "Ray Autoscaler is not spinning down nodes after Ray Train is finished",
+      "labels": [
+        "bug",
+        "triage",
+        "train",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-09T16:33:22Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58481",
+      "body_preview": "### What happened + What you expected to happen\n\nRay Autoscaler does not deactivate nodes when Ray Train has finished using a Remote function.\nI expected Ray Autoscaler to deactivate nodes once Ray Train had finished.\n\n\n### Versions / Dependencies\n\nRay version 2.49.2\n\n### Reproduction script\n\n```\nimport time\n\nimport numpy as np\nimport pandas as pd\nimport ray\nfrom ray.cluster_utils import AutoscalingCluster\n\nimport ray.train.lightning\nfrom ray.train.torch import TorchTrainer\nfrom ray.train import",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q2d: ray.get issues",
+        "Q3b: actor fail issues"
+      ]
+    },
+    {
+      "number": 58446,
+      "title": "[Dashboard] Expose the ability to take kineto traces ",
+      "labels": [
+        "question",
+        "enhancement",
+        "P1",
+        "dashboard",
+        "usability",
+        "core",
+        "observability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-07T05:05:28Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58446",
+      "body_preview": "### Description\n\n@justinvyu shipped https://github.com/ray-project/ray/pull/53191 which adds an endpoint to fetch kineto traces from a particular process running torch. I believe the Anyscale product exposes this functionality in its Ray Train + Data specific pages. I want to explore exposing this functionality in the open source dashboard.\n\nIdeally we'd be able to add it as an option in the \"actions\" column but for a lot of setups it won't be applicable / useful.\n\n1. Dynolog is a prereq. Users ",
+      "found_in_queries": [
+        "Q5_page2: core-labeled issues (page 2)"
+      ]
+    },
+    {
+      "number": 58430,
+      "title": "Ray Client: `logging_config` => Object of type LoggingConfig is not JSON serializable",
+      "labels": [
+        "bug",
+        "P2",
+        "usability",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-06T16:37:21Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58430",
+      "body_preview": "### What happened + What you expected to happen\n\nIn a Ray Client context, it seems it's impossible to provide the `logging_config` parameter to `ray.init`:\n\n```\nray.init(\"ray://[address somewhere else]:10001\", log_to_driver=False, logging_config=ray.LoggingConfig(encoding=\"JSON\", log_level=\"INFO\"))\n```\n=>\n```\n  File \"/home/[...]/.local/share/uv/python/cpython-3.12.9-linux-x86_64-gnu/lib/python3.12/json/encoder.py\", line 180, in default\n    raise TypeError(f'Object of type {o.__class__.__name__} ",
+      "found_in_queries": [
+        "Q1: bug-labeled issues",
+        "Q5_page2: core-labeled issues (page 2)"
+      ]
+    },
+    {
+      "number": 58428,
+      "title": "Ray RLlib + MATLAB Engine: DLL Conflict",
+      "labels": [
+        "bug",
+        "windows",
+        "rllib",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-06T13:44:07Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58428",
+      "body_preview": "### What happened + What you expected to happen\n\nI\u2019m running into some compatibility issues with running RayRLlib in the same script as Matlab Engine.\n\nThe project I just started working with has our simulation running fully inside Matlab and previously we\u2019ve used Ray 2.6.3 to handle the RL side of things while using Matlab-Engine inside the standard step, reset, etc. functions to call their Matlab equivalent. This hasn\u2019t been an issue previously, however, we\u2019re now trying to update our Ray vers",
+      "found_in_queries": [
+        "Q1_page2: bug-labeled issues (page 2)"
+      ]
+    },
+    {
+      "number": 58426,
+      "title": "[Compiled Graph] Unstable Network Conditions Cause Hang with vLLM v1 API in Cross-Node Pipeline Parallelism",
+      "labels": [
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-06T09:15:24Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58426",
+      "body_preview": "We are experiencing the same issue of Ray hanging with vLLM v1 API as described in [Ray hangs with vllm](https://github.com/ray-project/ray/issues/53758) .  After extensive testing, we have gathered the following observations:\n\n1. - The issue does not occur in a single-node setup (e.g., TP4 PP2).\n2. - The hang typically manifests after several hours of load testing vLLM.\n3. - The problem occurs regardless of whether VLLM_USE_RAY_COMPILED_DAG_CHANNEL_TYPE is set to nccl or shm.\n4. - In the same e",
+      "found_in_queries": [
+        "Q2a: deadlock issues",
+        "Q2c: hang issues",
+        "Q5_page2: core-labeled issues (page 2)"
+      ]
+    },
+    {
+      "number": 58413,
+      "title": "RLlib PPO: tensors not matching when computing loss for module",
+      "labels": [
+        "bug",
+        "question",
+        "P3",
+        "rllib",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-05T17:00:50Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58413",
+      "body_preview": "### What happened + What you expected to happen\n\nMy multiagent PPO RL training loop is failing to run and it is showing this error:\n\nFile \"/opt/conda/envs/condaenv/lib/python3.12/site-packages/ray/rllib/algorithms/ppo/torch/ppo_torch_learner.py\", line 75, in compute_loss_for_module\n  curr_action_dist.logp(batch[Columns.ACTIONS]) - batch[Columns.ACTION_LOGP]\nRuntimeError: The size of tensor a (8) must match the size of tensor b (3) at non-singleton dimension 1.\n\nHow are batch[Columns.ACTIONS] and",
+      "found_in_queries": [
+        "Q1_page2: bug-labeled issues (page 2)"
+      ]
+    },
+    {
+      "number": 58407,
+      "title": "[Ray Tune] Any option to skip packaging or exclude certain path when running on local machine",
+      "labels": [
+        "bug",
+        "question",
+        "tune",
+        "triage",
+        "usability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-05T05:42:17Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58407",
+      "body_preview": "### What happened + What you expected to happen\n\n- Expected: Skip packaging or provide an interface to exclude certain path when running Tuner on local machine\n- Actual: i couldn\u2019t find a way to configure that\n\n### Versions / Dependencies\n\nRay version: 2.49.2\nPython version: 3.12.2\nOS: Mac\nCloud/Infrastructure: none\nOther libs/tools (if relevant): none\n\n### Reproduction script\n\nRun the following script by `RAY_CHDIR_TO_TRIAL_DIR=0 PYTHONPATH=. uv run python workspace/tune.py`\n```py\nfrom ray impo",
+      "found_in_queries": [
+        "Q1_page2: bug-labeled issues (page 2)"
+      ]
+    },
+    {
+      "number": 58402,
+      "title": "Static Type Checking Incompatible with PyCharm",
+      "labels": [
+        "bug",
+        "P2",
+        "usability",
+        "core",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-04T22:26:40Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58402",
+      "body_preview": "### What happened + What you expected to happen\n\nThe PyCharm IDE's inspection service doesn't play well with the static type checking implemented for ray remote actors/tasks. I've attached a screen shot below which shows the errors it finds.\n\n<img width=\"550\" height=\"441\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/79af6f87-336d-4d84-ac20-7b46647ffa18\" />\n\n### Versions / Dependencies\n\nray version 2.50.1 with \"defaults\" extra installed\nPyCharm version 2025.2.4\n\n### Reproduction sc",
+      "found_in_queries": [
+        "Q2d: ray.get issues",
+        "Q1_page2: bug-labeled issues (page 2)",
+        "Q5_page2: core-labeled issues (page 2)"
+      ]
+    },
+    {
+      "number": 58400,
+      "title": "ERROR: Could not find a version that satisfies the requirement python",
+      "labels": [
+        "question",
+        "windows",
+        "usability",
+        "core",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-04T18:52:38Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58400",
+      "body_preview": "ray does not seem to be working on Python version 3.13.5 in Windows.  Getting errors when trying to pip install\n\nERROR: Could not find a version that satisfies the requirement python (from versions: none)\nERROR: Could not find a version that satisfies the requirement ray==2.51.1 (from versions: none)\nERROR: Could not find a version that satisfies the requirement ray[data,serve,train,tune] (from versions: none)\nERROR: No matching distribution found for ray[data,serve,train,tune]",
+      "found_in_queries": [
+        "Q5_page2: core-labeled issues (page 2)"
+      ]
+    },
+    {
+      "number": 58399,
+      "title": "[Serve, Critical]: When using runtime_env.image_uri GPU is not available in the started podman container",
+      "labels": [
+        "bug",
+        "triage",
+        "serve",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-04T16:41:08Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58399",
+      "body_preview": "### What happened + What you expected to happen\n\nI have started a Ray serve application using `runtime_env.image_uri` field to run my application/service inside of a podman container. When I do so, even tho `num_gpus` is set to 1, and my machine has a GPU available, the `nvidia-smi` cmd does not work from inside of the container started by Ray, `torch.cuda.is_available()` returns `False`, and when inspecting the started container it was not started with `--device nvidia.com/gpu=XXX`.\n\n### Versio",
+      "found_in_queries": [
+        "Q1_page2: bug-labeled issues (page 2)"
+      ]
+    },
+    {
+      "number": 58373,
+      "title": "[Core] actor's log file name with wrong jobID",
+      "labels": [
+        "bug",
+        "P1",
+        "usability",
+        "core",
+        "observability",
+        "stability",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-03T12:52:38Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58373",
+      "body_preview": "### What happened + What you expected to happen\n\n## Expected\n\nas described in https://docs.ray.io/en/latest/ray-observability/user-guides/configure-logging.html#application-logs \nlike `worker-[worker_id]-[job_id]-[pid].[out|err]`\n\n## What happened\n\nall jobid parts are `fffffff`\n\n```\n......\n-rw-r----- 1 root root      0 Nov  3 20:31 ***/ray/session_latest/logs/worker-fc2482678d5f5135e54b650b346e219ef78b55c07f8568e3f9249587-ffffffff-483289.out\n-rw-r----- 1 root root     90 Nov  3 20:31 ***/ray/ses",
+      "found_in_queries": [
+        "Q1_page2: bug-labeled issues (page 2)",
+        "Q5_page2: core-labeled issues (page 2)"
+      ]
+    },
+    {
+      "number": 58360,
+      "title": "[Data][LLM] Ray Data LLM does not have out-of-the-box vLLM metrics integration",
+      "labels": [
+        "bug",
+        "triage",
+        "usability",
+        "data",
+        "observability",
+        "llm",
+        "community-backlog"
+      ],
+      "created_at": "2025-11-02T18:07:23Z",
+      "html_url": "https://github.com/ray-project/ray/issues/58360",
+      "body_preview": "### What happened + What you expected to happen\n\n## Background\nWhile vLLM provides [Prometheus and Grafana integration](https://docs.vllm.ai/en/v0.7.2/getting_started/examples/prometheus_grafana.html), and Ray Serve has [LLM observability support](https://docs.ray.io/en/master/serve/llm/user-guides/observability.html), **Ray Data LLM does not have out-of-the-box vLLM metrics integration**.\n\n### Key Differences:\n- **Ray Serve**: Has a dedicated `LLMConfig` with `log_engine_metrics=True` option\n- ",
+      "found_in_queries": [
+        "Q1_page2: bug-labeled issues (page 2)"
+      ]
+    }
+  ]
+}
