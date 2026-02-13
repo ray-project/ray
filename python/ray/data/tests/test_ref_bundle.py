@@ -432,9 +432,8 @@ def test_ref_bundle_eq_and_hash():
     copies (e.g. from dataclasses.replace) are equal to the original and
     usable as dict keys."""
 
-    from dataclasses import replace
-
     ref_a = ObjectRef(b"1" * 28)
+    ref_b = ObjectRef(b"2" * 28)
     meta = BlockMetadata(num_rows=10, size_bytes=100, exec_stats=None, input_files=None)
 
     bundle = RefBundle(
@@ -444,6 +443,9 @@ def test_ref_bundle_eq_and_hash():
         slices=[BlockSlice(start_offset=0, end_offset=5)],
         output_split_idx=1,
     )
+
+    # Identity: same object is always equal
+    assert bundle == bundle
 
     # A dataclasses.replace copy should be equal and have the same hash
     copy = replace(bundle)
@@ -455,7 +457,12 @@ def test_ref_bundle_eq_and_hash():
     d = {bundle: "value"}
     assert d[copy] == "value"
 
-    # Differing any field should break equality
+    # Non-RefBundle comparison returns False (not TypeError)
+    assert bundle != "not a bundle"
+    assert bundle != 42
+    assert bundle != None
+
+    # Differing any field should break equality and hash
     diff_bundle_1 = replace(bundle, owns_blocks=False)
     assert bundle != diff_bundle_1 and hash(bundle) != hash(diff_bundle_1)
 
@@ -468,30 +475,13 @@ def test_ref_bundle_eq_and_hash():
     diff_bundle_4 = replace(bundle, slices=(None,))
     assert bundle != diff_bundle_4 and hash(bundle) != hash(diff_bundle_4)
 
-    # Differing blocks or meta should not match too
-    ref_b = ObjectRef(b"2" * 28)
+    # Differing block ref
+    diff_ref_bundle = replace(bundle, blocks=[(ref_b, meta)])
+    assert bundle != diff_ref_bundle
 
-    deff_block_ref_bundle = RefBundle(
-        blocks=[(ref_b, meta)],
-        owns_blocks=True,
-        schema="schema",
-        slices=[BlockSlice(start_offset=0, end_offset=5)],
-        output_split_idx=1,
-    )
-
-    assert bundle != deff_block_ref_bundle
-
-    diff_meta = replace(meta, num_rows=11)
-
-    deff_block_meta_bundle = RefBundle(
-        blocks=[(ref_a, diff_meta)],
-        owns_blocks=True,
-        schema="schema",
-        slices=[BlockSlice(start_offset=0, end_offset=5)],
-        output_split_idx=1,
-    )
-
-    assert bundle != deff_block_meta_bundle
+    # Differing block metadata
+    diff_meta_bundle = replace(bundle, blocks=[(ref_a, replace(meta, num_rows=11))])
+    assert bundle != diff_meta_bundle
 
 
 if __name__ == "__main__":
