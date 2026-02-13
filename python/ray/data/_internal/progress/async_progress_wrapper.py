@@ -14,7 +14,7 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class AsyncExecutionProgressManagerWrapper(BaseExecutionProgressManager):
+class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
     """
     Async wrapper for progress managers that prevents terminal I/O from blocking
     the streaming executor scheduling loop.
