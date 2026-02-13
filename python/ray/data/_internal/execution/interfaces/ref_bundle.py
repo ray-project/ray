@@ -26,7 +26,7 @@ class BlockSlice:
         return self.end_offset - self.start_offset
 
 
-@dataclass
+@dataclass(eq=True)
 class RefBundle:
     """A group of data block references and their metadata.
 
@@ -339,11 +339,16 @@ class RefBundle:
             slices=merged_slices,
         )
 
-    def __eq__(self, other) -> bool:
-        return self is other
-
     def __hash__(self) -> int:
-        return id(self)
+        return hash(
+            tuple([
+                *self.blocks,
+                *self.slices,
+                self.schema,
+                self.owns_blocks,
+                self.output_split_idx,
+            ])
+        )
 
     def __len__(self) -> int:
         return len(self.blocks)
