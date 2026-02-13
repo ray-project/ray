@@ -343,24 +343,10 @@ class RefBundle:
         )
 
     def __eq__(self, other: "RefBundle"):
-        return (
-            self.blocks == other.blocks
-            and self.slices == other.slices
-            and self.schema == other.schema
-            and self.owns_blocks == other.owns_blocks
-            and self.output_split_idx == other.output_split_idx
-        )
+        return self is other
 
     def __hash__(self) -> int:
-        return hash(
-            (
-                *self.blocks,
-                *self.slices,
-                self.schema,
-                self.owns_blocks,
-                self.output_split_idx,
-            )
-        )
+        return id(self)
 
     def __len__(self) -> int:
         return len(self.blocks)
