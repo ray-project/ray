@@ -24,6 +24,37 @@ class ChatRole(str, Enum):
     system = "system"
 
 
+def extract_text_content(content: Any) -> str:
+    """
+    Extract text from content that can be either:
+    - A simple string: "hello"
+    - A list of content objects: [{"type": "text", "text": "hello"}]
+
+    This handles both the standard OpenAI format and the multimodal format
+    used by vllm benchmark.
+    """
+    if content is None:
+        return ""
+
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, list):
+        # Handle multimodal format: [{"type": "text", "text": "..."}]
+        text_parts = []
+        for item in content:
+            if isinstance(item, dict):
+                if item.get("type") == "text":
+                    text_parts.append(item.get("text", ""))
+                # Skip non-text content types (e.g., image_url)
+            elif isinstance(item, str):
+                text_parts.append(item)
+        return " ".join(text_parts).strip()
+
+    # Fallback: try to convert to string
+    return str(content).strip()
+
+
 def format_messages_to_prompt(messages: List[Any]) -> str:
     prompt = "A conversation between a user and an assistant.\n"
 
@@ -32,21 +63,20 @@ def format_messages_to_prompt(messages: List[Any]) -> str:
         if isinstance(message, dict):
             role = message.get("role")
             content = message.get("content")
-            if content is None:
-                content = ""
         else:
             # Fallback for object access if it's a Pydantic model
             role = getattr(message, "role", "user")
-            content = getattr(message, "content", "") or ""
+            content = getattr(message, "content", "")
 
         role_str = str(role)
+        text_content = extract_text_content(content)
 
         if role_str == ChatRole.system.value:
-            prompt += f"### System: {content.strip()}\n"
+            prompt += f"### System: {text_content}\n"
         elif role_str == ChatRole.user.value:
-            prompt += f"### User: {content.strip()}\n"
+            prompt += f"### User: {text_content}\n"
         elif role_str == ChatRole.assistant.value:
-            prompt += f"### Assistant: {content.strip()}\n"
+            prompt += f"### Assistant: {text_content}\n"
 
     prompt += "### Assistant:"
     return prompt
