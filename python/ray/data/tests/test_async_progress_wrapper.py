@@ -39,7 +39,7 @@ class TestAsyncProgressManagerWrapperIntegration:
         manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
         assert isinstance(manager, AsyncProgressManagerWrapper)
-        manager.close()
+        manager.close_with_finishing_description("Test complete")
 
     @patch("sys.stdout.isatty", return_value=True)
     def test_wrap_rich_progress_manager(
@@ -54,8 +54,9 @@ class TestAsyncProgressManagerWrapperIntegration:
         manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
         assert isinstance(manager, AsyncProgressManagerWrapper)
-        manager.close()
+        manager.close_with_finishing_description("Test complete")
 
+    @patch("sys.stdout.isatty", return_value=False)
     def test_no_wrap_logging_progress_manager(
         self, mock_isatty, mock_topology, restore_data_context
     ):
@@ -65,14 +66,14 @@ class TestAsyncProgressManagerWrapperIntegration:
         ctx.enable_progress_bars = True
         ctx.enable_async_progress_manager_wrapper = True
 
-        with patch("sys.stdout.isatty", return_value=False):
-            with patch("ray._private.worker.global_worker") as mock_worker:
-                mock_worker.mode = ray._private.worker.SCRIPT_MODE
+        with patch("ray._private.worker.global_worker") as mock_worker:
+            mock_worker.mode = ray._private.worker.SCRIPT_MODE
 
-                manager = get_progress_manager(ctx, "test_id", mock_topology, False)
+            manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
-                assert not isinstance(manager, AsyncProgressManagerWrapper)
+            assert not isinstance(manager, AsyncProgressManagerWrapper)
 
+    @patch("sys.stdout.isatty", return_value=False)
     def test_no_wrap_noop_progress_manager(
         self, mock_isatty, mock_topology, restore_data_context
     ):
@@ -84,7 +85,7 @@ class TestAsyncProgressManagerWrapperIntegration:
 
         assert not isinstance(manager, AsyncProgressManagerWrapper)
 
-    @patch("sys.stdout.isatty", return_value=True)
+    @patch("sys.stdout.isatty", return_value=False)
     def test_does_not_wrap_when_disabled(
         self, mock_isatty, mock_topology, restore_data_context
     ):
