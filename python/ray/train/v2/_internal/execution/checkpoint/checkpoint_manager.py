@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import time
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ray
@@ -502,7 +501,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             A list of ReportedCheckpoint objects that represent the checkpoints and
             corresponding metrics reported by the workers.
         """
-        start_time = time.time()
+        start_time = asyncio.get_event_loop().time()
         if consistency_mode not in [
             CheckpointConsistencyMode.COMMITTED,
             CheckpointConsistencyMode.VALIDATED,
