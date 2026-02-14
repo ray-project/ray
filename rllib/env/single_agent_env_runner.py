@@ -353,7 +353,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
             observations, rewards, terminateds, truncateds, infos = results
             observations, actions = unbatch(observations), unbatch(actions)
-
             call_on_episode_start = set()
             for env_index in range(self.num_envs):
                 extra_model_output = {k: v[env_index] for k, v in to_env.items()}
