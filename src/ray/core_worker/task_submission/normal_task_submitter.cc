@@ -36,6 +36,14 @@ void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsNormalTask());
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
 
+  // Record submission timestamp for preprocessing time metric (driver only).
+  // TODO(zac): Remove the DRIVER-only condition once worker metric aggregation
+  // is enabled by default in Ray.
+  if (worker_type_ == WorkerType::DRIVER) {
+    absl::MutexLock lock(&mu_);
+    task_submission_time_ms_[task_spec.TaskId()] = current_sys_time_ms();
+  }
+
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
     task_manager_.MarkDependenciesResolved(task_spec.TaskId());
     if (!status.ok()) {
@@ -47,16 +55,36 @@ void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
       bool will_retry = task_manager_.FailOrRetryPendingTask(
           task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
-      if (!will_retry) {
+      {
         absl::MutexLock lock(&mu_);
-        cancelled_tasks_.erase(task_spec.TaskId());
+        // Clean up timestamp tracking for preprocessing metric.
+        // N.B. If the task will retry, it will get a new timestamp on resubmission.
+        task_submission_time_ms_.erase(task_spec.TaskId());
+        if (!will_retry) {
+          cancelled_tasks_.erase(task_spec.TaskId());
+        }
       }
       return;
     }
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
 
     absl::MutexLock lock(&mu_);
+
+    // Record dependency resolution time metric (driver only).
+    // TODO(zac): Remove the DRIVER-only condition once worker metric aggregation
+    // is enabled by default in Ray.
+    if (worker_type_ == WorkerType::DRIVER) {
+      auto it = task_submission_time_ms_.find(task_spec.TaskId());
+      if (it != task_submission_time_ms_.end()) {
+        int64_t dep_resolution_time_ms = current_sys_time_ms() - it->second;
+        task_dependency_resolution_time_ms_histogram_.Record(
+            static_cast<double>(dep_resolution_time_ms));
+      }
+    }
+
     if (cancelled_tasks_.erase(task_spec.TaskId()) > 0) {
+      // Clean up timestamp tracking for preprocessing metric.
+      task_submission_time_ms_.erase(task_spec.TaskId());
       task_manager_.FailPendingTask(task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED);
       return;
     }
@@ -479,6 +507,11 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
         error_info.set_error_type(error_type);
         while (!tasks_to_fail.empty()) {
           auto &task_spec = tasks_to_fail.front();
+          {
+            absl::MutexLock lock(&mu_);
+            // Clean up timestamp tracking for preprocessing metric.
+            task_submission_time_ms_.erase(task_spec.TaskId());
+          }
           task_manager_.FailPendingTask(
               task_spec.TaskId(), error_type, &error_status, &error_info);
           tasks_to_fail.pop_front();
@@ -519,6 +552,30 @@ void NormalTaskSubmitter::PushNormalTask(
   task_manager_.MarkTaskWaitingForExecution(task_id,
                                             NodeID::FromBinary(addr.node_id()),
                                             WorkerID::FromBinary(addr.worker_id()));
+
+  // Record preprocessing time metrics (driver only).
+  // TODO(zac): Remove the DRIVER-only condition once worker metric aggregation
+  // is enabled by default in Ray.
+  if (worker_type_ == WorkerType::DRIVER) {
+    int64_t now_ms = current_sys_time_ms();
+
+    // Record push time: lease granted to task being pushed.
+    int64_t lease_grant_time_ms = task_spec.GetMessage().lease_grant_timestamp_ms();
+    if (lease_grant_time_ms > 0) {
+      int64_t push_time_ms = now_ms - lease_grant_time_ms;
+      task_push_time_ms_histogram_.Record(static_cast<double>(push_time_ms));
+    }
+
+    // Record total submitter-side preprocessing time: submission to task being pushed.
+    auto it = task_submission_time_ms_.find(task_id);
+    if (it != task_submission_time_ms_.end()) {
+      int64_t preprocessing_time_ms = now_ms - it->second;
+      task_total_submitter_preprocessing_time_ms_histogram_.Record(
+          static_cast<double>(preprocessing_time_ms));
+      task_submission_time_ms_.erase(it);
+    }
+  }
+
   client->PushNormalTask(
       std::move(request),
       [this,
@@ -696,6 +753,8 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
         if (spec->TaskId() == task_id) {
           scheduling_tasks.erase(spec);
           CancelWorkerLeaseIfNeeded(scheduling_key);
+          // Clean up timestamp tracking for preprocessing metric.
+          task_submission_time_ms_.erase(task_id);
           task_manager_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
           return;
         }
@@ -716,6 +775,8 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
           // ResolveDependencies callback will never be called if dependency resolution
           // was successfully cancelled, so need to remove from the set here.
           cancelled_tasks_.erase(task_id);
+          // Clean up timestamp tracking for preprocessing metric.
+          task_submission_time_ms_.erase(task_id);
         }
         task_manager_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
       }

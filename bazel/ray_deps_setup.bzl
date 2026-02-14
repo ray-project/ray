@@ -226,24 +226,27 @@ def ray_deps_setup():
 
     # WARNING: Upgrading the OTEL version caused a major regression in actor creation/task throughput.
     # Verify that this regression is fixed before upgrading the below two OTEL versions.
+    # NOTE: Upgraded to v1.22.0 for exponential histogram support (experimental branch)
     auto_http_archive(
         name = "io_opentelemetry_cpp",
-        url = "https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.19.0.zip",
-        sha256 = "8ef0a63f4959d5dfc3d8190d62229ef018ce41eef36e1f3198312d47ab2de05a",
+        url = "https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.22.0.zip",
+        sha256 = "814e494d4fdc6361a81ae1d40a2a195bb1152b9081bc7feff14893f9ddf63fd7",
         # Enable mTLS support for OTLP gRPC exporter.
         # This is required because Ray's gRPC servers require client certificates when TLS is enabled.
         # See https://github.com/ray-project/ray/issues/59968
+        # Also fix proto compatibility issue with log recordable (Ray only uses metrics, not logs).
         patches = [
             "@io_ray//thirdparty/patches:opentelemetry-cpp-enable-mtls.patch",
+            "@io_ray//thirdparty/patches:opentelemetry-cpp-fix-log-recordable.patch",
         ],
         patch_args = ["-p1"],
     )
 
     auto_http_archive(
         name = "com_github_opentelemetry_proto",
-        url = "https://github.com/open-telemetry/opentelemetry-proto/archive/refs/tags/v1.2.0.zip",
+        url = "https://github.com/open-telemetry/opentelemetry-proto/archive/refs/tags/v1.3.1.zip",
         build_file = "@io_opentelemetry_cpp//bazel:opentelemetry_proto.BUILD",
-        sha256 = "b3cf4fefa4eaea43879ade612639fa7029c624c1b959f019d553b86ad8e01e82",
+        sha256 = "91c6562a1dcd6c885c79372b84ef9f76a92cc5a089a41efd2b7291296d92fd94",
     )
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.

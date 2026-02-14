@@ -320,6 +320,44 @@ void OpenTelemetryMetricRecorder::RegisterHistogramMetric(
   registered_instruments_[name] = std::move(instrument);
 }
 
+void OpenTelemetryMetricRecorder::RegisterExponentialHistogramMetric(
+    const std::string &name,
+    const std::string &description,
+    int max_size,
+    int max_scale) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (registered_instruments_.contains(name)) {
+    // Already registered.
+    return;
+  }
+  // Create an exponential histogram with automatic bucket rescaling.
+  // Exponential histograms use logarithmically-spaced buckets that dynamically
+  // adjust to the data range, making them ideal for long-tail latency distributions.
+  auto aggregation_config = std::make_shared<
+      opentelemetry::sdk::metrics::Base2ExponentialHistogramAggregationConfig>();
+  aggregation_config->max_buckets_ = max_size;
+  aggregation_config->max_scale_ = max_scale;
+
+  auto view = std::make_unique<opentelemetry::sdk::metrics::View>(
+      name,
+      description,
+      /*unit=*/"",
+      opentelemetry::sdk::metrics::AggregationType::kBase2ExponentialHistogram,
+      aggregation_config);
+
+  auto instrument_selector =
+      std::make_unique<opentelemetry::sdk::metrics::InstrumentSelector>(
+          opentelemetry::sdk::metrics::InstrumentType::kHistogram,
+          name,
+          /*unit_filter=*/"");
+  auto meter_selector = std::make_unique<opentelemetry::sdk::metrics::MeterSelector>(
+      meter_name_, /*meter_version=*/"", /*schema_url=*/"");
+  meter_provider_->AddView(
+      std::move(instrument_selector), std::move(meter_selector), std::move(view));
+  auto instrument = GetMeter()->CreateDoubleHistogram(name, description, /*unit=*/"");
+  registered_instruments_[name] = std::move(instrument);
+}
+
 void OpenTelemetryMetricRecorder::SetMetricValue(
     const std::string &name,
     absl::flat_hash_map<std::string, std::string> &&tags,
