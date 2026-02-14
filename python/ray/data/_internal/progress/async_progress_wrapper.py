@@ -14,6 +14,13 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _daemon_thread_factory(*args, **kwargs):
+    """Create daemon threads that don't block interpreter shutdown."""
+    thread = threading.Thread(*args, **kwargs)
+    thread.daemon = True
+    return thread
+
+
 class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
     """
     Async wrapper for progress managers that prevents terminal I/O from blocking
@@ -35,7 +42,9 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
 
         # ThreadPoolExecutor for async operations
         self._executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=max_workers, thread_name_prefix="async_progress"
+            max_workers=max_workers,
+            thread_name_prefix="async_progress",
+            thread_factory=_daemon_thread_factory,
         )
 
         # State Tracking
