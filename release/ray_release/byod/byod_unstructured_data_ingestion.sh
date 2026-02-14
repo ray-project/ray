@@ -3,7 +3,7 @@
 set -exo pipefail
 
 sudo apt-get update -y
-sudo apt-get install --no-install-recommends -y libgl1-mesa-glx libmagic1 poppler-utils tesseract-ocr libreoffice
+sudo apt-get install --no-install-recommends -y libgl1 libmagic1 poppler-utils tesseract-ocr libreoffice
 sudo rm -f /etc/apt/sources.list.d/*
 
 # Install runtime deps
