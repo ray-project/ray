@@ -1,9 +1,11 @@
 import collections
 import logging
+import random
 import sys
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Iterator,
     List,
@@ -46,7 +48,98 @@ T = TypeVar("T")
 # Max number of samples used to estimate the Pandas block size.
 _PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT = 200
 
+# Pre-computed sizes for fixed-width primitives (avoids repeated sys.getsizeof
+# calls during deep object graph traversal in size_bytes).
+_SIZEOF_FLOAT = sys.getsizeof(0.0)
+_SIZEOF_INT = sys.getsizeof(0)
+
 logger = logging.getLogger(__name__)
+
+# Constant sizes for fixed-width scalars — used to size homogeneous
+# float/int lists in O(1) without visiting each element.
+_CONSTANT_ELEM_SIZES = {float: _SIZEOF_FLOAT, int: _SIZEOF_INT}
+
+# Element types for which we use bucketed random sampling (5 buckets,
+# 1 random element each) and extrapolate, rather than visiting all N.
+_SAMPLED_ELEM_TYPES = (str, dict, list)
+
+# Minimum list length to apply sampling. Shorter lists are traversed fully.
+_MIN_LIST_LENGTH_FOR_SAMPLING = 4
+
+
+def _estimate_list_contents(
+    items: Union[list, tuple],
+    seen: set,
+    get_deep_size_fn: Callable[[Any, set], int],
+) -> Optional[int]:
+    """Estimate the total deep size of a list's *contents* (not the list itself).
+
+    For homogeneous lists this avoids O(n) traversal:
+      - float/int elements: exact O(1) multiply (constant per-element size).
+      - str/dict/list elements: bucketed random sampling (5 buckets,
+        1 random element each) and extrapolate.
+      - Anything else, or heterogeneous: returns None so the caller can
+        fall back to full traversal.
+
+    Args:
+        items: The list or tuple whose contents to estimate.
+        seen: Shared set of already-visited object ids (for deduplication).
+        get_deep_size_fn: Callable that computes the deep size of a single
+            object, accepting ``(obj, seen)`` arguments.
+
+    Returns:
+        The estimated total content size in bytes, or ``None`` if the list
+        should be traversed element-by-element instead.
+    """
+    length = len(items)
+    if length == 0:
+        return 0
+
+    first_elem_type = type(items[0])
+
+    # Check homogeneity: verify first, middle, and last elements share the
+    # same type. This is a heuristic for JSON data where arrays are typically
+    # type-uniform. Checking three positions catches most mixed-type cases
+    # (e.g., [1, {"nested": ...}, 2]) at negligible cost.
+    is_homogeneous = length < 3 or (
+        type(items[-1]) is first_elem_type
+        and type(items[length // 2]) is first_elem_type
+    )
+    if not is_homogeneous:
+        return None
+
+    # Fixed-size scalars (float, int) — exact, O(1).
+    constant_size = _CONSTANT_ELEM_SIZES.get(first_elem_type)
+    if constant_size is not None:
+        return length * constant_size
+
+    # Compound/variable types (str, dict, list) — bucketed random sampling.
+    # Split the list into equal-width buckets and pick one random element
+    # from each. This guarantees coverage across the full range while
+    # handling non-uniform element sizes better than fixed-position sampling.
+    #
+    #   list: [  small small small | med  med  med  | big  big  big  big ]
+    #           \___ bucket 0 ____/ \___ bucket 1 __/ \___ bucket 2 ____/
+    #                  ^ pick 1          ^ pick 1           ^ pick 1
+    #
+    #   estimate = len(list) * mean(sampled sizes)
+    if (
+        first_elem_type in _SAMPLED_ELEM_TYPES
+        and length >= _MIN_LIST_LENGTH_FOR_SAMPLING
+    ):
+        num_buckets = min(5, length)
+        bucket_width = length / num_buckets
+        sampled_total_bytes = 0
+        for bucket in range(num_buckets):
+            bucket_start = int(bucket * bucket_width)
+            bucket_end = min(int((bucket + 1) * bucket_width) - 1, length - 1)
+            sample_idx = random.randint(bucket_start, bucket_end)
+            sampled_total_bytes += get_deep_size_fn(items[sample_idx], seen)
+        return int(length * sampled_total_bytes / num_buckets)
+
+    # Unrecognized or too small to sample — caller should traverse.
+    return None
+
 
 _pandas = None
 
@@ -514,27 +607,44 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         pd = lazy_import_pandas()
 
-        def get_deep_size(obj):
-            """Calculates the memory size of objects,
-            including nested objects using an iterative approach."""
-            seen = set()
+        def get_deep_size(obj: Any, seen: Optional[set] = None) -> int:
+            """Calculates the memory size of an object including all nested
+            objects, using an iterative BFS approach.
+
+            For homogeneous lists (common in JSON data), we avoid visiting
+            every element:
+            - float/int lists: O(1) via constant-size multiply.
+            - str/dict/list lists: bucketed random sampling and extrapolate.
+
+            Args:
+                obj: The object to measure.
+                seen: Optional shared set of already-visited object ids.
+                    When None a fresh set is created (top-level call).
+                    Passed through when sampling list elements to avoid
+                    double-counting shared references.
+
+            Returns:
+                The estimated deep size of the object in bytes.
+            """
+            if seen is None:
+                seen = set()
             total_size = 0
             objects = collections.deque([obj])
             while objects:
                 current = objects.pop()
 
-                # Skip interning-eligible immutable objects
+                # Immutable scalars — constant size, no dedup needed.
                 if isinstance(current, (str, bytes, int, float)):
-                    size = sys.getsizeof(current)
-                    total_size += size
+                    total_size += sys.getsizeof(current)
                     continue
 
-                # Check if the object has been seen before
-                # i.e. a = np.ndarray([1,2,3]), b = [a,a]
-                # The patten above will have only one memory copy
-                if id(current) in seen:
+                # Mutable / container objects: deduplicate by id.
+                # e.g. a = np.ndarray([1,2,3]); b = [a, a]
+                # The pattern above will have only one memory copy.
+                obj_id = id(current)
+                if obj_id in seen:
                     continue
-                seen.add(id(current))
+                seen.add(obj_id)
 
                 try:
                     size = sys.getsizeof(current)
@@ -542,18 +652,23 @@ class PandasBlockAccessor(TableBlockAccessor):
                     size = 0
                 total_size += size
 
-                # Handle specific cases
-                if isinstance(current, np.ndarray):
-                    total_size += current.nbytes - size  # Avoid double counting
+                if isinstance(current, (list, tuple)):
+                    estimate = _estimate_list_contents(current, seen, get_deep_size)
+                    if estimate is not None:
+                        total_size += estimate
+                    else:
+                        objects.extend(current)
+                elif isinstance(current, dict):
+                    objects.extend(current.keys())
+                    objects.extend(current.values())
+                elif isinstance(current, (set, frozenset)):
+                    objects.extend(current)
+                elif isinstance(current, np.ndarray):
+                    total_size += current.nbytes - size
                 elif isinstance(current, pd.DataFrame):
                     total_size += (
                         current.memory_usage(index=True, deep=True).sum() - size
                     )
-                elif isinstance(current, (list, tuple, set)):
-                    objects.extend(current)
-                elif isinstance(current, dict):
-                    objects.extend(current.keys())
-                    objects.extend(current.values())
                 elif isinstance(current, TensorArrayElement):
                     objects.extend(current.to_numpy())
             return total_size
@@ -584,7 +699,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 # Skip size calculation for empty columns
                 if sample_size == 0:
                     continue
-                # Following codes can also handel case that sample_size == total_size
+                # Following codes can also handle case that sample_size == total_size
                 sampled_data = self._table[column].sample(n=sample_size).values
 
                 try:
@@ -593,9 +708,9 @@ class PandasBlockAccessor(TableBlockAccessor):
                     ):
                         column_memory_sample = sampled_data.nbytes
                     else:
-                        vectorized_size_calc = np.vectorize(lambda x: get_deep_size(x))
-                        column_memory_sample = np.sum(
-                            vectorized_size_calc(sampled_data)
+                        # Plain Python sum — avoids np.vectorize overhead
+                        column_memory_sample = sum(
+                            get_deep_size(x) for x in sampled_data
                         )
                     # Scale back to the full column size if we sampled
                     column_memory = column_memory_sample * (total_size / sample_size)
