@@ -6,10 +6,10 @@ from typing import Callable
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 import ray
 from ray import serve
-from ray._common.pydantic_compat import ValidationError
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.test_utils import check_running, get_application_url
 from ray.serve._private.utils import get_random_string

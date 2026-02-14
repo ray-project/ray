@@ -4,10 +4,10 @@ from copy import deepcopy
 from typing import Dict, Optional
 
 import pytest
+from pydantic import BaseModel
 
 import ray
 from ray import serve
-from ray._common.pydantic_compat import BaseModel
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayActorError
 from ray.serve import Application

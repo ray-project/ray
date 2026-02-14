@@ -190,7 +190,11 @@ def test_put_duplicate_apps(ray_start_stop):
         ],
     }
     put_response = requests.put(SERVE_HEAD_URL, json=config, timeout=5)
-    assert put_response.status_code == 400 and "ValidationError" in put_response.text
+    # Check for validation error in response (case-insensitive for Pydantic v1/v2 compat)
+    assert (
+        put_response.status_code == 400
+        and "validation error" in put_response.text.lower()
+    )
 
 
 @pytest.mark.skipif(
@@ -216,7 +220,11 @@ def test_put_duplicate_routes(ray_start_stop):
         ],
     }
     put_response = requests.put(SERVE_HEAD_URL, json=config, timeout=5)
-    assert put_response.status_code == 400 and "ValidationError" in put_response.text
+    # Check for validation error in response (case-insensitive for Pydantic v1/v2 compat)
+    assert (
+        put_response.status_code == 400
+        and "validation error" in put_response.text.lower()
+    )
 
 
 @pytest.mark.skipif(

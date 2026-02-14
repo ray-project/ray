@@ -1,8 +1,6 @@
 import sys
 
-import pydantic
 import pytest
-from packaging import version
 
 # skip the test if vllm is installed
 HAS_VLLM = False
@@ -14,13 +12,6 @@ except ImportError:
     pass
 
 
-PYDANTIC_VERSION = version.parse(pydantic.__version__)
-
-
-@pytest.mark.skipif(
-    PYDANTIC_VERSION < version.parse("2.0"),
-    reason="ray.serve.llm requires pydantic>=2.0",
-)
 @pytest.mark.skipif(not HAS_VLLM, reason="vllm is not installed")
 def test_serve_llm_import_does_not_error():
     # expected ImportError because of missing

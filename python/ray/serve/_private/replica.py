@@ -1778,7 +1778,7 @@ class Replica(ReplicaBase):
         async def start_http_server(port):
             options = configure_http_middlewares(
                 configure_http_options_with_defaults(
-                    HTTPOptions(**{**self._http_options.dict(), "port": port})
+                    HTTPOptions(**{**self._http_options.model_dump(), "port": port})
                 )
             )
 
@@ -1801,7 +1801,9 @@ class Replica(ReplicaBase):
         if grpc_enabled:
 
             async def start_grpc_server_fn(port):
-                options = gRPCOptions(**{**self._grpc_options.dict(), "port": port})
+                options = gRPCOptions(
+                    **{**self._grpc_options.model_dump(), "port": port}
+                )
                 return await start_grpc_server(
                     self._direct_ingress_service_handler_factory,
                     options,

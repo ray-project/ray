@@ -10,7 +10,13 @@ from aiohttp.web import Request, Response
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray._common.pydantic_compat import ValidationError
+from ray._common.pydantic_compat import ValidationError as ValidationErrorV1
+
+# Import native Pydantic v2 ValidationError for schemas using native Pydantic
+try:
+    from pydantic import ValidationError as ValidationErrorV2
+except ImportError:
+    ValidationErrorV2 = ValidationErrorV1  # Fallback if only v1 is available
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
@@ -152,7 +158,7 @@ class ServeHead(SubprocessModule):
 
         try:
             config: ServeDeploySchema = ServeDeploySchema.parse_obj(await req.json())
-        except ValidationError as e:
+        except (ValidationErrorV1, ValidationErrorV2) as e:
             return Response(
                 status=400,
                 text=repr(e),

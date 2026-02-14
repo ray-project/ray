@@ -2,9 +2,9 @@ import sys
 import warnings
 
 import pytest
+from pydantic import ValidationError
 
 from ray import cloudpickle, serve
-from ray._common.pydantic_compat import ValidationError
 from ray._common.utils import import_attr
 from ray.serve._private.config import (
     DeploymentConfig,
@@ -70,23 +70,25 @@ def test_autoscaling_config_validation():
         AutoscalingConfig(target_ongoing_requests=-1)
 
     # max_replicas must be greater than or equal to min_replicas
-    with pytest.raises(ValueError):
+    # In Pydantic v2, ValueError in validators is wrapped in ValidationError
+    with pytest.raises(ValidationError):
         AutoscalingConfig(min_replicas=100, max_replicas=1)
     AutoscalingConfig(min_replicas=1, max_replicas=100)
     AutoscalingConfig(min_replicas=10, max_replicas=10)
 
     # initial_replicas must be greater than or equal to min_replicas
-    with pytest.raises(ValueError):
+    # In Pydantic v2, ValueError in validators is wrapped in ValidationError
+    with pytest.raises(ValidationError):
         AutoscalingConfig(min_replicas=10, initial_replicas=1)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         AutoscalingConfig(min_replicas=10, initial_replicas=1, max_replicas=15)
     AutoscalingConfig(min_replicas=5, initial_replicas=10, max_replicas=15)
     AutoscalingConfig(min_replicas=5, initial_replicas=5, max_replicas=15)
 
     # initial_replicas must be less than or equal to max_replicas
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         AutoscalingConfig(initial_replicas=10, max_replicas=8)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         AutoscalingConfig(min_replicas=1, initial_replicas=10, max_replicas=8)
     AutoscalingConfig(min_replicas=1, initial_replicas=4, max_replicas=5)
     AutoscalingConfig(min_replicas=1, initial_replicas=5, max_replicas=5)
@@ -142,9 +144,10 @@ class TestDeploymentConfig:
 
         # Test num_replicas validation.
         DeploymentConfig(num_replicas=1)
-        with pytest.raises(ValidationError, match="type_error"):
+        # Pydantic v2 uses different error type names
+        with pytest.raises(ValidationError, match="int_parsing"):
             DeploymentConfig(num_replicas="hello")
-        with pytest.raises(ValidationError, match="value_error"):
+        with pytest.raises(ValidationError, match="greater_than_equal"):
             DeploymentConfig(num_replicas=-1)
 
         # Test dynamic default for max_ongoing_requests.
@@ -155,11 +158,12 @@ class TestDeploymentConfig:
         DeploymentConfig(max_constructor_retry_count=1)
         DeploymentConfig(max_constructor_retry_count=10)
 
-        with pytest.raises(ValidationError, match="type_error"):
+        # Pydantic v2 uses different error type names
+        with pytest.raises(ValidationError, match="int_parsing"):
             DeploymentConfig(max_constructor_retry_count="hello")
-        with pytest.raises(ValidationError, match="value_error"):
+        with pytest.raises(ValidationError, match="greater_than"):
             DeploymentConfig(max_constructor_retry_count=-1)
-        with pytest.raises(ValidationError, match="value_error"):
+        with pytest.raises(ValidationError, match="greater_than"):
             DeploymentConfig(max_constructor_retry_count=0)
 
         # Test default value
@@ -204,13 +208,10 @@ class TestDeploymentConfig:
 
     def test_setting_and_getting_request_router_class(self):
         """Check that setting and getting request_router_class works."""
+        # The request_router_class path is derived from the class's __module__ attribute
         request_router_path = (
-            "python.ray.serve.tests.unit.test_config.FakeRequestRouter"
+            f"{FakeRequestRouter.__module__}.{FakeRequestRouter.__name__}"
         )
-        if sys.platform == "win32":
-            request_router_path = (
-                "io_ray.python.ray.serve.tests.unit.test_config.FakeRequestRouter"
-            )
 
         # Passing request_router_class as a class.
         deployment_config = DeploymentConfig.from_default(
@@ -1002,7 +1003,8 @@ def test_prepare_imperative_http_options():
     with pytest.raises(ValueError, match="not a valid ProxyLocation"):
         prepare_imperative_http_options(proxy_location="wrong", http_options=None)
 
-    with pytest.raises(ValueError, match="not a valid enumeration"):
+    # Pydantic v2 uses different error format for invalid enum values
+    with pytest.raises(ValidationError, match="Input should be"):
         prepare_imperative_http_options(
             proxy_location=None, http_options={"location": "123"}
         )
