@@ -191,3 +191,30 @@ class TorchVisionPreprocessor(SerializablePreprocessorBase):
         self._output_columns = fields["output_columns"]
         self._torchvision_transform = fields["torchvision_transform"]
         self._batched = fields["batched"]
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+        if (
+            "_torchvision_transform" not in self.__dict__
+            and "torchvision_transform" in self.__dict__
+        ):
+            self._torchvision_transform = self.__dict__.pop("torchvision_transform")
+        if "_batched" not in self.__dict__ and "batched" in self.__dict__:
+            self._batched = self.__dict__.pop("batched")
+
+        if "_columns" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized TorchVisionPreprocessor: missing required field 'columns'."
+            )
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
+        if "_torchvision_transform" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized TorchVisionPreprocessor: missing required field 'torchvision_transform'."
+            )
+        if "_batched" not in self.__dict__:
+            self._batched = False

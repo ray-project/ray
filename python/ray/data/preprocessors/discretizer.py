@@ -273,6 +273,44 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         self._dtypes = fields["dtypes"]
         self._output_columns = fields["output_columns"]
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        # Migrate old public field names to new private field names
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_bins" not in self.__dict__ and "bins" in self.__dict__:
+            self._bins = self.__dict__.pop("bins")
+        if "_right" not in self.__dict__ and "right" in self.__dict__:
+            self._right = self.__dict__.pop("right")
+        if "_include_lowest" not in self.__dict__ and "include_lowest" in self.__dict__:
+            self._include_lowest = self.__dict__.pop("include_lowest")
+        if "_duplicates" not in self.__dict__ and "duplicates" in self.__dict__:
+            self._duplicates = self.__dict__.pop("duplicates")
+        if "_dtypes" not in self.__dict__ and "dtypes" in self.__dict__:
+            self._dtypes = self.__dict__.pop("dtypes")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+
+        # Validate required fields
+        if "_columns" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized CustomKBinsDiscretizer: missing required field 'columns'."
+            )
+        if "_bins" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized CustomKBinsDiscretizer: missing required field 'bins'."
+            )
+        if "_right" not in self.__dict__:
+            self._right = True
+        if "_include_lowest" not in self.__dict__:
+            self._include_lowest = False
+        if "_duplicates" not in self.__dict__:
+            self._duplicates = "raise"
+        if "_dtypes" not in self.__dict__:
+            self._dtypes = None
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
+
 
 @SerializablePreprocessor(
     version=1, identifier="io.ray.preprocessors.uniform_kbins_discretizer"
