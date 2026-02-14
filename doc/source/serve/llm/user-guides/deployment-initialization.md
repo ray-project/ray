@@ -7,13 +7,11 @@ The initialization phase of a serve.llm deployment involves many steps, includin
 - **Provisioning Nodes**: If a GPU node isn't available, a new instance must be provisioned.
 - **Image Download**: Downloading image to target instance incurs latency correlated with image size.
 - **Fixed Ray/Node Initialization**: Ray/vLLM incurs some fixed overhead when spawning new processes to handle a new replica, which involves importing large libraries (such as vLLM), preparing model and engine configurations, etc.
-- **Model Loading**: Retrieve model either from Hugging Face or cloud storage, including time spent downloading the model and moving it to GPU memory
+- **Model Loading**: Retrieve model either from Hugging Face or cloud storage, including time spent downloading the model and moving it to GPU memory. Customizable via {doc}`callbacks`.
 - **Torch Compile**: Torch compile is integral to vLLM's design and it is enabled by default.
 - **Memory Profiling**: vLLM runs some inference on the model to determine the amount of available memory it can dedicate to the KV cache
 - **CUDA Graph Capture**: vLLM captures the CUDA graphs for different input sizes ahead of time. More details are [here.](https://docs.vllm.ai/en/latest/design/cuda_graphs.html)
 - **Warmup**: Initialize KV cache, run model inference.
-
-
 
 This document will provide an overview of the numerous ways to customize your deployment initialization.
 
@@ -281,10 +279,12 @@ Torch.compile incurs some latency during initialization. This can be mitigated b
 In this example the cache folder is located at `/home/ray/.cache/vllm/torch_compile_cache/131ee5c6d9`. Upload this directory to your S3 bucket. The cache folder can now be retrieved at startup. We provide a custom utility to download the compile cache from cloud storage. Specify the `CloudDownloader` callback in `LLMConfig` and supply the relevant arguments. Make sure to set the `cache_dir` in compilation_config correctly. 
 
 ```python
+from ray.serve.llm.callbacks import CloudDownloader
+
 llm_config = LLMConfig(
     ...
     callback_config={
-        "callback_class": "ray.llm._internal.common.callbacks.cloud_downloader.CloudDownloader",
+        "callback_class": CloudDownloader,
         "callback_kwargs": {"paths": [("s3://samplebucket/llama-3-8b-cache", "/home/ray/.cache/vllm/torch_compile_cache/llama-3-8b-cache")]},
     },
     engine_kwargs={
@@ -300,22 +300,28 @@ Other options for retrieving the compile cache (distributed filesystem, block st
 
 ### Custom Initialization Behaviors
 
-We provide the ability to create custom node initialization behaviors with the API defined by [`CallbackBase`](https://github.com/ray-project/ray/blob/master/python/ray/llm/_internal/common/callbacks/base.py). Callback functions defined in the class are invoked at certain parts of the initialization process. An example is the above mentioned [`CloudDownloader`](https://github.com/ray-project/ray/blob/master/python/ray/llm/_internal/common/callbacks/cloud_downloader.py) which overrides the `on_before_download_model_files_distributed` function to distribute download tasks across nodes. To enable your custom callback, specify the classname inside `LLMConfig`. 
+We provide the ability to create custom node initialization behaviors with `CallbackBase` from `ray.serve.llm.callbacks`. Subclass `CallbackBase` and override lifecycle hooks that are invoked at certain parts of the initialization process. An example is the above mentioned `CloudDownloader` which overrides the `on_before_download_model_files_distributed` function to distribute download tasks across nodes. To enable your custom callback, specify the classname inside `LLMConfig`.
 
 ```python
-from user_custom_classes import CustomCallback
+from ray.serve.llm.callbacks import CallbackBase
+
+class CustomCallback(CallbackBase):
+    async def on_before_node_init(self) -> None:
+        # Custom logic before initialization
+        pass
+
 config = LLMConfig(
     ...
     callback_config={
-        "callback_class": CustomCallback, 
-        # or use string "user_custom_classes.CustomCallback"
-        "callback_kwargs": {"kwargs_test_key": "kwargs_test_value"},
+        "callback_class": CustomCallback,
+        # or use string "my_module.CustomCallback"
+        "callback_kwargs": {"my_key": "my_value"},
     },
     ...
 )
 ```
 
-> **Note:** Callbacks are a new feature. We may change the callback API and incorporate user feedback as we continue to develop this functionality.
+For a complete guide on callbacks including examples for registering custom reasoning parsers and integrating custom models, see {doc}`callbacks`.
 
 
 ## Best practices

@@ -1,6 +1,11 @@
 from typing import TYPE_CHECKING, Optional, Type
 
 from ray._common.deprecation import Deprecated
+from ray.llm._internal.common.callbacks.base import (
+    CallbackBase as _CallbackBase,
+    CallbackConfig as _CallbackConfig,
+    CallbackCtx as _CallbackCtx,
+)
 from ray.llm._internal.serve.core.configs.llm_config import (
     CloudMirrorConfig as _CloudMirrorConfig,
     LLMConfig as _LLMConfig,
@@ -82,6 +87,32 @@ class LLMServer(_LLMServer):
     error=False,
 )
 class LLMRouter(_OpenAiIngress):
+    pass
+
+
+##########
+# Callbacks
+##########
+
+
+@PublicAPI(stability="alpha")
+class CallbackBase(_CallbackBase):
+    """Base class for custom initialization callbacks in Ray Serve LLM deployments."""
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class CallbackConfig(_CallbackConfig):
+    """Configuration for attaching a callback to an LLM deployment."""
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class CallbackCtx(_CallbackCtx):
+    """Context object passed to all callback hooks during LLM deployment initialization."""
+
     pass
 
 
@@ -423,6 +454,9 @@ __all__ = [
     "ModelLoadingConfig",
     "CloudMirrorConfig",
     "LoraConfig",
+    "CallbackBase",
+    "CallbackConfig",
+    "CallbackCtx",
     "build_llm_deployment",
     "build_openai_app",
     "build_pd_openai_app",
