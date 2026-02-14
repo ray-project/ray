@@ -3,7 +3,7 @@
 It should be deleted once we fully move to the new executor backend.
 """
 import logging
-from typing import TYPE_CHECKING, Iterator, Optional, Tuple
+from typing import Iterator, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
     Executor,
@@ -15,9 +15,6 @@ from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
-
-if TYPE_CHECKING:
-    from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 
 # Warn about tasks larger than this.
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
@@ -56,14 +53,13 @@ def execute_to_legacy_bundle_iterator(
         original RefBundle. Only after the entire iterator is exhausted,
         we cache the resulting metadata to the execution plan."""
 
-        def __init__(self, base_iterator: OutputIterator, dag: "LogicalOperator"):
+        def __init__(self, base_iterator: OutputIterator):
             # Note: the base_iterator should be of type StreamIterator,
             # defined within `StreamingExecutor.execute()`. It must
             # support the `get_next()` method.
             self._base_iterator = base_iterator
             self._num_rows = 0
             self._size_bytes = 0
-            self._dag = dag
 
         def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
             try:
@@ -78,7 +74,7 @@ def execute_to_legacy_bundle_iterator(
                 schema = next(reversed(topology.values()))._schema
 
                 plan._cache.set_from_iteration(
-                    self._dag, schema, self._num_rows, self._size_bytes
+                    plan._logical_plan.dag, schema, self._num_rows, self._size_bytes
                 )
                 raise
 
@@ -90,7 +86,7 @@ def execute_to_legacy_bundle_iterator(
             self._size_bytes += bundle.size_bytes()
             return bundle
 
-    return CacheMetadataIterator(bundle_iter, plan._logical_plan.dag)
+    return CacheMetadataIterator(bundle_iter)
 
 
 def execute_to_ref_bundle(
