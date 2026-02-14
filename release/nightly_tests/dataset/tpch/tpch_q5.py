@@ -10,6 +10,7 @@ def main(args):
 
         # Load all required tables with early column pruning to reduce
         # intermediate data size (projection pushes down to Parquet reader)
+        # TODO: Remove manual projection once we support proper projection derivation
         region = load_table("region", args.sf).select_columns(["r_regionkey", "r_name"])
         nation = load_table("nation", args.sf).select_columns(
             ["n_nationkey", "n_name", "n_regionkey"]
@@ -43,6 +44,9 @@ def main(args):
 
         import pandas as pd
 
+        # Broadcast join: nation_region is tiny (~5 rows for ASIA). Materializing it
+        # and merging per-batch avoids shuffling the large supplier/customer tables.
+        # TODO: Use Ray Data native join once it supports broadcast join optimization.
         nation_region_pd = nation_region.to_pandas()[["n_nationkey", "n_name"]].copy()
 
         def _join_supplier(batch: pd.DataFrame) -> pd.DataFrame:
