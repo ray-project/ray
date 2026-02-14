@@ -39,7 +39,7 @@ class TestAsyncProgressManagerWrapperIntegration:
         manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
         assert isinstance(manager, AsyncProgressManagerWrapper)
-        manager.close_with_finishing_description("Test complete")
+        manager.close_with_finishing_description("Test complete", True)
 
     @patch("sys.stdout.isatty", return_value=True)
     def test_wrap_rich_progress_manager(
@@ -54,7 +54,7 @@ class TestAsyncProgressManagerWrapperIntegration:
         manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
         assert isinstance(manager, AsyncProgressManagerWrapper)
-        manager.close_with_finishing_description("Test complete")
+        manager.close_with_finishing_description("Test complete", True)
 
     @patch("sys.stdout.isatty", return_value=False)
     def test_no_wrap_logging_progress_manager(
