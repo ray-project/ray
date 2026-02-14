@@ -256,6 +256,15 @@ class LogMonitor:
         # runtime_env setup process is logged here
         if RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED:
             monitor_log_paths += glob.glob(f"{self.logs_dir}/runtime_env*.log")
+
+        monitor_log_paths_set = set(monitor_log_paths)
+        open_files = {f.filename for f in self.open_file_infos}
+        removed_files = (self.log_filenames - monitor_log_paths_set) - open_files
+        self.log_filenames -= removed_files
+        self.closed_file_infos = [
+            f for f in self.closed_file_infos if f.filename not in removed_files
+        ]
+
         for file_path in monitor_log_paths:
             if os.path.isfile(file_path) and file_path not in self.log_filenames:
                 worker_match = WORKER_LOG_PATTERN.match(file_path)

@@ -310,6 +310,7 @@ py_test_module_list(
         "test_actor_state_metrics.py",
         "test_autoscaler_fake_scaledown.py",
         "test_draining.py",
+        "test_log_monitor_cleanup.py",
         "test_logging.py",
         "test_logging_2.py",
         "test_metrics.py",
