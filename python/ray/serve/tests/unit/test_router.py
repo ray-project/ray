@@ -96,15 +96,38 @@ class FakeReplica(RunningReplica):
         queue_len_info: Optional[ReplicaQueueLengthInfo] = None,
         is_cross_language: bool = False,
         error: Optional[Exception] = None,
+        node_id: str = "fake-node-id",
+        availability_zone: Optional[str] = None,
+        node_ip: str = "127.0.0.1",
+        port: Optional[int] = 8000,
     ):
         self._replica_id = replica_id
         self._is_cross_language = is_cross_language
         self._queue_len_info = queue_len_info
         self._error = error
+        self._reserved_slots: Dict[str, bool] = {}  # token -> is_released
+        self._slot_counter = 0
+
+        # Create a minimal _replica_info object to satisfy router.py requirements
+        from unittest.mock import Mock
+        self._replica_info = Mock()
+        self._replica_info.node_id = node_id
+        self._replica_info.availability_zone = availability_zone
+        self._replica_info.node_ip = node_ip
+        self._replica_info.port = port
+        self._replica_info.replica_id = replica_id
 
     @property
     def replica_id(self) -> ReplicaID:
         return self._replica_id
+
+    @property
+    def node_id(self) -> str:
+        return self._replica_info.node_id
+
+    @property
+    def availability_zone(self) -> Optional[str]:
+        return self._replica_info.availability_zone
 
     @property
     def is_cross_language(self) -> bool:
@@ -112,6 +135,35 @@ class FakeReplica(RunningReplica):
 
     def get_queue_len(self, *, deadline_s: float) -> int:
         raise NotImplementedError
+
+    def reserve_slot(self) -> str:
+        """Reserve a slot and return a token."""
+        self._slot_counter += 1
+        token = f"slot-token-{self._slot_counter}"
+        self._reserved_slots[token] = False  # Not released yet
+        return token
+
+    def release_slot(self, slot_token: str) -> None:
+        """Release a reserved slot."""
+        if slot_token in self._reserved_slots:
+            self._reserved_slots[slot_token] = True
+
+    def send_request_with_slot(
+        self, pr: PendingRequest, slot_token: str
+    ) -> FakeReplicaResult:
+        """Send request using a reserved slot."""
+        assert (
+            slot_token in self._reserved_slots
+        ), f"Invalid slot token: {slot_token}"
+        assert not self._reserved_slots[
+            slot_token
+        ], f"Slot already released: {slot_token}"
+
+        # Create result same way as try_send_request
+        if pr.metadata.is_streaming:
+            return FakeReplicaResult(self._replica_id, is_generator_object=True)
+        else:
+            return FakeReplicaResult(self._replica_id, is_generator_object=False)
 
     def try_send_request(
         self, pr: PendingRequest, with_rejection: bool
@@ -758,6 +810,184 @@ class TestAssignRequest:
 
         # After the request is routed, on_request_routed_called should be False.
         assert fake_request_router.on_request_routed_called is True
+
+
+@pytest.mark.asyncio
+class TestChooseReplica:
+    """Tests for choose_replica() and dispatch() flow."""
+
+    async def test_basic_choose_and_dispatch(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Test basic choose_replica() and dispatch() workflow."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+            call_method="test_method",
+        )
+
+        # Choose replica
+        async with router.choose_replica(request_metadata) as selection:
+            # Verify selection contains correct information
+            assert selection.replica_id == r1_id.unique_id
+            assert selection._replica == replica
+            assert selection._method_name == "test_method"
+            assert selection._slot_token in replica._reserved_slots
+            assert not replica._reserved_slots[selection._slot_token]  # Not released
+
+            # Dispatch request
+            replica_result = await router.dispatch(selection, request_metadata)
+            assert replica_result._replica_id == r1_id
+            assert not replica_result._is_generator_object
+
+        # After context exit, slot should not be released (dispatch was called)
+        assert not replica._reserved_slots[selection._slot_token]
+
+    async def test_choose_without_dispatch_releases_slot(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Test that exiting context without dispatch releases the slot."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        slot_token = None
+        async with router.choose_replica(request_metadata) as selection:
+            slot_token = selection._slot_token
+            assert slot_token in replica._reserved_slots
+            assert not replica._reserved_slots[slot_token]  # Not released
+            # Exit without calling dispatch
+
+        # After context exit, slot should be released
+        assert replica._reserved_slots[slot_token] is True
+
+    async def test_choose_with_exception_releases_slot(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Test that exception in context releases the slot."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        slot_token = None
+        with pytest.raises(RuntimeError):
+            async with router.choose_replica(request_metadata) as selection:
+                slot_token = selection._slot_token
+                assert slot_token in replica._reserved_slots
+                assert not replica._reserved_slots[slot_token]
+                raise RuntimeError("Test exception")
+
+        # After exception, slot should be released
+        assert replica._reserved_slots[slot_token] is True
+
+    @pytest.mark.parametrize("is_streaming", [False, True])
+    async def test_choose_and_dispatch_streaming(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        is_streaming: bool,
+    ):
+        """Test choose_replica() and dispatch() with streaming requests."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+            is_streaming=is_streaming,
+        )
+
+        async with router.choose_replica(request_metadata) as selection:
+            replica_result = await router.dispatch(selection, request_metadata)
+            assert replica_result._replica_id == r1_id
+            if is_streaming:
+                assert replica_result._is_generator_object
+            else:
+                assert not replica_result._is_generator_object
+
+    async def test_slot_reservation_mock_interaction(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Test that reserve_slot and send_request_with_slot are called correctly."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        # Track initial state
+        initial_slot_count = replica._slot_counter
+
+        async with router.choose_replica(request_metadata) as selection:
+            # Verify reserve_slot was called
+            assert replica._slot_counter == initial_slot_count + 1
+            assert len(replica._reserved_slots) == 1
+
+            # Dispatch and verify send_request_with_slot works
+            replica_result = await router.dispatch(selection, request_metadata)
+            assert replica_result._replica_id == r1_id
+
+    async def test_multiple_sequential_selections(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Test multiple sequential choose_replica() and dispatch() calls."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        for i in range(3):
+            request_metadata = RequestMetadata(
+                request_id=f"test-request-{i}",
+                internal_request_id=f"test-internal-request-{i}",
+            )
+
+            async with router.choose_replica(request_metadata) as selection:
+                replica_result = await router.dispatch(selection, request_metadata)
+                assert replica_result._replica_id == r1_id
+
+        # All slots should have been created and used
+        assert replica._slot_counter == 3
 
 
 def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
