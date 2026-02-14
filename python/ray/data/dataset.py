@@ -40,6 +40,7 @@ from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
+from ray.data._internal.datasource.kafka_datasink import KafkaDatasink
 from ray.data._internal.datasource.lance_datasink import LanceDatasink
 from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
@@ -5476,6 +5477,44 @@ class Dataset:
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
         )
+
+    @ConsumptionAPI
+    def write_kafka(
+        self,
+        topic: str,
+        bootstrap_servers: str,
+        key_field: str | None = None,
+        key_serializer: str = "string",
+        value_serializer: str = "json",
+        producer_config: dict[str, Any] | None = None,
+        delivery_callback: Callable | None = None,
+    ) -> None:
+        """
+        Convenience method to write Ray Dataset to Kafka.
+
+        Example:
+            >>> ds = ray.data.range(100)
+            >>> ds.write_kafka("my-topic", "localhost:9092")
+
+        Args:
+            topic: Kafka topic name
+            bootstrap_servers: Comma-separated Kafka broker addresses
+            key_field: Optional field name to use as message key
+            key_serializer: Key serialization format ('json', 'string', or 'bytes')
+            value_serializer: Value serialization format ('json', 'string', or 'bytes')
+            producer_config: Additional Kafka producer configuration (kafka-python format)
+            delivery_callback: Optional callback for delivery reports
+        """
+        sink = KafkaDatasink(
+            topic=topic,
+            bootstrap_servers=bootstrap_servers,
+            key_field=key_field,
+            key_serializer=key_serializer,
+            value_serializer=value_serializer,
+            producer_config=producer_config,
+            delivery_callback=delivery_callback,
+        )
+        return self.write_datasink(sink)
 
     @ConsumptionAPI(pattern="Time complexity:")
     def write_datasink(
