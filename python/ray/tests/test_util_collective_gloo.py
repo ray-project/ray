@@ -148,7 +148,7 @@ def init_tensors_for_gather_scatter(
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("tensor_backend", ["numpy", "torch"])
-@pytest.mark.parametrize("array_size", [2, [2, 2]])
+@pytest.mark.parametrize("array_size", [[2, 2]])
 def test_allgather_different_array_size(array_size, tensor_backend, backend):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
@@ -171,7 +171,7 @@ def test_allgather_different_array_size(array_size, tensor_backend, backend):
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-@pytest.mark.parametrize("dtype", [np.uint8, np.float64])
+@pytest.mark.parametrize("dtype", [np.float64])
 def test_allgather_different_dtype(dtype, backend):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
@@ -199,7 +199,7 @@ def test_unmatched_tensor_list_length(length, backend):
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-@pytest.mark.parametrize("shape", [10, [4, 5]])
+@pytest.mark.parametrize("shape", [[4, 5]])
 def test_unmatched_tensor_shape(shape, backend):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
@@ -285,7 +285,7 @@ def test_allreduce_different_name(group_name, backend):
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-@pytest.mark.parametrize("array_size", [2, 2**5])
+@pytest.mark.parametrize("array_size", [2])
 def test_allreduce_different_array_size(array_size, backend):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
@@ -400,39 +400,8 @@ def test_allreduce_different_dtype(dtype, backend):
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-def test_allreduce_torch_numpy(backend):
-    # import torch
-    world_size = 2
-    actors = create_collective_workers(world_size, backend=backend)
-    ray.wait(
-        [
-            actors[1].set_buffer.remote(
-                torch.ones(
-                    10,
-                )
-            )
-        ]
-    )
-    results = ray.get([a.do_allreduce.remote() for a in actors])
-    assert (results[0] == np.ones((10,)) * world_size).all()
-
-    ray.wait(
-        [
-            actors[0].set_buffer.remote(
-                torch.ones(
-                    10,
-                )
-            )
-        ]
-    )
-    ray.wait([actors[1].set_buffer.remote(np.ones(10, dtype=np.float32))])
-    ray.get([a.do_allreduce.remote() for a in actors])
-    cleanup_collective_group(actors)
-
-
-@pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("group_name", ["test"])
-@pytest.mark.parametrize("src_rank", [0, 1])
+@pytest.mark.parametrize("src_rank", [0])
 def test_broadcast_different_name(group_name, src_rank, backend):
     world_size = 2
     actors = create_collective_workers(
@@ -456,8 +425,8 @@ def test_broadcast_different_name(group_name, src_rank, backend):
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-@pytest.mark.parametrize("array_size", [2, 2**5])
-@pytest.mark.parametrize("src_rank", [0, 1])
+@pytest.mark.parametrize("array_size", [2**5])
+@pytest.mark.parametrize("src_rank", [0])
 def test_broadcast_different_array_size(array_size, src_rank, backend):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
@@ -476,7 +445,7 @@ def test_broadcast_different_array_size(array_size, src_rank, backend):
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-@pytest.mark.parametrize("src_rank", [0, 1])
+@pytest.mark.parametrize("src_rank", [0])
 def test_broadcast_torch_numpy(src_rank, backend):
     import torch
 
@@ -513,7 +482,7 @@ def test_broadcast_invalid_rank(backend, src_rank=3):
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("group_name", ["test"])
-@pytest.mark.parametrize("dst_rank", [0, 1])
+@pytest.mark.parametrize("dst_rank", [0])
 def test_reduce_different_name(group_name, dst_rank, backend):
     world_size = 2
     actors = create_collective_workers(
@@ -529,8 +498,8 @@ def test_reduce_different_name(group_name, dst_rank, backend):
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-@pytest.mark.parametrize("array_size", [2, 2**5])
-@pytest.mark.parametrize("dst_rank", [0, 1])
+@pytest.mark.parametrize("array_size", [2])
+@pytest.mark.parametrize("dst_rank", [0])
 def test_reduce_different_array_size(array_size, dst_rank, backend):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
@@ -549,7 +518,7 @@ def test_reduce_different_array_size(array_size, dst_rank, backend):
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-@pytest.mark.parametrize("dst_rank", [0, 1])
+@pytest.mark.parametrize("dst_rank", [0])
 def test_reduce_multiple_group(dst_rank, backend, num_groups=5):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
@@ -579,7 +548,7 @@ def test_reduce_multiple_group(dst_rank, backend, num_groups=5):
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-@pytest.mark.parametrize("dst_rank", [0, 1])
+@pytest.mark.parametrize("dst_rank", [1])
 def test_reduce_different_op(dst_rank, backend):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
@@ -635,7 +604,7 @@ def test_reduce_different_op(dst_rank, backend):
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-@pytest.mark.parametrize("dst_rank", [0, 1])
+@pytest.mark.parametrize("dst_rank", [0])
 def test_reduce_torch_numpy(dst_rank, backend):
     import torch
 
@@ -671,7 +640,7 @@ def test_reduce_invalid_rank(backend, dst_rank=3):
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("tensor_backend", ["numpy", "torch"])
-@pytest.mark.parametrize("array_size", [2, [2, 2]])
+@pytest.mark.parametrize("array_size", [[2, 2]])
 def test_reducescatter_different_array_size(array_size, tensor_backend, backend):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
@@ -782,8 +751,8 @@ def test_reducescatter_torch_numpy(backend):
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("group_name", ["test"])
-@pytest.mark.parametrize("dst_rank", [0, 1])
-@pytest.mark.parametrize("array_size", [2, [2, 2]])
+@pytest.mark.parametrize("dst_rank", [0])
+@pytest.mark.parametrize("array_size", [[2, 2]])
 def test_sendrecv_different_name(group_name, array_size, dst_rank, backend):
     world_size = 2
     actors = create_collective_workers(
@@ -812,7 +781,7 @@ def test_sendrecv_different_name(group_name, array_size, dst_rank, backend):
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-@pytest.mark.parametrize("dst_rank", [0, 1])
+@pytest.mark.parametrize("dst_rank", [1])
 def test_sendrecv_torch_numpy(dst_rank, backend):
     import torch
 

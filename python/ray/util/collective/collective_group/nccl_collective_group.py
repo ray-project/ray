@@ -82,7 +82,7 @@ class Rendezvous:
                     "Failed to meet at the store '{}'."
                     "Trying again...".format(self._store_name)
                 )
-                time.sleep(1)
+                time.sleep(0.1)
                 elapsed = datetime.datetime.now() - start_time
                 continue
             logger.debug("Successful rendezvous!")
