@@ -32,7 +32,8 @@ multi_cpu_app = MultiCPUModel.bind()
 
 # __placement_group_labels_start__
 @serve.deployment(
-    placement_group_bundles=[{"GPU": 1}],
+    ray_actor_options={"num_cpus": 0.1},
+    placement_group_bundles=[{"CPU": 0.1, "GPU": 1}],
     placement_group_bundle_label_selector=[
         {"ray.io/accelerator-type": "A100"}
     ]
@@ -101,6 +102,8 @@ if __name__ == "__main__":
     serve.run(multi_cpu_app, name="multi_cpu", route_prefix="/multi_cpu")
 
     serve.run(pg_label_app, name="pg_label", route_prefix="/pg_label")
+
+    serve.run(soft_affinity_app, name="soft_affinity", route_prefix="/soft_affinity")
 
     serve.shutdown()
     ray.shutdown()
