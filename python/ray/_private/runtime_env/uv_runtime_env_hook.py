@@ -317,37 +317,19 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         )
 
     # Extract the arguments uv_run_args of 'uv run' that are not part of the command.
-    parser = _create_uv_run_parser()
-    (options, command) = _parse_args(parser, cmdline[2:])
+    args_to_parse = cmdline[2:]  # Remove 'uv run' prefix
+    original_length = len(
+        args_to_parse
+    )  # Save before parsing (parser modifies in-place)
 
-    # Find where the command starts in the original cmdline.
-    # optparse may split --opt=value into ['--opt', 'value'] for unknown options,
-    # so we can't simply compare suffix by list equality.  Match backwards,
-    # collapsing --opt=value when needed.
-    ci = len(cmdline) - 1
-    ki = len(command) - 1
-    while ki >= 0 and ci >= 0:
-        if cmdline[ci] == command[ki]:
-            ci -= 1
-            ki -= 1
-        elif "=" in cmdline[ci] and ki >= 1:
-            opt, val = cmdline[ci].split("=", 1)
-            if command[ki] == val and command[ki - 1] == opt:
-                ci -= 1
-                ki -= 2
-            else:
-                raise AssertionError(
-                    f"uv run command {command} is not a suffix of command line {cmdline}"
-                )
-        else:
-            raise AssertionError(
-                f"uv run command {command} is not a suffix of command line {cmdline}"
-            )
-    if ki >= 0:
-        raise AssertionError(
-            f"uv run command {command} is not a suffix of command line {cmdline}"
-        )
-    uv_run_args = cmdline[: ci + 1]
+    parser = _create_uv_run_parser()
+    (options, command) = _parse_args(parser, args_to_parse)
+
+    # Calculate how many arguments were consumed by the parser.
+    # Since disable_interspersed_args() is set, parsing stops at the first
+    # unrecognized argument (the command), so all consumed args are uv options.
+    args_consumed = original_length - len(command)
+    uv_run_args = cmdline[: 2 + args_consumed]
 
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process.
