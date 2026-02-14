@@ -194,6 +194,21 @@ class StandardScaler(SerializablePreprocessorBase):
         # optional fields
         self._fitted = fields.get("_fitted")
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+
+        if "_columns" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized StandardScaler: missing required field 'columns'."
+            )
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
+
     def __repr__(self):
         return f"{self.__class__.__name__}(columns={self._columns!r}, output_columns={self._output_columns!r})"
 
@@ -315,6 +330,21 @@ class MinMaxScaler(SerializablePreprocessorBase):
         # optional fields
         self._fitted = fields.get("_fitted")
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+
+        if "_columns" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized MinMaxScaler: missing required field 'columns'."
+            )
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
+
     def __repr__(self):
         return f"{self.__class__.__name__}(columns={self._columns!r}, output_columns={self._output_columns!r})"
 
@@ -428,6 +458,21 @@ class MaxAbsScaler(SerializablePreprocessorBase):
         self._output_columns = fields["output_columns"]
         # optional fields
         self._fitted = fields.get("_fitted")
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+
+        if "_columns" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized MaxAbsScaler: missing required field 'columns'."
+            )
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
 
     def __repr__(self):
         return f"{self.__class__.__name__}(columns={self._columns!r}, output_columns={self._output_columns!r})"
@@ -604,6 +649,32 @@ class RobustScaler(SerializablePreprocessorBase):
         self._quantile_precision = fields["quantile_precision"]
         # optional fields
         self._fitted = fields.get("_fitted")
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+        if "_quantile_range" not in self.__dict__ and "quantile_range" in self.__dict__:
+            self._quantile_range = self.__dict__.pop("quantile_range")
+        if (
+            "_quantile_precision" not in self.__dict__
+            and "quantile_precision" in self.__dict__
+        ):
+            self._quantile_precision = self.__dict__.pop("quantile_precision")
+
+        if "_columns" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized RobustScaler: missing required field 'columns'."
+            )
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
+        if "_quantile_range" not in self.__dict__:
+            self._quantile_range = (0.25, 0.75)
+        if "_quantile_precision" not in self.__dict__:
+            self._quantile_precision = self.DEFAULT_QUANTILE_PRECISION
 
     def __repr__(self):
         return (

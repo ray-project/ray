@@ -205,7 +205,6 @@ class HashingVectorizer(SerializablePreprocessorBase):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
         super().__setstate__(state)
-        # Migrate from old public field names to new private field names
         if "_columns" not in self.__dict__ and "columns" in self.__dict__:
             self._columns = self.__dict__.pop("columns")
         if "_num_features" not in self.__dict__ and "num_features" in self.__dict__:
@@ -218,9 +217,10 @@ class HashingVectorizer(SerializablePreprocessorBase):
         if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
             self._output_columns = self.__dict__.pop("output_columns")
 
-        # Set defaults for missing fields
         if "_columns" not in self.__dict__:
-            self._columns = []
+            raise ValueError(
+                "Invalid serialized HashingVectorizer: missing required field 'columns'."
+            )
         if "_num_features" not in self.__dict__:
             raise ValueError(
                 "Invalid serialized HashingVectorizer: missing required field 'num_features'."
@@ -445,7 +445,9 @@ class CountVectorizer(SerializablePreprocessorBase):
             self._output_columns = self.__dict__.pop("output_columns")
 
         if "_columns" not in self.__dict__:
-            self._columns = []
+            raise ValueError(
+                "Invalid serialized CountVectorizer: missing required field 'columns'."
+            )
         if "_tokenization_fn" not in self.__dict__:
             self._tokenization_fn = simple_split_tokenizer
         if "_max_features" not in self.__dict__:

@@ -135,7 +135,9 @@ class Tokenizer(SerializablePreprocessorBase):
             self._output_columns = self.__dict__.pop("output_columns")
 
         if "_columns" not in self.__dict__:
-            self._columns = []
+            raise ValueError(
+                "Invalid serialized Tokenizer: missing required field 'columns'."
+            )
         if "_tokenization_fn" not in self.__dict__:
             self._tokenization_fn = simple_split_tokenizer
         if "_output_columns" not in self.__dict__:

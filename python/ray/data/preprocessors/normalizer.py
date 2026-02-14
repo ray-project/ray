@@ -170,7 +170,9 @@ class Normalizer(SerializablePreprocessorBase):
             self._output_columns = self.__dict__.pop("output_columns")
 
         if "_columns" not in self.__dict__:
-            self._columns = []
+            raise ValueError(
+                "Invalid serialized Normalizer: missing required field 'columns'."
+            )
         if "_norm" not in self.__dict__:
             self._norm = "l2"
         if "_output_columns" not in self.__dict__:

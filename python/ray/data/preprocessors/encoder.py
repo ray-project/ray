@@ -310,6 +310,25 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         # optional fields
         self._fitted = fields.get("_fitted")
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+        if "_encode_lists" not in self.__dict__ and "encode_lists" in self.__dict__:
+            self._encode_lists = self.__dict__.pop("encode_lists")
+
+        if "_columns" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized OrdinalEncoder: missing required field 'columns'."
+            )
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
+        if "_encode_lists" not in self.__dict__:
+            self._encode_lists = True
+
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self._columns!r}, "
@@ -577,6 +596,25 @@ class OneHotEncoder(SerializablePreprocessorBase):
         # optional fields
         self._fitted = fields.get("_fitted")
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+        if "_max_categories" not in self.__dict__ and "max_categories" in self.__dict__:
+            self._max_categories = self.__dict__.pop("max_categories")
+
+        if "_columns" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized OneHotEncoder: missing required field 'columns'."
+            )
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
+        if "_max_categories" not in self.__dict__:
+            self._max_categories = {}
+
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self._columns!r}, "
@@ -745,6 +783,25 @@ class MultiHotEncoder(SerializablePreprocessorBase):
         self._max_categories = fields["max_categories"]
         # optional fields
         self._fitted = fields.get("_fitted")
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+        if "_max_categories" not in self.__dict__ and "max_categories" in self.__dict__:
+            self._max_categories = self.__dict__.pop("max_categories")
+
+        if "_columns" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized MultiHotEncoder: missing required field 'columns'."
+            )
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
+        if "_max_categories" not in self.__dict__:
+            self._max_categories = {}
 
     def __repr__(self):
         return (
@@ -920,6 +977,21 @@ class LabelEncoder(SerializablePreprocessorBase):
         # optional fields
         self._fitted = fields.get("_fitted")
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        if "_label_column" not in self.__dict__ and "label_column" in self.__dict__:
+            self._label_column = self.__dict__.pop("label_column")
+        if "_output_column" not in self.__dict__ and "output_column" in self.__dict__:
+            self._output_column = self.__dict__.pop("output_column")
+
+        if "_label_column" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized LabelEncoder: missing required field 'label_column'."
+            )
+        if "_output_column" not in self.__dict__:
+            self._output_column = "encoded_" + self._label_column
+
     def __repr__(self):
         return f"{self.__class__.__name__}(label_column={self._label_column!r}, output_column={self._output_column!r})"
 
@@ -1077,6 +1149,25 @@ class Categorizer(SerializablePreprocessorBase):
         self._output_columns = fields["output_columns"]
         # optional fields
         self._fitted = fields.get("_fitted")
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+        if "_dtypes" not in self.__dict__ and "dtypes" in self.__dict__:
+            self._dtypes = self.__dict__.pop("dtypes")
+
+        if "_columns" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized Categorizer: missing required field 'columns'."
+            )
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
+        if "_dtypes" not in self.__dict__:
+            self._dtypes = {}
 
     def __repr__(self):
         return (

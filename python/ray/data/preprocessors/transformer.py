@@ -150,7 +150,9 @@ class PowerTransformer(SerializablePreprocessorBase):
             self._output_columns = self.__dict__.pop("output_columns")
 
         if "_columns" not in self.__dict__:
-            self._columns = []
+            raise ValueError(
+                "Invalid serialized PowerTransformer: missing required field 'columns'."
+            )
         if "_power" not in self.__dict__:
             raise ValueError(
                 "Invalid serialized PowerTransformer: missing required field 'power'."

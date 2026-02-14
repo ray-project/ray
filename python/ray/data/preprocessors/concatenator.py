@@ -220,7 +220,9 @@ class Concatenator(SerializablePreprocessorBase):
             self._flatten = self.__dict__.pop("flatten")
 
         if "_columns" not in self.__dict__:
-            self._columns = []
+            raise ValueError(
+                "Invalid serialized Concatenator: missing required field 'columns'."
+            )
         if "_output_column_name" not in self.__dict__:
             self._output_column_name = "concat_out"
         if "_dtype" not in self.__dict__:

@@ -161,7 +161,9 @@ class FeatureHasher(SerializablePreprocessorBase):
             self._output_column = self.__dict__.pop("output_column")
 
         if "_columns" not in self.__dict__:
-            self._columns = []
+            raise ValueError(
+                "Invalid serialized FeatureHasher: missing required field 'columns'."
+            )
         if "_num_features" not in self.__dict__:
             raise ValueError(
                 "Invalid serialized FeatureHasher preprocessor: missing required field 'num_features'."
