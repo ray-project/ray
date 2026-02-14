@@ -182,9 +182,9 @@ anthropic==0.71.0 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cpu.lock
     #   vllm
-anyio==4.5.0 \
-    --hash=sha256:c5a275fe5ca0afd788001f58fca1e69e29ce706d746e317d660e21f70c530ef9 \
-    --hash=sha256:fdeb095b7cc5a5563175eedd926ec4ae55413bb4be5770c424af0ba46ccb4a78
+anyio==4.12.0 \
+    --hash=sha256:73c693b567b0c55130c104d0b43a9baf3aa6a31fc6110116509f27bf75e21ec0 \
+    --hash=sha256:dad2376a628f98eeca4881fc56cd06affd18f659b17a747d3ff0307ced94b1bb
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cpu.lock
     #   -r python/requirements/llm/llm-requirements.txt
@@ -4190,7 +4190,6 @@ sniffio==1.3.1 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cpu.lock
     #   anthropic
-    #   anyio
     #   openai
 soundfile==0.13.1 \
     --hash=sha256:03267c4e493315294834a0870f31dbb3b28a95561b80b134f0bd3cf2d5f0e618 \
@@ -4473,6 +4472,7 @@ typing-extensions==4.15.0 \
     #   -c python/deplocks/llm/rayllm_test_py311_cpu.lock
     #   aiosignal
     #   anthropic
+    #   anyio
     #   apache-tvm-ffi
     #   fastapi
     #   grpcio

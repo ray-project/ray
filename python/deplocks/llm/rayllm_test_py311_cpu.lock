@@ -195,9 +195,9 @@ anthropic==0.71.0 \
     --hash=sha256:85c5015fcdbdc728390f11b17642a65a4365d03b12b799b18b6cc57e71fdb327 \
     --hash=sha256:eb8e6fa86d049061b3ef26eb4cbae0174ebbff21affa6de7b3098da857d8de6a
     # via vllm
-anyio==4.5.0 \
-    --hash=sha256:c5a275fe5ca0afd788001f58fca1e69e29ce706d746e317d660e21f70c530ef9 \
-    --hash=sha256:fdeb095b7cc5a5563175eedd926ec4ae55413bb4be5770c424af0ba46ccb4a78
+anyio==4.12.0 \
+    --hash=sha256:73c693b567b0c55130c104d0b43a9baf3aa6a31fc6110116509f27bf75e21ec0 \
+    --hash=sha256:dad2376a628f98eeca4881fc56cd06affd18f659b17a747d3ff0307ced94b1bb
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   -r python/requirements/llm/llm-requirements.txt
@@ -2121,9 +2121,9 @@ jsonschema-specifications==2024.10.1 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   jsonschema
-jupyter-client==8.6.3 \
-    --hash=sha256:35b3a0947c4a6e9d589eb97d7d4cd5e90f910ee73101611f01283732bd6d9419 \
-    --hash=sha256:e8a19cc986cc45905ac3362915f410f3af85424b4c0905e94fa5f2cb08e8f23f
+jupyter-client==8.7.0 \
+    --hash=sha256:3357212d9cbe01209e59190f67a3a7e1f387a4f4e88d1e0433ad84d7b262531d \
+    --hash=sha256:3671a94fd25e62f5f2f554f5e95389c2294d89822378a5f2dd24353e1494a9e0
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   ipykernel
@@ -2167,9 +2167,9 @@ jupyter-server-terminals==0.5.3 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   jupyter-server
-jupyterlab==4.5.0 \
-    --hash=sha256:88e157c75c1afff64c7dc4b801ec471450b922a4eae4305211ddd40da8201c8a \
-    --hash=sha256:aec33d6d8f1225b495ee2cf20f0514f45e6df8e360bdd7ac9bace0b7ac5177ea
+jupyterlab==4.5.1 \
+    --hash=sha256:09da1ddfbd9eec18b5101dbb8515612aa1e47443321fb99503725a88e93d20d9 \
+    --hash=sha256:31b059de96de0754ff1f2ce6279774b6aab8c34d7082e9752db58207c99bd514
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   -r python/requirements/cloud-requirements.txt
@@ -5108,9 +5108,7 @@ sniffio==1.3.1 \
     --hash=sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2 \
     --hash=sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc
     # via
-    #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   anthropic
-    #   anyio
     #   openai
 snowballstemmer==2.2.0 \
     --hash=sha256:09b16deb8547d3412ad7b590689584cd0fe25ec8db3be37788be3810cbf19cb1 \
@@ -5396,19 +5394,19 @@ torchvision==0.24.1+cpu \
     --hash=sha256:e2c56fdda9e7a0f927d0d2748d756eb11e350e576efc719e9ab8a1b610213835 \
     --hash=sha256:f95c3bd0f65b01224f46142536cc02607ce32ef5e905d0c9eb210fa8cc23f522
     # via vllm
-tornado==6.5.2 \
-    --hash=sha256:06ceb1300fd70cb20e43b1ad8aaee0266e69e7ced38fa910ad2e03285009ce7c \
-    --hash=sha256:2436822940d37cde62771cff8774f4f00b3c8024fe482e16ca8387b8a2724db6 \
-    --hash=sha256:583a52c7aa94ee046854ba81d9ebb6c81ec0fd30386d96f7640c96dad45a03ef \
-    --hash=sha256:74db443e0f5251be86cbf37929f84d8c20c27a355dd452a5cfa2aada0d001ec4 \
-    --hash=sha256:ab53c8f9a0fa351e2c0741284e06c7a45da86afb544133201c5cc8578eb076a0 \
-    --hash=sha256:b0fe179f28d597deab2842b86ed4060deec7388f1fd9c1b4a41adf8af058907e \
-    --hash=sha256:b186e85d1e3536d69583d2298423744740986018e393d0321df7340e71898882 \
-    --hash=sha256:b5e735ab2889d7ed33b32a459cac490eda71a1ba6857b0118de476ab6c366c04 \
-    --hash=sha256:c6f29e94d9b37a95013bb669616352ddb82e3bfe8326fccee50583caebc8a5f0 \
-    --hash=sha256:d6c33dc3672e3a1f3618eb63b7ef4683a7688e7b9e6e8f0d9aa5726360a004af \
-    --hash=sha256:e56a5af51cc30dd2cae649429af65ca2f6571da29504a07995175df14c18f35f \
-    --hash=sha256:e792706668c87709709c18b353da1f7662317b563ff69f00bab83595940c7108
+tornado==6.5.4 \
+    --hash=sha256:053e6e16701eb6cbe641f308f4c1a9541f91b6261991160391bfc342e8a551a1 \
+    --hash=sha256:1768110f2411d5cd281bac0a090f707223ce77fd110424361092859e089b38d1 \
+    --hash=sha256:2d50f63dda1d2cac3ae1fa23d254e16b5e38153758470e9956cbc3d813d40843 \
+    --hash=sha256:50ff0a58b0dc97939d29da29cd624da010e7f804746621c78d14b80238669335 \
+    --hash=sha256:6076d5dda368c9328ff41ab5d9dd3608e695e8225d1cd0fd1e006f05da3635a8 \
+    --hash=sha256:6eb82872335a53dd063a4f10917b3efd28270b56a33db69009606a0312660a6f \
+    --hash=sha256:9c86b1643b33a4cd415f8d0fe53045f913bf07b4a3ef646b735a6a86047dda84 \
+    --hash=sha256:a22fa9047405d03260b483980635f0b041989d8bcc9a313f8fe18b411d84b1d7 \
+    --hash=sha256:d1cf66105dc6acb5af613c054955b8137e34a03698aa53272dbda4afe252be17 \
+    --hash=sha256:d6241c1a16b1c9e4cc28148b1cda97dd1c6cb4fb7068ac1bedc610768dff0ba9 \
+    --hash=sha256:e5fb5e04efa54cf0baabdd10061eb4148e0be137166146fff835745f59ab9f7f \
+    --hash=sha256:fa07d31e0cd85c60713f2b995da613588aa03e1303d75705dca6af8babc18ddc
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   ipykernel
@@ -5489,6 +5487,7 @@ typing-extensions==4.15.0 \
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   aiosignal
     #   anthropic
+    #   anyio
     #   apache-tvm-ffi
     #   azure-core
     #   azure-identity
