@@ -1,4 +1,5 @@
 import sys
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,8 +11,166 @@ from ray.data._internal.progress import (
 from ray.data._internal.progress.async_progress_wrapper import (
     AsyncProgressManagerWrapper,
 )
+from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
+
+
+class BlockingProgressManager(BaseExecutionProgressManager):
+    """Mock progress manager that blocks indefinitely on all operations."""
+
+    def __init__(self):
+        self.operations_called = []
+
+    def start(self):
+        self.operations_called.append("start")
+        time.sleep(999)  # Block forever
+
+    def refresh(self):
+        self.operations_called.append("refresh")
+        time.sleep(999)
+
+    def update_total_progress(self, *args, **kwargs):
+        self.operations_called.append("update_total_progress")
+        time.sleep(999)
+
+    def update_total_resource_status(self, *args, **kwargs):
+        self.operations_called.append("update_total_resource_status")
+        time.sleep(999)
+
+    def update_operator_progress(self, *args, **kwargs):
+        self.operations_called.append("update_operator_progress")
+        time.sleep(999)
+
+    def close_with_finishing_description(self, description, success):
+        self.operations_called.append("close")
+        time.sleep(999)
+
+
+class ExceptionProgressManager(BaseExecutionProgressManager):
+    """Mock progress manager that always raises exceptions."""
+
+    def start(self):
+        raise RuntimeError("start failed")
+
+    def refresh(self):
+        raise RuntimeError("refresh failed")
+
+    def update_total_progress(self, *args, **kwargs):
+        raise RuntimeError("update_total_progress failed")
+
+    def update_total_resource_status(self, *args, **kwargs):
+        raise RuntimeError("update_total_resource_status failed")
+
+    def update_operator_progress(self, *args, **kwargs):
+        raise RuntimeError("update_operator_progress failed")
+
+    def close_with_finishing_description(self, description, success):
+        raise RuntimeError("close failed")
+
+
+class FastProgressManager(BaseExecutionProgressManager):
+    """Mock progress manager that completes instantly and tracks calls."""
+
+    def __init__(self):
+        self.operations_called = []
+
+    def start(self):
+        self.operations_called.append("start")
+
+    def refresh(self):
+        self.operations_called.append("refresh")
+
+    def update_total_progress(self, *args, **kwargs):
+        self.operations_called.append("update_total_progress")
+
+    def update_total_resource_status(self, *args, **kwargs):
+        self.operations_called.append("update_total_resource_status")
+
+    def update_operator_progress(self, *args, **kwargs):
+        self.operations_called.append("update_operator_progress")
+
+    def close_with_finishing_description(self, description, success):
+        self.operations_called.append("close")
+
+
+class TestAsyncProgressManagerWrapperBehavior:
+    """Unit tests for AsyncProgressManagerWrapper behavior."""
+
+    @pytest.mark.timeout(10)
+    def test_operations_are_non_blocking(self):
+        """Test that all operations return immediately despite blocking manager."""
+        blocking_manager = BlockingProgressManager()
+        wrapper = AsyncProgressManagerWrapper(blocking_manager, max_workers=1)
+
+        # All operations should return immediately (not block for 999 seconds)
+        start_time = time.time()
+
+        wrapper.start()
+        wrapper.refresh()
+        wrapper.update_total_progress(10, 100)
+        wrapper.update_total_resource_status({"cpu": 4})
+        wrapper.update_operator_progress(0, "Map", 5, 10)
+
+        elapsed = time.time() - start_time
+
+        assert elapsed < 5.0, f"Operations took {elapsed}s, should be instant"
+
+        time.sleep(0.1)
+        assert "start" in blocking_manager.operations_called
+
+        wrapper.close_with_finishing_description("Test", True)
+
+    @pytest.mark.timeout(10)
+    def test_close_respects_shutdown_timeout(self):
+        """Test that close() respects shutdown timeout and doesn't block indefinitely."""
+        blocking_manager = BlockingProgressManager()
+        wrapper = AsyncProgressManagerWrapper(
+            blocking_manager, max_workers=1, shutdown_timeout=0.5
+        )
+
+        wrapper.start()
+        wrapper.update_total_progress(10, 100)
+
+        start_time = time.time()
+        wrapper.close_with_finishing_description("Test", True)
+        elapsed = time.time() - start_time
+
+        assert elapsed < 5.0, f"Close took {elapsed}s, should respect 0.5s timeout"
+
+    @pytest.mark.timeout(10)
+    def test_handles_exceptions_gracefully(self):
+        """Test that exceptions in operations don't crash the wrapper."""
+        exception_manager = ExceptionProgressManager()
+        wrapper = AsyncProgressManagerWrapper(exception_manager, max_workers=1)
+
+        # All these should NOT raise exceptions (errors are logged, not raised)
+        wrapper.start()
+        wrapper.refresh()
+        wrapper.update_total_progress(10, 100)
+        wrapper.update_total_resource_status({"cpu": 4})
+        wrapper.update_operator_progress(0, "Map", 5, 10)
+
+        # Close might timeout but shouldn't hang
+        wrapper.close_with_finishing_description("Complete", True)
+
+    @pytest.mark.timeout(10)
+    def test_handles_many_rapid_updates(self):
+        """Test that wrapper handles many rapid updates without blocking or crashing."""
+        fast_manager = FastProgressManager()
+        wrapper = AsyncProgressManagerWrapper(fast_manager, max_workers=1)
+
+        wrapper.start()
+
+        # Submit 100 rapid updates
+        for i in range(100):
+            wrapper.update_total_progress(i, 100)
+
+        wrapper.close_with_finishing_description("Complete", True)
+
+        # Should not block or crash
+        time.sleep(0.2)
+        assert "update_total_progress" in fast_manager.operations_called
 
 
 class TestAsyncProgressManagerWrapperIntegration:
