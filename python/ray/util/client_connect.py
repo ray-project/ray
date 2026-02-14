@@ -1,10 +1,10 @@
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
+from ray._private import client_mode_hook
 from ray._private.client_mode_hook import (
     _explicitly_enable_client_mode,
     _set_client_hook_status,
-    is_client_mode_enabled,
 )
 from ray._private.utils import get_ray_doc_version
 from ray.job_config import JobConfig
@@ -34,7 +34,8 @@ def connect(
 ) -> Dict[str, Any]:
     # Check if Ray Client mode is enabled and already connected
     # This prevents connecting twice, but allows connecting after regular ray.init()
-    if is_client_mode_enabled and ray.is_connected():
+    # Note: Must check the module's current value, not a cached import
+    if client_mode_hook.is_client_mode_enabled and ray.is_connected():
         ignore_reinit_error = (
             ray_init_kwargs.get("ignore_reinit_error", False)
             if ray_init_kwargs is not None
