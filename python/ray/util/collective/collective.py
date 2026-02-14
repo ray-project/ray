@@ -190,7 +190,12 @@ class GroupManager(object):
 
         # Clear uniqueness flag for this group.
         uniqueness_key = get_uniqueness_key(group_name)
-        _kv_del(uniqueness_key)
+        if _kv_exists(uniqueness_key):
+            _kv_del(uniqueness_key)
+
+        metadata_key = _get_master_addr_key(group_name)
+        if _kv_exists(metadata_key):
+            _kv_del(metadata_key)
 
         # Also try to tear down the paired multigpu group if present.
         # TODO(tianyi): remove it when multigpu is deprecated
