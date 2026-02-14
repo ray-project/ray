@@ -502,38 +502,34 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             corresponding metrics reported by the workers.
         """
         start_time = asyncio.get_event_loop().time()
-        if consistency_mode not in [
-            CheckpointConsistencyMode.COMMITTED,
-            CheckpointConsistencyMode.VALIDATED,
-        ]:
+        if consistency_mode == CheckpointConsistencyMode.COMMITTED:
+
+            def predicate() -> bool:
+                return self._current_report_index == current_report_index
+
+        elif consistency_mode == CheckpointConsistencyMode.VALIDATED:
+
+            def predicate() -> bool:
+                return (
+                    self._current_report_index == current_report_index
+                    and not self._pending_training_results
+                )
+
+        else:
             raise ValueError(
                 f"Unexpected CheckpointConsistencyMode: {consistency_mode}"
             )
-        else:
-            if consistency_mode == CheckpointConsistencyMode.COMMITTED:
 
-                def predicate() -> bool:
-                    return self._current_report_index == current_report_index
-
-            else:
-                assert consistency_mode == CheckpointConsistencyMode.VALIDATED
-
-                def predicate() -> bool:
-                    return (
-                        self._current_report_index == current_report_index
-                        and not self._pending_training_results
-                    )
-
-            async with self._condition:
-                await wait_with_logging(
-                    self._condition,
-                    predicate=predicate,
-                    generate_warning_message=self._generate_get_all_reported_checkpoints_periodic_warning(
-                        current_report_index, start_time
-                    ),
-                    warn_interval_s=self._collective_warn_interval_s,
-                    timeout_s=-1,  # wait forever
-                )
+        async with self._condition:
+            await wait_with_logging(
+                self._condition,
+                predicate=predicate,
+                generate_warning_message=self._generate_get_all_reported_checkpoints_periodic_warning(
+                    current_report_index, start_time
+                ),
+                warn_interval_s=self._collective_warn_interval_s,
+                timeout_s=-1,  # wait forever
+            )
 
         # TODO: might be nice for CheckpointManager to manage ReportedCheckpoint
         # instead of _TrainingResult but that is a large refactor.
