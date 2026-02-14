@@ -959,6 +959,10 @@ message ObjectRefInfo {
   // A count of the number of times this task has been attempted so far. 0
   // means this is the first execution.
   uint64 attempt_number = 9;
+  // True if this is an RDT object.
+  bool is_rdt = 10;
+  // Device location for RDT objects (e.g., "cuda:0", "cpu"). Empty for non-RDT objects.
+  string device = 11;
 }
 
 // Details about the allocation of a given resource. Some resources

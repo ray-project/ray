@@ -26,6 +26,7 @@
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/rdt_types.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/util/process_interface.h"
 
@@ -87,6 +88,7 @@ struct CoreWorkerOptions {
         node_manager_port(0),
         task_execution_callback(nullptr),
         free_actor_object_callback(nullptr),
+        get_rdt_object_infos_callback(nullptr),
         set_direct_transport_metadata(nullptr),
         check_signals(nullptr),
         initialize_thread_callback(nullptr),
@@ -136,6 +138,8 @@ struct CoreWorkerOptions {
   TaskExecutionCallback task_execution_callback;
   /// Callback to free RDT object from the in-actor RDT store.
   FreeActorObjectCallback free_actor_object_callback;
+  /// Callback to get RDT object info from the local GPUObjectStore.
+  std::function<std::vector<RDTObjectInfo>()> get_rdt_object_infos_callback;
   /// Callback to set the direct transport metadata for an RDT object.
   SetDirectTransportMetadata set_direct_transport_metadata;
   /// Application-language callback to check for signals that have been received
