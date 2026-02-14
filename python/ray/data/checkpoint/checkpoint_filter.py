@@ -1,13 +1,14 @@
 import abc
+import itertools
 import logging
 import time
-from typing import List, Optional
+from typing import Iterable, List, Optional
 
-import numpy
 import pyarrow
+import pyarrow.compute as pc
+import pyarrow.dataset as ds
 
 import ray
-from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import Block, BlockAccessor, BlockMetadata, DataBatch, Schema
 from ray.data.checkpoint import CheckpointConfig
@@ -157,9 +158,10 @@ class IdColumnCheckpointLoader(CheckpointLoader):
     def _preprocess_data_pipeline(
         self, checkpoint_ds: ray.data.Dataset
     ) -> ray.data.Dataset:
-        """In the pre-process data pipeline,
-            - Sort by the IDs, as `filter_rows_for_block` will perform binary search on the
-              checkpointed IDs during restore.
+        """Pre-process the checkpoint dataset.
+
+        No sorting is needed since filtering uses hash-based anti-join
+        (pc.is_in) which does not require sorted data.
 
         Args:
             checkpoint_ds: The checkpoint dataset to pre-process
@@ -167,8 +169,7 @@ class IdColumnCheckpointLoader(CheckpointLoader):
         Returns:
             The pre-processed checkpoint dataset
         """
-        # Sort by the ID column.
-        return checkpoint_ds.sort(self.id_column)
+        return checkpoint_ds
 
 
 class BatchBasedCheckpointFilter(CheckpointFilter):
@@ -213,49 +214,66 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
         assert isinstance(block, pyarrow.Table)
         assert isinstance(checkpointed_ids, pyarrow.Table)
 
-        # The checkpointed_ids block is sorted (see load_checkpoint).
-        # We'll use binary search to filter out processed rows.
-        # And we process a single chunk at a time, otherwise `to_numpy` below
-        # will copy the data from shared memory to worker's heap memory.
+        # Hash-based anti-join: pc.is_in builds a hash set from the checkpoint
+        # IDs for O(1) average-case membership checks. It handles ChunkedArrays
+        # natively and runs entirely in C++.
+        membership = pc.is_in(
+            block[self.id_column], value_set=checkpointed_ids[self.id_column]
+        )
+        # Keep only rows NOT in the checkpoint (anti-join).
+        return block.filter(pc.invert(membership))
 
-        import concurrent.futures
+    def filter_rows_for_blocks(
+        self,
+        blocks: Iterable[Block],
+        checkpointed_ids: Block,
+    ) -> Iterable[Block]:
+        """Filter out checkpointed rows from multiple blocks.
 
-        # Get all chunks of the checkpointed ID column.
-        ckpt_chunks = checkpointed_ids[self.id_column].chunks
-        # Convert the block's ID column to a numpy array for fast processing.
-        block_ids = block[self.id_column].to_numpy()
+        Feeds all blocks through a single Arrow Dataset Scanner so that the
+        MemoTable (hash table) is built once at bind time and reused across
+        all batches — avoiding redundant hash table rebuilds per block.
 
-        def filter_with_ckpt_chunk(ckpt_chunk: pyarrow.ChunkedArray) -> numpy.ndarray:
-            # Convert checkpoint chunk to numpy for fast search.
-            # Use internal helper function for consistency and robustness (handles null-typed arrays, etc.)
-            ckpt_ids = transform_pyarrow.to_numpy(ckpt_chunk, zero_copy_only=False)
-            # Start with a mask of all True (keep all rows).
-            mask = numpy.ones(len(block_ids), dtype=bool)
-            # Use binary search to find where block_ids would be in ckpt_ids.
-            sorted_indices = numpy.searchsorted(ckpt_ids, block_ids)
-            # Only consider indices that are within bounds.
-            valid_indices = sorted_indices < len(ckpt_ids)
-            # For valid indices, check for exact matches.
-            potential_matches = sorted_indices[valid_indices]
-            matched = ckpt_ids[potential_matches] == block_ids[valid_indices]
-            # Mark matched IDs as False (filter out these rows).
-            mask[valid_indices] = ~matched
-            # Delete the chunk to free memory.
-            del ckpt_chunk
-            return mask
+        Args:
+            blocks: An iterable of input blocks to filter.
+            checkpointed_ids: A block containing IDs of all rows that have
+                been checkpointed.
+        Yields:
+            Filtered blocks with only non-checkpointed rows.
+        """
+        if len(checkpointed_ids) == 0:
+            yield from blocks
+            return
 
-        # Use ThreadPoolExecutor to process each checkpoint chunk in parallel.
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=self.filter_num_threads or None
-        ) as executor:
-            masks = list(executor.map(filter_with_ckpt_chunk, ckpt_chunks))
+        # Build anti-join expression. When bound by the Scanner, the MemoTable
+        # (hash table) is built once and reused for all batches.
+        anti_join_expr = ~pc.field(self.id_column).isin(
+            checkpointed_ids[self.id_column]
+        )
 
-        # Combine all masks using logical AND (row must not be in any checkpoint chunk).
-        final_mask = numpy.logical_and.reduce(masks)
-        # Convert the final mask to a PyArrow array and filter the block.
-        mask_array = pyarrow.array(final_mask)
-        filtered_block = block.filter(mask_array)
-        return filtered_block
+        # Peek at the first non-empty block to get the schema.
+        schema = None
+        buffered_blocks = []
+        for block in blocks:
+            if isinstance(block, pyarrow.Table) and block.num_rows > 0:
+                schema = block.schema
+                buffered_blocks.append(block)
+                break
+
+        if schema is None:
+            return
+
+        # Chain buffered block with remaining blocks, convert to record batches,
+        # and feed through a SINGLE scanner so the MemoTable is built once.
+        all_blocks = itertools.chain(buffered_blocks, blocks)
+        batch_iter = self._blocks_to_batches(all_blocks)
+        reader = pyarrow.RecordBatchReader.from_batches(schema, batch_iter)
+        scanner = ds.Scanner.from_batches(reader, filter=anti_join_expr)
+
+        for batch in scanner.to_batches():
+            filtered_block = pyarrow.Table.from_batches([batch], schema=schema)
+            if filtered_block.num_rows > 0:
+                yield filtered_block
 
     def filter_rows_for_batch(
         self,
@@ -272,3 +290,12 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
         filtered_block = self.filter_rows_for_block(arrow_block, checkpointed_ids)
         filtered_batch = BlockAccessor.for_block(filtered_block).to_batch_format(None)
         return filtered_batch
+
+    @staticmethod
+    def _blocks_to_batches(
+        blocks: Iterable[Block],
+    ) -> Iterable[pyarrow.RecordBatch]:
+        """Convert an iterable of blocks (pyarrow.Table) to record batches."""
+        for block in blocks:
+            if isinstance(block, pyarrow.Table) and block.num_rows > 0:
+                yield from block.to_batches()
