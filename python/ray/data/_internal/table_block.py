@@ -69,6 +69,10 @@ class TableBlockBuilder(BlockBuilder):
         self._num_uncompacted_rows = 0
         self._num_compactions = 0
         self._block_type = block_type
+        # Track schema from added blocks to preserve it when building empty results.
+        # This is critical for operations like joins where empty blocks still need
+        # to maintain their column schema for downstream operations.
+        self._schema = None
 
     def add(self, item: Union[dict, Mapping]) -> None:
         if hasattr(item, "as_pydict"):
@@ -104,6 +108,12 @@ class TableBlockBuilder(BlockBuilder):
         accessor = BlockAccessor.for_block(block)
         self._tables.append(block)
         self._num_rows += accessor.num_rows()
+        # Capture schema from the first block that has one.
+        # This ensures we preserve schema even when combining empty blocks.
+        if self._schema is None:
+            block_schema = getattr(block, "schema", None)
+            if block_schema is not None:
+                self._schema = block_schema
 
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
@@ -114,7 +124,7 @@ class TableBlockBuilder(BlockBuilder):
         raise NotImplementedError
 
     @staticmethod
-    def _empty_table() -> Any:
+    def _empty_table(schema=None) -> Any:
         raise NotImplementedError
 
     @staticmethod
@@ -136,7 +146,10 @@ class TableBlockBuilder(BlockBuilder):
         tables.extend(self._tables)
 
         if len(tables) == 0:
-            return self._empty_table()
+            # Pass schema to create an empty table that preserves column information.
+            # This is critical for join operations where empty blocks still need
+            # their schema for downstream operations.
+            return self._empty_table(schema=self._schema)
         else:
             return self._combine_tables(tables)
 
