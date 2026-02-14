@@ -16,11 +16,9 @@ import re
 import shutil
 import subprocess
 import sys
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Generator
 
 # Configuration Constants
 SUPPORTED_PYTHON_VERSIONS = ("3.10", "3.11", "3.12", "3.13")
@@ -59,12 +57,6 @@ class BuildConfig:
     commit: str
 
     @property
-    def image_name(self) -> str:
-        return (
-            f"cr.ray.io/rayproject/ray-wheel-py{self.python_version}{self.arch_suffix}"
-        )
-
-    @property
     def build_env(self) -> dict[str, str]:
         return {
             "PYTHON_VERSION": self.python_version,
@@ -92,7 +84,7 @@ class BuildConfig:
 
         return cls(
             python_version=python_version,
-            output_dir=Path(output_dir),
+            output_dir=Path(output_dir).resolve(),
             ray_root=root,
             hosttype=host,
             arch_suffix=suffix,
@@ -159,21 +151,6 @@ class WheelBuilder:
     def __init__(self, config: BuildConfig):
         self.config = config
 
-    @contextmanager
-    def _container(self) -> Generator[str, None, None]:
-        # Dummy command used for images without CMD/ENTRYPOINT
-        res = subprocess.run(
-            ["docker", "create", self.config.image_name, "true"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        cid = res.stdout.strip()
-        try:
-            yield cid
-        finally:
-            subprocess.run(["docker", "rm", "-f", cid], capture_output=True)
-
     def build(self) -> list[Path]:
         if not shutil.which("raymake"):
             raise BuildError("raymake not found. Run via ./build-wheel.sh")
@@ -193,7 +170,12 @@ class WheelBuilder:
             print(f"{k:<12}: {v}")
         print("-" * 50)
 
-        cmd = ["raymake", str(self.config.ray_root / RAYMAKE_SPEC)]
+        cmd = [
+            "raymake",
+            "--artifacts_dir",
+            str(self.config.output_dir),
+            str(self.config.ray_root / RAYMAKE_SPEC),
+        ]
 
         log.info(f"Running raymake: {RAYMAKE_SPEC}")
         log.info(f"Build environment: {self.config.build_env}")
@@ -210,48 +192,7 @@ class WheelBuilder:
                 proc.kill()
             raise
 
-        self.config.output_dir.mkdir(parents=True, exist_ok=True)
-        # TODO(andrew-anyscale): Artifact extraction will soon be built-in to
-        # raymake. For now, we extract the wheels manually using docker.
-        with self._container() as cid:
-            log.info("Extracting wheels...")
-            # List files via docker export (image has no shell for ls)
-            export_proc = subprocess.Popen(
-                ["docker", "export", cid], stdout=subprocess.PIPE
-            )
-            tar_list = subprocess.run(
-                ["tar", "-tf", "-"],
-                stdin=export_proc.stdout,
-                capture_output=True,
-                text=True,
-            )
-            export_proc.stdout.close()
-            export_rc = export_proc.wait()
-            if export_rc != 0:
-                raise BuildError(f"docker export failed with exit code {export_rc}")
-            if tar_list.returncode != 0:
-                raise BuildError(f"tar listing failed: {tar_list.stderr}")
-
-            # Filter for wheel files at root level (tar may output ./file or file)
-            wheel_files = [
-                f.lstrip("./")
-                for f in tar_list.stdout.splitlines()
-                if f.endswith(".whl") and "/" not in f.lstrip("./")
-            ]
-            if not wheel_files:
-                raise BuildError("No wheel files found in image")
-
-            extracted = []
-            for f in wheel_files:
-                dest = self.config.output_dir / f
-                if dest.exists():
-                    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-                    bak = dest.with_suffix(f".whl.backup-{ts}")
-                    log.info(f"Backing up existing {dest.name} -> {bak.name}")
-                    dest.replace(bak)
-                subprocess.run(["docker", "cp", f"{cid}:/{f}", str(dest)], check=True)
-                extracted.append(dest)
-            return extracted
+        return list(self.config.output_dir.glob("*.whl"))
 
 
 def main():
@@ -286,8 +227,23 @@ def main():
         builder = WheelBuilder(
             BuildConfig.from_env(args.python_version, args.output_dir)
         )
+        output_dir = builder.config.output_dir
+        if output_dir.exists():
+            if not output_dir.is_dir():
+                raise BuildError(
+                    f"Output path '{output_dir}' exists and is not a directory."
+                )
+            existing_wheels = list(output_dir.glob("*.whl"))
+            if existing_wheels:
+                ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                backup_dir = output_dir / f"old_{ts}"
+                backup_dir.mkdir()
+                for whl in existing_wheels:
+                    whl.rename(backup_dir / whl.name)
+                log.info(f"Moved existing wheels to {backup_dir}")
+        output_dir.mkdir(parents=True, exist_ok=True)
         wheels = builder.build()
-        log.info(f"Success! saved to {args.output_dir}")
+        log.info(f"Success! Wheels saved to {output_dir}")
         log.info("To install, run:")
         for w in wheels:
             print(f"  pip install {w}")
