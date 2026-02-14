@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import SerializablePreprocessorBase
+from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
 
 if TYPE_CHECKING:
@@ -8,7 +9,8 @@ if TYPE_CHECKING:
     from ray.data.dataset import Dataset
 
 
-class Chain(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.chain")
+class Chain(SerializablePreprocessorBase):
     """Combine multiple preprocessors into a single :py:class:`Preprocessor`.
 
     When you call ``fit``, each preprocessor is fit on the dataset produced by the
@@ -38,12 +40,15 @@ class Chain(Preprocessor):
         2  1    [1.224744871391589, 1.224744871391589]
 
     Args:
-        preprocessors: The preprocessors to sequentially compose.
+        *preprocessors: The preprocessors to sequentially compose.
     """
 
     def fit_status(self):
         fittable_count = 0
         fitted_count = 0
+
+        from ray.data.preprocessor import Preprocessor
+
         for p in self._preprocessors:
             if p.fit_status() == Preprocessor.FitStatus.FITTED:
                 fittable_count += 1
@@ -65,15 +70,15 @@ class Chain(Preprocessor):
         else:
             return Preprocessor.FitStatus.NOT_FITTABLE
 
-    def __init__(self, *preprocessors: Preprocessor):
+    def __init__(self, *preprocessors: SerializablePreprocessorBase):
         super().__init__()
         self._preprocessors = preprocessors
 
     @property
-    def preprocessors(self) -> Tuple[Preprocessor, ...]:
+    def preprocessors(self) -> Tuple[SerializablePreprocessorBase, ...]:
         return self._preprocessors
 
-    def _fit(self, ds: "Dataset") -> Preprocessor:
+    def _fit(self, ds: "Dataset") -> SerializablePreprocessorBase:
         for preprocessor in self._preprocessors[:-1]:
             ds = preprocessor.fit_transform(ds)
         self._preprocessors[-1].fit(ds)
@@ -120,11 +125,23 @@ class Chain(Preprocessor):
         # still optimal with context of lazy execution.
         return self._preprocessors[0]._determine_transform_to_use()
 
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "preprocessors": self._preprocessors,
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._preprocessors = fields["preprocessors"]
+
     def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
         super().__setstate__(state)
+        # Migrate from old public field names to new private field names
         if "_preprocessors" not in self.__dict__ and "preprocessors" in self.__dict__:
             self._preprocessors = self.__dict__.pop("preprocessors")
 
+        # Set defaults for missing fields
         if "_preprocessors" not in self.__dict__:
             raise ValueError(
                 "Invalid serialized Chain preprocessor: missing required field 'preprocessors'."
