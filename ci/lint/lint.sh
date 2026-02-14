@@ -52,11 +52,6 @@ pre_commit_pydoclint() {
   pre-commit run pydoclint --all-files --show-diff-on-failure
 }
 
-code_format() {
-  pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
-  FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
-}
-
 semgrep_lint() {
   pip install -c python/requirements_compiled.txt semgrep pre-commit
   pre-commit run semgrep --all-files --show-diff-on-failure
