@@ -392,7 +392,13 @@ class NixlTensorTransport(TensorTransportManager):
                 self._tensor_desc_cache[key].metadata_count += 1
             else:
                 mem_type = "cuda" if tensor.is_cuda else "cpu"
+                # the GPU ID of the device the tensor is on.
+                # NOTE: we clip this to 0 since the GPU ID is not used for CPU tensors, and get_device returns -1 for CPU tensors.
+                # This triggers an error in nixl since it expects an unsigned.
                 gpu_id = max(tensor.get_device(), 0)
+                # Registering the full underlying pytorch storage object by constructing a memory region
+                # with the data pointer, size, GPU ID, and meta info. Doing the equivalent of what nixl does for pytorch tensors
+                # internally: https://github.com/ai-dynamo/nixl/blob/dd23ef01bd366aef89fa552f2b042f89a0b45fcb/src/api/python/_api.py#L1034
                 reg_desc = self.get_nixl_agent().register_memory(
                     [
                         (

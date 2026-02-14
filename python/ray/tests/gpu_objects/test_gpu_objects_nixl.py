@@ -377,28 +377,60 @@ def test_nixl_agent_reuse_with_partial_tensors(ray_start_regular):
     del ref2, ref3
 
 
-@ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
-class StorageTestActor:
-    def produce_views(self):
-        tensor = torch.tensor([[1, 1], [2, 2]], dtype=torch.float32).to("cuda")
-        views = [tensor[0], tensor[1]]
-        return ray.put(views, _tensor_transport="nixl")
-
-    def consume(self, ref):
-        return ray.get(ref)
-
-
-@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_storage_level_registration(ray_start_regular):
-    """Test that views sharing the same storage result in a single NIXL registration."""
+    """Test that two tensors sharing the same underlying storage produce a
+    single NIXL registration. When each tensor's ref goes out of scope via
+    garbage_collect, the metadata_count decrements. After both are freed,
+    the registration is removed."""
+    from unittest.mock import MagicMock, patch
 
-    actors = [StorageTestActor.remote() for _ in range(2)]
-    src_actor, dst_actor = actors[0], actors[1]
+    from ray.experimental.gpu_object_manager.gpu_object_store import GPUObjectStore
+    from ray.experimental.gpu_object_manager.nixl_tensor_transport import (
+        NixlTensorTransport,
+    )
 
-    refs = src_actor.produce_views.remote()
+    transport = NixlTensorTransport()
+    gpu_object_store = GPUObjectStore()
 
-    tensors = ray.get(dst_actor.consume.remote(refs))
-    assert [tensor.tolist() for tensor in tensors] == [[1, 1], [2, 2]]
+    tensor = torch.tensor([[1, 1], [2, 2]], dtype=torch.float32).to("cuda")
+    view0 = tensor[0]
+    view1 = tensor[1]
+    storage_key = tensor.untyped_storage().data_ptr()
+
+    mock_worker = MagicMock()
+    mock_worker.gpu_object_manager.gpu_object_store = gpu_object_store
+
+    # Simulate ray.put(view0)
+    obj_id1 = "test_obj_id_1"
+    gpu_object_store.add_object(obj_id1, [view0], is_primary=True)
+    with patch("ray._private.worker.global_worker", mock_worker):
+        meta1 = transport.extract_tensor_transport_metadata(obj_id1, [view0])
+    assert len(transport._tensor_desc_cache) == 1
+    assert transport._tensor_desc_cache[storage_key].metadata_count == 1
+
+    # Simulate ray.put(view1) and check that the a new entry is not created in the tensor desc cache
+    # since they share the same storage key and the metadata_count is incremented by 1
+    obj_id2 = "test_obj_id_2"
+    gpu_object_store.add_object(obj_id2, [view1], is_primary=True)
+    with patch("ray._private.worker.global_worker", mock_worker):
+        meta2 = transport.extract_tensor_transport_metadata(obj_id2, [view1])
+    assert len(transport._tensor_desc_cache) == 1
+    assert transport._tensor_desc_cache[storage_key].metadata_count == 2
+
+    # Simulate the obj ref for tensor[0] going out of scope and check that the nixl memory registration is
+    # not cleared since the object ref for tensor[1] is still in scope
+    with patch("ray._private.worker.global_worker", mock_worker):
+        transport.garbage_collect(obj_id1, meta1)
+    gpu_object_store.pop_object(obj_id1)
+    assert storage_key in transport._tensor_desc_cache
+    assert transport._tensor_desc_cache[storage_key].metadata_count == 1
+
+    # Simulate the obj ref for tensor[1] going out of scope and check that the nixl memory registration is cleared
+    with patch("ray._private.worker.global_worker", mock_worker):
+        transport.garbage_collect(obj_id2, meta2)
+    gpu_object_store.pop_object(obj_id2)
+    assert storage_key not in transport._tensor_desc_cache
 
 
 if __name__ == "__main__":
