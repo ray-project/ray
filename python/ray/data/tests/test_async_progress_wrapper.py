@@ -85,7 +85,7 @@ class TestAsyncProgressManagerWrapperIntegration:
 
         assert not isinstance(manager, AsyncProgressManagerWrapper)
 
-    @patch("sys.stdout.isatty", return_value=False)
+    @patch("sys.stdout.isatty", return_value=True)
     def test_does_not_wrap_when_disabled(
         self, mock_isatty, mock_topology, restore_data_context
     ):
