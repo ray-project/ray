@@ -36,9 +36,8 @@ logger = logging.getLogger(__name__)
 
 
 GET_ALL_REPORTED_CHECKPOINTS_PERIODIC_WARNING = """
-`get_all_reported_checkpoints` has been waiting for checkpoint {current_report_index} to be reported
-by all workers and processed by Ray Train for {time_elapsed_s:.2f} s.
-Also ensure that workers are not hanging on other operations, causing them to miss this synchronization barrier.
+`get_all_reported_checkpoints` has been waiting for checkpoint {current_report_index} to be uploaded
+to persistent storage by all workers and processed by Ray Train for {time_elapsed_s:.2f} s.
 You can set the {warn_interval_env_var} environment variable to change the frequency of this warning (current value: {warn_interval_s} s).
 """
 
