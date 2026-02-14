@@ -480,7 +480,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         def inner() -> str:
             return GET_ALL_REPORTED_CHECKPOINTS_PERIODIC_WARNING.format(
                 current_report_index=current_report_index,
-                time_elapsed_s=time.time() - start_time,
+                time_elapsed_s=asyncio.get_event_loop().time() - start_time,
                 warn_interval_env_var=COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
                 warn_interval_s=self._collective_warn_interval_s,
             )
