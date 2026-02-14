@@ -20,11 +20,11 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
 )
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
+    FixedShapeTensorFormat,
     _extension_array_concat_supported,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
-from ray.data.context import DataContext
 from ray.data.extensions import (
     ArrowConversionError,
     ArrowPythonObjectArray,
@@ -34,6 +34,7 @@ from ray.data.extensions import (
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
     _object_extension_type_allowed,
+    create_arrow_fixed_shape_tensor_type,
 )
 
 
@@ -197,8 +198,8 @@ def test_arrow_concat_tensor_extension_uniform(
 
     # Check content.
     content = uniform_tensor_expected["content"]
-    np.testing.assert_array_equal(out["a"].chunk(0).to_numpy(), content[0])
-    np.testing.assert_array_equal(out["a"].chunk(1).to_numpy(), content[1])
+    np.testing.assert_array_equal(out["a"].chunk(0).to_numpy_ndarray(), content[0])
+    np.testing.assert_array_equal(out["a"].chunk(1).to_numpy_ndarray(), content[1])
 
     # Check equivalence.
     expected = pa.concat_tables(ts, promote=True)
@@ -1740,7 +1741,7 @@ def test_align_struct_fields_deep_nesting(deep_nesting_blocks, deep_nesting_sche
 
 # Test fixtures for tensor-related tests
 @pytest.fixture
-def uniform_tensor_blocks():
+def uniform_tensor_blocks(tensor_format_context):
     """Fixture for uniform tensor blocks with same shape."""
     # Block 1: Fixed shape tensors (2x2)
     a1 = np.arange(12).reshape((3, 2, 2))
@@ -1754,14 +1755,10 @@ def uniform_tensor_blocks():
 
 
 @pytest.fixture
-def uniform_tensor_expected():
+def uniform_tensor_expected(tensor_format_context):
     """Fixture for expected results from uniform tensor concatenation."""
-    if DataContext.get_current().use_arrow_tensor_v2:
-        tensor_type = ArrowTensorTypeV2
-    else:
-        tensor_type = ArrowTensorType
-
-    expected_schema = pa.schema([("a", tensor_type((2, 2), pa.int64()))])
+    t = create_arrow_fixed_shape_tensor_type((2, 2), pa.int64())
+    expected_schema = pa.schema([("a", t)])
     expected_length = 6
     expected_chunks = 2
 
@@ -2905,16 +2902,15 @@ def unify_schemas_nested_struct_tensors_schemas():
     return {"with_tensor": schema1, "without_tensor": schema2, "expected": expected}
 
 
-@pytest.mark.parametrize("use_arrow_tensor_v2", [True, False])
+@pytest.mark.parametrize(
+    "tensor_format", [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
+)
 @pytest.mark.skipif(
     get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
     reason="Requires Arrow version of at least 14.0.0",
 )
-def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(
-    use_arrow_tensor_v2, restore_data_context
-):
-    DataContext.get_current().use_arrow_tensor_v2 = use_arrow_tensor_v2
-
+def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(tensor_format_context):
+    tensor_format = tensor_format_context
     num_rows = 1024
 
     # Block A: int is uint64; tensor = Ray tensor extension
@@ -2950,7 +2946,7 @@ def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(
 
     # Ensure that the result is correct
     # Determine expected tensor type based on current DataContext setting
-    if use_arrow_tensor_v2:
+    if tensor_format == FixedShapeTensorFormat.V2:
         expected_tensor_type = ArrowTensorTypeV2((3, 3), pa.float32())
     else:
         expected_tensor_type = ArrowTensorType((3, 3), pa.float32())

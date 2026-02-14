@@ -262,6 +262,48 @@ def restore_data_context(request):
     ray.data.context.DataContext._set_current(original)
 
 
+def _get_supported_tensor_formats():
+    """Get list of supported tensor formats based on PyArrow version.
+
+    Returns V1, V2, and ARROW_NATIVE only if PyArrow >= 12 (which supports
+    native FixedShapeTensorType).
+    """
+    from ray.data._internal.tensor_extensions.arrow import (
+        MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
+        FixedShapeTensorFormat,
+    )
+
+    formats = [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
+    if get_pyarrow_version() >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY:
+        formats.append(FixedShapeTensorFormat.ARROW_NATIVE)
+    return formats
+
+
+@pytest.fixture(params=_get_supported_tensor_formats())
+def tensor_format(request):
+    """Fixture that yields supported tensor formats.
+
+    Yields V1, V2 for all PyArrow versions.
+    Yields ARROW_NATIVE only when PyArrow >= 12.
+
+    This allows tests to use `tensor_format.to_type()` safely without
+    needing fallback logic for unsupported PyArrow versions.
+    """
+    return request.param
+
+
+@pytest.fixture
+def tensor_format_context(request, restore_data_context, tensor_format):
+    """Fixture that sets the DataContext to use the given tensor format.
+
+    Combines restore_data_context with tensor_format to automatically
+    configure the context for tensor format testing.
+    """
+    ctx = ray.data.context.DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
+    return tensor_format
+
+
 @pytest.fixture
 def disable_fallback_to_object_extension(request, restore_data_context):
     """Disables fallback to ArrowPythonObjectType"""

@@ -29,6 +29,9 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 )
 from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.tensor_extensions.arrow import (
+    create_arrow_fixed_shape_tensor_type,
+)
 from ray.data._internal.util import (
     RetryingPyFileSystem,
     _check_pyarrow_version,
@@ -58,6 +61,7 @@ from ray.data.datasource.partitioning import (
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
 )
+from ray.data.datatype import DataType
 from ray.data.expressions import BinaryExpr, Expr, Operation
 from ray.util.debug import log_once
 
@@ -65,6 +69,11 @@ if TYPE_CHECKING:
     import pyarrow
     from pyarrow.dataset import ParquetFileFragment
 
+# Type aliases for tensor column schema
+ColumnName = str
+# Shape of the tensor
+Shape = Tuple[int, ...]
+TensorColumnSchema = Dict[ColumnName, Tuple[np.dtype, Shape]]
 
 logger = logging.getLogger(__name__)
 
@@ -309,6 +318,7 @@ class ParquetDatasource(Datasource):
         shuffle: Union[Literal["files"], None] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
+        tensor_column_schema: Optional[TensorColumnSchema] = None,
     ):
         super().__init__()
         _check_pyarrow_version()
@@ -438,6 +448,7 @@ class ParquetDatasource(Datasource):
         self._partition_schema = _get_partition_columns_schema(
             partitioning, self._pq_paths
         )
+        self._tensor_column_schema = tensor_column_schema
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
@@ -501,6 +512,7 @@ class ParquetDatasource(Datasource):
             file_schema=self._file_schema,
             partition_schema=self._partition_schema,
             projected_columns=self.get_current_projection(),
+            tensor_column_schema=self._tensor_column_schema,
             _block_udf=self._block_udf,
             include_paths=self._include_paths,
         )
@@ -742,6 +754,7 @@ class ParquetDatasource(Datasource):
         file_schema: "pyarrow.Schema",
         partition_schema: Optional["pyarrow.Schema"],
         projected_columns: Optional[List[str]],
+        tensor_column_schema: Optional[TensorColumnSchema],
         _block_udf,
         include_paths: bool = False,
     ) -> "pyarrow.Schema":
@@ -784,10 +797,29 @@ class ParquetDatasource(Datasource):
                 target_schema.metadata,
             )
 
+        if tensor_column_schema is not None:
+            # Without this code, schema inference for parquet datasets will default to
+            # binary types.
+
+            for name, (np_dtype, shape) in tensor_column_schema.items():
+                index_of_name: int = target_schema.get_field_index(name)
+                pa_dtype: pa.DataType = DataType.from_numpy(np_dtype).to_arrow_dtype()
+                tensor_type = create_arrow_fixed_shape_tensor_type(
+                    shape=shape, dtype=pa_dtype
+                )
+                field = pa.field(name, tensor_type)
+
+                # Determine where to add the schema
+                if index_of_name != -1:
+                    target_schema = target_schema.set(index_of_name, field)
+                else:
+                    target_schema = target_schema.append(field)
+
         if _block_udf is not None:
             # Try to infer dataset schema by passing dummy table through UDF.
-            dummy_table = target_schema.empty_table()
             try:
+                # An empty table with extensions will fail for pyarrow==9.0.0
+                dummy_table = target_schema.empty_table()
                 target_schema = _block_udf(dummy_table).schema.with_metadata(
                     target_schema.metadata
                 )

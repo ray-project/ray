@@ -600,25 +600,25 @@ def _concat_cols_with_null_list(
     # For each opaque list column, iterate through all schemas until
     # we find a valid value_type that can be used to override the
     # column types in the following for-loop.
-    scalar_type = None
+    value_type = None
     for arr in col_chunked_arrays:
         if not pa.types.is_list(arr.type) or not pa.types.is_null(arr.type.value_type):
-            scalar_type = arr.type
+            value_type = arr.type
             break
 
-    if scalar_type is not None:
+    if value_type is not None:
         for c_idx in range(len(col_chunked_arrays)):
             c = col_chunked_arrays[c_idx]
             if pa.types.is_list(c.type) and pa.types.is_null(c.type.value_type):
-                if pa.types.is_list(scalar_type):
+                if pa.types.is_list(value_type):
                     # If we are dealing with a list input,
-                    # cast the array to the scalar_type found above.
-                    col_chunked_arrays[c_idx] = c.cast(scalar_type)
+                    # cast the array to the value_type found above.
+                    col_chunked_arrays[c_idx] = c.cast(value_type)
                 else:
                     # If we are dealing with a single value, construct
                     # a new array with null values filled.
                     col_chunked_arrays[c_idx] = pa.chunked_array(
-                        [pa.nulls(c.length(), type=scalar_type)]
+                        [pa.nulls(c.length(), type=value_type)]
                     )
 
     return _concatenate_chunked_arrays(col_chunked_arrays)
@@ -833,13 +833,25 @@ def to_numpy(
 
     import pyarrow as pa
 
+    from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
+
     if isinstance(array, pa.Array):
         if pa.types.is_null(array.type):
             return np.full(len(array), np.nan, dtype=np.float32)
+        if _is_native_tensor_type(array.type):
+            # This is zero-copy. We use to_numpy_ndarray() because to_numpy
+            # will flatten n-dim array into 1d.
+            return array.to_numpy_ndarray()
         return array.to_numpy(zero_copy_only=zero_copy_only)
     elif isinstance(array, pa.ChunkedArray):
         if pa.types.is_null(array.type):
             return np.full(array.length(), np.nan, dtype=np.float32)
+        if _is_native_tensor_type(array.type):
+            # Convert each chunk to numpy, then stack them
+            numpy_chunks = [chunk.to_numpy_ndarray() for chunk in array.chunks]
+            if len(numpy_chunks) == 0:
+                return np.empty((0,) + tuple(array.type.shape))
+            return np.vstack(numpy_chunks)
         if PYARROW_VERSION >= MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY:
             return array.to_numpy(zero_copy_only=zero_copy_only)
         else:
