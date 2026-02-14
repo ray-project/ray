@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from ray._private.client_mode_hook import (
     _explicitly_enable_client_mode,
     _set_client_hook_status,
+    is_client_mode_enabled,
 )
 from ray._private.utils import get_ray_doc_version
 from ray.job_config import JobConfig
@@ -31,7 +32,9 @@ def connect(
     _credentials: Optional["grpc.ChannelCredentials"] = None,  # noqa: F821
     ray_init_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    if ray.is_connected():
+    # Check if Ray Client mode is enabled and already connected
+    # This prevents connecting twice, but allows connecting after regular ray.init()
+    if is_client_mode_enabled and ray.is_connected():
         ignore_reinit_error = (
             ray_init_kwargs.get("ignore_reinit_error", False)
             if ray_init_kwargs is not None
