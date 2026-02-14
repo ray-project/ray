@@ -185,6 +185,8 @@ def register_nixl_memory(tensor: "torch.Tensor") -> None:
     to pre-register a tensor's memory with NIXL and keep it registered for the lifetime of the process which is especially useful
     if the same tensor is re-used in multiple RDT objects.
 
+    If called on a tensor that is already registered with NIXL, the reference count is still bumped to prevent the memory from being deregistered.
+
     Args:
         tensor: A PyTorch tensor whose memory should be registered with NIXL.
 

@@ -82,18 +82,8 @@ class NixlTensorTransport(TensorTransportManager):
         return True
 
     def register_nixl_memory(self, tensor: "torch.Tensor") -> None:
-        """Registers the tensor's memory with NIXL and bumps the reference count so the memory region is never deregistered"""
-        key = tensor.data_ptr()
-        with self._cache_lock:
-            if key in self._tensor_desc_cache:
-                self._tensor_desc_cache[key].metadata_count += 1
-            else:
-                reg_desc = self.get_nixl_agent().register_memory([tensor])
-                self._tensor_desc_cache[key] = TensorDesc(
-                    reg_desc=reg_desc,
-                    metadata_count=1,
-                    nbytes=tensor.nbytes,
-                )
+        """Registers the tensor's memory with NIXL and bumps the reference count so the memory region is never deregistered."""
+        self._add_tensor_descs([tensor])
 
     def get_nixl_agent(self):
         """
@@ -357,9 +347,7 @@ class NixlTensorTransport(TensorTransportManager):
                     tensor_desc.metadata_count -= 1
                     if tensor_desc.metadata_count == 0:
                         self._tensor_desc_cache.pop(key)
-                        self.get_nixl_agent().deregister_memory(
-                            tensor_desc.reg_desc,
-                        )
+                        self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
                         self._nixl_agent_meta_version += 1
 
     def abort_transport(
