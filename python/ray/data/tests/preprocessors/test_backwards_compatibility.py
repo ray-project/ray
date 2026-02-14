@@ -222,6 +222,9 @@ class TestFunctionalBackwardsCompatibility:
 
         normalizer = Normalizer(columns=["A", "B"], norm="l2")
 
+        # Get expected result from current normalizer
+        expected_result = normalizer.transform(ds).to_pandas()
+
         # Simulate old format by renaming private fields to public
         state = normalizer.__dict__.copy()
         state["columns"] = state.pop("_columns")
@@ -232,9 +235,9 @@ class TestFunctionalBackwardsCompatibility:
         new_normalizer.__setstate__(state)
 
         result = new_normalizer.transform(ds).to_pandas()
-        assert len(result) == 2
-        assert "A" in result.columns
-        assert "B" in result.columns
+
+        # Verify the transformation produces the same results
+        pd.testing.assert_frame_equal(result, expected_result)
 
     def test_concatenator_functional_after_deserialization(self):
         """Concatenator transforms data correctly after old format deserialization."""
@@ -269,6 +272,9 @@ class TestFunctionalBackwardsCompatibility:
             columns=["token_a", "token_b"], num_features=5, output_column="hashed"
         )
 
+        # Get expected result from current hasher
+        expected_result = hasher.transform(ds).to_pandas()
+
         # Simulate old format by renaming private fields to public
         state = hasher.__dict__.copy()
         state["columns"] = state.pop("_columns")
@@ -279,9 +285,9 @@ class TestFunctionalBackwardsCompatibility:
         new_hasher.__setstate__(state)
 
         result = new_hasher.transform(ds).to_pandas()
-        assert "hashed" in result.columns
-        assert len(result) == 2
-        assert len(result["hashed"][0]) == 5
+
+        # Verify the transformation produces the same results
+        pd.testing.assert_frame_equal(result, expected_result)
 
     def test_chain_functional_after_deserialization(self):
         """Chain transforms data correctly after old format deserialization."""
@@ -293,6 +299,9 @@ class TestFunctionalBackwardsCompatibility:
         chain = Chain(scaler, normalizer)
         chain = chain.fit(ds)
 
+        # Get expected result from current chain
+        expected_result = chain.transform(ds).to_pandas()
+
         # Simulate old format by renaming private fields to public
         state = chain.__dict__.copy()
         state["preprocessors"] = state.pop("_preprocessors")
@@ -300,8 +309,86 @@ class TestFunctionalBackwardsCompatibility:
         new_chain = Chain.__new__(Chain)
         new_chain.__setstate__(state)
 
-        result = new_chain.transform(ds)
-        assert result.count() == 3
+        result = new_chain.transform(ds).to_pandas()
+
+        # Verify the transformation produces the same results
+        pd.testing.assert_frame_equal(result, expected_result)
+
+    def test_power_transformer_functional_after_deserialization(self):
+        """PowerTransformer transforms data correctly after old format deserialization."""
+        df = pd.DataFrame({"A": [1.0, 2.0, 3.0], "B": [4.0, 5.0, 6.0]})
+        ds = ray.data.from_pandas(df)
+
+        transformer = PowerTransformer(columns=["A", "B"], power=2)
+
+        # Get expected result from current transformer
+        expected_result = transformer.transform(ds).to_pandas()
+
+        # Simulate old format by renaming private fields to public
+        state = transformer.__dict__.copy()
+        state["columns"] = state.pop("_columns")
+        state["power"] = state.pop("_power")
+        state["method"] = state.pop("_method")
+        state["output_columns"] = state.pop("_output_columns")
+
+        new_transformer = PowerTransformer.__new__(PowerTransformer)
+        new_transformer.__setstate__(state)
+
+        result = new_transformer.transform(ds).to_pandas()
+
+        # Verify the transformation produces the same results
+        pd.testing.assert_frame_equal(result, expected_result)
+
+    def test_hashing_vectorizer_functional_after_deserialization(self):
+        """HashingVectorizer transforms data correctly after old format deserialization."""
+        df = pd.DataFrame({"text": ["hello world", "foo bar"]})
+        ds = ray.data.from_pandas(df)
+
+        vectorizer = HashingVectorizer(columns=["text"], num_features=10)
+
+        # Get expected result from current vectorizer
+        expected_result = vectorizer.transform(ds).to_pandas()
+
+        # Simulate old format by renaming private fields to public
+        state = vectorizer.__dict__.copy()
+        state["columns"] = state.pop("_columns")
+        state["num_features"] = state.pop("_num_features")
+        state["tokenization_fn"] = state.pop("_tokenization_fn")
+        state["output_columns"] = state.pop("_output_columns")
+
+        new_vectorizer = HashingVectorizer.__new__(HashingVectorizer)
+        new_vectorizer.__setstate__(state)
+
+        result = new_vectorizer.transform(ds).to_pandas()
+
+        # Verify the transformation produces the same results
+        pd.testing.assert_frame_equal(result, expected_result)
+
+    def test_count_vectorizer_functional_after_deserialization(self):
+        """CountVectorizer transforms data correctly after old format deserialization."""
+        df = pd.DataFrame({"text": ["hello world", "foo bar", "hello foo"]})
+        ds = ray.data.from_pandas(df)
+
+        vectorizer = CountVectorizer(columns=["text"])
+        vectorizer = vectorizer.fit(ds)
+
+        # Get expected result from current vectorizer
+        expected_result = vectorizer.transform(ds).to_pandas()
+
+        # Simulate old format by renaming private fields to public
+        state = vectorizer.__dict__.copy()
+        state["columns"] = state.pop("_columns")
+        state["tokenization_fn"] = state.pop("_tokenization_fn")
+        state["max_features"] = state.pop("_max_features")
+        state["output_columns"] = state.pop("_output_columns")
+
+        new_vectorizer = CountVectorizer.__new__(CountVectorizer)
+        new_vectorizer.__setstate__(state)
+
+        result = new_vectorizer.transform(ds).to_pandas()
+
+        # Verify the transformation produces the same results
+        pd.testing.assert_frame_equal(result, expected_result)
 
 
 if __name__ == "__main__":
