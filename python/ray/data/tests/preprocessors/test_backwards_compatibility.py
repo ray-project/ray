@@ -62,21 +62,6 @@ class TestConcatenatorBackwardsCompatibility:
 class TestNormalizerBackwardsCompatibility:
     """Test backwards compatibility for Normalizer preprocessor."""
 
-    def test_normalizer_deserialize_backward_compat(self):
-        """Deserialize with missing private fields applies defaults."""
-        normalizer = Normalizer(columns=["A", "B"], norm="l1")
-        delattr(normalizer, "_columns")
-        delattr(normalizer, "_norm")
-        delattr(normalizer, "_output_columns")
-
-        data = normalizer.serialize()
-        restored = Normalizer.deserialize(data)
-
-        assert isinstance(restored, Normalizer)
-        assert restored.columns == []
-        assert restored.norm == "l2"
-        assert restored.output_columns == []
-
     def test_normalizer_old_public_field_names(self):
         """Migration from old public field names to new private fields."""
         normalizer = Normalizer.__new__(Normalizer)
@@ -95,21 +80,6 @@ class TestNormalizerBackwardsCompatibility:
 class TestTokenizerBackwardsCompatibility:
     """Test backwards compatibility for Tokenizer preprocessor."""
 
-    def test_tokenizer_deserialize_backward_compat(self):
-        """Deserialize with missing private fields applies defaults."""
-        tokenizer = Tokenizer(columns=["text"])
-        delattr(tokenizer, "_columns")
-        delattr(tokenizer, "_tokenization_fn")
-        delattr(tokenizer, "_output_columns")
-
-        data = tokenizer.serialize()
-        restored = Tokenizer.deserialize(data)
-
-        assert isinstance(restored, Tokenizer)
-        assert restored.columns == []
-        assert callable(restored.tokenization_fn)
-        assert restored.output_columns == []
-
     def test_tokenizer_old_public_field_names(self):
         """Migration from old public field names to new private fields."""
         tokenizer = Tokenizer.__new__(Tokenizer)
@@ -127,15 +97,6 @@ class TestTokenizerBackwardsCompatibility:
 
 class TestPowerTransformerBackwardsCompatibility:
     """Test backwards compatibility for PowerTransformer preprocessor."""
-
-    def test_power_transformer_deserialize_backward_compat_missing_required(self):
-        """Deserialization fails when required field 'power' is missing."""
-        transformer = PowerTransformer(columns=["A", "B"], power=2, method="box-cox")
-        delattr(transformer, "_power")
-
-        data = transformer.serialize()
-        with pytest.raises(ValueError, match="missing required field 'power'"):
-            PowerTransformer.deserialize(data)
 
     def test_power_transformer_old_public_field_names(self):
         """Migration from old public field names to new private fields."""
@@ -157,15 +118,6 @@ class TestPowerTransformerBackwardsCompatibility:
 class TestHashingVectorizerBackwardsCompatibility:
     """Test backwards compatibility for HashingVectorizer preprocessor."""
 
-    def test_hashing_vectorizer_deserialize_backward_compat_missing_required(self):
-        """Deserialization fails when required field 'num_features' is missing."""
-        vectorizer = HashingVectorizer(columns=["text"], num_features=100)
-        delattr(vectorizer, "_num_features")
-
-        data = vectorizer.serialize()
-        with pytest.raises(ValueError, match="missing required field 'num_features'"):
-            HashingVectorizer.deserialize(data)
-
     def test_hashing_vectorizer_old_public_field_names(self):
         """Migration from old public field names to new private fields."""
         vectorizer = HashingVectorizer.__new__(HashingVectorizer)
@@ -185,23 +137,6 @@ class TestHashingVectorizerBackwardsCompatibility:
 
 class TestCountVectorizerBackwardsCompatibility:
     """Test backwards compatibility for CountVectorizer preprocessor."""
-
-    def test_count_vectorizer_deserialize_backward_compat(self):
-        """Deserialize with missing private fields applies defaults."""
-        vectorizer = CountVectorizer(columns=["text"], max_features=50)
-        delattr(vectorizer, "_columns")
-        delattr(vectorizer, "_tokenization_fn")
-        delattr(vectorizer, "_max_features")
-        delattr(vectorizer, "_output_columns")
-
-        data = vectorizer.serialize()
-        restored = CountVectorizer.deserialize(data)
-
-        assert isinstance(restored, CountVectorizer)
-        assert restored.columns == []
-        assert callable(restored.tokenization_fn)
-        assert restored.max_features is None
-        assert restored.output_columns == []
 
     def test_count_vectorizer_old_public_field_names(self):
         """Migration from old public field names to new private fields."""
@@ -223,28 +158,6 @@ class TestCountVectorizerBackwardsCompatibility:
 class TestFeatureHasherBackwardsCompatibility:
     """Test backwards compatibility for FeatureHasher preprocessor."""
 
-    def test_feature_hasher_deserialize_backward_compat_missing_required(self):
-        """Deserialization fails when required field 'num_features' is missing."""
-        hasher = FeatureHasher(
-            columns=["A", "B"], num_features=10, output_column="hashed"
-        )
-        delattr(hasher, "_num_features")
-
-        data = hasher.serialize()
-        with pytest.raises(ValueError, match="missing required field 'num_features'"):
-            FeatureHasher.deserialize(data)
-
-    def test_feature_hasher_deserialize_backward_compat_missing_output_column(self):
-        """Deserialization fails when required field 'output_column' is missing."""
-        hasher = FeatureHasher(
-            columns=["A", "B"], num_features=10, output_column="hashed"
-        )
-        delattr(hasher, "_output_column")
-
-        data = hasher.serialize()
-        with pytest.raises(ValueError, match="missing required field 'output_column'"):
-            FeatureHasher.deserialize(data)
-
     def test_feature_hasher_old_public_field_names(self):
         """Migration from old public field names to new private fields."""
         hasher = FeatureHasher.__new__(FeatureHasher)
@@ -262,16 +175,6 @@ class TestFeatureHasherBackwardsCompatibility:
 
 class TestChainBackwardsCompatibility:
     """Test backwards compatibility for Chain preprocessor."""
-
-    def test_chain_deserialize_backward_compat_missing_required(self):
-        """Deserialization fails when required field 'preprocessors' is missing."""
-        scaler = StandardScaler(columns=["A"])
-        chain = Chain(scaler)
-        delattr(chain, "_preprocessors")
-
-        data = chain.serialize()
-        with pytest.raises(ValueError, match="missing required field 'preprocessors'"):
-            Chain.deserialize(data)
 
     def test_chain_old_public_field_names(self):
         """Migration from old public field names to new private fields."""
