@@ -378,8 +378,8 @@ def test_nixl_agent_reuse_with_partial_tensors(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
-def test_storage_level_registration(ray_start_regular):
-    """Test that two tensors sharing the same underlying storage produce a
+def test_storage_level_overlapping_views_reference_count(ray_start_regular):
+    """Test that two overlapping tensors sharing the same underlying storage produce a
     single NIXL registration. When each tensor's ref goes out of scope via
     garbage_collect, the metadata_count decrements. After both are freed,
     the registration is removed."""
@@ -393,9 +393,9 @@ def test_storage_level_registration(ray_start_regular):
     transport = NixlTensorTransport()
     gpu_object_store = GPUObjectStore()
 
-    tensor = torch.tensor([[1, 1], [2, 2]], dtype=torch.float32).to("cuda")
-    view0 = tensor[0]
-    view1 = tensor[1]
+    tensor = torch.tensor([[1, 1], [2, 2], [3, 3]], dtype=torch.float32).to("cuda")
+    view0 = tensor[0:1]
+    view1 = tensor[1:2]
     storage_key = tensor.untyped_storage().data_ptr()
 
     mock_worker = MagicMock()
@@ -418,19 +418,32 @@ def test_storage_level_registration(ray_start_regular):
     assert len(transport._tensor_desc_cache) == 1
     assert transport._tensor_desc_cache[storage_key].metadata_count == 2
 
-    # Simulate the obj ref for tensor[0] going out of scope and check that the nixl memory registration is
-    # not cleared since the object ref for tensor[1] is still in scope
+    # Simulate the obj ref for view0 going out of scope and check that the nixl memory registration is
+    # not cleared since the object ref for view1 is still in scope
     with patch("ray._private.worker.global_worker", mock_worker):
         transport.garbage_collect(obj_id1, meta1)
     gpu_object_store.pop_object(obj_id1)
     assert storage_key in transport._tensor_desc_cache
     assert transport._tensor_desc_cache[storage_key].metadata_count == 1
 
-    # Simulate the obj ref for tensor[1] going out of scope and check that the nixl memory registration is cleared
+    # Simulate the obj ref for view1 going out of scope and check that the nixl memory registration is cleared
     with patch("ray._private.worker.global_worker", mock_worker):
         transport.garbage_collect(obj_id2, meta2)
     gpu_object_store.pop_object(obj_id2)
     assert storage_key not in transport._tensor_desc_cache
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_storage_level_overlapping_views(ray_start_regular):
+    """Test that overlapping views of the same tensor are properly transferred."""
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    src_actor, dst_actor = actors[0], actors[1]
+    tensor = torch.tensor([1, 2, 3, 4, 5], dtype=torch.float32).to("cuda")
+    slices = [tensor[0:2], tensor[1:3], tensor[2:4]]
+
+    refs = ray.get(src_actor.produce.remote(slices))
+    result = ray.get(dst_actor.consume_with_nixl.remote(refs))
+    assert result == 15
 
 
 if __name__ == "__main__":
