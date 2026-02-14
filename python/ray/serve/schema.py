@@ -568,8 +568,8 @@ class DeploymentSchema(BaseModel):
 
         return {
             field
-            for field, value in self.model_dump().items()
-            if value is not DEFAULT.VALUE
+            for field in self.model_fields_set
+            if getattr(self, field) is not DEFAULT.VALUE
         }
 
     def is_autoscaling_configured(self) -> bool:
@@ -988,7 +988,7 @@ class ServeDeploySchema(BaseModel):
         # fields at the top-level deploy config is used instead. Eventually, after
         # migration, we should remove these fields from ServeApplicationSchema.
         for app_config in self.applications:
-            if "host" in app_config.model_dump(exclude_unset=True):
+            if "host" in app_config.model_fields_set:
                 raise ValueError(
                     f'Host "{app_config.host}" is set in the config for application '
                     f"`{app_config.name}`. Please remove it and set host in the top "

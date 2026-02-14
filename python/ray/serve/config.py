@@ -302,20 +302,6 @@ class RequestRouterConfig(BaseModel):
             )
         )
 
-    @model_validator(mode="after")
-    def ensure_request_router_serialized(self):
-        """Ensure request router is serialized after model creation.
-
-        In pydantic v2, model_validate() bypasses __init__, so we need
-        this validator to ensure _serialize_request_router_cls() is called.
-        """
-        if (
-            not hasattr(self, "_serialized_request_router_cls")
-            or not self._serialized_request_router_cls
-        ):
-            self._serialize_request_router_cls()
-        return self
-
     def __init__(self, **kwargs: dict[str, Any]):
         """Initialize RequestRouterConfig with the given parameters.
 
@@ -455,17 +441,6 @@ class AutoscalingPolicy(BaseModel):
             tuple(sorted(self.policy_kwargs.items())) if self.policy_kwargs else ()
         )
         return hash((self.policy_function, kwargs_hashable))
-
-    @model_validator(mode="after")
-    def ensure_policy_serialized(self):
-        """Ensure policy is serialized after model creation.
-
-        In pydantic v2, model_validate() bypasses __init__, so we need
-        this validator to ensure serialize_policy() is called.
-        """
-        if not self._serialized_policy_def:
-            self.serialize_policy()
-        return self
 
     def __init__(self, **kwargs):
         serialized_policy_def = kwargs.pop("_serialized_policy_def", None)

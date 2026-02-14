@@ -468,7 +468,7 @@ class DeploymentConfig(BaseModel):
         """
 
         config = cls()
-        valid_config_options = set(config.model_dump().keys())
+        valid_config_options = set(cls.model_fields.keys())
 
         # Friendly error if a non-DeploymentConfig kwarg was passed in
         for key, val in kwargs.items():

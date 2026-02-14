@@ -233,7 +233,8 @@ class DeploymentVersion:
         """
         reconfigure_dict = {}
         # In pydantic 2.0, `__fields__` has been renamed to `model_fields`.
-        fields = self.deployment_config.model_fields
+        # Access from class, not instance, to avoid deprecation warning.
+        fields = DeploymentConfig.model_fields
         for option_name, field in fields.items():
             # In Pydantic v2, extra kwargs passed to Field() are in json_schema_extra
             json_schema_extra = field.json_schema_extra
