@@ -157,17 +157,19 @@ class ServeHead(SubprocessModule):
         from ray.serve.schema import ServeDeploySchema
 
         try:
-            config: ServeDeploySchema = ServeDeploySchema.parse_obj(await req.json())
+            config: ServeDeploySchema = ServeDeploySchema.model_validate(
+                await req.json()
+            )
         except (ValidationErrorV1, ValidationErrorV2) as e:
             return Response(
                 status=400,
                 text=repr(e),
             )
 
-        config_http_options = config.http_options.dict()
+        config_http_options = config.http_options.model_dump()
         location = ProxyLocation._to_deployment_mode(config.proxy_location)
         full_http_options = dict({"location": location}, **config_http_options)
-        grpc_options = config.grpc_options.dict()
+        grpc_options = config.grpc_options.model_dump()
 
         async with self._controller_start_lock:
             client = await serve_start_async(
