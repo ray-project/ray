@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set
 
 from ray.serve._private.common import ReplicaID, RequestMetadata
 from ray.serve._private.constants import (
@@ -10,8 +10,10 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.util.annotations import PublicAPI
-from ray.serve._private.request_router.replica_wrapper import  RunningReplica
-from ray.serve.handle import DeploymentHandle
+
+if TYPE_CHECKING:
+    from ray.serve._private.request_router.replica_wrapper import RunningReplica
+    from ray.serve.handle import DeploymentHandle
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

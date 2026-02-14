@@ -22,7 +22,7 @@ from typing import (
     Union,
 )
 
-from python.ray.serve._private.request_router.common import ReplicaSelection
+from ray.serve._private.request_router.common import ReplicaSelection
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
@@ -963,7 +963,7 @@ class AsyncioRouter:
             node_id=replica.node_id,
             availability_zone=replica.availability_zone,
             _replica=replica,
-            _deployment_handle=self._deployment_handle,
+            _deployment_handle=None,  # TODO: use the actual DeploymentHandle
             _method_name=request_meta.call_method,
             _slot_token=slot_token,
         )
@@ -972,6 +972,7 @@ class AsyncioRouter:
             yield selection
         finally:
             # Release slot if dispatch was not called
+            # TODO: implement this function
             selection._release_slot()
 
     async def dispatch(
@@ -1000,6 +1001,7 @@ class AsyncioRouter:
         selection._mark_dispatched()
 
         # Use the reserved slot
+        # TODO: implement this function
         result = replica.send_request_with_slot(pr, selection._slot_token)
 
         self.request_router.on_send_request(replica.replica_id)
