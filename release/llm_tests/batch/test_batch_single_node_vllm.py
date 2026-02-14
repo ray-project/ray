@@ -93,7 +93,6 @@ def test_single_node_baseline_benchmark():
         sampling_params=VLLM_SAMPLING_PARAMS,
         pipeline_parallel_size=1,
         tensor_parallel_size=1,
-        distributed_executor_backend="mp",
     )
 
     result.show()

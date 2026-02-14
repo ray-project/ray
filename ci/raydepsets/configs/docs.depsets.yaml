@@ -18,3 +18,4 @@ depsets:
       - --unsafe-package ray
     build_arg_sets:
       - py310
+    include_setuptools: true
