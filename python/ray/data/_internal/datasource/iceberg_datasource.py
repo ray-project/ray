@@ -286,8 +286,8 @@ class IcebergDatasource(Datasource):
         _check_import(self, module="pyiceberg", package="pyiceberg")
         from pyiceberg.expressions import AlwaysTrue
 
-        self._scan_kwargs = scan_kwargs if scan_kwargs is not None else {}
-        self._catalog_kwargs = catalog_kwargs if catalog_kwargs is not None else {}
+        self._scan_kwargs = (scan_kwargs or {}).copy()
+        self._catalog_kwargs = (catalog_kwargs or {}).copy()
 
         if "name" in self._catalog_kwargs:
             self._catalog_name = self._catalog_kwargs.pop("name")
