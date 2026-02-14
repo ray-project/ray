@@ -20,7 +20,6 @@ cat > getenv_preload.c << 'GETENV_EOF'
 #include <stdlib.h>
 #include <string.h>
 #include <execinfo.h>
-#include <pthread.h>
 
 #define MAX_FRAMES 64
 #define SKIP_FRAMES 1
@@ -28,7 +27,6 @@ cat > getenv_preload.c << 'GETENV_EOF'
 
 static char log_buf[LOG_BUF_SIZE];
 static size_t log_pos;
-static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void buf_append(const char *fmt, ...) {
   if (log_pos >= LOG_BUF_SIZE) return;
@@ -48,9 +46,6 @@ static void buf_flush(void) {
 }
 
 typedef char *(*getenv_fn)(const char *);
-typedef int (*setenv_fn)(const char *, const char *, int);
-typedef int (*putenv_fn)(char *);
-typedef int (*unsetenv_fn)(const char *);
 
 static char *getenv_real(const char *name) {
   static getenv_fn real = NULL;
@@ -58,30 +53,11 @@ static char *getenv_real(const char *name) {
   return real ? real(name) : NULL;
 }
 
-static int setenv_real(const char *name, const char *value, int overwrite) {
-  static setenv_fn real = NULL;
-  if (real == NULL) real = (setenv_fn)dlsym(RTLD_NEXT, "setenv");
-  return real ? real(name, value, overwrite) : -1;
-}
-
-static int putenv_real(char *string) {
-  static putenv_fn real = NULL;
-  if (real == NULL) real = (putenv_fn)dlsym(RTLD_NEXT, "putenv");
-  return real ? real(string) : -1;
-}
-
-static int unsetenv_real(const char *name) {
-  static unsetenv_fn real = NULL;
-  if (real == NULL) real = (unsetenv_fn)dlsym(RTLD_NEXT, "unsetenv");
-  return real ? real(name) : -1;
-}
-
-static void log_backtrace_append(const char *tag) {
+static void log_backtrace_append() {
   void *buf[MAX_FRAMES];
   int n = backtrace(buf, MAX_FRAMES);
   char **syms = backtrace_symbols(buf, n);
   if (syms != NULL) {
-    buf_append("[getenv_preload] %s backtrace:\n", tag);
     for (int i = SKIP_FRAMES; i < n && i < MAX_FRAMES; i++)
       buf_append("  #%d %s\n", i - SKIP_FRAMES, syms[i]);
     buf_append("\n");
@@ -90,45 +66,13 @@ static void log_backtrace_append(const char *tag) {
 }
 
 char *getenv(const char *name) {
-  pthread_mutex_lock(&log_mutex);
   log_pos = 0;
-  buf_append("[getenv_preload] getenv name=%s\n", name ? name : "(null)");
-  log_backtrace_append("getenv");
+  buf_append("[getenv] name=%s\n", name ? name : "(null)");
+  log_backtrace_append();
   buf_flush();
-  pthread_mutex_unlock(&log_mutex);
   return getenv_real(name);
 }
 
-int setenv(const char *name, const char *value, int overwrite) {
-  pthread_mutex_lock(&log_mutex);
-  log_pos = 0;
-  buf_append("[getenv_preload] setenv name=%s value=%s overwrite=%d\n",
-             name ? name : "(null)", value ? value : "(null)", overwrite);
-  log_backtrace_append("setenv");
-  buf_flush();
-  pthread_mutex_unlock(&log_mutex);
-  return setenv_real(name, value, overwrite);
-}
-
-int putenv(char *string) {
-  pthread_mutex_lock(&log_mutex);
-  log_pos = 0;
-  buf_append("[getenv_preload] putenv string=%s\n", string ? string : "(null)");
-  log_backtrace_append("putenv");
-  buf_flush();
-  pthread_mutex_unlock(&log_mutex);
-  return putenv_real(string);
-}
-
-int unsetenv(const char *name) {
-  pthread_mutex_lock(&log_mutex);
-  log_pos = 0;
-  buf_append("[getenv_preload] unsetenv name=%s\n", name ? name : "(null)");
-  log_backtrace_append("unsetenv");
-  buf_flush();
-  pthread_mutex_unlock(&log_mutex);
-  return unsetenv_real(name);
-}
 GETENV_EOF
 
 # Linux only (release BYOD images are Linux)
