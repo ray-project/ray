@@ -1,10 +1,12 @@
 from collections.abc import Iterator as IteratorABC
 from functools import partial
+import logging
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import Aggregate
+from ray.data._internal.partition_aware import is_partition_aware_groupby_possible
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     Block,
@@ -48,6 +50,124 @@ class GroupedData:
         return (
             f"{self.__class__.__name__}(dataset={self._dataset}, " f"key={self._key!r})"
         )
+
+    def _check_partition_awareness(self) -> Tuple[bool, Optional[str]]:
+        """Check if the dataset is already partitioned by the groupby columns.
+        
+        Returns:
+            Tuple of (can_skip_shuffle, reason_if_not)
+        """
+        if self._key is None:
+            return False, "Groupby key is None"
+        
+        # Convert key to list format
+        groupby_cols = self._key if isinstance(self._key, list) else [self._key]
+        
+        try:
+            # 1) First, try to detect partitioning from the logical Read source metadata
+            dag = self._dataset._logical_plan.dag
+            # Walk up until the SourceOperator
+            while not isinstance(dag, SourceOperator):
+                if not dag.input_dependencies:
+                    break
+                dag = dag.input_dependencies[0]
+
+            # If the source operator is a Read, we can use its cached metadata
+            # which does not trigger a full execution.
+            blocks_metadata = []
+            from ray.data._internal.logical.operators.read_operator import Read
+
+            if isinstance(dag, Read):
+                try:
+                    read_meta = dag.infer_metadata()
+                    input_files = read_meta.input_files or []
+
+                    # If there are input files, attempt a per-file partition check (conservative).
+                    if input_files:
+                        # Conservative safety: ensure the datasource will not split files
+                        # into multiple read tasks. We require datasource.get_read_tasks()
+                        # to return one read task per input file. If this is true, then
+                        # each file maps to a single read task (and typically a single
+                        # block), and the per-file uniqueness check is safe.
+                        can_use_per_file_heuristic = False
+                        try:
+                            datasource = getattr(dag, "datasource", None)
+                            if datasource is not None and hasattr(datasource, "get_read_tasks"):
+                                # Request read tasks; pass len(input_files) as a hint.
+                                read_tasks = datasource.get_read_tasks(len(input_files))
+                                if read_tasks and len(read_tasks) == len(input_files):
+                                    # Verify each read_task.metadata corresponds to a single input file
+                                    mapping_ok = True
+                                    per_file_partitions = []
+                                    from ray.data._internal.partition_aware import (
+                                        extract_partition_values_from_paths,
+                                    )
+                                    for rt in read_tasks:
+                                        meta = getattr(rt, "metadata", None)
+                                        if meta is None or not getattr(meta, "input_files", None):
+                                            mapping_ok = False
+                                            break
+                                        # Require each read task to reference exactly one input file
+                                        if len(meta.input_files) != 1:
+                                            mapping_ok = False
+                                            break
+                                        f = meta.input_files[0]
+                                        partitions = extract_partition_values_from_paths([f], groupby_cols)
+                                        if partitions is None:
+                                            mapping_ok = False
+                                            break
+                                        per_file_partitions.append(tuple(sorted(partitions.items())))
+                                    if mapping_ok and per_file_partitions:
+                                        if len(set(per_file_partitions)) == len(per_file_partitions):
+                                            can_use_per_file_heuristic = True
+                        except Exception:
+                            # Any failure in datasource introspection disables the heuristic.
+                            can_use_per_file_heuristic = False
+
+                        if can_use_per_file_heuristic:
+                            logger = logging.getLogger(__name__)
+                            logger.info(
+                                "Skipping shuffle for groupby on %s based on Read metadata (one read task per file).",
+                                self._key,
+                            )
+                            return True, None
+                        # Otherwise, conservative fallback to shuffle
+                except Exception:
+                    # If read metadata introspection fails, proceed to bundle-based check below
+                    pass
+
+            # 2) Fall back to bundle-based check (may execute the plan). Log a warning about potential cost.
+            logger = logging.getLogger(__name__)
+            logger.debug(
+                "Falling back to consuming RefBundles for partition-awareness check; this may execute the plan."
+            )
+
+            blocks_metadata = []
+            for bundle in self._dataset.iter_internal_ref_bundles():
+                # Each RefBundle contains metadata (list[BlockMetadata]) and/or bundle.blocks.
+                if getattr(bundle, "metadata", None):
+                    # bundle.metadata is a list[BlockMetadata]
+                    blocks_metadata.extend(bundle.metadata)
+                elif getattr(bundle, "blocks", None):
+                    for block_ref, block_metadata in bundle.blocks:
+                        blocks_metadata.append(block_metadata)
+
+            if not blocks_metadata:
+                return False, "No block metadata available"
+
+            # Check if dataset is already partition-aware using block-level metadata
+            can_skip, reason = is_partition_aware_groupby_possible(
+                blocks_metadata, groupby_cols
+            )
+
+            return can_skip, reason
+        except Exception as e:
+            # If anything goes wrong, fall back to regular shuffle
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "Partition awareness check failed, falling back to shuffle: %s", e, exc_info=True
+            )
+            return False, f"Partition awareness check failed: {str(e)}"
 
     @PublicAPI(api_group=FA_API_GROUP)
     def aggregate(self, *aggs: AggregateFn) -> Dataset:
@@ -223,20 +343,35 @@ class GroupedData:
         #   - In case when hash-shuffle strategy is employed -- perform `repartition_and_sort`
         #   - Otherwise we perform "global" sort of the dataset (to co-locate rows with the
         #     same key values)
+        #
+        #   - NEW: Check for partition awareness to potentially skip shuffle
         if self._key is None:
             shuffled_ds = self._dataset.repartition(1)
         elif self._dataset.context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
-            num_partitions = (
-                self._num_partitions
-                or self._dataset.context.default_hash_shuffle_parallelism
-            )
-            shuffled_ds = self._dataset.repartition(
-                num_partitions,
-                keys=self._key,
-                # Blocks must be sorted after repartitioning, such that group
-                # of rows sharing the same key values are co-located
-                sort=True,
-            )
+            # Check if we can skip shuffle due to existing partitioning
+            can_skip_shuffle, reason = self._check_partition_awareness()
+            
+            if can_skip_shuffle:
+                # Dataset is already partitioned correctly, skip the shuffle
+                logger = logging.getLogger(__name__)
+                logger.info(
+                    f"Skipping shuffle for groupby on {self._key} - "
+                    f"data is already partition-aware"
+                )
+                shuffled_ds = self._dataset
+            else:
+                # Fall back to regular shuffle
+                num_partitions = (
+                    self._num_partitions
+                    or self._dataset.context.default_hash_shuffle_parallelism
+                )
+                shuffled_ds = self._dataset.repartition(
+                    num_partitions,
+                    keys=self._key,
+                    # Blocks must be sorted after repartitioning, such that group
+                    # of rows sharing the same key values are co-located
+                    sort=True,
+                )
         else:
             shuffled_ds = self._dataset.sort(self._key)
 
