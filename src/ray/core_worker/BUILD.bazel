@@ -171,6 +171,7 @@ ray_cc_library(
         "//src/ray/util:network_util",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
+        "@nlohmann_json",
     ],
 )
 

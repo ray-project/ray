@@ -16,6 +16,7 @@
 
 #include <list>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -182,6 +183,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   std::string DebugString() const override ABSL_LOCKS_EXCLUDED(mutex_);
 
+  std::string ToJsonString() const override ABSL_LOCKS_EXCLUDED(mutex_);
+
   void PopAndClearLocalBorrowers(const std::vector<ObjectID> &borrowed_ids,
                                  ReferenceTableProto *proto,
                                  std::vector<ObjectID> *deleted) override
@@ -279,6 +282,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     ///  2. We call ray.get() on an ID whose contents we do not know and we
     ///     discover that it contains these IDs.
     absl::flat_hash_set<ObjectID> contains;
+
+    nlohmann::json ToJson() const;
   };
 
   /// Contains information related to borrowing only.
@@ -302,6 +307,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     ///     borrowers. A borrower is removed from the list when it responds
     ///     that it is no longer using the reference.
     absl::flat_hash_set<rpc::Address> borrowers;
+
+    nlohmann::json ToJson() const;
   };
 
   struct Reference {
@@ -422,6 +429,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     }
 
     std::string DebugString() const;
+    nlohmann::json ToJson() const;
 
     /// Description of the call site where the reference was created.
     std::string call_site_ = "<unknown>";

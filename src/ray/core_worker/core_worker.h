@@ -398,6 +398,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// (local, submitted_task) reference counts. For debugging purposes.
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
 
+  /// Returns a JSON string representation of the internal state of the
+  /// ReferenceCounter.
+  /// NOTE: This is very expensive and must only be used for debugging.
+  /// Please do NOT use this for production observability or testing.
+  std::string GetReferenceCounterDebugJson() const;
+
   /// Return all pending children task ids for a given parent task id.
   /// The parent task id should exist in the current worker.
   /// For debugging and testing only.
