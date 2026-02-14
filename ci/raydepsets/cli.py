@@ -197,6 +197,15 @@ class DependencySetManager:
                 )
                 for depset_name in depset.depsets:
                     self.build_graph.add_edge(depset_name, depset.name)
+            elif depset.operation == "relax":
+                self.build_graph.add_node(
+                    depset.name,
+                    operation="relax",
+                    depset=depset,
+                    node_type="depset",
+                    config_name=depset.config_name,
+                )
+                self.build_graph.add_edge(depset.source_depset, depset.name)
             else:
                 raise ValueError(
                     f"Invalid operation: {depset.operation} for depset {depset.name} in config {depset.config_name}"
@@ -318,6 +327,13 @@ class DependencySetManager:
                 output=depset.output,
                 include_setuptools=depset.include_setuptools,
             )
+        elif depset.operation == "relax":
+            self.relax(
+                source_depset=depset.source_depset,
+                packages=depset.packages,
+                name=depset.name,
+                output=depset.output,
+            )
         click.echo(f"Dependency set {depset.name} compiled successfully")
 
     def compile(
@@ -407,6 +423,37 @@ class DependencySetManager:
             append_flags=append_flags,
             override_flags=override_flags,
             include_setuptools=include_setuptools,
+        )
+
+    def relax(
+        self,
+        source_depset: str,
+        packages: List[str],
+        name: str,
+        output: str = None,
+    ):
+        """Relax a dependency set by removing specified packages from the lock file."""
+        source_depset = _get_depset(self.config.depsets, source_depset)
+
+        lock_file_path = self.get_path(source_depset.output)
+        requirements_file = parse_lock_file(str(lock_file_path))
+        requirements_list = [req.name for req in requirements_file.requirements]
+        for package in packages:
+            if package not in requirements_list:
+                raise RuntimeError(
+                    f"Package {package} not found in lock file {source_depset.output}"
+                )
+
+        # Remove specified packages from requirements
+        requirements_file.requirements = [
+            req for req in requirements_file.requirements if req.name not in packages
+        ]
+
+        # Write the modified lock file
+        output_path = self.get_path(output) if output else lock_file_path
+        write_lock_file(requirements_file, str(output_path))
+        click.echo(
+            f"Relaxed {source_depset.name} by removing packages {packages} and wrote to {output_path}"
         )
 
     def read_lock_file(self, file_path: Path) -> List[str]:

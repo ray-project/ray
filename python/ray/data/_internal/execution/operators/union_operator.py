@@ -132,14 +132,6 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
     def get_stats(self) -> StatsDict:
         return self._stats
 
-    def throttling_disabled(self) -> bool:
-        """Disables resource-based throttling.
-
-        Union operator only manipulates bundle metadata and doesn't launch
-        any tasks, so it doesn't need resource allocation.
-        """
-        return True
-
     def _try_round_robin(self) -> None:
         """Try to move blocks from input buffers to output in round-robin order.
 
