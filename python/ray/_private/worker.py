@@ -1941,7 +1941,7 @@ def init(
                 spawn_reaper=False,
                 connect_only=True,
             )
-        except (ConnectionError, RuntimeError):
+        except (ConnectionError, RuntimeError) as e:
             if gcs_address == ray._private.utils.read_ray_address(_temp_dir):
                 logger.info(
                     "Failed to connect to the default Ray cluster address at "
@@ -1950,7 +1950,9 @@ def init(
                     "address to connect to, run `ray stop` or restart Ray with "
                     "`ray start`."
                 )
-            raise ConnectionError
+            raise ConnectionError(
+                f"Failed to connect to Ray cluster at {gcs_address}"
+            ) from e
 
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
@@ -2980,11 +2982,11 @@ def get(
 @PublicAPI
 @client_mode_hook
 def put(
-    value: Any,
+    value: R,
     *,
     _owner: Optional["ray.actor.ActorHandle"] = None,
     _tensor_transport: Optional[str] = None,
-) -> "ray.ObjectRef":
+) -> "ray.ObjectRef[R]":
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
