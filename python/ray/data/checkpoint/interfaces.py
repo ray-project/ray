@@ -22,7 +22,7 @@ class CheckpointBackend(Enum):
 
     Currently, only one type of backend is supported:
 
-    * Batch-based backends: CLOUD_OBJECT_STORAGE and FILE_STORAGE.
+    * Batch-based backends: CLOUD_OBJECT_STORAGE, FILE_STORAGE and ICEBERG.
 
     Their differences are as follows:
 
@@ -44,6 +44,11 @@ class CheckpointBackend(Enum):
     Batch based checkpoint backend that uses file system storage.
     Note, when using this backend, the checkpoint path must be a network-mounted
     file system (e.g. `/mnt/cluster_storage/`).
+    """
+
+    ICEBERG = "ICEBERG"
+    """
+    Iceberg based checkpoint backend.
     """
 
 
@@ -119,6 +124,7 @@ class CheckpointConfig:
             reservation. Typically customized together with
             ``checkpoint_filter_cls``. Defaults to
             :class:`~ray.data.checkpoint.IdColumnCheckpointManager`.
+        catalog_kwargs: Kwargs for catalog when using ICEBERG backend.
     """
 
     DEFAULT_CHECKPOINT_PATH_BUCKET_ENV_VAR = "RAY_DATA_CHECKPOINT_PATH_BUCKET"
@@ -140,6 +146,7 @@ class CheckpointConfig:
         checkpoint_path_partition_filter: Optional["PathPartitionFilter"] = None,
         checkpoint_filter_cls: Optional[Type["CheckpointFilter"]] = None,
         checkpoint_manager_cls: Optional[Type["CheckpointManager"]] = None,
+        catalog_kwargs: Optional[dict] = None,
     ):
         self.generated_id_column: Optional[str] = generated_id_column
 
@@ -197,12 +204,13 @@ class CheckpointConfig:
         self.checkpoint_path: str = (
             checkpoint_path or self._get_default_checkpoint_path()
         )
+        self.catalog_kwargs = catalog_kwargs or {}
         inferred_backend, inferred_fs = self._infer_backend_and_fs(
             self.checkpoint_path,
             override_filesystem,
             override_backend,
         )
-        self.filesystem: "pyarrow.fs.FileSystem" = inferred_fs
+        self.filesystem: Optional["pyarrow.fs.FileSystem"] = inferred_fs
         self.backend: CheckpointBackend = inferred_backend
         self.delete_checkpoint_on_success: bool = delete_checkpoint_on_success
         self.write_num_threads: int = write_num_threads
@@ -227,8 +235,11 @@ class CheckpointConfig:
         checkpoint_path: str,
         override_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         override_backend: Optional[CheckpointBackend] = None,
-    ) -> Tuple[CheckpointBackend, "pyarrow.fs.FileSystem"]:
+    ) -> Tuple[CheckpointBackend, Optional["pyarrow.fs.FileSystem"]]:
         try:
+            if override_backend == CheckpointBackend.ICEBERG:
+                return CheckpointBackend.ICEBERG, None
+
             if override_filesystem is not None:
                 assert isinstance(override_filesystem, pyarrow.fs.FileSystem), (
                     "override_filesystem must be an instance of "

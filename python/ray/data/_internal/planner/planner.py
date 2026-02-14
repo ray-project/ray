@@ -283,13 +283,12 @@ class Planner:
     ) -> Tuple[PhysicalPlan, List["ExecutionCallback"]]:
         """Convert logical to physical operators recursively in post-order."""
         checkpoint_config = logical_plan.context.checkpoint_config
+        supports_ckpt = self._check_supports_checkpointing(logical_plan)
 
         callbacks = [cls() for cls in logical_plan.context.execution_callback_classes]
         callbacks.append(create_usage_callback(logical_plan))
 
-        if checkpoint_config is not None and self._check_supports_checkpointing(
-            logical_plan
-        ):
+        if checkpoint_config is not None and supports_ckpt:
             self._supports_checkpointing = True
             data_file_dir, data_file_fs = self._get_data_file_info(logical_plan)
 
@@ -318,7 +317,7 @@ class Planner:
             )
 
         elif checkpoint_config is not None:
-            assert not self._check_supports_checkpointing(logical_plan)
+            assert not supports_ckpt
             warnings.warn(
                 "You've enabled checkpointing, but the logical plan doesn't support "
                 "checkpointing. Checkpointing will be disabled."

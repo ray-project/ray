@@ -8,6 +8,7 @@ from abc import abstractmethod
 from typing import List, Optional, Tuple
 
 import numpy as np
+import pandas as pd
 import pyarrow
 from pyarrow.fs import FileSelector, FileType
 
@@ -16,7 +17,7 @@ from ray._common.retry import call_with_retry
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import Block, BlockMetadata, Schema
-from ray.data.checkpoint import CheckpointConfig
+from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
 from ray.data.checkpoint.checkpoint_writer import PENDING_CHECKPOINT_SUFFIX
 from ray.data.checkpoint.util import build_pending_checkpoint_trie
 from ray.data.context import DataContext
@@ -197,6 +198,7 @@ class CheckpointManager(abc.ABC):
                 label_selector and other execution options stay consistent
                 with the rest of materialize.
         """
+        self.ckpt_config = checkpoint_config
         self.checkpoint_path = checkpoint_config.checkpoint_path
         self.filesystem = checkpoint_config.filesystem
         self.id_column = checkpoint_config.id_column
@@ -237,35 +239,47 @@ class CheckpointManager(abc.ABC):
 
         start_t = time.time()
 
-        # Clean up pending checkpoints before loading (runs as a Ray task)
-        if data_file_dir is not None:
-            self._clean_pending_checkpoints(data_file_dir, data_file_filesystem)
+        if self.ckpt_config.backend == CheckpointBackend.ICEBERG:
+            # Read checkpoint via PyIceberg directly to avoid catalog-parallelism edge cases.
+            from pyiceberg.catalog import load_catalog
 
-        # If the checkpoint directory has no remaining data files (e.g., all
-        # entries were pending checkpoints that were just cleaned up), skip
-        # the inner ``read_parquet``. V2's ``read_parquet`` raises on empty
-        # directories while V1 returned a zero-row dataset; this pre-check
-        # keeps ``load_checkpoint`` behaving the same under both.
-        # Recurse when a partition filter is configured because committed
-        # files live under Hive-partitioned subdirectories rather than at
-        # the top level.
-        entries = self.filesystem.get_file_info(
-            FileSelector(
-                self.checkpoint_path_unwrapped,
-                recursive=self.checkpoint_path_partition_filter is not None,
-                allow_not_found=True,
+            catalog_kwargs = self.ckpt_config.catalog_kwargs.copy()
+            catalog_name = catalog_kwargs.pop("name", "default")
+            catalog = load_catalog(catalog_name, **catalog_kwargs)
+            if not catalog.table_exists(self.checkpoint_path):
+                return None, 0
+            table = catalog.load_table(self.checkpoint_path)
+            arrow_tbl = table.scan().select(self.id_column).to_arrow()
+            checkpoint_ds = ray.data.from_arrow(arrow_tbl)
+        else:
+            # Clean up pending checkpoints before loading (runs as a Ray task)
+            if data_file_dir is not None:
+                self._clean_pending_checkpoints(data_file_dir, data_file_filesystem)
+
+            # If the checkpoint directory has no remaining data files (e.g., all
+            # entries were pending checkpoints that were just cleaned up), skip
+            # the inner ``read_parquet``. V2's ``read_parquet`` raises on empty
+            # directories while V1 returned a zero-row dataset; this pre-check
+            # keeps ``load_checkpoint`` behaving the same under both.
+            # Recurse when a partition filter is configured because committed
+            # files live under Hive-partitioned subdirectories rather than at
+            # the top level.
+            entries = self.filesystem.get_file_info(
+                FileSelector(
+                    self.checkpoint_path_unwrapped,
+                    recursive=self.checkpoint_path_partition_filter is not None,
+                    allow_not_found=True,
+                )
             )
-        )
-        if not any(f.type == FileType.File for f in entries):
-            return None, 0
+            if not any(f.type == FileType.File for f in entries):
+                return None, 0
 
-        # Load the checkpoint data
-        checkpoint_ds: ray.data.Dataset = ray.data.read_parquet(
-            self.checkpoint_path,
-            filesystem=self.filesystem,
-            partition_filter=self.checkpoint_path_partition_filter,
-        )
-        checkpoint_ds.set_name("checkpoint_dataset")
+            checkpoint_ds = ray.data.read_parquet(
+                self.checkpoint_path,
+                filesystem=self.filesystem,
+                partition_filter=self.checkpoint_path_partition_filter,
+            )
+            checkpoint_ds.set_name("checkpoint_dataset")
 
         # Manually disable checkpointing for loading the checkpoint metadata
         # to avoid recursively restoring checkpoints.
@@ -445,6 +459,10 @@ class NumpyArrayBasedCheckpointFilter(CheckpointFilter):
         if self.checkpointed_ids.shape[0] == 0 or len(block) == 0:
             return block
 
+        is_pandas_block = isinstance(block, pd.DataFrame)
+        if is_pandas_block:
+            block = pyarrow.Table.from_pandas(block)
+
         assert isinstance(block, pyarrow.Table)
 
         # The checkpointed_ids block is sorted (see load_checkpoint).
@@ -470,4 +488,8 @@ class NumpyArrayBasedCheckpointFilter(CheckpointFilter):
         # Convert the final mask to a PyArrow array and filter the block.
         mask_array = pyarrow.array(mask)
         filtered_block = block.filter(mask_array)
+
+        if is_pandas_block:
+            return filtered_block.to_pandas()
+
         return filtered_block

@@ -14,7 +14,8 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.logical.operators import Read
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.planner.plan_read_op import plan_read_op
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
+from ray.data.checkpoint import CheckpointBackend
 from ray.data.checkpoint.checkpoint_filter import (
     IdColumnCheckpointManager,
     NumpyArrayBasedCheckpointFilter,
@@ -53,11 +54,12 @@ def create_checkpoint_filter_op(
     # Return the input op directly if:
     # 1. the checkpoint directory does not exist.
     # 2. no valid files under checkpoint_path (for example, it is an empty directory).
-    info = checkpoint_config.filesystem.get_file_info(
-        _unwrap_protocol(checkpoint_config.checkpoint_path)
-    )
-    if info.type == fs.FileType.NotFound:
-        return physical_input_op
+    if checkpoint_config.backend != CheckpointBackend.ICEBERG:
+        info = checkpoint_config.filesystem.get_file_info(
+            _unwrap_protocol(checkpoint_config.checkpoint_path)
+        )
+        if info.type == fs.FileType.NotFound:
+            return physical_input_op
 
     manager_cls = checkpoint_config.checkpoint_manager_cls or IdColumnCheckpointManager
     checkpoint_manager = manager_cls(
@@ -139,7 +141,7 @@ class _CheckpointFilterFn:
         assert self._filter is not None, "checkpoint filter was not initialized!"
         for block in blocks:
             filtered_block = self._filter.filter_rows_for_block(block)
-            if filtered_block.num_rows > 0:
+            if BlockAccessor.for_block(filtered_block).num_rows() > 0:
                 yield filtered_block
 
 

@@ -4,7 +4,7 @@ from ray.data._internal.execution.execution_callback import (
     ExecutionCallback,
 )
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
-from ray.data.checkpoint import CheckpointConfig
+from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
 from ray.data.datasource.path_util import _unwrap_protocol
 
 logger = logging.getLogger(__name__)
@@ -29,9 +29,16 @@ class LoadCheckpointCallback(ExecutionCallback):
         assert self._config is executor._data_context.checkpoint_config
 
     def _delete_checkpoint(self):
-        checkpoint_path_unwrapped = _unwrap_protocol(self._config.checkpoint_path)
-        filesystem = self._config.filesystem
-        filesystem.delete_dir(checkpoint_path_unwrapped)
+        if self._config.backend == CheckpointBackend.ICEBERG:
+            from pyiceberg.catalog import load_catalog
+
+            catalog_kwargs = self._config.catalog_kwargs.copy()
+            catalog_name = catalog_kwargs.pop("name", "default")
+            catalog = load_catalog(catalog_name, **catalog_kwargs)
+            catalog.drop_table(self._config.checkpoint_path)
+        else:
+            checkpoint_path_unwrapped = _unwrap_protocol(self._config.checkpoint_path)
+            self._config.filesystem.delete_dir(checkpoint_path_unwrapped)
 
     def after_execution_succeeds(self, executor: StreamingExecutor):
         assert self._config is executor._data_context.checkpoint_config
