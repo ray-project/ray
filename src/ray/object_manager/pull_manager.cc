@@ -30,6 +30,7 @@ PullManager::PullManager(
     std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
     std::function<void(const ObjectID &)> cancel_pull_request,
     std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
+    std::function<void(const ObjectID &)> refresh_object_subscription,
     RestoreSpilledObjectCallback restore_spilled_object,
     std::function<double()> get_time_seconds,
     int pull_timeout_ms,
@@ -40,6 +41,7 @@ PullManager::PullManager(
       object_is_local_(std::move(object_is_local)),
       send_pull_request_(std::move(send_pull_request)),
       cancel_pull_request_(std::move(cancel_pull_request)),
+      refresh_object_subscription_(std::move(refresh_object_subscription)),
       restore_spilled_object_(std::move(restore_spilled_object)),
       get_time_seconds_(std::move(get_time_seconds)),
       pull_timeout_ms_(pull_timeout_ms),
@@ -576,10 +578,55 @@ void PullManager::UpdateRetryTimer(ObjectPullRequest &request,
 }
 
 void PullManager::Tick() {
-  absl::MutexLock lock(&active_objects_mu_);
-  for (auto &pair : active_object_pull_requests_) {
-    const auto &object_id = pair.first;
-    TryToMakeObjectLocal(object_id);
+  std::vector<ObjectID> objects_to_refresh;
+  std::vector<ObjectID> objects_to_fail;
+  {
+    absl::MutexLock lock(&active_objects_mu_);
+    for (auto &pair : active_object_pull_requests_) {
+      const auto &object_id = pair.first;
+      TryToMakeObjectLocal(object_id);
+    }
+
+    // Refresh subscriptions for objects waiting too long for location info.
+    // This handles cases where the initial subscription was lost, raced,
+    // or the owner is partially hung.
+    double current_time_seconds = get_time_seconds_();
+    double timeout_seconds =
+        RayConfig::instance().fetch_fail_timeout_milliseconds() / 1e3;
+    constexpr uint8_t kMaxSubscriptionRefreshes = 3;
+    for (auto &pair : object_pull_requests_) {
+      const auto &object_id = pair.first;
+      auto &request = pair.second;
+      if (!request.object_size_set && !request.subscription_timed_out) {
+        double wait_time_seconds =
+            current_time_seconds - request.subscription_start_time_seconds;
+        if (wait_time_seconds > timeout_seconds) {
+          if (request.num_subscription_refreshes >= kMaxSubscriptionRefreshes) {
+            RAY_LOG(WARNING) << "Object " << object_id
+                             << " timed out waiting for location info after "
+                             << request.num_subscription_refreshes
+                             << " subscription refreshes";
+            request.subscription_timed_out = true;
+            objects_to_fail.push_back(object_id);
+          } else {
+            RAY_LOG(DEBUG) << "Object " << object_id << " waited " << wait_time_seconds
+                           << "s for location info, refreshing subscription (attempt "
+                           << static_cast<int>(request.num_subscription_refreshes + 1)
+                           << "/" << static_cast<int>(kMaxSubscriptionRefreshes) << ")";
+            objects_to_refresh.push_back(object_id);
+            request.num_subscription_refreshes++;
+            num_subscription_refreshes_total_++;
+            request.subscription_start_time_seconds = current_time_seconds;
+          }
+        }
+      }
+    }
+  }
+  for (const auto &object_id : objects_to_refresh) {
+    refresh_object_subscription_(object_id);
+  }
+  for (const auto &object_id : objects_to_fail) {
+    fail_pull_request_(object_id, rpc::ErrorType::OBJECT_FETCH_TIMED_OUT);
   }
 }
 
@@ -749,6 +796,8 @@ void PullManager::RecordMetrics() const {
                                              {{"Type", "Success"}});
   pull_manager_num_object_pins_gauge_.Record(num_failed_pins_total_,
                                              {{"Type", "Failure"}});
+  pull_manager_subscription_refreshes_total_gauge_.Record(
+      num_subscription_refreshes_total_);
 }
 
 std::string PullManager::DebugString() const {
