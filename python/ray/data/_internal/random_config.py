@@ -79,7 +79,7 @@ class RandomSeedConfig:
         cls,
         seed: int | RandomSeedConfig | None,
     ) -> RandomSeedConfig:
-        """Create a ``RandomSeedConfig`` object from the ``seed` argument in Ray Data public random APIs.
+        """Create a ``RandomSeedConfig`` object from the ``seed`` argument in Ray Data public random APIs.
 
         This is a helper function that converts an integer seed into a ``RandomSeedConfig`` object. In this case,
         ``reseed_after_execution`` is set to False, which matches the standard behavior for a data pipeline
