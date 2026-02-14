@@ -151,7 +151,6 @@ class TestAsyncProgressManagerWrapperBehavior:
         wrapper.update_total_resource_status({"cpu": 4})
         wrapper.update_operator_progress(0, "Map", 5, 10)
 
-        # Close might timeout but shouldn't hang
         wrapper.close_with_finishing_description("Complete", True)
 
     @pytest.mark.timeout(10)
@@ -162,7 +161,6 @@ class TestAsyncProgressManagerWrapperBehavior:
 
         wrapper.start()
 
-        # Submit 100 rapid updates
         for i in range(100):
             wrapper.update_total_progress(i, 100)
 
