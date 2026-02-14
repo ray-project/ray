@@ -47,7 +47,6 @@ class TensorDesc:
     reg_desc: Any  # nixlRegDList
     metadata_count: int  # tracks the number of NIXL metadata containing the tensor
     nbytes: int  # the number of bytes in the tensor
-    cache_metadata: bool = False  # whether the registered memory is cached for reuse
 
 
 class NixlTensorTransport(TensorTransportManager):
@@ -64,14 +63,12 @@ class NixlTensorTransport(TensorTransportManager):
         self._managed_meta_nixl: Dict[str, Any] = {}
         # Lock protecting _tensor_desc_cache and _managed_meta_nixl since they can be
         # accessed from the main task execution thread or the _ray_system thread.
-        self._cache_lock = threading.Lock()
+        self._cache_lock = threading.RLock()
         # LRU cache of remote agent names. When full, the least
         # recently used remote agent is evicted and remove_remote_agent is called.
         self._remote_agents: OrderedDict = OrderedDict()
         # Increment the version whenever memory is deregistered.
         self._nixl_agent_meta_version = 0
-        # Set of data_ptrs to tensors whose memory registrations are cached and not deregistered when the ref goes out of scope.
-        self._cached_memory_registrations: set = set()
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
@@ -84,14 +81,19 @@ class NixlTensorTransport(TensorTransportManager):
     def can_abort_transport() -> bool:
         return True
 
-    def cache_memory_registration(self, tensor: "torch.Tensor") -> None:
-        """Cache a tensor's memory registration with NIXL for efficient reuse."""
+    def register_nixl_memory(self, tensor: "torch.Tensor") -> None:
+        """Registers the tensor's memory with NIXL and bumps the reference count so the memory region is never deregistered"""
         key = tensor.data_ptr()
         with self._cache_lock:
-            self._cached_memory_registrations.add(key)
-            # If the tensor is already registered, mark that it shouldn't be deregistered
             if key in self._tensor_desc_cache:
-                self._tensor_desc_cache[key].cache_metadata = True
+                self._tensor_desc_cache[key].metadata_count += 1
+            else:
+                reg_desc = self.get_nixl_agent().register_memory([tensor])
+                self._tensor_desc_cache[key] = TensorDesc(
+                    reg_desc=reg_desc,
+                    metadata_count=1,
+                    nbytes=tensor.nbytes,
+                )
 
     def get_nixl_agent(self):
         """
@@ -313,16 +315,16 @@ class NixlTensorTransport(TensorTransportManager):
             if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and remote_name:
                 nixl_agent.remove_remote_agent(remote_name)
             if local_xfer_descs:
-                for tensor in tensors:
-                    key = tensor.data_ptr()
-                    if key in self._cached_memory_registrations:
-                        continue
-                    with self._cache_lock:
-                        nixl_agent.deregister_memory(
-                            self._tensor_desc_cache[key].reg_desc
-                        )
-                        self._tensor_desc_cache.pop(key)
-                        self._nixl_agent_meta_version += 1
+                with self._cache_lock:
+                    for tensor in tensors:
+                        key = tensor.data_ptr()
+                        tensor_desc = self._tensor_desc_cache[key]
+                        tensor_desc.metadata_count -= 1
+
+                        if tensor_desc.metadata_count == 0:
+                            nixl_agent.deregister_memory(tensor_desc.reg_desc)
+                            self._tensor_desc_cache.pop(key)
+                            self._nixl_agent_meta_version += 1
 
         return tensors
 
@@ -354,13 +356,11 @@ class NixlTensorTransport(TensorTransportManager):
                     tensor_desc = self._tensor_desc_cache[key]
                     tensor_desc.metadata_count -= 1
                     if tensor_desc.metadata_count == 0:
-                        # If cache_metadata is True, we never deregister the pinned memory and keep it for reuse.
-                        if not tensor_desc.cache_metadata:
-                            self._tensor_desc_cache.pop(key)
-                            self.get_nixl_agent().deregister_memory(
-                                tensor_desc.reg_desc,
-                            )
-                            self._nixl_agent_meta_version += 1
+                        self._tensor_desc_cache.pop(key)
+                        self.get_nixl_agent().deregister_memory(
+                            tensor_desc.reg_desc,
+                        )
+                        self._nixl_agent_meta_version += 1
 
     def abort_transport(
         self,
@@ -370,7 +370,6 @@ class NixlTensorTransport(TensorTransportManager):
         with self._aborted_transfer_obj_ids_lock:
             self._aborted_transfer_obj_ids.add(obj_id)
 
-    # NOTE: The below methods are intended to be used internally hence they assume the caller is already holding the cache lock.
     def _record_and_get_meta_if_duplicate(
         self,
         src_obj_id: str,
@@ -404,36 +403,35 @@ class NixlTensorTransport(TensorTransportManager):
         """
         Get the NIXL transport metadata for the given object ID if it exists
         """
-        if object_id in self._managed_meta_nixl:
-            return self._managed_meta_nixl[object_id]
-        return None
+        with self._cache_lock:
+            if object_id in self._managed_meta_nixl:
+                return self._managed_meta_nixl[object_id]
+            return None
 
     def _put_meta(self, object_id: str, meta: NixlTransportMetadata):
         """
         Store the NIXL transport metadata for the given object ID
         """
-        self._managed_meta_nixl[object_id] = meta
+        with self._cache_lock:
+            self._managed_meta_nixl[object_id] = meta
 
     def _add_tensor_descs(self, tensors: List["torch.Tensor"]):
         """
         If this is the first time the tensor is being added, we register the memory with NIXL.
         Otherwise, we increment the reference count.
         """
-        for tensor in tensors:
-            key = tensor.data_ptr()
-            if key in self._tensor_desc_cache:
-                tensor_desc = self._tensor_desc_cache[key]
-                if tensor.nbytes != tensor_desc.nbytes:
-                    raise ValueError(
-                        "Tensors in an RDT object cannot partially overlap with each other."
+        with self._cache_lock:
+            for tensor in tensors:
+                key = tensor.data_ptr()
+                if key in self._tensor_desc_cache:
+                    tensor_desc = self._tensor_desc_cache[key]
+                    if tensor.nbytes != tensor_desc.nbytes:
+                        raise ValueError(
+                            "Tensors in an RDT object cannot partially overlap with each other."
+                        )
+                    tensor_desc.metadata_count += 1
+                else:
+                    reg_desc = self.get_nixl_agent().register_memory([tensor])
+                    self._tensor_desc_cache[key] = TensorDesc(
+                        reg_desc, 1, tensor.nbytes
                     )
-                tensor_desc.metadata_count += 1
-            else:
-                reg_desc = self.get_nixl_agent().register_memory([tensor])
-                self._tensor_desc_cache[key] = TensorDesc(
-                    reg_desc=reg_desc,
-                    metadata_count=1,
-                    nbytes=tensor.nbytes,
-                    cache_metadata=tensor.data_ptr()
-                    in self._cached_memory_registrations,
-                )

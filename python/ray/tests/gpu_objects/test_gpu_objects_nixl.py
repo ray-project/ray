@@ -377,36 +377,44 @@ def test_nixl_agent_reuse_with_partial_tensors(ray_start_regular):
     del ref2, ref3
 
 
-@ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
-class CacheMemoryRegistrationActor:
-    def test_cache_memory_registration(self):
-        from ray.experimental.gpu_object_manager.util import (
-            cache_memory_registration,
-        )
-
-        gpu_manager = ray._private.worker.global_worker.gpu_object_manager
-
-        tensor = torch.tensor([1, 2, 3]).to("cuda")
-        cache_memory_registration(tensor)
-        ref = ray.put(tensor, _tensor_transport="nixl")
-        del ref
-
-        gpu_manager.gpu_object_store.wait_tensor_freed(tensor, timeout=10)
-
-        ref2 = ray.put(tensor, _tensor_transport="nixl")
-        result = ray.get(ref2)
-        assert torch.equal(result, tensor)
-
-        return "Success"
-
-
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
-def test_cache_memory_registration(ray_start_regular):
-    """Test cache_memory_registration keeps NIXL memory registrations after object ref goes out of scope."""
+def test_register_nixl_memory(ray_start_regular):
+    """
+    Test that register_nixl_memory persists the NIXL memory registration when the object ref goes out of scope
+    """
+    from unittest.mock import MagicMock, patch
 
-    actor = CacheMemoryRegistrationActor.remote()
-    result = ray.get(actor.test_cache_memory_registration.remote())
-    assert result == "Success"
+    from ray.experimental.gpu_object_manager.gpu_object_store import GPUObjectStore
+    from ray.experimental.gpu_object_manager.nixl_tensor_transport import (
+        NixlTensorTransport,
+    )
+
+    transport = NixlTensorTransport()
+    gpu_object_store = GPUObjectStore()
+    tensor = torch.tensor([1, 2, 3]).to("cuda")
+
+    mock_worker = MagicMock()
+    mock_worker.gpu_object_manager.gpu_object_store = gpu_object_store
+
+    transport.register_nixl_memory(tensor)
+    key = tensor.data_ptr()
+    assert key in transport._tensor_desc_cache
+    assert transport._tensor_desc_cache[key].metadata_count == 1
+
+    # Simulate ray.put via extract_tensor_transport_metadata and bump the reference count
+    obj_id = "test_obj_id"
+    gpu_object_store.add_object(obj_id, [tensor], is_primary=True)
+    with patch("ray._private.worker.global_worker", mock_worker):
+        meta = transport.extract_tensor_transport_metadata(obj_id, [tensor])
+    assert transport._tensor_desc_cache[key].metadata_count == 2
+
+    # Simulate GC via garbage_collect and decrement the reference count
+    with patch("ray._private.worker.global_worker", mock_worker):
+        transport.garbage_collect(obj_id, meta)
+    gpu_object_store.pop_object(obj_id)
+    assert key in transport._tensor_desc_cache
+    # The reference count should be 1 due to being bumped by register_nixl_memory
+    assert transport._tensor_desc_cache[key].metadata_count == 1
 
 
 if __name__ == "__main__":
