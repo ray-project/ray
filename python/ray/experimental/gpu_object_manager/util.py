@@ -176,6 +176,45 @@ def validate_one_sided(tensor_transport: str, ray_usage_func: str):
         )
 
 
+@PublicAPI(stability="alpha")
+def register_nixl_memory(tensor: "torch.Tensor") -> None:
+    """Registers the tensor's memory with NIXL and bumps the reference count so the memory region is never deregistered.
+
+    By default, the lifetime of the NIXL memory registration is tied to the object ref. This means that only when the object ref is created
+    do we register the memory with NIXL and deregister it when the object ref goes out of scope. However, this function can be used
+    to pre-register a tensor's memory with NIXL and keep it registered for the lifetime of the process which is especially useful
+    if the same tensor is re-used in multiple RDT objects.
+
+    If called on a tensor that is already registered with NIXL, the reference count is still bumped to prevent the memory from being deregistered.
+
+    Args:
+        tensor: A PyTorch tensor whose memory should be registered with NIXL.
+
+    Example:
+
+        .. code-block:: python
+
+            import torch
+            import ray
+            from ray.experimental import register_nixl_memory
+
+            @ray.remote(num_gpus=1, enable_tensor_transport=True)
+            class Trainer:
+                def __init__(self):
+                    self.weights = torch.randn(1000, 1000, device="cuda")
+                    # Pre-register the memory with NIXL for the lifetime of the process
+                    for weight in self.weights:
+                        register_nixl_memory(weight)
+
+                def get_weights(self):
+                    views = [self.weights[i] for i in range(10)]
+                    # Each put call does not trigger a new NIXL memory registration
+                    return ray.put(views, _tensor_transport="nixl")
+    """
+    nixl_transport = get_tensor_transport_manager("NIXL")
+    nixl_transport.register_nixl_memory(tensor)
+
+
 def create_empty_tensors_from_metadata(
     tensor_transport_meta: TensorTransportMetadata,
 ) -> List["torch.Tensor"]:
