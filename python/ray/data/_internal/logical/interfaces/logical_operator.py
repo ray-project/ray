@@ -19,7 +19,7 @@ class LogicalOperator(Operator):
 
     def __init__(
         self,
-        name: str,
+        name: Optional[str],
         input_dependencies: List["LogicalOperator"],
         num_outputs: Optional[int] = None,
     ):
@@ -31,6 +31,13 @@ class LogicalOperator(Operator):
             assert isinstance(x, LogicalOperator), x
 
         self.num_outputs: Optional[int] = num_outputs
+
+    @property
+    def name(self) -> str:
+        name = super().name
+        if name is None:
+            return self.__class__.__name__
+        return name
 
     def estimated_num_outputs(self) -> Optional[int]:
         """Returns the estimated number of blocks that
@@ -77,6 +84,23 @@ class LogicalOperator(Operator):
         # Preserve legacy export shape even though output deps are no longer tracked.
         args["_output_dependencies"] = []
         return args
+
+    @property
+    def dag_str(self) -> str:
+        """String representation of the whole DAG."""
+        if self.input_dependencies:
+            out_str = ", ".join([x.dag_str for x in self.input_dependencies])
+            out_str += " -> "
+        else:
+            out_str = ""
+        out_str += f"{self.__class__.__name__}[{self.name}]"
+        return out_str
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}[{self.name}]"
+
+    def __str__(self) -> str:
+        return repr(self)
 
     def infer_schema(self) -> Optional["Schema"]:
         """Returns the inferred schema of the output blocks."""

@@ -26,6 +26,12 @@ def test_sources_multiple_sources():
     assert LogicalPlan(sink, ctx).sources() == [source1, source2]
 
 
+def test_logical_operator_defaults_name_to_class_name():
+    op = LogicalOperator(None, [])
+    assert op.name == "LogicalOperator"
+    assert op.dag_str == "LogicalOperator[LogicalOperator]"
+
+
 if __name__ == "__main__":
     import sys
 
