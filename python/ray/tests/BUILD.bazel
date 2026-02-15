@@ -565,6 +565,8 @@ py_test_module_list(
         "test_tpu.py",
         "test_tqdm.py",
         "test_unhandled_error.py",
+        "test_util_collective_gloo.py",
+        "test_util_collective_nccl.py",
         "test_wait.py",
         "test_widgets.py",
         "test_worker_graceful_shutdown.py",
