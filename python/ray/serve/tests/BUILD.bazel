@@ -673,6 +673,7 @@ py_test_module_list(
     env = {
         "RAY_SERVE_ENABLE_HA_PROXY": "1",
         "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+        "RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S": "0.1",
     },
     files = [
         "test_haproxy.py",
