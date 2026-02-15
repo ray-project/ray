@@ -109,8 +109,11 @@ class TestAsyncProgressManagerWrapperBehavior:
         wrapper.start()
         wrapper.refresh()
         wrapper.update_total_progress(10, 100)
-        wrapper.update_total_resource_status({"cpu": 4})
-        wrapper.update_operator_progress(0, "Map", 5, 10)
+        wrapper.update_total_resource_status("cpu: 4")
+
+        mock_opstate = MagicMock()
+        mock_resource_manager = MagicMock()
+        wrapper.update_operator_progress(mock_opstate, mock_resource_manager)
 
         elapsed = time.time() - start_time
 
@@ -148,8 +151,11 @@ class TestAsyncProgressManagerWrapperBehavior:
         wrapper.start()
         wrapper.refresh()
         wrapper.update_total_progress(10, 100)
-        wrapper.update_total_resource_status({"cpu": 4})
-        wrapper.update_operator_progress(0, "Map", 5, 10)
+        wrapper.update_total_resource_status("cpu: 4")
+
+        mock_opstate = MagicMock()
+        mock_resource_manager = MagicMock()
+        wrapper.update_operator_progress(mock_opstate, mock_resource_manager)
 
         wrapper.close_with_finishing_description("Complete", True)
 
@@ -169,6 +175,70 @@ class TestAsyncProgressManagerWrapperBehavior:
         # Should not block or crash
         time.sleep(0.2)
         assert "update_total_progress" in fast_manager.operations_called
+
+    @pytest.mark.timeout(10)
+    def test_bounded_queue_prevents_memory_leak(self):
+        """Test that pending updates don't grow unbounded when I/O is blocked."""
+        blocking_manager = BlockingProgressManager()
+        wrapper = AsyncProgressManagerWrapper(blocking_manager, max_workers=1)
+
+        # Submit many rapid updates of DIFFERENT operations while worker is blocked
+        mock_opstate = MagicMock()
+        mock_resource_manager = MagicMock()
+        for i in range(200):
+            wrapper.start()
+            wrapper.refresh()
+            wrapper.update_total_progress(i, 200)
+            wrapper.update_total_resource_status(f"cpu: {i}")
+            wrapper.update_operator_progress(mock_opstate, mock_resource_manager)
+
+        with wrapper._lock:
+            num_pending = len(wrapper._pending_futures)
+
+        # Should have at most 5 pending futures (one per operation type)
+        # (6 types total, but close_with_finishing_description not called yet)
+        assert (
+            num_pending <= 6
+        ), f"Expected ≤6 pending futures (one per operation type), got {num_pending}"
+
+        wrapper.close_with_finishing_description("Test", True)
+
+    @pytest.mark.timeout(10)
+    def test_replaces_old_updates_with_new_ones(self):
+        """Test that old pending updates are replaced by newer ones."""
+        blocking_manager = BlockingProgressManager()
+        wrapper = AsyncProgressManagerWrapper(blocking_manager, max_workers=1)
+
+        # Submit first update
+        wrapper.update_total_progress(10, 100)
+        time.sleep(0.1)
+
+        # Get the first future
+        with wrapper._lock:
+            first_future = wrapper._pending_futures.get("update_total_progress")
+
+        assert first_future is not None
+
+        # Submit second update (should replace first)
+        wrapper.update_total_progress(20, 100)
+        time.sleep(0.1)
+
+        # Get the second future
+        with wrapper._lock:
+            second_future = wrapper._pending_futures.get("update_total_progress")
+
+        # Should be a different future
+        assert (
+            second_future is not first_future
+        ), "New update should replace old update, not queue behind it"
+
+        # First future should be cancelled (if it wasn't running yet)
+        # or completed (if it was already running)
+        assert (
+            first_future.cancelled() or first_future.done()
+        ), "Old update should be cancelled or completed when replaced"
+
+        wrapper.close_with_finishing_description("Test", True)
 
 
 class TestAsyncProgressManagerWrapperIntegration:
@@ -202,7 +272,7 @@ class TestAsyncProgressManagerWrapperIntegration:
     def test_wrap_rich_progress_manager(
         self, mock_isatty, mock_topology, restore_data_context
     ):
-        """Tests that Async wrapper wrap NoopExecutionProgressManager"""
+        """Tests that Async wrapper wraps RichExecutionProgressManager"""
         ctx = DataContext.get_current()
         ctx.use_ray_tqdm = False
         ctx.enable_progress_bars = True
@@ -217,7 +287,7 @@ class TestAsyncProgressManagerWrapperIntegration:
     def test_no_wrap_logging_progress_manager(
         self, mock_isatty, mock_topology, restore_data_context
     ):
-        """Tests that Async wrapper doen't wrap LoggingExecutionProgressManager"""
+        """Tests that Async wrapper doesn't wrap LoggingExecutionProgressManager"""
         ctx = DataContext.get_current()
         ctx.use_ray_tqdm = False
         ctx.enable_progress_bars = True
@@ -234,7 +304,7 @@ class TestAsyncProgressManagerWrapperIntegration:
     def test_no_wrap_noop_progress_manager(
         self, mock_isatty, mock_topology, restore_data_context
     ):
-        """Tests that Async wrapper ignored NoopExecutionProgressManager"""
+        """Tests that Async wrapper does not wrap NoopExecutionProgressManager"""
         ctx = DataContext.get_current()
         ctx.enable_progress_bars = False
         ctx.enable_async_progress_manager_wrapper = True

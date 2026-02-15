@@ -3,6 +3,7 @@ import logging
 import threading
 import time
 import typing
+import weakref
 from typing import Optional
 
 from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
@@ -14,11 +15,36 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _daemon_thread_factory(*args, **kwargs):
-    """Create daemon threads that don't block interpreter shutdown."""
-    thread = threading.Thread(*args, **kwargs)
-    thread.daemon = True
-    return thread
+class _DaemonThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
+    """
+    ThreadPoolExecutor that uses daemon threads.
+
+    thread factory not compatible with older python versions
+    """
+
+    def _adjust_thread_count(self):
+        """Override to create daemon worker threads instead of regular threads."""
+
+        def weakref_cb(_, q=self._work_queue):
+            q.put(None)
+
+        num_threads = len(self._threads)
+        if num_threads < self._max_workers:
+            thread_name = f"{self._thread_name_prefix or ''}_{num_threads}"
+            t = threading.Thread(
+                name=thread_name,
+                target=self._worker,
+                args=(
+                    weakref.ref(self, weakref_cb),
+                    self._work_queue,
+                    self._initializer,
+                    self._initargs,
+                ),
+                daemon=True,
+            )
+            t.start()
+            self._threads.add(t)
+            concurrent.futures.ThreadPoolExecutor._adjust_thread_count(self)
 
 
 class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
@@ -41,16 +67,15 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
         self._shutdown_timeout = shutdown_timeout
 
         # ThreadPoolExecutor for async operations
-        self._executor = concurrent.futures.ThreadPoolExecutor(
+        self._executor = _DaemonThreadPoolExecutor(
             max_workers=max_workers,
             thread_name_prefix="async_progress",
-            thread_factory=_daemon_thread_factory,
         )
 
         # State Tracking
         self._shutdown = False
         self._lock = threading.Lock()
-        self._pending_futures = []
+        self._pending_futures: dict[str, concurrent.futures.Future] = {}
 
         # Stall detection
         self._last_successful_update = time.time()
@@ -129,16 +154,24 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
 
     def _submit(self, method, *args, **kwargs):
         """Submit a method call to the background thread."""
+        op_key = method.__name__
+
         with self._lock:
             if not self._shutdown:
+
+                # Cancel old updates (fixes unbound issue)
+                if op_key in self._pending_futures:
+                    old_future = self._pending_futures[op_key]
+                    if not old_future.done() and not old_future.running():
+                        old_future.cancel()
+                        logger.debug(f"Replaced pending {op_key} with newer update")
+
                 future = self._executor.submit(
                     self._timed_call, method, *args, **kwargs
                 )
-                self._pending_futures.append(future)
-                # Clean up completed futures
-                self._pending_futures = [
-                    f for f in self._pending_futures if not f.done()
-                ]
+                self._pending_futures[op_key] = future
+            else:
+                return
 
     def _timed_call(self, method, *args, **kwargs):
         """Call method and track completion time."""
@@ -174,7 +207,8 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
     def _wait_for_pending_operations(self):
         """Wait for pending operations with timeout."""
         with self._lock:
-            num_pending = len(self._pending_futures)
+            futures = list(self._pending_futures.values())
+            num_pending = len(futures)
 
         if num_pending > 0:
             logger.debug(
@@ -183,7 +217,7 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
             )
             try:
                 concurrent.futures.wait(
-                    self._pending_futures,
+                    futures,
                     timeout=self._shutdown_timeout,
                     return_when=concurrent.futures.ALL_COMPLETED,
                 )
