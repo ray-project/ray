@@ -30,6 +30,7 @@ from ray._private.utils import (
 )
 from ray._raylet import (
     WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS,
+    CppFunctionDescriptor,
     JobID,
     PythonFunctionDescriptor,
 )
@@ -360,21 +361,27 @@ class FunctionActorManager:
         # the function from GCS.
         with profiling.profile("wait_for_function"):
             self._wait_for_function(function_descriptor, job_id)
-        try:
-            function_id = function_descriptor.function_id
-            info = self._function_execution_info[function_id]
-        except KeyError as e:
+        function_id = function_descriptor.function_id
+        # Check if function_id exists before accessing to avoid defaultdict
+        # creating an empty dict for missing keys.
+        if function_id not in self._function_execution_info:
             message = (
                 "Error occurs in get_execution_info: "
-                "job_id: %s, function_descriptor: %s. Message: %s"
-                % (job_id, function_descriptor, e)
+                "job_id: %s, function_descriptor: %s. Function ID not found."
+                % (job_id, function_descriptor)
             )
             raise KeyError(message)
+        info = self._function_execution_info[function_id]
         return info
 
     def _load_function_from_local(self, function_descriptor):
         assert not function_descriptor.is_actor_method()
         function_id = function_descriptor.function_id
+
+        # Only PythonFunctionDescriptor has module_name attribute.
+        # CppFunctionDescriptor and other descriptors should be loaded from GCS.
+        if not hasattr(function_descriptor, "module_name"):
+            return False
 
         module_name, function_name = (
             function_descriptor.module_name,
@@ -581,14 +588,39 @@ class FunctionActorManager:
                 executor = self._make_actor_method_executor(
                     actor_method_name, actor_method
                 )
-                self._function_execution_info[method_id] = FunctionExecutionInfo(
+                function_execution_info = FunctionExecutionInfo(
                     function=executor,
                     function_name=actor_method_name,
                     max_calls=0,
                 )
+                self._function_execution_info[method_id] = function_execution_info
+                self._register_cpp_function_alias_for_actor_method(
+                    actor_method_name, actor_class_name, function_execution_info
+                )
                 self._num_task_executions[method_id] = 0
             self._num_task_executions[function_id] = 0
         return actor_class
+
+    def _register_cpp_function_alias_for_actor_method(
+        self, actor_method_name, actor_class_name, function_execution_info
+    ):
+        """Expose actor methods to C++ callers via a matching descriptor."""
+        try:
+            cpp_descriptor = CppFunctionDescriptor(
+                actor_method_name, "PYTHON", actor_class_name
+            )
+        except Exception as e:
+            logger.debug(
+                "Failed to create CppFunctionDescriptor for actor method "
+                f"{actor_class_name}.{actor_method_name}. This method will not be "
+                f"callable from C++. Exception: {e}"
+            )
+            return
+        cpp_method_id = cpp_descriptor.function_id
+        if cpp_method_id in self._function_execution_info:
+            return
+        self._function_execution_info[cpp_method_id] = function_execution_info
+        self._num_task_executions[cpp_method_id] = 0
 
     def _load_actor_class_from_local(self, actor_creation_function_descriptor):
         """Load actor class from local code."""
