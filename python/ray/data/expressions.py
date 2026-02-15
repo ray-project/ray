@@ -1521,12 +1521,16 @@ class RandomExpr(Expr):
     reseed_after_execution: bool = DEFAULT_RESEED_AFTER_EXECUTION
     data_type: DataType = DataType.float64()
 
+    # Unique identifier for each expression to isolate block count state
+    _instance_id: str = field(default_factory=lambda: str(builtin_uuid.uuid4()))
+
     def structurally_equals(self, other: Any) -> bool:
         return (
             isinstance(other, RandomExpr)
             and self.data_type == other.data_type
             and self.seed == other.seed
             and self.reseed_after_execution == other.reseed_after_execution
+            and self._instance_id == other._instance_id
         )
 
 
@@ -1545,7 +1549,8 @@ class UUIDExpr(Expr):
     data_type: DataType = DataType.string()
 
     def structurally_equals(self, other: Any) -> bool:
-        return isinstance(other, UUIDExpr) and self.data_type == other.data_type
+        # Non-deterministic, never structurally equal to another expression
+        return False
 
 
 @PublicAPI(stability="beta")

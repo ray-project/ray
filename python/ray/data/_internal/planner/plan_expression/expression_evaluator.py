@@ -782,6 +782,7 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
             self.block_accessor.block_type(),
             seed=expr.seed,
             reseed_after_execution=expr.reseed_after_execution,
+            instance_id=expr._instance_id,
         )
 
     def visit_uuid(self, expr: UUIDExpr) -> Union[BlockColumn, ScalarType]:

@@ -14,6 +14,7 @@ def eval_random(
     *,
     seed: int | None = None,
     reseed_after_execution: bool = True,
+    instance_id: str | None = None,
 ) -> BlockColumn:
     """Implementation of the random expression.
 
@@ -22,7 +23,8 @@ def eval_random(
         block_type: The type of block to generate random values for.
         seed: The seed to use for the random number generator.
         reseed_after_execution: Whether to reseed the random number generator after each execution.
-
+        instance_id: Unique identifier for the random expression instance, used to isolate
+            block count state when a single task processes multiple blocks.
 
     Returns:
         A BlockColumn containing the random values.
@@ -36,10 +38,11 @@ def eval_random(
         # a random number generator. This allows us to maintain reproduciblity while
         # ensuring randomness in parallel execution.
         # See https://numpy.org/doc/2.2/reference/random/parallel.html#sequence-of-integer-seeds
-        # Below we uses three components to create a seed sequence (fastest changing component first):
-        # 1. An index based on the remote task in Ray Data
-        # 2. An incrementing index of Ray Dataset execution (e.g., multiple training epochs)
-        # 3. A base seed fixed by the user
+        # Below we uses four components to create a seed sequence (fastest changing component first):
+        # 1. A per-block counter within the task (to differentiate blocks in the same task)
+        # 2. An index based on the remote task in Ray Data
+        # 3. An incrementing index of Ray Dataset execution (e.g., multiple training epochs)
+        # 4. A base seed fixed by the user
 
         ctx = TaskContext.get_current()
 
@@ -54,8 +57,20 @@ def eval_random(
                 stacklevel=2,
             )
             task_idx = 0
+            block_idx = 0
         else:
             task_idx = ctx.task_idx
+
+            # Key the counter by expression instance ID so that multiple expressions
+            # in the same projection will have isolated block count state.
+            # This is required because a single task may process multiple blocks if
+            # the upstream data source does not compress the data into a single block.
+            if instance_id is not None:
+                counter_key = f"_random_{instance_id}_counter"
+                block_idx = ctx.kwargs.get(counter_key, 0)
+                ctx.kwargs[counter_key] = block_idx + 1
+            else:
+                block_idx = 0
 
         if reseed_after_execution:
             from ray.data.context import DataContext
@@ -67,8 +82,8 @@ def eval_random(
         else:
             execution_idx = 0
 
-        # Numpy recommends fastest changing component to be the first one element
-        block_seed = [task_idx, execution_idx, seed]
+        # Numpy recommends fastest changing component to be the first element
+        block_seed = [block_idx, task_idx, execution_idx, seed]
     else:
         block_seed = None
 

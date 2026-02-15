@@ -228,6 +228,35 @@ def test_random_validation_errors(
         random(*args, **kwargs)
 
 
+def test_random_multi_block_per_task(ray_start_regular_shared):
+    """Test that random values are unique when a single task processes multiple blocks.
+
+    This test verifies the fix for the issue where random() with seed would produce
+    duplicate values when a single task processed multiple blocks. Unlike
+    monotonically_increasing_id(), which uses a per-task counter in ctx.kwargs to
+    differentiate blocks, random() previously had no such mechanism, leading to
+    duplicated random data.
+    """
+    ctx = ray.data.DataContext.get_current()
+    original_max_block_size = ctx.target_max_block_size
+    try:
+        # Set max block size to 32 bytes ~ 4 int64 rows per block.
+        # With 5 read tasks of 20 rows each, every task should see 5 blocks.
+        ctx.target_max_block_size = 32
+
+        ds = ray.data.range(100, override_num_blocks=5)
+        ds = ds.with_column("rand", random(seed=42))
+        result = ds.take_all()
+
+        rand_values = [row["rand"] for row in result]
+        assert len(rand_values) == 100, f"expected 100 rows, got {len(rand_values)}"
+        assert len(rand_values) == len(
+            set(rand_values)
+        ), "Random values are not unique across blocks within the same task"
+    finally:
+        ctx.target_max_block_size = original_max_block_size
+
+
 def test_random_with_column_then_random_shuffle_deterministic(ray_start_regular_shared):
     """Test that random() with seed produces deterministic results even after random_shuffle."""
     from ray.data.expressions import random
