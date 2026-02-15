@@ -45,7 +45,9 @@ instantiate them directly, but you may encounter them when working with expressi
     UDFExpr
     StarExpr
     DownloadExpr
-    SyntheticExpr
+    MonotonicallyIncreasingIdExpr
+    RandomExpr
+    UUIDExpr
 
 Expression namespaces
 ------------------------------------
