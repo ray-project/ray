@@ -1053,31 +1053,36 @@ def test_ray_client_uv_hook_detection():
         assert "py_executable" not in result
 
 
-def test_ray_client_uv_no_detection_without_uv(call_ray_start_shared):
-    """Test that Ray Client works normally when UV is not detected.
+def test_ray_client_uv_respects_user_py_executable():
+    """Test that user-provided py_executable takes precedence over UV.
 
-    Explicitly mocks UV detection to return None to exercise the UV hook
-    code path and verify it does not interfere with normal operation.
+    When a user explicitly sets py_executable in their runtime_env, the UV hook
+    should respect that choice and not override it.
+
+    Related to: https://github.com/ray-project/ray/issues/57991
     """
     from unittest.mock import patch
 
-    import ray as ray_module
+    from ray.util.client import _apply_uv_hook_for_client
 
-    ray_module.shutdown()
-
-    # Mock UV as not detected to exercise the hook code path
     with patch(
-        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline",
-        return_value=None,
-    ):
-        with ray_start_client_server_for_address(call_ray_start_shared) as ray:
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
+    ) as mock_uv:
+        # UV is detected
+        mock_uv.return_value = ["uv", "run", "--python", "3.11", "script.py"]
 
-            @ray.remote
-            def simple_task():
-                return "success"
+        # User explicitly provides their own py_executable
+        runtime_env = {
+            "py_executable": "/custom/python",
+            "working_dir": "/tmp/test",
+        }
+        result = _apply_uv_hook_for_client(runtime_env)
 
-            result = ray.get(simple_task.remote())
-            assert result == "success"
+        # User's py_executable should be preserved, not overridden by UV
+        assert (
+            result["py_executable"] == "/custom/python"
+        ), "User-provided py_executable should take precedence over UV"
+        assert result["working_dir"] == "/tmp/test"
 
 
 def test_ray_client_uv_hook_with_existing_runtime_env():

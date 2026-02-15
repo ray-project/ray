@@ -26,6 +26,8 @@ def _apply_uv_hook_for_client(
     The hook only runs if RAY_ENABLE_UV_RUN_RUNTIME_ENV is enabled and
     the client is running under 'uv run'.
 
+    User-provided py_executable takes precedence over UV detection.
+
     Args:
         runtime_env: The runtime environment dict to potentially modify.
 
@@ -37,15 +39,27 @@ def _apply_uv_hook_for_client(
         if not ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV:
             return runtime_env
 
+        # Preserve user's py_executable if already set
+        user_py_executable = None
+        if runtime_env and "py_executable" in runtime_env:
+            user_py_executable = runtime_env["py_executable"]
+
         from ray._private.runtime_env.uv_runtime_env_hook import hook
 
         result = hook(runtime_env)
         if "py_executable" in result:
-            # UV environment was detected and applied by the hook
-            logger.debug(
-                f"UV environment detected for Ray Client: "
-                f"py_executable={result['py_executable']}"
-            )
+            # If user provided py_executable, restore it (takes precedence)
+            if user_py_executable is not None:
+                result["py_executable"] = user_py_executable
+                logger.debug(
+                    "User-provided py_executable takes precedence over UV detection"
+                )
+            else:
+                # UV environment was detected and applied by the hook
+                logger.debug(
+                    f"UV environment detected for Ray Client: "
+                    f"py_executable={result['py_executable']}"
+                )
             return result
     except Exception as e:
         # Log warning but don't fail connection
