@@ -141,6 +141,7 @@ py_test_module_list(
         "test_streaming_response.py",
         "test_task_consumer_autoscaling.py",
         "test_task_processor.py",
+        "test_taskiq_task_processor.py",
     ],
     tags = [
         "exclusive",
