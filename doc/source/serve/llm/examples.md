@@ -13,4 +13,5 @@ Complete end-to-end tutorials for deploying different types of LLMs:
 - {doc}`Deploy a reasoning LLM <../tutorials/deployment-serve-llm/reasoning-llm/README>`
 - {doc}`Deploy a hybrid reasoning LLM <../tutorials/deployment-serve-llm/hybrid-reasoning-llm/README>`
 - {doc}`Deploy gpt-oss <../tutorials/deployment-serve-llm/gpt-oss/README>`
+- {doc}`Deploy with SGLang <../tutorials/deployment-serve-llm/sglang/index>`
 
