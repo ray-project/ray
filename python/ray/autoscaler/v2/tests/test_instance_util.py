@@ -101,7 +101,10 @@ class InstanceUtilTest(unittest.TestCase):
         }
         all_status.remove(Instance.TERMINATING)
 
-        assert g[Instance.TERMINATION_FAILED] == {Instance.TERMINATING}
+        assert g[Instance.TERMINATION_FAILED] == {
+            Instance.TERMINATING,
+            Instance.TERMINATED,
+        }
         all_status.remove(Instance.TERMINATION_FAILED)
 
         assert g[Instance.TERMINATED] == set()
