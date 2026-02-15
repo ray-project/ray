@@ -509,7 +509,13 @@ def test_uv_run_ray_client_mode(shutdown_only, tmp_working_dir):
     to be run under 'uv run' like the other tests in this file.
     """
     from ray._common.network_utils import find_free_port
+    from ray._private.runtime_env.uv_runtime_env_hook import _get_uv_run_cmdline
     from ray.job_config import JobConfig
+
+    # Verify test is running under UV (prerequisite for this test)
+    uv_cmdline = _get_uv_run_cmdline()
+    if uv_cmdline is None:
+        pytest.skip("Test must run under 'uv run'")
 
     tmp_dir = tmp_working_dir
 
@@ -525,9 +531,7 @@ def test_uv_run_ray_client_mode(shutdown_only, tmp_working_dir):
     try:
         # Connect via Ray Client. The UV hook will detect the 'uv run'
         # process in the parent chain and set py_executable automatically.
-        import ray as ray_client
-
-        ray_client.util.connect(
+        ray.util.connect(
             f"localhost:{port}",
             job_config=JobConfig(
                 runtime_env={
@@ -538,19 +542,28 @@ def test_uv_run_ray_client_mode(shutdown_only, tmp_working_dir):
             ),
         )
 
-        @ray_client.remote
+        # Verify UV config was applied to runtime_env
+        context = ray.get_context()
+        conn_info = context.client_worker.connection_info()
+        runtime_env = conn_info.get("job_config", {}).get("runtime_env", {})
+        assert "py_executable" in runtime_env, "UV hook should set py_executable"
+        assert (
+            "uv run" in runtime_env["py_executable"]
+        ), "py_executable should contain 'uv run'"
+
+        @ray.remote
         def emojize():
             import emoji
 
             return emoji.emojize("Ray rocks :thumbs_up:")
 
         # This should work because UV hook detected and propagated UV config
-        result = ray_client.get(emojize.remote())
+        result = ray.get(emojize.remote())
         assert (
             result == "Ray rocks 👍"
         ), "UV should have installed emoji package on workers"
 
-        ray_client.util.disconnect()
+        ray.util.disconnect()
     finally:
         server_handle.stop(0)
         ray.shutdown()
