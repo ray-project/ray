@@ -1007,13 +1007,13 @@ def test_ray_client_uv_hook_detection():
             "script.py",
         ]
 
-        result = _apply_uv_hook_for_client({"working_dir": "/tmp/test"})
+        result = _apply_uv_hook_for_client({"env_vars": {"TEST": "value"}})
 
         assert "py_executable" in result, "py_executable should be set when UV detected"
         assert "uv run" in result["py_executable"], "should contain 'uv run'"
         assert "--locked" in result["py_executable"], "should preserve --locked flag"
-        # working_dir should be preserved (not overwritten)
-        assert result["working_dir"] == "/tmp/test"
+        # Other runtime_env settings should be preserved
+        assert result["env_vars"]["TEST"] == "value"
 
     # Test 2: No UV detected - should return runtime_env unchanged
     with patch(
@@ -1021,7 +1021,7 @@ def test_ray_client_uv_hook_detection():
     ) as mock_uv:
         mock_uv.return_value = None
 
-        original = {"working_dir": "/tmp/test"}
+        original = {"env_vars": {"TEST": "value"}}
         result = _apply_uv_hook_for_client(original)
 
         assert "py_executable" not in result, "py_executable should not be set"
@@ -1041,13 +1041,13 @@ def test_ray_client_uv_hook_detection():
         "ray._private.runtime_env.uv_runtime_env_hook.hook",
         side_effect=RuntimeError("mock error"),
     ):
-        original = {"working_dir": "/tmp/test"}
+        original = {"env_vars": {"TEST": "value"}}
         result = _apply_uv_hook_for_client(original)
         assert result == original, "should return original on error"
 
     # Test 5: Feature flag disabled - should return runtime_env unchanged
     with patch("ray._private.ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV", False):
-        original = {"working_dir": "/tmp/test"}
+        original = {"env_vars": {"TEST": "value"}}
         result = _apply_uv_hook_for_client(original)
         assert result == original, "should skip UV hook when feature flag is disabled"
         assert "py_executable" not in result
@@ -1099,20 +1099,55 @@ def test_ray_client_uv_hook_with_existing_runtime_env():
     ) as mock_uv:
         mock_uv.return_value = ["uv", "run", "script.py"]
 
-        # Existing runtime_env with working_dir should be preserved
+        # Existing runtime_env with other settings should be preserved
         runtime_env = {
-            "working_dir": "/my/custom/dir",
             "env_vars": {"MY_VAR": "value"},
+            "excludes": ["*.pyc", "__pycache__"],
         }
         result = _apply_uv_hook_for_client(runtime_env)
 
         assert "py_executable" in result
         assert (
-            result["working_dir"] == "/my/custom/dir"
-        ), "User's working_dir should take precedence"
-        assert (
             result["env_vars"]["MY_VAR"] == "value"
         ), "Existing env_vars should be preserved"
+        assert result["excludes"] == [
+            "*.pyc",
+            "__pycache__",
+        ], "Other runtime_env settings should be preserved"
+
+
+def test_ray_client_uv_hook_with_job_config_runtime_env():
+    """Test UV hook works when runtime_env is in JobConfig.
+
+    Tests the code path where runtime_env comes from job_config.runtime_env
+    instead of ray_init_kwargs["runtime_env"]. This simulates what happens
+    when a user passes JobConfig(runtime_env={...}) to ray.util.connect().
+
+    Related to: https://github.com/ray-project/ray/issues/57991
+    """
+    from unittest.mock import patch
+
+    from ray.job_config import JobConfig
+    from ray.util.client import _apply_uv_hook_for_client
+
+    # Create a JobConfig with runtime_env, no working_dir to avoid validation issues
+    job_config = JobConfig(runtime_env={"env_vars": {"TEST_VAR": "test_value"}})
+
+    with patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
+    ) as mock_uv:
+        mock_uv.return_value = ["uv", "run", "--python", "3.11", "script.py"]
+
+        # Apply UV hook to job_config.runtime_env (as done in connect())
+        result = _apply_uv_hook_for_client(job_config.runtime_env)
+
+        # Verify UV was applied
+        assert "py_executable" in result, "UV should add py_executable"
+        assert "uv run" in result["py_executable"]
+        assert "--python" in result["py_executable"]
+        assert "3.11" in result["py_executable"]
+        # Other runtime_env settings should be preserved
+        assert result["env_vars"]["TEST_VAR"] == "test_value"
 
 
 if __name__ == "__main__":
