@@ -1,8 +1,16 @@
-from typing import List
+from typing import List, Optional, Tuple, Any, Dict
 
-from ray.data._internal.execution.interfaces import PhysicalOperator
+import ray
+from ray.data._internal.execution.interfaces import (
+    PhysicalOperator,
+    RefBundle,
+    TaskContext,
+)
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
+)
+from ray.data._internal.execution.interfaces.transform_fn import (
+    AllToAllTransformFnResult,
 )
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
@@ -17,7 +25,91 @@ from ray.data._internal.planner.random_shuffle import generate_random_shuffle_fn
 from ray.data._internal.planner.randomize_blocks import generate_randomize_blocks_fn
 from ray.data._internal.planner.repartition import generate_repartition_fn
 from ray.data._internal.planner.sort import generate_sort_fn
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.block import Block, BlockAccessor, BlockMetadataWithSchema
+from ray.data.aggregate import AggregateFn
+
+
+def _estimate_input_size_bytes(refs: List[RefBundle]) -> int:
+    total_bytes = 0
+    for ref_bundle in refs:
+        for metadata in ref_bundle.metadata:
+            if metadata.size_bytes is not None:
+                total_bytes += metadata.size_bytes
+    return total_bytes
+
+
+def _generate_local_aggregate_fn(
+    key: Optional[str],
+    aggs: Tuple[AggregateFn, ...],
+    batch_format: str,
+    data_context: DataContext,
+):
+    from ray.data._internal.util import unify_ref_bundles_schema
+    from ray.data._internal.planner.exchange.aggregate_task_spec import (
+        SortAggregateTaskSpec,
+    )
+
+    def fn(
+        refs: List[RefBundle],
+        ctx: TaskContext,
+    ) -> AllToAllTransformFnResult:
+        blocks = []
+        metadata = []
+        for ref_bundle in refs:
+            blocks.extend(ref_bundle.block_refs)
+            metadata.extend(ref_bundle.metadata)
+        if len(blocks) == 0:
+            return ([], {})
+
+        unified_schema = unify_ref_bundles_schema(refs)
+        for agg_fn in aggs:
+            agg_fn._validate(unified_schema)
+
+        sort_key = SortKey(key)
+
+        all_blocks: List[Block] = [ray.get(block_ref) for block_ref in blocks]
+
+        pruned_blocks = [
+            SortAggregateTaskSpec._prune_unused_columns(block, sort_key, aggs)
+            for block in all_blocks
+        ]
+
+        if sort_key.get_columns():
+            pruned_blocks = [
+                BlockAccessor.for_block(block).sort(sort_key) for block in pruned_blocks
+            ]
+
+        aggregated_blocks = [
+            BlockAccessor.for_block(block)._aggregate(sort_key, aggs)
+            for block in pruned_blocks
+        ]
+
+        if len(aggregated_blocks) == 0:
+            return ([], {})
+
+        final_block, _ = BlockAccessor.for_block(
+            aggregated_blocks[0]
+        )._combine_aggregated_blocks(
+            list(aggregated_blocks), sort_key, aggs, finalize=True
+        )
+
+        final_metadata = BlockMetadataWithSchema.from_block(final_block)
+
+        return (
+            [
+                RefBundle(
+                    [(ray.put(final_block), final_metadata.metadata)],
+                    schema=final_metadata.schema,
+                    owns_blocks=True,
+                )
+            ],
+            {},
+        )
+
+    return fn
 
 
 def _plan_hash_shuffle_repartition(
@@ -36,11 +128,8 @@ def _plan_hash_shuffle_repartition(
         input_physical_op,
         data_context,
         key_columns=tuple(normalized_key_columns),  # noqa: type
-        # NOTE: In case number of partitions is not specified, we fall back to
-        #       default min parallelism configured
         num_partitions=logical_op.num_outputs,
         should_sort=logical_op.sort,
-        # TODO wire in aggregator args overrides
     )
 
 
@@ -59,12 +148,9 @@ def _plan_hash_shuffle_aggregate(
     return HashAggregateOperator(
         data_context,
         input_physical_op,
-        key_columns=tuple(normalized_key_columns),  # noqa: type
-        aggregation_fns=tuple(logical_op.aggs),  # noqa: type
-        # NOTE: In case number of partitions is not specified, we fall back to
-        #       default min parallelism configured
+        key_columns=tuple(normalized_key_columns),  # type: ignore
+        aggregation_fns=tuple(logical_op.aggs),  # type: ignore
         num_partitions=logical_op.num_partitions,
-        # TODO wire in aggregator args overrides
     )
 
 
@@ -83,8 +169,6 @@ def plan_all_to_all_op(
 
     if isinstance(op, RandomizeBlocks):
         fn = generate_randomize_blocks_fn(op)
-        # Randomize block order does not actually compute anything, so we
-        # want to inherit the upstream op's target max block size.
 
     elif isinstance(op, RandomShuffle):
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
@@ -140,13 +224,50 @@ def plan_all_to_all_op(
         if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
             return _plan_hash_shuffle_aggregate(data_context, op, input_physical_dag)
 
+        if data_context.small_data_threshold_for_local_aggregation > 0:
+            local_fn = _generate_local_aggregate_fn(
+                op.key,
+                tuple(op.aggs),
+                op.batch_format or "default",
+                data_context,
+            )
+
+            distributed_fn = generate_aggregate_fn(
+                op.key,
+                op.aggs,
+                op.batch_format or "default",
+                data_context,
+                None,
+            )
+
+            def aggregate_fn_with_local_fallback(
+                refs: List[RefBundle],
+                ctx: TaskContext,
+            ) -> AllToAllTransformFnResult:
+                input_size = _estimate_input_size_bytes(refs)
+                if (
+                    input_size
+                    <= data_context.small_data_threshold_for_local_aggregation
+                ):
+                    return local_fn(refs, ctx)
+                return distributed_fn(refs, ctx)
+
+            return AllToAllOperator(
+                aggregate_fn_with_local_fallback,
+                input_physical_dag,
+                data_context,
+                num_outputs=op.num_partitions,
+                sub_progress_bar_names=op.sub_progress_bar_names,
+                name=op.name,
+            )
+
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
             "debug_limit_shuffle_execution_to_num_blocks", None
         )
         fn = generate_aggregate_fn(
             op.key,
             op.aggs,
-            op.batch_format,
+            op.batch_format,  # type: ignore
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
         )
