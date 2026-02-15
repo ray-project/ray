@@ -321,7 +321,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   NodeID CallerNodeId() const;
 
-  uint64_t SequenceNumber() const;
+  uint64_t ConcurrencyGroupSequenceNumber() const;
 
   ObjectID ActorCreationDummyObjectId() const;
 

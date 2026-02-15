@@ -74,17 +74,22 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
 
   void ExecuteRequest(TaskToExecute &&request);
 
+  /// Per-concurrency-group ordering state.
+  struct ConcurrencyGroupOrderingState {
+    /// Sorted map of task callbacks keyed by their per-group sequence number.
+    absl::btree_map<int64_t, TaskToExecute> pending_tasks;
+    /// List of task retry requests (unordered within the group).
+    std::list<TaskToExecute> pending_retry_tasks;
+    /// Set of sequence numbers that can be skipped because they were retry seq no's.
+    absl::flat_hash_set<int64_t> seq_no_to_skip;
+    /// The next sequence number we are waiting for to arrive in this group.
+    int64_t next_seq_no = 0;
+  };
+
   /// Max time in seconds to wait for dependencies to show up.
   const int64_t reorder_wait_seconds_;
-  /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
-  absl::btree_map<int64_t, TaskToExecute> pending_actor_tasks_;
-  /// List of task retry requests. This is a separate from the map because retries don't
-  /// need to be ordered.
-  std::list<TaskToExecute> pending_retry_actor_tasks_;
-  /// Set of sequence numbers that can be skipped because they were retry seq no's.
-  absl::flat_hash_set<int64_t> seq_no_to_skip_;
-  /// The next sequence number we are waiting for to arrive.
-  int64_t next_seq_no_ = 0;
+  /// Per-concurrency-group ordering states.
+  absl::flat_hash_map<std::string, ConcurrencyGroupOrderingState> group_states_;
   /// Timer for waiting on dependencies. Note that this is set on the task main
   /// io service, which is fine since it only ever fires if no tasks are running.
   boost::asio::deadline_timer wait_timer_;

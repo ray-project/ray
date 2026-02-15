@@ -427,7 +427,7 @@ TaskSpecification CreateActorTaskSpec(int64_t seq_no,
                                       bool dependency = false) {
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-  task_spec.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(seq_no);
+  task_spec.GetMutableMessage().mutable_actor_task_spec()->set_concurrency_group_sequence_number(seq_no);
   task_spec.GetMutableMessage().set_attempt_number(is_retry ? 1 : 0);
   if (dependency) {
     task_spec.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
@@ -453,12 +453,12 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryInOrderOrderedActorTaskExecuti
   std::vector<int64_t> reject_seq_nos;
   std::atomic<int> n_accept = 0;
   auto fn_ok = [&accept_seq_nos, &n_accept](const TaskSpecification &task_spec) {
-    accept_seq_nos.push_back(task_spec.SequenceNumber());
+    accept_seq_nos.push_back(task_spec.ConcurrencyGroupSequenceNumber());
     n_accept++;
   };
   auto fn_rej = [&reject_seq_nos](const TaskSpecification &task_spec,
                                   const Status &status) {
-    reject_seq_nos.push_back(task_spec.SequenceNumber());
+    reject_seq_nos.push_back(task_spec.ConcurrencyGroupSequenceNumber());
   };
 
   // Submitting 0 with dep, 1, 3 (retry of 2), and 4 (with client_processed_up_to = 2 bc 2

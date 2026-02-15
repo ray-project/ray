@@ -20,6 +20,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_util.h"
@@ -91,6 +92,7 @@ class ActorHandle {
                         int max_retries,
                         bool retry_exceptions,
                         const std::string &serialized_retry_exception_allowlist,
+                        const std::string &concurrency_group_name,
                         const std::optional<std::string> &tensor_transport);
 
   /// Reset the actor task spec fields of an existing task so that the task can
@@ -125,8 +127,9 @@ class ActorHandle {
  private:
   // Protobuf-defined persistent state of the actor handle.
   const rpc::ActorHandle inner_;
-  // Number of tasks that have been submitted on this handle.
-  uint64_t task_counter_ ABSL_GUARDED_BY(mutex_) = 0;
+  // Per-concurrency-group task counters for sequence number assignment.
+  absl::flat_hash_map<std::string, uint64_t> concurrency_group_counters_
+      ABSL_GUARDED_BY(mutex_);
 
   /// Mutex to protect fields in the actor handle.
   mutable absl::Mutex mutex_;

@@ -2452,6 +2452,7 @@ Status CoreWorker::SubmitActorTask(
                                  max_retries,
                                  retry_exceptions,
                                  serialized_retry_exception_allowlist,
+                                 task_options.concurrency_group_name,
                                  task_options.tensor_transport);
   // Submit task.
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
