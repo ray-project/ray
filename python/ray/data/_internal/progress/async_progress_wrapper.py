@@ -161,8 +161,8 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
         # For update_operator_progress, include operator ID in key
         if method.__name__ == "update_operator_progress" and args:
             opstate = args[0]
-            # Use operator name/ID to create unique key per operator
-            op_key = f"update_operator_progress:{opstate.op.name}"
+            # Use ID to create unique key per operator
+            op_key = f"update_operator_progress:{id(opstate.op)}"
         else:
             # For other methods, use method name only
             op_key = method.__name__
