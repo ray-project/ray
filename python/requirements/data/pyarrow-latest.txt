@@ -1,0 +1,4 @@
+pyarrow==23.0.0
+torch==2.3.0+cpu
+transformers==4.36.2
+torchvision==0.18.0+cpu

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -euo pipefail
+
 apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openjdk-8-jdk net-tools curl netcat gnupg libsnappy-dev && rm -rf /var/lib/apt/lists/*
 
 export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64/
@@ -9,7 +11,7 @@ curl -O https://dist.apache.org/repos/dist/release/hadoop/common/KEYS
 gpg --import KEYS
 
 export HADOOP_VERSION=3.2.4
-export HADOOP_URL=https://downloads.apache.org/hadoop/common/hadoop-$HADOOP_VERSION/hadoop-$HADOOP_VERSION.tar.gz
+export HADOOP_URL=https://archive.apache.org/dist/hadoop/common/hadoop-$HADOOP_VERSION/hadoop-$HADOOP_VERSION.tar.gz
 
 set -x && curl -fSL $HADOOP_URL -o /tmp/hadoop.tar.gz && curl -fSL $HADOOP_URL.asc -o /tmp/hadoop.tar.gz.asc && gpg --verify /tmp/hadoop.tar.gz.asc && tar -xvf /tmp/hadoop.tar.gz -C /opt/ && rm /tmp/hadoop.tar.gz*
 
@@ -51,7 +53,7 @@ chmod 640 ~/.ssh/authorized_keys
 sudo service ssh restart
 
 # without this `jps` won't show NameNode but only SecondaryNameNode
-yes | hadoop namenode -format
+echo "Y" | hadoop namenode -format
 $HADOOP_HOME/sbin/start-all.sh
 
 # Check that NameNode is up and running.

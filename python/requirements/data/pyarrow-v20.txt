@@ -1,0 +1,5 @@
+pyarrow==20.0.0
+pandas==2.3.3
+pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx
+pytest==7.4.4
+transformers==4.36.2
