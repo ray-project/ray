@@ -46,7 +46,6 @@ def _generate_local_aggregate_fn(
     key: Optional[str],
     aggs: Tuple[AggregateFn, ...],
     batch_format: str,
-    data_context: DataContext,
 ):
     from ray.data._internal.planner.exchange.aggregate_task_spec import (
         SortAggregateTaskSpec,
@@ -235,7 +234,6 @@ def plan_all_to_all_op(
                 op.key,
                 tuple(op.aggs),
                 op.batch_format or "default",
-                data_context,
             )
 
             debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
