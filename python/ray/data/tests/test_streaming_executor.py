@@ -1,4 +1,6 @@
 import os
+import random
+import threading
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -764,34 +766,94 @@ def test_configure_output_locality(mock_scale_up, ray_start_regular_shared):
 
 
 class OpBufferQueueTest(unittest.TestCase):
-    def test_multi_threading(self):
+    def test_invalid_split_index(self):
+        """Test that out-of-range split index raises AssertionError."""
+        queue = OpBufferQueue(num_splits=2)
+        with pytest.raises(AssertionError):
+            queue.has_next(2)
+        with pytest.raises(AssertionError):
+            queue.pop(2)
+
+    def test_e2e_multi_threading(self):
         num_blocks = 5_000
-        num_splits = 8
+        num_splits = 20
         num_per_split = num_blocks // num_splits
         ref_bundles = make_ref_bundles([[[i]] for i in range(num_blocks)])
 
-        queue = OpBufferQueue()
-        for i, ref_bundle in enumerate(ref_bundles):
-            ref_bundle.output_split_idx = i % num_splits
-            queue.append(ref_bundle)
+        q = OpBufferQueue(num_splits=num_splits)
 
-        def consume(output_split_idx):
-            nonlocal queue
+        start = threading.Event()
+        done = threading.Event()
 
-            count = 0
-            while queue.has_next(output_split_idx):
-                ref_bundle = queue.pop(output_split_idx)
-                count += 1
-                assert ref_bundle is not None
-                assert ref_bundle.output_split_idx == output_split_idx
-            assert count == num_per_split
+        def produce():
+            # Sync producers and consumers
+            start.wait()
+
+            try:
+                for i, ref_bundle in enumerate(ref_bundles):
+                    if i % 10 == 1:
+                        print(f">>> Queue size {len(q)}")
+                        # Introduce jitter
+                        time.sleep(random.random() * 1e-4)
+
+                    ref_bundle.output_split_idx = i % num_splits
+                    q.append(ref_bundle)
+            except Exception as e:
+                print(f">>> Caught exception: {e}")
+                raise
+
+            done.set()
             return True
 
-        with ThreadPoolExecutor(max_workers=num_splits) as executor:
-            futures = [executor.submit(consume, i) for i in range(num_splits)]
+        consumed_splits = [[] for _ in range(num_splits)]
+
+        def consume(output_split_idx):
+            # Sync producers and consumers
+            start.wait()
+
+            try:
+                # Iterate until both are true:
+                #   - Producer is done
+                #   - Queue is empty
+                while not done.is_set() or q.has_next(output_split_idx):
+                    # We add tiny sleep of 1us to avoid thrashing GIL with
+                    # tight loops
+                    time.sleep(1e-6)
+
+                    b = q.pop(output_split_idx)
+                    if b is not None:
+                        assert b.output_split_idx == output_split_idx
+                        consumed_splits[output_split_idx].append(b)
+            except Exception as e:
+                print(f">>> Caught exception: {e}")
+                raise
+
+            return True
+
+        with ThreadPoolExecutor(max_workers=num_splits + 1) as executor:
+            futures = [executor.submit(produce)] + [
+                executor.submit(consume, i) for i in range(num_splits)
+            ]
+
+            # Start the test
+            start.set()
+
+            print(">>> Test started")
 
         for f in futures:
             assert f.result() is True, f.result()
+
+        # Verify count, FIFO order per split
+        for split_idx in range(num_splits):
+            consumed = consumed_splits[split_idx]
+            expected = ref_bundles[split_idx::num_splits]
+            assert len(consumed) == num_per_split
+            assert consumed == expected, f"Split {split_idx}: FIFO order violated"
+
+        # Verify queue is fully drained
+        assert len(q) == 0
+        assert q.num_blocks == 0
+        assert q.memory_usage == 0
 
 
 def test_exception_concise_stacktrace():

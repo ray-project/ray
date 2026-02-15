@@ -68,6 +68,7 @@ def test_actor_pool_scaling():
         input_dependencies=[MagicMock()],
         internal_input_queue_num_blocks=MagicMock(return_value=1),
         metrics=MagicMock(average_num_inputs_per_task=1, num_inputs_received=1),
+        num_output_splits=MagicMock(return_value=1),
     )
     op_state = OpState(
         op, inqueues=[MagicMock(__len__=MagicMock(return_value=10), num_blocks=10)]

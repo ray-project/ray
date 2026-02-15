@@ -545,6 +545,13 @@ class PhysicalOperator(Operator):
         """
         return self._estimated_output_num_rows
 
+    def num_output_splits(self) -> int:
+        """Returns the number of splits for this operator's output is partitioned into.
+
+        Most operators have a single output split.
+        """
+        return 1
+
     def start(self, options: ExecutionOptions) -> None:
         """Called by the executor when execution starts for an operator.
 
