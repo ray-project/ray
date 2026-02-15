@@ -1,8 +1,8 @@
 # If you make changes below this line, please also make the corresponding changes to `dl-cpu-requirements.txt`!
 
-tensorflow==2.15.1; python_version < '3.12' and (sys_platform != 'darwin' or platform_machine != 'arm64')
-tensorflow-macos==2.15.1; python_version < '3.12' and sys_platform == 'darwin' and platform_machine == 'arm64'
-tensorflow-probability==0.23.0; python_version < '3.12'
+tensorflow>=2.15.1; python_version < '3.12' and (sys_platform != 'darwin' or platform_machine != 'arm64')
+tensorflow-macos>=2.15.1; python_version < '3.12' and sys_platform == 'darwin' and platform_machine == 'arm64'
+tensorflow-probability>=0.23.0; python_version < '3.12'
 tensorflow-datasets; python_version < '3.12'
 
 --extra-index-url https://download.pytorch.org/whl/cu121  # for GPU versions of torch, torchvision
@@ -19,4 +19,4 @@ cupy-cuda12x>=13.4.0; sys_platform != 'darwin'
 nixl==0.4.0; sys_platform != 'darwin'
 
 --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-jaxlib==0.4.22+cuda12.cudnn89; python_version < '3.12' and sys_platform != 'darwin'
+jaxlib>=0.4.22; python_version < '3.12' and sys_platform != 'darwin'
