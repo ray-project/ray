@@ -83,14 +83,17 @@ from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.debug.deterministic import update_global_seed_if_necessary
 from ray.tune.registry import get_trainable_cls, register_env
 
 # Read in common example script command line arguments.
 parser = add_rllib_example_script_args(default_timesteps=200000, default_reward=400.0)
-
+parser.add_argument("--seed", type=int, default=42)
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    update_global_seed_if_necessary(framework=args.framework, seed=args.seed)
 
     # Define env-to-module-connector pipeline for the new stack.
     def _env_to_module_pipeline(env, spaces, device):
@@ -112,6 +115,7 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("env")
+        .debugging(seed=args.seed)
         .env_runners(env_to_module_connector=_env_to_module_pipeline)
         .training(
             gamma=0.99,
