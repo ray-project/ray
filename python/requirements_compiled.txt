@@ -387,7 +387,7 @@ crc32c==2.3
     # via -r python/requirements/ml/data-requirements.txt
 crcmod==1.7
     # via gsutil
-cryptography==44.0.3
+cryptography==46.0.5
     # via
     #   -r python/requirements/test-requirements.txt
     #   adal
