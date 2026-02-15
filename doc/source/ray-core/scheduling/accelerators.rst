@@ -42,6 +42,9 @@ The accelerators natively supported by Ray Core are:
    * - METAX GPU
      - GPU
      - Experimental, supported by the community
+   * - Mobilint MBLT
+     - MBLT
+     - Experimental, supported by the community
 
 Starting Ray nodes with accelerators
 ------------------------------------
@@ -141,6 +144,16 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
             You can set the ``CUDA_VISIBLE_DEVICES`` environment variable before starting a Ray node
             to limit the METAX GPUs that are visible to Ray.
             For example, ``CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2``
+            lets Ray only see devices 1 and 3.
+
+   .. tab-item:: Mobilint MBLT
+        :sync: Mobilint MBLT
+
+        .. tip::
+
+            You can set the ``MBLT_DEVICES`` environment variable before starting a Ray node
+            to limit the Mobilint MBLTs that are visible to Ray.
+            For example, ``MBLT_DEVICES=1,3 ray start --head --resources='{"MBLT": 2}'``
             lets Ray only see devices 1 and 3.
 .. note::
 
@@ -508,6 +521,45 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             (gpu_task pid=51830) GPU IDs: [1]
             (gpu_task pid=51830) CUDA_VISIBLE_DEVICES: 1
 
+   .. tab-item:: Mobilint MBLT
+        :sync: Mobilint MBLT
+
+        .. testcode::
+            :hide:
+
+            ray.shutdown()
+
+        .. testcode::
+
+            import os
+            import ray
+
+            ray.init(resources={"MBLT": 2})
+
+            @ray.remote(resources={"MBLT": 1})
+            class MBLTActor:
+                def ping(self):
+                    print("MBLT IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["MBLT"]))
+                    print("MBLT_DEVICES: {}".format(os.environ["MBLT_DEVICES"]))
+
+            @ray.remote(resources={"MBLT": 1})
+            def mblt_task():
+                print("MBLT IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["MBLT"]))
+                print("MBLT_DEVICES: {}".format(os.environ["MBLT_DEVICES"]))
+
+            mblt_actor = MBLTActor.remote()
+            ray.get(mblt_actor.ping.remote())
+            # The actor uses the first MBLT so the task uses the second one.
+            ray.get(mblt_task.remote())
+
+        .. testoutput::
+            :options: +MOCK
+
+            (MBLTActor pid=52420) MBLT IDs: [0]
+            (MBLTActor pid=52420) MBLT_DEVICES: 0
+            (mblt_task pid=51830) MBLT IDs: [1]
+            (mblt_task pid=51830) MBLT_DEVICES: 1
+
 Inside a task or actor, :func:`ray.get_runtime_context().get_accelerator_ids() <ray.runtime_context.RuntimeContext.get_accelerator_ids>` returns a
 list of accelerator IDs that are available to the task or actor.
 Typically, it is not necessary to call ``get_accelerator_ids()`` because Ray
@@ -677,6 +729,11 @@ so multiple tasks and actors can share the same accelerator.
             # The four tasks created here can execute concurrently
             # and share the same GPU.
             ray.get([f.remote() for _ in range(4)])
+      
+      .. tab-item:: Mobilint MBLT
+        :sync: Mobilint MBLT
+
+        Mobilint MBLT doesn't support fractional resources.
 
 **Note:** It is the user's responsibility to make sure that the individual tasks
 don't use more than their share of the accelerator memory.
