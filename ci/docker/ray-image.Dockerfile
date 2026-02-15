@@ -17,7 +17,7 @@ FROM ${RAY_WHEEL_IMAGE} AS wheel-source
 FROM ${BASE_IMAGE}
 
 ARG RAY_COMMIT=unknown-commit
-ARG RAY_VERSION=3.0.0.dev0
+ARG RAY_VERSION
 
 LABEL io.ray.ray-commit="${RAY_COMMIT}"
 LABEL io.ray.ray-version="${RAY_VERSION}"

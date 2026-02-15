@@ -5,6 +5,11 @@
 
 set -euo pipefail
 
+# Source rayci.env if RAY_VERSION not provided
+if [[ -z "${RAY_VERSION:-}" ]] && [[ -f "rayci.env" ]]; then
+    source rayci.env
+fi
+
 export RAY_HASH="${RAY_HASH:-}"
 export RAY_VERSION="${RAY_VERSION:-}"
 
