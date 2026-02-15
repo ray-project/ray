@@ -510,9 +510,9 @@ class LLMServer(LLMServerProtocol):
             return
         try:
             return await self.engine.check_health()
-        except Exception as e:
-            logger.error("Engine health check failed in LLMServer.check_health: %s", e)
-            raise e
+        except Exception:
+            logger.exception("Engine health check failed")
+            raise
 
     async def sleep(self, **kwargs: Any) -> None:
         """Put the engine to sleep.
@@ -524,9 +524,9 @@ class LLMServer(LLMServerProtocol):
             return
         try:
             await self.engine.sleep(**kwargs)
-        except Exception as e:
-            logger.error("Engine sleep failed in LLMServer.sleep: %s", e)
-            raise e
+        except Exception:
+            logger.exception("Engine sleep failed")
+            raise
 
     async def wakeup(self, **kwargs: Any) -> None:
         """Wake up the engine from sleep mode.
@@ -538,9 +538,9 @@ class LLMServer(LLMServerProtocol):
             return
         try:
             await self.engine.wakeup(**kwargs)
-        except Exception as e:
-            logger.error("Engine wakeup failed in LLMServer.wakeup: %s", e)
-            raise e
+        except Exception:
+            logger.exception("Engine wakeup failed")
+            raise
 
     async def is_sleeping(self) -> bool:
         """Check whether the engine is currently sleeping.
@@ -552,9 +552,9 @@ class LLMServer(LLMServerProtocol):
             return False
         try:
             return await self.engine.is_sleeping()
-        except Exception as e:
-            logger.error("Engine is_sleeping failed in LLMServer.is_sleeping: %s", e)
-            raise e
+        except Exception:
+            logger.exception("Engine is_sleeping check failed")
+            raise
 
     async def reset_prefix_cache(self) -> None:
         """Reset the KV prefix cache on the engine.
@@ -565,12 +565,9 @@ class LLMServer(LLMServerProtocol):
             return
         try:
             await self.engine.reset_prefix_cache()
-        except Exception as e:
-            logger.error(
-                "Engine reset_prefix_cache failed in LLMServer.reset_prefix_cache: %s",
-                e,
-            )
-            raise e
+        except Exception:
+            logger.exception("Engine reset_prefix_cache failed")
+            raise
 
     async def pause(self, **kwargs: Any) -> None:
         """Pause generation on the engine.
@@ -585,9 +582,9 @@ class LLMServer(LLMServerProtocol):
             return
         try:
             await self.engine.pause(**kwargs)
-        except Exception as e:
-            logger.error("Engine pause failed in LLMServer.pause: %s", e)
-            raise e
+        except Exception:
+            logger.exception("Engine pause failed")
+            raise
 
     async def resume(self, **kwargs: Any) -> None:
         """Resume generation on the engine after pause.
@@ -599,9 +596,9 @@ class LLMServer(LLMServerProtocol):
             return
         try:
             await self.engine.resume(**kwargs)
-        except Exception as e:
-            logger.error("Engine resume failed in LLMServer.resume: %s", e)
-            raise e
+        except Exception:
+            logger.exception("Engine resume failed")
+            raise
 
     async def is_paused(self) -> bool:
         """Check whether the engine is currently paused.
@@ -613,9 +610,9 @@ class LLMServer(LLMServerProtocol):
             return False
         try:
             return await self.engine.is_paused()
-        except Exception as e:
-            logger.error("Engine is_paused failed in LLMServer.is_paused: %s", e)
-            raise e
+        except Exception:
+            logger.exception("Engine is_paused check failed")
+            raise
 
     async def start_profile(self) -> None:
         """Start profiling"""
@@ -623,11 +620,9 @@ class LLMServer(LLMServerProtocol):
             return
         try:
             await self.engine.start_profile()
-        except Exception as e:
-            logger.error(
-                "Engine start profile failed in LLMServer.start_profile: %s", e
-            )
-            raise e
+        except Exception:
+            logger.exception("Engine start_profile failed")
+            raise
 
     async def stop_profile(self) -> None:
         """Stop profiling"""
@@ -635,9 +630,9 @@ class LLMServer(LLMServerProtocol):
             return
         try:
             await self.engine.stop_profile()
-        except Exception as e:
-            logger.error("Engine stop profile failed in LLMServer.stop_profile: %s", e)
-            raise e
+        except Exception:
+            logger.exception("Engine stop_profile failed")
+            raise
 
     async def collective_rpc(
         self,
@@ -669,11 +664,9 @@ class LLMServer(LLMServerProtocol):
                 args=args,
                 kwargs=kwargs,
             )
-        except Exception as e:
-            logger.error(
-                "Engine collective_rpc failed in LLMServer.collective_rpc: %s", e
-            )
-            raise e
+        except Exception:
+            logger.exception("Engine collective_rpc failed")
+            raise
 
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
