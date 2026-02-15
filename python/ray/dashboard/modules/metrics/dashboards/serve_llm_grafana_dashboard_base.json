@@ -1,0 +1,170 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 1,
+  "iteration": 1667344411089,
+  "links": [],
+  "panels": [],
+  "refresh": false,
+  "schemaVersion": 27,
+  "style": "dark",
+  "tags": [],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false
+        },
+        "description": "Filter queries of a specific Prometheus type.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "name": "vllm_model_name",
+        "label": "vLLM Model Name",
+        "type": "query",
+        "hide": 0,
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_vllm:request_prompt_tokens_sum{{{global_filters}}}, model_name)",
+        "query": {
+          "query": "label_values(ray_vllm:request_prompt_tokens_sum{{{global_filters}}}, model_name)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "multi": false,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      },
+      {
+        "name": "workerid",
+        "label": "Worker ID",
+        "type": "query",
+        "hide": 0,
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_vllm:request_prompt_tokens_sum{{{global_filters}}}, WorkerId)",
+        "query": {
+          "query": "label_values(ray_vllm:request_prompt_tokens_sum{{{global_filters}}}, WorkerId)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "multi": false,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      },
+      {
+        "name": "deployment",
+        "label": "Deployment",
+        "type": "query",
+        "hide": 0,
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_serve_deployment_request_counter_total{{{global_filters}}}, deployment)",
+        "query": {
+          "query": "label_values(ray_serve_deployment_request_counter_total{{{global_filters}}}, deployment)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      },
+      {
+        "name": "interval",
+        "label": "Interval",
+        "type": "custom",
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "options": [
+          {
+            "selected": true,
+            "text": "30s",
+            "value": "30s"
+          },
+          {
+            "selected": false,
+            "text": "1m",
+            "value": "1m"
+          },
+          {
+            "selected": false,
+            "text": "5m",
+            "value": "5m"
+          },
+          {
+            "selected": false,
+            "text": "10m",
+            "value": "10m"
+          },
+          {
+            "selected": false,
+            "text": "15m",
+            "value": "15m"
+          }
+        ],
+        "current": {
+          "selected": true,
+          "text": "5m",
+          "value": "5m"
+        }
+      }
+    ]
+  },
+  "rayMeta": ["excludesSystemRoutes"],
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Serve LLM Dashboard",
+  "uid": "rayServeLlmDashboard",
+  "version": 1
+}
