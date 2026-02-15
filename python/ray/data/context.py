@@ -101,6 +101,10 @@ DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
 DEFAULT_MIN_PARALLELISM = env_integer("RAY_DATA_DEFAULT_MIN_PARALLELISM", 200)
 
+DEFAULT_SMALL_DATA_THRESHOLD_FOR_LOCAL_AGGREGATION = env_integer(
+    "RAY_DATA_SMALL_DATA_THRESHOLD_FOR_LOCAL_AGGREGATION", 10 * 1024 * 1024
+)
+
 DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = env_bool(
     "RAY_DATA_ENABLE_TENSOR_EXTENSION_CASTING",
     True,
@@ -606,6 +610,10 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
+    small_data_threshold_for_local_aggregation: int = (
+        DEFAULT_SMALL_DATA_THRESHOLD_FOR_LOCAL_AGGREGATION
+    )
+
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
         DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS
@@ -639,9 +647,9 @@ class DataContext:
     )
     write_file_retry_on_errors: List[str] = DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
     warn_on_driver_memory_usage_bytes: int = DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES
-    actor_task_retry_on_errors: Union[
-        bool, List[BaseException]
-    ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
+    actor_task_retry_on_errors: Union[bool, List[BaseException]] = (
+        DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
+    )
     actor_init_retry_on_errors: bool = DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS
     actor_init_max_retries: int = DEFAULT_ACTOR_INIT_MAX_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
@@ -681,9 +689,9 @@ class DataContext:
         default_factory=_issue_detectors_config_factory
     )
 
-    downstream_capacity_backpressure_ratio: Optional[
-        float
-    ] = DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO
+    downstream_capacity_backpressure_ratio: Optional[float] = (
+        DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO
+    )
 
     enable_dynamic_output_queue_size_backpressure: bool = (
         DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
@@ -708,9 +716,7 @@ class DataContext:
         self._kv_configs: Dict[str, Any] = {}
 
         # Sync hash shuffle aggregator fields to its detector config
-        self.issue_detectors_config.hash_shuffle_detector_config.detection_time_interval_s = (
-            self.hash_shuffle_aggregator_health_warning_interval_s
-        )
+        self.issue_detectors_config.hash_shuffle_detector_config.detection_time_interval_s = self.hash_shuffle_aggregator_health_warning_interval_s
         self.issue_detectors_config.hash_shuffle_detector_config.min_wait_time_s = (
             self.min_hash_shuffle_aggregator_wait_time_in_s
         )
