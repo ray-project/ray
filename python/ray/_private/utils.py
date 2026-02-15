@@ -494,7 +494,7 @@ def get_cgroup_used_memory(
 ):
     """
     The calculation logic is the same with `GetCGroupMemoryUsedBytes`
-    in `memory_monitor.cc` file.
+    in `memory_monitor_utils.cc` file.
     """
     inactive_file_bytes = -1
     active_file_bytes = -1
