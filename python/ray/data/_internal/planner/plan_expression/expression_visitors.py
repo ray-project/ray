@@ -10,9 +10,11 @@ from ray.data.expressions import (
     LiteralExpr,
     MonotonicallyIncreasingIdExpr,
     Operation,
+    RandomExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UUIDExpr,
     _CallableClassUDF,
     _ExprVisitor,
 )
@@ -83,6 +85,14 @@ class _ExprVisitorBase(_ExprVisitor[None]):
         self, expr: "MonotonicallyIncreasingIdExpr"
     ) -> None:
         """Visit a monotonically_increasing_id expression (no columns to collect)."""
+        pass
+
+    def visit_random(self, expr: "RandomExpr") -> None:
+        """Visit a synthetic expression (no columns to collect)."""
+        pass
+
+    def visit_uuid(self, expr: "UUIDExpr") -> None:
+        """Visit a uuid expression (no columns to collect)."""
         pass
 
 
@@ -306,6 +316,28 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         """
         return expr
 
+    def visit_random(self, expr: "RandomExpr") -> Expr:
+        """Visit a random expression (no rewriting needed).
+
+        Args:
+            expr: The random expression.
+
+        Returns:
+            The original random expression.
+        """
+        return expr
+
+    def visit_uuid(self, expr: "UUIDExpr") -> Expr:
+        """Visit a uuid expression (no rewriting needed).
+
+        Args:
+            expr: The uuid expression.
+
+        Returns:
+            The original uuid expression.
+        """
+        return expr
+
 
 def _is_col_expr(expr: Expr) -> bool:
     return isinstance(expr, ColumnExpr) or (
@@ -438,6 +470,12 @@ class _TreeReprVisitor(_ExprVisitor[str]):
     ) -> str:
         return self._make_tree_lines("MONOTONICALLY_INCREASING_ID()", expr=expr)
 
+    def visit_random(self, expr: "RandomExpr") -> str:
+        return self._make_tree_lines("RANDOM()", expr=expr)
+
+    def visit_uuid(self, expr: "UUIDExpr") -> str:
+        return self._make_tree_lines("UUID()", expr=expr)
+
 
 class _InlineExprReprVisitor(_ExprVisitor[str]):
     """Visitor that generates concise inline string representations of expressions.
@@ -532,6 +570,14 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
     ) -> str:
         """Visit a monotonically_increasing_id expression and return its inline representation."""
         return "monotonically_increasing_id()"
+
+    def visit_random(self, expr: "RandomExpr") -> str:
+        """Visit a random expression and return its inline representation."""
+        return "random()"
+
+    def visit_uuid(self, expr: "UUIDExpr") -> str:
+        """Visit a uuid expression and return its inline representation."""
+        return "uuid()"
 
 
 def get_column_references(expr: Expr) -> List[str]:
