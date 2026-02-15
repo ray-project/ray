@@ -37,8 +37,74 @@ class MongoDatasource(Datasource):
         self._client = None
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        # TODO(jian): Add memory size estimation to improve auto-tune of parallelism.
-        return None
+        """Estimate the in-memory size of the data to be read.
+
+        Uses MongoDB collection statistics to estimate size based on:
+        - Average object size (avgObjSize from collStats)
+        - Estimated document count matching the pipeline
+
+        Note: This is an approximate estimation. The actual in-memory size may vary
+        depending on data characteristics and PyArrow conversion overhead.
+
+        Returns:
+            Optional[int]: Estimated size in bytes, or None if cannot estimate.
+        """
+        try:
+            # Initialize client if not already done
+            self._get_or_create_client()
+
+            # Check if _avg_obj_size was initialized successfully
+            avg_obj_size = getattr(self, "_avg_obj_size", 0)
+            if avg_obj_size == 0:
+                return None
+
+            coll = self._client[self._database][self._collection]
+
+            # Get match query from pipeline
+            match_query = self._get_match_query(self._pipeline)
+
+            # Check if this is the default "match all" pipeline
+            # The default pipeline [{"$match": {"_id": {"$exists": "true"}}}]
+            # matches all documents, so we should use the faster estimated count
+            is_default_pipeline = match_query == {"_id": {"$exists": "true"}}
+
+            # Estimate document count based on query
+            if match_query and not is_default_pipeline:
+                # Use count_documents for user-specified filtered queries
+                try:
+                    estimated_count = coll.count_documents(match_query)
+                except Exception as e:
+                    logger.debug(
+                        f"count_documents failed, using estimated_document_count: {e}"
+                    )
+                    estimated_count = coll.estimated_document_count()
+            else:
+                # Use estimated_document_count for full collection scans (faster)
+                estimated_count = coll.estimated_document_count()
+
+            if estimated_count == 0:
+                return None
+
+            # Estimate total size: count * avg_obj_size
+            # Add 20% buffer for PyArrow conversion overhead (empirically determined)
+            PYARROW_OVERHEAD_FACTOR = 1.2
+            estimated_size = int(
+                estimated_count * avg_obj_size * PYARROW_OVERHEAD_FACTOR
+            )
+
+            logger.debug(
+                f"MongoDB memory estimation: "
+                f"{estimated_count} docs * {avg_obj_size} bytes/doc "
+                f"= {estimated_size} bytes (with {PYARROW_OVERHEAD_FACTOR}x overhead)"
+            )
+
+            return estimated_size
+        except ValueError:
+            # Re-raise ValueError for database/collection validation errors
+            raise
+        except Exception as e:
+            logger.warning(f"Failed to estimate MongoDB data size: {e}")
+            return None
 
     def _get_match_query(self, pipeline: List[Dict]) -> Dict:
         if len(pipeline) == 0 or "$match" not in pipeline[0]:
