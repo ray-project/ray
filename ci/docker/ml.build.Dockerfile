@@ -6,10 +6,14 @@ FROM $DOCKER_IMAGE_BASE_BUILD
 ARG RAYCI_IS_GPU_BUILD=false
 ARG RAYCI_LIGHTNING_2=false
 ARG PYTHON
+ARG BUILD_VARIANT=build
+ARG PYTHON_DEPSET=python/deplocks/ci/ml-$BUILD_VARIANT-ci_depset_py$PYTHON.lock
 
 SHELL ["/bin/bash", "-ice"]
 
 COPY . .
+
+COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 RUN <<EOF
 #!/bin/bash
@@ -18,28 +22,8 @@ set -euo pipefail
 
 set -x
 
-if [[ "${PYTHON-}" == "3.12" ]]; then
-  # hebo and doc test dependencies are not needed for 3.12 test jobs
-  TRAIN_TESTING=1 TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 \
-    INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
-else
-  DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 \
-    INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
+uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
-  pip install HEBO==0.3.5
-fi
-
-if [[ "$RAYCI_IS_GPU_BUILD" == "true" ]]; then
-  pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
-fi
-
-if [[ "$RAYCI_LIGHTNING_2" == "true" ]]; then
-  pip uninstall -y pytorch-lightning
-  # todo move to requirements-test.txt
-  pip install lightning==2.1.2 pytorch-lightning==2.1.2
-fi
-
-# Remove installed ray.
-pip uninstall -y ray
+./ci/env/install-hdfs.sh
 
 EOF

@@ -1,3 +1,6 @@
-deepspeed==0.12.3
+accelerate>=0.20.1
+deepspeed>=0.12.3
 datasets
 huggingface-hub>=0.24.0
+numexpr>=2.8.4
+accelerate
