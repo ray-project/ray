@@ -8,6 +8,7 @@ from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     TensorTransportMetadata,
 )
 from ray.experimental.gpu_object_manager.util import (
+    GetTensorOptions,
     register_tensor_transport,
 )
 
@@ -18,4 +19,5 @@ __all__ = [
     "TensorTransportManager",
     "TensorTransportMetadata",
     "CommunicatorMetadata",
+    "GetTensorOptions",
 ]
