@@ -35,7 +35,11 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT, validate_ssl_config
-from ray.serve.config import ProxyLocation, RequestRouterConfig
+from ray.serve.config import (
+    GangSchedulingConfig,
+    ProxyLocation,
+    RequestRouterConfig,
+)
 from ray.util.annotations import PublicAPI
 
 # Shared amongst multiple schemas.
@@ -435,6 +439,15 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         default=DEFAULT.VALUE,
         description="Config for the request router used for this deployment.",
     )
+    gang_scheduling_config: Optional[Union[Dict, GangSchedulingConfig]] = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Configuration for gang scheduling of deployment replicas. "
+            "Gang scheduling ensures that groups of replicas are scheduled "
+            "together atomically. Specify gang_size (required), and optionally "
+            "gang_placement_strategy and runtime_failure_policy."
+        ),
+    )
 
     @root_validator
     def validate_num_replicas_and_autoscaling_config(cls, values):
@@ -454,6 +467,33 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         elif num_replicas not in ["auto", None, DEFAULT.VALUE]:
             raise ValueError(
                 f'`num_replicas` must be an int or "auto", but got: {num_replicas}'
+            )
+
+        return values
+
+    @root_validator
+    def validate_gang_scheduling_config(cls, values):
+        gang_config = values.get("gang_scheduling_config", None)
+        if gang_config in [None, DEFAULT.VALUE]:
+            return values
+
+        if isinstance(gang_config, dict):
+            gang_config = GangSchedulingConfig(**gang_config)
+            values["gang_scheduling_config"] = gang_config
+
+        num_replicas = values.get("num_replicas", None)
+
+        if num_replicas == "auto":
+            raise ValueError(
+                'num_replicas="auto" is not allowed when '
+                "gang_scheduling_config is provided. Please set num_replicas "
+                "to a fixed multiple of gang_size."
+            )
+
+        if isinstance(num_replicas, int) and num_replicas % gang_config.gang_size != 0:
+            raise ValueError(
+                f"num_replicas ({num_replicas}) must be a multiple of "
+                f"gang_size ({gang_config.gang_size})."
             )
 
         return values
@@ -552,6 +592,11 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         schema.autoscaling_config = info.deployment_config.autoscaling_config.dict()
     else:
         schema.num_replicas = info.deployment_config.num_replicas
+
+    if info.deployment_config.gang_scheduling_config is not None:
+        schema.gang_scheduling_config = (
+            info.deployment_config.gang_scheduling_config.dict()
+        )
 
     return schema
 

@@ -179,6 +179,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         max_num_seqs=100,
         dynamic_lora_loading_path=None,
         enable_log_requests=False,
+        log_engine_metrics=True,
     )
 
 

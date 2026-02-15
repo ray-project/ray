@@ -1163,6 +1163,11 @@ class ProxyActorInterface(ABC):
         """Get replicas for a route (for testing)."""
         pass
 
+    @abstractmethod
+    def shutdown(self) -> None:
+        """Shuts down proxy."""
+        pass
+
     def _update_logging_config(self, logging_config: LoggingConfig):
         configure_component_logger(
             component_name="proxy",
@@ -1371,6 +1376,9 @@ class ProxyActor(ProxyActorInterface):
 
     async def serving(self, wait_for_applications_running: bool = True) -> None:
         """Wait for the proxy to be ready to serve requests."""
+        return
+
+    def shutdown(self) -> None:
         return
 
     async def update_draining(self, draining: bool, _after: Optional[Any] = None):

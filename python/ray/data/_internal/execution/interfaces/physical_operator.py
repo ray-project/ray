@@ -510,7 +510,7 @@ class PhysicalOperator(Operator):
         For regular tasks, this is the resources required to schedule a task. For actor
         tasks, this is the resources required to schedule an actor.
         """
-        return ExecutionResources.zero()
+        return self.incremental_resource_usage()
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.

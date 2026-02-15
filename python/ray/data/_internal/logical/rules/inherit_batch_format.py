@@ -30,7 +30,6 @@ class InheritBatchFormatRule(Rule):
                 if isinstance(upstream_op, MapBatches) and upstream_op.batch_format:
                     new_op = copy.copy(node)
                     new_op.batch_format = upstream_op.batch_format
-                    new_op._output_dependencies = []
                     return new_op
                 upstream_op = upstream_op.input_dependencies[0]
 

@@ -1049,6 +1049,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             gpu=0,
         )
 
+    def min_scheduling_resources(self) -> ExecutionResources:
+        return self.incremental_resource_usage()
+
     def has_completed(self) -> bool:
         # TODO separate marking as completed from the check
         return self._is_finalized() and super().has_completed()

@@ -29,6 +29,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
     RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -78,9 +79,9 @@ def _skip_if_ff_not_enabled():
 
 @pytest.fixture
 def _skip_if_haproxy_enabled():
-    if False:
+    if RAY_SERVE_ENABLE_HA_PROXY:
         pytest.skip(
-            reason="HAProxy is enabled.",
+            reason="RAY_SERVE_ENABLE_HA_PROXY is set.",
         )
 
 
@@ -91,7 +92,7 @@ def _shared_serve_instance():
     env_var_name = "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S"
     original_value = os.environ.get(env_var_name)
 
-    if False:
+    if RAY_SERVE_ENABLE_HA_PROXY:
         # Setting a longer minimum draining period ensures that the client connecting
         # to the uvicorn server closes the connection first. This prevents the socket
         # used by the uvicorn server from entering the TIME_WAIT tcp state, which blocks
@@ -1061,8 +1062,12 @@ def test_only_running_apps_are_used_for_target_groups(
     grpc_ports = get_grpc_ports(first_only=False)
     # In HAProxy mode, we don't return itself or the Serve proxy as a target yet.
     # This will change when we support scale to/from zero.
-    assert set(http_ports) == {30000, 30001} if False else {30000, 30001, 8000}
-    assert set(grpc_ports) == {40000, 40001} if False else {40000, 40001, 9000}
+    assert set(http_ports) == (
+        {30000, 30001} if RAY_SERVE_ENABLE_HA_PROXY else {30000, 30001, 8000}
+    )
+    assert set(grpc_ports) == (
+        {40000, 40001} if RAY_SERVE_ENABLE_HA_PROXY else {40000, 40001, 9000}
+    )
 
     ray.get(signal_actor.send.remote())
 
@@ -2071,10 +2076,7 @@ def test_shutdown_replica_only_after_draining_requests(
     )
 
 
-# TODO: haproxy doesn't support /-/routes yet so skipping this test
-def test_http_routes_endpoint(
-    _skip_if_ff_not_enabled, _skip_if_haproxy_enabled, serve_instance
-):
+def test_http_routes_endpoint(_skip_if_ff_not_enabled, serve_instance):
     """Test that the routes endpoint returns pair of routes_prefix and
     app_name of which the replica is serving for.
     """
@@ -2093,12 +2095,20 @@ def test_http_routes_endpoint(
     serve.run(D2.bind(), name="app2", route_prefix="/hello/world")
 
     # Test routes endpoint on the replica running for app1 directly
-    url = get_application_url(app_name="app1", exclude_route_prefix=True)
+    url = get_application_url(
+        app_name="app1",
+        exclude_route_prefix=True,
+        from_proxy_manager=True,
+    )
     routes = httpx.get(f"{url}/-/routes").json()
     assert routes == {"/D1": "app1"}, routes
 
     # Test routes endpoint on the replica running for app2 directly
-    url = get_application_url(app_name="app2", exclude_route_prefix=True)
+    url = get_application_url(
+        app_name="app2",
+        exclude_route_prefix=True,
+        from_proxy_manager=True,
+    )
     routes = httpx.get(f"{url}/-/routes").json()
     assert routes == {"/hello/world": "app2"}, routes
 
@@ -2319,7 +2329,8 @@ def test_get_serve_instance_details_json_serializable(
                                     "upscale_delay_s": 30.0,
                                     "aggregation_function": "mean",
                                     "policy": {
-                                        "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+                                        "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+                                        "policy_kwargs": {},
                                     },
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
@@ -2376,31 +2387,31 @@ def test_get_serve_instance_details_json_serializable(
                     "targets": [
                         {
                             "ip": node_ip,
-                            "port": 8000 if False else 30000,
+                            "port": 8000 if RAY_SERVE_ENABLE_HA_PROXY else 30000,
                             "instance_id": node_instance_id,
                             "name": proxy_details.actor_name
-                            if False
+                            if RAY_SERVE_ENABLE_HA_PROXY
                             else replica.actor_name,
                         },
                     ],
                     "route_prefix": "/",
                     "protocol": "HTTP",
-                    "app_name": "" if False else "default",
+                    "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
                 },
                 {
                     "targets": [
                         {
                             "ip": node_ip,
-                            "port": 9000 if False else 40000,
+                            "port": 9000 if RAY_SERVE_ENABLE_HA_PROXY else 40000,
                             "instance_id": node_instance_id,
                             "name": proxy_details.actor_name
-                            if False
+                            if RAY_SERVE_ENABLE_HA_PROXY
                             else replica.actor_name,
                         },
                     ],
                     "route_prefix": "/",
                     "protocol": "gRPC",
-                    "app_name": "" if False else "default",
+                    "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
                 },
             ],
         }

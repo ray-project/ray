@@ -1,6 +1,5 @@
 import asyncio
 import csv
-import fcntl
 import io
 import json
 import logging
@@ -677,6 +676,8 @@ class HAProxyApi(ProxyApi):
             # This is important in test environments where multiple nodes may run
             # on the same machine
             with open(self.config_file_path, "w") as f:
+                import fcntl
+
                 fcntl.flock(f.fileno(), fcntl.LOCK_EX)
                 try:
                     f.write(config_content)

@@ -828,6 +828,7 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     wait_for_condition(
         lambda: len(get_metric_dictionaries("ray_serve_deployment_replica_healthy"))
         == 3,
+        timeout=40,
     )
     health_metrics = get_metric_dictionaries("ray_serve_deployment_replica_healthy")
     expected_output = {

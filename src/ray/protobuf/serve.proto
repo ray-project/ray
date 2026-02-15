@@ -29,6 +29,9 @@ message AutoscalingPolicy {
 
   // The cloudpickled policy definition.
   bytes _serialized_policy_def = 2;
+
+  // Keyword arguments for class-based policies (cloudpickled dict).
+  bytes policy_kwargs = 3;
 }
 
 // Configuration options for Serve's replica autoscaler.
@@ -126,6 +129,32 @@ message RequestRouterConfig {
 }
 //[End] ROUTING CONFIG
 
+//[Begin] GANG SCHEDULING CONFIG
+// Placement strategy for replicas within a gang.
+enum GangPlacementStrategy {
+  PACK = 0;
+  SPREAD = 1;
+}
+
+// Policy for handling runtime failures of replicas in a gang.
+enum GangRuntimeFailurePolicy {
+  RESTART_GANG = 0;
+  RESTART_REPLICA = 1;
+}
+
+// Configuration for gang scheduling of deployment replicas.
+message GangSchedulingConfig {
+  // Number of replicas per gang. num_replicas must be a multiple of gang_size.
+  int32 gang_size = 1;
+
+  // Placement strategy for replicas within a gang.
+  GangPlacementStrategy gang_placement_strategy = 2;
+
+  // What to do when a replica fails after gang is running.
+  GangRuntimeFailurePolicy runtime_failure_policy = 3;
+}
+//[End] GANG SCHEDULING CONFIG
+
 // Configuration options for a deployment, to be set by the user.
 message DeploymentConfig {
   // The number of processes to start up that will handle requests to this deployment.
@@ -175,6 +204,9 @@ message DeploymentConfig {
 
   // The maximum number of retries in case the deployment constructor results in failure
   int32 max_constructor_retry_count = 20;
+
+  // Gang scheduling configuration for atomic replica scheduling.
+  GangSchedulingConfig gang_scheduling_config = 21;
 }
 
 // Deployment language.

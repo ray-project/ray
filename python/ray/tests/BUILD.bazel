@@ -1215,6 +1215,7 @@ py_test(
     size = "small",
     srcs = [
         "test_typing.py",
+        "typing_files/check_typing_actor_async.py",
         "typing_files/check_typing_bad.py",
         "typing_files/check_typing_good.py",
     ],
