@@ -2056,3 +2056,17 @@ py_test(
         "//:ray_lib",
     ],
 )
+
+py_test(
+    name = "test_synthetic_expression",
+    size = "small",
+    srcs = ["tests/test_synthetic_expression.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
