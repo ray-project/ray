@@ -20,6 +20,7 @@
 #include <memory>
 #include <queue>
 #include <string>
+#include <string_view>  // Changed for read-only string parameters
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -70,9 +71,9 @@ class TaskCounter {
   explicit TaskCounter(ray::observability::MetricInterface &task_by_state_gauge,
                        ray::observability::MetricInterface &actor_by_state_gauge);
 
-  void BecomeActor(const std::string &actor_name) {
+  void BecomeActor(std::string_view actor_name) {  // Changed: read-only param
     absl::MutexLock l(&mu_);
-    actor_name_ = actor_name;
+    actor_name_ = std::string(actor_name);  // Convert to std::string for storage
   }
 
   void SetJobId(const JobID &job_id) {
@@ -84,31 +85,36 @@ class TaskCounter {
 
   void RecordMetrics();
 
-  void IncPending(const std::string &func_name, bool is_retry) {
+  void IncPending(std::string_view func_name,
+                  bool is_retry) {  // Changed: read-only param
     absl::MutexLock l(&mu_);
-    counter_.Increment({func_name, TaskStatusType::kPending, is_retry});
+    counter_.Increment({std::string(func_name), TaskStatusType::kPending, is_retry});
   }
 
-  void MovePendingToRunning(const std::string &func_name, bool is_retry) {
+  void MovePendingToRunning(std::string_view func_name,
+                            bool is_retry) {  // Changed: read-only param
     absl::MutexLock l(&mu_);
-    counter_.Swap({func_name, TaskStatusType::kPending, is_retry},
-                  {func_name, TaskStatusType::kRunning, is_retry});
+    auto func_name_str = std::string(func_name);  // Convert once for reuse
+    counter_.Swap({func_name_str, TaskStatusType::kPending, is_retry},
+                  {func_name_str, TaskStatusType::kRunning, is_retry});
     num_tasks_running_++;
   }
 
-  void MoveRunningToFinished(const std::string &func_name, bool is_retry) {
+  void MoveRunningToFinished(std::string_view func_name,
+                             bool is_retry) {  // Changed: read-only param
     absl::MutexLock l(&mu_);
-    counter_.Swap({func_name, TaskStatusType::kRunning, is_retry},
-                  {func_name, TaskStatusType::kFinished, is_retry});
+    auto func_name_str = std::string(func_name);  // Convert once for reuse
+    counter_.Swap({func_name_str, TaskStatusType::kRunning, is_retry},
+                  {func_name_str, TaskStatusType::kFinished, is_retry});
     num_tasks_running_--;
     RAY_CHECK_GE(num_tasks_running_, 0);
   }
 
-  void SetMetricStatus(const std::string &func_name,
+  void SetMetricStatus(std::string_view func_name,  // Changed: read-only param
                        rpc::TaskStatus status,
                        bool is_retry);
 
-  void UnsetMetricStatus(const std::string &func_name,
+  void UnsetMetricStatus(std::string_view func_name,  // Changed: read-only param
                          rpc::TaskStatus status,
                          bool is_retry);
 
@@ -236,7 +242,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param creation_task_exception_pb_bytes It is given when the worker is
   /// disconnected because the actor is failed due to its exception in its init method.
   void Disconnect(const rpc::WorkerExitType &exit_type,
-                  const std::string &exit_detail,
+                  std::string_view exit_detail,  // Changed: read-only param
                   const std::shared_ptr<LocalMemoryBuffer>
                       &creation_task_exception_pb_bytes = nullptr);
 
@@ -468,10 +474,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// byte string).
   /// \param[in] owner_address The address of the object's owner.
   /// \param[in] serialized_object_status The serialized object status protobuf.
-  void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
-                                             const ObjectID &outer_object_id,
-                                             const rpc::Address &owner_address,
-                                             const std::string &serialized_object_status);
+  void RegisterOwnershipInfoAndResolveFuture(
+      const ObjectID &object_id,
+      const ObjectID &outer_object_id,
+      const rpc::Address &owner_address,
+      std::string_view serialized_object_status);  // Changed: read-only param
 
   ///
   /// Public methods related to storing and retrieving objects.
@@ -816,8 +823,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] The timestamp of the error.
   /// \return Status.
   Status PushError(const JobID &job_id,
-                   const std::string &type,
-                   const std::string &error_message,
+                   std::string_view type,
+                   std::string_view error_message,
                    double timestamp);
 
   // Prestart workers. The workers:
@@ -828,9 +835,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // request.
   //
   // This API is async. It provides no guarantee that the workers are actually started.
-  void PrestartWorkers(const std::string &serialized_runtime_env_info,
-                       uint64_t keep_alive_duration_secs,
-                       size_t num_workers);
+  void PrestartWorkers(
+      std::string_view serialized_runtime_env_info,  // Changed: read-only param
+      uint64_t keep_alive_duration_secs,
+      size_t num_workers);
 
   /// Submit a normal task.
   ///
@@ -861,9 +869,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       int max_retries,
       bool retry_exceptions,
       const rpc::SchedulingStrategy &scheduling_strategy,
-      const std::string &debugger_breakpoint,
-      const std::string &serialized_retry_exception_allowlist = "",
-      const std::string &call_site = "",
+      std::string_view debugger_breakpoint,  // Changed: read-only param
+      std::string_view serialized_retry_exception_allowlist =
+          "",                           // Changed: read-only param
+      std::string_view call_site = "",  // Changed: read-only param
       const TaskID current_task_id = TaskID::Nil());
 
   /// Create an actor.
@@ -884,8 +893,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   Status CreateActor(const RayFunction &function,
                      const std::vector<std::unique_ptr<TaskArg>> &args,
                      const ActorCreationOptions &actor_creation_options,
-                     const std::string &extension_data,
-                     const std::string &call_site,
+                     std::string_view extension_data,  // Changed: read-only param
+                     std::string_view call_site,       // Changed: read-only param
                      ActorID *actor_id);
 
   /// Create a placement group.
@@ -949,16 +958,17 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// i.e., Python async actors.
   ///
   /// \return Status of this submission
-  Status SubmitActorTask(const ActorID &actor_id,
-                         const RayFunction &function,
-                         const std::vector<std::unique_ptr<TaskArg>> &args,
-                         const TaskOptions &task_options,
-                         int max_retries,
-                         bool retry_exceptions,
-                         const std::string &serialized_retry_exception_allowlist,
-                         const std::string &call_site,
-                         std::vector<rpc::ObjectReference> &task_returns,
-                         const TaskID current_task_id = TaskID::Nil());
+  Status SubmitActorTask(
+      const ActorID &actor_id,
+      const RayFunction &function,
+      const std::vector<std::unique_ptr<TaskArg>> &args,
+      const TaskOptions &task_options,
+      int max_retries,
+      bool retry_exceptions,
+      std::string_view serialized_retry_exception_allowlist,  // Changed: read-only param
+      std::string_view call_site,                             // Changed: read-only param
+      std::vector<rpc::ObjectReference> &task_returns,
+      const TaskID current_task_id = TaskID::Nil());
 
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
@@ -1008,9 +1018,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// because the distributed reference counting protocol does not ensure that
   /// the owner will learn of this reference.
   /// \return The ActorID of the deserialized handle.
-  ActorID DeserializeAndRegisterActorHandle(const std::string &serialized,
-                                            const ObjectID &outer_object_id,
-                                            bool add_local_ref);
+  ActorID DeserializeAndRegisterActorHandle(
+      std::string_view serialized,  // Changed: read-only param
+      const ObjectID &outer_object_id,
+      bool add_local_ref);
 
   /// Serialize an actor handle.
   ///
@@ -1042,7 +1053,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ResourceMappingType GetResourceIDs() const;
 
   /// Create a profile event and push it the TaskEventBuffer when the event is destructed.
-  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_name);
+  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(
+      std::string_view event_name);  // Changed: read-only param
 
  public:
   friend class CoreWorkerProcessImpl;
@@ -1149,7 +1161,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \return The shared_ptr to the actor handle if found, nullptr otherwise.
   /// The second pair contains the status of getting a named actor handle.
   std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandle(
-      const std::string &name, const std::string &ray_namespace);
+      std::string_view name,
+      std::string_view ray_namespace);  // Changed: read-only params
 
   /// Returns a list of the named actors currently in the system.
   ///
@@ -1335,8 +1348,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param stderr_start_offset Start offset of the stderr for this task.
   void RecordTaskLogStart(const TaskID &task_id,
                           int32_t attempt_number,
-                          const std::string &stdout_path,
-                          const std::string &stderr_path,
+                          std::string_view stdout_path,  // Changed: read-only param
+                          std::string_view stderr_path,  // Changed: read-only param
                           int64_t stdout_start_offset,
                           int64_t stderr_start_offset) const;
 
@@ -1361,7 +1374,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param creation_task_exception_pb_bytes It is given when the worker is
   /// disconnected because the actor is failed due to its exception in its init method.
   void Exit(const rpc::WorkerExitType exit_type,
-            const std::string &detail,
+            std::string_view detail,  // Changed: read-only param
             const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
                 nullptr);
 
@@ -1384,18 +1397,18 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   void SubscribeToNodeChanges();
 
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
-      const std::string &serialized_runtime_env_info) const;
+      std::string_view serialized_runtime_env_info) const;  // Changed: read-only param
 
   // Used as the factory function for [OverrideTaskOrActorRuntimeEnvInfo] to create in LRU
   // cache.
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfoImpl(
-      const std::string &serialized_runtime_env_info) const;
+      std::string_view serialized_runtime_env_info) const;  // Changed: read-only param
 
   void BuildCommonTaskSpec(
       TaskSpecBuilder &builder,
       const JobID &job_id,
       const TaskID &task_id,
-      const std::string &name,
+      std::string_view name,  // Changed: read-only param
       const TaskID &current_task_id,
       uint64_t task_index,
       const TaskID &caller_id,
@@ -1405,12 +1418,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       int64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const std::string &debugger_breakpoint,
+      std::string_view debugger_breakpoint,  // Changed: read-only param
       int64_t depth,
-      const std::string &serialized_runtime_env_info,
-      const std::string &call_site,
+      std::string_view serialized_runtime_env_info,  // Changed: read-only param
+      std::string_view call_site,                    // Changed: read-only param
       const TaskID &main_thread_current_task_id,
-      const std::string &concurrency_group_name = "",
+      std::string_view concurrency_group_name = "",  // Changed: read-only param
       bool include_job_config = false,
       int64_t generator_backpressure_num_objects = -1,
       bool enable_task_events = true,
@@ -1420,7 +1433,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
-                        const std::string &task_name);
+                        std::string_view task_name);  // Changed: read-only param
 
   void SetActorId(const ActorID &actor_id);
 
@@ -1428,7 +1441,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// or cleaning any resources.
   /// \param exit_type The reason why this worker process is disconnected.
   /// \param exit_detail The detailed reason for a given exit.
-  void ForceExit(const rpc::WorkerExitType exit_type, const std::string &detail);
+  void ForceExit(const rpc::WorkerExitType exit_type,
+                 std::string_view detail);  // Changed: read-only param
 
   /// Forcefully kill child processes. User code running in actors or tasks
   /// can spawn processes that don't get terminated. If those processes
@@ -1466,7 +1480,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
   /// \param[in] call_site The call site from the language frontend.
-  void AddLocalReference(const ObjectID &object_id, const std::string &call_site) {
+  void AddLocalReference(const ObjectID &object_id,
+                         std::string_view call_site) {  // Changed: read-only param
     reference_counter_->AddLocalReference(object_id, call_site);
   }
 
@@ -1586,13 +1601,14 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   StatusSet<StatusT::InvalidArgument> ProcessSubscribeMessage(
       const rpc::SubMessage &sub_message,
       rpc::ChannelType channel_type,
-      const std::string &key_id,
+      std::string_view key_id,  // Changed: read-only param
       const NodeID &subscriber_id);
 
-  void AddSpilledObjectLocationOwner(const ObjectID &object_id,
-                                     const std::string &spilled_url,
-                                     const NodeID &spilled_node_id,
-                                     const std::optional<ObjectID> &generator_id);
+  void AddSpilledObjectLocationOwner(
+      const ObjectID &object_id,
+      std::string_view spilled_url,  // Changed: read-only param
+      const NodeID &spilled_node_id,
+      const std::optional<ObjectID> &generator_id);
 
   void AddObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
 
