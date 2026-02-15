@@ -86,7 +86,11 @@ class TestValidateWorkingDir:
             "gs://bucket/file",
         ]:
             with pytest.raises(
-                ValueError, match="Only .zip or .whl files supported for remote URIs."
+                ValueError,
+                match=(
+                    "Only .zip, .tar, .tar.gz, .tgz, .tar.zst, or .tzst files "
+                    "supported for remote URIs."
+                ),
             ):
                 parse_and_validate_working_dir(uri)
 
@@ -95,6 +99,9 @@ class TestValidateWorkingDir:
             "https://some_domain.com/path/file.zip",
             "s3://bucket/file.zip",
             "gs://bucket/file.zip",
+            "https://some_domain.com/path/file.tar",
+            "s3://bucket/file.tar.zst",
+            "gs://bucket/file.tgz",
         ]:
             working_dir = parse_and_validate_working_dir(uri)
             assert working_dir == uri

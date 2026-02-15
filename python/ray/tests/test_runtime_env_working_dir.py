@@ -1,6 +1,7 @@
 import os
 import shutil
 import sys
+import tarfile
 import tempfile
 import time
 from importlib import import_module
@@ -122,6 +123,8 @@ def test_inherit_cluster_env_pythonpath(monkeypatch):
         "failure",
         "working_dir",
         "working_dir_zip",
+        "working_dir_tar",
+        "working_dir_tar_zst",
         "py_modules",
         "working_dir_and_py_modules",
     ],
@@ -152,6 +155,29 @@ def test_lazy_reads(
                 package = shutil.make_archive(
                     os.path.join(tmp_dir, "test"), "zip", zip_dir
                 )
+                ray.init(address, runtime_env={"working_dir": package})
+        elif option == "working_dir_tar":
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tar_dir = Path(tmp_working_dir)
+                package = os.path.join(tmp_dir, "test.tar")
+                with tarfile.open(package, "w") as tar:
+                    tar.add(tar_dir, arcname=".")
+                ray.init(address, runtime_env={"working_dir": package})
+        elif option == "working_dir_tar_zst":
+            try:
+                import zstandard as zstd
+            except ImportError:
+                pytest.skip("zstandard is required for .tar.zst tests")
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tar_dir = Path(tmp_working_dir)
+                tar_path = os.path.join(tmp_dir, "test.tar")
+                with tarfile.open(tar_path, "w") as tar:
+                    tar.add(tar_dir, arcname=".")
+                package = os.path.join(tmp_dir, "test.tar.zst")
+                with open(tar_path, "rb") as src, open(package, "wb") as dst:
+                    cctx = zstd.ZstdCompressor()
+                    with cctx.stream_writer(dst) as writer:
+                        shutil.copyfileobj(src, writer)
                 ray.init(address, runtime_env={"working_dir": package})
         elif option == "py_modules":
             ray.init(
@@ -217,7 +243,12 @@ def test_lazy_reads(
 
         assert ray.get(test_py_modules_whl.remote())
 
-    if option in {"py_modules", "working_dir_zip"}:
+    if option in {
+        "py_modules",
+        "working_dir_zip",
+        "working_dir_tar",
+        "working_dir_tar_zst",
+    }:
         # These options are not tested beyond this point, so return to save time.
         return
 
