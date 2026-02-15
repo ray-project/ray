@@ -153,9 +153,6 @@ class SplitCoordinator:
         self._data_context = dataset.context.copy()
         ray.data.DataContext._set_current(self._data_context)
 
-        if self._data_context.execution_options.locality_with_output is True:
-            self._data_context.execution_options.locality_with_output = locality_hints
-            logger.info(f"Auto configuring locality_with_output={locality_hints}")
         self._base_dataset = dataset
         self._n = n
         self._locality_hints = locality_hints

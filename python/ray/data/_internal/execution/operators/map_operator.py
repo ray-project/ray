@@ -71,7 +71,6 @@ from ray.data.block import (
     to_stats,
 )
 from ray.data.context import DataContext
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +204,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._map_task_kwargs = map_task_kwargs
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         self._ray_remote_args_fn = ray_remote_args_fn
-        self._ray_remote_args_factory_actor_locality = None
         self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
 
         # Bundles block references up to the min_rows_per_bundle target.
@@ -448,30 +446,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         else:
             self._output_queue = FIFOBundleQueue()
 
-        if options.locality_with_output:
-            if isinstance(options.locality_with_output, list):
-                locs = options.locality_with_output
-            else:
-                locs = [ray.get_runtime_context().get_node_id()]
-
-            class RoundRobinAssign:
-                def __init__(self, locs):
-                    self.locs = locs
-                    self.i = 0
-
-                def __call__(self, args):
-                    args = copy.deepcopy(args)
-                    args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-                        self.locs[self.i],
-                        soft=True,
-                        _spill_on_unavailable=True,
-                    )
-                    self.i += 1
-                    self.i %= len(self.locs)
-                    return args
-
-            self._ray_remote_args_factory_actor_locality = RoundRobinAssign(locs)
-
         map_transformer = self._map_transformer
         # Apply additional block split if needed.
         if self.get_additional_split_factor() > 1:
@@ -557,10 +531,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 # Only save to metrics if we haven't already done so.
                 if "scheduling_strategy" not in self._remote_args_for_metrics:
                     self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
-        # This should take precedence over previously set scheduling strategy, as it
-        # implements actor-based locality overrides.
-        if self._ray_remote_args_factory_actor_locality:
-            return self._ray_remote_args_factory_actor_locality(ray_remote_args)
         return ray_remote_args
 
     @abstractmethod
