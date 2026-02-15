@@ -26,6 +26,7 @@ from ray.data._internal.planner.randomize_blocks import generate_randomize_block
 from ray.data._internal.planner.repartition import generate_repartition_fn
 from ray.data._internal.planner.sort import generate_sort_fn
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.block import Block, BlockAccessor, BlockMetadataWithSchema
@@ -90,10 +91,15 @@ def _generate_local_aggregate_fn(
         if len(aggregated_blocks) == 0:
             return ([], {})
 
+        target_block_type = ExchangeTaskSpec._derive_target_block_type(batch_format)
+        normalized_blocks = TableBlockAccessor.normalize_block_types(
+            aggregated_blocks, target_block_type=target_block_type
+        )
+
         final_block, _ = BlockAccessor.for_block(
-            aggregated_blocks[0]
+            normalized_blocks[0]
         )._combine_aggregated_blocks(
-            list(aggregated_blocks), sort_key, aggs, finalize=True
+            list(normalized_blocks), sort_key, aggs, finalize=True
         )
 
         final_metadata = BlockMetadataWithSchema.from_block(final_block)
@@ -232,12 +238,15 @@ def plan_all_to_all_op(
                 data_context,
             )
 
+            debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
+                "debug_limit_shuffle_execution_to_num_blocks", None
+            )
             distributed_fn = generate_aggregate_fn(
                 op.key,
                 op.aggs,
                 op.batch_format or "default",
                 data_context,
-                None,
+                debug_limit_shuffle_execution_to_num_blocks,
             )
 
             def aggregate_fn_with_local_fallback(
