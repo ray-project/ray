@@ -359,6 +359,25 @@ class AutoscalingPolicy(BaseModel):
         description="Policy function can be a string import path or a function callable. "
         "If it's a string import path, it must be of the form `path.to.module:function_name`. ",
     )
+    policy_kwargs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Keyword arguments passed to the policy class constructor when "
+            "policy_function refers to a class. Ignored when policy_function "
+            "is a plain function. Values must be JSON-serializable."
+        ),
+    )
+
+    @validator("policy_kwargs", always=True)
+    def policy_kwargs_json_serializable(cls, v):
+        if isinstance(v, bytes):
+            return v
+        if v is not None:
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError(f"policy_kwargs is not JSON-serializable: {str(e)}.")
+        return v
 
     def __init__(self, **kwargs):
         serialized_policy_def = kwargs.pop("_serialized_policy_def", None)
@@ -788,3 +807,67 @@ class gRPCOptions(BaseModel):
                 raise ModuleNotFoundError(message) from e
 
         return callables
+
+
+@PublicAPI(stability="alpha")
+class GangPlacementStrategy(str, Enum):
+    """Placement strategy for replicas within a gang."""
+
+    PACK = "PACK"
+    """Pack replicas on as few nodes as possible (best effort)."""
+
+    SPREAD = "SPREAD"
+    """Spread replicas across distinct nodes as evenly as possible (best effort)."""
+
+
+@PublicAPI(stability="alpha")
+class GangRuntimeFailurePolicy(str, Enum):
+    """Policy for handling runtime failures of replicas in a gang."""
+
+    RESTART_GANG = "RESTART_GANG"
+    """Tear down and restart entire gang atomically when any replica fails."""
+
+    RESTART_REPLICA = "RESTART_REPLICA"
+    """
+    Tear down and restart individual replica when it fails.
+    Other replicas in the gang will continue running.
+    """
+
+
+@PublicAPI(stability="alpha")
+class GangSchedulingConfig(BaseModel):
+    """Configuration for gang scheduling of deployment replicas."""
+
+    # Please keep these options in sync with those in `src/ray/protobuf/serve.proto`.
+
+    gang_size: int = Field(
+        description=(
+            "Number of replicas per gang. "
+            "num_replicas must be a multiple of gang_size."
+        ),
+        ge=1,
+    )
+
+    gang_placement_strategy: GangPlacementStrategy = Field(
+        default=GangPlacementStrategy.PACK,
+        description=(
+            "Placement strategy for replicas within a gang. "
+            "Options: PACK (pack with best effort, default), "
+            "SPREAD (maximize availability)."
+        ),
+    )
+
+    runtime_failure_policy: GangRuntimeFailurePolicy = Field(
+        default=GangRuntimeFailurePolicy.RESTART_GANG,
+        description=(
+            "What to do when a replica fails after gang is running. "
+            "RESTART_GANG: kill and restart entire gang atomically. "
+            "RESTART_REPLICA: kill and restart individual replica."
+        ),
+    )
+
+    @validator("runtime_failure_policy", always=True)
+    def _validate_runtime_failure_policy(cls, v):
+        if v == GangRuntimeFailurePolicy.RESTART_REPLICA:
+            raise NotImplementedError("RESTART_REPLICA policy is not yet implemented.")
+        return v
