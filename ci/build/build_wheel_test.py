@@ -9,6 +9,7 @@ from unittest import mock
 from build_wheel import (
     BuildConfig,
     BuildError,
+    main,
 )
 
 
@@ -122,6 +123,16 @@ class TestBuildConfigFromEnv(unittest.TestCase):
             self.assertEqual(config.hosttype, "x86_64")
             self.assertEqual(config.raymake_version, "0.28.0")
             self.assertEqual(config.manylinux_version, "260128.221a193")
+
+
+class TestHelpOutput(unittest.TestCase):
+    """Test that --help prints without error."""
+
+    def test_no_args_prints_help_and_exits_zero(self):
+        with mock.patch("build_wheel.sys.argv", ["build_wheel"]):
+            with self.assertRaises(SystemExit) as ctx:
+                main()
+        self.assertEqual(ctx.exception.code, 0)
 
 
 if __name__ == "__main__":
