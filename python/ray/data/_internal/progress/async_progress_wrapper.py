@@ -114,20 +114,22 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
         # Wait for pending operations
         self._wait_for_pending_operations()
 
-        # Try to show final message with timeout
-        try:
-            future = self._executor.submit(
-                self._safe_call,
-                self._wrapped.close_with_finishing_description,
-                desc,
-                success,
-            )
-            future.result(timeout=self._shutdown_timeout)
-            logger.debug("Final progress message displayed successfully")
-        except Exception as e:
-            logger.debug(f"Error showing final progress message: {e}")
+        final_done = threading.Event()
 
-        # Shutdown executor
+        def _final_closer():
+            try:
+                self._safe_call(
+                    self._wrapped.close_with_finishing_description, desc, success
+                )
+            finally:
+                final_done.set()
+
+        t = threading.Thread(
+            target=_final_closer, daemon=True, name="async_progress_final_closer"
+        )
+        t.start()
+        final_done.wait(timeout=self._shutdown_timeout)
+
         self._executor.shutdown(wait=False)
         self._pending_futures.clear()
 
@@ -166,21 +168,29 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
             op_key = method.__name__
 
         with self._lock:
-            if not self._shutdown:
-
-                # Cancel old updates (fixes unbound issue)
-                if op_key in self._pending_futures:
-                    old_future = self._pending_futures[op_key]
-                    if not old_future.done() and not old_future.running():
-                        old_future.cancel()
-                        logger.debug(f"Replaced pending {op_key} with newer update")
-
-                future = self._executor.submit(
-                    self._timed_call, method, *args, **kwargs
-                )
-                self._pending_futures[op_key] = future
-            else:
+            if self._shutdown:
                 return
+
+            if op_key in self._pending_futures:
+                old_controller = self._pending_futures[op_key]
+                if not old_controller.done():
+                    old_controller.cancel()
+                    logger.debug(f"Replaced pending {op_key} with newer update")
+
+            controller = concurrent.futures.Future()
+
+            def _worker_wrapper(ctrl_fut, m, *a, **kw):
+                try:
+                    res = self._timed_call(m, *a, **kw)
+                    if not ctrl_fut.cancelled():
+                        ctrl_fut.set_result(res)
+                except Exception as e:
+                    if not ctrl_fut.cancelled():
+                        ctrl_fut.set_exception(e)
+
+            # Submit worker to perform the actual method call.
+            self._executor.submit(_worker_wrapper, controller, method, *args, **kwargs)
+            self._pending_futures[op_key] = controller
 
     def _timed_call(self, method, *args, **kwargs):
         """Call method and track completion time."""
