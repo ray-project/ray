@@ -118,9 +118,9 @@ class SimpleImputer(SerializablePreprocessorBase):
         output_columns: Optional[List[str]] = None,
     ):
         super().__init__()
-        self.columns = columns
-        self.strategy = strategy
-        self.fill_value = fill_value
+        self._columns = columns
+        self._strategy = strategy
+        self._fill_value = fill_value
 
         if strategy not in self._valid_strategies:
             raise ValueError(
@@ -136,32 +136,48 @@ class SimpleImputer(SerializablePreprocessorBase):
                     '`fill_value` must be set when using "constant" strategy.'
                 )
 
-        self.output_columns = (
+        self._output_columns = (
             SerializablePreprocessorBase._derive_and_validate_output_columns(
                 columns, output_columns
             )
         )
 
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def strategy(self) -> str:
+        return self._strategy
+
+    @property
+    def fill_value(self) -> Optional[Union[str, Number]]:
+        return self._fill_value
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
     def _fit(self, dataset: "Dataset") -> SerializablePreprocessorBase:
-        if self.strategy == "mean":
-            self.stat_computation_plan.add_aggregator(
-                aggregator_fn=Mean, columns=self.columns
+        if self._strategy == "mean":
+            self._stat_computation_plan.add_aggregator(
+                aggregator_fn=Mean, columns=self._columns
             )
-        elif self.strategy == "most_frequent":
-            self.stat_computation_plan.add_callable_stat(
+        elif self._strategy == "most_frequent":
+            self._stat_computation_plan.add_callable_stat(
                 stat_fn=lambda key_gen: _get_most_frequent_values(
                     dataset=dataset,
-                    columns=self.columns,
+                    columns=self._columns,
                     key_gen=key_gen,
                 ),
                 stat_key_fn=lambda col: f"most_frequent({col})",
-                columns=self.columns,
+                columns=self._columns,
             )
 
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
-        for column, output_column in zip(self.columns, self.output_columns):
+        for column, output_column in zip(self._columns, self._output_columns):
             value = self._get_fill_value(column)
 
             if value is None:
@@ -193,45 +209,71 @@ class SimpleImputer(SerializablePreprocessorBase):
         return df
 
     def _get_fill_value(self, column):
-        if self.strategy == "mean":
+        if self._strategy == "mean":
             return self.stats_[f"mean({column})"]
-        elif self.strategy == "most_frequent":
+        elif self._strategy == "most_frequent":
             return self.stats_[f"most_frequent({column})"]
-        elif self.strategy == "constant":
-            return self.fill_value
+        elif self._strategy == "constant":
+            return self._fill_value
         else:
             raise ValueError(
-                f"Strategy {self.strategy} is not supported. "
-                "Supported values are: {self._valid_strategies}"
+                f"Strategy {self._strategy} is not supported. "
+                f"Supported values are: {self._valid_strategies}"
             )
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"strategy={self.strategy!r}, fill_value={self.fill_value!r}, "
-            f"output_columns={self.output_columns!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"strategy={self._strategy!r}, fill_value={self._fill_value!r}, "
+            f"output_columns={self._output_columns!r})"
         )
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "columns": self.columns,
-            "output_columns": self.output_columns,
+            "columns": self._columns,
+            "output_columns": self._output_columns,
             "_fitted": getattr(self, "_fitted", None),
-            "strategy": self.strategy,
-            "fill_value": getattr(self, "fill_value", None),
+            "strategy": self._strategy,
+            "fill_value": getattr(
+                self, "_fill_value", getattr(self, "fill_value", None)
+            ),
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
-        self.columns = fields["columns"]
-        self.output_columns = fields["output_columns"]
-        self.strategy = fields["strategy"]
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
+        self._strategy = fields["strategy"]
         # optional fields
         self._fitted = fields.get("_fitted")
-        self.fill_value = fields.get("fill_value")
+        self._fill_value = fields.get("fill_value")
 
-        if self.strategy == "constant":
+        if self._strategy == "constant":
             self._is_fittable = False
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+        if "_strategy" not in self.__dict__ and "strategy" in self.__dict__:
+            self._strategy = self.__dict__.pop("strategy")
+        if "_fill_value" not in self.__dict__ and "fill_value" in self.__dict__:
+            self._fill_value = self.__dict__.pop("fill_value")
+
+        if "_columns" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized SimpleImputer: missing required field 'columns'."
+            )
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
+        if "_strategy" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized SimpleImputer: missing required field 'strategy'."
+            )
+        # _fill_value is optional
 
 
 def _get_most_frequent_values(

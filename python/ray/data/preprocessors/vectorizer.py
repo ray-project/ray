@@ -1,18 +1,22 @@
 from collections import Counter
-from typing import TYPE_CHECKING, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import SerializablePreprocessorBase
 from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
+from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset
 
 
+@SerializablePreprocessor(
+    version=1, identifier="io.ray.preprocessors.hashing_vectorizer"
+)
 @PublicAPI(stability="alpha")
-class HashingVectorizer(Preprocessor):
+class HashingVectorizer(SerializablePreprocessorBase):
     """Count the frequency of tokens using the
     `hashing trick <https://en.wikipedia.org/wiki/Feature_hashing>`_.
 
@@ -131,24 +135,42 @@ class HashingVectorizer(Preprocessor):
         output_columns: Optional[List[str]] = None,
     ):
         super().__init__()
-        self.columns = columns
-        self.num_features = num_features
-        self.tokenization_fn = tokenization_fn or simple_split_tokenizer
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
-            columns, output_columns
+        self._columns = columns
+        self._num_features = num_features
+        self._tokenization_fn = tokenization_fn or simple_split_tokenizer
+        self._output_columns = (
+            SerializablePreprocessorBase._derive_and_validate_output_columns(
+                columns, output_columns
+            )
         )
+
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def num_features(self) -> int:
+        return self._num_features
+
+    @property
+    def tokenization_fn(self) -> Callable[[str], List[str]]:
+        return self._tokenization_fn
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
 
     def _transform_pandas(self, df: pd.DataFrame):
         def hash_count(tokens: List[str]) -> Counter:
-            hashed_tokens = [simple_hash(token, self.num_features) for token in tokens]
+            hashed_tokens = [simple_hash(token, self._num_features) for token in tokens]
             return Counter(hashed_tokens)
 
-        for col, output_col in zip(self.columns, self.output_columns):
-            tokenized = df[col].map(self.tokenization_fn)
+        for col, output_col in zip(self._columns, self._output_columns):
+            tokenized = df[col].map(self._tokenization_fn)
             hashed = tokenized.map(hash_count)
             # Create a list to store the hash columns
             hash_columns = []
-            for i in range(self.num_features):
+            for i in range(self._num_features):
                 series = hashed.map(lambda counts: counts[i])
                 series.name = f"hash_{i}"
                 hash_columns.append(series)
@@ -158,16 +180,60 @@ class HashingVectorizer(Preprocessor):
         return df
 
     def __repr__(self):
-        fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
+        fn_name = getattr(self._tokenization_fn, "__name__", self._tokenization_fn)
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"num_features={self.num_features!r}, tokenization_fn={fn_name}, "
-            f"output_columns={self.output_columns!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"num_features={self._num_features!r}, tokenization_fn={fn_name}, "
+            f"output_columns={self._output_columns!r})"
         )
 
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "num_features": self._num_features,
+            "tokenization_fn": self._tokenization_fn,
+            "output_columns": self._output_columns,
+        }
 
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._num_features = fields["num_features"]
+        self._tokenization_fn = fields["tokenization_fn"]
+        self._output_columns = fields["output_columns"]
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_num_features" not in self.__dict__ and "num_features" in self.__dict__:
+            self._num_features = self.__dict__.pop("num_features")
+        if (
+            "_tokenization_fn" not in self.__dict__
+            and "tokenization_fn" in self.__dict__
+        ):
+            self._tokenization_fn = self.__dict__.pop("tokenization_fn")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+
+        if "_columns" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized HashingVectorizer: missing required field 'columns'."
+            )
+        if "_num_features" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized HashingVectorizer: missing required field 'num_features'."
+            )
+        if "_tokenization_fn" not in self.__dict__:
+            self._tokenization_fn = simple_split_tokenizer
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
+
+
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.count_vectorizer")
 @PublicAPI(stability="alpha")
-class CountVectorizer(Preprocessor):
+class CountVectorizer(SerializablePreprocessorBase):
     """Count the frequency of tokens in a column of strings.
 
     :class:`CountVectorizer` operates on columns that contain strings. For example:
@@ -250,27 +316,45 @@ class CountVectorizer(Preprocessor):
         output_columns: Optional[List[str]] = None,
     ):
         super().__init__()
-        self.columns = columns
-        self.tokenization_fn = tokenization_fn or simple_split_tokenizer
-        self.max_features = max_features
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
-            columns, output_columns
+        self._columns = columns
+        self._tokenization_fn = tokenization_fn or simple_split_tokenizer
+        self._max_features = max_features
+        self._output_columns = (
+            SerializablePreprocessorBase._derive_and_validate_output_columns(
+                columns, output_columns
+            )
         )
 
-    def _fit(self, dataset: "Dataset") -> Preprocessor:
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def tokenization_fn(self) -> Callable[[str], List[str]]:
+        return self._tokenization_fn
+
+    @property
+    def max_features(self) -> Optional[int]:
+        return self._max_features
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
+    def _fit(self, dataset: "Dataset") -> SerializablePreprocessorBase:
         def stat_fn(key_gen):
             def get_pd_value_counts(df: pd.DataFrame) -> List[Counter]:
                 def get_token_counts(col):
-                    token_series = df[col].apply(self.tokenization_fn)
+                    token_series = df[col].apply(self._tokenization_fn)
                     tokens = token_series.sum()
                     return Counter(tokens)
 
-                return {col: [get_token_counts(col)] for col in self.columns}
+                return {col: [get_token_counts(col)] for col in self._columns}
 
             value_counts = dataset.map_batches(
                 get_pd_value_counts, batch_format="pandas"
             )
-            total_counts = {col: Counter() for col in self.columns}
+            total_counts = {col: Counter() for col in self._columns}
             for batch in value_counts.iter_batches(batch_size=None):
                 for col, counters in batch.items():
                     for counter in counters:
@@ -280,29 +364,29 @@ class CountVectorizer(Preprocessor):
                 return Counter(dict(counter.most_common(n)))
 
             top_counts = [
-                most_common(counter, self.max_features)
+                most_common(counter, self._max_features)
                 for counter in total_counts.values()
             ]
 
             return {
                 key_gen(col): counts  # noqa
-                for (col, counts) in zip(self.columns, top_counts)
+                for (col, counts) in zip(self._columns, top_counts)
             }
 
-        self.stat_computation_plan.add_callable_stat(
+        self._stat_computation_plan.add_callable_stat(
             stat_fn=lambda key_gen: stat_fn(key_gen),
             stat_key_fn=lambda col: f"token_counts({col})",
-            columns=self.columns,
+            columns=self._columns,
         )
 
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
         result_columns = []
-        for col, output_col in zip(self.columns, self.output_columns):
+        for col, output_col in zip(self._columns, self._output_columns):
             token_counts = self.stats_[f"token_counts({col})"]
             sorted_tokens = [token for (token, count) in token_counts.most_common()]
-            tokenized = df[col].map(self.tokenization_fn).map(Counter)
+            tokenized = df[col].map(self._tokenization_fn).map(Counter)
 
             # Create a list to store token frequencies
             token_columns = []
@@ -321,9 +405,52 @@ class CountVectorizer(Preprocessor):
         return df
 
     def __repr__(self):
-        fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
+        fn_name = getattr(self._tokenization_fn, "__name__", self._tokenization_fn)
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"tokenization_fn={fn_name}, max_features={self.max_features!r}, "
-            f"output_columns={self.output_columns!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"tokenization_fn={fn_name}, max_features={self._max_features!r}, "
+            f"output_columns={self._output_columns!r})"
         )
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "tokenization_fn": self._tokenization_fn,
+            "max_features": self._max_features,
+            "output_columns": self._output_columns,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._tokenization_fn = fields["tokenization_fn"]
+        self._max_features = fields["max_features"]
+        self._output_columns = fields["output_columns"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if (
+            "_tokenization_fn" not in self.__dict__
+            and "tokenization_fn" in self.__dict__
+        ):
+            self._tokenization_fn = self.__dict__.pop("tokenization_fn")
+        if "_max_features" not in self.__dict__ and "max_features" in self.__dict__:
+            self._max_features = self.__dict__.pop("max_features")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+
+        if "_columns" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized CountVectorizer: missing required field 'columns'."
+            )
+        if "_tokenization_fn" not in self.__dict__:
+            self._tokenization_fn = simple_split_tokenizer
+        if "_max_features" not in self.__dict__:
+            self._max_features = None
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns

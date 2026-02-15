@@ -1,17 +1,18 @@
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Type, Union
 
 import numpy as np
 import pandas as pd
 
 from ray.data.aggregate import Max, Min
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import SerializablePreprocessorBase
+from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset
 
 
-class _AbstractKBinsDiscretizer(Preprocessor):
+class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
     """Abstract base class for all KBinsDiscretizers.
 
     Essentially a thin wraper around ``pd.cut``.
@@ -58,17 +59,39 @@ class _AbstractKBinsDiscretizer(Preprocessor):
                 "in it."
             )
 
+    def _get_attr_with_fallback(self, private_name: str, public_name: str):
+        if hasattr(self, private_name):
+            return getattr(self, private_name)
+        return getattr(self, public_name, None)
+
     def __repr__(self):
-        attr_str = ", ".join(
-            [
-                f"{attr_name}={attr_value!r}"
-                for attr_name, attr_value in vars(self).items()
-                if not attr_name.startswith("_")
-            ]
+        columns = self._get_attr_with_fallback("_columns", "columns")
+        bins = self._get_attr_with_fallback("_bins", "bins")
+        right = self._get_attr_with_fallback("_right", "right")
+        include_lowest = self._get_attr_with_fallback(
+            "_include_lowest", "include_lowest"
         )
-        return f"{self.__class__.__name__}({attr_str})"
+        duplicates = self._get_attr_with_fallback("_duplicates", "duplicates")
+        dtypes = self._get_attr_with_fallback("_dtypes", "dtypes")
+        output_columns = self._get_attr_with_fallback(
+            "_output_columns", "output_columns"
+        )
+
+        return (
+            f"{self.__class__.__name__}("
+            f"columns={columns!r}, "
+            f"bins={bins!r}, "
+            f"right={right!r}, "
+            f"include_lowest={include_lowest!r}, "
+            f"duplicates={duplicates!r}, "
+            f"dtypes={dtypes!r}, "
+            f"output_columns={output_columns!r})"
+        )
 
 
+@SerializablePreprocessor(
+    version=1, identifier="io.ray.preprocessors.custom_kbins_discretizer"
+)
 @PublicAPI(stability="alpha")
 class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
     """Bin values into discrete intervals using custom bin edges.
@@ -177,21 +200,121 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         ] = None,
         output_columns: Optional[List[str]] = None,
     ):
-        self.columns = columns
-        self.bins = bins
-        self.right = right
-        self.include_lowest = include_lowest
-        self.duplicates = duplicates
-        self.dtypes = dtypes
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
-            columns, output_columns
+        self._columns = columns
+        self._bins = bins
+        self._right = right
+        self._include_lowest = include_lowest
+        self._duplicates = duplicates
+        self._dtypes = dtypes
+        self._output_columns = (
+            SerializablePreprocessorBase._derive_and_validate_output_columns(
+                columns, output_columns
+            )
         )
 
         self._validate_bins_columns()
 
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def bins(
+        self,
+    ) -> Union[
+        Iterable[float],
+        pd.IntervalIndex,
+        Dict[str, Union[Iterable[float], pd.IntervalIndex]],
+    ]:
+        return self._bins
+
+    @property
+    def right(self) -> bool:
+        return self._right
+
+    @property
+    def include_lowest(self) -> bool:
+        return self._include_lowest
+
+    @property
+    def duplicates(self) -> str:
+        return self._duplicates
+
+    @property
+    def dtypes(
+        self,
+    ) -> Optional[Dict[str, Union[pd.CategoricalDtype, Type[np.integer]]]]:
+        return self._dtypes
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
     _is_fittable = False
 
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "bins": self._bins,
+            "right": self._right,
+            "include_lowest": self._include_lowest,
+            "duplicates": self._duplicates,
+            "dtypes": self._dtypes,
+            "output_columns": self._output_columns,
+        }
 
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._bins = fields["bins"]
+        self._right = fields["right"]
+        self._include_lowest = fields["include_lowest"]
+        self._duplicates = fields["duplicates"]
+        self._dtypes = fields["dtypes"]
+        self._output_columns = fields["output_columns"]
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        # Migrate old public field names to new private field names
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_bins" not in self.__dict__ and "bins" in self.__dict__:
+            self._bins = self.__dict__.pop("bins")
+        if "_right" not in self.__dict__ and "right" in self.__dict__:
+            self._right = self.__dict__.pop("right")
+        if "_include_lowest" not in self.__dict__ and "include_lowest" in self.__dict__:
+            self._include_lowest = self.__dict__.pop("include_lowest")
+        if "_duplicates" not in self.__dict__ and "duplicates" in self.__dict__:
+            self._duplicates = self.__dict__.pop("duplicates")
+        if "_dtypes" not in self.__dict__ and "dtypes" in self.__dict__:
+            self._dtypes = self.__dict__.pop("dtypes")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+
+        # Validate required fields
+        if "_columns" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized CustomKBinsDiscretizer: missing required field 'columns'."
+            )
+        if "_bins" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized CustomKBinsDiscretizer: missing required field 'bins'."
+            )
+        if "_right" not in self.__dict__:
+            self._right = True
+        if "_include_lowest" not in self.__dict__:
+            self._include_lowest = False
+        if "_duplicates" not in self.__dict__:
+            self._duplicates = "raise"
+        if "_dtypes" not in self.__dict__:
+            self._dtypes = None
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
+
+
+@SerializablePreprocessor(
+    version=1, identifier="io.ray.preprocessors.uniform_kbins_discretizer"
+)
 @PublicAPI(stability="alpha")
 class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
     """Bin values into discrete intervals (bins) of uniform width.
@@ -298,17 +421,49 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         output_columns: Optional[List[str]] = None,
     ):
         super().__init__()
-        self.columns = columns
-        self.bins = bins
-        self.right = right
-        self.include_lowest = include_lowest
-        self.duplicates = duplicates
-        self.dtypes = dtypes
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
-            columns, output_columns
+        self._columns = columns
+        self._bins = bins
+        self._right = right
+        self._include_lowest = include_lowest
+        self._duplicates = duplicates
+        self._dtypes = dtypes
+        self._output_columns = (
+            SerializablePreprocessorBase._derive_and_validate_output_columns(
+                columns, output_columns
+            )
         )
 
-    def _fit(self, dataset: "Dataset") -> Preprocessor:
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def bins(self) -> Union[int, Dict[str, int]]:
+        return self._bins
+
+    @property
+    def right(self) -> bool:
+        return self._right
+
+    @property
+    def include_lowest(self) -> bool:
+        return self._include_lowest
+
+    @property
+    def duplicates(self) -> str:
+        return self._duplicates
+
+    @property
+    def dtypes(
+        self,
+    ) -> Optional[Dict[str, Union[pd.CategoricalDtype, Type[np.integer]]]]:
+        return self._dtypes
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
+    def _fit(self, dataset: "Dataset") -> SerializablePreprocessorBase:
         self._validate_on_fit()
 
         if isinstance(self.bins, dict):
@@ -323,11 +478,11 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
                     f"`bins` must be an integer or a dict of integers, got {bins}"
                 )
 
-        self.stat_computation_plan.add_aggregator(
+        self._stat_computation_plan.add_aggregator(
             aggregator_fn=Min,
             columns=columns,
         )
-        self.stat_computation_plan.add_aggregator(
+        self._stat_computation_plan.add_aggregator(
             aggregator_fn=Max,
             columns=columns,
         )
@@ -338,9 +493,71 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         self._validate_bins_columns()
 
     def _fit_execute(self, dataset: "Dataset"):
-        stats = self.stat_computation_plan.compute(dataset)
+        stats = self._stat_computation_plan.compute(dataset)
         self.stats_ = post_fit_processor(stats, self.bins, self.right)
         return self
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "bins": self._bins,
+            "right": self._right,
+            "include_lowest": self._include_lowest,
+            "duplicates": self._duplicates,
+            "dtypes": self._dtypes,
+            "output_columns": self._output_columns,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._bins = fields["bins"]
+        self._right = fields["right"]
+        self._include_lowest = fields["include_lowest"]
+        self._duplicates = fields["duplicates"]
+        self._dtypes = fields["dtypes"]
+        self._output_columns = fields["output_columns"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        # Migrate old public field names to new private field names
+        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
+            self._columns = self.__dict__.pop("columns")
+        if "_bins" not in self.__dict__ and "bins" in self.__dict__:
+            self._bins = self.__dict__.pop("bins")
+        if "_right" not in self.__dict__ and "right" in self.__dict__:
+            self._right = self.__dict__.pop("right")
+        if "_include_lowest" not in self.__dict__ and "include_lowest" in self.__dict__:
+            self._include_lowest = self.__dict__.pop("include_lowest")
+        if "_duplicates" not in self.__dict__ and "duplicates" in self.__dict__:
+            self._duplicates = self.__dict__.pop("duplicates")
+        if "_dtypes" not in self.__dict__ and "dtypes" in self.__dict__:
+            self._dtypes = self.__dict__.pop("dtypes")
+        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
+            self._output_columns = self.__dict__.pop("output_columns")
+
+        # Validate required fields
+        if "_columns" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized UniformKBinsDiscretizer: missing required field 'columns'."
+            )
+        if "_bins" not in self.__dict__:
+            raise ValueError(
+                "Invalid serialized UniformKBinsDiscretizer: missing required field 'bins'."
+            )
+        if "_right" not in self.__dict__:
+            self._right = True
+        if "_include_lowest" not in self.__dict__:
+            self._include_lowest = False
+        if "_duplicates" not in self.__dict__:
+            self._duplicates = "raise"
+        if "_dtypes" not in self.__dict__:
+            self._dtypes = None
+        if "_output_columns" not in self.__dict__:
+            self._output_columns = self._columns
 
 
 def post_fit_processor(aggregate_stats: dict, bins: Union[str, Dict], right: bool):
