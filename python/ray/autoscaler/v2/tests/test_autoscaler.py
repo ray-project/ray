@@ -3,7 +3,7 @@ import os
 import subprocess
 import sys
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -14,6 +14,7 @@ from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE
 from ray.autoscaler.v2.autoscaler import Autoscaler
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
+from ray.autoscaler.v2.monitor import AutoscalerMonitor
 from ray.autoscaler.v2.sdk import get_cluster_status, request_cluster_resources
 from ray.autoscaler.v2.tests.util import MockEventLogger
 from ray.cluster_utils import Cluster
@@ -227,6 +228,47 @@ def test_basic_scaling(make_autoscaler):
         return True
 
     wait_for_condition(verify, retry_interval_ms=2000)
+
+
+class TestAutoscalerMonitor(AutoscalerMonitor):
+    """Lightweight wrapper for testing _run() without full init."""
+
+    def __init__(self, gcs_address, gcs_client, autoscaler):
+        self.gcs_address = gcs_address
+        self.gcs_client = gcs_client
+        self.autoscaler = autoscaler
+        self._session_name = "test"
+
+
+def test_WrongClusterID_recovery_v2(make_autoscaler):
+    autoscaler = make_autoscaler(DEFAULT_AUTOSCALING_CONFIG)
+    old_client = autoscaler._gcs_client
+    gcs_address = old_client.address
+
+    monitor = TestAutoscalerMonitor(gcs_address, old_client, autoscaler)
+
+    calls = 0
+    original_update_autoscaling_state = autoscaler.update_autoscaling_state
+
+    def flaky():
+        nonlocal calls
+        if calls == 0:
+            calls += 1
+            raise ray.exceptions.AuthenticationError("WrongClusterID")
+        return original_update_autoscaling_state()
+
+    # replace time.sleep(AUTOSCALER_UPDATE_INTERVAL_S) in monitor._run()
+    def raise_stop(_):
+        raise RuntimeError("stop")
+
+    with patch.object(autoscaler, "update_autoscaling_state", side_effect=flaky):
+        with patch.object(time, "sleep", side_effect=raise_stop):
+            with pytest.raises(RuntimeError):
+                monitor._run()
+
+    # assert the gcs client is refreshed on both monitor and autoscaler
+    assert monitor.gcs_client is not old_client
+    assert autoscaler._gcs_client is not old_client
 
 
 if __name__ == "__main__":
