@@ -110,6 +110,7 @@ from ray._private.state import (  # noqa: E402,F401
     timeline,
     cluster_resources,
     available_resources,
+    wait_for_nodes,
 )
 from ray._private.worker import (  # noqa: E402,F401
     SCRIPT_MODE,
@@ -199,6 +200,7 @@ __all__ = [
     "shutdown",
     "timeline",
     "wait",
+    "wait_for_nodes",
     "SCRIPT_MODE",
     "WORKER_MODE",
     "LoggingConfig",
@@ -238,6 +240,7 @@ NON_AUTO_INIT_APIS = {
     "remote",
     "shutdown",
     "timeline",
+    "wait_for_nodes",
     "LoggingConfig",
 }
 
