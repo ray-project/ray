@@ -143,6 +143,11 @@ DEFAULT_ENABLE_RICH_PROGRESS_BARS = bool(
     env_integer("RAY_DATA_ENABLE_RICH_PROGRESS_BARS", 0)
 )
 
+# Globally enable or disable Async Progress Manager Wrapper
+DEFAULT_ENABLE_ASYNC_PROGRESS_MANAGER_WRAPPER = bool(
+    env_integer("RAY_DATA_ENABLE_ASYNC_PROGRESS_MANAGER", 1)
+)
+
 DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ENFORCE_SCHEMAS", False)
 
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
@@ -457,6 +462,8 @@ class DataContext:
             `ProgressBar.MAX_NAME_LENGTH`. Otherwise, the full operator name is shown.
         enable_rich_progress_bars: Whether to use the new rich progress bars instead
             of the tqdm TUI.
+        enable_async_progress_manager_wrapper: Whether to use async progress manager wrapper
+            to prevent progress manager stall Ray Data pipelines.
         enable_get_object_locations_for_metrics: Whether to enable
             ``get_object_locations`` for metrics. This is useful for tracking whether
             the object input of a task is local (cache hit) or not local (cache miss)
@@ -634,6 +641,11 @@ class DataContext:
         DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
     )
     enable_rich_progress_bars: bool = DEFAULT_ENABLE_RICH_PROGRESS_BARS
+    enable_async_progress_manager_wrapper: bool = (
+        DEFAULT_ENABLE_ASYNC_PROGRESS_MANAGER_WRAPPER
+    )
+    async_progress_stall_warning_threshold: float = 10.0
+    async_progress_shutdown_timeout: float = 5.0
     enable_get_object_locations_for_metrics: bool = (
         DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
     )

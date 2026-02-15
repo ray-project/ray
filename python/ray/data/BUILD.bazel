@@ -1395,6 +1395,20 @@ py_test(
 )
 
 py_test(
+    name = "test_async_progress_wrapper",
+    size = "small",
+    srcs = ["tests/test_async_progress_wrapper.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_random_access",
     size = "small",
     srcs = ["tests/test_random_access.py"],
