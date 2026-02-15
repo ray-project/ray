@@ -1001,6 +1001,7 @@ def test_ray_client_uv_hook_detection():
         mock_uv.return_value = [
             "uv",
             "run",
+            "--no-project",
             "--locked",
             "--python",
             "3.11",
@@ -1069,7 +1070,14 @@ def test_ray_client_uv_respects_user_py_executable():
         "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
     ) as mock_uv:
         # UV is detected
-        mock_uv.return_value = ["uv", "run", "--python", "3.11", "script.py"]
+        mock_uv.return_value = [
+            "uv",
+            "run",
+            "--no-project",
+            "--python",
+            "3.11",
+            "script.py",
+        ]
 
         # User explicitly provides their own py_executable
         runtime_env = {
@@ -1097,7 +1105,7 @@ def test_ray_client_uv_hook_with_existing_runtime_env():
     with patch(
         "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
     ) as mock_uv:
-        mock_uv.return_value = ["uv", "run", "script.py"]
+        mock_uv.return_value = ["uv", "run", "--no-project", "script.py"]
 
         # Existing runtime_env with other settings should be preserved
         runtime_env = {
@@ -1136,7 +1144,14 @@ def test_ray_client_uv_hook_with_job_config_runtime_env():
     with patch(
         "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
     ) as mock_uv:
-        mock_uv.return_value = ["uv", "run", "--python", "3.11", "script.py"]
+        mock_uv.return_value = [
+            "uv",
+            "run",
+            "--no-project",
+            "--python",
+            "3.11",
+            "script.py",
+        ]
 
         # Apply UV hook to job_config.runtime_env (as done in connect())
         result = _apply_uv_hook_for_client(job_config.runtime_env)
@@ -1148,6 +1163,168 @@ def test_ray_client_uv_hook_with_job_config_runtime_env():
         assert "3.11" in result["py_executable"]
         # Other runtime_env settings should be preserved
         assert result["env_vars"]["TEST_VAR"] == "test_value"
+
+
+def test_ray_client_uv_hook_with_remote_working_dir():
+    """Test UV hook works with remote URI working_dir.
+
+    Ray supports remote URIs for working_dir (e.g., s3://, https://).
+    The UV hook should skip file validation for remote URIs since we can't
+    validate remote file structure locally.
+
+    Related to: https://github.com/ray-project/ray/issues/57991
+    """
+    from unittest.mock import patch
+
+    from ray.util.client import _apply_uv_hook_for_client
+
+    # Test with S3 URI
+    with patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
+    ) as mock_uv:
+        mock_uv.return_value = ["uv", "run", "--no-project", "script.py"]
+
+        runtime_env = {"working_dir": "s3://bucket/project.zip"}
+        result = _apply_uv_hook_for_client(runtime_env)
+
+        # Should not raise error for remote URI
+        assert "py_executable" in result
+        assert result["working_dir"] == "s3://bucket/project.zip"
+
+    # Test with HTTPS URI
+    with patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
+    ) as mock_uv:
+        mock_uv.return_value = ["uv", "run", "--no-project", "script.py"]
+
+        runtime_env = {"working_dir": "https://example.com/project.zip"}
+        result = _apply_uv_hook_for_client(runtime_env)
+
+        assert "py_executable" in result
+        assert result["working_dir"] == "https://example.com/project.zip"
+
+
+def test_ray_client_uv_hook_updates_job_config():
+    """Test that UV hook modifications are propagated to job_config.
+
+    When runtime_env comes from job_config.runtime_env, the UV hook's
+    modifications (like py_executable) must be written back to job_config
+    because _server_init() reads from job_config.runtime_env, not from
+    ray_init_kwargs["runtime_env"].
+
+    This test verifies the fix for the issue where UV modifications were
+    lost when runtime_env came from job_config.
+
+    Related to: https://github.com/ray-project/ray/issues/57991
+    """
+    from unittest.mock import patch
+
+    from ray.job_config import JobConfig
+    from ray.util.client import _apply_uv_hook_for_client
+
+    # Create JobConfig with runtime_env (simulates user passing JobConfig to connect())
+    job_config = JobConfig(runtime_env={"env_vars": {"TEST_VAR": "test_value"}})
+
+    with patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
+    ) as mock_uv:
+        mock_uv.return_value = [
+            "uv",
+            "run",
+            "--no-project",
+            "--python",
+            "3.11",
+            "script.py",
+        ]
+
+        # Apply UV hook
+        result = _apply_uv_hook_for_client(job_config.runtime_env)
+
+        # Verify UV modifications are in the result
+        assert "py_executable" in result
+        assert "uv run" in result["py_executable"]
+
+        # Simulate what connect() does: update job_config with modified runtime_env
+        job_config.set_runtime_env(result)
+
+        # Verify job_config was updated (this is what _server_init will read)
+        assert (
+            "py_executable" in job_config.runtime_env
+        ), "UV modifications must be in job_config.runtime_env for _server_init"
+        assert job_config.runtime_env["env_vars"]["TEST_VAR"] == "test_value"
+
+
+def test_ray_client_uv_hook_with_empty_runtime_env():
+    """Test that UV hook is applied even when runtime_env is an empty dict.
+
+    Previously, empty dict {} was treated as falsy and skipped UV detection.
+    This test ensures that JobConfig(runtime_env={}) still gets UV propagation
+    when running under 'uv run'.
+
+    Related to cursor bugbot feedback about empty JobConfig runtime_env.
+    """
+    from unittest.mock import patch
+
+    from ray.util.client import _apply_uv_hook_for_client
+
+    with patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
+    ) as mock_uv:
+        mock_uv.return_value = [
+            "uv",
+            "run",
+            "--no-project",
+            "--python",
+            "3.11",
+            "script.py",
+        ]
+
+        # Empty runtime_env dict should still trigger UV detection
+        runtime_env = {}
+        result = _apply_uv_hook_for_client(runtime_env)
+
+        # UV should be detected and py_executable should be injected
+        assert "py_executable" in result
+        assert "uv run" in result["py_executable"]
+
+
+def test_ray_client_uv_hook_skipped_with_user_py_executable():
+    """Test that UV hook is completely skipped when user provides py_executable.
+
+    When user provides py_executable, the UV hook should not run at all to avoid
+    unintended side effects like auto-setting working_dir (which triggers directory
+    upload for Ray Client).
+
+    Related to cursor bugbot feedback about user override mutation.
+    """
+    from unittest.mock import patch
+
+    from ray.util.client import _apply_uv_hook_for_client
+
+    with patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
+    ) as mock_uv, patch(
+        "ray._private.runtime_env.uv_runtime_env_hook.hook"
+    ) as mock_hook:
+        mock_uv.return_value = [
+            "uv",
+            "run",
+            "--no-project",
+            "--python",
+            "3.11",
+            "script.py",
+        ]
+
+        # User provides py_executable (no working_dir)
+        runtime_env = {"py_executable": "/custom/python"}
+        result = _apply_uv_hook_for_client(runtime_env)
+
+        # Hook should NOT be called at all
+        mock_hook.assert_not_called()
+
+        # Result should be unchanged (no working_dir auto-set)
+        assert result["py_executable"] == "/custom/python"
+        assert "working_dir" not in result
 
 
 if __name__ == "__main__":

@@ -34,8 +34,9 @@ def _apply_uv_hook_for_client(
         4. Workers will use this UV command to install dependencies
 
     Precedence rules:
-        - User-provided py_executable always takes precedence over UV detection
-        - User-provided working_dir is preserved
+        - If user provides py_executable, UV hook is skipped entirely to avoid
+          unintended side effects (e.g., auto-setting working_dir)
+        - User-provided working_dir is preserved when UV hook runs
         - Other runtime_env settings are merged with UV config
 
     Feature flag:
@@ -50,9 +51,14 @@ def _apply_uv_hook_for_client(
         otherwise the original runtime_env unchanged. Returns None if
         input was None.
 
+    Raises:
+        RuntimeError: If UV environment is detected but configuration is invalid
+            (e.g., pyproject.toml not in working_dir, conflicting runtime_env).
+            Validation errors fail fast to provide clear feedback.
+
     Note:
-        This function does not raise exceptions. Errors are logged but the
-        connection proceeds with the original runtime_env.
+        ImportError and other environmental errors are caught and logged,
+        allowing connection to proceed without UV propagation.
 
     Example:
         Client running under: uv run --python 3.11 my_script.py
@@ -70,10 +76,14 @@ def _apply_uv_hook_for_client(
         if not ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV:
             return runtime_env
 
-        # Preserve user's py_executable if already set
-        user_py_executable = None
+        # If user provided py_executable, skip UV hook entirely to avoid side effects
+        # (e.g., auto-setting working_dir which triggers unwanted directory upload)
         if runtime_env and "py_executable" in runtime_env:
-            user_py_executable = runtime_env["py_executable"]
+            logger.debug(
+                "User-provided py_executable found, skipping UV hook to avoid "
+                "unintended runtime_env modifications"
+            )
+            return runtime_env
 
         # Import hook here (not at module level) to:
         # 1. Avoid circular import issues with ray._private modules
@@ -82,34 +92,24 @@ def _apply_uv_hook_for_client(
 
         result = hook(runtime_env)
         if "py_executable" in result:
-            # If user provided py_executable, restore it (takes precedence)
-            if user_py_executable is not None:
-                result["py_executable"] = user_py_executable
-                logger.debug(
-                    "User-provided py_executable takes precedence over UV detection"
-                )
-            else:
-                # UV environment was detected and applied by the hook
-                logger.debug(
-                    f"UV environment detected for Ray Client: "
-                    f"py_executable={result['py_executable']}"
-                )
+            # UV environment was detected and applied by the hook
+            logger.debug(
+                f"UV environment detected for Ray Client: "
+                f"py_executable={result['py_executable']}"
+            )
             return result
-    except (RuntimeError, ImportError, KeyError, ValueError, OSError) as e:
-        # Log warning but don't fail connection for expected errors:
-        # - RuntimeError: UV hook validation failures
-        # - ImportError: UV module not available
-        # - KeyError/ValueError: Malformed runtime_env
-        # - OSError: File/directory access issues
+    except (ImportError, KeyError, ValueError, OSError) as e:
+        # Expected errors: module not available, internal hook errors, file system issues
+        # Log and proceed without UV propagation
         logger.warning(
             f"Failed to apply UV runtime env hook for Ray Client: {e}. "
             "UV environment will not be propagated to workers."
         )
-    except Exception as e:
-        # Unexpected errors should be logged as errors but still not fail connection
-        logger.error(
-            f"Unexpected error in UV runtime env hook for Ray Client: {e}",
-            exc_info=True,
+    except Exception:
+        # Unexpected errors - log with full traceback but don't fail connection
+        logger.exception(
+            "Unexpected error in UV runtime env hook for Ray Client. "
+            "UV environment will not be propagated to workers."
         )
 
     return runtime_env
@@ -182,26 +182,18 @@ class _ClientContext:
         # 2. job_config.runtime_env - passed via JobConfig object
         # We need to handle both sources and update them appropriately after UV hook.
         runtime_env = ray_init_kwargs.get("runtime_env")
-        runtime_env_from_job_config = False
-        if runtime_env is None and job_config and job_config.runtime_env:
+        if runtime_env is None and job_config and job_config.runtime_env is not None:
             runtime_env = job_config.runtime_env
-            runtime_env_from_job_config = True
 
         runtime_env = _apply_uv_hook_for_client(runtime_env)
 
         if runtime_env is not None:
-            if not runtime_env_from_job_config:
-                # Source: ray_init_kwargs["runtime_env"]
-                # Update both ray_init_kwargs and job_config (if present) with UV modifications
-                ray_init_kwargs["runtime_env"] = runtime_env
-                if job_config:
-                    job_config.set_runtime_env(runtime_env)
-            else:
-                # Source: job_config.runtime_env
-                # Only update ray_init_kwargs to pass UV-modified env to server.
-                # Don't modify job_config to preserve already-uploaded URIs and avoid
-                # re-uploading working_dir if it was already packaged.
-                ray_init_kwargs["runtime_env"] = runtime_env
+            # Update both ray_init_kwargs and job_config with UV modifications.
+            # This is necessary because _server_init() reads runtime_env from
+            # job_config.runtime_env, not from ray_init_kwargs["runtime_env"].
+            ray_init_kwargs["runtime_env"] = runtime_env
+            if job_config:
+                job_config.set_runtime_env(runtime_env)
 
         # NOTE(architkulkarni): Custom env_hook is not supported with Ray Client.
         # However, UV hook is now applied client-side above.
