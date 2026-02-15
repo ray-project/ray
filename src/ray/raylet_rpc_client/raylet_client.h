@@ -16,6 +16,7 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -171,6 +172,12 @@ class RayletClient : public RayletClientInterface {
   /// Get agents pids from raylet, include dashboard and runtime env agent
   void GetAgentPIDs(const rpc::OptionalItemCallback<std::vector<int32_t>> &callback,
                     int64_t timeout_ms);
+
+  /// Resize local resource instances on the raylet.
+  void ResizeLocalResourceInstances(
+      const std::map<std::string, double> &resources,
+      const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback,
+      int64_t timeout_ms);
   void CancelLocalTask(
       const rpc::CancelLocalTaskRequest &request,
       const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) override;
