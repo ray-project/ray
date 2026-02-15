@@ -195,11 +195,13 @@ class TestAsyncProgressManagerWrapperBehavior:
         with wrapper._lock:
             num_pending = len(wrapper._pending_futures)
 
-        # Should have at most 5 pending futures (one per operation type)
-        # (6 types total, but close_with_finishing_description not called yet)
+        # Dict holds at most 4 + N futures where:
+        # - 4 fixed operations (start, refresh, update_total_progress, update_total_resource_status)
+        # - N per-operator entries (update_operator_progress:op_name)
+        # For typical pipelines with ~15 operators, expect ~20 entries max
         assert (
-            num_pending <= 6
-        ), f"Expected ≤6 pending futures (one per operation type), got {num_pending}"
+            num_pending == 5
+        ), f"Expected bounded queue (≤50 items), got {num_pending}"
 
         wrapper.close_with_finishing_description("Test", True)
 
