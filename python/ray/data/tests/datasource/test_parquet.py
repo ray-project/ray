@@ -230,31 +230,54 @@ def test_parquet_read_random_shuffle(
     context = ray.data.DataContext.get_current()
     context.execution_options.preserve_order = True
 
-    input_list = list(range(10))
-    df1 = pd.DataFrame({"one": input_list[: len(input_list) // 2]})
-    table = pa.Table.from_pandas(df1)
+    # Use multiple files so file-level shuffle can be verified deterministically.
+    num_files = 4
+    rows_per_file = 3
+    input_list = list(range(num_files * rows_per_file))
     setup_data_path = _unwrap_protocol(data_path)
-    path1 = os.path.join(setup_data_path, "test1.parquet")
-    pq.write_table(table, path1, filesystem=fs)
-    df2 = pd.DataFrame({"one": input_list[len(input_list) // 2 :]})
-    table = pa.Table.from_pandas(df2)
-    path2 = os.path.join(setup_data_path, "test2.parquet")
-    pq.write_table(table, path2, filesystem=fs)
 
-    ds = ray.data.read_parquet(data_path, filesystem=fs, shuffle="files")
+    read_paths = []
+    file_rows = {}
+    for i in range(num_files):
+        start = i * rows_per_file
+        end = start + rows_per_file
+        chunk = input_list[start:end]
+        table = pa.Table.from_pandas(pd.DataFrame({"one": chunk}))
+        filename = f"test{i}.parquet"
+        write_path = os.path.join(setup_data_path, filename)
+        pq.write_table(table, write_path, filesystem=fs)
+        read_path = os.path.join(data_path, filename)
+        read_paths.append(read_path)
+        file_rows[read_path] = chunk
 
-    # Execute 10 times to get a set of output results.
-    output_results_list = []
-    for _ in range(10):
-        result = [row["one"] for row in ds.take_all()]
-        output_results_list.append(result)
-    all_rows_matched = [
-        input_list == output_list for output_list in output_results_list
-    ]
+    # Pick a seed that produces a non-identity permutation for this file list.
+    shuffle_seed = None
+    shuffled_paths = None
+    for seed in range(100):
+        candidate_paths = list(read_paths)
+        np.random.default_rng(seed).shuffle(candidate_paths)
+        if candidate_paths != read_paths:
+            shuffle_seed = seed
+            shuffled_paths = candidate_paths
+            break
 
-    # Check when shuffle is enabled, output order has at least one different
-    # case.
-    assert not all(all_rows_matched)
+    assert shuffle_seed is not None, "Failed to find a non-identity shuffle seed."
+    assert shuffled_paths is not None
+
+    # Use a fixed seed so the shuffled order is deterministic and testable.
+    shuffle = FileShuffleConfig(seed=shuffle_seed, reseed_after_execution=False)
+    ds = ray.data.read_parquet(read_paths, filesystem=fs, shuffle=shuffle)
+    result = [row["one"] for row in ds.take_all()]
+
+    # Expected row order is the concatenation of rows per shuffled file order.
+    expected = [value for path in shuffled_paths for value in file_rows[path]]
+    assert expected != input_list
+    assert result == expected, (
+        "Shuffle did not produce expected order.\n"
+        f"Expected: {expected}\n"
+        f"Got: {result}\n"
+        f"Shuffled paths: {shuffled_paths}"
+    )
 
 
 @pytest.mark.parametrize(
