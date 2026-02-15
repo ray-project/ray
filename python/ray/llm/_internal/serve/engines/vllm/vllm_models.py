@@ -147,15 +147,7 @@ class VLLMEngineConfig(BaseModelExtended):
             # For GPU mode, use "ray" backend (default)
             engine_kwargs["distributed_executor_backend"] = "ray"
 
-        # TODO (Nikhil): Remove this once vLLM fully deprecates disable_log_requests.
-        if "disable_log_requests" in engine_kwargs:
-            logger.warning(
-                "disable_log_requests is set in engine_kwargs, but vLLM does not support it. Converting to enable_log_requests."
-            )
-            engine_kwargs["enable_log_requests"] = not engine_kwargs.pop(
-                "disable_log_requests"
-            )
-        elif "enable_log_requests" not in engine_kwargs:
+        if "enable_log_requests" not in engine_kwargs:
             engine_kwargs["enable_log_requests"] = False
 
         return engine_kwargs
