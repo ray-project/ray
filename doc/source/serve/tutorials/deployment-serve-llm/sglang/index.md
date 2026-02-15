@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Deploy with SGLang
 
 :::{warning}
