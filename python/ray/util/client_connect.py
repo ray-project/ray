@@ -36,7 +36,7 @@ def connect(
     # a regular ray.init()
     if ray.is_connected():
         context = ray.get_context()
-        if context.client_worker and context.client_worker.is_connected:
+        if context.client_worker and context.client_worker.is_connected():
             # Already connected via Ray Client
             ignore_reinit_error = (
                 ray_init_kwargs.get("ignore_reinit_error", False)
