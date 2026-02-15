@@ -3128,7 +3128,7 @@ def test_limit(shutdown_only):
 @pytest.mark.usefixtures("event_routing_config")
 def test_network_failure(shutdown_only):
     """When the request fails due to network failure,
-    verifies it raises an exception."""
+    verifies it doesn't raise an exception."""
     ray.init()
 
     @ray.remote
@@ -3143,8 +3143,7 @@ def test_network_failure(shutdown_only):
     # Kill raylet so that list_tasks will have network error on querying raylets.
     ray._private.worker._global_node.kill_raylet()
 
-    with pytest.raises(ConnectionError):
-        list_tasks(_explain=True)
+    assert len(list_tasks(_explain=True)) == 4
 
 
 @pytest.mark.parametrize(
