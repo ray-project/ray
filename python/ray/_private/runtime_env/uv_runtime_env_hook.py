@@ -348,13 +348,14 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # 1. options.python (driver specified)
     # 2. env_vars["UV_PYTHON"]
     # 3. current os.environ["UV_PYTHON"]
-    # 4. platform.python_version() (since uv run uses the same Python as the driver)
+    # 4. platform.python_version() major.minor (since uv run uses the same Python as the driver)
     if not options.python:
         env_vars = runtime_env.get("env_vars") or {}
+        # Get current Python version, strip to major.minor (e.g., "3.11" not "3.11.7")
+        # UV expects major.minor format for --python flag
+        current_python = ".".join(platform.python_version().split(".")[:2])
         uv_python = (
-            env_vars.get("UV_PYTHON")
-            or os.environ.get("UV_PYTHON")
-            or platform.python_version()
+            env_vars.get("UV_PYTHON") or os.environ.get("UV_PYTHON") or current_python
         )
         remaining_uv_run_args = remaining_uv_run_args + ["--python", uv_python]
 
@@ -364,7 +365,10 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # use the same working_dir that uv run would use
     if "working_dir" not in runtime_env:
         runtime_env["working_dir"] = os.getcwd()
-        _check_working_dir_files(options, runtime_env)
+
+    # Always validate that pyproject.toml and requirements files are within working_dir
+    # This prevents runtime errors on workers when files are not accessible
+    _check_working_dir_files(options, runtime_env)
 
     return runtime_env
 
