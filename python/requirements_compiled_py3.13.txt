@@ -1707,7 +1707,7 @@ pyjwt==2.8.0
     #   azure-cli-core
     #   msal
     #   snowflake-connector-python
-pylance==0.22.0
+pylance==1.0.3
     # via -r python/requirements/ml/data-test-requirements.txt
 pymars==0.10.0 ; python_version < "3.12"
     # via -r python/requirements/ml/data-requirements.txt
