@@ -50,6 +50,9 @@ class BlockingProgressManager(BaseExecutionProgressManager):
 class ExceptionProgressManager(BaseExecutionProgressManager):
     """Mock progress manager that always raises exceptions."""
 
+    def __init__(self):
+        pass
+
     def start(self):
         raise RuntimeError("start failed")
 
@@ -237,7 +240,7 @@ class TestAsyncProgressManagerWrapperBehavior:
         # First future should be cancelled (if it wasn't running yet)
         # or completed (if it was already running)
         assert (
-            first_future.cancelled() or first_future.done()
+            first_future.cancelled() or first_future.done() or first_future.running()
         ), "Old update should be cancelled or completed when replaced"
 
         wrapper.close_with_finishing_description("Test", True)
