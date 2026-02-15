@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Any, Dict
+from typing import List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces import (
@@ -6,11 +6,11 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator,
-)
 from ray.data._internal.execution.interfaces.transform_fn import (
     AllToAllTransformFnResult,
+)
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
 )
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
@@ -21,16 +21,16 @@ from ray.data._internal.logical.operators import (
     Sort,
 )
 from ray.data._internal.planner.aggregate import generate_aggregate_fn
+from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.planner.random_shuffle import generate_random_shuffle_fn
 from ray.data._internal.planner.randomize_blocks import generate_randomize_blocks_fn
 from ray.data._internal.planner.repartition import generate_repartition_fn
 from ray.data._internal.planner.sort import generate_sort_fn
-from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.table_block import TableBlockAccessor
-from ray.data.context import DataContext, ShuffleStrategy
-from ray.data.block import Block, BlockAccessor, BlockMetadataWithSchema
 from ray.data.aggregate import AggregateFn
+from ray.data.block import Block, BlockAccessor, BlockMetadataWithSchema
+from ray.data.context import DataContext, ShuffleStrategy
 
 
 def _estimate_input_size_bytes(refs: List[RefBundle]) -> int:
@@ -48,10 +48,10 @@ def _generate_local_aggregate_fn(
     batch_format: str,
     data_context: DataContext,
 ):
-    from ray.data._internal.util import unify_ref_bundles_schema
     from ray.data._internal.planner.exchange.aggregate_task_spec import (
         SortAggregateTaskSpec,
     )
+    from ray.data._internal.util import unify_ref_bundles_schema
 
     def fn(
         refs: List[RefBundle],
@@ -133,7 +133,7 @@ def _plan_hash_shuffle_repartition(
     return HashShuffleOperator(
         input_physical_op,
         data_context,
-        key_columns=tuple(normalized_key_columns),  # noqa: type
+        key_columns=tuple(normalized_key_columns),
         num_partitions=logical_op.num_outputs,
         should_sort=logical_op.sort,
     )
