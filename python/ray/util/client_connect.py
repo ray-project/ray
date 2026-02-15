@@ -31,18 +31,28 @@ def connect(
     _credentials: Optional["grpc.ChannelCredentials"] = None,  # noqa: F821
     ray_init_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    # Check if we're already connected via Ray Client (not just regular Ray)
+    # This prevents connecting twice in client mode, but allows connecting after
+    # a regular ray.init()
     if ray.is_connected():
-        ignore_reinit_error = ray_init_kwargs.get("ignore_reinit_error", False)
-        if ignore_reinit_error:
-            logger.info(
-                "Calling ray.init() again after it has already been called. "
-                "Reusing the existing Ray client connection."
+        context = ray.get_context()
+        if context.client_worker and context.client_worker.is_connected():
+            # Already connected via Ray Client
+            ignore_reinit_error = (
+                ray_init_kwargs.get("ignore_reinit_error", False)
+                if ray_init_kwargs is not None
+                else False
             )
-            return ray.get_context().client_worker.connection_info()
-        raise RuntimeError(
-            "Ray Client is already connected. Maybe you called "
-            'ray.init("ray://<address>") twice by accident?'
-        )
+            if ignore_reinit_error:
+                logger.info(
+                    "Calling ray.init() again after it has already been called. "
+                    "Reusing the existing Ray client connection."
+                )
+                return context.client_worker.connection_info()
+            raise RuntimeError(
+                "Ray Client is already connected. Maybe you called "
+                'ray.init("ray://<address>") twice by accident?'
+            )
 
     # Enable the same hooks that RAY_CLIENT_MODE does, as calling
     # ray.init("ray://<address>") is specifically for using client mode.

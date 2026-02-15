@@ -125,7 +125,6 @@ def test_uv_run_editable(shutdown_only, tmp_working_dir):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_runtime_env_hook():
-
     import ray._private.runtime_env.uv_runtime_env_hook
 
     def check_uv_run(
@@ -370,7 +369,6 @@ def test_uv_run_parser():
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_runtime_env_hook_e2e(shutdown_only, temp_dir):
-
     tmp_dir = Path(temp_dir)
 
     script = f"""
@@ -497,6 +495,78 @@ with open("{tmp_dir / "output.txt"}", "w") as out:
     )
     with open(tmp_dir / "output.txt") as f:
         assert json.load(f) == {"working_dir_files": os.listdir(working_dir)}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
+def test_uv_run_ray_client_mode(shutdown_only, tmp_working_dir):
+    """Test that UV environment works with Ray Client mode.
+
+    This verifies the fix for: https://github.com/ray-project/ray/issues/57991
+
+    The test verifies that when connecting via Ray Client, the client-side UV
+    hook correctly detects the UV environment and propagates the configuration
+    (py_executable, working_dir) to the cluster workers. This test is expected
+    to be run under 'uv run' like the other tests in this file.
+    """
+    from ray._common.network_utils import find_free_port
+    from ray._private.runtime_env.uv_runtime_env_hook import _get_uv_run_cmdline
+    from ray.job_config import JobConfig
+
+    # Verify test is running under UV (prerequisite for this test)
+    uv_cmdline = _get_uv_run_cmdline()
+    if uv_cmdline is None:
+        pytest.skip("Test must run under 'uv run'")
+
+    tmp_dir = tmp_working_dir
+
+    # Start Ray cluster
+    ray.init(num_cpus=1)
+
+    # Start Ray Client server on a dynamic port to avoid conflicts
+    import ray.util.client.server.server as ray_client_server
+
+    port = find_free_port()
+    server_handle = ray_client_server.serve("localhost", port)
+
+    try:
+        # Connect via Ray Client. The UV hook will detect the 'uv run'
+        # process in the parent chain and set py_executable automatically.
+        ray.util.connect(
+            f"localhost:{port}",
+            job_config=JobConfig(
+                runtime_env={
+                    "working_dir": tmp_dir,
+                    # Use system environment to find Ray installation
+                    "env_vars": {"PYTHONPATH": ":".join(sys.path)},
+                }
+            ),
+        )
+
+        # Verify UV config was applied to runtime_env
+        context = ray.get_context()
+        conn_info = context.client_worker.connection_info()
+        runtime_env = conn_info.get("job_config", {}).get("runtime_env", {})
+        assert "py_executable" in runtime_env, "UV hook should set py_executable"
+        assert (
+            "uv run" in runtime_env["py_executable"]
+        ), "py_executable should contain 'uv run'"
+
+        @ray.remote
+        def emojize():
+            import emoji
+
+            return emoji.emojize("Ray rocks :thumbs_up:")
+
+        # This should work because UV hook detected and propagated UV config
+        result = ray.get(emojize.remote())
+        assert (
+            result == "Ray rocks 👍"
+        ), "UV should have installed emoji package on workers"
+
+        ray.util.disconnect()
+    finally:
+        server_handle.stop(0)
+        ray.shutdown()
 
 
 if __name__ == "__main__":

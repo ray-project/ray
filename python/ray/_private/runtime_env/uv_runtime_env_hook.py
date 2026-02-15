@@ -317,14 +317,19 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         )
 
     # Extract the arguments uv_run_args of 'uv run' that are not part of the command.
-    parser = _create_uv_run_parser()
-    (options, command) = _parse_args(parser, cmdline[2:])
+    args_to_parse = cmdline[2:]  # Remove 'uv run' prefix
+    original_length = len(
+        args_to_parse
+    )  # Save before parsing (parser modifies in-place)
 
-    if cmdline[-len(command) :] != command:
-        raise AssertionError(
-            f"uv run command {command} is not a suffix of command line {cmdline}"
-        )
-    uv_run_args = cmdline[: -len(command)]
+    parser = _create_uv_run_parser()
+    (options, command) = _parse_args(parser, args_to_parse)
+
+    # Calculate how many arguments were consumed by the parser.
+    # Since disable_interspersed_args() is set, parsing stops at the first
+    # unrecognized argument (the command), so all consumed args are uv options.
+    args_consumed = original_length - len(command)
+    uv_run_args = cmdline[: 2 + args_consumed]
 
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process.
@@ -343,13 +348,14 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # 1. options.python (driver specified)
     # 2. env_vars["UV_PYTHON"]
     # 3. current os.environ["UV_PYTHON"]
-    # 4. platform.python_version() (since uv run uses the same Python as the driver)
+    # 4. platform.python_version() major.minor (since uv run uses the same Python as the driver)
     if not options.python:
         env_vars = runtime_env.get("env_vars") or {}
+        # Get current Python version, strip to major.minor (e.g., "3.11" not "3.11.7")
+        # UV expects major.minor format for --python flag
+        current_python = ".".join(platform.python_version().split(".")[:2])
         uv_python = (
-            env_vars.get("UV_PYTHON")
-            or os.environ.get("UV_PYTHON")
-            or platform.python_version()
+            env_vars.get("UV_PYTHON") or os.environ.get("UV_PYTHON") or current_python
         )
         remaining_uv_run_args = remaining_uv_run_args + ["--python", uv_python]
 
@@ -359,7 +365,10 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # use the same working_dir that uv run would use
     if "working_dir" not in runtime_env:
         runtime_env["working_dir"] = os.getcwd()
-        _check_working_dir_files(options, runtime_env)
+
+    # Always validate that pyproject.toml and requirements files are within working_dir
+    # This prevents runtime errors on workers when files are not accessible
+    _check_working_dir_files(options, runtime_env)
 
     return runtime_env
 
