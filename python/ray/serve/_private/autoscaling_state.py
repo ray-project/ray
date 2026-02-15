@@ -687,16 +687,12 @@ class DeploymentAutoscalingState:
         return total_requests
 
     def _should_aggregate_metrics_at_controller(self) -> bool:
-        """Determine if metrics should be aggregated at the controller.
-
-        When direct ingress is enabled (e.g. HAProxy mode), metrics from
-        replicas and handles arrive at different times. The aggregate mode
-        uses time-weighted timeseries merging which properly handles this,
-        while simple mode naively sums pre-aggregated averages that can
-        overcount during request routing transitions.
+        """
+        Determine if metrics should be aggregated at the controller.
+        If the Direct Ingress is enabled, then metrics should only be aggregated at the controller.
 
         Returns:
-            True if metrics should be aggregated at the controller.
+            True if metrics should be aggregated at the controller, False otherwise.
         """
         return (
             RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER or RAY_SERVE_ENABLE_DIRECT_INGRESS
@@ -802,7 +798,7 @@ class DeploymentAutoscalingState:
             Sum of queued requests at all handles. Uses aggregated values in simple mode,
             or aggregates timeseries data in aggregate mode.
         """
-        if RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER:
+        if self._should_aggregate_metrics_at_controller():
             # Aggregate mode: collect and aggregate timeseries
             queued_timeseries = self._collect_handle_queued_requests()
             if not queued_timeseries:
