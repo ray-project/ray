@@ -75,9 +75,11 @@ Ray Serve LLM provides:
   - Automatic prefix caching (APC).
   - LoRA adapter support.
 
+Community implementations include:
+- **SGLang**: High-performance serving framework for large language and multimodal models, available via the `server_cls` extension point. See the {doc}`SGLang example </serve/llm/examples/sglang/readme>` for details.
+
 Future implementations could include:
 - **TensorRT-LLM**: NVIDIA's optimized inference engine.
-- **SGLang**: Fast serving with RadixAttention.
 
 Ray Serve LLM deeply integrates with vLLM since it has end-to-end Ray support in the engine, which gives benefits in fine-grained placement of workers and other optimizations. The engine abstraction makes it straightforward to add new implementations without changing the core serving logic.
 
