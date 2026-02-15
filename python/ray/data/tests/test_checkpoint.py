@@ -1,6 +1,8 @@
 import csv
+import logging
 import os
 import random
+import time as _time
 from typing import List, Union
 
 import pandas as pd
@@ -33,6 +35,8 @@ from ray.data.context import DataContext
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+logger = logging.getLogger(__name__)
 
 # User-provided ID column name
 ID_COL = "id"
@@ -151,6 +155,33 @@ def read_ids_from_checkpoint_files(config: CheckpointConfig) -> List[Union[int, 
 
     else:
         raise ValueError(f"Invalid backend: {config.backend}")
+
+
+def _count_output_rows(output_path: str, fs) -> int:
+    """Count total rows in written parquet output files."""
+    try:
+        unwrapped = _unwrap_protocol(output_path)
+        selector = FileSelector(unwrapped, recursive=True)
+        infos = fs.get_file_info(selector)
+    except Exception:
+        return 0
+
+    parquet_files = [
+        info.path
+        for info in infos
+        if info.type == pa.fs.FileType.File and info.path.endswith(".parquet")
+    ]
+    if not parquet_files:
+        return 0
+
+    total_rows = 0
+    for path in parquet_files:
+        if fs is None:
+            pf = pq.ParquetFile(path)
+        else:
+            pf = pq.ParquetFile(path, filesystem=fs)
+        total_rows += pf.metadata.num_rows
+    return total_rows
 
 
 class TestCheckpointConfig:
@@ -464,10 +495,13 @@ def test_recovery_skips_checkpointed_rows(
     class FailActor:
         """Simple passthrough actor, which fails after a certain number of rows."""
 
-        def __init__(self, coordinator_actor, max_num_items, checkpoint_config):
+        def __init__(
+            self, coordinator_actor, max_num_items, checkpoint_config, output_path
+        ):
             self._should_fail = ray.get(coordinator_actor.should_fail.remote())
             self._max_num_items = max_num_items
             self._checkpoint_config = checkpoint_config
+            self._output_path = output_path
 
         def __call__(self, batch):
             # Get the ID column name from the checkpoint config
@@ -478,6 +512,31 @@ def test_recovery_skips_checkpointed_rows(
 
             for _, id in enumerate(ids):
                 if self._should_fail and id == 2:
+                    # Wait for early rows to be checkpointed to avoid race conditions
+                    # between write and checkpoint writing.
+                    found_checkpoint = False
+                    for _ in range(50):
+                        checkpointed_ids = read_ids_from_checkpoint_files(
+                            self._checkpoint_config
+                        )
+                        output_rows = _count_output_rows(
+                            self._output_path, self._checkpoint_config.filesystem
+                        )
+                        if 0 < output_rows <= len(checkpointed_ids):
+                            found_checkpoint = True
+                            break
+                        logger.info(
+                            "Waiting for checkpoint rows to catch up with output rows"
+                        )
+                        _time.sleep(0.1)
+                    if found_checkpoint:
+                        logger.info(
+                            "Done waiting for checkpoint rows to catch up; proceeding to fail"
+                        )
+                    else:
+                        logger.warning(
+                            "Timed out waiting for checkpoint rows to catch up; proceeding to fail"
+                        )
                     raise TestException(f"FailActor: Failing on row {id}")
 
             return batch
@@ -491,15 +550,27 @@ def test_recovery_skips_checkpointed_rows(
 
     ds = ds.map_batches(
         FailActor,
-        fn_constructor_args=[coordinator_actor, max_num_items, ctx.checkpoint_config],
+        fn_constructor_args=[
+            coordinator_actor,
+            max_num_items,
+            ctx.checkpoint_config,
+            data_output_path,
+        ],
         concurrency=1,
-        batch_size=None,
+        batch_size=1,  # Ensure early rows checkpoint before failure at id=2.
         num_cpus=1.1,  # Use a different num_cpus to avoid operator fusion.
     )
 
     # Should fail in the middle.
     with pytest.raises(TestException):
         ds.write_parquet(data_output_path, filesystem=fs, concurrency=1)
+
+    checkpoint_ids_after_failure = read_ids_from_checkpoint_files(ctx.checkpoint_config)
+    # Log checkpoint contents for debugging.
+    logger.info(
+        "checkpoint ids after failure: %s",
+        checkpoint_ids_after_failure,
+    )
 
     ray.get(coordinator_actor.disable_failure.remote())
     # When executing the same dataset again, this should skip the already
@@ -514,6 +585,10 @@ def test_recovery_skips_checkpointed_rows(
 
     # Disable checkpointing prior to reading back the data, so we don't skip any rows.
     ctx.checkpoint_config = None
+
+    assert (
+        len(checkpoint_ids_after_failure) > 0
+    ), "Checkpoint should be written before failure"
 
     # Ensure that the written data is correct.
     ds_readback = ray.data.read_parquet(data_output_path, filesystem=fs)

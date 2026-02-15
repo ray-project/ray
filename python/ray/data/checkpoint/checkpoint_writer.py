@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 import uuid
 from abc import abstractmethod
 
@@ -64,7 +65,8 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
         output directory given by `self.checkpoint_path`.
 
         Subclasses of `CheckpointWriter` must implement this method."""
-        if block.num_rows() == 0:
+        num_rows = block.num_rows()
+        if num_rows == 0:
             return
 
         file_name = f"{uuid.uuid4()}.parquet"
@@ -82,12 +84,25 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
                 filesystem=self.filesystem,
             )
 
+        start_t = time.time()
+        succeeded = False
         try:
-            return call_with_retry(
+            result = call_with_retry(
                 _write,
                 description=f"Write checkpoint file: {file_name}",
                 match=DataContext.get_current().retried_io_errors,
             )
+            succeeded = True
+            return result
         except Exception:
             logger.exception(f"Checkpoint write failed: {file_name}")
             raise
+        finally:
+            logger.info(
+                "Checkpoint write %s: file=%s rows=%d path=%s elapsed_s=%.3f",
+                "succeeded" if succeeded else "failed",
+                file_name,
+                num_rows,
+                ckpt_file_path,
+                time.time() - start_t,
+            )

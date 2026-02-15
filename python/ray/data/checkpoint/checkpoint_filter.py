@@ -88,6 +88,7 @@ class CheckpointLoader:
             ObjectRef[Block]: ObjectRef to the checkpointed IDs block.
         """
         start_t = time.time()
+        checkpoint_path_unwrapped = _unwrap_protocol(self.checkpoint_path)
 
         # Load the checkpoint data
         checkpoint_ds: ray.data.Dataset = ray.data.read_parquet(
@@ -124,12 +125,19 @@ class CheckpointLoader:
         self._validate_loaded_checkpoint(schema, metadata)
 
         logger.info(
-            "Checkpoint loaded for %s in %.2f seconds. SizeBytes = %d, Schema = %s",
+            "Checkpoint loaded for %s in %.2f seconds. SizeBytes=%d Rows=%d Schema=%s",
             type(self).__name__,
             time.time() - start_t,
             metadata.size_bytes,
+            metadata.num_rows,
             schema.to_string(),
         )
+
+        if metadata.num_rows == 0:
+            logger.warning(
+                "Checkpoint loaded empty: path=%s",
+                checkpoint_path_unwrapped,
+            )
 
         return checkpoint_block_ref
 
@@ -255,6 +263,12 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
         # Convert the final mask to a PyArrow array and filter the block.
         mask_array = pyarrow.array(final_mask)
         filtered_block = block.filter(mask_array)
+        logger.info(
+            "Checkpoint filter: in_rows=%d out_rows=%d id_col=%s",
+            len(block),
+            len(filtered_block),
+            self.id_column,
+        )
         return filtered_block
 
     def filter_rows_for_batch(
