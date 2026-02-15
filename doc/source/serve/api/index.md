@@ -122,6 +122,15 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.schema.ReplicaRank
 ```
 
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
+
+   serve.schema.TaskProcessorAdapter
+```
+
 ### Request Router
 
 ```{eval-rst}
