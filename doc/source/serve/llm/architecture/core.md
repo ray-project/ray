@@ -75,7 +75,7 @@ Ray Serve LLM provides:
   - Automatic prefix caching (APC).
   - LoRA adapter support.
 
-Community implementations include:
+Communit-supported implementations include:
 - **SGLang**: High-performance serving framework for large language and multimodal models, available via the `server_cls` extension point. See the {doc}`SGLang example </serve/llm/examples/sglang/readme>` for details.
 
 Future implementations could include:
