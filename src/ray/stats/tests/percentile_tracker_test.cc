@@ -1,0 +1,158 @@
+// Copyright 2026 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// This implementation is based on tehuti's Percentiles class:
+// https://github.com/tehuti-io/tehuti
+// Original implementation: Copyright LinkedIn Corp. under Apache License 2.0
+
+#include "ray/stats/percentile_tracker.h"
+
+#include <gtest/gtest.h>
+
+#include <random>
+
+namespace ray {
+namespace stats {
+
+TEST(PercentileTrackerTest, BasicPercentiles) {
+  // Create a tracker with 1KB memory, max value 10000ms
+  auto tracker = PercentileTracker::Create(1024, 10000.0);
+
+  // Record some sample latencies
+  std::vector<double> values = {1, 2, 3, 5, 10, 15, 20, 50, 100, 200, 500, 1000};
+  for (double v : values) {
+    tracker.Record(v);
+  }
+
+  EXPECT_EQ(tracker.GetCount(), 12);
+  EXPECT_GT(tracker.GetP50(), 10.0);   // Median should be around 12.5
+  EXPECT_LT(tracker.GetP50(), 20.0);   // Should be less than 20
+  EXPECT_GT(tracker.GetP95(), 200.0);  // P95 should be > 200
+  EXPECT_GT(tracker.GetP99(), 500.0);  // P99 should be > 500
+  EXPECT_FALSE(std::isnan(tracker.GetMax()));
+  EXPECT_FALSE(std::isnan(tracker.GetMean()));
+}
+
+TEST(PercentileTrackerTest, EmptyTracker) {
+  auto tracker = PercentileTracker::Create(1024, 10000.0);
+
+  EXPECT_EQ(tracker.GetCount(), 0);
+  EXPECT_TRUE(std::isnan(tracker.GetP50()));
+  EXPECT_TRUE(std::isnan(tracker.GetP95()));
+  EXPECT_TRUE(std::isnan(tracker.GetP99()));
+  EXPECT_TRUE(std::isnan(tracker.GetMax()));
+  EXPECT_TRUE(std::isnan(tracker.GetMean()));
+}
+
+TEST(PercentileTrackerTest, ClearTracker) {
+  auto tracker = PercentileTracker::Create(1024, 10000.0);
+
+  tracker.Record(100.0);
+  tracker.Record(200.0);
+  EXPECT_EQ(tracker.GetCount(), 2);
+
+  tracker.Clear();
+  EXPECT_EQ(tracker.GetCount(), 0);
+  EXPECT_TRUE(std::isnan(tracker.GetP50()));
+}
+
+TEST(PercentileTrackerTest, LargeDataset) {
+  auto tracker = PercentileTracker::Create(2048, 10000.0);
+
+  std::mt19937 gen(42);                               // Fixed seed for reproducibility
+  std::exponential_distribution<> dist(1.0 / 100.0);  // Mean ~100ms
+
+  // Simulate 10000 latency measurements
+  for (int i = 0; i < 10000; i++) {
+    double latency = dist(gen);
+    tracker.Record(latency);
+  }
+
+  EXPECT_EQ(tracker.GetCount(), 10000);
+
+  // For exponential distribution with mean 100:
+  // P50 should be around 69 (ln(2) * 100)
+  // P95 should be around 300
+  // P99 should be around 460
+  double p50 = tracker.GetP50();
+  double p95 = tracker.GetP95();
+  double p99 = tracker.GetP99();
+  double mean = tracker.GetMean();
+
+  EXPECT_GT(p50, 40.0);
+  EXPECT_LT(p50, 100.0);
+  EXPECT_GT(p95, 200.0);
+  EXPECT_LT(p95, 400.0);
+  EXPECT_GT(p99, 300.0);
+  EXPECT_GT(mean, 80.0);
+  EXPECT_LT(mean, 120.0);
+
+  // Percentiles should be ordered
+  EXPECT_LT(p50, p95);
+  EXPECT_LT(p95, p99);
+}
+
+TEST(PercentileTrackerTest, MaxValue) {
+  auto tracker = PercentileTracker::Create(1024, 10000.0);
+
+  tracker.Record(5.0);
+  tracker.Record(100.0);
+  tracker.Record(50.0);
+  tracker.Record(200.0);
+
+  double max_val = tracker.GetMax();
+  EXPECT_FALSE(std::isnan(max_val));
+  // Max will be approximate due to histogram binning
+  // Should be close to 200 (within 10% error)
+  EXPECT_GT(max_val, 180.0);
+  EXPECT_LT(max_val, 220.0);
+}
+
+TEST(PercentileTrackerTest, OutOfRangeValues) {
+  auto tracker = PercentileTracker::Create(1024, 1000.0);
+
+  // Record values within and outside the expected range
+  tracker.Record(50.0);
+  tracker.Record(500.0);
+  tracker.Record(5000.0);   // Above max
+  tracker.Record(10000.0);  // Way above max
+
+  EXPECT_EQ(tracker.GetCount(), 4);
+  EXPECT_FALSE(std::isnan(tracker.GetP50()));
+
+  // All values should be captured, even out-of-range ones
+  // (they go to the overflow bin)
+}
+
+TEST(LinearBinSchemeTest, BinMapping) {
+  LinearBinScheme scheme(100, 1000.0);
+
+  // Test basic bin mapping
+  EXPECT_GE(scheme.ToBin(0.0), 0);
+  EXPECT_LT(scheme.ToBin(0.0), 100);
+
+  EXPECT_GE(scheme.ToBin(500.0), 0);
+  EXPECT_LT(scheme.ToBin(500.0), 100);
+
+  // Values beyond max go to last bin
+  EXPECT_EQ(scheme.ToBin(5000.0), 99);
+
+  // Bin boundaries should increase
+  for (int i = 0; i < 50; i++) {
+    EXPECT_LT(scheme.FromBin(i), scheme.FromBin(i + 1));
+  }
+}
+
+}  // namespace stats
+}  // namespace ray
