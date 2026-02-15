@@ -101,6 +101,10 @@ DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
 DEFAULT_MIN_PARALLELISM = env_integer("RAY_DATA_DEFAULT_MIN_PARALLELISM", 200)
 
+DEFAULT_SMALL_DATA_THRESHOLD_FOR_LOCAL_AGGREGATION = env_integer(
+    "RAY_DATA_SMALL_DATA_THRESHOLD_FOR_LOCAL_AGGREGATION", 10 * 1024 * 1024
+)
+
 DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = env_bool(
     "RAY_DATA_ENABLE_TENSOR_EXTENSION_CASTING",
     True,
@@ -605,6 +609,10 @@ class DataContext:
     join_operator_actor_num_cpus_override: float = None
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
+
+    small_data_threshold_for_local_aggregation: int = (
+        DEFAULT_SMALL_DATA_THRESHOLD_FOR_LOCAL_AGGREGATION
+    )
 
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
