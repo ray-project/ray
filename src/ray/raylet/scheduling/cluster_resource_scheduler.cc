@@ -107,13 +107,52 @@ bool ClusterResourceScheduler::NodeAvailable(scheduling::NodeID node_id) const {
     return false;
   }
 
-  RAY_CHECK(is_node_available_fn_ != nullptr);
-  if (!is_node_available_fn_(node_id) ||
-      cluster_resource_manager_->IsNodeDraining(node_id)) {
-    return false;
+  if (!remote_node_available_snapshot_.empty()) {
+    auto it = remote_node_available_snapshot_.find(node_id);
+    if (it != remote_node_available_snapshot_.end()) {
+      return it->second;
+    }
   }
 
-  return true;
+  return IsRemoteNodeAvailable(node_id);
+}
+
+bool ClusterResourceScheduler::IsRemoteNodeAvailable(scheduling::NodeID node_id) const {
+  return !cluster_resource_manager_->IsNodeDraining(node_id) &&
+         NodeAvailableImpl(node_id);
+}
+
+bool ClusterResourceScheduler::NodeAvailableImpl(scheduling::NodeID node_id) const {
+  RAY_CHECK(is_node_available_fn_ != nullptr);
+  return is_node_available_fn_(node_id);
+}
+
+void ClusterResourceScheduler::BeginSchedulingRound() {
+  scheduling_round_depth_++;
+
+  if (scheduling_round_depth_ > 1) {
+    return;
+  }
+
+  remote_node_available_snapshot_.clear();
+  for (const auto &[node_id, _] : cluster_resource_manager_->GetResourceView()) {
+    // Skip local node - it's always checked directly
+    if (node_id == local_node_id_) {
+      continue;
+    }
+    remote_node_available_snapshot_[node_id] = IsRemoteNodeAvailable(node_id);
+  }
+}
+
+void ClusterResourceScheduler::EndSchedulingRound() {
+  RAY_CHECK(scheduling_round_depth_ > 0)
+      << "EndSchedulingRound called without matching BeginSchedulingRound";
+
+  scheduling_round_depth_--;
+
+  if (scheduling_round_depth_ == 0) {
+    remote_node_available_snapshot_.clear();
+  }
 }
 
 bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
