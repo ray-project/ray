@@ -162,6 +162,14 @@ class ActorPoolMapOperator(MapOperator):
         )
 
         max_actor_concurrency = self._ray_remote_args.get("max_concurrency", 1)
+        # HACK: Without this, all actors show up as `_MapWorker` in Grafana, so we can’t
+        # tell which operator they belong to. To fix that, we dynamically create a new
+        # class per operator with a unique name.
+        map_worker_cls_name = f"MapWorker({self.name})"
+        self._map_worker_cls = type(map_worker_cls_name, (_MapWorker,), {})
+        # Similarly, we set the actor class name to include operator name to disambiguate
+        # logs in the Actor Pool
+        self._map_worker_cls_name = map_worker_cls_name
 
         self._actor_pool = _ActorPool(
             self._start_actor,
@@ -181,14 +189,11 @@ class ActorPoolMapOperator(MapOperator):
                 * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
             ),
             _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
+            _map_worker_cls_name=self._map_worker_cls_name,
         )
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
-        # HACK: Without this, all actors show up as `_MapWorker` in Grafana, so we can’t
-        # tell which operator they belong to. To fix that, we dynamically create a new
-        # class per operator with a unique name.
-        self._map_worker_cls = type(f"MapWorker({self.name})", (_MapWorker,), {})
         # Cached actor class.
         self._actor_cls = None
         self._actor_locality_enabled: Optional[bool] = None
@@ -887,6 +892,7 @@ class _ActorPool(AutoscalingActorPool):
         max_actor_concurrency: int,
         max_tasks_in_flight_per_actor: int,
         _enable_actor_pool_on_exit_hook: bool = False,
+        _map_worker_cls_name: Optional[str] = None,
     ):
         """Initialize the actor pool.
 
@@ -909,6 +915,7 @@ class _ActorPool(AutoscalingActorPool):
                 be submitted to a single actor at any given time.
             _enable_actor_pool_on_exit_hook: Whether to enable the actor pool
                 on exit hook.
+            _map_worker_cls_name: Name of the map worker class for logging purposes.
         """
 
         self._min_size: int = min_size
@@ -936,6 +943,7 @@ class _ActorPool(AutoscalingActorPool):
         # Map from actor handle to its logical ID.
         self._actor_to_logical_id: Dict[ray.actor.ActorHandle, str] = {}
         self._enable_actor_pool_on_exit_hook = _enable_actor_pool_on_exit_hook
+        self._map_worker_cls_name = _map_worker_cls_name
         # Cached values for actor / task counts
         self._num_restarting_actors: int = 0
         self._num_active_actors: int = 0
@@ -982,6 +990,10 @@ class _ActorPool(AutoscalingActorPool):
     def initial_size(self) -> int:
         return self._initial_size
 
+    @property
+    def map_worker_cls_name(self) -> Optional[str]:
+        return self._map_worker_cls_name
+
     def get_actor_id(self, actor: ActorHandle) -> str:
         return self._actor_to_logical_id[actor]
 
@@ -1023,11 +1035,14 @@ class _ActorPool(AutoscalingActorPool):
         if not self._can_apply(req):
             return 0
 
+        map_worker_cls_name = (
+            (self.map_worker_cls_name + " ") if self.map_worker_cls_name else ""
+        )
+
         if req.delta > 0:
             target_num_actors = req.delta
-
             logger.debug(
-                f"Scaling up actor pool by {target_num_actors} (reason={req.reason}, "
+                f"Scaling up {map_worker_cls_name}actor pool by {target_num_actors} (reason={req.reason}, "
                 f"{self.get_actor_info()})"
             )
 
@@ -1050,7 +1065,7 @@ class _ActorPool(AutoscalingActorPool):
 
             if num_released > 0:
                 logger.debug(
-                    f"Scaled down actor pool by {num_released} "
+                    f"Scaled down {map_worker_cls_name}actor pool by {num_released} "
                     f"(reason={req.reason}; {self.get_actor_info()})"
                 )
 
