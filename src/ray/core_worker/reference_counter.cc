@@ -1229,13 +1229,31 @@ void ReferenceCounter::CleanupBorrowersOnRefRemoved(
     const ObjectID &object_id,
     const rpc::Address &borrower_addr) {
   absl::MutexLock lock(&mutex_);
-  // Merge in any new borrowers that the previous borrower learned of.
   MergeRemoteBorrowers(object_id, borrower_addr, new_borrower_refs);
 
   // Erase the previous borrower.
   auto it = object_id_refs_.find(object_id);
-  RAY_CHECK(it != object_id_refs_.end()) << object_id;
-  RAY_CHECK(it->second.mutable_borrow()->borrowers.erase(borrower_addr));
+  if (it == object_id_refs_.end()) {
+    // Note: Object reference already cleaned up.
+    // This can happen due to a race in WORKER_REF_REMOVED_CHANNEL:
+    // - Borrower publishes ref_removed, owner posts message_published_callback.
+    // - Before it runs, borrower process dies, causing publisher_failed_callback to be
+    //   posted by the broken long-polling connection.
+    // Both callbacks call CleanupBorrowersOnRefRemoved(). The second invocation should
+    // be treated as a no-op.
+    RAY_LOG(DEBUG) << "CleanupBorrowersOnRefRemoved: object " << object_id
+                   << " not found, likely already cleaned up by another callback";
+    return;
+  }
+
+  // Check if this borrower was already removed (duplicate callback from race condition
+  // between message_published_callback and publisher_failed_callback).
+  if (it->second.mutable_borrow()->borrowers.erase(borrower_addr) == 0) {
+    RAY_LOG(DEBUG) << "CleanupBorrowersOnRefRemoved: borrower "
+                   << WorkerID::FromBinary(borrower_addr.worker_id())
+                   << " already removed for " << object_id;
+  }
+
   DeleteReferenceInternal(it, nullptr);
 }
 
