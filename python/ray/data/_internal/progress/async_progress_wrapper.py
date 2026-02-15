@@ -4,6 +4,7 @@ import threading
 import time
 import typing
 import weakref
+from concurrent.futures.thread import _worker
 from typing import Optional
 
 from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
@@ -33,7 +34,7 @@ class _DaemonThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
             thread_name = f"{self._thread_name_prefix or ''}_{num_threads}"
             t = threading.Thread(
                 name=thread_name,
-                target=self._worker,
+                target=_worker,
                 args=(
                     weakref.ref(self, weakref_cb),
                     self._work_queue,
