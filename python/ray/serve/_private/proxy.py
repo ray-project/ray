@@ -62,6 +62,7 @@ from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
     configure_component_memory_profiler,
+    format_client_address,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -459,6 +460,7 @@ class GenericProxy(ABC):
                     route=request_context.route,
                     status=str(status.code),
                     latency_ms=latency_ms,
+                    client=format_client_address(proxy_request.client),
                 ),
                 extra=self._access_log_context,
             )
@@ -880,6 +882,7 @@ class HTTPProxy(GenericProxy):
             "app_name": app_name,
             "_internal_request_id": internal_request_id,
             "is_http_request": True,
+            "_client": format_client_address(proxy_request.client),
         }
         for key, value in proxy_request.headers:
             if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:

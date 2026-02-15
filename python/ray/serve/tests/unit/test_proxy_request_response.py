@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from ray.serve._private.common import gRPCRequest
+from ray.serve._private.logging_utils import access_log_msg, format_client_address
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
     ProxyRequest,
@@ -236,6 +237,49 @@ class TestgRPCProxyRequest:
         request_object = pickle.loads(serialized_arg)
         assert isinstance(request_object, gRPCRequest)
         assert request_object.user_request_proto == request_proto
+
+
+class TestFormatClientAddress:
+    """Tests for format_client_address in proxy.py."""
+
+    def test_tuple(self):
+        assert format_client_address(("10.0.0.1", 54321)) == "10.0.0.1:54321"
+
+    def test_list(self):
+        assert format_client_address(["10.0.0.1", 54321]) == "10.0.0.1:54321"
+
+    def test_string(self):
+        assert format_client_address("10.0.0.1:54321") == "10.0.0.1:54321"
+
+    def test_empty_string(self):
+        assert format_client_address("") == ""
+
+    def test_none(self):
+        assert format_client_address(None) == ""
+
+
+class TestAccessLogMsg:
+    """Tests for access_log_msg formatting."""
+
+    def test_without_client(self):
+        msg = access_log_msg(method="GET", route="/", status="200", latency_ms=1.0)
+        assert msg == "GET / 200 1.0ms"
+
+    def test_with_client(self):
+        msg = access_log_msg(
+            method="GET",
+            route="/",
+            status="200",
+            latency_ms=1.0,
+            client="10.0.0.1:54321",
+        )
+        assert msg == "10.0.0.1:54321 GET / 200 1.0ms"
+
+    def test_with_empty_client(self):
+        msg = access_log_msg(
+            method="POST", route="/api", status="500", latency_ms=25.3, client=""
+        )
+        assert msg == "POST /api 500 25.3ms"
 
 
 if __name__ == "__main__":

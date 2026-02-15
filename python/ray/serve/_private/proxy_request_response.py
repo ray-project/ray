@@ -59,6 +59,10 @@ class ProxyRequest(ABC):
     def is_health_request(self) -> bool:
         raise NotImplementedError
 
+    @property
+    def client(self) -> str:
+        return ""
+
 
 class ASGIProxyRequest(ProxyRequest):
     """ProxyRequest implementation to wrap ASGI scope, receive, and send."""

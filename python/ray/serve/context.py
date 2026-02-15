@@ -215,6 +215,8 @@ class _RequestContext:
     grpc_context: Optional[RayServegRPCContext] = None
     is_http_request: bool = False
     cancel_on_parent_request_cancel: bool = False
+    # The client address in "host:port" format, if available.
+    _client: str = ""
     # Ray tracing context for this request (if tracing is enabled)
     # This is extracted from _ray_trace_ctx kwarg at the replica entry point
     # Advanced users can access this to propagate tracing to external systems
