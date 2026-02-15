@@ -494,7 +494,7 @@ def test_controller_recover_and_deploy(serve_instance):
             }
         ]
     }
-    config = ServeDeploySchema.parse_obj(config_json)
+    config = ServeDeploySchema.model_validate(config_json)
     client.deploy_apps(config)
 
     wait_for_condition(
