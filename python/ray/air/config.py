@@ -552,10 +552,15 @@ class RunConfig:
             Currently only stateless callbacks are supported for resumed runs.
             (any state of the callback will not be checkpointed by Tune
             and thus will not take effect in resumed runs).
-        progress_reporter: [DeveloperAPI] Progress reporter for reporting
-            intermediate experiment progress. Defaults to CLIReporter if
-            running in command-line, or JupyterNotebookReporter if running in
-            a Jupyter notebook.
+        progress_reporter: [DeveloperAPI] Deprecated. Progress reporter for
+            reporting intermediate experiment progress. Defaults to
+            CLIReporter if running in command-line, or
+            JupyterNotebookReporter if running in a Jupyter notebook.
+            With the new output engine (default since Ray 2.6), custom
+            reporters should be implemented as ``Callback`` subclasses and
+            passed via ``RunConfig(callbacks=[...])``. If a legacy
+            ``ProgressReporter`` is provided, it will be automatically
+            wrapped in an adapter for backwards compatibility.
         log_to_file: [DeveloperAPI] Log stdout and stderr to files in
             trial directories. If this is `False` (default), no files
             are written. If `true`, outputs are written to `trialdir/stdout`

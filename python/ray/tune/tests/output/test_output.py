@@ -347,5 +347,127 @@ def test_heartbeat_reset(progress_reporter_cls):
             raise RuntimeError("Test faulty.")
 
 
+def test_legacy_progress_reporter_adapter_delegates_setup():
+    """Test that the adapter delegates setup() to the legacy reporter."""
+    from ray.tune.experimental.output import LegacyProgressReporterAdapter
+
+    legacy_reporter = mock.MagicMock()
+    adapter = LegacyProgressReporterAdapter(
+        legacy_reporter=legacy_reporter, verbosity=AirVerbosity.DEFAULT
+    )
+
+    adapter.setup(start_time=100.0, total_samples=10, metric="loss", mode="min")
+
+    legacy_reporter.setup.assert_called_once_with(
+        start_time=100.0, total_samples=10, metric="loss", mode="min"
+    )
+
+
+def test_legacy_progress_reporter_adapter_heartbeat():
+    """Test that print_heartbeat delegates to should_report/report."""
+    from ray.tune.experimental.output import LegacyProgressReporterAdapter
+
+    legacy_reporter = mock.MagicMock()
+    legacy_reporter.should_report.return_value = True
+    adapter = LegacyProgressReporterAdapter(
+        legacy_reporter=legacy_reporter, verbosity=AirVerbosity.DEFAULT
+    )
+
+    trials = [Trial(MOCK_TRAINABLE_NAME, stub=True)]
+    adapter.print_heartbeat(trials, "resources_str", force=False)
+
+    legacy_reporter.should_report.assert_called_once_with(trials, done=False)
+    legacy_reporter.report.assert_called_once_with(trials, False, "resources_str")
+
+
+def test_legacy_progress_reporter_adapter_heartbeat_skips_when_should_report_false():
+    """Test that report() is not called when should_report returns False."""
+    from ray.tune.experimental.output import LegacyProgressReporterAdapter
+
+    legacy_reporter = mock.MagicMock()
+    legacy_reporter.should_report.return_value = False
+    adapter = LegacyProgressReporterAdapter(
+        legacy_reporter=legacy_reporter, verbosity=AirVerbosity.DEFAULT
+    )
+
+    trials = [Trial(MOCK_TRAINABLE_NAME, stub=True)]
+    adapter.print_heartbeat(trials, "resources_str", force=False)
+
+    legacy_reporter.should_report.assert_called_once_with(trials, done=False)
+    legacy_reporter.report.assert_not_called()
+
+
+def test_legacy_progress_reporter_adapter_force_sets_done():
+    """Test that force=True passes done=True to the legacy reporter."""
+    from ray.tune.experimental.output import LegacyProgressReporterAdapter
+
+    legacy_reporter = mock.MagicMock()
+    legacy_reporter.should_report.return_value = True
+    adapter = LegacyProgressReporterAdapter(
+        legacy_reporter=legacy_reporter, verbosity=AirVerbosity.DEFAULT
+    )
+
+    trials = []
+    adapter.print_heartbeat(trials, force=True)
+
+    legacy_reporter.should_report.assert_called_once_with(trials, done=True)
+    legacy_reporter.report.assert_called_once_with(trials, True)
+
+
+def test_legacy_progress_reporter_adapter_callback_hooks_are_noop():
+    """Test that callback hooks don't call the legacy reporter."""
+    from ray.tune.experimental.output import LegacyProgressReporterAdapter
+
+    legacy_reporter = mock.MagicMock()
+    adapter = LegacyProgressReporterAdapter(
+        legacy_reporter=legacy_reporter, verbosity=AirVerbosity.DEFAULT
+    )
+
+    trial = Trial(MOCK_TRAINABLE_NAME, stub=True)
+    adapter.on_trial_result(0, [trial], trial, {TRAINING_ITERATION: 1})
+    adapter.on_trial_complete(0, [trial], trial)
+    adapter.on_trial_error(0, [trial], trial)
+    adapter.on_trial_start(0, [trial], trial)
+
+    legacy_reporter.report.assert_not_called()
+    legacy_reporter.should_report.assert_not_called()
+
+
+def test_create_default_callbacks_uses_adapter_for_legacy_reporter():
+    """Test that _create_default_callbacks wraps a legacy reporter in an adapter."""
+    from ray.tune.experimental.output import LegacyProgressReporterAdapter
+    from ray.tune.utils.callback import _create_default_callbacks
+
+    legacy_reporter = mock.MagicMock()
+    callbacks = _create_default_callbacks(
+        [],
+        air_verbosity=AirVerbosity.DEFAULT,
+        progress_reporter=legacy_reporter,
+    )
+
+    adapters = [c for c in callbacks if isinstance(c, LegacyProgressReporterAdapter)]
+    assert len(adapters) == 1
+    assert adapters[0]._legacy_reporter is legacy_reporter
+
+
+def test_create_default_callbacks_uses_default_reporter_without_legacy():
+    """Test that _create_default_callbacks uses the default reporter when no
+    legacy reporter is provided."""
+    from ray.tune.experimental.output import (
+        LegacyProgressReporterAdapter,
+        ProgressReporter,
+    )
+    from ray.tune.utils.callback import _create_default_callbacks
+
+    callbacks = _create_default_callbacks(
+        [],
+        air_verbosity=AirVerbosity.DEFAULT,
+    )
+
+    air_reporters = [c for c in callbacks if isinstance(c, ProgressReporter)]
+    assert len(air_reporters) == 1
+    assert not isinstance(air_reporters[0], LegacyProgressReporterAdapter)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
