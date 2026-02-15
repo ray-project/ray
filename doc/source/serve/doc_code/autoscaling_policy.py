@@ -161,7 +161,6 @@ from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
     autoscaling_config=AutoscalingConfig(
         min_replicas=1,
         max_replicas=10,
-        metrics_interval_s=0.1,
         upscale_delay_s=1.0,
         downscale_delay_s=1.0,
         policy=AutoscalingPolicy(

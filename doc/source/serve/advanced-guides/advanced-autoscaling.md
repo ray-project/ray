@@ -166,6 +166,12 @@ This controls how often each replica and handle sends reports on current ongoing
 ::{note}
 If metrics are reported infrequently, Ray Serve can take longer to notice a change in autoscaling metrics, so scaling can start later even if your delays are short. For example, if you set `upscale_delay_s = 3` but metrics are pushed every 10 seconds, Ray Serve might not see a change until the next push, so scaling up can be limited to about once every 10 seconds.
 ::
+::{warning}
+Setting `metrics_interval_s` too low (for example, `0.1`) can significantly
+increase metrics traffic and overload the Serve controller running on the head
+node. Keep the default value (`10`) unless you have validated controller
+capacity for a lower interval.
+::
 
 * **[`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) [default_value=30]**: This is the window over which the
 average number of ongoing requests per replica is calculated.
