@@ -21,6 +21,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -685,6 +686,22 @@ class DeploymentAutoscalingState:
                         ).get(replica_id)
         return total_requests
 
+    def _should_aggregate_metrics_at_controller(self) -> bool:
+        """Determine if metrics should be aggregated at the controller.
+
+        When direct ingress is enabled (e.g. HAProxy mode), metrics from
+        replicas and handles arrive at different times. The aggregate mode
+        uses time-weighted timeseries merging which properly handles this,
+        while simple mode naively sums pre-aggregated averages that can
+        overcount during request routing transitions.
+
+        Returns:
+            True if metrics should be aggregated at the controller.
+        """
+        return (
+            RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER or RAY_SERVE_ENABLE_DIRECT_INGRESS
+        )
+
     def get_total_num_requests(self) -> float:
         """Get average total number of requests aggregated over the past
         `look_back_period_s` number of seconds.
@@ -696,7 +713,7 @@ class DeploymentAutoscalingState:
         or on replicas, but not both. Its the responsibility of the writer
         to ensure enclusivity of the metrics.
         """
-        if RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER:
+        if self._should_aggregate_metrics_at_controller():
             return self._calculate_total_requests_aggregate_mode()
         else:
             return self._calculate_total_requests_simple_mode()
