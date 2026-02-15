@@ -2104,11 +2104,6 @@ def shutdown(_exiting_interpreter: bool = False):
         del global_worker.gcs_client
     _internal_kv_reset()
 
-    # Reset client mode flag to prevent it from persisting across sessions
-    from ray._private.client_mode_hook import _explicitly_disable_client_mode
-
-    _explicitly_disable_client_mode()
-
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
