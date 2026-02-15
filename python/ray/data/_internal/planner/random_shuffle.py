@@ -1,4 +1,3 @@
-import time
 from typing import Any, Dict, List, Optional
 
 from ray.data._internal.execution.interfaces import (
@@ -17,13 +16,16 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
+from ray.data._internal.random_config import (
+    RandomSeedConfig,
+    get_single_integer_random_seed,
+)
 from ray.data.context import DataContext, ShuffleStrategy
-from ray.util.common import INT32_MAX
 
 
 def generate_random_shuffle_fn(
     data_context: DataContext,
-    seed: Optional[int],
+    seed_config: RandomSeedConfig,
     num_outputs: Optional[int] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
@@ -32,7 +34,7 @@ def generate_random_shuffle_fn(
 
     # If no seed has been specified, pin timestamp based one
     # so that task could be safely retried (w/o changing their output)
-    seed = seed if seed is not None else (time.time_ns() % INT32_MAX)
+    seed = get_single_integer_random_seed(seed_config, data_context)
 
     def fn(
         refs: List[RefBundle],
