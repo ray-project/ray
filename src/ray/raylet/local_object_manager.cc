@@ -357,10 +357,8 @@ void LocalObjectManager::SpillObjectsInternal(
       requested_objects_to_spill,
       object_ptrs,
       owner_addresses,
-      [this,
-       requested_objects_to_spill,
-       callback = std::move(callback)](const ray::Status &status,
-                                       std::vector<std::string> urls) {
+      [this, requested_objects_to_spill, callback = std::move(callback)](
+          const ray::Status &status, std::vector<std::string> urls) {
         num_active_workers_ -= 1;
         size_t num_objects_spilled = status.ok() ? urls.size() : 0;
         // Object spilling is always done in the order of the request.
@@ -480,7 +478,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
       object_id,
       object_url,
       [this, start_time, object_id, object_size, callback](const ray::Status &status,
-                                                            int64_t restored_bytes) {
+                                                           int64_t restored_bytes) {
         num_bytes_pending_restore_ -= object_size;
         objects_pending_restore_.erase(object_id);
         if (!status.ok()) {
@@ -578,8 +576,7 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> urls_to_d
   // constructed before the first arg reference is bound, leaving it empty.
   object_spiller_.DeleteSpilledObjects(
       urls_to_delete,
-      [this, urls_to_delete, num_retries](
-          const ray::Status &status) mutable {
+      [this, urls_to_delete, num_retries](const ray::Status &status) mutable {
         if (!status.ok()) {
           num_failed_deletion_requests_ += 1;
           RAY_LOG(ERROR) << "Failed to send delete spilled object request: "

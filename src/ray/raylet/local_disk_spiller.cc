@@ -107,8 +107,7 @@ void LocalDiskSpiller::SpillObjects(
     }
     auto data_buf = obj->GetData();
     if (data_buf && data_buf->Size() > 0) {
-      od.data.assign(reinterpret_cast<const char *>(data_buf->Data()),
-                     data_buf->Size());
+      od.data.assign(reinterpret_cast<const char *>(data_buf->Data()), data_buf->Size());
     }
     object_data->push_back(std::move(od));
   }
@@ -121,63 +120,65 @@ void LocalDiskSpiller::SpillObjects(
   std::string filepath = dir + "/" + filename;
 
   // Post the file I/O to the IO thread pool.
-  boost::asio::post(io_context_, [this,
-                                  filepath,
-                                  object_data,
-                                  num_objects = object_ids.size(),
-                                  callback = std::move(callback)]() mutable {
-    std::vector<std::string> urls;
-    urls.reserve(num_objects);
+  boost::asio::post(
+      io_context_,
+      [this,
+       filepath,
+       object_data,
+       num_objects = object_ids.size(),
+       callback = std::move(callback)]() mutable {
+        std::vector<std::string> urls;
+        urls.reserve(num_objects);
 
-    std::ofstream ofs(filepath, std::ios::binary);
-    if (!ofs) {
-      auto status =
-          Status::IOError("Failed to open spill file for writing: " + filepath);
-      boost::asio::post(main_io_service_,
-                        [callback = std::move(callback), status]() mutable {
-                          callback(status, {});
-                        });
-      return;
-    }
+        std::ofstream ofs(filepath, std::ios::binary);
+        if (!ofs) {
+          auto status =
+              Status::IOError("Failed to open spill file for writing: " + filepath);
+          boost::asio::post(main_io_service_,
+                            [callback = std::move(callback), status]() mutable {
+                              callback(status, {});
+                            });
+          return;
+        }
 
-    uint64_t offset = 0;
-    for (size_t i = 0; i < num_objects; ++i) {
-      const auto &od = (*object_data)[i];
-      uint64_t address_size = od.serialized_address.size();
-      uint64_t metadata_size = od.metadata.size();
-      uint64_t data_size = od.data.size();
+        uint64_t offset = 0;
+        for (size_t i = 0; i < num_objects; ++i) {
+          const auto &od = (*object_data)[i];
+          uint64_t address_size = od.serialized_address.size();
+          uint64_t metadata_size = od.metadata.size();
+          uint64_t data_size = od.data.size();
 
-      WriteUint64LE(ofs, address_size);
-      WriteUint64LE(ofs, metadata_size);
-      WriteUint64LE(ofs, data_size);
-      ofs.write(od.serialized_address.data(), address_size);
-      ofs.write(od.metadata.data(), metadata_size);
-      ofs.write(od.data.data(), data_size);
+          WriteUint64LE(ofs, address_size);
+          WriteUint64LE(ofs, metadata_size);
+          WriteUint64LE(ofs, data_size);
+          ofs.write(od.serialized_address.data(), address_size);
+          ofs.write(od.metadata.data(), metadata_size);
+          ofs.write(od.data.data(), data_size);
 
-      uint64_t object_size = 24 + address_size + metadata_size + data_size;
-      std::string url = filepath + "?offset=" + std::to_string(offset) +
-                        "&size=" + std::to_string(object_size);
-      urls.push_back(std::move(url));
-      offset += object_size;
-    }
+          uint64_t object_size = 24 + address_size + metadata_size + data_size;
+          std::string url = filepath + "?offset=" + std::to_string(offset) +
+                            "&size=" + std::to_string(object_size);
+          urls.push_back(std::move(url));
+          offset += object_size;
+        }
 
-    ofs.flush();
-    if (!ofs) {
-      auto status = Status::IOError("Failed to write spill file: " + filepath);
-      boost::asio::post(main_io_service_,
-                        [callback = std::move(callback), status]() mutable {
-                          callback(status, {});
-                        });
-      return;
-    }
-    ofs.close();
+        ofs.flush();
+        if (!ofs) {
+          auto status = Status::IOError("Failed to write spill file: " + filepath);
+          boost::asio::post(main_io_service_,
+                            [callback = std::move(callback), status]() mutable {
+                              callback(status, {});
+                            });
+          return;
+        }
+        ofs.close();
 
-    boost::asio::post(
-        main_io_service_,
-        [callback = std::move(callback), urls = std::move(urls)]() mutable {
-          callback(Status::OK(), std::move(urls));
-        });
-  });
+        boost::asio::post(
+            main_io_service_,
+            [callback = std::move(callback), urls = std::move(urls)]() mutable {
+              callback(Status::OK(), std::move(urls));
+            });
+      });
 }
 
 void LocalDiskSpiller::RestoreSpilledObject(
@@ -186,10 +187,7 @@ void LocalDiskSpiller::RestoreSpilledObject(
     std::function<void(const Status &, int64_t bytes_restored)> callback) {
   boost::asio::post(
       io_context_,
-      [this,
-       object_id,
-       object_url,
-       callback = std::move(callback)]() mutable {
+      [this, object_id, object_url, callback = std::move(callback)]() mutable {
         // Parse URL: {filepath}?offset={offset}&size={size}
         std::string file_path;
         uint64_t object_offset = 0;
@@ -249,8 +247,7 @@ void LocalDiskSpiller::RestoreSpilledObject(
 
         ifs.seekg(object_offset);
         if (!ifs) {
-          auto status =
-              Status::IOError("Failed to seek in spill file: " + file_path);
+          auto status = Status::IOError("Failed to seek in spill file: " + file_path);
           boost::asio::post(main_io_service_,
                             [callback = std::move(callback), status]() mutable {
                               callback(status, 0);
@@ -313,8 +310,7 @@ void LocalDiskSpiller::RestoreSpilledObject(
         if (metadata_size > 0) {
           auto buf = std::make_shared<LocalMemoryBuffer>(metadata_size);
           if (!ifs.read(reinterpret_cast<char *>(buf->Data()), metadata_size)) {
-            auto status =
-                Status::IOError("Failed to read metadata from: " + object_url);
+            auto status = Status::IOError("Failed to read metadata from: " + object_url);
             boost::asio::post(main_io_service_,
                               [callback = std::move(callback), status]() mutable {
                                 callback(status, 0);
@@ -360,39 +356,37 @@ void LocalDiskSpiller::RestoreSpilledObject(
 }
 
 void LocalDiskSpiller::DeleteSpilledObjects(
-    const std::vector<std::string> &urls,
-    std::function<void(const Status &)> callback) {
+    const std::vector<std::string> &urls, std::function<void(const Status &)> callback) {
   // Copy URLs since we're posting to another thread.
   auto urls_copy = std::make_shared<std::vector<std::string>>(urls);
-  boost::asio::post(io_context_, [this,
-                                  urls_copy = std::move(urls_copy),
-                                  callback = std::move(callback)]() mutable {
-    // Collect unique file paths from URLs (multiple objects may share a file).
-    absl::flat_hash_set<std::string> file_paths;
-    for (const auto &url : *urls_copy) {
-      auto qpos = url.find('?');
-      if (qpos != std::string::npos) {
-        file_paths.insert(url.substr(0, qpos));
-      } else {
-        file_paths.insert(url);
-      }
-    }
+  boost::asio::post(
+      io_context_,
+      [this, urls_copy = std::move(urls_copy), callback = std::move(callback)]() mutable {
+        // Collect unique file paths from URLs (multiple objects may share a file).
+        absl::flat_hash_set<std::string> file_paths;
+        for (const auto &url : *urls_copy) {
+          auto qpos = url.find('?');
+          if (qpos != std::string::npos) {
+            file_paths.insert(url.substr(0, qpos));
+          } else {
+            file_paths.insert(url);
+          }
+        }
 
-    Status result = Status::OK();
-    for (const auto &path : file_paths) {
-      std::error_code ec;
-      if (!std::filesystem::remove(path, ec) && ec) {
-        RAY_LOG(WARNING) << "Failed to delete spilled object file " << path << ": "
-                         << ec.message();
-        result = Status::IOError("Failed to delete: " + path + ": " + ec.message());
-      }
-    }
+        Status result = Status::OK();
+        for (const auto &path : file_paths) {
+          std::error_code ec;
+          if (!std::filesystem::remove(path, ec) && ec) {
+            RAY_LOG(WARNING) << "Failed to delete spilled object file " << path << ": "
+                             << ec.message();
+            result = Status::IOError("Failed to delete: " + path + ": " + ec.message());
+          }
+        }
 
-    boost::asio::post(main_io_service_,
-                      [callback = std::move(callback), result]() mutable {
-                        callback(result);
-                      });
-  });
+        boost::asio::post(
+            main_io_service_,
+            [callback = std::move(callback), result]() mutable { callback(result); });
+      });
 }
 
 }  // namespace raylet

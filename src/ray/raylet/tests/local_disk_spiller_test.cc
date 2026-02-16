@@ -42,8 +42,8 @@ class LocalDiskSpillerTest : public ::testing::Test {
   void TearDown() override { std::filesystem::remove_all(test_dir_); }
 
   /// Create a spiller with the given number of IO threads.
-  std::unique_ptr<LocalDiskSpiller> CreateSpiller(
-      const std::vector<std::string> &dirs, int num_threads = 2) {
+  std::unique_ptr<LocalDiskSpiller> CreateSpiller(const std::vector<std::string> &dirs,
+                                                  int num_threads = 2) {
     return std::make_unique<LocalDiskSpiller>(
         dirs, node_id_, num_threads, main_service_, restore_to_plasma_fn_);
   }
@@ -123,10 +123,11 @@ TEST_F(LocalDiskSpillerTest, SpillAndReadBackSingleObject) {
   Status spill_status;
   std::vector<std::string> spill_urls;
 
-  spiller->SpillObjects(ids, objs, owners, [&](const Status &s, std::vector<std::string> urls) {
-    spill_status = s;
-    spill_urls = std::move(urls);
-  });
+  spiller->SpillObjects(
+      ids, objs, owners, [&](const Status &s, std::vector<std::string> urls) {
+        spill_status = s;
+        spill_urls = std::move(urls);
+      });
 
   // Wait for the callback to be posted to main_service_.
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -138,7 +139,7 @@ TEST_F(LocalDiskSpillerTest, SpillAndReadBackSingleObject) {
   // Verify the spilled object can be read back by SpilledObjectReader.
   auto reader = SpilledObjectReader::CreateSpilledObjectReader(spill_urls[0]);
   ASSERT_TRUE(reader.has_value());
-  EXPECT_EQ(reader->GetDataSize(), 11);  // "hello world"
+  EXPECT_EQ(reader->GetDataSize(), 11);     // "hello world"
   EXPECT_EQ(reader->GetMetadataSize(), 4);  // "meta"
 
   // Read back data.
@@ -175,10 +176,11 @@ TEST_F(LocalDiskSpillerTest, SpillMultipleFusedObjects) {
   Status spill_status;
   std::vector<std::string> spill_urls;
 
-  spiller->SpillObjects(ids, objs, owners, [&](const Status &s, std::vector<std::string> urls) {
-    spill_status = s;
-    spill_urls = std::move(urls);
-  });
+  spiller->SpillObjects(
+      ids, objs, owners, [&](const Status &s, std::vector<std::string> urls) {
+        spill_status = s;
+        spill_urls = std::move(urls);
+      });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   ResetAndRunMainService();
@@ -206,9 +208,7 @@ TEST_F(LocalDiskSpillerTest, SpillMultipleFusedObjects) {
   }
 
   // All URLs should reference the same file (fused).
-  auto base_url = [](const std::string &url) {
-    return url.substr(0, url.find('?'));
-  };
+  auto base_url = [](const std::string &url) { return url.substr(0, url.find('?')); };
   EXPECT_EQ(base_url(spill_urls[0]), base_url(spill_urls[1]));
   EXPECT_EQ(base_url(spill_urls[1]), base_url(spill_urls[2]));
 }
@@ -248,9 +248,7 @@ TEST_F(LocalDiskSpillerTest, DirectoryRoundRobin) {
   ASSERT_EQ(all_urls.size(), 4);
 
   // Extract file paths and verify they alternate between directories.
-  auto extract_path = [](const std::string &url) {
-    return url.substr(0, url.find('?'));
-  };
+  auto extract_path = [](const std::string &url) { return url.substr(0, url.find('?')); };
 
   int dir1_count = 0, dir2_count = 0;
   std::string node_hex_subdir = "ray_spilled_objects_" + node_id_.Hex();
@@ -278,11 +276,12 @@ TEST_F(LocalDiskSpillerTest, DeleteRemovesFiles) {
   auto owner = CreateOwnerAddress();
 
   std::vector<std::string> spill_urls;
-  spiller->SpillObjects(
-      {obj_id},
-      {obj.get()},
-      {owner},
-      [&](const Status &s, std::vector<std::string> urls) { spill_urls = std::move(urls); });
+  spiller->SpillObjects({obj_id},
+                        {obj.get()},
+                        {owner},
+                        [&](const Status &s, std::vector<std::string> urls) {
+                          spill_urls = std::move(urls);
+                        });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   ResetAndRunMainService();
@@ -295,8 +294,7 @@ TEST_F(LocalDiskSpillerTest, DeleteRemovesFiles) {
 
   // Delete the spilled objects.
   Status delete_status;
-  spiller->DeleteSpilledObjects(
-      spill_urls, [&](const Status &s) { delete_status = s; });
+  spiller->DeleteSpilledObjects(spill_urls, [&](const Status &s) { delete_status = s; });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   ResetAndRunMainService();
@@ -314,11 +312,12 @@ TEST_F(LocalDiskSpillerTest, RestoreCallsRestoreToPlasma) {
 
   // Spill first.
   std::vector<std::string> spill_urls;
-  spiller->SpillObjects(
-      {obj_id},
-      {obj.get()},
-      {owner},
-      [&](const Status &s, std::vector<std::string> urls) { spill_urls = std::move(urls); });
+  spiller->SpillObjects({obj_id},
+                        {obj.get()},
+                        {owner},
+                        [&](const Status &s, std::vector<std::string> urls) {
+                          spill_urls = std::move(urls);
+                        });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   ResetAndRunMainService();
@@ -328,10 +327,11 @@ TEST_F(LocalDiskSpillerTest, RestoreCallsRestoreToPlasma) {
   // Restore.
   Status restore_status;
   int64_t bytes_restored = 0;
-  spiller->RestoreSpilledObject(obj_id, spill_urls[0], [&](const Status &s, int64_t bytes) {
-    restore_status = s;
-    bytes_restored = bytes;
-  });
+  spiller->RestoreSpilledObject(
+      obj_id, spill_urls[0], [&](const Status &s, int64_t bytes) {
+        restore_status = s;
+        bytes_restored = bytes;
+      });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   ResetAndRunMainService();
@@ -365,9 +365,8 @@ TEST_F(LocalDiskSpillerTest, RestoreNonExistentFile) {
   std::string fake_url = "/nonexistent/file?offset=0&size=100";
 
   Status restore_status;
-  spiller->RestoreSpilledObject(obj_id, fake_url, [&](const Status &s, int64_t bytes) {
-    restore_status = s;
-  });
+  spiller->RestoreSpilledObject(
+      obj_id, fake_url, [&](const Status &s, int64_t bytes) { restore_status = s; });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   ResetAndRunMainService();
@@ -383,11 +382,12 @@ TEST_F(LocalDiskSpillerTest, SpillObjectWithNoMetadata) {
   auto owner = CreateOwnerAddress();
 
   std::vector<std::string> spill_urls;
-  spiller->SpillObjects(
-      {obj_id},
-      {obj.get()},
-      {owner},
-      [&](const Status &s, std::vector<std::string> urls) { spill_urls = std::move(urls); });
+  spiller->SpillObjects({obj_id},
+                        {obj.get()},
+                        {owner},
+                        [&](const Status &s, std::vector<std::string> urls) {
+                          spill_urls = std::move(urls);
+                        });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   ResetAndRunMainService();
@@ -422,9 +422,10 @@ TEST_F(LocalDiskSpillerTest, RestoreFusedObject) {
   }
 
   std::vector<std::string> spill_urls;
-  spiller->SpillObjects(ids, objs, owners, [&](const Status &s, std::vector<std::string> urls) {
-    spill_urls = std::move(urls);
-  });
+  spiller->SpillObjects(
+      ids, objs, owners, [&](const Status &s, std::vector<std::string> urls) {
+        spill_urls = std::move(urls);
+      });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   ResetAndRunMainService();

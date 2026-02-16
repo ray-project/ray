@@ -884,11 +884,10 @@ int main(int argc, char *argv[]) {
         node_manager_config.max_io_workers,
         main_service,
         /*restore_to_plasma=*/
-        [spiller_plasma_client](
-            const ray::ObjectID &object_id,
-            const ray::rpc::Address &owner_address,
-            std::shared_ptr<ray::Buffer> data,
-            std::shared_ptr<ray::Buffer> metadata) -> ray::Status {
+        [spiller_plasma_client](const ray::ObjectID &object_id,
+                                const ray::rpc::Address &owner_address,
+                                std::shared_ptr<ray::Buffer> data,
+                                std::shared_ptr<ray::Buffer> metadata) -> ray::Status {
           // Create the object in the plasma store and copy data into it.
           // This runs on the main thread, which is safe for plasma store access.
           int64_t data_size = data ? static_cast<int64_t>(data->Size()) : 0;

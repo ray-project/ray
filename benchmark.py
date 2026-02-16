@@ -129,7 +129,9 @@ def run_spill_benchmark(
     t_restore_start = time.monotonic()
     for ref in refs:
         result = ray.get(ref)
-        assert result.shape[0] == num_floats, f"Data corruption: expected {num_floats} floats, got {result.shape[0]}"
+        assert (
+            result.shape[0] == num_floats
+        ), f"Data corruption: expected {num_floats} floats, got {result.shape[0]}"
     t_restore_end = time.monotonic()
 
     restore_stats = parse_spill_stats(ray_address)
@@ -182,20 +184,22 @@ def print_results(results: list[dict]):
     print("=" * 80)
 
     for r in results:
-        print(f"\n--- Object size: {r['object_size_mb']:.1f} MiB, "
-              f"Count: {r['num_objects']}, "
-              f"Workers: {r['max_io_workers']} ---")
+        print(
+            f"\n--- Object size: {r['object_size_mb']:.1f} MiB, "
+            f"Count: {r['num_objects']}, "
+            f"Workers: {r['max_io_workers']} ---"
+        )
         print(f"  Object store memory:  {r['store_memory_mb']} MiB")
         print(f"  Total data:           {r['total_data_mb']:.1f} MiB")
         print()
-        print(f"  Spill:")
+        print("  Spill:")
         print(f"    Objects spilled:    {r['spilled_objects']}")
         print(f"    Data spilled:       {r['spilled_mib']:.1f} MiB")
         print(f"    Wall time:          {r['spill_wall_time_s']:.3f} s")
         print(f"    Throughput:         {r['spill_throughput_mib_s']:.1f} MiB/s")
         print(f"    ray.put() time:     {r['put_time_s']:.3f} s")
         print()
-        print(f"  Restore:")
+        print("  Restore:")
         print(f"    Objects restored:   {r['restored_objects']}")
         print(f"    Data restored:      {r['restored_mib']:.1f} MiB")
         print(f"    Wall time:          {r['restore_wall_time_s']:.3f} s")
@@ -204,14 +208,18 @@ def print_results(results: list[dict]):
     print("\n" + "=" * 80)
     print("SUMMARY (for copy-paste comparison)")
     print("=" * 80)
-    print(f"{'ObjSize':>8} {'Count':>6} {'Workers':>8} "
-          f"{'SpillMiB/s':>11} {'RestoreMiB/s':>13} "
-          f"{'SpillTime':>10} {'RestoreTime':>12}")
+    print(
+        f"{'ObjSize':>8} {'Count':>6} {'Workers':>8} "
+        f"{'SpillMiB/s':>11} {'RestoreMiB/s':>13} "
+        f"{'SpillTime':>10} {'RestoreTime':>12}"
+    )
     print("-" * 80)
     for r in results:
-        print(f"{r['object_size_mb']:>7.1f}M {r['num_objects']:>6} {r['max_io_workers']:>8} "
-              f"{r['spill_throughput_mib_s']:>11.1f} {r['restore_throughput_mib_s']:>13.1f} "
-              f"{r['spill_wall_time_s']:>9.3f}s {r['restore_wall_time_s']:>11.3f}s")
+        print(
+            f"{r['object_size_mb']:>7.1f}M {r['num_objects']:>6} {r['max_io_workers']:>8} "
+            f"{r['spill_throughput_mib_s']:>11.1f} {r['restore_throughput_mib_s']:>13.1f} "
+            f"{r['spill_wall_time_s']:>9.3f}s {r['restore_wall_time_s']:>11.3f}s"
+        )
     print()
 
 
@@ -268,8 +276,10 @@ def main():
                 shutil.rmtree(spill_dir)
             os.makedirs(spill_dir, exist_ok=True)
 
-            print(f"\nRunning: {size_mb} MiB x {args.num_objects} objects, "
-                  f"{workers} workers...")
+            print(
+                f"\nRunning: {size_mb} MiB x {args.num_objects} objects, "
+                f"{workers} workers..."
+            )
             result = run_spill_benchmark(
                 object_size_mb=size_mb,
                 num_objects=args.num_objects,

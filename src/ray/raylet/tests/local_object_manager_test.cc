@@ -135,12 +135,11 @@ class MockWorkerClient : public rpc::FakeCoreWorkerClient {
 
 class MockObjectSpiller : public ObjectSpillerInterface {
  public:
-  void SpillObjects(
-      const std::vector<ObjectID> &object_ids,
-      const std::vector<const RayObject *> &objects,
-      const std::vector<rpc::Address> &owner_addresses,
-      std::function<void(const Status &, std::vector<std::string> urls)> callback)
-      override {
+  void SpillObjects(const std::vector<ObjectID> &object_ids,
+                    const std::vector<const RayObject *> &objects,
+                    const std::vector<rpc::Address> &owner_addresses,
+                    std::function<void(const Status &, std::vector<std::string> urls)>
+                        callback) override {
     spill_request_object_counts.push_back(object_ids.size());
     spill_callbacks.push_back(std::move(callback));
   }
@@ -152,15 +151,13 @@ class MockObjectSpiller : public ObjectSpillerInterface {
     restore_callbacks.push_back(std::move(callback));
   }
 
-  void DeleteSpilledObjects(
-      const std::vector<std::string> &urls,
-      std::function<void(const Status &)> callback) override {
+  void DeleteSpilledObjects(const std::vector<std::string> &urls,
+                            std::function<void(const Status &)> callback) override {
     delete_request_urls.push_back(urls);
     delete_callbacks.push_back(std::move(callback));
   }
 
-  bool FlushSpillCallbacks(std::vector<std::string> urls,
-                           Status status = Status::OK()) {
+  bool FlushSpillCallbacks(std::vector<std::string> urls, Status status = Status::OK()) {
     if (spill_callbacks.empty()) {
       return false;
     }
@@ -1493,8 +1490,7 @@ TEST_F(LocalObjectManagerMaxFileSizeFusedTest, TestMaxSpillingFileSizeMaxFusionC
     manager.SpillObjectUptoMaxThroughput();
 
     // Reply to all in-flight spill requests.
-    while (!mock_spiller.spill_callbacks.empty() &&
-           batch_idx < expected_batches.size()) {
+    while (!mock_spiller.spill_callbacks.empty() && batch_idx < expected_batches.size()) {
       const int n = expected_batches[batch_idx];
 
       std::vector<std::string> urls;

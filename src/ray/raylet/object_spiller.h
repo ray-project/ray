@@ -59,9 +59,8 @@ class ObjectSpillerInterface {
   ///
   /// \param urls The URLs of the spilled objects to delete.
   /// \param callback Callback invoked with status after deletion.
-  virtual void DeleteSpilledObjects(
-      const std::vector<std::string> &urls,
-      std::function<void(const Status &)> callback) = 0;
+  virtual void DeleteSpilledObjects(const std::vector<std::string> &urls,
+                                    std::function<void(const Status &)> callback) = 0;
 };
 
 }  // namespace raylet

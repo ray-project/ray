@@ -15,14 +15,13 @@
 #pragma once
 
 #include <atomic>
+#include <boost/asio/executor_work_guard.hpp>
+#include <boost/asio/io_context.hpp>
 #include <functional>
 #include <memory>
 #include <string>
 #include <thread>
 #include <vector>
-
-#include <boost/asio/executor_work_guard.hpp>
-#include <boost/asio/io_context.hpp>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
@@ -35,11 +34,10 @@ namespace raylet {
 
 /// Callback to create an object in the plasma store from restored data.
 /// Must be called on the main thread (plasma store is not thread-safe).
-using RestoreObjectToPlasmaFn = std::function<Status(
-    const ObjectID &object_id,
-    const rpc::Address &owner_address,
-    std::shared_ptr<Buffer> data,
-    std::shared_ptr<Buffer> metadata)>;
+using RestoreObjectToPlasmaFn = std::function<Status(const ObjectID &object_id,
+                                                     const rpc::Address &owner_address,
+                                                     std::shared_ptr<Buffer> data,
+                                                     std::shared_ptr<Buffer> metadata)>;
 
 /// Implements ObjectSpillerInterface using local-disk file I/O on a dedicated
 /// thread pool. Spill/restore/delete operations run on IO threads; completion
@@ -62,21 +60,19 @@ class LocalDiskSpiller : public ObjectSpillerInterface {
 
   ~LocalDiskSpiller() override;
 
-  void SpillObjects(
-      const std::vector<ObjectID> &object_ids,
-      const std::vector<const RayObject *> &objects,
-      const std::vector<rpc::Address> &owner_addresses,
-      std::function<void(const Status &, std::vector<std::string> urls)> callback)
-      override;
+  void SpillObjects(const std::vector<ObjectID> &object_ids,
+                    const std::vector<const RayObject *> &objects,
+                    const std::vector<rpc::Address> &owner_addresses,
+                    std::function<void(const Status &, std::vector<std::string> urls)>
+                        callback) override;
 
   void RestoreSpilledObject(
       const ObjectID &object_id,
       const std::string &object_url,
       std::function<void(const Status &, int64_t bytes_restored)> callback) override;
 
-  void DeleteSpilledObjects(
-      const std::vector<std::string> &urls,
-      std::function<void(const Status &)> callback) override;
+  void DeleteSpilledObjects(const std::vector<std::string> &urls,
+                            std::function<void(const Status &)> callback) override;
 
  private:
   /// Write a uint64_t in little-endian format to a stream.
