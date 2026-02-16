@@ -1468,9 +1468,6 @@ python/ray/serve/_private/controller.py
 python/ray/serve/_private/deploy_utils.py
     DOC201: Function `get_app_code_version` does not have a return section in docstring
 --------------------
-python/ray/serve/_private/deployment_scheduler.py
-    DOC201: Method `DeploymentScheduler._schedule_replica` does not have a return section in docstring
---------------------
 python/ray/serve/_private/deployment_state.py
     DOC201: Method `ReplicaStateContainer.get` does not have a return section in docstring
     DOC201: Method `ReplicaStateContainer.pop` does not have a return section in docstring
