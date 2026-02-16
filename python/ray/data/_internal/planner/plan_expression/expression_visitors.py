@@ -471,7 +471,11 @@ class _TreeReprVisitor(_ExprVisitor[str]):
         return self._make_tree_lines("MONOTONICALLY_INCREASING_ID()", expr=expr)
 
     def visit_random(self, expr: "RandomExpr") -> str:
-        return self._make_tree_lines("RANDOM()", expr=expr)
+        if expr.seed is None:
+            label = "RANDOM()"
+        else:
+            label = f"RANDOM(seed={expr.seed}, reseed_after_execution={expr.reseed_after_execution})"
+        return self._make_tree_lines(label, expr=expr)
 
     def visit_uuid(self, expr: "UUIDExpr") -> str:
         return self._make_tree_lines("UUID()", expr=expr)
