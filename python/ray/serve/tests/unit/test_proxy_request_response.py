@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import ray.serve._private.logging_utils as logging_utils_mod
 from ray.serve._private.common import gRPCRequest
 from ray.serve._private.logging_utils import access_log_msg, format_client_address
 from ray.serve._private.proxy_request_response import (
@@ -265,7 +266,8 @@ class TestAccessLogMsg:
         msg = access_log_msg(method="GET", route="/", status="200", latency_ms=1.0)
         assert msg == "GET / 200 1.0ms"
 
-    def test_with_client(self):
+    def test_with_client_flag_enabled(self, monkeypatch):
+        monkeypatch.setattr(logging_utils_mod, "RAY_SERVE_LOG_CLIENT_ADDRESS", True)
         msg = access_log_msg(
             method="GET",
             route="/",
@@ -274,6 +276,16 @@ class TestAccessLogMsg:
             client="10.0.0.1:54321",
         )
         assert msg == "10.0.0.1:54321 GET / 200 1.0ms"
+
+    def test_with_client_flag_disabled(self):
+        msg = access_log_msg(
+            method="GET",
+            route="/",
+            status="200",
+            latency_ms=1.0,
+            client="10.0.0.1:54321",
+        )
+        assert msg == "GET / 200 1.0ms"
 
     def test_with_empty_client(self):
         msg = access_log_msg(

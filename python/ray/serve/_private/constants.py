@@ -607,6 +607,12 @@ RAY_SERVE_ENABLE_DIRECT_INGRESS = (
 # Feature flag to use HAProxy.
 RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
 
+# Feature flag to include client IP address in HTTP access logs.
+# Off by default for privacy; set to "1" to enable.
+RAY_SERVE_LOG_CLIENT_ADDRESS = (
+    os.environ.get("RAY_SERVE_LOG_CLIENT_ADDRESS", "0") == "1"
+)
+
 # HAProxy configuration defaults
 # Maximum number of concurrent connections
 RAY_SERVE_HAPROXY_MAXCONN = int(os.environ.get("RAY_SERVE_HAPROXY_MAXCONN", "20000"))

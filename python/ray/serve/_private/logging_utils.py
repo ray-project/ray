@@ -12,6 +12,7 @@ from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTAT
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
+    RAY_SERVE_LOG_CLIENT_ADDRESS,
     RAY_SERVE_LOG_TO_STDERR,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
@@ -192,7 +193,7 @@ def access_log_msg(
     *, method: str, route: str, status: str, latency_ms: float, client: str = ""
 ):
     """Returns a formatted message for an HTTP or ServeHandle access log."""
-    if client:
+    if client and RAY_SERVE_LOG_CLIENT_ADDRESS:
         return f"{client} {method} {route} {status} {latency_ms:.1f}ms"
     return f"{method} {route} {status} {latency_ms:.1f}ms"
 

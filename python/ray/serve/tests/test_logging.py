@@ -153,8 +153,7 @@ def test_http_access_log_in_stderr(serve_instance, log_format):
                 [
                     name in s,
                     _get_expected_replica_log_content(replica_id) in s,
-                    f"{method} {route} {status_code}" in s,
-                    re.search(r"127\.0\.0\.1:\d+", s),  # Client IP:port.
+                    f"-- {method} {route} {status_code}" in s,
                     "ms" in s,
                     ("OOPS!" in s and "RuntimeError" in s)
                     if fail
@@ -209,6 +208,50 @@ def test_http_access_log_in_stderr(serve_instance, log_format):
             fail=True,
             timeout=20,
         )
+
+
+@pytest.mark.parametrize(
+    "ray_instance, expect_client_ip",
+    [
+        ({"RAY_SERVE_LOG_CLIENT_ADDRESS": "1"}, True),
+        ({}, False),
+    ],
+    indirect=["ray_instance"],
+)
+def test_http_access_log_client_address(
+    serve_and_ray_shutdown, ray_instance, expect_client_ip
+):
+    """Test that client IP:port in access logs is controlled by the feature flag."""
+
+    fastapi_app = FastAPI()
+
+    @serve.deployment(name="deployment_name")
+    @serve.ingress(fastapi_app)
+    class Handler:
+        @fastapi_app.get("/")
+        def get_root(self):
+            return PlainTextResponse("ok")
+
+    serve.run(Handler.bind())
+
+    f = io.StringIO()
+    with redirect_stderr(f):
+        url = get_application_url(use_localhost=True)
+        r = httpx.get(url)
+        assert r.status_code == 200
+
+        def check_log():
+            s = f.getvalue()
+            if "GET / 200" not in s:
+                return False
+            has_client_ip = bool(re.search(r"127\.0\.0\.1:\d+", s))
+            assert has_client_ip == expect_client_ip, (
+                f"Expected client IP {'present' if expect_client_ip else 'absent'} "
+                f"in log, but got: {s}"
+            )
+            return True
+
+        wait_for_condition(check_log, timeout=20)
 
 
 @pytest.mark.parametrize("log_format", ["TEXT", "JSON"])
@@ -330,7 +373,6 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
                                 f"default_{name}" == log_data.get("deployment"),
                                 f"{call_info['method']} {call_info['expected_route']} {call_info['expected_status']}"
                                 in message,
-                                re.search(r"127\.0\.0\.1:\d+", message),
                                 "ms" in message,
                                 (
                                     context_info is not None
@@ -355,9 +397,8 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
                     [
                         name in line,
                         f"default_{name} {replica_id}" in line,
-                        f"{call_info['method']} {call_info['expected_route']} {call_info['expected_status']}"
+                        f"-- {call_info['method']} {call_info['expected_route']} {call_info['expected_status']}"
                         in line,
-                        re.search(r"127\.0\.0\.1:\d+", line),
                         "ms" in line,
                     ]
                 ):
