@@ -100,6 +100,9 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         # The total number of rows is the same as the number of input rows.
         return self.input_dependencies[0].num_output_rows_total()
 
+    def num_output_splits(self) -> int:
+        return len(self._num_output)
+
     def start(self, options: ExecutionOptions) -> None:
         if options.preserve_order:
             # If preserve_order is set, we need to ignore locality hints to ensure determinism.
