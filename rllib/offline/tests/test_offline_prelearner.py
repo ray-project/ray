@@ -1,5 +1,6 @@
 import shutil
 from pathlib import Path
+from unittest.mock import patch
 
 import gymnasium as gym
 import pytest
@@ -10,7 +11,7 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import COMPONENT_RL_MODULE, Columns
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.offline.offline_prelearner import OfflinePreLearner
+from ray.rllib.offline.offline_prelearner import SCHEMA, OfflinePreLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import unflatten_dict
 
@@ -198,6 +199,52 @@ class TestOfflinePreLearner:
         # Assert that we have sampled episodes.
         assert len(episodes) == 10
         assert isinstance(episodes[0], SingleAgentEpisode)
+
+    def test_offline_prelearner_validate_deprecated_map_args(self, base_config):
+        """Tests that _validate_deprecated_map_args: deprecated kwargs are honored and emit warnings."""
+
+        for data_path in [SAMPLE_BATCH_DATA_PATH, EPISODES_DATA_PATH]:
+            base_config.offline_data(
+                input_=[data_path],
+                dataset_num_iters_per_learner=1,
+            )
+
+            algo = base_config.build()
+            offline_prelearner = OfflinePreLearner(
+                config=base_config,
+                module_spec=algo.offline_data.module_spec,
+                module_state=algo.offline_data.learner_handles[0].get_state(
+                    component=COMPONENT_RL_MODULE,
+                )[COMPONENT_RL_MODULE],
+            )
+            if data_path == SAMPLE_BATCH_DATA_PATH:
+                map_method = offline_prelearner._map_sample_batch_to_episode
+                data = ray.data.read_json(data_path)
+            else:
+                map_method = offline_prelearner._map_to_episodes
+                data = ray.data.read_parquet(data_path)
+            batch = data.take_batch(batch_size=10)
+
+            with patch(
+                "ray.rllib.offline.offline_prelearner.deprecation_warning"
+            ) as mock_deprecation:
+                episodes = map_method(
+                    batch,
+                    is_multi_agent=False,
+                    schema=SCHEMA,
+                    input_compress_columns=[],
+                )["episodes"]
+
+            # Deprecated kwargs are honored: conversion succeeds with same result.
+            assert len(episodes) == 10
+            assert isinstance(episodes[0], SingleAgentEpisode)
+
+            # Deprecation warnings were emitted for each deprecated kwarg.
+            assert mock_deprecation.call_count == 3
+            call_olds = [call[1]["old"] for call in mock_deprecation.call_args_list]
+            assert any("is_multi_agent" in old for old in call_olds)
+            assert any("schema" in old for old in call_olds)
+            assert any("input_compress_columns" in old for old in call_olds)
 
     def test_offline_prelearner_sample_from_old_sample_batch_data(self, base_config):
         """Tests sampling from a `SampleBatch` dataset."""
