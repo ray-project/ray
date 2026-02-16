@@ -193,6 +193,23 @@ class TestListNamespace:
         )
         assert rows_same(result, expected)
 
+    def test_list_mean(self, ray_start_regular_shared, dataset_format):
+        """Test list.mean() computes mean of elements per row."""
+        data = [
+            {"items": [1.0, 2.0, 3.0]},
+            {"items": [4.0, 5.0, None]},
+            {"items": []},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column("avg", col("items").list.mean()).to_pandas()
+        expected = pd.DataFrame(
+            {
+                "items": [[1.0, 2.0, 3.0], [4.0, 5.0, None], []],
+                "avg": [2.0, 4.5, None],
+            }
+        )
+        assert rows_same(result, expected)
+
 
 if __name__ == "__main__":
     import sys

@@ -401,3 +401,47 @@ class _ListNamespace:
             return result
 
         return _list_sum(self._expr)
+
+    def mean(self) -> "UDFExpr":
+        """Mean of the numeric elements of each list.
+
+        Empty lists yield null.
+
+        Returns:
+            UDFExpr with the mean per row (float64).
+        """
+
+        @pyarrow_udf(return_dtype=DataType.float64())
+        def _list_mean(arr: pyarrow.Array) -> pyarrow.Array:
+
+            arr = _ensure_array(arr)
+            n_rows = len(arr)
+            null_mask = arr.is_null() if arr.null_count else None
+            if pyarrow.types.is_fixed_size_list(arr.type):
+                arr = arr.cast(pyarrow.list_(arr.type.value_type))
+            values = pc.list_flatten(arr)
+            if len(values) == 0:
+                out = pyarrow.nulls(n_rows, type=pyarrow.float64())
+                if null_mask is not None:
+                    out = pc.if_else(
+                        null_mask, pyarrow.nulls(n_rows, type=pyarrow.float64()), out
+                    )
+                return out
+            row_indices = pc.list_parent_indices(arr)
+            tbl = pyarrow.table({"row": row_indices, "value": values})
+            grouped = tbl.group_by("row").aggregate([("value", "mean")])
+            row_seq = pyarrow.array(range(n_rows), type=pyarrow.int64())
+            pos = pc.index_in(row_seq, grouped.column("row"))
+            mean_col = grouped.column("value_mean")
+            result = pc.if_else(
+                pc.is_null(pos),
+                pyarrow.nulls(n_rows, type=pyarrow.float64()),
+                pc.take(mean_col, pc.fill_null(pos, 0)),
+            )
+            if null_mask is not None:
+                result = pc.if_else(
+                    null_mask, pyarrow.nulls(n_rows, type=pyarrow.float64()), result
+                )
+            return result
+
+        return _list_mean(self._expr)
