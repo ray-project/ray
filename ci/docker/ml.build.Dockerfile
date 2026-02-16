@@ -24,8 +24,10 @@ set -x
 
 ./ci/env/install-hdfs.sh
 
-# Install HEBO for testing
-pip install HEBO==0.3.5
+# Install HEBO for testing (not supported on Python 3.12+)
+if [[ "${PYTHON-}" != "3.12" ]]; then
+  pip install HEBO==0.3.5
+fi
 
 uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
