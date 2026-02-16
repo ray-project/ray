@@ -275,5 +275,176 @@ def test_pull_from_streaming_batch_queue(ray_start_regular_shared):
     assert set(consumed_data) == set(data)
 
 
+def test_len(ray_start_regular_shared):
+    q = Queue()
+    assert len(q) == 0
+    q.put(1)
+    assert len(q) == 1
+    q.put(2)
+    assert len(q) == 2
+    q.get()
+    assert len(q) == 1
+    q.shutdown()
+
+
+def test_empty_and_full(ray_start_regular_shared):
+    q = Queue(2)
+    assert q.empty() is True
+    assert q.full() is False
+    q.put(1)
+    assert q.empty() is False
+    assert q.full() is False
+    q.put(2)
+    assert q.full() is True
+    q.get()
+    assert q.full() is False
+    q.shutdown()
+
+
+def test_clear(ray_start_regular_shared):
+    q = Queue()
+    for i in range(10):
+        q.put(i)
+    assert q.qsize() == 10
+    q.clear()
+    assert q.qsize() == 0
+    assert q.empty() is True
+    # Ensure queue still works after clear
+    q.put(42)
+    assert q.get() == 42
+    q.shutdown()
+
+
+def test_clear_empty_queue(ray_start_regular_shared):
+    q = Queue()
+    # Should not raise on empty queue
+    q.clear()
+    assert q.qsize() == 0
+    q.shutdown()
+
+
+def test_peek(ray_start_regular_shared):
+    q = Queue()
+    q.put("hello")
+    # peek should return item without removing it
+    assert q.peek() == "hello"
+    assert q.qsize() == 1
+    assert q.peek() == "hello"
+    # get should still return the same item
+    assert q.get() == "hello"
+    q.shutdown()
+
+
+def test_peek_empty(ray_start_regular_shared):
+    q = Queue()
+    with pytest.raises(Empty):
+        q.peek()
+    q.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_peek_async(ray_start_regular_shared):
+    q = Queue()
+    await q.put_async("world")
+    assert await q.peek_async() == "world"
+    assert q.qsize() == 1
+    q.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_peek_async_empty(ray_start_regular_shared):
+    q = Queue()
+    with pytest.raises(Empty):
+        await q.peek_async()
+    q.shutdown()
+
+
+def test_init_invalid_maxsize(ray_start_regular_shared):
+    with pytest.raises(TypeError):
+        Queue(maxsize="invalid")
+    with pytest.raises(ValueError):
+        Queue(maxsize=-1)
+
+
+def test_init_invalid_actor_options(ray_start_regular_shared):
+    with pytest.raises(TypeError):
+        Queue(actor_options="not_a_dict")
+    with pytest.raises(TypeError):
+        Queue(actor_options=[1, 2, 3])
+
+
+def test_get_nowait_batch_invalid_args(ray_start_regular_shared):
+    q = Queue()
+    with pytest.raises(TypeError):
+        q.get_nowait_batch("not_an_int")
+    with pytest.raises(ValueError):
+        q.get_nowait_batch(-1)
+    q.shutdown()
+
+
+def test_put_nowait_batch_non_iterable(ray_start_regular_shared):
+    q = Queue()
+    with pytest.raises(TypeError):
+        q.put_nowait_batch(42)
+    q.shutdown()
+
+
+def test_shutdown_force(ray_start_regular_shared):
+    q = Queue()
+    actor = q.actor
+    q.shutdown(force=True)
+    assert q.actor is None
+    with pytest.raises(RayActorError):
+        ray.get(actor.empty.remote())
+
+
+def test_shutdown_idempotent(ray_start_regular_shared):
+    q = Queue()
+    q.shutdown()
+    # Calling shutdown again should not raise
+    q.shutdown()
+    assert q.actor is None
+
+
+def test_put_get_complex_objects(ray_start_regular_shared):
+    q = Queue()
+    # Test with various Python types
+    test_items = [
+        None,
+        True,
+        3.14,
+        "string",
+        [1, 2, 3],
+        {"key": "value"},
+        (1, "two", 3.0),
+        set(),
+    ]
+    for item in test_items:
+        q.put(item)
+    for item in test_items:
+        result = q.get()
+        assert result == item
+    q.shutdown()
+
+
+def test_batch_operations_ordering(ray_start_regular_shared):
+    q = Queue(100)
+    items = list(range(50))
+    q.put_nowait_batch(items)
+    result = q.get_nowait_batch(50)
+    assert result == items
+    q.shutdown()
+
+
+def test_get_nowait_batch_zero(ray_start_regular_shared):
+    q = Queue()
+    q.put(1)
+    result = q.get_nowait_batch(0)
+    assert result == []
+    # Item should still be in queue
+    assert q.qsize() == 1
+    q.shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

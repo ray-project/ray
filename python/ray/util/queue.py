@@ -57,6 +57,13 @@ class Queue:
 
         record_library_usage("util.Queue")
 
+        if not isinstance(maxsize, int):
+            raise TypeError("maxsize must be an integer")
+        if maxsize < 0:
+            raise ValueError("maxsize must be a non-negative integer")
+        if actor_options is not None and not isinstance(actor_options, dict):
+            raise TypeError("actor_options must be a dictionary or None")
+
         actor_options = actor_options or {}
         self.maxsize = maxsize
         self.actor = (
@@ -231,6 +238,36 @@ class Queue:
 
         return ray.get(self.actor.get_nowait_batch.remote(num_items))
 
+    def clear(self) -> None:
+        """Remove all items from the queue without returning them.
+
+        This is more efficient than calling get repeatedly when you want
+        to discard all items.
+        """
+        ray.get(self.actor.clear.remote())
+
+    def peek(self) -> Any:
+        """Return the next item in the queue without removing it.
+
+        Raises:
+            Empty: if the queue is empty.
+        """
+        try:
+            return ray.get(self.actor.peek.remote())
+        except asyncio.QueueEmpty:
+            raise Empty
+
+    async def peek_async(self) -> Any:
+        """Async version of peek. Return the next item without removing it.
+
+        Raises:
+            Empty: if the queue is empty.
+        """
+        try:
+            return await self.actor.peek.remote()
+        except asyncio.QueueEmpty:
+            raise Empty
+
     def shutdown(self, force: bool = False, grace_period_s: int = 5) -> None:
         """Terminates the underlying QueueActor.
 
@@ -294,6 +331,16 @@ class _QueueActor:
             )
         for item in items:
             self.queue.put_nowait(item)
+
+    def clear(self):
+        while not self.queue.empty():
+            self.queue.get_nowait()
+
+    def peek(self):
+        if self.queue.empty():
+            raise asyncio.QueueEmpty
+        # Access the internal deque to peek without removing
+        return self.queue._queue[0]
 
     def get_nowait(self):
         return self.queue.get_nowait()
