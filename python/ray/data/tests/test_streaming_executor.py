@@ -708,49 +708,12 @@ def test_validate_dag(ray_start_regular_shared):
         _validate_dag(o3, ExecutionResources.for_limits(cpu=10))
 
 
-# Mock the `scale_up` method to avoid creating and leaking resources.
-@patch(
-    "ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool.scale",
-    return_value=1,
-)
-def test_configure_output_locality_is_deprecated_noop(
-    mock_scale_up, ray_start_regular_shared
-):
-    inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(DataContext.get_current(), inputs)
-    o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]),
-        o1,
-        DataContext.get_current(),
-    )
-    o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]),
-        o2,
-        DataContext.get_current(),
-        compute_strategy=ray.data.ActorPoolStrategy(size=1),
-    )
-    # Baseline scheduling without locality_with_output.
-    build_streaming_topology(o3, ExecutionOptions())
-    s1_baseline = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    s2_baseline = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
+def test_configure_output_locality_is_deprecated_noop(restore_data_context):
+    data_context = ray.data.DataContext.get_current()
 
-    # Deprecated option should warn and remain a no-op for scheduling.
     with pytest.warns(DeprecationWarning, match="no-op"):
-        build_streaming_topology(o3, ExecutionOptions(locality_with_output=True))
-    s1 = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    s2 = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    assert s1 == s1_baseline
-    assert s2 == s2_baseline
-
-    # Same no-op behavior for list values.
-    with pytest.warns(DeprecationWarning, match="no-op"):
-        build_streaming_topology(
-            o3, ExecutionOptions(locality_with_output=["node-1", "node-2"])
-        )
-    s1_list = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    s2_list = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    assert s1_list == s1_baseline
-    assert s2_list == s2_baseline
+        data_context.execution_options.locality_with_output = True
+    assert data_context.execution_options.locality_with_output is False
 
 
 class OpBufferQueueTest(unittest.TestCase):

@@ -1125,8 +1125,8 @@ Here is an example of how you can change the scheduling strategy:
 
     # Get the current data context.
     data_context = data.DataContext.get_current()
-    # Configure execution options if needed (for example, resource limits).
-    data_context.execution_options = data.ExecutionOptions()
+    # Configure the Ray Data scheduling strategy used by the offline pipeline.
+    data_context.scheduling_strategy = "SPREAD"
 
     # Build the config.
     config = (

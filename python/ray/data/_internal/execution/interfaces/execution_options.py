@@ -283,7 +283,6 @@ class ExecutionOptions:
             automatically excluded.
             - For each resource type, resource_limits and exclude_resources can
             not be both set.
-        locality_with_output: Deprecated and no-op. Setting this option has no effect.
         preserve_order: Set this to preserve the ordering between blocks processed by
             operators. Off by default.
         actor_locality_enabled: Whether to enable locality-aware task dispatch to
@@ -365,7 +364,7 @@ class ExecutionOptions:
         if value:
             warnings.warn(
                 "`ExecutionOptions.locality_with_output` has been removed and is now "
-                "a no-op.
+                "a no-op.",
                 DeprecationWarning,
                 stacklevel=2,
             )
