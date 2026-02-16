@@ -309,8 +309,6 @@ class ExecutionOptions:
         if exclude_resources is None:
             exclude_resources = ExecutionResources.zero()
         self.exclude_resources = exclude_resources
-        if locality_with_output:
-            self.locality_with_output = locality_with_output
         self.preserve_order = preserve_order
         self.actor_locality_enabled = actor_locality_enabled
         if verbose_progress is None:
