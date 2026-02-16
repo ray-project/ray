@@ -365,8 +365,7 @@ class ExecutionOptions:
         if value:
             warnings.warn(
                 "`ExecutionOptions.locality_with_output` has been removed and is now "
-                "a no-op. Use `Dataset.streaming_split(..., locality_hints=...)` "
-                "for output locality.",
+                "a no-op.
                 DeprecationWarning,
                 stacklevel=2,
             )
