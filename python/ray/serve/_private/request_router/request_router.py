@@ -792,6 +792,19 @@ class RequestRouter(ABC):
             self._replica_queue_len_cache.update(replica_id, new_queue_len)
             self._update_router_queue_len_gauge(replica_id, new_queue_len)
 
+    def on_replica_result_finished(self, replica_id: ReplicaID):
+        """Decrement queue length cache when a request finishes or is cancelled.
+
+        This is used when a reserved slot is released without being dispatched
+        (e.g., in choose_replica context manager cleanup).
+        """
+        if self._use_replica_queue_len_cache:
+            num_ongoing_requests = self._replica_queue_len_cache.get(replica_id) or 0
+            if num_ongoing_requests > 0:
+                new_queue_len = num_ongoing_requests - 1
+                self._replica_queue_len_cache.update(replica_id, new_queue_len)
+                self._update_router_queue_len_gauge(replica_id, new_queue_len)
+
     def update_replicas(self, replicas: List[RunningReplica]):
         """Update the set of available replicas to be considered for routing.
 

@@ -491,6 +491,26 @@ class Router(ABC):
         pass
 
     @abstractmethod
+    @asynccontextmanager
+    async def choose_replica(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncIterator[ReplicaSelection]:
+        pass
+
+    @abstractmethod
+    def dispatch(
+        self,
+        selection: ReplicaSelection,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> concurrent.futures.Future[ReplicaResult]:
+        pass
+
+    @abstractmethod
     def shutdown(self) -> concurrent.futures.Future:
         pass
 
@@ -562,6 +582,9 @@ class AsyncioRouter:
         # Initializing `self._metrics_manager` before `self.long_poll_client` is
         # necessary to avoid race condition where `self.update_deployment_config()`
         # might be called before `self._metrics_manager` instance is created.
+        # Track reserved slots for choose_replica
+        self._num_reserved_slots = 0
+
         self._metrics_manager = RouterMetricsManager(
             deployment_id,
             handle_id,
@@ -591,6 +614,24 @@ class AsyncioRouter:
             ),
             event_loop,
         )
+
+        # Gauge for tracking reserved slots
+        self._reserved_slots_gauge = metrics.Gauge(
+            "serve_reserved_slots_active",
+            description=(
+                "The current number of reserved slots for choose_replica operations."
+            ),
+            tag_keys=("deployment", "application", "handle", "actor_id"),
+        )
+        self._reserved_slots_gauge.set_default_tags(
+            {
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+                "handle": handle_id,
+                "actor_id": self_actor_id,
+            }
+        )
+        self._reserved_slots_gauge.set(0)
 
         # The Router needs to stay informed about changes to the target deployment's
         # running replicas and deployment config. We do this via the long poll system.
@@ -937,43 +978,89 @@ class AsyncioRouter:
         *request_args,
         **request_kwargs,
     ) -> AsyncIterator[ReplicaSelection]:
-        """Execute routing and reserve a slot, with automatic cleanup."""
+        """Execute routing and reserve a slot, with automatic cleanup.
+
+        This method:
+        1. Checks deployment availability
+        2. Registers request in context for tracking
+        3. Checks backpressure (max_queued_requests)
+        4. Increments serve_num_router_requests metric
+        5. Selects a replica and reserves a slot
+        6. Increments serve_reserved_slots_active metric
+        7. Yields the ReplicaSelection
+        8. On exit, releases the slot if not dispatched
+        """
+        if not self._deployment_available:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        # TODO: think if we need those here?
+        response_id = generate_request_id()
+        assign_request_task = asyncio.current_task()
+        ray.serve.context._add_request_pending_assignment(
+            request_meta.internal_request_id, response_id, assign_request_task
+        )
+        assign_request_task.add_done_callback(
+            lambda _: ray.serve.context._remove_request_pending_assignment(
+                request_meta.internal_request_id, response_id
+            )
+        )
+
+        # Wait for the router to be initialized before sending the request.
         await self._request_router_initialized.wait()
 
-        pr = PendingRequest(
-            args=list(request_args),
-            kwargs=request_kwargs,
-            metadata=request_meta,
-        )
+        with self._metrics_manager.wrap_request_assignment(request_meta):
+            pr = PendingRequest(
+                args=list(request_args),
+                kwargs=request_kwargs,
+                metadata=request_meta,
+            )
 
-        # Resolve arguments (e.g., for multiplexed routing)
-        if not pr.resolved:
-            await self._resolve_request_arguments(pr)
+            # Resolve request arguments BEFORE incrementing queued requests.
+            # This ensures that queue metrics reflect actual pending work,
+            # not time spent waiting for upstream DeploymentResponse arguments.
+            # See: https://github.com/ray-project/ray/issues/60624
+            if not pr.resolved:
+                await self._resolve_request_arguments(pr)
 
-        # Run the request router
-        replica = await self.request_router._choose_replica_for_request(pr)
+            replica = await self.request_router._choose_replica_for_request(pr)
 
-        # TODO: Implement function to reserve a slot on the replica
-        slot_token = replica.reserve_slot()
+            # Reserve a slot on the replica
+            slot_token = replica.reserve_slot()
 
-        selection = ReplicaSelection(
-            replica_id=replica.replica_id.unique_id,
-            node_ip=replica._replica_info.node_ip,
-            port=replica._replica_info.port,
-            node_id=replica.node_id,
-            availability_zone=replica.availability_zone,
-            _replica=replica,
-            _deployment_handle=None,  # TODO: use the actual DeploymentHandle
-            _method_name=request_meta.call_method,
-            _slot_token=slot_token,
-        )
+            # Update queue length cache to reflect the reservation
+            # This ensures concurrent choose_replica calls see the correct load
+            self.request_router.on_send_request(replica.replica_id)
 
-        try:
-            yield selection
-        finally:
-            # Release slot if dispatch was not called
-            # TODO: implement this function
-            selection._release_slot()
+            # Increment reserved slots metric
+            self._num_reserved_slots += 1
+            self._reserved_slots_gauge.set(self._num_reserved_slots)
+
+            selection = ReplicaSelection(
+                replica_id=replica.replica_id.unique_id,
+                node_ip=replica._replica_info.node_ip,
+                port=replica._replica_info.port,
+                node_id=replica.node_id,
+                availability_zone=replica.availability_zone,
+                _replica=replica,
+                _deployment_handle=None,  # Will be injected by DeploymentHandle.choose_replica
+                _method_name=request_meta.call_method,
+                _slot_token=slot_token,
+            )
+
+            try:
+                yield selection
+            finally:
+                # Always release the slot token (for tracking cleanup)
+                selection._release_slot()
+
+                # Always decrement cache to reflect that this choose_replica operation is done.
+                # The actual request queue length will be updated by the replica when it
+                # reports back via on_new_queue_len_info().
+                self.request_router.on_replica_result_finished(replica.replica_id)
+
+                # Decrement reserved slots metric
+                self._num_reserved_slots -= 1
+                self._reserved_slots_gauge.set(self._num_reserved_slots)
 
     async def dispatch(
         self,
@@ -984,7 +1071,8 @@ class AsyncioRouter:
     ) -> ReplicaResult:
         """Dispatch to a specific replica, consuming the reserved slot."""
         # Verify replica is still available
-        if selection.replica_id not in self.request_router.curr_replicas:
+        replica = selection._replica
+        if replica.replica_id not in self.request_router.curr_replicas:
             raise ReplicaUnavailableError(
                 f"Replica {selection.replica_id} is no longer available"
             )
@@ -995,8 +1083,6 @@ class AsyncioRouter:
             metadata=request_meta,
         )
 
-        replica = selection._replica
-
         # Mark as dispatched so __aexit__ won't release the slot
         selection._mark_dispatched()
 
@@ -1004,7 +1090,6 @@ class AsyncioRouter:
         # TODO: implement this function
         result = replica.send_request_with_slot(pr, selection._slot_token)
 
-        self.request_router.on_send_request(replica.replica_id)
         return result
 
     async def shutdown(self):

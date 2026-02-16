@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import logging
 import time
+from contextlib import asynccontextmanager
 from typing_extensions import AsyncContextManager
 import warnings
 from typing import (
@@ -233,6 +234,53 @@ class _DeploymentHandleBase(Generic[T]):
             raise RuntimeError("Router is not initialized")
 
         return self._router.assign_request(metadata, *args, **kwargs), metadata
+
+    @asynccontextmanager
+    async def _choose_replica(
+        self,
+        *args,
+        **kwargs,
+    ) -> AsyncIterator[ReplicaSelection]:
+        """Execute the request router to select a replica without dispatching."""
+        if not self.is_initialized:
+            self._init()
+
+        metadata = serve._private.default_impl.get_request_metadata(
+            self.init_options, self.handle_options
+        )
+
+        # Call the router's choose_replica and inject the deployment handle
+        async with self._router.choose_replica(metadata, *args, **kwargs) as selection:
+            # Inject the deployment handle for validation
+            selection._deployment_handle = self
+            yield selection
+
+    def _dispatch(
+        self,
+        selection: ReplicaSelection,
+        *args,
+        **kwargs,
+    ) -> Tuple[concurrent.futures.Future, RequestMetadata]:
+        """Dispatch a request to a previously selected replica."""
+        # Validate that the selection belongs to this handle
+        if selection._deployment_handle is not self:
+            raise ValueError(
+                f"Cannot dispatch a selection created by a different DeploymentHandle. "
+                f"This handle is for {self.deployment_id}, but the selection was created "
+                f"for a different deployment."
+            )
+
+        if not self.is_initialized:
+            self._init()
+
+        metadata = serve._private.default_impl.get_request_metadata(
+            self.init_options, self.handle_options
+        )
+
+        if self._router is None:
+            raise RuntimeError("Router is not initialized")
+
+        return self._router.dispatch(selection, metadata, *args, **kwargs), metadata
 
     def options(
         self,
@@ -896,6 +944,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 request_metadata,
                 _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
             )
+
     def choose_replica(
         self,
         *args,
@@ -919,14 +968,14 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         Returns:
             AsyncContextManager[ReplicaSelection] - must be used with async with.
         """
-        pass
+        return self._choose_replica(*args, **kwargs)
 
-    async def dispatch(
+    def dispatch(
         self,
         selection: ReplicaSelection,
         *args,
         **kwargs,
-    ) -> DeploymentResponse:
+    ) -> Union[DeploymentResponse[Any], DeploymentResponseGenerator[Any]]:
         """Dispatch a request to a previously selected replica.
 
         Args:
@@ -938,5 +987,18 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
 
         Raises:
             ReplicaUnavailableError: If the selected replica is no longer available.
+            ValueError: If selection was created by a different DeploymentHandle.
         """
-        pass
+        future, request_metadata = self._dispatch(selection, args, kwargs)
+        if self.handle_options.stream:
+            return DeploymentResponseGenerator(
+                future,
+                request_metadata,
+                _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+            )
+        else:
+            return DeploymentResponse(
+                future,
+                request_metadata,
+                _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+            )
