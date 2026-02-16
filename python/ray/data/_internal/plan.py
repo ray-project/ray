@@ -176,17 +176,14 @@ class ExecutionPlan:
         plan_str = ""
         plan_max_depth = 0
 
-        has_iterator_cache = self._cache.has_iterator_cache(self._logical_plan.dag)
-        has_execution_cache = self._cache.has_computed_output(self._logical_plan.dag)
-
-        if not has_execution_cache:
+        if not self.has_computed_output():
             # using dataset as source here, so don't generate
             # source operator in generate_plan_string
             plan_str, plan_max_depth = self.generate_plan_string(
                 self._logical_plan.dag, including_source=False
             )
 
-        if not has_iterator_cache and not has_execution_cache:
+        if not self._cache.has_cached_metadata(self._logical_plan.dag):
             # This plan hasn't executed any operators.
             has_n_ary_operator = False
             dag = self._logical_plan.dag
@@ -560,7 +557,8 @@ class ExecutionPlan:
 
             # Set the snapshot to the output of the final operator.
             stats.dataset_uuid = self._dataset_uuid
-            self._cache.set_from_execution(self._logical_plan.dag, bundle, stats)
+            self._cache.set_bundle(self._logical_plan.dag, bundle)
+            self._cache.set_stats(stats)
 
         bundle = self._cache.get_bundle(self._logical_plan.dag)
         assert bundle is not None
@@ -592,7 +590,7 @@ class ExecutionPlan:
         """Whether this plan has a computed snapshot for the final operator, i.e. for
         the output of this plan.
         """
-        return self._cache.has_computed_output(self._logical_plan.dag)
+        return self._cache.get_bundle(self._logical_plan.dag) is not None
 
     def require_preserve_order(self) -> bool:
         """Whether this plan requires to preserve order."""

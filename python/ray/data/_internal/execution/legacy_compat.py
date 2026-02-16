@@ -73,7 +73,7 @@ def execute_to_legacy_bundle_iterator(
                 # Traverse the topology backwards and find the first available schema
                 schema = next(reversed(topology.values()))._schema
 
-                plan._cache.set_from_iteration(
+                plan._cache.set_metadata(
                     plan._logical_plan.dag, schema, self._num_rows, self._size_bytes
                 )
                 raise
@@ -143,7 +143,7 @@ def _get_execution_dag(
 
 
 def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
-    if plan._cache.has_computed_output(plan._logical_plan.dag):
+    if plan.has_computed_output():
         return plan._cache.get_stats()
     # For Datasets created from "read_xxx", `plan._in_stats` contains useless data.
     # For Datasets created from "from_xxx", we need to use `plan._in_stats` as

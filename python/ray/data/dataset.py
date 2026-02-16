@@ -7202,31 +7202,34 @@ class _ExecutionCache:
         # --- Bundle layer (from eager execution) ---
         self._operator: Optional["LogicalOperator"] = None
         self._bundle: Optional[RefBundle] = None
-        self._stats: Optional[DatasetStats] = None
 
         # --- Metadata layer (from streaming iteration) ---
         self._metadata_cached = False
-        self._schema: Optional["Schema"] = None
         self._num_rows: Optional[int] = None
         self._size_bytes: Optional[int] = None
+        # Note schema can be cached via other means as well.
+        self._schema: Optional["Schema"] = None
+
+        # --- Other ---
+        self._stats: Optional[DatasetStats] = None
 
     # --- Consolidated Getters ---
 
-    def cache_is_fresh(self, dag: "LogicalOperator") -> bool:
+    def _cache_is_fresh(self, dag: "LogicalOperator") -> bool:
         # This _ExecutionCache is only fresh if the current logical
         # plan dag ends with the same operator. Otherwise, the plan
         # has changed, so there may have been a change in schema,
         # count, etc.
         return self._operator == dag
 
-    def has_computed_output(self, dag: "LogicalOperator") -> bool:
-        return self.get_bundle(dag) is not None
-
-    def has_iterator_cache(self, dag: "LogicalOperator") -> bool:
-        return self.cache_is_fresh(dag) and self._metadata_cached
+    def has_cached_metadata(self, dag: "LogicalOperator") -> bool:
+        """Whether this cache has cached metadata: num_rows, size_bytes, schema"""
+        has_bundle = self.get_bundle(dag) is not None
+        has_explicit_metadata = self._cache_is_fresh(dag) and self._metadata_cached
+        return has_bundle or has_explicit_metadata
 
     def get_bundle(self, dag: "LogicalOperator") -> Optional[RefBundle]:
-        if self.cache_is_fresh(dag):
+        if self._cache_is_fresh(dag):
             return self._bundle
         return None
 
@@ -7236,21 +7239,21 @@ class _ExecutionCache:
         return self._stats
 
     def get_schema(self, dag: "LogicalOperator") -> Optional["Schema"]:
-        if self.cache_is_fresh(dag):
+        if self._cache_is_fresh(dag):
             if self._bundle is not None and self._bundle.schema is not None:
                 return self._bundle.schema
             return self._schema
         return None
 
     def get_num_rows(self, dag: "LogicalOperator") -> Optional[int]:
-        if self.cache_is_fresh(dag):
+        if self._cache_is_fresh(dag):
             if self._bundle is not None and self._bundle.num_rows() is not None:
                 return self._bundle.num_rows()
             return self._num_rows
         return None
 
     def get_size_bytes(self, dag: "LogicalOperator") -> Optional[int]:
-        if self.cache_is_fresh(dag):
+        if self._cache_is_fresh(dag):
             if self._bundle is not None:
                 return self._bundle.size_bytes()
             return self._size_bytes
@@ -7262,15 +7265,15 @@ class _ExecutionCache:
         # stats are cached independently
         self._stats = stats
 
-    def set_from_iteration(
+    def set_metadata(
         self,
         dag: "LogicalOperator",
         schema: Optional["Schema"],
-        num_rows: Optional[int],
-        size_bytes: Optional[int],
+        num_rows: int,
+        size_bytes: int,
     ) -> None:
         if dag != self._operator:
-            self._clear_op_dependents()
+            self._clear_dag_dependent_cache()
         self._metadata_cached = True
         self._operator = dag
         self._schema = schema
@@ -7279,18 +7282,15 @@ class _ExecutionCache:
 
     def set_schema(self, dag: "LogicalOperator", schema: "Schema") -> None:
         if dag != self._operator:
-            self._clear_op_dependents()
+            self._clear_dag_dependent_cache()
         self._operator = dag
         self._schema = schema
 
-    def set_from_execution(
-        self, dag: "LogicalOperator", bundle: RefBundle, stats: DatasetStats
-    ) -> None:
+    def set_bundle(self, dag: "LogicalOperator", bundle: RefBundle) -> None:
         if dag != self._operator:
-            self._clear_op_dependents()
+            self._clear_dag_dependent_cache()
         self._operator = dag
         self._bundle = bundle
-        self._stats = stats
 
     # --- Lifecycle ---
 
@@ -7298,7 +7298,7 @@ class _ExecutionCache:
         self._stats = None
         self._clear_op_dependents()
 
-    def _clear_op_dependents(self) -> None:
+    def _clear_dag_dependent_cache(self) -> None:
         self._operator = None
         self._bundle = None
         self._schema = None
