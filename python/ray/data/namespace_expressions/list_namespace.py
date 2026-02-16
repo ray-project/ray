@@ -361,7 +361,7 @@ class _ListNamespace:
             arrow_type = self._expr.data_type.to_arrow_dtype()
             if _is_list_like(arrow_type):
                 vt = arrow_type.value_type
-                if pyarrow.types.is_integer_value(vt):
+                if pyarrow.types.is_integer(vt):
                     return_dtype = DataType.from_arrow(pyarrow.int64())
                 elif pyarrow.types.is_floating(vt):
                     return_dtype = DataType.from_arrow(pyarrow.float64())
