@@ -14,6 +14,7 @@
 
 #include "ray/core_worker/task_submission/out_of_order_actor_submit_queue.h"
 
+#include <string>
 #include <utility>
 #include <vector>
 
