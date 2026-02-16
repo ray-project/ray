@@ -34,12 +34,7 @@ from ray.data.context import DataContext, ShuffleStrategy
 
 
 def _estimate_input_size_bytes(refs: List[RefBundle]) -> int:
-    total_bytes = 0
-    for ref_bundle in refs:
-        for metadata in ref_bundle.metadata:
-            if metadata.size_bytes is not None:
-                total_bytes += metadata.size_bytes
-    return total_bytes
+    return sum(bundle.size_bytes() for bundle in refs)
 
 
 def _generate_local_aggregate_fn(
