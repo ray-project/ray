@@ -117,7 +117,7 @@ def test_read_dir_and_file_mixed(ray_start_regular_shared, tmp_path):
     p2 = tmp_path / "c.txt"
     p2.write_bytes(b"c")
 
-    datasource = MockFileBasedDatasource([dir_path, p2])
+    datasource = MockFileBasedDatasource([str(dir_path), str(p2)])
     rows = execute_read_tasks(datasource.get_read_tasks(1))
 
     assert sorted(rows, key=lambda r: r["data"]) == [{"data": b"a"}, {"data": b"c"}]
@@ -326,7 +326,7 @@ def test_file_extensions_no_match_raises(ray_start_regular_shared, tmp_path):
         ValueError,
         match="No input files found to read with the following file extensions",
     ):
-        MockFileBasedDatasource([txt_path], file_extensions=["csv"])
+        MockFileBasedDatasource([str(txt_path)], file_extensions=["csv"])
 
 
 def test_flaky_read_task_retries(ray_start_regular_shared, tmp_path):
