@@ -1508,18 +1508,21 @@ class RandomExpr(Expr):
     """Expression that represents a random number generation operation.
 
     Args:
-        kwargs: Keyword arguments for the random number generation.
+        seed: The seed to use for the random number generator.
+        reseed_after_execution: Whether to reseed the random number generator after each execution.
+            This parameter is ignored when ``seed`` is None.
 
     Example:
-        >>> from ray.data.expressions import RandomExpr
-        >>> # Generate random numbers without seed
-        >>> RandomExpr(seed=42)
-        RandomExpr(data_type=DataType.float64(), kwargs={"seed": 42})
+        >>> from ray.data.expressions import random
+        >>> random()
+        RANDOM()
+        >>> random(seed=1234)
+        RANDOM(seed=1234, reseed_after_execution=True)
     """
 
     seed: int | None = None
     reseed_after_execution: bool = DEFAULT_RESEED_AFTER_EXECUTION
-    data_type: DataType = DataType.float64()
+    data_type: DataType = field(default_factory=lambda: DataType.float64(), init=False)
 
     # Unique identifier for each expression to isolate block count state
     _instance_id: str = field(default_factory=lambda: str(builtin_uuid.uuid4()))
@@ -1542,10 +1545,10 @@ class UUIDExpr(Expr):
         >>> from ray.data.expressions import UUIDExpr
         >>> # Generate UUIDs
         >>> UUIDExpr()
-        UUIDExpr(data_type=DataType.string())
+        UUIDExpr()
     """
 
-    data_type: DataType = DataType.string()
+    data_type: DataType = field(default_factory=lambda: DataType.string(), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, UUIDExpr)
@@ -1763,7 +1766,6 @@ def random(
     return RandomExpr(
         seed=seed,
         reseed_after_execution=reseed_after_execution,
-        data_type=DataType.float64(),
     )
 
 
