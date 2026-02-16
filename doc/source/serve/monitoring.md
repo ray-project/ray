@@ -608,7 +608,7 @@ The following diagram shows where metrics are captured along the request path:
   │   ┌─────────────────────────────────────────────────────────────────────┐   │
   │   │                          REPLICA                                    │   │
   │   │                                                                     │   │
-  │   │  ○ ray_serve_replica_processing_queries     (while processing)      │   │
+  │   │  ○ ray_serve_replica_num_ongoing_requests     (while processing)    │   │
   │   │  ○ ray_serve_deployment_processing_latency_ms (on completion)       │   │
   │   │  ○ ray_serve_deployment_request_counter_total (on completion)       │   │
   │   │  ○ ray_serve_deployment_error_counter_total   (on exception)        │   │
@@ -661,7 +661,7 @@ These metrics track request throughput, errors, and latency at the replica level
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
-| `ray_serve_replica_processing_queries` **[D]** | Gauge | `deployment`, `replica`, `application` | Current number of requests being processed by the replica. |
+| `ray_serve_replica_num_ongoing_requests` **[D]** | Gauge | `deployment`, `replica`, `application` | Current number of requests being processed by the replica. |
 | `ray_serve_replica_utilization_percent` **[D]** | Gauge | `deployment`, `replica`, `application` | Percentage of replica capacity used over a rolling window. Calculated as total user code execution time divided by maximum capacity (`window_duration × max_ongoing_requests`). Useful for capacity planning and identifying underutilized or overloaded replicas. Configure with `RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S` (default: 600s), `RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S` (default: 10s), and `RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS` (default: 60). |
 | `ray_serve_deployment_request_counter_total` **[D]** | Counter | `deployment`, `replica`, `route`, `application` | Total number of requests processed by the replica. |
 | `ray_serve_deployment_processing_latency_ms` **[D]** | Histogram | `deployment`, `replica`, `route`, `application` | Histogram of request processing time in milliseconds (excludes queue wait time). |
