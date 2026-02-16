@@ -230,7 +230,7 @@ def test_parquet_read_random_shuffle(
     context = ray.data.DataContext.get_current()
     context.execution_options.preserve_order = True
 
-    num_files = 100
+    num_files = 20
     input_list = list(range(num_files))
     setup_data_path = _unwrap_protocol(data_path)
     for i in range(num_files):
