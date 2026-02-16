@@ -48,11 +48,13 @@ class TestLearner(unittest.TestCase):
         learner = config.build_learner(env=self.ENV)
         reader = get_cartpole_dataset_reader(batch_size=512)
 
-        min_loss = float("inf")
         for seq_num in range(1, 1000):
             batch = reader.next().as_multi_agent()
             batch = learner._convert_batch_type(batch)
             results = learner.update(batch=batch)
+            self.assertEqual(
+                batch.count, results[DEFAULT_MODULE_ID][MODULE_TRAIN_BATCH_SIZE_MEAN]
+            )
 
             self.assertEqual(
                 batch.count, results[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_TRAINED]
@@ -77,10 +79,7 @@ class TestLearner(unittest.TestCase):
                 batch.count, results[ALL_MODULES][NUM_ENV_STEPS_TRAINED_LIFETIME]
             )
 
-        loss = results[DEFAULT_MODULE_ID][Learner.TOTAL_LOSS_KEY]
-        min_loss = min(loss, min_loss)
-        print(f"[iter = {seq_num}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
-        self.assertLess(min_loss, 0.58)
+        self.assertLess(results[DEFAULT_MODULE_ID][Learner.TOTAL_LOSS_KEY], 0.58)
 
     def test_compute_gradients(self):
         """Tests the compute_gradients correctness.
@@ -164,7 +163,7 @@ class TestLearner(unittest.TestCase):
         # Check clipped gradients.
         global_norm = np.sqrt(
             np.sum(
-                np.sum(grad**2.0) for grad in convert_to_numpy(list(grads.values()))
+                [np.sum(grad**2.0) for grad in convert_to_numpy(list(grads.values()))]
             )
         )
         if global_norm > config.grad_clip:
