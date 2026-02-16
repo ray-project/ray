@@ -1090,9 +1090,9 @@ class AsyncioRouter:
         # Mark as dispatched so __aexit__ won't release the slot
         selection._mark_dispatched()
 
-        # Use the reserved slot
-        # TODO: implement this function
-        result = replica.send_request_with_slot(pr, selection._slot_token)
+        # Send the request without rejection since we already reserved a slot
+        # The slot reservation guarantees that the replica will accept this request
+        result = replica.try_send_request(pr, with_rejection=False)
 
         return result
 
