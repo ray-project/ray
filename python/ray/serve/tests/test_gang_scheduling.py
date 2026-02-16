@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 
 import pytest
 
@@ -557,6 +558,101 @@ class TestGangResourceReservation:
 
         serve.delete("label_selector_app")
         serve.shutdown()
+
+
+class TestGangConstructorFailure:
+    """Tests for gang scheduling with constructor failures."""
+
+    def test_consistent_constructor_failure(self, ray_shutdown):
+        """Validates gang deployment where all replicas consistently fail their constructor."""
+        ray.init(num_cpus=1)
+        serve.start()
+
+        @serve.deployment(
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class GangConstructorFailure:
+            def __init__(self):
+                raise RuntimeError("Intentionally failing gang replica constructor")
+
+            async def __call__(self, request):
+                return "hi"
+
+        with pytest.raises(RuntimeError):
+            serve.run(GangConstructorFailure.bind())
+
+        client = serve.context._get_global_client()
+        deployment_dict = ray.get(client._controller._all_running_replicas.remote())
+        deployment_id = DeploymentID(name="GangConstructorFailure")
+        assert len(deployment_dict[deployment_id]) == 0
+
+    def test_partial_constructor_failure(self, ray_shutdown):
+        """Validates gang deployment where one replica consistently fails."""
+        ray.init(num_cpus=1)
+        serve.start()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = os.path.join(tmpdir, "test_deploy.txt")
+
+            @serve.deployment(
+                num_replicas=4,
+                ray_actor_options={"num_cpus": 0.1},
+                gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+            )
+            class GangPartialConstructorFailure:
+                def __init__(self):
+                    if not os.path.exists(file_path):
+                        with open(file_path, "w") as f:
+                            f.write(serve.get_replica_context().replica_id.unique_id)
+                        raise RuntimeError("Consistently throwing on same replica.")
+                    else:
+                        with open(file_path) as f:
+                            content = f.read()
+                        if content == serve.get_replica_context().replica_id.unique_id:
+                            raise RuntimeError("Consistently throwing on same replica.")
+
+                async def __call__(self, request):
+                    return "hi"
+
+            serve.run(GangPartialConstructorFailure.bind())
+
+        client = serve.context._get_global_client()
+        deployment_id = DeploymentID(name="GangPartialConstructorFailure")
+        deployment_dict = ray.get(client._controller._all_running_replicas.remote())
+        assert len(deployment_dict[deployment_id]) == 4
+
+    def test_transient_constructor_failure(self, ray_shutdown):
+        """Validates gang deployment where the first constructor call fails then succeeds."""
+        ray.init(num_cpus=1)
+        serve.start()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = os.path.join(tmpdir, "test_deploy.txt")
+
+            @serve.deployment(
+                num_replicas=4,
+                ray_actor_options={"num_cpus": 0.1},
+                gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+            )
+            class GangTransientConstructorFailure:
+                def __init__(self):
+                    if os.path.exists(file_path):
+                        return
+                    with open(file_path, "w") as f:
+                        f.write("ONE")
+                    raise RuntimeError("Intentionally throw on first try.")
+
+                async def __call__(self, request):
+                    return "hi"
+
+            serve.run(GangTransientConstructorFailure.bind())
+
+        client = serve.context._get_global_client()
+        deployment_id = DeploymentID(name="GangTransientConstructorFailure")
+        deployment_dict = ray.get(client._controller._all_running_replicas.remote())
+        assert len(deployment_dict[deployment_id]) == 4
 
 
 class TestGangControllerRecovery:
