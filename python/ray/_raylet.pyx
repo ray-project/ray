@@ -1018,12 +1018,21 @@ cdef store_task_errors(
     for _ in range(returns[0].size()):
         errors.append(failure_object)
 
+    # DEBUG: Log store_task_errors entry and exit to trace the cancellation path.
+    logger.info(
+        "store_task_errors: storing %d error(s) of type %s",
+        len(errors), type(exc).__name__)
+
     num_errors_stored = core_worker.store_task_outputs(
         worker, errors,
         caller_address,
         returns,
         None,  # ref_generator_id
         c_tensor_transport)
+
+    logger.info(
+        "store_task_errors: stored %d error(s) successfully",
+        num_errors_stored)
 
     if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
         raise ActorDiedError.from_task_error(failure_object)
@@ -2181,6 +2190,20 @@ cdef execute_task_with_cancellation_handler(
     except KeyboardInterrupt as e:
         # Catch and handle task cancellation, which will result in an interrupt being
         # raised.
+        #
+        # Immediately clear current_task_id to prevent further cancellation
+        # interrupts from arriving during error storage. kill_main_task
+        # checks current_task_id under the lock before sending
+        # _thread.interrupt_main(). Without this, a second ray.cancel()
+        # could interrupt store_task_errors, causing a KeyboardInterrupt to
+        # escape task_execution_handler entirely.
+        with current_task_id_lock:
+            logger.info(
+                "KeyboardInterrupt caught: clearing current_task_id "
+                "(was %s) to prevent further interrupts during "
+                "error storage.", current_task_id)
+            current_task_id = None
+
         e = TaskCancelledError(
             core_worker.get_current_task_id()).with_traceback(e.__traceback__)
 
@@ -2376,6 +2399,16 @@ cdef CRayStatus task_execution_handler(
             msg = "Unexpected exception raised in task execution handler: {}".format(e)
             logger.error(msg)
             return CRayStatus.UnexpectedSystemExit(msg)
+        except BaseException as e:
+            # Safety net: catch any BaseException (e.g. KeyboardInterrupt) that
+            # escapes inner handlers. Without this, Cython silently returns
+            # CRayStatus.OK() for unhandled non-Exception/non-SystemExit
+            # exceptions, causing a CHECK failure in HandleTaskExecutionResult
+            # when return objects are not populated.
+            msg = ("BaseException escaped task execution handlers: "
+                   f"{type(e).__name__}: {e}")
+            logger.error(msg)
+            return CRayStatus.UnexpectedSystemExit(msg)
 
     return CRayStatus.OK()
 
@@ -2384,7 +2417,17 @@ cdef c_bool kill_main_task(const CTaskID &task_id) nogil:
         task_id_to_kill = TaskID(task_id.Binary())
         with current_task_id_lock:
             if current_task_id != task_id_to_kill:
+                # DEBUG: Log when a cancel is skipped because
+                # current_task_id was already cleared (e.g. by the
+                # except KeyboardInterrupt handler).
+                logger.info(
+                    "kill_main_task: skipping interrupt, "
+                    "current_task_id=%s != task_id_to_kill=%s",
+                    current_task_id, task_id_to_kill)
                 return False
+            logger.info(
+                "kill_main_task: sending interrupt for task %s",
+                task_id_to_kill)
             _thread.interrupt_main()
             return True
 
