@@ -23,21 +23,19 @@ EXPECTED_KEYS = [
     Columns.TRUNCATEDS,
     "n_step",
 ]
-
-episodes_data_path = "offline/tests/data/cartpole/cartpole-v1_large"
-base_path = Path(__file__).parents[2]
-EPISODES_DATA_PATH = "local://" + base_path.joinpath(episodes_data_path).as_posix()
-
-sample_batch_data_path = "offline/tests/data/cartpole/large.json"
-SAMPLE_BATCH_DATA_PATH = (
-    "local://" + base_path.joinpath(sample_batch_data_path).as_posix()
+BASE_PATH = Path(__file__).parents[2]
+EPISODES_DATA_PATH = (
+    "local://"
+    + BASE_PATH.joinpath("offline/tests/data/cartpole/cartpole-v1_large").as_posix()
 )
-
+SAMPLE_BATCH_DATA_PATH = (
+    "local://" + BASE_PATH.joinpath("offline/tests/data/cartpole/large.json").as_posix()
+)
 ENV = gym.make("CartPole-v1")
 
 
 @pytest.fixture
-def config():
+def base_config():
     observation_space = ENV.observation_space
     action_space = ENV.action_space
     # Set up the configuration.
@@ -55,14 +53,14 @@ def config():
 
 
 class TestOfflinePreLearner:
-    def test_offline_prelearner_buffer_class(self, config):
+    def test_offline_prelearner_buffer_class(self, base_config):
         """Tests using a user-defined buffer class with kwargs."""
 
         from ray.rllib.utils.replay_buffers.prioritized_episode_buffer import (
             PrioritizedEpisodeReplayBuffer,
         )
 
-        config.offline_data(
+        base_config.offline_data(
             input_=[SAMPLE_BATCH_DATA_PATH],
             dataset_num_iters_per_learner=1,
             # Note, for the data we need to read a JSON file.
@@ -78,14 +76,14 @@ class TestOfflinePreLearner:
         )
 
         # Build the algorithm to get the learner.
-        algo = config.build()
+        algo = base_config.build()
         # Get the module state from the `Learner`(s).
         module_state = algo.offline_data.learner_handles[0].get_state(
             component=COMPONENT_RL_MODULE,
         )[COMPONENT_RL_MODULE]
         # Set up an `OfflinePreLearner` instance.
         offline_prelearner = OfflinePreLearner(
-            config=config,
+            config=base_config,
             module_spec=algo.offline_data.module_spec,
             module_state=module_state,
         )
@@ -107,7 +105,7 @@ class TestOfflinePreLearner:
         # Ensure that we have as many environment steps as the train batch size.
         assert (
             batch[DEFAULT_POLICY_ID][Columns.REWARDS].shape[0]
-            == config.train_batch_size_per_learner
+            == base_config.train_batch_size_per_learner
         )
         # Ensure all keys are available and the length of each value is the
         # train batch size.
@@ -115,19 +113,19 @@ class TestOfflinePreLearner:
             assert key in batch[DEFAULT_POLICY_ID]
             assert (
                 len(batch[DEFAULT_POLICY_ID][key])
-                == config.train_batch_size_per_learner
+                == base_config.train_batch_size_per_learner
             )
 
-    def test_offline_prelearner_convert_to_episodes(self, config):
+    def test_offline_prelearner_convert_to_episodes(self, base_config):
         """Tests conversion from column data to episodes."""
-        config.offline_data(
+        base_config.offline_data(
             input_=[EPISODES_DATA_PATH],
             dataset_num_iters_per_learner=1,
         )
 
-        algo = config.build()
+        algo = base_config.build()
         offline_prelearner = OfflinePreLearner(
-            config=config,
+            config=base_config,
             module_spec=algo.offline_data.module_spec,
             module_state=algo.offline_data.learner_handles[0].get_state(
                 component=COMPONENT_RL_MODULE,
@@ -144,22 +142,22 @@ class TestOfflinePreLearner:
         assert len(episodes) == 10
         assert isinstance(episodes[0], SingleAgentEpisode)
 
-    def test_offline_prelearner_ignore_final_observation(self, config):
+    def test_offline_prelearner_ignore_final_observation(self, base_config):
         # Create the dataset.
         data = ray.data.read_parquet(EPISODES_DATA_PATH)
 
-        config.offline_data(
+        base_config.offline_data(
             input_=[EPISODES_DATA_PATH],
             dataset_num_iters_per_learner=1,
             ignore_final_observation=True,
         )
 
-        algo = config.build()
+        algo = base_config.build()
         module_state = algo.offline_data.learner_handles[0].get_state(
             component=COMPONENT_RL_MODULE,
         )[COMPONENT_RL_MODULE]
         offline_prelearner = OfflinePreLearner(
-            config=config,
+            config=base_config,
             module_spec=algo.offline_data.module_spec,
             module_state=module_state,
         )
@@ -173,16 +171,18 @@ class TestOfflinePreLearner:
             for eps in episodes
         )
 
-    def test_offline_prelearner_convert_from_old_sample_batch_to_episodes(self, config):
+    def test_offline_prelearner_convert_from_old_sample_batch_to_episodes(
+        self, base_config
+    ):
         """Tests conversion from `SampleBatch` data to episodes."""
-        config.offline_data(
+        base_config.offline_data(
             input_=[EPISODES_DATA_PATH],
             dataset_num_iters_per_learner=1,
         )
 
-        algo = config.build()
+        algo = base_config.build()
         offline_prelearner = OfflinePreLearner(
-            config=config,
+            config=base_config,
             module_spec=algo.offline_data.module_spec,
             module_state=algo.offline_data.learner_handles[0].get_state(
                 component=COMPONENT_RL_MODULE,
@@ -199,10 +199,10 @@ class TestOfflinePreLearner:
         assert len(episodes) == 10
         assert isinstance(episodes[0], SingleAgentEpisode)
 
-    def test_offline_prelearner_sample_from_old_sample_batch_data(self, config):
+    def test_offline_prelearner_sample_from_old_sample_batch_data(self, base_config):
         """Tests sampling from a `SampleBatch` dataset."""
 
-        config.offline_data(
+        base_config.offline_data(
             input_=[SAMPLE_BATCH_DATA_PATH],
             dataset_num_iters_per_learner=1,
             # Note, the default is `read_parquet`.
@@ -215,19 +215,21 @@ class TestOfflinePreLearner:
         )
 
         # Build the algorithm to get the learner.
-        algo = config.build()
+        algo = base_config.build()
         # Get the module state from the `Learner`.
         module_state = algo.offline_data.learner_handles[0].get_state(
             component=COMPONENT_RL_MODULE,
         )[COMPONENT_RL_MODULE]
         # Set up an `OfflinePreLearner` instance.
         oplr = OfflinePreLearner(
-            config=config,
+            config=base_config,
             module_spec=algo.offline_data.module_spec,
             module_state=module_state,
         )
         # Now, pull a batch of defined size from the dataset.
-        batch = algo.offline_data.data.take_batch(config.train_batch_size_per_learner)
+        batch = algo.offline_data.data.take_batch(
+            base_config.train_batch_size_per_learner
+        )
         # Pass the batch through the `OfflinePreLearner`. Note, the batch is
         # a batch of `SampleBatch`es and could potentially have more than the
         # defined number of experiences to be used for learning.
@@ -241,7 +243,7 @@ class TestOfflinePreLearner:
         # Ensure that we have as many environment steps as the train batch size.
         assert (
             batch[DEFAULT_POLICY_ID][Columns.REWARDS].shape[0]
-            == config.train_batch_size_per_learner
+            == base_config.train_batch_size_per_learner
         )
         # Ensure all keys are available and the length of each value is the
         # train batch size.
@@ -249,10 +251,10 @@ class TestOfflinePreLearner:
             assert key in batch[DEFAULT_POLICY_ID]
             assert (
                 len(batch[DEFAULT_POLICY_ID][key])
-                == config.train_batch_size_per_learner
+                == base_config.train_batch_size_per_learner
             )
 
-    def test_offline_prelearner_sample_from_episode_data(self, config):
+    def test_offline_prelearner_sample_from_episode_data(self, base_config):
         """Test sampling and writing of complete epsidoes.
 
         Creates episodes and writes them to disk with PPO.
@@ -287,14 +289,14 @@ class TestOfflinePreLearner:
         algo.train()
 
         # Set input data and the episode read flag.
-        config.offline_data(
+        base_config.offline_data(
             input_=[episodes_output_path],
             dataset_num_iters_per_learner=1,
             input_read_episodes=True,
             input_read_batch_size=1,
         )
 
-        algo = config.build()
+        algo = base_config.build()
 
         episode_ds = ray.data.read_parquet(episodes_output_path)
         episode_batch = episode_ds.take_batch(64)
@@ -302,7 +304,7 @@ class TestOfflinePreLearner:
             component=COMPONENT_RL_MODULE,
         )[COMPONENT_RL_MODULE]
         offline_prelearner = OfflinePreLearner(
-            config=config,
+            config=base_config,
             module_spec=algo.offline_data.module_spec,
             module_state=module_state,
             spaces=algo.offline_data.spaces[INPUT_ENV_SPACES],
@@ -314,7 +316,7 @@ class TestOfflinePreLearner:
         assert DEFAULT_POLICY_ID in batch
         assert (
             batch[DEFAULT_POLICY_ID][Columns.REWARDS].shape[0]
-            == config.train_batch_size_per_learner
+            == base_config.train_batch_size_per_learner
         )
 
         # Remove all generated Parquet data from disk.
