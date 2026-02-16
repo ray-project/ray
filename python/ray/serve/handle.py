@@ -238,8 +238,8 @@ class _DeploymentHandleBase(Generic[T]):
     @asynccontextmanager
     async def _choose_replica(
         self,
-        *args,
-        **kwargs,
+        args: Tuple[Any],
+        kwargs: Dict[str, Any],
     ) -> AsyncIterator[ReplicaSelection]:
         """Execute the request router to select a replica without dispatching."""
         if not self.is_initialized:
@@ -258,16 +258,19 @@ class _DeploymentHandleBase(Generic[T]):
     def _dispatch(
         self,
         selection: ReplicaSelection,
-        *args,
-        **kwargs,
+        args: Tuple[Any],
+        kwargs: Dict[str, Any],
     ) -> Tuple[concurrent.futures.Future, RequestMetadata]:
         """Dispatch a request to a previously selected replica."""
-        # Validate that the selection belongs to this handle
-        if selection._deployment_handle is not self:
+        # Validate that the selection belongs to the same deployment
+        if (
+            selection._deployment_handle is not None
+            and selection._deployment_handle.deployment_id != self.deployment_id
+        ):
             raise ValueError(
-                f"Cannot dispatch a selection created by a different DeploymentHandle. "
+                f"Cannot dispatch a selection created for a different deployment. "
                 f"This handle is for {self.deployment_id}, but the selection was created "
-                f"for a different deployment."
+                f"for {selection._deployment_handle.deployment_id}."
             )
 
         if not self.is_initialized:
@@ -968,7 +971,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         Returns:
             AsyncContextManager[ReplicaSelection] - must be used with async with.
         """
-        return self._choose_replica(*args, **kwargs)
+        return self._choose_replica(args, kwargs)
 
     def dispatch(
         self,
