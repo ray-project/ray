@@ -24,8 +24,6 @@
 #include "absl/types/optional.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_util.h"
-#include "ray/core_worker/common.h"
-#include "ray/core_worker/context.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 

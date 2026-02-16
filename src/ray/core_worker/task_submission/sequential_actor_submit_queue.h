@@ -33,7 +33,6 @@ namespace core {
  */
 class SequentialActorSubmitQueue : public IActorSubmitQueue {
  public:
-  SequentialActorSubmitQueue();
   /// Add a task into the queue.
   void Emplace(const std::string &concurrency_group,
                uint64_t sequence_no,

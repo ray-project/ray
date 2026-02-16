@@ -20,7 +20,6 @@
 
 namespace ray {
 namespace core {
-SequentialActorSubmitQueue::SequentialActorSubmitQueue() {}
 
 void SequentialActorSubmitQueue::Emplace(const std::string &concurrency_group,
                                          uint64_t sequence_no,
@@ -53,17 +52,7 @@ bool SequentialActorSubmitQueue::Contains(const std::string &concurrency_group,
 }
 
 bool SequentialActorSubmitQueue::Empty() {
-  for (const auto &[_, requests] : requests_per_group_) {
-    if (!requests.empty()) {
-      return false;
-    }
-  }
-  for (const auto &[_, retries] : retry_requests_per_group_) {
-    if (!retries.empty()) {
-      return false;
-    }
-  }
-  return true;
+  return requests_per_group_.empty() && retry_requests_per_group_.empty();
 }
 
 bool SequentialActorSubmitQueue::DependenciesResolved(
@@ -85,7 +74,8 @@ bool SequentialActorSubmitQueue::DependenciesResolved(
 void SequentialActorSubmitQueue::MarkDependencyFailed(
     const std::string &concurrency_group, uint64_t sequence_no) {
   auto req_it = requests_per_group_.find(concurrency_group);
-  if (req_it != requests_per_group_.end() && req_it->second.erase(sequence_no) > 0) {
+  if (req_it != requests_per_group_.end()) {
+    req_it->second.erase(sequence_no);
     if (req_it->second.empty()) {
       requests_per_group_.erase(req_it);
     }
@@ -103,7 +93,8 @@ void SequentialActorSubmitQueue::MarkDependencyFailed(
 void SequentialActorSubmitQueue::MarkTaskCanceled(const std::string &concurrency_group,
                                                   uint64_t sequence_no) {
   auto req_it = requests_per_group_.find(concurrency_group);
-  if (req_it != requests_per_group_.end() && req_it->second.erase(sequence_no) > 0) {
+  if (req_it != requests_per_group_.end()) {
+    req_it->second.erase(sequence_no);
     if (req_it->second.empty()) {
       requests_per_group_.erase(req_it);
     }
@@ -140,13 +131,13 @@ void SequentialActorSubmitQueue::MarkDependencyResolved(
 
 std::vector<TaskID> SequentialActorSubmitQueue::ClearAllTasks() {
   std::vector<TaskID> task_ids;
-  for (auto &[_, requests] : requests_per_group_) {
-    for (auto &[__, spec] : requests) {
+  for (const auto &[_, requests] : requests_per_group_) {
+    for (const auto &[_, spec] : requests) {
       task_ids.push_back(spec.first.TaskId());
     }
   }
-  for (auto &[_, retries] : retry_requests_per_group_) {
-    for (auto &[__, spec] : retries) {
+  for (const auto &[_, retries] : retry_requests_per_group_) {
+    for (const auto &[_, spec] : retries) {
       task_ids.push_back(spec.first.TaskId());
     }
   }
@@ -181,7 +172,7 @@ SequentialActorSubmitQueue::PopNextTaskToSend() {
   // resolved. If so, pop it.
   for (auto it = requests_per_group_.begin(); it != requests_per_group_.end();) {
     auto &requests = it->second;
-    if (!requests.empty() && requests.begin()->second.second) {
+    if (requests.begin()->second.second) {
       auto task_spec = std::move(requests.begin()->second.first);
       requests.erase(requests.begin());
       if (requests.empty()) {
