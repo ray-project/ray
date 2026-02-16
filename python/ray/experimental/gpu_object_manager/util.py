@@ -58,7 +58,8 @@ def register_tensor_transport(
         transport_name: The name of the transport protocol.
         devices: List of PyTorch device types supported by this transport (e.g., ["cuda", "cpu"]).
         transport_manager_class: A class that implements TensorTransportManager.
-        data_type: The data type for this transport (e.g. torch.Tensor or jax.Array). If not provided, defaults to torch.Tensor.
+        data_type: The data type for this transport (e.g. torch.Tensor or jax.Array).
+            If not provided, defaults to torch.Tensor.
     Raises:
         ValueError: If transport_manager_class is not a subclass of TensorTransportManager.
     """
