@@ -41,7 +41,7 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "small",
+    size = "medium",
     files = glob(["tests/block_batching/test_*.py"]),
     tags = [
         "exclusive",
@@ -54,7 +54,7 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "small",
+    size = "medium",
     files = glob(["tests/expressions/test_*.py"]),
     tags = [
         "exclusive",
@@ -67,7 +67,7 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "small",
+    size = "medium",
     files = glob(["tests/preprocessors/test_*.py"]),
     tags = [
         "exclusive",
