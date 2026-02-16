@@ -222,11 +222,12 @@ In this example:
 
  Manage concurrency by setting `max_ongoing_requests` on the consumer deployment; this caps how many tasks each replica can process simultaneously. For at-least-once delivery, adapters should acknowledge a task only after the handler completes successfully. Failed tasks are retried up to `max_retries`; once exhausted, they are routed to the failed-task DLQ when configured. The default Celery adapter acknowledges on success, providing at-least-once processing.
 
+(serve-async-inference-autoscaling)=
 ## Autoscaling
 
 For workloads with variable traffic you can enable autoscaling so that replicas scale up when messages pile up in the queue and scale back down (optionally to zero) when the queue drains.
 
-Ray Serve provides a built-in `AsyncInferenceAutoscalingPolicy` that polls your message broker for queue length and combines it with in-flight request load to compute the desired replica count. It is a [class-based autoscaling policy](serve-custom-autoscaling-policies) that runs on the Serve controller — on each autoscaling tick it computes `desired = current_replicas * (total_workload / target_workload)`, where total workload is the sum of pending queue messages and in-flight requests. Ray Serve then applies the standard `AutoscalingConfig` bounds, delays, and scaling factors on top of this decision.
+Ray Serve provides a built-in `AsyncInferenceAutoscalingPolicy` that polls your message broker for queue length and combines it with in-flight request load to compute the desired replica count. It is a [class-based autoscaling policy](serve-custom-autoscaling-policies) that runs on the Serve controller — on each autoscaling tick it computes `desired = total_workload / target_ongoing_requests`, where total workload is the sum of pending queue messages and in-flight requests. Ray Serve then applies the standard `AutoscalingConfig` bounds, delays, and scaling factors on top of this decision.
 
 ### Basic example
 

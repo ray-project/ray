@@ -730,7 +730,7 @@ The instance lives only on the Serve controller and is never serialized after cr
 :::
 
 :::{tip}
-If you're using `@task_consumer` deployments for asynchronous inference, Ray Serve provides a built-in `AsyncInferenceAutoscalingPolicy` that scales based on message queue length. See [Asynchronous Inference: Autoscaling](serve-asynchronous-inference) for setup and configuration.
+If you're using `@task_consumer` deployments for asynchronous inference, Ray Serve provides a built-in `AsyncInferenceAutoscalingPolicy` that scales based on message queue length. See [Asynchronous Inference: Autoscaling](serve-async-inference-autoscaling) for setup and configuration.
 :::
 
 
