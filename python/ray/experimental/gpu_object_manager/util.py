@@ -8,6 +8,7 @@ from ray.experimental.gpu_object_manager.collective_tensor_transport import (
     NCCLTensorTransport,
 )
 from ray.experimental.gpu_object_manager.cuda_ipc_transport import CudaIpcTransport
+from ray.experimental.gpu_object_manager.jax_tensor_transport import JaxTensorTransport
 from ray.experimental.gpu_object_manager.nixl_tensor_transport import (
     NixlTensorTransport,
 )
@@ -25,6 +26,8 @@ class TransportManagerInfo(NamedTuple):
     transport_manager_class: type[TensorTransportManager]
     # list of support device types for the transport
     devices: List[str]
+    # data type for this transport (e.g. torch.Tensor or jax.Array)
+    data_type: type
 
 
 transport_manager_info: Dict[str, TransportManagerInfo] = {}
@@ -44,6 +47,7 @@ def register_tensor_transport(
     transport_name: str,
     devices: List[str],
     transport_manager_class: type[TensorTransportManager],
+    data_type: Optional[type] = None,
 ):
     """
     Register a new tensor transport for use in Ray. Note that this needs to be called
@@ -54,9 +58,12 @@ def register_tensor_transport(
         transport_name: The name of the transport protocol.
         devices: List of PyTorch device types supported by this transport (e.g., ["cuda", "cpu"]).
         transport_manager_class: A class that implements TensorTransportManager.
+        data_type: The data type for this transport (e.g. torch.Tensor or jax.Array). If not provided, defaults to torch.Tensor.
     Raises:
         ValueError: If transport_manager_class is not a subclass of TensorTransportManager.
     """
+    import torch
+
     global transport_manager_info
     global has_custom_transports
 
@@ -70,8 +77,11 @@ def register_tensor_transport(
             f"transport_manager_class {transport_manager_class.__name__} must be a subclass of TensorTransportManager."
         )
 
+    if data_type is None:
+        data_type = torch.Tensor
+
     transport_manager_info[transport_name] = TransportManagerInfo(
-        transport_manager_class, devices
+        transport_manager_class, devices, data_type
     )
 
     if transport_name not in DEFAULT_TRANSPORTS:
@@ -84,6 +94,22 @@ register_tensor_transport("NIXL", ["cuda", "cpu"], NixlTensorTransport)
 register_tensor_transport("GLOO", ["cpu"], GLOOTensorTransport)
 register_tensor_transport("NCCL", ["cuda"], NCCLTensorTransport)
 register_tensor_transport("CUDA_IPC", ["cuda"], CudaIpcTransport)
+
+try:
+    import jax
+
+    register_tensor_transport(
+        "JAX", ["tpu", "cpu", "cuda"], JaxTensorTransport, jax.Array
+    )
+except ImportError:
+    pass
+
+
+def get_transport_data_type(tensor_transport: str) -> type:
+    if tensor_transport not in transport_manager_info:
+        raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
+
+    return transport_manager_info[tensor_transport].data_type
 
 
 def get_tensor_transport_manager(
