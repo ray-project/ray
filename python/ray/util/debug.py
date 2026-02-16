@@ -220,7 +220,7 @@ def _traceback_matches_any(traceback, patterns: Optional[Sequence[str]]) -> bool
     if not patterns:
         return False
     for frame in traceback:
-        frame_str = str(frame).replace("\\\\", "/")
+        frame_str = str(frame).replace("\\", "/")
         for pattern in patterns:
             if pattern in frame_str:
                 return True
