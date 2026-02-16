@@ -176,6 +176,23 @@ class TestListNamespace:
         )
         assert result_table.select(["flattened"]).combine_chunks().equals(expected)
 
+    def test_list_sum(self, ray_start_regular_shared, dataset_format):
+        """Test list.sum() aggregates numeric elements per row."""
+        data = [
+            {"items": [1, 2, 3]},
+            {"items": [4, 5, None]},
+            {"items": []},  # empty lists yield 0
+        ]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column("total", col("items").list.sum()).to_pandas()
+        expected = pd.DataFrame(
+            {
+                "items": [[1, 2, 3], [4, 5, None], []],
+                "total": [6, 9, 0],
+            }
+        )
+        assert rows_same(result, expected)
+
 
 if __name__ == "__main__":
     import sys

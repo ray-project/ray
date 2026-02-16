@@ -346,3 +346,58 @@ class _ListNamespace:
             )
 
         return _list_flatten(self._expr)
+
+    def sum(self) -> "UDFExpr":
+        """Sum the numeric elements of each list.
+
+        Empty lists yield 0.
+
+        Returns:
+            UDFExpr with the sum per row (same scalar type as list elements, or
+            float for float elements).
+        """
+        return_dtype = DataType.float64()  # default for unknown element type
+        if self._expr.data_type.is_arrow_type():
+            arrow_type = self._expr.data_type.to_arrow_dtype()
+            if _is_list_like(arrow_type):
+                vt = arrow_type.value_type
+                if pyarrow.types.is_integer_value(vt):
+                    return_dtype = DataType.from_arrow(pyarrow.int64())
+                elif pyarrow.types.is_floating(vt):
+                    return_dtype = DataType.from_arrow(pyarrow.float64())
+
+        @pyarrow_udf(return_dtype=return_dtype)
+        def _list_sum(arr: pyarrow.Array) -> pyarrow.Array:
+            arr = _ensure_array(arr)
+            n_rows = len(arr)
+            null_mask = arr.is_null() if arr.null_count else None
+            if pyarrow.types.is_fixed_size_list(arr.type):
+                arr = arr.cast(pyarrow.list_(arr.type.value_type))
+            values = arr.values
+            offsets = pc.list_parent_indices(arr)
+            if len(values) == 0:
+                out_type = return_dtype.to_arrow_dtype()
+                out = pyarrow.repeat(pyarrow.scalar(0, type=out_type), n_rows)
+                if null_mask is not None:
+                    out = pc.if_else(
+                        null_mask, pyarrow.nulls(n_rows, type=out_type), out
+                    )
+                return out
+            table = pyarrow.Table.from_arrays(
+                [values, offsets], names=["values", "offsets"]
+            )
+            grouped = table.group_by(["offsets"]).aggregate([("values", "sum")])
+            row_seq = pyarrow.array(range(n_rows), type=pyarrow.int64())
+            pos = pc.index_in(row_seq, grouped.column("offsets"))
+            sum_col = grouped.column("values_sum")
+            zero = pyarrow.scalar(0, type=sum_col.type)
+            result = pc.if_else(
+                pc.is_null(pos), zero, pc.take(sum_col, pc.fill_null(pos, 0))
+            )
+            if null_mask is not None:
+                result = pc.if_else(
+                    null_mask, pyarrow.nulls(n_rows, type=result.type), result
+                )
+            return result
+
+        return _list_sum(self._expr)
