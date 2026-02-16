@@ -224,3 +224,7 @@ class TestTaskiqWithRayServe:
 
         received = handle.get_received.remote().result()
         assert set(received) == {f"msg-{i}" for i in range(num_tasks)}
+
+
+if __name__ == "__main__":
+    pytest.main(["-v", __file__])
