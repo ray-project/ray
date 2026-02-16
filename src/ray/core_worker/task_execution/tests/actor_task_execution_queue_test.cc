@@ -427,7 +427,9 @@ TaskSpecification CreateActorTaskSpec(int64_t seq_no,
                                       bool dependency = false) {
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-  task_spec.GetMutableMessage().mutable_actor_task_spec()->set_concurrency_group_sequence_number(seq_no);
+  task_spec.GetMutableMessage()
+      .mutable_actor_task_spec()
+      ->set_concurrency_group_sequence_number(seq_no);
   task_spec.GetMutableMessage().set_attempt_number(is_retry ? 1 : 0);
   if (dependency) {
     task_spec.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(

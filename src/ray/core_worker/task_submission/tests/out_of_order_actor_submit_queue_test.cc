@@ -28,7 +28,9 @@ TaskSpecification BuildTaskSpec(uint64_t seq) {
   TaskSpecification spec;
   spec.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID()).Binary());
   spec.GetMutableMessage().set_type(ray::rpc::TaskType::ACTOR_TASK);
-  spec.GetMutableMessage().mutable_actor_task_spec()->set_concurrency_group_sequence_number(seq);
+  spec.GetMutableMessage()
+      .mutable_actor_task_spec()
+      ->set_concurrency_group_sequence_number(seq);
   return spec;
 }
 
