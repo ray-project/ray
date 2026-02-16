@@ -492,7 +492,7 @@ class Router(ABC):
 
     @abstractmethod
     @asynccontextmanager
-    async def choose_replica(
+    def choose_replica(
         self,
         request_meta: RequestMetadata,
         *request_args,
@@ -1083,6 +1083,10 @@ class AsyncioRouter:
             metadata=request_meta,
         )
 
+        # Resolve request arguments
+        if not pr.resolved:
+            await self._resolve_request_arguments(pr)
+
         # Mark as dispatched so __aexit__ won't release the slot
         selection._mark_dispatched()
 
@@ -1181,19 +1185,63 @@ class SingletonThreadRouter(Router):
             A concurrent.futures.Future resolving to the ReplicaResult representing
             the assigned request.
         """
+        return self._wrap_asyncio_call_in_future(
+            self._asyncio_router.assign_request(
+                request_meta, *request_args, **request_kwargs
+            )
+        )
+
+    @asynccontextmanager
+    async def choose_replica(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncIterator[ReplicaSelection]:
+        """Delegate to AsyncioRouter's choose_replica."""
+        async with self._asyncio_router.choose_replica(
+            request_meta, *request_args, **request_kwargs
+        ) as selection:
+            yield selection
+
+    def dispatch(
+        self,
+        selection: ReplicaSelection,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> concurrent.futures.Future[ReplicaResult]:
+        """Dispatch request to a previously selected replica.
+
+        Similar to assign_request, wraps the async dispatch in a concurrent.futures.Future.
+        """
+        return self._wrap_asyncio_call_in_future(
+            self._asyncio_router.dispatch(
+                selection, request_meta, *request_args, **request_kwargs
+            )
+        )
+
+    def _wrap_asyncio_call_in_future(
+        self,
+        coro: Coroutine,
+    ) -> concurrent.futures.Future[ReplicaResult]:
+        """Wrap an async call in a concurrent.futures.Future for cross-thread execution.
+
+        This is a helper method to execute AsyncioRouter's async methods on the dedicated asyncio event loop thread.
+
+        Args:
+            coro: The coroutine to execute (e.g., _asyncio_router.assign_request(...))
+
+        Returns:
+            A concurrent.futures.Future that resolves to the ReplicaResult.
+        """
+        # Extract operation name from coroutine for logging
+        operation_name = coro.__name__ if hasattr(coro, "__name__") else "operation"
 
         def asyncio_future_callback(
             asyncio_future: asyncio.Future, concurrent_future: concurrent.futures.Future
         ):
-            """Callback attached to the asyncio Task running assign_request.
-
-            This runs when the asyncio Task finishes (completes, fails, or is cancelled).
-            Its primary goal is to propagate cancellation initiated via the
-            `concurrent_future` back to the `ReplicaResult` in situations where
-            asyncio_future didn't see the cancellation event in time. Think of it
-            like a second line of defense for cancellation of replica results.
-            """
-            # Check if the cancellation originated from the concurrent.futures.Future
+            """Callback to propagate cancellation from concurrent.futures.Future to ReplicaResult."""
             if (
                 concurrent_future.cancelled()
                 and not asyncio_future.cancelled()
@@ -1201,27 +1249,21 @@ class SingletonThreadRouter(Router):
             ):
                 result: ReplicaResult = asyncio_future.result()
                 logger.info(
-                    "Asyncio task completed despite cancellation attempt. "
-                    "Attempting to cancel the request that was assigned to a replica."
+                    f"Asyncio task completed despite cancellation attempt during {operation_name}. "
+                    "Attempting to cancel the request."
                 )
                 result.cancel()
 
         concurrent_future = concurrent.futures.Future()
 
         def create_task_and_setup():
-            task = self._asyncio_loop.create_task(
-                self._asyncio_router.assign_request(
-                    request_meta, *request_args, **request_kwargs
-                )
-            )
+            task = self._asyncio_loop.create_task(coro)
 
-            # Set up your cancellation callback
             task.add_done_callback(
                 lambda _: asyncio_future_callback(_, concurrent_future)
             )
 
             try:
-                # chain the two futures to handle direction channel of cancellation
                 futures._chain_future(
                     ensure_future(task, loop=self._asyncio_loop), concurrent_future
                 )
@@ -1232,7 +1274,6 @@ class SingletonThreadRouter(Router):
                     concurrent_future.set_exception(exc)
                 raise
 
-        # Schedule on the event loop thread
         self._asyncio_loop.call_soon_threadsafe(create_task_and_setup)
         return concurrent_future
 
@@ -1352,6 +1393,36 @@ class CurrentLoopRouter(Router):
             self._asyncio_router.assign_request(
                 request_meta, *request_args, **request_kwargs
             ),
+        )
+
+    @asynccontextmanager
+    async def choose_replica(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncIterator[ReplicaSelection]:
+        """Delegate to AsyncioRouter's choose_replica."""
+        async with self._asyncio_router.choose_replica(
+            request_meta, *request_args, **request_kwargs
+        ) as selection:
+            yield selection
+
+    def dispatch(
+        self,
+        selection: ReplicaSelection,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> asyncio.Future[ReplicaResult]:
+        """Dispatch request to a previously selected replica.
+
+        Returns an asyncio.Future wrapping the async dispatch call.
+        """
+        return self._asyncio_loop.create_task(
+            self._asyncio_router.dispatch(
+                selection, request_meta, *request_args, **request_kwargs
+            )
         )
 
     def shutdown(self) -> asyncio.Future:

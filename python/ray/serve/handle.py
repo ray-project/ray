@@ -978,9 +978,16 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
     ) -> Union[DeploymentResponse[Any], DeploymentResponseGenerator[Any]]:
         """Dispatch a request to a previously selected replica.
 
+        By default, the result is a `DeploymentResponse` that can be awaited to fetch
+        the result of the call. Like `.remote()`, `DeploymentResponse` objects can be
+        passed as arguments for deployment composition.
+
+        If `handle.options(stream=True)` is set and a generator method is called, this
+        returns a `DeploymentResponseGenerator` instead.
+
         Args:
             selection: A ReplicaSelection from choose_replica() context manager.
-            *args, **kwargs: The actual request arguments.
+            *args, **kwargs: The request arguments to send to the replica
 
         Returns:
             DeploymentResponse or DeploymentResponseGenerator (if streaming).
