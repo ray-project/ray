@@ -1566,6 +1566,8 @@ def test_runtime_metrics(ray_start_regular_shared):
     TOLERANCE = 0.02
 
     for name, (time_s, percent) in metrics_dict.items():
+        # Special-case Scheduling: it's cumulative time across scheduling loops,
+        # so it can exceed the wall-clock Total span under concurrency.
         if name == "Scheduling":
             continue
         if time_s > total_time + TOLERANCE:
