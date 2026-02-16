@@ -7296,7 +7296,7 @@ class _ExecutionCache:
 
     def clear(self) -> None:
         self._stats = None
-        self._clear_op_dependents()
+        self._clear_dag_dependent_cache()
 
     def _clear_dag_dependent_cache(self) -> None:
         self._operator = None
