@@ -491,7 +491,7 @@ class TaskiqTaskProcessorAdapter(TaskProcessorAdapter):
         # Wait for the consumer task to finish.
         try:
             self._consumer_task.result(timeout=timeout)
-        except TimeoutError:
+        except concurrent.futures.TimeoutError:
             logger.warning(f"Taskiq consumer did not stop within {timeout}s.")
         except Exception as e:
             logger.warning(f"Taskiq consumer task exited with an exception: {e}")
