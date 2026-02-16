@@ -373,8 +373,7 @@ class _ListNamespace:
             null_mask = arr.is_null() if arr.null_count else None
             if pyarrow.types.is_fixed_size_list(arr.type):
                 arr = arr.cast(pyarrow.list_(arr.type.value_type))
-            values = arr.values
-            offsets = pc.list_parent_indices(arr)
+            values = pc.list_flatten(arr)
             if len(values) == 0:
                 out_type = return_dtype.to_arrow_dtype()
                 out = pyarrow.repeat(pyarrow.scalar(0, type=out_type), n_rows)
@@ -383,13 +382,12 @@ class _ListNamespace:
                         null_mask, pyarrow.nulls(n_rows, type=out_type), out
                     )
                 return out
-            table = pyarrow.Table.from_arrays(
-                [values, offsets], names=["values", "offsets"]
-            )
-            grouped = table.group_by(["offsets"]).aggregate([("values", "sum")])
+            row_indices = pc.list_parent_indices(arr)
+            table = pyarrow.table({"value": values, "row": row_indices})
+            grouped = table.group_by(["row"]).aggregate([("value", "sum")])
             row_seq = pyarrow.array(range(n_rows), type=pyarrow.int64())
-            pos = pc.index_in(row_seq, grouped.column("offsets"))
-            sum_col = grouped.column("values_sum")
+            pos = pc.index_in(row_seq, grouped.column("row"))
+            sum_col = grouped.column("value_sum")
             zero = pyarrow.scalar(0, type=sum_col.type)
             result = pc.if_else(
                 pc.is_null(pos), zero, pc.take(sum_col, pc.fill_null(pos, 0))
