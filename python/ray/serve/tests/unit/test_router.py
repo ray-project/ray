@@ -107,6 +107,7 @@ class FakeReplica(RunningReplica):
         self._error = error
         self._reserved_slots: Dict[str, bool] = {}  # token -> is_released
         self._slot_counter = 0
+        self._requests_sent = []  # Track all requests sent to this replica
 
         # Create a minimal _replica_info object to satisfy router.py requirements
         from unittest.mock import Mock
@@ -168,6 +169,12 @@ class FakeReplica(RunningReplica):
     def try_send_request(
         self, pr: PendingRequest, with_rejection: bool
     ) -> FakeReplicaResult:
+        # Track the request
+        self._requests_sent.append({
+            "request_id": pr.metadata.request_id,
+            "with_rejection": with_rejection,
+        })
+
         if with_rejection:
             if self._error:
                 raise self._error
@@ -1109,6 +1116,63 @@ class TestChooseReplica:
 
         # After all exit without dispatch, cache should be 0
         assert fake_request_router.replica_queue_len_cache.get(r1_id) == 0
+
+    async def test_dispatch_replica_unavailable(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Test dispatch() raises error when replica becomes unavailable."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        from ray.serve.exceptions import ReplicaUnavailableError
+
+        async with router.choose_replica(request_metadata) as selection:
+            # Simulate replica becoming unavailable
+            fake_request_router._replica_to_return = None
+
+            # dispatch should raise ReplicaUnavailableError
+            with pytest.raises(ReplicaUnavailableError):
+                await router.dispatch(selection, request_metadata)
+
+    async def test_dispatch_uses_reserved_slot(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Test that dispatch() sends request using reserved slot without rejection."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        async with router.choose_replica(request_metadata) as selection:
+            # Verify no requests sent yet
+            assert len(replica._requests_sent) == 0
+
+            # Dispatch the request
+            replica_result = await router.dispatch(selection, request_metadata)
+            assert replica_result._replica_id == r1_id
+
+        # Verify request was sent with with_rejection=False
+        assert len(replica._requests_sent) == 1
+        assert replica._requests_sent[0]["request_id"] == "test-request-1"
+        assert replica._requests_sent[0]["with_rejection"] is False
 
 
 def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
