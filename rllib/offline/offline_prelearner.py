@@ -102,32 +102,20 @@ def _validate_deprecated_map_args(kwargs: dict, config: "AlgorithmConfig") -> Se
 class OfflinePreLearner:
     """Maps raw ingested data to episodes and runs the Learner pipeline.
 
-    This class is an essential part of the new `Offline RL API` of `RLlib`.
-    It is a callable class that is run in `ray.data.Dataset.map_batches`
-    when iterating over batches for training. It's basic function is to
-    convert data in batch from rows to episodes (`SingleAGentEpisode`s
-    for now) and to then run the learner connector pipeline to convert
-    further to trainable batches. These batches are used directly in the
-    `Learner`'s `update` method.
+    OfflinePreLearner is meant to be used by RLlib to build a Ray Data pipeline
+    using `ray.data.Dataset.map_batches` when ingesting data for offline training.
+    Ray data is thereby used under the hood to parallelize the data transformation.
 
-    The main reason to run these transformations inside of `map_batches`
-    is for better performance. Batches can be pre-fetched in `ray.data`
-    and therefore batch trransformation can be run highly parallelized to
-    the `Learner''s `update`.
+    It's basic function is to:
+    (1) Convert the dataset into RLlib's native episode
+    format (`SingleAgentEpisode`, since `MultiAgentEpisode` is not supported yet).
+    (2) Apply the learner connector pipeline to episodes to create batches that are
+    ready to be trained on (can be passed in `Learner.update` methods).
 
-    This class can be overridden to implement custom logic for transforming
-    batches and make them 'Learner'-ready. When deriving from this class
-    the `__call__` method and `_map_to_episodes` can be overridden to induce
-    custom logic for the complete transformation pipeline (`__call__`) or
-    for converting to episodes only ('_map_to_episodes`).
-
-    Custom `OfflinePreLearner` classes can be passed into
-    `AlgorithmConfig.offline`'s `prelearner_class`. The `OfflineData` class
-    will then use the custom class in its data pipeline.
+    OfflinePreLearner can be overridden to implement custom logic and passed into
+    `AlgorithmConfig.offline(prelearner_class)`.
     """
 
-    # Note: EpisodeReplayBuffer can not handle fragments from episodes
-    # that do not arrive in the order of their timesteps.
     default_prelearner_buffer_class = EpisodeReplayBuffer
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -182,12 +170,10 @@ class OfflinePreLearner:
         """Maps raw ingested data to episodes and runs the Learner pipeline.
 
         Args:
-            batch: A dictionary of numpy arrays containing either column data
-                with `self.config.input_read_schema`, `EpisodeType` data, or
-                `BatchType` data.
+            batch: A dictionary of numpy arrays where each numpy array represents a column of the dataset.
 
         Returns:
-            A flattened dict that can be passed to `Learner.update` methods.
+            A flattened dict representing a batch that can be passed to `Learner.update` methods.
         """
         if self.config.input_read_episodes:
             import msgpack
@@ -243,10 +229,10 @@ class OfflinePreLearner:
         Validates that there are no duplicate episodes.
 
         Args:
-            episodes: A list of `SingleAgentEpisode` instances sampled from a dataset.
+            episodes: A list of `SingleAgentEpisode` instances to validate.
 
         Returns:
-            A set of `SingleAgentEpisode` instances.
+            A set of validated `SingleAgentEpisode` instances.
 
         Raises:
             ValueError: If not all episodes are `done`.
