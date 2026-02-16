@@ -235,6 +235,13 @@ class TaskiqAdapterConfig(BaseModel):
             "of the broker type."
         ),
     )
+    operation_timeout: Optional[float] = Field(
+        default=30.0,
+        description=(
+            "Timeout in seconds for enqueue and status operations. "
+            "Set to None to wait indefinitely."
+        ),
+    )
 
 
 @PublicAPI(stability="beta")
@@ -383,7 +390,7 @@ class TaskiqTaskProcessorAdapter(TaskProcessorAdapter):
         self._ensure_broker_started()
         return self._run_async(
             self._enqueue_task_async(task_name, args, kwargs, **options),
-            timeout=30.0,
+            timeout=self._config.adapter_config.operation_timeout,
         )
 
     async def _enqueue_task_async(
@@ -413,7 +420,10 @@ class TaskiqTaskProcessorAdapter(TaskProcessorAdapter):
 
     def get_task_status_sync(self, task_id: str) -> TaskResult:
         """Retrieve the current status of a task from the result backend."""
-        return self._run_async(self._get_task_status_async(task_id), timeout=30.0)
+        return self._run_async(
+            self._get_task_status_async(task_id),
+            timeout=self._config.adapter_config.operation_timeout,
+        )
 
     async def _get_task_status_async(self, task_id: str) -> TaskResult:
         if self._result_backend is None:
