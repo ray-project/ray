@@ -785,15 +785,12 @@ def test_actor_inherits_job_runtime_env_with_working_dir_and_py_modules(
     @ray.remote
     class TestActor:
         def check_imports(self):
-            import sys
-
             # Both working_dir and py_modules should be in sys.path
             results = {
                 "can_import_from_working_dir": False,
                 "can_import_from_py_module": False,
                 "working_dir_value": None,
                 "py_module_value": None,
-                "sys_path": sys.path[:10],  # First 10 entries for debugging
             }
 
             try:
