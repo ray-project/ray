@@ -24,7 +24,7 @@ class BlockingProgressManager(BaseExecutionProgressManager):
 
     def start(self):
         self.operations_called.append("start")
-        time.sleep(999)  # Block forever
+        time.sleep(999)
 
     def refresh(self):
         self.operations_called.append("refresh")
@@ -104,7 +104,9 @@ class TestAsyncProgressManagerWrapperBehavior:
     def test_operations_are_non_blocking(self):
         """Test that all operations return immediately despite blocking manager."""
         blocking_manager = BlockingProgressManager()
-        wrapper = AsyncProgressManagerWrapper(blocking_manager, max_workers=1)
+        wrapper = AsyncProgressManagerWrapper(
+            blocking_manager, max_workers=1, shutdown_timeout=1
+        )
 
         # All operations should return immediately (not block for 999 seconds)
         start_time = time.time()
@@ -183,7 +185,9 @@ class TestAsyncProgressManagerWrapperBehavior:
     def test_bounded_queue_prevents_memory_leak(self):
         """Test that pending updates don't grow unbounded when I/O is blocked."""
         blocking_manager = BlockingProgressManager()
-        wrapper = AsyncProgressManagerWrapper(blocking_manager, max_workers=1)
+        wrapper = AsyncProgressManagerWrapper(
+            blocking_manager, max_workers=1, shutdown_timeout=1
+        )
 
         # Submit many rapid updates of DIFFERENT operations while worker is blocked
         mock_opstate = MagicMock()
@@ -212,7 +216,9 @@ class TestAsyncProgressManagerWrapperBehavior:
     def test_replaces_old_updates_with_new_ones(self):
         """Test that old pending updates are replaced by newer ones."""
         blocking_manager = BlockingProgressManager()
-        wrapper = AsyncProgressManagerWrapper(blocking_manager, max_workers=1)
+        wrapper = AsyncProgressManagerWrapper(
+            blocking_manager, max_workers=1, shutdown_timeout=1
+        )
 
         # Submit first update
         wrapper.update_total_progress(10, 100)
