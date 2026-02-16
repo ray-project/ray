@@ -22,8 +22,11 @@ set -euo pipefail
 
 set -x
 
-uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
-
 ./ci/env/install-hdfs.sh
+
+# Install HEBO for testing
+pip install HEBO==0.3.5
+
+uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
 EOF
