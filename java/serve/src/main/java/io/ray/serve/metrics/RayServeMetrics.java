@@ -29,8 +29,13 @@ public enum RayServeMetrics {
   SERVE_DEPLOYMENT_PROCESSING_LATENCY_MS(
       "serve_deployment_processing_latency_ms", "The latency for queries to be processed."),
 
-  SERVE_REPLICA_PROCESSING_QUERIES(
-      "serve_replica_processing_queries", "The current number of queries being processed."),
+  SERVE_REPLICA_NUM_ONGOING_REQUESTS(
+      "serve_replica_num_ongoing_requests", "The current number of queries being processed."),
+
+  // Deprecated: Remove in Ray 3.0.
+  SERVE_REPLICA_PROCESSING_QUERIES_DEPRECATED(
+      "serve_replica_processing_queries",
+      "(Deprecated, use serve_replica_num_ongoing_requests) The current number of queries being processed."),
   ;
 
   public static final String TAG_HANDLE = "handle";

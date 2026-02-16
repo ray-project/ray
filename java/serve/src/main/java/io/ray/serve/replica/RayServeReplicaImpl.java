@@ -142,8 +142,27 @@ public class RayServeReplicaImpl implements RayServeReplica {
         () ->
             numProcessingItems =
                 Metrics.gauge()
-                    .name(RayServeMetrics.SERVE_REPLICA_PROCESSING_QUERIES.getName())
-                    .description(RayServeMetrics.SERVE_REPLICA_PROCESSING_QUERIES.getDescription())
+                    .name(RayServeMetrics.SERVE_REPLICA_NUM_ONGOING_REQUESTS.getName())
+                    .description(
+                        RayServeMetrics.SERVE_REPLICA_NUM_ONGOING_REQUESTS.getDescription())
+                    .unit("")
+                    .tags(
+                        ImmutableMap.of(
+                            RayServeMetrics.TAG_DEPLOYMENT,
+                            deploymentName,
+                            RayServeMetrics.TAG_REPLICA,
+                            replicaTag))
+                    .register());
+
+    // Deprecated: Remove in Ray 3.0.
+    RayServeMetrics.execute(
+        () ->
+            numProcessingItems =
+                Metrics.gauge()
+                    .name(RayServeMetrics.SERVE_REPLICA_PROCESSING_QUERIES_DEPRECATED.getName())
+                    .description(
+                        RayServeMetrics.SERVE_REPLICA_PROCESSING_QUERIES_DEPRECATED
+                            .getDescription())
                     .unit("")
                     .tags(
                         ImmutableMap.of(
