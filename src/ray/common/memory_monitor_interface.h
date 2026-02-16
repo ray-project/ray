@@ -21,6 +21,7 @@
 #include <ostream>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/util/compat.h"
 
 namespace ray {
 

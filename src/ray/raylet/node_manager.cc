@@ -3033,16 +3033,13 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
 // if the memory usage is above the threshold. Allows one in-flight
 // process kill at a time as killing a process could sometimes take
 // seconds.
-// TODO(clarng): potentially kill more aggressively by measuring the
-// memory usage of each process and kill enough processes to put it
-// below the memory threshold.
 KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
   return [this](const SystemMemorySnapshot &system_memory_snapshot) {
     io_service_.post(
         [this, system_memory = system_memory_snapshot]() {
           if (worker_being_killed_ != nullptr) {
             // If the worker previously being killed has not died yet, wait until it is
-            // killed, before selecting a new worker to kill to prevent double killing.
+            // killed before selecting a new worker to prevent double killing.
             if (worker_being_killed_->GetProcess().IsAlive()) {
               RAY_LOG_EVERY_MS(INFO, 1000)
                       .WithField(worker_being_killed_->GetGrantedLeaseId())

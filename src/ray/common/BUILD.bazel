@@ -102,6 +102,7 @@ ray_cc_library(
         "//src/ray/raylet:__subpackages__",
     ],
     deps = [
+        "//src/ray/util:compat",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
