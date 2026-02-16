@@ -49,8 +49,6 @@ class ObjectManagerTest : public ::testing::Test {
     config_.timer_freq_ms = RayConfig::instance().object_manager_timer_freq_ms();
     config_.pull_timeout_ms = RayConfig::instance().object_manager_pull_timeout_ms();
     config_.object_chunk_size = RayConfig::instance().object_manager_default_chunk_size();
-    config_.max_bytes_in_flight =
-        RayConfig::instance().object_manager_max_bytes_in_flight();
     config_.store_socket_name = "test_store_socket";
     config_.push_timeout_ms = RayConfig::instance().object_manager_push_timeout_ms();
     config_.rpc_service_threads_number = 1;

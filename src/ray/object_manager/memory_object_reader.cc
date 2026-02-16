@@ -52,4 +52,12 @@ bool MemoryObjectReader::ReadFromMetadataSection(uint64_t offset,
   return true;
 }
 
+const uint8_t *MemoryObjectReader::GetContiguousBuffer(
+    std::shared_ptr<Buffer> *buffer_ref) const {
+  // Plasma allocates data + metadata contiguously, so we can return a single
+  // pointer covering both regions. The data shared_ptr keeps the buffer alive.
+  *buffer_ref = object_buffer_.data;
+  return object_buffer_.data->Data();
+}
+
 }  // namespace ray

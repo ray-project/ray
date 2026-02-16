@@ -127,7 +127,8 @@ class ObjectBufferPool {
                   uint64_t data_size,
                   uint64_t metadata_size,
                   uint64_t chunk_index,
-                  const std::string &data) ABSL_LOCKS_EXCLUDED(pool_mutex_);
+                  const uint8_t *data,
+                  size_t data_len) ABSL_LOCKS_EXCLUDED(pool_mutex_);
 
   /// Free a list of objects from object store.
   ///

@@ -34,8 +34,9 @@ message PushRequest {
   uint64 data_size = 6;
   // The metadata size.
   uint64 metadata_size = 7;
-  // The chunk data
-  bytes data = 8;
+  // Chunk data is sent as raw bytes after the serialized header in the
+  // ByteBuffer wire format, not as a protobuf field. This avoids copies
+  // into/out of protobuf strings.
 }
 
 message PullRequest {

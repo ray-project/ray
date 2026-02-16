@@ -121,7 +121,8 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
                                   uint64_t data_size,
                                   uint64_t metadata_size,
                                   const uint64_t chunk_index,
-                                  const std::string &data) {
+                                  const uint8_t *data,
+                                  size_t data_len) {
   std::optional<ObjectBufferPool::ChunkInfo> chunk_info;
   {
     absl::MutexLock lock(&pool_mutex_);
@@ -141,8 +142,8 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
     RAY_CHECK(it->second.chunk_info_.size() > chunk_index);
 
     chunk_info = it->second.chunk_info_.at(chunk_index);
-    RAY_CHECK(data.size() == chunk_info->buffer_length_)
-        << "size mismatch!  data size: " << data.size()
+    RAY_CHECK(data_len == chunk_info->buffer_length_)
+        << "size mismatch!  data size: " << data_len
         << " chunk size: " << chunk_info->buffer_length_;
 
     // Update the state from REFERENCED To SEALED before releasing the lock to ensure
@@ -156,7 +157,7 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
   RAY_CHECK(chunk_info.has_value()) << "chunk_info is not set";
   // The num_inflight_copies is used to ensure that another thread cannot call Release
   // on the object_id, which makes the unguarded copy call safe.
-  std::memcpy(chunk_info->data_, data.data(), chunk_info->buffer_length_);
+  std::memcpy(chunk_info->data_, data, chunk_info->buffer_length_);
 
   {
     // Ensure the process of object_id Seal and Release is mutex guarded.

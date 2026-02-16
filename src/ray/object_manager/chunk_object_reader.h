@@ -15,11 +15,20 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 
+#include "ray/common/buffer.h"
 #include "ray/object_manager/object_reader.h"
 
 namespace ray {
+
+/// A zero-copy reference to a chunk of an object in memory.
+struct ChunkRef {
+  const uint8_t *data;
+  size_t size;
+  std::shared_ptr<Buffer> buffer_ref;
+};
 
 /// Read object in chunks.
 class ChunkObjectReader {
@@ -38,6 +47,11 @@ class ChunkObjectReader {
   /// \param chunk_index the index of chunk to return. index greater or
   ///                    equal to GetNumChunks() yields undefined behavior.
   std::optional<std::string> GetChunk(uint64_t chunk_index) const;
+
+  /// Return a zero-copy reference to a chunk's data.
+  /// Returns nullopt if the underlying reader doesn't support zero-copy
+  /// (e.g. spilled objects read from disk).
+  std::optional<ChunkRef> GetChunkRef(uint64_t chunk_index) const;
 
   const IObjectReader &GetObject() const { return *object_; }
 
