@@ -14,6 +14,7 @@
 
 #include "ray/core_worker/task_submission/sequential_actor_submit_queue.h"
 
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -25,15 +26,15 @@ void SequentialActorSubmitQueue::Emplace(const std::string &concurrency_group,
                                          uint64_t sequence_no,
                                          const TaskSpecification &spec) {
   if (spec.IsRetry()) {
-    RAY_CHECK(retry_requests_per_group_[concurrency_group]
-                  .emplace(sequence_no,
-                           std::make_pair(spec, /*dependency_resolved*/ false))
-                  .second);
+    RAY_CHECK(
+        retry_requests_per_group_[concurrency_group]
+            .emplace(sequence_no, std::make_pair(spec, /*dependency_resolved*/ false))
+            .second);
   } else {
-    RAY_CHECK(requests_per_group_[concurrency_group]
-                  .emplace(sequence_no,
-                           std::make_pair(spec, /*dependency_resolved*/ false))
-                  .second);
+    RAY_CHECK(
+        requests_per_group_[concurrency_group]
+            .emplace(sequence_no, std::make_pair(spec, /*dependency_resolved*/ false))
+            .second);
   }
 }
 

@@ -42,8 +42,7 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
                uint64_t position,
                const TaskSpecification &spec) override;
   /// If a task exists.
-  bool Contains(const std::string &concurrency_group,
-                uint64_t position) const override;
+  bool Contains(const std::string &concurrency_group, uint64_t position) const override;
   /// If the task's dependencies were resolved.
   bool DependenciesResolved(const std::string &concurrency_group,
                             uint64_t position) const override;
@@ -56,8 +55,7 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
   // Mark a task has been canceled.
   // If a task hasn't been sent yet, this API will guarantee a task won't be
   // popped via PopNextTaskToSend.
-  void MarkTaskCanceled(const std::string &concurrency_group,
-                        uint64_t position) override;
+  void MarkTaskCanceled(const std::string &concurrency_group, uint64_t position) override;
   /// Clear the queue and returns all tasks ids that haven't been sent yet.
   std::vector<TaskID> ClearAllTasks() override;
   /// Find next task to send.

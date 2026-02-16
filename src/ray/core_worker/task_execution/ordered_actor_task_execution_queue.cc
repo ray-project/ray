@@ -113,40 +113,40 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.AsyncWait(
-        dependencies, [this, seq_no, is_retry, retry_task, group]() mutable {
-          TaskToExecute *ready_task = nullptr;
-          if (is_retry) {
-            // retry_task is guaranteed to be a valid pointer for retries because it
-            // won't be erased from the retry list until its dependencies are fetched and
-            // ExecuteRequest happens.
-            ready_task = retry_task;
-          } else {
-            auto group_it = group_states_.find(group);
-            if (group_it != group_states_.end()) {
-              auto it = group_it->second.pending_tasks.find(seq_no);
-              if (it != group_it->second.pending_tasks.end()) {
-                // For non-retry tasks, we need to check if the task is still in the map
-                // because it can be erased due to being canceled via a higher
-                // `client_processed_up_to`.
-                ready_task = &it->second;
-              }
-            }
-          }
+    waiter_.AsyncWait(dependencies,
+                      [this, seq_no, is_retry, retry_task, group]() mutable {
+                        TaskToExecute *ready_task = nullptr;
+                        if (is_retry) {
+                          // retry_task is guaranteed to be a valid pointer for retries
+                          // because it won't be erased from the retry list until its
+                          // dependencies are fetched and ExecuteRequest happens.
+                          ready_task = retry_task;
+                        } else {
+                          auto group_it = group_states_.find(group);
+                          if (group_it != group_states_.end()) {
+                            auto it = group_it->second.pending_tasks.find(seq_no);
+                            if (it != group_it->second.pending_tasks.end()) {
+                              // For non-retry tasks, we need to check if the task is
+                              // still in the map because it can be erased due to being
+                              // canceled via a higher `client_processed_up_to`.
+                              ready_task = &it->second;
+                            }
+                          }
+                        }
 
-          if (ready_task != nullptr) {
-            const auto &ready_task_spec = ready_task->TaskSpec();
-            RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-                ready_task_spec.TaskId(),
-                ready_task_spec.JobId(),
-                ready_task_spec.AttemptNumber(),
-                ready_task_spec,
-                rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
-                /* include_task_info */ false));
-            ready_task->MarkDependenciesResolved();
-            ExecuteQueuedTasks();
-          }
-        });
+                        if (ready_task != nullptr) {
+                          const auto &ready_task_spec = ready_task->TaskSpec();
+                          RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+                              ready_task_spec.TaskId(),
+                              ready_task_spec.JobId(),
+                              ready_task_spec.AttemptNumber(),
+                              ready_task_spec,
+                              rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+                              /* include_task_info */ false));
+                          ready_task->MarkDependenciesResolved();
+                          ExecuteQueuedTasks();
+                        }
+                      });
   } else {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),

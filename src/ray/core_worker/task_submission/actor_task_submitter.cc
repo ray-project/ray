@@ -190,8 +190,7 @@ void ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       // this sequence number.
       send_pos = task_spec.ConcurrencyGroupSequenceNumber();
       auto concurrency_group = task_spec.ConcurrencyGroupName();
-      queue->second.actor_submit_queue_->Emplace(
-          concurrency_group, send_pos, task_spec);
+      queue->second.actor_submit_queue_->Emplace(concurrency_group, send_pos, task_spec);
       queue->second.cur_pending_calls_++;
       task_queued = true;
     }
@@ -992,7 +991,8 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
       return;
     }
 
-    task_queued = queue->second.actor_submit_queue_->Contains(concurrency_group, send_pos);
+    task_queued =
+        queue->second.actor_submit_queue_->Contains(concurrency_group, send_pos);
     if (task_queued) {
       RAY_LOG(DEBUG).WithField(task_id)
           << "Task was queued. Mark a task is canceled from a queue.";
