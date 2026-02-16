@@ -1,5 +1,4 @@
 import os
-import shutil
 
 import pandas as pd
 import pyarrow as pa
@@ -64,84 +63,10 @@ def test_csv_read(
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
 
-    # Directory, two files.
-    path = os.path.join(tmp_path, "test_csv_dir")
-    os.mkdir(path)
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(path, "data0.csv")
-    df1.to_csv(path1, index=False)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(path, "data1.csv")
-    df2.to_csv(path2, index=False)
-    ds = ray.data.read_csv(path, partitioning=None)
-    df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
-    pd.testing.assert_frame_equal(df, dsdf)
-    shutil.rmtree(path)
 
-    # Two directories, three files.
-    path1 = os.path.join(tmp_path, "test_csv_dir1")
-    path2 = os.path.join(tmp_path, "test_csv_dir2")
-    os.mkdir(path1)
-    os.mkdir(path2)
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    file_path1 = os.path.join(path1, "data0.csv")
-    df1.to_csv(file_path1, index=False)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    file_path2 = os.path.join(path2, "data1.csv")
-    df2.to_csv(file_path2, index=False)
-    df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
-    file_path3 = os.path.join(path2, "data2.csv")
-    df3.to_csv(file_path3, index=False)
-    ds = ray.data.read_csv([path1, path2], partitioning=None)
-    df = pd.concat([df1, df2, df3], ignore_index=True)
-    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
-    assert df.equals(dsdf)
-    shutil.rmtree(path1)
-    shutil.rmtree(path2)
-
-    # Directory and file, two files.
-    dir_path = os.path.join(tmp_path, "test_csv_dir")
-    os.mkdir(dir_path)
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(dir_path, "data0.csv")
-    df1.to_csv(path1, index=False)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(tmp_path, "data1.csv")
-    df2.to_csv(path2, index=False)
-    ds = ray.data.read_csv([dir_path, path2], partitioning=None)
-    df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
-    assert df.equals(dsdf)
-    shutil.rmtree(dir_path)
-
-    # Directory, two files and non-csv file (test extension-based path filtering).
-    path = os.path.join(tmp_path, "test_csv_dir")
-    os.mkdir(path)
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(path, "data0.csv")
-    df1.to_csv(path1, index=False)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(path, "data1.csv")
-    df2.to_csv(path2, index=False)
-
-    # Add a file with a non-matching file extension. This file should be ignored.
-    df_txt = pd.DataFrame({"foobar": [1, 2, 3]})
-    df_txt.to_json(
-        os.path.join(path, "foo.txt"),
-    )
-
-    ds = ray.data.read_csv(
-        path,
-        file_extensions=["csv"],
-        partitioning=None,
-    )
-    df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
-    assert df.equals(dsdf)
-    shutil.rmtree(path)
-
-
+# TODO(test-refactor): This is a stress test for parallel file metadata
+# fetching with many files in a single directory. Should be moved to
+# test_file_based_datasource.py after PR #60993 merges.
 def test_csv_read_many_files_basic(ray_start_regular_shared, tmp_path):
     paths = []
     dfs = []
@@ -159,6 +84,9 @@ def test_csv_read_many_files_basic(ray_start_regular_shared, tmp_path):
     pd.testing.assert_frame_equal(df, dsdf)
 
 
+# TODO(test-refactor): This tests generic file discovery across multiple
+# directories with many files. Should be moved to test_file_based_datasource.py
+# after PR #60993 merges, as this behavior is format-agnostic.
 def test_csv_read_many_files_diff_dirs(
     ray_start_regular_shared,
     tmp_path,
@@ -221,45 +149,25 @@ def test_csv_roundtrip(
         assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
-def test_csv_read_filter_non_csv_file(ray_start_regular_shared, tmp_path):
+def test_csv_read_invalid_format(ray_start_regular_shared, tmp_path):
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
 
-    # CSV file with .csv extension.
-    path1 = os.path.join(tmp_path, "test2.csv")
-    df.to_csv(path1, index=False)
+    # Setup: CSV and Parquet files in the same directory.
+    csv_path = os.path.join(tmp_path, "test.csv")
+    df.to_csv(csv_path, index=False)
 
-    # CSV file without .csv extension.
-    path2 = os.path.join(tmp_path, "test3")
-    df.to_csv(path2, index=False)
-
-    # Directory of CSV files.
-    ds = ray.data.read_csv(tmp_path)
-    actual_data = sorted(ds.to_pandas().itertuples(index=False))
-    expected_data = sorted(pd.concat([df, df]).itertuples(index=False))
-    assert actual_data == expected_data, (actual_data, expected_data)
-
-    # Non-CSV file in Parquet format.
     table = pa.Table.from_pandas(df)
-    path3 = os.path.join(tmp_path, "test1.parquet")
-    pq.write_table(table, path3)
+    parquet_path = os.path.join(tmp_path, "test.parquet")
+    pq.write_table(table, parquet_path)
 
-    # Single non-CSV file.
+    # Test 1: CSV parser should fail on Parquet file.
     error_message = "Failed to read CSV file"
     with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path3).materialize()
+        ray.data.read_csv(parquet_path).materialize()
 
-    # Single CSV file without extension.
-    ds = ray.data.read_csv(path2)
-    assert ds.to_pandas().equals(df)
-
-    # Directory of CSV and non-CSV files.
-    error_message = "Failed to read CSV file"
+    # Test 2: CSV parser should fail when directory contains non-CSV files.
     with pytest.raises(ValueError, match=error_message):
         ray.data.read_csv(tmp_path).materialize()
-
-    # Directory of CSV and non-CSV files with filter.
-    ds = ray.data.read_csv(tmp_path, file_extensions=["csv"])
-    assert ds.to_pandas().equals(df)
 
 
 def test_csv_read_no_header(ray_start_regular_shared, tmp_path):
@@ -326,6 +234,9 @@ def test_csv_invalid_file_handler(
     )
 
 
+# TODO(test-refactor): This tests a generic write parameter (min_rows_per_file)
+# that works identically across all formats. Should be moved to
+# test_file_based_datasource.py after PR #60993 merges.
 @pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
 def test_write_min_rows_per_file(
     tmp_path,
