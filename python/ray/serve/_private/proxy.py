@@ -832,7 +832,7 @@ class gRPCProxy(GenericProxy):
         if session_id in self._streaming_sessions:
             _, cancel_event = self._streaming_sessions[session_id]
             cancel_event.set()
-            del self._streaming_sessions[session_id]
+            self._streaming_sessions.pop(session_id)
 
     async def send_request_to_replica(
         self,
@@ -1663,8 +1663,8 @@ class ProxyActor(ProxyActorInterface):
             - has_more: True if there are more messages, False if stream is done.
             - message: The protobuf message object, or None if stream is done.
             - is_cancelled: True if the stream was cancelled by client or error.
-
-        Raises `KeyError` if the session ID is not found.
+              Also returned when the session ID is not found (e.g., after
+              cleanup due to timeout, error, or completion).
         """
         if self.grpc_proxy is None:
             raise RuntimeError("gRPC proxy is not enabled.")

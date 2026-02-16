@@ -1358,8 +1358,10 @@ class ReplicaBase(ABC):
 
         return request_args, request_kwargs, ray_trace_ctx
 
-    def _get_proxy_actor(self, proxy_actor_name: str) -> ray.actor.ActorHandle:
-        """Get proxy actor handle, using cache to avoid repeated lookups."""
+    def _get_or_create_proxy_actor(
+        self, proxy_actor_name: str
+    ) -> ray.actor.ActorHandle:
+        """Get proxy actor handle from cache, or look it up and cache it."""
         if proxy_actor_name not in self._proxy_actor_cache:
             self._proxy_actor_cache[proxy_actor_name] = ray.get_actor(
                 proxy_actor_name, namespace=SERVE_NAMESPACE
@@ -1377,7 +1379,9 @@ class ReplicaBase(ABC):
         allowing the user method to iterate over incoming request messages.
         """
         # Get the proxy actor handle for receiving messages (cached)
-        proxy_actor = self._get_proxy_actor(streaming_request.proxy_actor_name)
+        proxy_actor = self._get_or_create_proxy_actor(
+            streaming_request.proxy_actor_name
+        )
 
         # Create a cancel event that will be set when the client cancels
         cancel_event = asyncio.Event()
