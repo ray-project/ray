@@ -362,7 +362,7 @@ async def test_choose_replica_and_dispatch_single(serve_instance):
                 assert selection.replica_id is not None
                 assert selection.node_ip is not None
 
-                # Dispatch to the selected replica with same arguments
+                # Dispatch to the selected replica
                 response = await self.backend.process.dispatch(selection, request)
 
                 # Return both the selection and the response for verification
@@ -371,7 +371,7 @@ async def test_choose_replica_and_dispatch_single(serve_instance):
     h = serve.run(SimpleProxy.bind(Backend.bind()))
     result = await h.handle_request.remote("test_message")
 
-    # Verify the result contains a replica_id and the message
+    # Verify the result contains the message
     assert result["response"] == "test_message"
 
     # Verify that dispatch sent the request to the replica we selected
@@ -415,17 +415,16 @@ async def test_choose_replica_and_dispatch_parallel(serve_instance):
         async def handle_request(self, request: str):
             # Use AsyncExitStack to manage multiple context managers in parallel
             async with AsyncExitStack() as stack:
-                # Step 1: Select and RESERVE replicas from BOTH deployments in parallel
+                #  Select and RESERVE replicas from BOTH deployments in parallel
                 p_selection, d_selection = await asyncio.gather(
                     stack.enter_async_context(self.prefill.chat.choose_replica()),
                     stack.enter_async_context(self.decode.chat.choose_replica()),
                 )
 
-                # Step 2: Prepare requests with cross-deployment info
                 p_msg = f"prefill:{request}"
                 d_msg = f"decode:{request}"
 
-                # Step 3: Dispatch to both with the exchanged info
+                # Dispatch to both selected replicas
                 p_result, d_result = await asyncio.gather(
                     self.prefill.chat.dispatch(p_selection, p_msg),
                     self.decode.chat.dispatch(d_selection, d_msg),
