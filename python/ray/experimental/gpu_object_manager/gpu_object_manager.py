@@ -100,8 +100,23 @@ def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
 @PublicAPI(stability="alpha")
 def set_buffer_for_ref(ref: ObjectRef, buffers: List["torch.Tensor"]):
     """
-    After setting the buffer for a ref, the object will be fetched directly into the buffer when
-    you ray.get the object if possible.
+    Set buffers for an RDT ObjectRef to fetch tensors into when `ray.get` is called.
+
+    This is only supported by some transports (e.g., NIXL). If the transport
+    does not support this feature, the buffers are ignored, and a warning will be
+    logged.
+
+    Before receiving, Ray validates that the provided buffers match the metadata
+    of the tensors in the object (e.g., shape, dtype, device). If validation
+    fails, a `ValueError` is raised.
+
+    Note that this only applies for the first `ray.get` call on the ref. Subsequent
+    `ray.get` calls on the same ref will not use the buffers unless they are set again
+    after the first `ray.get` call.
+
+    Args:
+        ref: The ObjectRef to set the buffers for. The ref must be for an RDT object.
+        buffers: A list of tensors to be used as receive buffers.
     """
     gpu_object_manager = ray.worker.global_worker.gpu_object_manager
     gpu_object_manager.set_buffer_for_ref(ref, buffers)
@@ -504,6 +519,11 @@ class GPUObjectManager:
                 tensor_transport,
                 gpu_object_meta.buffers,
             )
+            # The buffers are only used for the first `ray.get` after the buffers are set.
+            with self._lock:
+                self._managed_gpu_object_metadata[
+                    obj_id
+                ] = self._managed_gpu_object_metadata[obj_id]._replace(buffers=None)
 
     def queue_or_trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
