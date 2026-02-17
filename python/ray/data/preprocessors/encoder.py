@@ -990,7 +990,7 @@ class LabelEncoder(SerializablePreprocessorBase):
                 "Invalid serialized LabelEncoder: missing required field 'label_column'."
             )
         if "_output_column" not in self.__dict__:
-            self._output_column = "encoded_" + self._label_column
+            self._output_column = self._label_column
 
     def __repr__(self):
         return f"{self.__class__.__name__}(label_column={self._label_column!r}, output_column={self._output_column!r})"
