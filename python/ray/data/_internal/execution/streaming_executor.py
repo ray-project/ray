@@ -183,7 +183,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     f"Execution plan of Dataset {self._dataset_id}: {dag.dag_str}"
                 )
 
-            logger.debug("Execution config: %s", self._options)
+            logger.debug("Execution Context: %s", self._data_context)
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology = build_streaming_topology(dag, self._options)
