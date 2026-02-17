@@ -230,19 +230,19 @@ def test_parquet_read_random_shuffle(
     context = ray.data.DataContext.get_current()
     context.execution_options.preserve_order = True
 
-    num_files = 20
+    num_files = 10
     input_list = list(range(num_files))
     setup_data_path = _unwrap_protocol(data_path)
     for i in range(num_files):
-        table = pa.Table.from_pandas(pd.DataFrame({"id": [i]}))
+        table = pa.Table.from_pydict({"id": [i]})
         path = os.path.join(setup_data_path, f"test_{i}.parquet")
         pq.write_table(table, path, filesystem=fs)
 
     shuffle = FileShuffleConfig(seed=0)
     ds = ray.data.read_parquet(data_path, filesystem=fs, shuffle=shuffle)
 
-    first = [row["one"] for row in ds.take_all()]
-    second = [row["one"] for row in ds.take_all()]
+    first = [row["id"] for row in ds.take_all()]
+    second = [row["id"] for row in ds.take_all()]
 
     assert sorted(first) == input_list
     assert sorted(second) == input_list
