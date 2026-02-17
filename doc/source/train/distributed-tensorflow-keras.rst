@@ -252,6 +252,8 @@ These concrete examples demonstrate how Ray Train appropriately saves checkpoint
         X = np.random.normal(0, 1, size=(n, 4))
         Y = np.random.uniform(0, 1, size=(n, 1))
 
+        dataset = tf.data.Dataset.from_tensor_slices((X, Y)).batch(20)
+
         strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
         with strategy.scope():
             # toy neural network : 1-layer
@@ -259,7 +261,7 @@ These concrete examples demonstrate how Ray Train appropriately saves checkpoint
             model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
         for epoch in range(config["num_epochs"]):
-            history = model.fit(X, Y, batch_size=20)
+            history = model.fit(dataset)
 
             with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                 model.save(os.path.join(temp_checkpoint_dir, "model.keras"))
@@ -304,6 +306,8 @@ Load checkpoints
         X = np.random.normal(0, 1, size=(n, 4))
         Y = np.random.uniform(0, 1, size=(n, 1))
 
+        dataset = tf.data.Dataset.from_tensor_slices((X, Y)).batch(20)
+
         strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
         with strategy.scope():
             # toy neural network : 1-layer
@@ -320,7 +324,7 @@ Load checkpoints
             model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
         for epoch in range(config["num_epochs"]):
-            history = model.fit(X, Y, batch_size=20)
+            history = model.fit(dataset)
 
             with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                 model.save(os.path.join(temp_checkpoint_dir, "model.keras"))

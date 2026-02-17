@@ -539,11 +539,9 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsAx(self):
-        from ax import Models
-        from ax.modelbridge.generation_strategy import (
-            GenerationStep,
-            GenerationStrategy,
-        )
+        from ax.adapter.registry import Generators
+        from ax.generation_strategy.generation_node import GenerationStep
+        from ax.generation_strategy.generation_strategy import GenerationStrategy
         from ax.service.ax_client import AxClient
 
         from ray.tune.search.ax import AxSearch
@@ -564,16 +562,9 @@ class SearchSpaceTest(unittest.TestCase):
         for k in ignore:
             config.pop(k)
 
-        # Legacy Ax versions (compatbile with Python 3.6)
-        # use `num_arms` instead
-        try:
-            generation_strategy = GenerationStrategy(
-                steps=[GenerationStep(model=Models.UNIFORM, num_arms=-1)]
-            )
-        except TypeError:
-            generation_strategy = GenerationStrategy(
-                steps=[GenerationStep(model=Models.UNIFORM, num_trials=-1)]
-            )
+        generation_strategy = GenerationStrategy(
+            steps=[GenerationStep(generator=Generators.UNIFORM, num_trials=-1)]
+        )
 
         client1 = AxClient(
             enforce_sequential_optimization=False,

@@ -96,11 +96,10 @@ class TensorflowTrainer(DataParallelTrainer):
                 model.compile(
                     optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
-            tf_dataset = dataset_shard.to_tf(
-                feature_columns="x",
-                label_columns="y",
-                batch_size=1
-            )
+            df = dataset_shard.to_pandas()
+            x = df["x"].values.astype("float32").reshape(-1, 1)
+            y = df["y"].values.astype("float32").reshape(-1, 1)
+            tf_dataset = tf.data.Dataset.from_tensor_slices((x, y)).batch(1)
             for epoch in range(config["num_epochs"]):
                 model.fit(tf_dataset)
 

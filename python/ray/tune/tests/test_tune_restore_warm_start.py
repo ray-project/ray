@@ -287,35 +287,19 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}
         )
 
-        from ax.modelbridge.generation_strategy import (
-            GenerationStep,
-            GenerationStrategy,
-        )
-        from ax.modelbridge.registry import Models
+        from ax.adapter.registry import Generators
+        from ax.generation_strategy.generation_node import GenerationStep
+        from ax.generation_strategy.generation_strategy import GenerationStrategy
 
-        # set generation strategy to sobol to ensure reproductibility
-        try:
-            # ax-platform>=0.2.0
-            gs = GenerationStrategy(
-                steps=[
-                    GenerationStep(
-                        model=Models.SOBOL,
-                        num_trials=-1,
-                        model_kwargs={"seed": 4321},
-                    ),
-                ]
-            )
-        except TypeError:
-            # ax-platform<0.2.0
-            gs = GenerationStrategy(
-                steps=[
-                    GenerationStep(
-                        model=Models.SOBOL,
-                        num_arms=-1,
-                        model_kwargs={"seed": 4321},
-                    ),
-                ]
-            )
+        gs = GenerationStrategy(
+            steps=[
+                GenerationStep(
+                    generator=Generators.SOBOL,
+                    num_trials=-1,
+                    model_kwargs={"seed": 4321},
+                ),
+            ]
+        )
 
         client = AxClient(random_seed=4321, generation_strategy=gs)
         client.create_experiment(parameters=space, objective_name="loss", minimize=True)

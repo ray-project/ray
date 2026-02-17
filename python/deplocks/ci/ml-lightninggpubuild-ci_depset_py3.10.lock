@@ -282,6 +282,7 @@ aiohttp==3.13.3 \
     #   aiohttp-cors
     #   fsspec
     #   ray
+    #   torch-geometric
 aiohttp-cors==0.7.0 \
     --hash=sha256:0451ba59fdf6909d0e2cd21e4c0a43752bc0703d33fc78ae94d9d9321710193e \
     --hash=sha256:4d39c6d7100fd9764ed1caf8cebf0eb01bf5e3f24e2e073fda6234bc48b19f5d
@@ -1382,6 +1383,7 @@ fsspec==2023.12.1 \
     #   pytorch-lightning
     #   ray
     #   torch
+    #   torch-geometric
     #   triad
 fugue==0.8.7 \
     --hash=sha256:4c56946de46083778cdd6ec5b91ac5d37a847164c80790771edc6832bb9a260d \
@@ -1861,6 +1863,7 @@ jinja2==3.1.6 \
     #   memray
     #   nbconvert
     #   torch
+    #   torch-geometric
 jmespath==1.0.1 ; python_full_version < '3.12' \
     --hash=sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980 \
     --hash=sha256:90261b206d6defd58fdd5e85f478bf633a2901798906be2ad389150c5c60edbe
@@ -3283,6 +3286,7 @@ numpy==2.2.6 \
     #   tensorflow-datasets
     #   tensorflow-probability
     #   tinyscaler
+    #   torch-geometric
     #   torchmetrics
     #   torchvision
     #   transformers
@@ -4076,6 +4080,7 @@ psutil==5.9.6 \
     #   deepspeed
     #   ipykernel
     #   tensorflow-datasets
+    #   torch-geometric
 ptyprocess==0.7.0 ; os_name != 'nt' or sys_platform != 'win32' \
     --hash=sha256:4b41f3967fce3af57cc7e94b888626c18bf37a083e3651ca8feeb66d492fef35 \
     --hash=sha256:5c5d0a3b48ceee0b48485e0c26037c0acd7d29765ca3fbb5cb3831d347423220
@@ -4486,6 +4491,7 @@ pyparsing==3.1.1 \
     #   configspace
     #   dm-control
     #   matplotlib
+    #   torch-geometric
 pyre-extensions==0.0.32 \
     --hash=sha256:5396715f14ea56c4d5fd0a88c57ca7e44faa468f905909edd7de4ad90ed85e55 \
     --hash=sha256:a63ba6883ab02f4b1a9f372ed4eb4a2f4c6f3d74879aa2725186fdfcfe3e5c68
@@ -4869,6 +4875,7 @@ requests==2.32.5 \
     #   ray
     #   tensorflow
     #   tensorflow-datasets
+    #   torch-geometric
     #   transformers
 restrictedpython==8.0 ; python_full_version < '3.12' \
     --hash=sha256:3af2312bc67e5fced887fb85b006c89861da72488128b155beea81eb6a0a9b24 \
@@ -5250,6 +5257,7 @@ scikit-learn==1.5.2 \
     #   ax-platform
     #   bayesian-optimization
     #   gpytorch
+    #   torch-geometric
 scipy==1.14.1 \
     --hash=sha256:0c2f95de3b04e26f5f3ad5bb05e74ba7f68b837133a4492414b3afd79dfe540e \
     --hash=sha256:1729560c906963fc8389f6aac023739ff3983e727b1a4d87696b7bf108316a79 \
@@ -5304,6 +5312,7 @@ scipy==1.14.1 \
     #   statsforecast
     #   statsmodels
     #   torch-cluster
+    #   torch-geometric
     #   torch-sparse
 send2trash==1.8.3 \
     --hash=sha256:0c31227e0bd08961c7665474a3d1ef7193929fedda4233843689baa056be46c9 \
@@ -5843,6 +5852,12 @@ torch-cluster==1.6.3+pt23cu121 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-gpu-requirements.txt
+torch-geometric==2.5.3 \
+    --hash=sha256:8277abfc12600b0e8047e0c3ea2d55cc43f08c1448e73e924de827c15d0b5f85 \
+    --hash=sha256:ad0761650c8fa56cdc46ee61c564fd4995f07f079965fe732b3a76d109fd3edc
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/dl-gpu-requirements.txt
 torch-optimizer==0.1.0 ; python_full_version < '3.12' \
     --hash=sha256:3f67b71838a23a149afa7b3e1d9d7d3fd7c83b5758c8f3744900de1584969cf5 \
     --hash=sha256:b7adaed38b66a5c5105a59b30a71c4ab7c9954baf0acabd969fee3dac954657d
@@ -5931,6 +5946,7 @@ tqdm==4.67.1 \
     #   pytorch-lightning
     #   statsforecast
     #   tensorflow-datasets
+    #   torch-geometric
     #   transformers
 traitlets==5.14.3 \
     --hash=sha256:9ed0579d3502c94b4b3732ac120375cda96f923114522847de4b3bb98b96b6b7 \
