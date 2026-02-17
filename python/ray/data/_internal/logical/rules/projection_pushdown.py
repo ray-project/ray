@@ -10,12 +10,11 @@ from ray.data._internal.logical.operators import Project
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnReferenceCollector,
     _ColumnSubstitutionVisitor,
-    _is_col_expr,
 )
 from ray.data.expressions import (
-    AliasExpr,
     ColumnExpr,
     Expr,
+    RenameExpr,
     StarExpr,
 )
 
@@ -52,7 +51,7 @@ def _analyze_upstream_project(
     """
     Analyze what the upstream project produces and identifies removed columns.
 
-    Example: Upstream exprs [col("x").alias("y")] → removed_by_renames = {"x"} if "x" not in output
+    Example: Upstream exprs [col("x")._rename("y")] → removed_by_renames = {"x"} if "x" not in output
     """
     output_column_names = {
         expr.name for expr in upstream_project.exprs if not isinstance(expr, StarExpr)
@@ -338,7 +337,8 @@ class ProjectionPushdown(Rule):
             # Check if it's a simple projection that could be pushed into
             # read as a whole
             is_projection = all(
-                _is_col_expr(expr) for expr in _filter_out_star(current_project.exprs)
+                isinstance(expr, (ColumnExpr, RenameExpr))
+                for expr in _filter_out_star(current_project.exprs)
             )
 
             if is_projection:
@@ -432,16 +432,15 @@ def _extract_input_columns_renaming_mapping(
 def _get_renaming_mapping(expr: Expr) -> Tuple[str, str]:
     assert _is_renaming_expr(expr)
 
-    alias: AliasExpr = expr
-
-    return alias.expr.name, alias.name
+    rename: RenameExpr = expr
+    return rename.expr.name, rename.name
 
 
 def _is_renaming_expr(expr: Expr) -> bool:
-    is_renaming = isinstance(expr, AliasExpr) and expr._is_rename
+    is_renaming = isinstance(expr, RenameExpr)
 
     assert not is_renaming or isinstance(
         expr.expr, ColumnExpr
-    ), f"Renaming expression expected to be of the shape alias(col('source'), 'target') (got {expr})"
+    ), f"Renaming expression expected to be of the shape rename(col('source'), 'target') (got {expr})"
 
     return is_renaming

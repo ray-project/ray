@@ -23,6 +23,7 @@ from ray.data.expressions import (
     LiteralExpr,
     MonotonicallyIncreasingIdExpr,
     Operation,
+    RenameExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
@@ -150,6 +151,12 @@ class _IcebergExpressionVisitor(
         self, expr: "AliasExpr"
     ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
         """Convert an aliased expression (just unwrap the alias)."""
+        return self.visit(expr.expr)
+
+    def visit_rename(
+        self, expr: "RenameExpr"
+    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+        """Convert a rename expression (just unwrap the rename)."""
         return self.visit(expr.expr)
 
     def visit_udf(

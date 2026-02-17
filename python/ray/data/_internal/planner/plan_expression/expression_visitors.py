@@ -1,4 +1,3 @@
-from dataclasses import replace
 from typing import Dict, List, TypeVar
 
 from ray.data.expressions import (
@@ -10,6 +9,7 @@ from ray.data.expressions import (
     LiteralExpr,
     MonotonicallyIncreasingIdExpr,
     Operation,
+    RenameExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
@@ -57,6 +57,10 @@ class _ExprVisitorBase(_ExprVisitor[None]):
         super().visit(expr.operand)
 
     def visit_alias(self, expr: "AliasExpr") -> None:
+        """Default implementation: recursively visit the inner expression."""
+        super().visit(expr.expr)
+
+    def visit_rename(self, expr: "RenameExpr") -> None:
         """Default implementation: recursively visit the inner expression."""
         super().visit(expr.expr)
 
@@ -124,6 +128,17 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
         """
         self.visit(expr.expr)
 
+    def visit_rename(self, expr: RenameExpr) -> None:
+        """Visit a rename expression and collect from its inner expression.
+
+        Args:
+            expr: The rename expression.
+
+        Returns:
+            None (only collects columns as a side effect).
+        """
+        self.visit(expr.expr)
+
 
 class _CallableClassUDFCollector(_ExprVisitorBase):
     """Visitor that collects all callable class UDFs from expression trees.
@@ -163,6 +178,10 @@ class _CallableClassUDFCollector(_ExprVisitorBase):
 
         # Continue visiting child expressions
         super().visit_udf(expr)
+
+    def visit_rename(self, expr: RenameExpr) -> None:
+        """Visit a rename expression (no UDFs to collect)."""
+        super().visit_rename(expr)
 
 
 class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
@@ -259,17 +278,24 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         """
         # We unalias returned expression to avoid nested aliasing
         visited = self.visit(expr.expr)._unalias()
-        # NOTE: We're carrying over all of the other aspects of the alias
-        #       only replacing inner expre
-        return replace(
-            expr,
-            expr=visited,
-            # Alias expression will remain a renaming one (ie replacing source column)
-            # so long as it's referencing another column (and not otherwise)
-            #
-            # TODO replace w/ standalone rename expr
-            _is_rename=expr._is_rename and _is_col_expr(visited),
-        )
+        return AliasExpr(data_type=visited.data_type, expr=visited, _name=expr.name)
+
+    def visit_rename(self, expr: RenameExpr) -> Expr:
+        """Visit a rename expression and rewrite its inner expression.
+
+        Args:
+            expr: The rename expression.
+
+        Returns:
+            A rename expression when it still targets a column, otherwise an alias.
+        """
+        # Unalias to avoid nested aliasing and preserve rename semantics when possible.
+        visited = self.visit(expr.expr)._unalias()
+        if isinstance(visited, ColumnExpr):
+            return RenameExpr(
+                data_type=visited.data_type, expr=visited, _name=expr.name
+            )
+        return AliasExpr(data_type=visited.data_type, expr=visited, _name=expr.name)
 
     def visit_download(self, expr: "Expr") -> Expr:
         """Visit a download expression (no rewriting needed).
@@ -305,12 +331,6 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
             The original expression.
         """
         return expr
-
-
-def _is_col_expr(expr: Expr) -> bool:
-    return isinstance(expr, ColumnExpr) or (
-        isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr)
-    )
 
 
 class _TreeReprVisitor(_ExprVisitor[str]):
@@ -401,9 +421,15 @@ class _TreeReprVisitor(_ExprVisitor[str]):
         )
 
     def visit_alias(self, expr: "AliasExpr") -> str:
-        rename_marker = " [rename]" if expr._is_rename else ""
         return self._make_tree_lines(
-            f"ALIAS({expr.name!r}){rename_marker}",
+            f"ALIAS({expr.name!r})",
+            children=[("", expr.expr)],
+            expr=expr,
+        )
+
+    def visit_rename(self, expr: "RenameExpr") -> str:
+        return self._make_tree_lines(
+            f"RENAME({expr.name!r})",
             children=[("", expr.expr)],
             expr=expr,
         )
@@ -502,6 +528,11 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
         """Visit an alias expression and return its inline representation."""
         inner_str = self.visit(expr.expr)
         return f"{inner_str}.alias({expr.name!r})"
+
+    def visit_rename(self, expr: "RenameExpr") -> str:
+        """Visit a rename expression and return its inline representation."""
+        inner_str = self.visit(expr.expr)
+        return f"{inner_str}.rename({expr.name!r})"
 
     def visit_udf(self, expr: "UDFExpr") -> str:
         """Visit a UDF expression and return its inline representation."""
