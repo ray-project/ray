@@ -891,7 +891,7 @@ class _ActorPool(AutoscalingActorPool):
         initial_size: int,
         max_actor_concurrency: int,
         max_tasks_in_flight_per_actor: int,
-        map_worker_cls_name: str,
+        map_worker_cls_name: str = "MapWorker",
         _enable_actor_pool_on_exit_hook: bool = False,
     ):
         """Initialize the actor pool.
