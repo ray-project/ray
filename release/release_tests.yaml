@@ -1979,28 +1979,228 @@
 # RLlib tests #
 ###############
 
-# -----------------
-# RLlib - APPO test
-# -----------------
-- name: rllib_learning_tests_pong_appo_torch
+# --------------------------
+# APPO
+#
+# | APPO (12 total tests)          |         |                Number of Learners (Device)                                                      |
+# | Environment                    | Success | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) Single Node | Multi (GPU) Multi Node |
+# |--------------------------------|---------|-------------|-----------------|--------------|-------------------------|------------------------|
+# | (SA/D) Cartpole                | 450     | ✅          | ✅              | ❌            | ❌                      | ❌                     |
+# | (SA/D/LSTM) Stateless Cartpole | 350     | ✅          | ❌              | ✅            | ❌                      | ❌                     |
+# | (MA/D) TicTacToe               | -0.5    | ✅          | ✅              | ❌            | ✅                      | ❌                     |
+# | (SA/D) Atari (Pong)            | 18      | ❌          | ❌              | ❌            | ✅                      | ✅                     |
+# | (MA/D) Footsies                | 7       | ❌          | ❌              | ✅            | ❌                      | ✅                     |
+# | (SA/C) IsaacLab (Humanoid)     | ??      | ❌          | ✅ (with 1 GPU) | ⚠️            | ❌                      | ❌                     |
+#
+# --------------------------
+
+- name: rllib_appo_cartpole_local
   python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
-  frequency: nightly
+  frequency: nightly-3x
+  team: rllib
+
+  cluster:
+    byod:
+      post_build_script: byod_rllib.sh
+    cluster_compute: cpu_single_node.yaml
+
+  run:
+    timeout: 3000  # 50 minutes; expected 1000 seconds (~16 minutes)
+    script: |
+      python example_algorithms/appo/cartpole_appo.py \
+        --as-release-test \
+        --num-aggregator-actors-per-learner=2 \
+        --num-env-runners=4 \
+        --num-learners=0
+
+- name: rllib_appo_cartpole_single_cpu
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly-3x
+  team: rllib
+
+  cluster:
+    byod:
+      post_build_script: byod_rllib.sh
+    cluster_compute: cpu_single_node.yaml
+
+  run:
+    timeout: 3000  # 50 minutes; expected 2000 seconds (~30 minutes)
+    script: |
+      python example_algorithms/appo/cartpole_appo.py \
+        --as-release-test \
+        --num-aggregator-actors-per-learner=2 \
+        --num-cpus-per-learner=1 \
+        --num-env-runners=4 \
+        --num-learners=1
+
+- name: rllib_appo_stateless_cartpole_local
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly-3x
+  team: rllib
+
+  cluster:
+    byod:
+      post_build_script: byod_rllib.sh
+    cluster_compute: cpu_single_node.yaml
+
+  run:
+    timeout: 3000  # 50 minutes; expected 2000 seconds (~30 minutes)
+    script: |
+      python example_algorithms/appo/stateless_cartpole_appo_with_lstm.py \
+        --as-release-test \
+        --num-aggregator-actors-per-learner=2 \
+        --num-env-runners=4 \
+        --num-learners=0
+
+- name: rllib_appo_stateless_cartpole_single_gpu
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly-3x
   team: rllib
 
   cluster:
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: 1gpu_16cpus.yaml
+    cluster_compute: single_gpu_single_node.yaml
 
   run:
-    timeout: 1500  # expected 1000 seconds
-    script: python example_algorithms/appo/pong_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
+    timeout: 3000  # 50 minutes; expected 2000 seconds (~30 minutes)
+    script: |
+      python example_algorithms/appo/stateless_cartpole_appo_with_lstm.py \
+        --as-release-test \
+        --num-aggregator-actors-per-learner=2 \
+        --num-env-runners=4 \
+        --num-gpus-per-learner=1 \
+        --num-learners=1
+
+- name: rllib_appo_tictactoe_local
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly-3x
+  team: rllib
+
+  cluster:
+    byod:
+      post_build_script: byod_rllib.sh
+    cluster_compute: cpu_single_node.yaml
+
+  run:
+    timeout: 3000  # 50 minutes; expected 2000 seconds (~30 minutes)
+    script: |
+      python example_algorithms/appo/tictactoe_appo.py \
+        --as-release-test \
+        --num-aggregator-actors-per-learner=2 \
+        --num-env-runners=4 \
+        --num-learners=0
+
+- name: rllib_appo_tictactoe_single_cpu
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly-3x
+  team: rllib
+
+  cluster:
+    byod:
+      post_build_script: byod_rllib.sh
+    cluster_compute: cpu_single_node.yaml
+
+  run:
+    timeout: 3000  # 50 minutes; expected 2000 seconds (~30 minutes)
+    script: |
+      python example_algorithms/appo/tictactoe_appo.py \
+        --as-release-test \
+        --num-aggregator-actors-per-learner=2 \
+        --num-cpus-per-learner=1 \
+        --num-env-runners=4 \
+        --num-learners=1
+
+- name: rllib_appo_tictactoe_multi_gpu_single_node
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly-3x
+  team: rllib
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+    cluster_compute: multi_gpu_single_node.yaml
+
+  run:
+    timeout: 3000  # 50 minutes; expected 2000 seconds (~30 minutes)
+    script: |
+      python example_algorithms/appo/tictactoe_appo.py \
+        --as-release-test \
+        --num-aggregator-actors-per-learner=2 \
+        --num-env-runners=8 \
+        --num-gpus-per-learner=1 \
+        --num-learners=2
+
+- name: rllib_appo_atari_multi_gpu_single_node
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly-3x
+  team: rllib
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+    cluster_compute: multi_gpu_single_node.yaml
+
+  run:
+    timeout: 3000  # 50 minutes; expected 2000 seconds (~30 minutes)
+    script: |
+      python example_algorithms/appo/atari_appo.py \
+        --as-release-test \
+        --num-aggregator-actors-per-learner=2 \
+        --num-env-runners=8 \
+        --num-gpus-per-learner=1 \
+        --num-learners=2
+
+- name: rllib_appo_atari_multi_gpu_multi_node
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly-3x
+  team: rllib
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+    cluster_compute: multi_gpu_multi_node.yaml
+
+  run:
+    timeout: 3000  # 50 minutes; expected 2000 seconds (~30 minutes)
+    script: |
+      python example_algorithms/appo/atari_appo.py \
+        --as-release-test \
+        --num-aggregator-actors-per-learner=2 \
+        --num-env-runners=8 \
+        --num-gpus-per-learner=1 \
+        --num-learners=2
 
 ########################
 # Core Nightly Tests
