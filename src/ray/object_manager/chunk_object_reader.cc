@@ -15,6 +15,7 @@
 #include "ray/object_manager/chunk_object_reader.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <utility>
 

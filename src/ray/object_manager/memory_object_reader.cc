@@ -14,6 +14,7 @@
 
 #include "ray/object_manager/memory_object_reader.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
