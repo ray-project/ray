@@ -140,6 +140,25 @@ class RouterMetricsManager:
         # so non-atomic read and write operations need to be guarded by
         # this thread-safe lock.
         self._queries_lock = threading.Lock()
+
+        # Track reserved slots for choose_replica operations
+        self._num_reserved_slots = 0
+        self._reserved_slots_gauge = metrics.Gauge(
+            "serve_reserved_slots_active",
+            description=(
+                "The current number of reserved slots for choose_replica operations."
+            ),
+            tag_keys=("deployment", "application", "handle", "actor_id"),
+        )
+        self._reserved_slots_gauge.set_default_tags(
+            {
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+                "handle": self._handle_id,
+                "actor_id": self._self_actor_id,
+            }
+        )
+        self._reserved_slots_gauge.set(0)
         # Regularly aggregate and push autoscaling metrics to controller
         self.metrics_pusher = MetricsPusher()
         self.metrics_store = InMemoryMetricsStore()
@@ -333,6 +352,14 @@ class RouterMetricsManager:
         self.num_queued_requests -= 1
         if not self._cached_metrics_enabled:
             self.num_queued_requests_gauge.set(self.num_queued_requests)
+
+    def inc_reserved_slots(self):
+        self._num_reserved_slots += 1
+        self._reserved_slots_gauge.set(self._num_reserved_slots)
+
+    def dec_reserved_slots(self):
+        self._num_reserved_slots -= 1
+        self._reserved_slots_gauge.set(self._num_reserved_slots)
 
     def inc_num_running_requests_for_replica(self, replica_id: ReplicaID):
         with self._queries_lock:
@@ -582,9 +609,6 @@ class AsyncioRouter:
         # Initializing `self._metrics_manager` before `self.long_poll_client` is
         # necessary to avoid race condition where `self.update_deployment_config()`
         # might be called before `self._metrics_manager` instance is created.
-        # Track reserved slots for choose_replica
-        self._num_reserved_slots = 0
-
         self._metrics_manager = RouterMetricsManager(
             deployment_id,
             handle_id,
@@ -614,24 +638,6 @@ class AsyncioRouter:
             ),
             event_loop,
         )
-
-        # Gauge for tracking reserved slots
-        self._reserved_slots_gauge = metrics.Gauge(
-            "serve_reserved_slots_active",
-            description=(
-                "The current number of reserved slots for choose_replica operations."
-            ),
-            tag_keys=("deployment", "application", "handle", "actor_id"),
-        )
-        self._reserved_slots_gauge.set_default_tags(
-            {
-                "deployment": deployment_id.name,
-                "application": deployment_id.app_name,
-                "handle": handle_id,
-                "actor_id": self_actor_id,
-            }
-        )
-        self._reserved_slots_gauge.set(0)
 
         # The Router needs to stay informed about changes to the target deployment's
         # running replicas and deployment config. We do this via the long poll system.
@@ -1032,8 +1038,7 @@ class AsyncioRouter:
             self.request_router.on_send_request(replica.replica_id)
 
             # Increment reserved slots metric
-            self._num_reserved_slots += 1
-            self._reserved_slots_gauge.set(self._num_reserved_slots)
+            self._metrics_manager.inc_reserved_slots()
 
             selection = ReplicaSelection(
                 replica_id=replica.replica_id.unique_id,
@@ -1059,8 +1064,7 @@ class AsyncioRouter:
                 self.request_router.on_replica_result_finished(replica.replica_id)
 
                 # Decrement reserved slots metric
-                self._num_reserved_slots -= 1
-                self._reserved_slots_gauge.set(self._num_reserved_slots)
+                self._metrics_manager.dec_reserved_slots()
 
     async def dispatch(
         self,
