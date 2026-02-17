@@ -16,14 +16,13 @@
 
 #include <boost/algorithm/string.hpp>
 #include <filesystem>
-#include <fstream>  // std::ifstream
+#include <fstream>
 #include <tuple>
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
-#include "ray/util/process.h"
 
 namespace ray {
 
