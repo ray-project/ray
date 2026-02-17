@@ -499,6 +499,15 @@ class GPUObjectManager:
             communicator_meta = tensor_transport_manager.get_communicator_metadata(
                 None, None, tensor_transport
             )
+
+            if gpu_object_meta.buffers:
+                # The buffers are only used for the first `ray.get` after the buffers are set. We clear
+                # them from the map here before receiving in case something below errors out.
+                with self._lock:
+                    self._managed_gpu_object_metadata[
+                        obj_id
+                    ] = self._managed_gpu_object_metadata[obj_id]._replace(buffers=None)
+
             tensor_transport_meta = gpu_object_meta.tensor_transport_meta
             if tensor_transport_meta is None:
                 # We can't fetch the object until we know the creator has actually created the object.
@@ -519,12 +528,6 @@ class GPUObjectManager:
                 tensor_transport,
                 gpu_object_meta.buffers,
             )
-            if gpu_object_meta.buffers:
-                # The buffers are only used for the first `ray.get` after the buffers are set.
-                with self._lock:
-                    self._managed_gpu_object_metadata[
-                        obj_id
-                    ] = self._managed_gpu_object_metadata[obj_id]._replace(buffers=None)
 
     def queue_or_trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
