@@ -270,19 +270,14 @@ async def test_callback_error_during_finish_is_suppressed():
 
 
 @pytest.mark.asyncio
-async def test_callback_error_during_shutdown_hook():
-    """A before_controller_shutdown callback failure is routed through the
-    failure decision pipeline.
-
-    Case 1 (Finished path): failure transitions to ErroredState.
-    Case 2 (Errored path): original training error is preserved.
-    """
+async def test_callback_error_during_shutdown_hook_on_finished_path():
+    """A before_controller_shutdown callback failure on the finished path
+    transitions to ErroredState with a ControllerError."""
 
     class FailingShutdownHookCallback(ControllerCallback):
         def before_controller_shutdown(self):
             raise ValueError("Intentional error in shutdown callback")
 
-    # --- Case 1: ShuttingDownState(FinishedState) → ErroredState ---
     controller, _, _ = await _create_controller_and_drive_to_running(
         callbacks=[FailingShutdownHookCallback()]
     )
@@ -295,7 +290,16 @@ async def test_callback_error_during_shutdown_hook():
     assert isinstance(controller.get_state(), ErroredState)
     assert isinstance(controller.get_state().training_failed_error, ControllerError)
 
-    # --- Case 2: ShuttingDownState(ErroredState) → preserves original error ---
+
+@pytest.mark.asyncio
+async def test_callback_error_during_shutdown_hook_on_errored_path():
+    """A before_controller_shutdown callback failure on the errored path
+    preserves the original training error."""
+
+    class FailingShutdownHookCallback(ControllerCallback):
+        def before_controller_shutdown(self):
+            raise ValueError("Intentional error in shutdown callback")
+
     controller, _, failure_policy = await _create_controller_and_drive_to_running(
         callbacks=[FailingShutdownHookCallback()]
     )
