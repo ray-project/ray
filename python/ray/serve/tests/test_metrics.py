@@ -922,7 +922,9 @@ def test_deployment_error_counter_exception_type(metrics_start_shutdown):
     assert httpx.get(url).status_code == 500
 
     def check_metric():
-        err_metrics = get_metric_dictionaries("ray_serve_deployment_error_counter_total")
+        err_metrics = get_metric_dictionaries(
+            "ray_serve_deployment_error_counter_total"
+        )
         value_error_metrics = [
             m for m in err_metrics if m.get("exception_type") == "ValueError"
         ]
