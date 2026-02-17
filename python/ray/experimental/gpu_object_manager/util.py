@@ -84,7 +84,7 @@ def register_tensor_transport(
         has_custom_transports = True
 
 
-DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC"]
+DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC", "JAX"]
 
 register_tensor_transport("NIXL", ["cuda", "cpu"], NixlTensorTransport)
 register_tensor_transport("GLOO", ["cpu"], GLOOTensorTransport)
