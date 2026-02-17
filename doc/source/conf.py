@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import pathlib
@@ -561,17 +562,35 @@ def process_signature(app, what, name, obj, options, signature, return_annotatio
         return signature.replace("<factory>", "..."), return_annotation
 
 
-# External tutorial archives to fetch during the Sphinx build.
-# Each entry is (url, src_path_in_archive, dest_path_relative_to_doc_source).
+# External tutorial templates to fetch during the Sphinx build.
+# Each entry is (template_name, src_path_in_archive, dest_path_relative_to_doc_source).
+# ``template_name`` is used to resolve the download URL from the template API.
 # ``src_path_in_archive`` is the path *inside* the extracted archive to copy from.
 # Set it to "" to copy the entire archive contents.
-EXTERNAL_TUTORIAL_ARCHIVES = [
+EXTERNAL_TUTORIAL_TEMPLATES = [
     (
-        "https://templates.ci.ray.io/templates/deployment-serve-llm/20260212-015212/build.zip",
+        "deployment-serve-llm",
         "",
         "serve/tutorials/deployment-serve-llm",
     ),
 ]
+
+_TEMPLATE_README_API = (
+    "https://console.anyscale-staging.com"
+    "/api/v2/experimental_workspaces/template/readme/{template_name}"
+)
+
+
+def _resolve_template_url(template_name):
+    """Fetch the download URL for *template_name* from the template API."""
+    api_url = _TEMPLATE_README_API.format(template_name=template_name)
+    logger.info("Resolving template URL for %s from %s", template_name, api_url)
+    req = urllib.request.Request(api_url)
+    with urllib.request.urlopen(req) as resp:
+        data = json.loads(resp.read())
+    url = data["result"]["url"]
+    logger.info("Resolved template %s -> %s", template_name, url)
+    return url
 
 
 def _fetch_external_tutorials(app):
@@ -582,8 +601,17 @@ def _fetch_external_tutorials(app):
     build via ``_cleanup_external_tutorials``.
     """
     base_path = pathlib.Path(app.srcdir)
-    for url, src_path, dest_path in EXTERNAL_TUTORIAL_ARCHIVES:
+    for template_name, src_path, dest_path in EXTERNAL_TUTORIAL_TEMPLATES:
         dest = base_path / dest_path
+        try:
+            url = _resolve_template_url(template_name)
+        except Exception:
+            logger.warning(
+                "Failed to resolve URL for template %s – skipping.",
+                template_name,
+                exc_info=True,
+            )
+            continue
         with tempfile.TemporaryDirectory() as tmp:
             archive_path = os.path.join(tmp, "archive.zip")
             extract_dir = os.path.join(tmp, "extracted")
@@ -607,7 +635,7 @@ def _fetch_external_tutorials(app):
 def _cleanup_external_tutorials(app, exception):
     """Remove fetched tutorial directories so the source tree stays clean."""
     base_path = pathlib.Path(app.srcdir)
-    for _url, _src_path, dest_path in EXTERNAL_TUTORIAL_ARCHIVES:
+    for _template_name, _src_path, dest_path in EXTERNAL_TUTORIAL_TEMPLATES:
         dest = base_path / dest_path
         if dest.exists():
             shutil.rmtree(dest)
