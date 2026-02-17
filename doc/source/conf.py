@@ -1,11 +1,14 @@
+import io
 import logging
 import os
 import pathlib
 import sys
+import zipfile
 from datetime import datetime
 from dataclasses import is_dataclass
 from importlib import import_module
 from typing import Any, Dict
+from urllib.request import urlopen
 
 import sphinx
 from docutils import nodes
@@ -72,7 +75,47 @@ extensions = [
     "sphinx_design",
     "sphinx.ext.intersphinx",
     "sphinx_docsearch",
+    "sphinx_collections",
 ]
+
+# -- sphinx-collections: pull external template files at build time -----------
+
+_TEMPLATE_COLLECTIONS = {
+    "deployment-serve-llm": {
+        "url": "https://templates.ci.ray.io/templates/deployment-serve-llm/20260212-015212/build.zip",
+        "target": "serve/tutorials/deployment-serve-llm",
+    },
+}
+
+
+def _fetch_and_extract_zip(config):
+    """Download a zip archive and extract it into the collection target directory."""
+    url = config["url"]
+    target = pathlib.Path(config["target"])
+    target.mkdir(parents=True, exist_ok=True)
+    logger.info("sphinx-collections: downloading %s -> %s", url, target)
+    with urlopen(url) as resp:
+        zip_bytes = io.BytesIO(resp.read())
+    with zipfile.ZipFile(zip_bytes) as zf:
+        zf.extractall(target)
+    logger.info("sphinx-collections: extracted %d files to %s", len(zf.namelist()), target)
+
+
+collections = {
+    name: {
+        "driver": "function",
+        "source": _fetch_and_extract_zip,
+        "target": coll["target"],
+        "url": coll["url"],
+        "write_result": False,
+    }
+    for name, coll in _TEMPLATE_COLLECTIONS.items()
+}
+
+# Don't wipe the target before build — other docs may co-exist in parent dirs.
+collections_clean = True
+# Clean up collected files after build so they don't get committed.
+collections_final_clean = True
 
 # Configuration for algolia
 # Note: This API key grants read access to our indexes and is intended to be public.
