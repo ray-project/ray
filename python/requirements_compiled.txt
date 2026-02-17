@@ -17,7 +17,9 @@ absl-py==1.4.0
     #   tensorflow-metadata
     #   tensorflow-probability
 accelerate==0.28.0
-    # via -r python/requirements/ml/core-requirements.txt
+    # via
+    #   -r python/requirements/ml/core-requirements.txt
+    #   -r python/requirements/ml/train-requirements.txt
 adagio==0.2.4
     # via
     #   fugue
