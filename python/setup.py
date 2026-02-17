@@ -307,6 +307,7 @@ if setup_spec.type == SetupType.RAY:
             setup_spec.extras["serve"]
             + [
                 "celery",
+                "taskiq",
             ]
         )
     )
