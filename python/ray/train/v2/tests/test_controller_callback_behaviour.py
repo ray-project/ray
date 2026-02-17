@@ -127,7 +127,6 @@ async def test_controller_callback_hooks_are_invoked():
         callbacks=[callback],
     )
 
-    controller._start()
     assert callback.start_called
 
     scaling_policy.queue_recovery_decision(
