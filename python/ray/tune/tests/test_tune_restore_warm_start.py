@@ -301,8 +301,13 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             ]
         )
 
+        from ax.service.utils.instantiation import ObjectiveProperties
+
         client = AxClient(random_seed=4321, generation_strategy=gs)
-        client.create_experiment(parameters=space, objective_name="loss", minimize=True)
+        client.create_experiment(
+            parameters=space,
+            objectives={"loss": ObjectiveProperties(minimize=True)},
+        )
 
         def cost(space):
             tune.report(

@@ -31,4 +31,16 @@ fi
 
 uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
+# Inject our own mirror for the CIFAR10 dataset
+SITE_PACKAGES=$(python -c 'from distutils.sysconfig import get_python_lib; print(get_python_lib())')
+
+TF_CIFAR="${SITE_PACKAGES}/tensorflow/python/keras/datasets/cifar10.py"
+TF_KERAS_CIFAR="${SITE_PACKAGES}/tf_keras/src/datasets/cifar10.py"
+TORCH_CIFAR="${SITE_PACKAGES}/torchvision/datasets/cifar.py"
+KERAS_CIFAR="${SITE_PACKAGES}/keras/src/datasets/cifar10.py"
+
+for f in "$TF_CIFAR" "$TF_KERAS_CIFAR" "$TORCH_CIFAR" "$KERAS_CIFAR"; do
+  [ -f "$f" ] && sed -i 's https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz https://air-example-data.s3.us-west-2.amazonaws.com/cifar-10-python.tar.gz g' "$f"
+done
+
 EOF
