@@ -302,7 +302,7 @@ class WorkerGroup(BaseWorkerGroup):
                     num_workers=worker_group_context.num_workers
                 )
             logger.debug(
-                "[Train Worker Initialization] Placement group ready in "
+                "[Worker Group Initialization] Placement group created in "
                 f"{time_monotonic() - pg_wait_start:.2f}s."
             )
 
