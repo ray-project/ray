@@ -889,6 +889,7 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         err_requests[0]["deployment"],
         err_requests[0]["application"],
     ) == expected_output
+    assert err_requests[0]["exception_type"] == "ZeroDivisionError"
 
     wait_for_condition(
         lambda: len(get_metric_dictionaries("ray_serve_deployment_replica_healthy"))
@@ -905,6 +906,34 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         (health_metric["deployment"], health_metric["application"])
         for health_metric in health_metrics
     } == expected_output
+
+
+def test_deployment_error_counter_exception_type(metrics_start_shutdown):
+    """Test that ray_serve_deployment_error_counter_total captures exception_type tag."""
+
+    @serve.deployment
+    def raises_value_error():
+        raise ValueError("intentional test error")
+
+    serve.run(
+        raises_value_error.bind(), name="value_error_app", route_prefix="/value_error"
+    )
+    url = get_application_url("HTTP", "value_error_app") + "/value_error"
+    assert httpx.get(url).status_code == 500
+
+    def check_metric():
+        err_metrics = get_metric_dictionaries(
+            "ray_serve_deployment_error_counter_total"
+        )
+        value_error_metrics = [
+            m for m in err_metrics if m.get("exception_type") == "ValueError"
+        ]
+        if len(value_error_metrics) == 1:
+            assert value_error_metrics[0]["exception_type"] == "ValueError"
+            return True
+        return False
+
+    wait_for_condition(check_metric, timeout=40)
 
 
 def test_queue_wait_time_metric(metrics_start_shutdown):
