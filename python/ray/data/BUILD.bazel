@@ -180,7 +180,7 @@ py_test(
 
 py_test(
     name = "test_mongo",
-    size = "large",
+    size = "medium",
     srcs = ["tests/datasource/test_mongo.py"],
     tags = [
         "data_integration",
@@ -195,7 +195,7 @@ py_test(
 
 py_test(
     name = "test_bigquery",
-    size = "large",
+    size = "small",
     srcs = ["tests/datasource/test_bigquery.py"],
     tags = [
         "data_integration",
@@ -238,7 +238,7 @@ py_test(
 
 py_test(
     name = "test_arrow_block",
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_arrow_block.py"],
     tags = [
         "data_non_parallel",
@@ -437,7 +437,7 @@ py_test(
 
 py_test(
     name = "test_join",
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_join.py"],
     tags = [
         "data_non_parallel",
@@ -720,7 +720,7 @@ py_test(
 
 py_test(
     name = "test_json",
-    size = "medium",
+    size = "small",
     srcs = ["tests/datasource/test_json.py"],
     tags = [
         "data_non_parallel",
@@ -735,7 +735,7 @@ py_test(
 
 py_test(
     name = "test_logging_dataset",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_logging_dataset.py"],
     tags = [
         "exclusive",
@@ -791,7 +791,7 @@ py_test(
 
 py_test(
     name = "test_with_column",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_with_column.py"],
     tags = [
         "exclusive",
@@ -1498,7 +1498,7 @@ py_test(
 
 py_test(
     name = "test_shuffle_diagnostics",
-    size = "enormous",
+    size = "large",
     srcs = ["tests/test_shuffle_diagnostics.py"],
     tags = [
         "data_non_parallel",
