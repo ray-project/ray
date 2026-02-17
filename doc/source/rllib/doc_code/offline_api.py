@@ -1,0 +1,958 @@
+# flake8: noqa
+# fmt: off
+
+import ray
+from ray.rllib.utils.test_utils import check_train_results_new_api_stack
+
+# __sphinx_doc_offline_api_1__begin__
+from ray import tune
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EVALUATION_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
+
+
+def quick_check(config):
+    """Some of the code examples don't train as part of the example, so we add a quick check to make sure the config builds and trains without errors."""
+    algo = config.copy().train(train_batch_size_per_learner=100).build()
+    results = algo.train()
+    check_train_results_new_api_stack(results)
+    algo.stop()
+
+
+# Path where we will store data for later offline training.
+data_path = "/tmp/docs_rllib_offline_recording"
+
+model_config = DefaultModelConfig(fcnet_hiddens=[32], fcnet_activation="linear", vf_share_layers=True)
+
+ppo_config = (
+    PPOConfig()
+    .environment("CartPole-v1")
+    .training(
+        lr=0.0003,
+        num_epochs=6,
+        vf_loss_coeff=0.01,
+    )
+    .rl_module(model_config=model_config)
+    .env_runners(
+        batch_mode="complete_episodes",
+    )
+    .evaluation(
+        evaluation_num_env_runners=5,
+        evaluation_duration=50,
+        evaluation_duration_unit="episodes",
+    )
+    .offline_data(
+        output=data_path,
+        output_write_episodes=True,
+        output_max_rows_per_file=25,
+    )
+)
+
+sampling_return = f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+
+tuner = tune.Tuner(
+    "PPO",
+    param_space=ppo_config,
+    run_config=tune.RunConfig(
+        stop={
+            sampling_return: 450.0,
+        },
+        name="docs_rllib_offline_pretrain_ppo",
+    ),
+)
+results = tuner.fit()
+
+best_checkpoint = (
+    results
+    .get_best_result(
+        metric=sampling_return,
+        mode="max"
+    )
+    .checkpoint.path
+)
+# __sphinx_doc_offline_api_1__end__
+
+
+# __sphinx_doc_offline_api_2__begin__
+from ray.rllib.core import COMPONENT_RL_MODULE
+# Ray data will write a parquet to this path
+data_path = "/tmp/docs_rllib_offline_recording"
+
+algo = ppo_config.build()
+# Load only the `RLModule` component here.
+algo.restore_from_path(
+    best_checkpoint,
+    component=COMPONENT_RL_MODULE,
+)
+
+# Record the data.
+for i in range(10):
+    eval_results = algo.evaluate()
+    print(eval_results)
+
+# Calling algo.stop() flushes the remaining episodes to disk (due to `output_max_rows_per_file`)
+algo.stop()
+# __sphinx_doc_offline_api_2__end__
+
+
+# __sphinx_doc_offline_api_3__begin__
+from ray.rllib.algorithms.bc import BCConfig
+# Setup the config for behavior cloning.
+bc_config = (
+    BCConfig()
+    .environment(
+        env="CartPole-v1",
+    )
+    .training(
+        train_batch_size_per_learner=1024,
+    )
+    .offline_data(
+        input_=[data_path],
+        input_read_episodes=True,
+        # You have to set this for single-learner setups.
+        dataset_num_iters_per_learner=1,
+    )
+    .evaluation(
+        evaluation_interval=3,
+        evaluation_num_env_runners=1,
+        evaluation_duration=5,
+        evaluation_parallel_to_training=True,
+    )
+)
+
+# Set the stopping metric to be the evaluation episode return mean.
+eval_return = f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+
+tuner = tune.Tuner(
+    "BC",
+    param_space=bc_config,
+    run_config=tune.RunConfig(
+        name="docs_rllib_offline_bc",
+        stop={eval_return: 450.0},
+        verbose=2,
+    )
+)
+analysis = tuner.fit()
+# __sphinx_doc_offline_api_3__end__
+
+
+# __sphinx_doc_offline_api_4__begin__
+from ray.rllib.algorithms.bc import BCConfig
+from ray.rllib.core.columns import Columns
+
+config = (
+    bc_config
+    .offline_data(
+        input_read_schema={
+            # <original_column_name>: <RLlib's expected column name>
+            # Note that, for the sake of this example, "eps_id" == Columns.EPS_ID
+            # But for your own data, it maybe be "my_eps_id": Columns.EPS_ID where "my_eps_id" != Columns.EPS_ID.
+            "eps_id": Columns.EPS_ID,
+        },
+    )
+)
+# __sphinx_doc_offline_api_4__end__
+
+quick_check(config)
+
+# __sphinx_doc_offline_api_5__begin__
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.core import (
+    COMPONENT_LEARNER_GROUP,
+    COMPONENT_LEARNER,
+    COMPONENT_RL_MODULE,
+    DEFAULT_MODULE_ID,
+)
+from ray.rllib.core.rl_module import RLModuleSpec
+
+# Set up a path for the tabular data records.
+tabular_data_path = "tmp/docs_rllib_offline_recording_tabular"
+
+# Configure the algorithm for recording.
+config = (
+    ppo_config.copy()
+    .environment(
+        env="CartPole-v1",
+    )
+    # RLlib's offline API expects complete episodes so we should sample complete episodes.
+    .env_runners(
+        batch_mode="complete_episodes",
+    )
+    .evaluation(
+        evaluation_num_env_runners=5,
+        evaluation_duration=50,
+    )
+    # Note: We have to use the same `model_config` here
+    .rl_module(model_config=model_config)
+    .offline_data(
+        output=tabular_data_path,
+        # For the sake of this example, we don't use RLlib's native episode format.
+        # Instead, we store the episodes as tabular data.
+        output_write_episodes=False,
+    )
+)
+
+algo = config.build()
+algo.restore_from_path(
+    best_checkpoint,
+    # Load only the `RLModule` component here.
+    component=COMPONENT_RL_MODULE,
+)
+
+# Evaluate for 10 iterations and record the data.
+for i in range(10):
+    print(f"Iteration {i + 1}")
+    res_eval = algo.evaluate()
+    print(res_eval)
+
+# Calling algo.stop() flushes the remaining episodes to disk (due to `output_max_rows_per_file`)
+algo.stop()
+# __sphinx_doc_offline_api_5__end__
+
+
+# __sphinx_doc_offline_api_6__begin__
+
+# Read the tabular data into a Ray dataset.
+ds = ray.data.read_parquet(tabular_data_path)
+# Now, print its schema.
+print("Tabular data schema of expert experiences:\n")
+print(ds.schema())
+
+# Column              Type
+# ------              ----
+# eps_id              string
+# agent_id            null
+# module_id           null
+# obs                 ArrowTensorTypeV2(shape=(4,), dtype=float)
+# actions             int32
+# rewards             double
+# new_obs             ArrowTensorTypeV2(shape=(4,), dtype=float)
+# terminateds         bool
+# truncateds          bool
+# action_dist_inputs  ArrowTensorTypeV2(shape=(2,), dtype=float)
+# action_logp         float
+# weights_seq_no      int64
+# __sphinx_doc_offline_api_6__end__
+
+
+# __sphinx_doc_offline_api_7__begin__
+import gymnasium as gym
+import msgpack
+import msgpack_numpy as mnp
+
+from collections import defaultdict
+
+from ray import data
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+
+# Load the dataset with the tabular data.
+ds = data.read_parquet(tabular_data_path)
+
+# Build the environment from which the data was sampled to get the
+# spaces.
+env = gym.make("CartPole-v1")
+# Define buffers for episode data.
+eps_obs = []
+eps_actions = []
+eps_rewards = []
+# Note, extra-model-outputs needs to be a dictionary with list
+# values.
+eps_extra_model_outputs = defaultdict(list)
+# Define a buffer for unwritten episodes.
+episodes = []
+
+# Start iterating over the rows of your experience data.
+for i, row in enumerate(ds.iter_rows(prefetch_batches=10)):
+    # If the episode isn't terminated nor truncated, buffer the data.
+    if not row["terminateds"] and not row["truncateds"]:
+        eps_obs.append(row["obs"])
+        eps_actions.append(row["actions"])
+        eps_rewards.append(row["rewards"])
+        eps_extra_model_outputs["action_dist_inputs"].append(row["action_dist_inputs"])
+        eps_extra_model_outputs["action_logp"].append(row["action_logp"])
+    # Otherwise, build the episode.
+    else:
+        eps_obs.append(row["new_obs"])
+        episode = SingleAgentEpisode(
+            id_=row["eps_id"],
+            agent_id=row["agent_id"],
+            module_id=row["module_id"],
+            observations=eps_obs,
+            # Use the spaces from the environment.
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            actions=eps_actions,
+            rewards=eps_rewards,
+            # Set the starting timestep to zero.
+            t_started=0,
+            # You don't want to have a lookback buffer.
+            len_lookback_buffer=0,
+            terminated=row["terminateds"],
+            truncated=row["truncateds"],
+            extra_model_outputs=eps_extra_model_outputs,
+        )
+        # Store the ready-to-write episode to the episode buffer.
+        episodes.append(msgpack.packb(episode.get_state(), default=mnp.encode))
+        # Clear all episode data buffers.
+        eps_obs.clear()
+        eps_actions.clear()
+        eps_rewards.clear()
+        eps_extra_model_outputs = defaultdict(list)
+
+    # Write episodes to disk when the episode buffer holds 50 episodes.
+    if len(episodes) > 49:
+        # Generate a Ray dataset from episodes.
+        episodes_ds = data.from_items(episodes)
+        # Write the Parquet data and compress it.
+        episodes_ds.write_parquet(
+            f"/tmp/test_converting/file-{i}".zfill(6),
+            compression="gzip",
+        )
+        # Delete the dataset in memory and clear the episode buffer.
+        del episodes_ds
+        episodes.clear()
+
+# If we are finished and have unwritten episodes, write them now.
+if len(episodes) > 0:
+    episodes_ds = data.from_items(episodes)
+    episodes_ds.write_parquet(
+        f"/tmp/test_converting/file-{i}".zfill(6),
+        compression="gzip",
+    )
+    del episodes_ds
+    episodes.clear()
+# __sphinx_doc_offline_api_7__end__
+
+
+# __sphinx_doc_offline_api_9__begin__
+config = (
+    AlgorithmConfig()
+    .offline_data(
+        map_batches_kwargs={
+            "concurrency": 10,
+            "num_cpus": 4,
+        }
+    )
+)
+# __sphinx_doc_offline_api_9__end__
+
+
+# __sphinx_doc_offline_api_10__begin__
+config = (
+    AlgorithmConfig()
+    .learners(
+        num_learners=4,
+        num_gpus_per_learner=1,
+    )
+)
+# __sphinx_doc_offline_api_10__end__
+
+
+# __sphinx_doc_offline_api_11__begin__
+config=(
+    AlgorithmConfig()
+    .offline_data(
+        input_="gs://<your-bucket>/dir1",
+    )
+)
+# __sphinx_doc_offline_api_11__end__
+
+
+# __sphinx_doc_offline_api_12__begin__
+from datetime import timedelta
+import pyarrow.fs
+
+# Define the PyArrow filesystem
+gcs = pyarrow.fs.GcsFilesystem(
+    # This is needed to resolve the hostname for public buckets.
+    anonymous=True,
+    retry_time_limit=timedelta(seconds=15)
+)
+
+# Define the configuration.
+config= (
+    AlgorithmConfig()
+    .offline_data(
+        # NOTE: Use a relative file path now
+        input_="<public-bucket>/dir1",
+        input_filesystem=gcs,
+    )
+)
+# __sphinx_doc_offline_api_12__end__
+
+
+# __sphinx_doc_offline_api_13__begin__
+config= (
+    AlgorithmConfig()
+    .offline_data(
+        output="gs://<your-bucket>/dir1",
+    )
+)
+# __sphinx_doc_offline_api_13__end__
+
+
+# __sphinx_doc_offline_api_14__begin__
+config= (
+    AlgorithmConfig()
+    .offline_data(
+        output=["gs://<your-bucket>/dir1", "gs://<your-bucket>/dir2"],
+    )
+)
+# __sphinx_doc_offline_api_14__end__
+
+
+# __sphinx_doc_offline_api_16__begin__
+import pyarrow.dataset
+
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.core.columns import Columns
+
+config = (
+    AlgorithmConfig()
+    .offline_data(
+        input_read_method_kwargs={
+            "filter": pyarrow.dataset.field(Columns.AGENT_ID) == "agent_1",
+        },
+    )
+)
+# __sphinx_doc_offline_api_16__end__
+
+
+# __sphinx_doc_offline_api_17__begin__
+
+config = (
+    AlgorithmConfig()
+    .offline_data(
+        map_batches_kwargs={
+            "concurrency": 4,
+        },
+    )
+)
+# __sphinx_doc_offline_api_17__end__
+
+
+# __sphinx_doc_offline_api_18__begin__
+
+config = (
+    AlgorithmConfig()
+    .offline_data(
+        map_batches_kwargs={
+            "concurrency": (4, 8),
+        },
+    )
+)
+# __sphinx_doc_offline_api_18__end__
+
+
+# __sphinx_doc_offline_api_19__begin__
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+config = (
+    AlgorithmConfig()
+    .offline_data(
+        map_batches_kwargs={
+            "concurrency": 4,
+            "num_cpus": 2,
+        },
+    )
+)
+# __sphinx_doc_offline_api_19__end__
+# __sphinx_doc_offline_api_20__begin__
+higher_sample_variety_config = (
+    bc_config.copy()
+    .training(
+        # Train on a batch of 1000 timesteps each iteration.
+        train_batch_size_per_learner=1000,
+    )
+    .offline_data(
+        input_read_episodes=True,
+        input_read_batch_size=10,
+        prelearner_buffer_kwargs={
+            "capacity": 1000,
+        },
+    )
+)
+# __sphinx_doc_offline_api_20__end__
+quick_check(config)
+# __sphinx_doc_offline_api_21__begin__
+lower_sample_variety_config = (
+    higher_sample_variety_config
+    .offline_data(
+        prelearner_buffer_kwargs={
+            "capacity": 500,
+        },
+    )
+)
+
+# __sphinx_doc_offline_api_24__begin__
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+config = (
+    AlgorithmConfig()
+    .learners(num_learners=4, num_gpus_per_learner=2)
+)
+# __sphinx_doc_offline_api_24__end__
+
+
+# Build the algorithm from the config.
+algo = config.build()
+
+# Train for 10 iterations.
+for _ in range(10):
+    res = algo.train()
+# __sphinx_doc_offline_api_25__end__
+
+
+# __sphinx_doc_offline_api_26__begin__
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+config = (
+    AlgorithmConfig()
+    .training(
+        train_batch_size_per_learner=1024,
+    )
+)
+# __sphinx_doc_offline_api_26__end__
+
+
+# __sphinx_doc_offline_api_27__begin__
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+config = (
+    AlgorithmConfig()
+    .offline_data(
+        iter_batches_kwargs={
+            "prefetch_batches": 2,
+        }
+    )
+)
+# __sphinx_doc_offline_api_27__end__
+
+
+# __sphinx_doc_offline_api_28__begin__
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+config = (
+    AlgorithmConfig()
+    .offline_data(
+        # Train on 20 batches from the substream in each learner.
+        dataset_num_iters_per_learner=20,
+    )
+)
+# __sphinx_doc_offline_api_28__end__
+
+
+# __sphinx_doc_offline_api_29__begin__
+@override(AlgorithmConfig)
+def build_learner_connector(
+    self,
+    input_observation_space,
+    input_action_space,
+    device=None,
+):
+    pipeline = super().build_learner_connector(
+        input_observation_space=input_observation_space,
+        input_action_space=input_action_space,
+        device=device,
+    )
+
+    # Before anything, add one ts to each episode (and record this in the loss
+    # mask, so that the computations at this extra ts aren't used to compute
+    # the loss).
+    pipeline.prepend(AddOneTsToEpisodesAndTruncate())
+
+    # Prepend the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
+    # after the corresponding "add-OBS-..." default piece).
+    pipeline.insert_after(
+        AddObservationsFromEpisodesToBatch,
+        AddNextObservationsFromEpisodesToTrainBatch(),
+    )
+
+    # At the end of the pipeline (when the batch is already completed), add the
+    # GAE connector, which performs a vf forward pass, then computes the GAE
+    # computations, and puts the results of this (advantages, value targets)
+    # directly back in the batch. This is then the batch used for
+    # `forward_train` and `compute_losses`.
+    pipeline.append(
+        GeneralAdvantageEstimation(gamma=self.gamma, lambda_=self.lambda_)
+    )
+
+    return pipeline
+# __sphinx_doc_offline_api_29__end__
+
+
+# __sphinx_doc_offline_api_30__begin__
+def _make_learner_connector(input_observation_space, input_action_space):
+    # Create the learner connector.
+    return CustomLearnerConnector(
+        parameter_1=0.3,
+        parameter_2=100,
+    )
+
+config = (
+    AlgorithmConfig()
+    .training(
+        # Add the connector pipeline as the starting point for
+        # the learner connector pipeline.
+        learner_connector=_make_learner_connector,
+    )
+)
+# __sphinx_doc_offline_api_30__end__
+
+
+# __sphinx_doc_offline_api_31__begin__
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+config = (
+    AlgorithmConfig()
+    .offline_data(
+        # Provide your custom `OfflinePreLearner`.
+        prelearner_class=TextOfflinePreLearner,
+        # Provide special keyword arguments your `OfflinePreLearner` needs.
+        prelearner_kwargs={
+            "vocabulary": vocabulary,
+        },
+    )
+)
+# __sphinx_doc_offline_api_31__end__
+
+
+# __sphinx_doc_offline_api_32__begin__
+import gymnasium as gym
+import numpy as np
+import uuid
+from typing import Any, Dict, List, Optional, Union
+
+from ray import data
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.offline.offline_prelearner import OfflinePreLearner, SCHEMA
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import EpisodeType
+
+class TextOfflinePreLearner(OfflinePreLearner):
+
+    @staticmethod
+    @override(OfflinePreLearner)
+    def _map_to_episodes(
+        is_multi_agent: bool,
+        batch: Dict[str, Union[list, np.ndarray]],
+        schema: Dict[str, str] = SCHEMA,
+        to_numpy: bool = False,
+        input_compress_columns: Optional[List[str]] = None,
+        observation_space: gym.Space = None,
+        action_space: gym.Space = None,
+        vocabulary: Dict[str, Any] = None,
+        **kwargs: Dict[str, Any],
+    ) -> Dict[str, List[EpisodeType]]:
+
+        # If we have no vocabulary raise an error.
+        if not vocabulary:
+            raise ValueError(
+                "No `vocabulary`. It needs a vocabulary in form of dictionary ",
+                "mapping tokens to their IDs."
+            )
+        # Define container for episodes.
+        episodes = []
+
+        # Data comes in batches of string arrays under the `"text"` key.
+        for text in batch["text"]:
+            # Split the text and tokenize.
+            tokens = text.split(" ")
+            # Encode tokens.
+            encoded = [vocabulary[token] for token in tokens]
+            one_hot_vectors = np.zeros((len(tokens), len(vocabulary), 1, 1))
+            for i, token in enumerate(tokens):
+                if token in vocabulary:
+                    one_hot_vectors[i][vocabulary[token] - 1] = 1.0
+
+            # Build the `SingleAgentEpisode`.
+            episode = SingleAgentEpisode(
+                # Generate a unique ID.
+                id_=uuid.uuid4().hex,
+                # agent_id="default_policy",
+                # module_id="default_policy",
+                # We use the starting token with all added tokens as observations.
+                observations=[ohv for ohv in one_hot_vectors],
+                observation_space=observation_space,
+                # Actions are defined to be the "chosen" follow-up token after
+                # given the observation.
+                actions=encoded[1:],
+                action_space=action_space,
+                # Rewards are zero until the end of a sequence.
+                rewards=[0.0 for i in range(len(encoded) - 2)] + [1.0],
+                # The episode is always terminated (as sentences in the dataset are).
+                terminated=True,
+                truncated=False,
+                # No lookback. You want the episode to start at timestep zero.
+                len_lookback_buffer=0,
+                t_started=0,
+            )
+
+            # If episodes should be numpy'ized. Some connectors need this.
+            if to_numpy:
+                episode.to_numpy()
+
+            # Append the episode to the list of episodes.
+            episodes.append(episode)
+
+        # Return a batch with key `"episodes"`.
+        return {"episodes": episodes}
+
+# Define the dataset.
+ds = data.read_text("s3://anonymous@ray-example-data/this.txt")
+
+# Create a vocabulary.
+tokens = []
+for b in ds.iter_rows():
+    tokens.extend(b["text"].split(" "))
+vocabulary = {token: idx for idx, token in enumerate(set(tokens), start=1)}
+
+# Take a small batch of 10 from the dataset.
+batch = ds.take_batch(10)
+
+# Now use your `OfflinePreLearner`.
+episodes = TextOfflinePreLearner._map_to_episodes(
+    is_multi_agent=False,
+    batch=batch,
+    to_numpy=True,
+    schema=None,
+    input_compress_columns=False,
+    action_space=None,
+    observation_space=None,
+    vocabulary=vocabulary,
+)
+
+# Show the constructed episodes.
+print(f"Episodes: {episodes}")
+# __sphinx_doc_offline_api_32__end__
+
+
+# __sphinx_doc_offline_api_33__begin__
+import gymnasium as gym
+import numpy as np
+import uuid
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+from ray import data
+from ray.actor import ActorHandle
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
+from ray.rllib.algorithms.bc.torch.default_bc_torch_rl_module import DefaultBCTorchRLModule
+from ray.rllib.connectors.common import AddObservationsFromEpisodesToBatch, BatchIndividualItems, NumpyToTensor, AgentToModuleMapping
+from ray.rllib.connectors.learner.add_columns_from_episodes_to_train_batch import AddColumnsFromEpisodesToTrainBatch
+from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
+from ray.rllib.connectors.learner.learner_connector_pipeline import LearnerConnectorPipeline
+from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.offline.offline_prelearner import OfflinePreLearner, SCHEMA
+
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import EpisodeType, ModuleID
+
+class TextOfflinePreLearner(OfflinePreLearner):
+
+    @override(OfflinePreLearner)
+    def __init__(
+        self,
+        config: "AlgorithmConfig",
+        learner: Union[Learner, List[ActorHandle]] = None,
+        locality_hints: Optional[List[str]] = None,
+        spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
+        module_spec: Optional[MultiRLModuleSpec] = None,
+        module_state: Optional[Dict[ModuleID, Any]] = None,
+        vocabulary: Dict[str, Any] = None,
+        **kwargs: Dict[str, Any],
+    ):
+        self.config = config
+        self.spaces = spaces
+        self.vocabulary = vocabulary
+        self.vocabulary_size = len(self.vocabulary)
+
+        # Build the `RLModule`.
+        self._module = module_spec.build()
+        if module_state:
+            self._module.set_state(module_state)
+
+        # Build the learner connector pipeline.
+        self._learner_connector = LearnerConnectorPipeline(
+            connectors=[
+                FrameStackingLearner(
+                    num_frames=4,
+                )
+            ],
+            input_action_space=module_spec.action_space,
+            input_observation_space=module_spec.observation_space,
+        )
+        self._learner_connector.append(
+            AddObservationsFromEpisodesToBatch(as_learner_connector=True),
+        )
+        self._learner_connector.append(
+            AddColumnsFromEpisodesToTrainBatch(),
+        )
+        self._learner_connector.append(
+            BatchIndividualItems(multi_agent=False),
+        )
+        # Let us run exclusively on CPU, then we can convert here to Tensor.
+        self._learner_connector.append(
+            NumpyToTensor(as_learner_connector=True),
+        )
+
+    @override(OfflinePreLearner)
+    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
+
+        # Convert raw data to episodes.
+        episodes = TextOfflinePreLearner._map_to_episodes(
+            is_multi_agent=False,
+            batch=batch,
+            to_numpy=True,
+            schema=None,
+            input_compress_columns=False,
+            action_space=self.spaces[0],
+            observation_space=self.spaces[1],
+            vocabulary=self.vocabulary,
+        )["episodes"]
+
+        # Run the learner connector pipeline with the
+        # `FrameStackLearner` piece.
+        batch = self._learner_connector(
+            rl_module=self._module,
+            batch={},
+            episodes=episodes,
+            shared_data={},
+        )
+
+        # Convert to `MultiAgentBatch` for the learner.
+        batch = MultiAgentBatch(
+            {
+                module_id: SampleBatch(module_data)
+                for module_id, module_data in batch.items()
+            },
+            # TODO (simon): This can be run once for the batch and the
+            # metrics, but we run it twice: here and later in the learner.
+            env_steps=sum(e.env_steps() for e in episodes),
+        )
+
+        # Return the `MultiAgentBatch` under the `"batch"` key.
+        return {"batch": batch}
+
+    @staticmethod
+    @override(OfflinePreLearner)
+    def _map_to_episodes(
+        is_multi_agent: bool,
+        batch: Dict[str, Union[list, np.ndarray]],
+        schema: Dict[str, str] = SCHEMA,
+        to_numpy: bool = False,
+        input_compress_columns: Optional[List[str]] = None,
+        observation_space: gym.Space = None,
+        action_space: gym.Space = None,
+        vocabulary: Dict[str, Any] = None,
+        **kwargs: Dict[str, Any],
+    ) -> Dict[str, List[EpisodeType]]:
+
+        # If we have no vocabulary raise an error.
+        if not vocabulary:
+            raise ValueError(
+                "No `vocabulary`. It needs a vocabulary in form of dictionary ",
+                "mapping tokens to their IDs."
+            )
+        # Define container for episodes.
+        episodes = []
+
+        # Data comes in batches of string arrays under the `"text"` key.
+        for text in batch["text"]:
+            # Split the text and tokenize.
+            tokens = text.split(" ")
+            # Encode tokens.
+            encoded = [vocabulary[token] for token in tokens]
+            one_hot_vectors = np.zeros((len(tokens), len(vocabulary), 1, 1))
+            for i, token in enumerate(tokens):
+                if token in vocabulary:
+                    one_hot_vectors[i][vocabulary[token] - 1] = 1.0
+
+            # Build the `SingleAgentEpisode`.
+            episode = SingleAgentEpisode(
+                # Generate a unique ID.
+                id_=uuid.uuid4().hex,
+                # agent_id="default_policy",
+                # module_id="default_policy",
+                # We use the starting token with all added tokens as observations.
+                observations=[ohv for ohv in one_hot_vectors],
+                observation_space=observation_space,
+                # Actions are defined to be the "chosen" follow-up token after
+                # given the observation.
+                actions=encoded[1:],
+                action_space=action_space,
+                # Rewards are zero until the end of a sequence.
+                rewards=[0.0 for i in range(len(encoded) - 2)] + [1.0],
+                # The episode is always terminated (as sentences in the dataset are).
+                terminated=True,
+                truncated=False,
+                # No lookback. You want the episode to start at timestep zero.
+                len_lookback_buffer=0,
+                t_started=0,
+            )
+
+            # If episodes should be numpy'ized. Some connectors need this.
+            if to_numpy:
+                episode.to_numpy()
+
+            # Append the episode to the list of episodes.
+            episodes.append(episode)
+
+        # Return a batch with key `"episodes"`.
+        return {"episodes": episodes}
+
+# Define dataset on sample data.
+ds = data.read_text("s3://anonymous@ray-example-data/this.txt")
+
+# Create a vocabulary.
+tokens = []
+for b in ds.iter_rows():
+    tokens.extend(b["text"].split(" "))
+vocabulary = {token: idx for idx, token in enumerate(set(tokens), start=1)}
+
+# Specify an `RLModule` and wrap it with a `MultiRLModuleSpec`. Note,
+# on `Learner`` side any `RLModule` is an `MultiRLModule`.
+module_spec = MultiRLModuleSpec(
+    rl_module_specs={
+        "default_policy": RLModuleSpec(
+            model_config=DefaultModelConfig(
+                conv_filters=[[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+                conv_activation="relu",
+            ),
+            inference_only=False,
+            module_class=DefaultBCTorchRLModule,
+            catalog_class=BCCatalog,
+            action_space = gym.spaces.Discrete(len(vocabulary)),
+            observation_space=gym.spaces.Box(0.0, 1.0, (len(vocabulary), 1, 1), np.float32),
+        ),
+    },
+)
+
+# Take a small batch.
+batch = ds.take_batch(10)
+
+# Build and instance your `OfflinePreLearner`.
+oplr = TextOfflinePreLearner(
+    config=AlgorithmConfig(),
+    spaces=(
+        gym.spaces.Discrete(len(vocabulary)),
+        gym.spaces.Box(0.0, 1.0, (len(vocabulary), 1, 1), np.float32)),
+    module_spec=module_spec,
+    vocabulary=vocabulary,
+)
+
+# Run your `OfflinePreLearner`.
+transformed = oplr(batch)
+
+# Show the generated batch.
+print(f"Batch: {batch}")
+# __sphinx_doc_offline_api_33__end__
