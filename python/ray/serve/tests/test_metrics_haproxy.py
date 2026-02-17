@@ -189,7 +189,8 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
             # counter
             "ray_serve_num_router_requests",
             "ray_serve_num_http_requests",
-            "ray_serve_deployment_queued_queries",
+            "ray_serve_router_num_queued_requests",
+            "ray_serve_deployment_queued_queries",  # deprecated, remove in Ray 3.0
             "ray_serve_deployment_request_counter",
             "ray_serve_deployment_replica_starts",
             # histogram

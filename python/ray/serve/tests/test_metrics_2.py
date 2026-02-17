@@ -676,7 +676,7 @@ class TestHandleMetrics:
             caller.call.remote()
             wait_for_condition(
                 check_sum_metric_eq,
-                metric_name="ray_serve_deployment_queued_queries",
+                metric_name="ray_serve_router_num_queued_requests",
                 tags={"application": "app1"},
                 expected=i + 1,
                 timeseries=timeseries,
@@ -686,7 +686,7 @@ class TestHandleMetrics:
         ray.get(signal.send.remote())
         wait_for_condition(
             check_sum_metric_eq,
-            metric_name="ray_serve_deployment_queued_queries",
+            metric_name="ray_serve_router_num_queued_requests",
             tags={"application": "app1", "deployment": "WaitForSignal"},
             expected=0,
             timeseries=timeseries,
@@ -700,7 +700,7 @@ class TestHandleMetrics:
         call.remote("WaitForSignal", "app1")
         wait_for_condition(
             check_sum_metric_eq,
-            metric_name="ray_serve_deployment_queued_queries",
+            metric_name="ray_serve_router_num_queued_requests",
             tags={"application": "app1", "deployment": "WaitForSignal"},
             expected=0,
         )
@@ -709,7 +709,7 @@ class TestHandleMetrics:
         call.remote("WaitForSignal", "app1")
         wait_for_condition(
             check_sum_metric_eq,
-            metric_name="ray_serve_deployment_queued_queries",
+            metric_name="ray_serve_router_num_queued_requests",
             tags={"application": "app1", "deployment": "WaitForSignal"},
             expected=1,
         )
@@ -718,7 +718,7 @@ class TestHandleMetrics:
         call.remote("WaitForSignal", "app1")
         wait_for_condition(
             check_sum_metric_eq,
-            metric_name="ray_serve_deployment_queued_queries",
+            metric_name="ray_serve_router_num_queued_requests",
             tags={"application": "app1", "deployment": "WaitForSignal"},
             expected=2,
         )
@@ -727,7 +727,7 @@ class TestHandleMetrics:
         ray.get(signal.send.remote())
         wait_for_condition(
             check_sum_metric_eq,
-            metric_name="ray_serve_deployment_queued_queries",
+            metric_name="ray_serve_router_num_queued_requests",
             tags={"application": "app1", "deployment": "WaitForSignal"},
             expected=0,
         )
@@ -808,11 +808,11 @@ class TestHandleMetrics:
         wait_for_condition(
             check_sum_metric_eq,
             timeout=15,
-            metric_name="ray_serve_deployment_queued_queries",
+            metric_name="ray_serve_router_num_queued_requests",
             expected=num_queued_requests,
             timeseries=timeseries,
         )
-        print("ray_serve_deployment_queued_queries updated successfully.")
+        print("ray_serve_router_num_queued_requests updated successfully.")
         wait_for_condition(
             check_sum_metric_eq,
             timeout=15,
@@ -849,11 +849,11 @@ class TestHandleMetrics:
         wait_for_condition(
             check_sum_metric_eq,
             timeout=15,
-            metric_name="ray_serve_deployment_queued_queries",
+            metric_name="ray_serve_router_num_queued_requests",
             expected=0,
             timeseries=timeseries,
         )
-        print("ray_serve_deployment_queued_queries updated successfully.")
+        print("ray_serve_router_num_queued_requests updated successfully.")
 
         # Task should get cancelled.
         wait_for_condition(

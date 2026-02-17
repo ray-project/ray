@@ -600,7 +600,7 @@ The following diagram shows where metrics are captured along the request path:
   │   │                           ROUTER                                    │   │
   │   │                                                                     │   │
   │   │  ○ ray_serve_num_router_requests_total      (on request routed)     │   │
-  │   │  ○ ray_serve_deployment_queued_queries      (while in queue)        │   │
+  │   │  ○ ray_serve_router_num_queued_requests     (while in queue)        │   │
   │   │  ○ ray_serve_num_ongoing_requests_at_replicas (assigned to replica) │   │
   │   └──────────────────────────────┬──────────────────────────────────────┘   │
   │                                  │                                          │
@@ -648,7 +648,8 @@ These metrics track request routing and queueing behavior.
 |--------|------|------|-------------|
 | `ray_serve_handle_request_counter_total` **[D]** | Counter | `handle`, `deployment`, `route`, `application` | Total number of requests processed by this `DeploymentHandle`. |
 | `ray_serve_num_router_requests_total` **[H]** | Counter | `deployment`, `route`, `application`, `handle`, `actor_id` | Total number of requests routed to a deployment. |
-| `ray_serve_deployment_queued_queries` **[H]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | Current number of requests waiting to be assigned to a replica. High values indicate backpressure. |
+| `ray_serve_router_num_queued_requests` **[H]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | Current number of requests waiting to be assigned to a replica. High values indicate backpressure. |
+| `ray_serve_deployment_queued_queries` **[H]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | (Deprecated. Use `ray_serve_router_num_queued_requests`). Current number of requests waiting to be assigned to a replica. High values indicate backpressure. |
 | `ray_serve_num_ongoing_requests_at_replicas` **[H]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | Current number of requests assigned and sent to replicas but not yet completed. |
 | `ray_serve_request_router_fulfillment_time_ms` **[H][D]** | Histogram | `deployment`, `actor_id`, `application`, `handle_source` | Histogram of time in milliseconds that a request spent waiting in the router queue before being assigned to a replica. This includes the time to resolve the pending request's arguments. |
 | `ray_serve_request_router_queue_len` **[H][D]** | Gauge | `deployment`, `replica_id`, `actor_id`, `application`, `handle_source` | Current number of requests running on a replica as tracked by the router's queue length cache. |

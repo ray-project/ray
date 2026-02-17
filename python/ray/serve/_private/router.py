@@ -83,6 +83,7 @@ class RouterMetricsManager:
         controller_handle: ActorHandle,
         router_requests_counter: metrics.Counter,
         queued_requests_gauge: metrics.Gauge,
+        queued_requests_gauge_deprecated: metrics.Gauge,
         running_requests_gauge: metrics.Gauge,
         event_loop: asyncio.BaseEventLoop,
     ):
@@ -114,6 +115,16 @@ class RouterMetricsManager:
             }
         )
         self.num_queued_requests_gauge.set(0)
+        self.num_queued_requests_gauge_deprecated = queued_requests_gauge_deprecated
+        self.num_queued_requests_gauge_deprecated.set_default_tags(
+            {
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+                "handle": self._handle_id,
+                "actor_id": self._self_actor_id,
+            }
+        )
+        self.num_queued_requests_gauge_deprecated.set(0)
 
         # Track queries sent to replicas for the autoscaling algorithm.
         self.num_requests_sent_to_replicas: DefaultDict[ReplicaID, int] = defaultdict(
@@ -290,6 +301,7 @@ class RouterMetricsManager:
         self._cached_num_router_requests.clear()
 
         self.num_queued_requests_gauge.set(self.num_queued_requests)
+        self.num_queued_requests_gauge_deprecated.set(self.num_queued_requests)
 
         self.num_running_requests_gauge.set(
             sum(self.num_requests_sent_to_replicas.values())
@@ -322,11 +334,13 @@ class RouterMetricsManager:
         self.num_queued_requests += 1
         if not self._cached_metrics_enabled:
             self.num_queued_requests_gauge.set(self.num_queued_requests)
+            self.num_queued_requests_gauge_deprecated.set(self.num_queued_requests)
 
     def dec_num_queued_requests(self):
         self.num_queued_requests -= 1
         if not self._cached_metrics_enabled:
             self.num_queued_requests_gauge.set(self.num_queued_requests)
+            self.num_queued_requests_gauge_deprecated.set(self.num_queued_requests)
 
     def inc_num_running_requests_for_replica(self, replica_id: ReplicaID):
         with self._queries_lock:
@@ -568,10 +582,19 @@ class AsyncioRouter:
                 tag_keys=("deployment", "route", "application", "handle", "actor_id"),
             ),
             metrics.Gauge(
-                "serve_deployment_queued_queries",
+                "serve_router_num_queued_requests",
                 description=(
                     "The current number of queries to this deployment waiting"
                     " to be assigned to a replica."
+                ),
+                tag_keys=("deployment", "application", "handle", "actor_id"),
+            ),
+            metrics.Gauge(
+                "serve_deployment_queued_queries",
+                description=(
+                    "(Deprecated, use serve_router_num_queued_requests) "
+                    "The current number of queries to this deployment waiting "
+                    "to be assigned to a replica."
                 ),
                 tag_keys=("deployment", "application", "handle", "actor_id"),
             ),

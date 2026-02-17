@@ -10,9 +10,14 @@ public enum RayServeMetrics {
   SERVE_NUM_ROUTER_REQUESTS(
       "serve_num_router_requests", "The number of requests processed by the router."),
 
-  SERVE_DEPLOYMENT_QUEUED_QUERIES(
-      "serve_deployment_queued_queries",
+  SERVE_ROUTER_NUM_QUEUED_REQUESTS(
+      "serve_router_num_queued_requests",
       "The current number of queries to this deployment waiting to be assigned to a replica."),
+
+  // Deprecated: Remove in Ray 3.0.
+  SERVE_DEPLOYMENT_QUEUED_QUERIES_DEPRECATED(
+      "serve_deployment_queued_queries",
+      "(Deprecated, use serve_router_num_queued_requests) The current number of queries to this deployment waiting to be assigned to a replica."),
 
   SERVE_DEPLOYMENT_REQUEST_COUNTER(
       "serve_deployment_request_counter",

@@ -807,6 +807,7 @@ class TestRouterMetricsManager:
             ),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             event_loop=asyncio.get_event_loop(),
         )
         assert metrics_manager.num_router_requests.get_count(tags) is None
@@ -837,6 +838,7 @@ class TestRouterMetricsManager:
             ),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             event_loop=asyncio.get_event_loop(),
         )
         assert metrics_manager.num_queued_requests_gauge.get_value(tags) == 0
@@ -864,6 +866,7 @@ class TestRouterMetricsManager:
             FakeCounter(
                 tag_keys=("deployment", "route", "application", "handle", "actor_id")
             ),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             event_loop=asyncio.get_event_loop(),
@@ -950,6 +953,7 @@ class TestRouterMetricsManager:
             ),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             event_loop=asyncio.get_event_loop(),
         )
 
@@ -998,6 +1002,7 @@ class TestRouterMetricsManager:
                         "actor_id",
                     )
                 ),
+                FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
                 FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
                 FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
                 event_loop=asyncio.get_event_loop(),
@@ -1052,6 +1057,7 @@ class TestRouterMetricsManager:
                     "actor_id",
                 )
             ),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             event_loop=asyncio.get_event_loop(),
@@ -1114,6 +1120,7 @@ class TestRouterMetricsManager:
             FakeCounter(
                 tag_keys=("deployment", "route", "application", "handle", "actor_id")
             ),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             event_loop=asyncio.get_event_loop(),

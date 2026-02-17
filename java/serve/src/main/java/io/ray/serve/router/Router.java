@@ -26,6 +26,7 @@ public class Router {
   private Count numRouterRequests;
   private AtomicInteger numQueuedQueries = new AtomicInteger();
   private Gauge numQueuedQueriesGauge;
+  private Gauge numQueuedQueriesGaugeDeprecated;
 
   public Router(BaseActorHandle controllerHandle, DeploymentId deploymentId) {
     this.replicaSet = new ReplicaSet(deploymentId.getName());
@@ -49,8 +50,24 @@ public class Router {
         () ->
             this.numQueuedQueriesGauge =
                 Metrics.gauge()
-                    .name(RayServeMetrics.SERVE_DEPLOYMENT_QUEUED_QUERIES.getName())
-                    .description(RayServeMetrics.SERVE_DEPLOYMENT_QUEUED_QUERIES.getDescription())
+                    .name(RayServeMetrics.SERVE_ROUTER_NUM_QUEUED_REQUESTS.getName())
+                    .description(RayServeMetrics.SERVE_ROUTER_NUM_QUEUED_REQUESTS.getDescription())
+                    .unit("")
+                    .tags(
+                        ImmutableMap.of(
+                            RayServeMetrics.TAG_DEPLOYMENT,
+                            deploymentId.getName(),
+                            RayServeMetrics.TAG_APPLICATION,
+                            deploymentId.getApp()))
+                    .register());
+
+    RayServeMetrics.execute(
+        () ->
+            this.numQueuedQueriesGaugeDeprecated =
+                Metrics.gauge()
+                    .name(RayServeMetrics.SERVE_DEPLOYMENT_QUEUED_QUERIES_DEPRECATED.getName())
+                    .description(
+                        RayServeMetrics.SERVE_DEPLOYMENT_QUEUED_QUERIES_DEPRECATED.getDescription())
                     .unit("")
                     .tags(
                         ImmutableMap.of(
@@ -79,12 +96,14 @@ public class Router {
     RayServeMetrics.execute(() -> numRouterRequests.inc(1));
     numQueuedQueries.incrementAndGet();
     RayServeMetrics.execute(() -> numQueuedQueriesGauge.update(numQueuedQueries.get()));
+    RayServeMetrics.execute(() -> numQueuedQueriesGaugeDeprecated.update(numQueuedQueries.get()));
 
     try {
       return replicaSet.assignReplica(new Query(requestMetadata, requestArgs));
     } finally {
       numQueuedQueries.decrementAndGet();
       RayServeMetrics.execute(() -> numQueuedQueriesGauge.update(numQueuedQueries.get()));
+      RayServeMetrics.execute(() -> numQueuedQueriesGaugeDeprecated.update(numQueuedQueries.get()));
     }
   }
 
