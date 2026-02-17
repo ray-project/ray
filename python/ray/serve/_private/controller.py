@@ -403,6 +403,13 @@ class ServeController:
                 "application": report.deployment_id.app_name,
             },
         )
+        self.async_inference_queue_length_gauge.set(
+            report.queue_length,
+            tags={
+                "deployment": report.deployment_id.name,
+                "application": report.deployment_id.app_name,
+            },
+        )
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
             logger.warning(
                 f"Received async inference task queue metrics for deployment "
@@ -783,6 +790,14 @@ class ServeController:
             description=(
                 "Time taken for the async inference task queue metrics to be reported "
                 "to the controller. High values may indicate a busy controller."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+        self.async_inference_queue_length_gauge = metrics.Gauge(
+            "serve_async_inference_queue_length",
+            description=(
+                "Number of pending tasks in the broker queue for async inference. "
+                "High values indicate tasks are waiting longer to be processed."
             ),
             tag_keys=("deployment", "application"),
         )
