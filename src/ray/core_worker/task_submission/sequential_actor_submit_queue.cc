@@ -132,12 +132,12 @@ void SequentialActorSubmitQueue::MarkDependencyResolved(
 std::vector<TaskID> SequentialActorSubmitQueue::ClearAllTasks() {
   std::vector<TaskID> task_ids;
   for (const auto &[_, requests] : requests_per_group_) {
-    for (const auto &[_, spec] : requests) {
+    for (const auto &[seq_no, spec] : requests) {
       task_ids.push_back(spec.first.TaskId());
     }
   }
   for (const auto &[_, retries] : retry_requests_per_group_) {
-    for (const auto &[_, spec] : retries) {
+    for (const auto &[seq_no, spec] : retries) {
       task_ids.push_back(spec.first.TaskId());
     }
   }
