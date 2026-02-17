@@ -81,7 +81,7 @@ ray_cc_library(
     deps = [
         ":asio",
         ":ray_config",
-        "//src/ray/util:process",
+        "//src/ray/util:compat",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_prod",
