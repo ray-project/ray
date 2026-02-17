@@ -85,6 +85,7 @@ class RouterMetricsManager:
         queued_requests_gauge: metrics.Gauge,
         queued_requests_gauge_deprecated: metrics.Gauge,
         running_requests_gauge: metrics.Gauge,
+        running_requests_gauge_deprecated: metrics.Gauge,
         event_loop: asyncio.BaseEventLoop,
     ):
         self._handle_id = handle_id
@@ -132,6 +133,15 @@ class RouterMetricsManager:
         )
         self.num_running_requests_gauge = running_requests_gauge
         self.num_running_requests_gauge.set_default_tags(
+            {
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+                "handle": self._handle_id,
+                "actor_id": self._self_actor_id,
+            }
+        )
+        self.num_running_requests_gauge_deprecated = running_requests_gauge_deprecated
+        self.num_running_requests_gauge_deprecated.set_default_tags(
             {
                 "deployment": deployment_id.name,
                 "application": deployment_id.app_name,
@@ -303,9 +313,9 @@ class RouterMetricsManager:
         self.num_queued_requests_gauge.set(self.num_queued_requests)
         self.num_queued_requests_gauge_deprecated.set(self.num_queued_requests)
 
-        self.num_running_requests_gauge.set(
-            sum(self.num_requests_sent_to_replicas.values())
-        )
+        running_count = sum(self.num_requests_sent_to_replicas.values())
+        self.num_running_requests_gauge.set(running_count)
+        self.num_running_requests_gauge_deprecated.set(running_count)
 
     async def _report_cached_metrics_forever(self):
         assert self._cached_metrics_interval_s > 0
@@ -346,17 +356,17 @@ class RouterMetricsManager:
         with self._queries_lock:
             self.num_requests_sent_to_replicas[replica_id] += 1
             if not self._cached_metrics_enabled:
-                self.num_running_requests_gauge.set(
-                    sum(self.num_requests_sent_to_replicas.values())
-                )
+                running_count = sum(self.num_requests_sent_to_replicas.values())
+                self.num_running_requests_gauge.set(running_count)
+                self.num_running_requests_gauge_deprecated.set(running_count)
 
     def dec_num_running_requests_for_replica(self, replica_id: ReplicaID):
         with self._queries_lock:
             self.num_requests_sent_to_replicas[replica_id] -= 1
             if not self._cached_metrics_enabled:
-                self.num_running_requests_gauge.set(
-                    sum(self.num_requests_sent_to_replicas.values())
-                )
+                running_count = sum(self.num_requests_sent_to_replicas.values())
+                self.num_running_requests_gauge.set(running_count)
+                self.num_running_requests_gauge_deprecated.set(running_count)
 
     def should_send_scaled_to_zero_optimized_push(self, curr_num_replicas: int) -> bool:
         return (
@@ -599,8 +609,17 @@ class AsyncioRouter:
                 tag_keys=("deployment", "application", "handle", "actor_id"),
             ),
             metrics.Gauge(
+                "serve_router_num_ongoing_requests_at_replicas",
+                description=(
+                    "Current number of requests assigned and sent to replicas "
+                    "but not yet completed."
+                ),
+                tag_keys=("deployment", "application", "handle", "actor_id"),
+            ),
+            metrics.Gauge(
                 "serve_num_ongoing_requests_at_replicas",
                 description=(
+                    "(Deprecated, use serve_router_num_ongoing_requests_at_replicas) "
                     "Current number of requests assigned and sent to replicas "
                     "but not yet completed."
                 ),

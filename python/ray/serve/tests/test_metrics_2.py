@@ -917,7 +917,7 @@ class TestHandleMetrics:
 
             wait_for_condition(
                 check_sum_metric_eq,
-                metric_name="ray_serve_num_ongoing_requests_at_replicas",
+                metric_name="ray_serve_router_num_ongoing_requests_at_replicas",
                 tags={"application": "app1", "deployment": "d1"},
                 expected=requests_sent[1],
                 timeseries=timeseries,
@@ -925,7 +925,7 @@ class TestHandleMetrics:
 
             wait_for_condition(
                 check_sum_metric_eq,
-                metric_name="ray_serve_num_ongoing_requests_at_replicas",
+                metric_name="ray_serve_router_num_ongoing_requests_at_replicas",
                 tags={"application": "app1", "deployment": "d2"},
                 expected=requests_sent[2],
                 timeseries=timeseries,
@@ -933,7 +933,7 @@ class TestHandleMetrics:
 
             wait_for_condition(
                 check_sum_metric_eq,
-                metric_name="ray_serve_num_ongoing_requests_at_replicas",
+                metric_name="ray_serve_router_num_ongoing_requests_at_replicas",
                 tags={"application": "app1", "deployment": "Router"},
                 expected=i + 1,
                 timeseries=timeseries,
@@ -943,7 +943,7 @@ class TestHandleMetrics:
         ray.get(signal.send.remote())
         wait_for_condition(
             check_sum_metric_eq,
-            metric_name="ray_serve_num_ongoing_requests_at_replicas",
+            metric_name="ray_serve_router_num_ongoing_requests_at_replicas",
             tags={"application": "app1"},
             expected=0,
             timeseries=timeseries,
