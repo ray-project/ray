@@ -386,6 +386,7 @@ class GPUObjectManager:
                 tensor_transport_meta=tensor_transport_meta,  # None if not from ray.put
                 sent_dest_actors=set(),
                 sent_to_src_actor_and_others_warned=False,
+                buffers=None,
             ),
         )
 
