@@ -13,7 +13,3 @@ COPY . .
 COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 RUN uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
-
-RUN if [[ "$RAYCI_IS_GPU_BUILD" == "true" ]]; then \
-  pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt; \
-fi
