@@ -674,10 +674,7 @@ class HAProxyApi(ProxyApi):
 
             # Use file locking to prevent concurrent writes from multiple processes
             # This is important in test environments where multiple nodes may run
-            # on the same machine.
-            # NOTE: We use a separate lock file because opening with "w" mode
-            # truncates the file before the lock is acquired, which causes race
-            # conditions when multiple processes try to write simultaneously.
+            # on the same machine
             import fcntl
 
             lock_file_path = self.config_file_path + ".lock"
@@ -1020,8 +1017,6 @@ class HAProxyManager(ProxyActorInterface):
 
         ready_to_serve = False
         while not ready_to_serve:
-            # If the proxy is draining, don't wait for it to be ready
-            # since it's intentionally not serving new traffic.
             if self._is_draining():
                 return
 
