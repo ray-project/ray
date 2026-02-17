@@ -66,6 +66,8 @@ ray_cc_library(
     deps = [
         ":cgroup_driver_interface",
         ":cgroup_manager_interface",
+        "//src/ray/common:memory_monitor",
+        "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
         "//src/ray/util:logging",
