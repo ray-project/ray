@@ -173,9 +173,12 @@ bool OrderedActorTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
 }
 
 void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
-  // Process each concurrency group independently.
   for (auto &[group_name, group_state] : group_states_) {
     // Cancel any stale requests that the client doesn't need any longer.
+    // This happens when the client sends an RPC with the client_processed_up_to
+    // sequence number higher than the lowest sequence number of a pending actor task.
+    // In that case, the client no longer needs the task to execute (e.g., it has been
+    // retried).
     while (!group_state.pending_tasks.empty() &&
            group_state.pending_tasks.begin()->first < group_state.next_seq_no) {
       auto head = group_state.pending_tasks.begin();
@@ -192,6 +195,8 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
     }
 
     // Process as many retry requests as we can.
+    // Retry requests do not respect sequence number ordering, so we execute them as soon
+    // as they are ready to execute.
     auto retry_iter = group_state.pending_retry_tasks.begin();
     while (retry_iter != group_state.pending_retry_tasks.end()) {
       auto &request = *retry_iter;
@@ -213,6 +218,7 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
           group_state.pending_tasks.erase(begin_it);
           group_state.next_seq_no++;
         } else {
+          // next_seq_no can't execute so break
           break;
         }
       } else if (group_state.seq_no_to_skip.erase(group_state.next_seq_no) > 0) {
@@ -235,11 +241,19 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
     }
   }
 
+  // Either there are no tasks to execute, or the head of the line is blocked waiting
+  // for its dependencies. We do not set a timeout waiting for dependency resolution.
   if (!any_group_waiting) {
     wait_timer_.cancel();
   } else {
+    // We are waiting for a task with an earlier seq_no from the client.
+    // The client always sends tasks in seq_no order, so in the majority of cases we
+    // should receive the expected message soon, but messages can come in out of order.
+    //
+    // We set a generous timeout in case the expected seq_no is never received to avoid
+    // hanging. This should happen only if the client crashes or misbehaves. After the
+    // timeout, all tasks will be canceled and the client (if alive) must retry.
     wait_timer_.expires_from_now(boost::posix_time::seconds(reorder_wait_seconds_));
-    RAY_LOG(DEBUG) << "waiting for missing seq_no in one or more concurrency groups";
     wait_timer_.async_wait([this](const boost::system::error_code &error) {
       if (error == boost::asio::error::operation_aborted) {
         return;  // Timer deadline was adjusted.
