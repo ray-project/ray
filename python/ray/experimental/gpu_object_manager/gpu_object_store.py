@@ -30,11 +30,15 @@ def __ray_send__(
 
     tensors = gpu_object_store.get_object(obj_id)
 
-    tensor_transport_manager = get_tensor_transport_manager(backend)
-    if tensors and not device_match_transport(tensors[0].device, backend):
+    device = tensor_transport_meta.tensor_device
+    tensor_meta = tensor_transport_meta.tensor_meta
+
+    if tensor_meta and not device_match_transport(device, backend):
         raise ValueError(
-            f"Tensor transport backend {backend} does not support tensor transfer on device {tensors[0].device}."
+            f"Tensor transport backend {backend} does not support tensor transfer on device {device}."
         )
+
+    tensor_transport_manager = get_tensor_transport_manager(backend)
     tensor_transport_manager.send_multiple_tensors(
         tensors,
         tensor_transport_meta,
