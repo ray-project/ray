@@ -30,6 +30,8 @@ TEST_F(RayActorLifecycleEventTest, TestMergeAndSerialize) {
   data.set_ray_namespace("test_ns");
   data.set_node_id("node-1");
   data.mutable_address()->set_worker_id("worker-123");
+  data.mutable_address()->set_port(12345);
+  data.set_pid(54321);
 
   auto event1 = std::make_unique<RayActorLifecycleEvent>(
       data, rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY, "sess1");
@@ -59,7 +61,70 @@ TEST_F(RayActorLifecycleEventTest, TestMergeAndSerialize) {
   ASSERT_EQ(actor_life.state_transitions(1).worker_id(), "worker-123");
   ASSERT_EQ(actor_life.state_transitions(0).repr_name(), "");
   ASSERT_EQ(actor_life.state_transitions(1).repr_name(), "MyActor(id=123)");
+  ASSERT_EQ(actor_life.state_transitions(1).pid(), 54321);
+  ASSERT_EQ(actor_life.state_transitions(1).port(), 12345);
 }
+
+struct RestartReasonTestCase {
+  std::string name;
+  bool preempted;
+  rpc::events::ActorLifecycleEvent::RestartReason input_reason;
+  rpc::events::ActorLifecycleEvent::RestartReason expected_reason;
+};
+
+class RayActorLifecycleEventRestartTest
+    : public ::testing::TestWithParam<RestartReasonTestCase> {};
+
+TEST_P(RayActorLifecycleEventRestartTest, TestRestartingReason) {
+  const auto &test_case = GetParam();
+
+  rpc::ActorTableData data;
+  data.set_actor_id("test_actor_id");
+  data.set_preempted(test_case.preempted);
+
+  std::unique_ptr<RayActorLifecycleEvent> event;
+  if (test_case.input_reason ==
+      rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION) {
+    // restart reason is explicitly passed in constructor only incase of lineage
+    // reconstruction
+    event = std::make_unique<RayActorLifecycleEvent>(
+        data,
+        rpc::events::ActorLifecycleEvent::RESTARTING,
+        "sess1",
+        test_case.input_reason);
+  } else {
+    event = std::make_unique<RayActorLifecycleEvent>(
+        data, rpc::events::ActorLifecycleEvent::RESTARTING, "sess1");
+  }
+
+  auto serialized_event = std::move(*event).Serialize();
+  const auto &actor_life = serialized_event.actor_lifecycle_event();
+
+  ASSERT_EQ(actor_life.state_transitions_size(), 1);
+  ASSERT_EQ(actor_life.state_transitions(0).state(),
+            rpc::events::ActorLifecycleEvent::RESTARTING);
+  ASSERT_EQ(actor_life.state_transitions(0).restart_reason(), test_case.expected_reason);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    RestartReasons,
+    RayActorLifecycleEventRestartTest,
+    ::testing::Values(
+        RestartReasonTestCase{"Preemption",
+                              true,
+                              rpc::events::ActorLifecycleEvent::ACTOR_FAILURE,
+                              rpc::events::ActorLifecycleEvent::NODE_PREEMPTION},
+        RestartReasonTestCase{"LineageReconstruction",
+                              false,
+                              rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION,
+                              rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION},
+        RestartReasonTestCase{"ActorFailure",
+                              false,
+                              rpc::events::ActorLifecycleEvent::ACTOR_FAILURE,
+                              rpc::events::ActorLifecycleEvent::ACTOR_FAILURE}),
+    [](const ::testing::TestParamInfo<RestartReasonTestCase> &info) {
+      return info.param.name;
+    });
 
 }  // namespace observability
 }  // namespace ray

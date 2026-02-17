@@ -11,6 +11,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.logical.rules.projection_pushdown import (
     _extract_input_columns_renaming_mapping,
 )
@@ -22,6 +23,7 @@ from ray.data.expressions import (
     DownloadExpr,
     Expr,
     LiteralExpr,
+    MonotonicallyIncreasingIdExpr,
     Operation,
     StarExpr,
     UDFExpr,
@@ -97,11 +99,15 @@ def _pa_decode_dict_string_array(x: Union[pa.Array, pa.ChunkedArray]) -> Any:
 def _to_pa_string_input(x: Any) -> Any:
     if isinstance(x, str):
         return pa.scalar(x)
-    elif _is_pa_string_like(x) and isinstance(x, (pa.Array, pa.ChunkedArray)):
-        x = _pa_decode_dict_string_array(x)
-    else:
-        raise
-    return x
+    if isinstance(x, (pa.Array, pa.ChunkedArray)) and _is_pa_string_like(x):
+        return _pa_decode_dict_string_array(x)
+    actual_type = (
+        str(x.type) if isinstance(x, (pa.Array, pa.ChunkedArray)) else type(x).__name__
+    )
+    raise TypeError(
+        "Expected string or string-like pyarrow Array/ChunkedArray for string "
+        f"concatenation, got {actual_type}."
+    )
 
 
 def _pa_add_or_concat(left: Any, right: Any) -> Any:
@@ -688,6 +694,57 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         raise TypeError(
             "DownloadExpr evaluation is not yet implemented in NativeExpressionEvaluator."
         )
+
+    def visit_monotonically_increasing_id(
+        self, expr: MonotonicallyIncreasingIdExpr
+    ) -> Union[BlockColumn, ScalarType]:
+        """Visit a monotonically_increasing_id expression.
+
+        Args:
+            expr: The monotonically_increasing_id expression.
+
+        Returns:
+            The result of the monotonically_increasing_id expression as a BlockColumn.
+        """
+        ctx = TaskContext.get_current()
+        assert (
+            ctx is not None
+        ), "TaskContext is required for monotonically_increasing_id()"
+
+        # Key the counter by expression instance ID so that multiple expressions
+        # in the same projection will have isolated row count state.
+        # This is required because a single task may process multiple blocks if
+        # the upstream data source does not compress the data into a single block.
+        counter_key = f"_mono_id_{expr._instance_id}_counter"
+
+        start_idx = ctx.kwargs.get(counter_key, 0)
+        num_rows = self.block_accessor.num_rows()
+        end_idx = start_idx + num_rows
+        ctx.kwargs[counter_key] = end_idx
+
+        # int64 (signed): upper 30 bits = task ID, lower 33 bits = row number.
+        # Note end_idx is an exclusive upper bound, as the max row ID is end_idx - 1.
+        ROW_BITS = 33
+        TASK_BITS = 30
+        if end_idx > (1 << ROW_BITS):
+            raise ValueError(
+                f"Cannot generate monotonically increasing IDs: row count for this task exceeds the maximum allowed value of {(1<<ROW_BITS)-1}"
+            )
+        if ctx.task_idx >= (1 << TASK_BITS):
+            raise ValueError(
+                f"Cannot generate monotonically increasing IDs: number of tasks exceeds the maximum allowed value of {(1<<TASK_BITS)-1}"
+            )
+
+        partition_mask = ctx.task_idx << ROW_BITS
+        ids = partition_mask + np.arange(start_idx, end_idx, dtype=np.int64)
+
+        block_type = self.block_accessor.block_type()
+        if block_type == BlockType.PANDAS:
+            return pd.Series(ids)
+        elif block_type == BlockType.ARROW:
+            return pa.array(ids)
+        else:
+            raise TypeError(f"Unsupported block type: {block_type}")
 
 
 def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:
