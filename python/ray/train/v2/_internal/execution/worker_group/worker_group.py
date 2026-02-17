@@ -302,7 +302,7 @@ class WorkerGroup(BaseWorkerGroup):
                     num_workers=worker_group_context.num_workers
                 )
             logger.debug(
-                "[Worker Group Initialization] Placement group created in "
+                "[Worker Group Initialization] Placement group ready in "
                 f"{time_monotonic() - pg_wait_start:.2f}s."
             )
 
@@ -352,7 +352,7 @@ class WorkerGroup(BaseWorkerGroup):
                         ), f"Callback {callable} returned {arg} which is already set."
                         train_context_args[arg] = arg_values
                 logger.debug(
-                    "[Train Worker Initialization] before_init_train_context "
+                    "[Worker Group Initialization] before_init_train_context "
                     f"callbacks completed in {time_monotonic() - before_init_train_context_cb_start:.2f}s."
                 )
 
@@ -361,18 +361,28 @@ class WorkerGroup(BaseWorkerGroup):
                     workers, sync_actor, train_context_args
                 )
                 logger.debug(
-                    "[Train Worker Initialization] Train context initialized "
+                    "[Worker Group Initialization] Train context initialized "
                     f"on workers in {time_monotonic() - init_ctx_start:.2f}s."
                 )
 
                 self._worker_group_state = worker_group_state_builder.build()
 
                 after_wg_start_cb_start = time_monotonic()
+                after_wg_start_cb_times = {}
                 for callback in self._callbacks:
+                    cb_start = time_monotonic()
                     callback.after_worker_group_start(self)
+                    after_wg_start_cb_times[type(callback).__name__] = (
+                        time_monotonic() - cb_start
+                    )
+                after_wg_start_cb_breakdown = "\n".join(
+                    f"    {name}: {elapsed:.2f}s"
+                    for name, elapsed in after_wg_start_cb_times.items()
+                )
                 logger.debug(
-                    "[Train Worker Initialization] after_worker_group_start "
-                    f"callbacks completed in {time_monotonic() - after_wg_start_cb_start:.2f}s."
+                    "[Worker Group Initialization] after_worker_group_start "
+                    f"callbacks completed in {time_monotonic() - after_wg_start_cb_start:.2f}s.\n"
+                    f"  Individual callback time breakdown:\n{after_wg_start_cb_breakdown}"
                 )
 
             except RayActorError as actor_error:
@@ -389,7 +399,7 @@ class WorkerGroup(BaseWorkerGroup):
             ]
         )
         logger.debug(
-            "[Train Worker Initialization] Train function launched on "
+            "[Worker Group Initialization] Train function launched on "
             f"workers in {time_monotonic() - launch_start:.2f}s."
         )
 
@@ -402,21 +412,32 @@ class WorkerGroup(BaseWorkerGroup):
                 for w in workers
             ]
         )
-        logger.info(
-            f"Started training worker group of size {len(workers)}: \n{workers_info}"
-        )
 
         after_training_start_cb_start = time_monotonic()
+        after_training_start_cb_times = {}
         for callback in self._callbacks:
+            cb_start = time_monotonic()
             callback.after_worker_group_training_start(self)
+            after_training_start_cb_times[type(callback).__name__] = (
+                time_monotonic() - cb_start
+            )
+        after_training_start_cb_breakdown = "\n".join(
+            f"    {name}: {elapsed:.2f}s"
+            for name, elapsed in after_training_start_cb_times.items()
+        )
         logger.debug(
-            "[Train Worker Initialization] after_worker_group_training_start "
-            f"callbacks completed in {time_monotonic() - after_training_start_cb_start:.2f}s."
+            "[Worker Group Initialization] after_worker_group_training_start "
+            f"callbacks completed in {time_monotonic() - after_training_start_cb_start:.2f}s.\n"
+            f"  Individual callback time breakdown:\n{after_training_start_cb_breakdown}"
         )
 
         logger.debug(
-            "[Train Worker Initialization] Worker group startup completed in "
+            "[Worker Group Initialization] Worker group startup completed in "
             f"{time_monotonic() - start_time:.2f}s total."
+        )
+
+        logger.info(
+            f"Started training worker group of size {len(workers)}: \n{workers_info}"
         )
 
     def _create_workers(
