@@ -180,7 +180,7 @@ class NixlTensorTransport(TensorTransportManager):
 
             ret = NixlTransportMetadata(
                 tensor_meta=tensor_meta,
-                tensor_device=device.type,
+                tensor_device=device.type if device else None,
                 nixl_serialized_descs=serialized_descs,
                 nixl_agent_meta=agent_meta,
                 nixl_agent_name=agent_name,

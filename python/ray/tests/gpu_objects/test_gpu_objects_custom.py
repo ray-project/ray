@@ -52,9 +52,7 @@ class SharedMemoryTransport(TensorTransportManager):
     ) -> TensorTransportMetadata:
 
         tensor_meta = []
-        device = None
         if gpu_object:
-            device = gpu_object[0].device
             for tensor in gpu_object:
                 if tensor.device.type != "cpu":
                     raise ValueError(
@@ -71,7 +69,7 @@ class SharedMemoryTransport(TensorTransportManager):
         self.shared_memory_objects[obj_id] = shm_obj
 
         return ShmTransportMetadata(
-            tensor_meta=tensor_meta, tensor_device=device, shm_name=name, shm_size=size
+            tensor_meta=tensor_meta, tensor_device="cpu", shm_name=name, shm_size=size
         )
 
     def get_communicator_metadata(
