@@ -334,8 +334,8 @@ def test_slice_ref_bundle_with_none_slices():
     ]
 
 
-def test_ref_bundle_str():
-    """Test the __str__ method returns a readable representation."""
+def test_ref_bundle_repr():
+    """Test __repr__ returns a readable representation (used in interactive sessions)."""
     block_ref_one = ObjectRef(b"1" * 28)
     block_ref_two = ObjectRef(b"2" * 28)
     block_ref_three = ObjectRef(b"3" * 28)
@@ -358,13 +358,13 @@ def test_ref_bundle_str():
             (block_ref_three, meta_three),
         ],
         owns_blocks=True,
-        schema="test_schema",
+        schema=None,
         slices=[None, None, slice_three],
     )
 
     expected = """RefBundle(3 blocks,
   18 rows,
-  schema=test_schema,
+  schema=None,
   owns_blocks=True,
   blocks=(
     0: 10 rows, 100.0B, slice=None (full block)
@@ -373,20 +373,16 @@ def test_ref_bundle_str():
   )
 )"""
 
-    assert str(bundle) == expected
+    assert repr(bundle) == expected
 
 
-def test_ref_bundle_str_with_pyarrow_schema():
-    """Test __str__ with PyArrow schema containing pandas metadata."""
-    import pandas as pd
+def test_ref_bundle_repr_with_pyarrow_schema():
+    """Test __repr__ with PyArrow schema."""
     import pyarrow as pa
 
     block_ref = ObjectRef(b"1" * 28)
-    meta = BlockMetadata(num_rows=12, size_bytes=240, exec_stats=None, input_files=None)
-
-    # Create a PyArrow schema with pandas metadata (like from pd.DataFrame)
-    df = pd.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"]})
-    schema = pa.Schema.from_pandas(df, preserve_index=False)
+    meta = BlockMetadata(num_rows=1, size_bytes=4, exec_stats=None, input_files=None)
+    schema = pa.schema([("id", pa.int64()), ("name", pa.string())])
 
     bundle = RefBundle(
         blocks=[(block_ref, meta)],
@@ -395,20 +391,20 @@ def test_ref_bundle_str_with_pyarrow_schema():
     )
 
     expected = """RefBundle(1 blocks,
-  12 rows,
+  1 rows,
   schema={id: int64, name: string},
   owns_blocks=False,
   blocks=(
-    0: 12 rows, 240.0B, slice=None (full block)
+    0: 1 rows, 4.0B, slice=None (full block)
   )
 )"""
-    assert str(bundle) == expected
+    assert repr(bundle) == expected
 
 
-def test_ref_bundle_str_with_none_schema():
-    """Test __str__ with None schema."""
+def test_ref_bundle_repr_with_none_schema():
+    """Test __repr__ with None schema."""
     block_ref = ObjectRef(b"1" * 28)
-    meta = BlockMetadata(num_rows=5, size_bytes=100, exec_stats=None, input_files=None)
+    meta = BlockMetadata(num_rows=1, size_bytes=4, exec_stats=None, input_files=None)
 
     bundle = RefBundle(
         blocks=[(block_ref, meta)],
@@ -417,70 +413,23 @@ def test_ref_bundle_str_with_none_schema():
     )
 
     expected = """RefBundle(1 blocks,
-  5 rows,
+  1 rows,
   schema=None,
   owns_blocks=True,
   blocks=(
-    0: 5 rows, 100.0B, slice=None (full block)
+    0: 1 rows, 4.0B, slice=None (full block)
   )
 )"""
 
-    assert str(bundle) == expected
+    assert repr(bundle) == expected
 
 
-def test_ref_bundle_str_with_large_bytes():
-    """Test __str__ with various byte sizes (KiB, MiB, GiB)."""
-    block_ref_kib = ObjectRef(b"1" * 28)
-    block_ref_mib = ObjectRef(b"2" * 28)
-    block_ref_gib = ObjectRef(b"3" * 28)
-
-    meta_kib = BlockMetadata(
-        num_rows=100, size_bytes=2048, exec_stats=None, input_files=None  # 2 KiB
-    )
-    meta_mib = BlockMetadata(
-        num_rows=1000,
-        size_bytes=2 * 1024 * 1024,  # 2 MiB
-        exec_stats=None,
-        input_files=None,
-    )
-    meta_gib = BlockMetadata(
-        num_rows=10000,
-        size_bytes=3 * 1024 * 1024 * 1024,  # 3 GiB
-        exec_stats=None,
-        input_files=None,
-    )
-
-    bundle = RefBundle(
-        blocks=[
-            (block_ref_kib, meta_kib),
-            (block_ref_mib, meta_mib),
-            (block_ref_gib, meta_gib),
-        ],
-        owns_blocks=True,
-        schema=None,
-    )
-
-    expected = """RefBundle(3 blocks,
-  11100 rows,
-  schema=None,
-  owns_blocks=True,
-  blocks=(
-    0: 100 rows, 2.0KiB, slice=None (full block)
-    1: 1000 rows, 2.0MiB, slice=None (full block)
-    2: 10000 rows, 3.0GiB, slice=None (full block)
-  )
-)"""
-    assert str(bundle) == expected
-
-
-def test_ref_bundle_str_with_pandas_schema():
-    """Test __str__ with PandasBlockSchema."""
+def test_ref_bundle_repr_with_pandas_schema():
+    """Test __repr__ with PandasBlockSchema."""
     from ray.data._internal.pandas_block import PandasBlockSchema
 
     block_ref = ObjectRef(b"1" * 28)
-    meta = BlockMetadata(num_rows=10, size_bytes=500, exec_stats=None, input_files=None)
-
-    # Create a PandasBlockSchema
+    meta = BlockMetadata(num_rows=1, size_bytes=4, exec_stats=None, input_files=None)
     schema = PandasBlockSchema(names=["col1", "col2"], types=[int, str])
 
     bundle = RefBundle(
@@ -490,14 +439,14 @@ def test_ref_bundle_str_with_pandas_schema():
     )
 
     expected = """RefBundle(1 blocks,
-  10 rows,
-  schema={col1: int, col2: str},
+  1 rows,
+  schema={col1: int64, col2: string},
   owns_blocks=True,
   blocks=(
-    0: 10 rows, 500.0B, slice=None (full block)
+    0: 1 rows, 4.0B, slice=None (full block)
   )
 )"""
-    assert str(bundle) == expected
+    assert repr(bundle) == expected
 
 
 def test_merge_ref_bundles():

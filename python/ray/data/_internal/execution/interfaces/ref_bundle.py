@@ -329,15 +329,19 @@ class RefBundle:
     def __str__(self) -> str:
         if self.schema is None:
             schema_str = "None"
-        elif hasattr(self.schema, "names") and hasattr(self.schema, "types"):
-            # PyArrow or Pandas schema with names and types
+        elif isinstance(self.schema, type):
+            # block.Schema can be a bare Python type (e.g. int).
+            schema_str = str(self.schema)
+        else:
+            # PyArrow or PandasBlockSchema — use Dataset.Schema for
+            # consistent formatting with Dataset.schema().
+            from ray.data.dataset import Schema as DatasetSchema
+
+            ds_schema = DatasetSchema(self.schema)
             fields = ", ".join(
-                f"{name}: {getattr(typ, '__name__', str(typ))}"
-                for name, typ in zip(self.schema.names, self.schema.types)
+                f"{name}: {typ}" for name, typ in zip(ds_schema.names, ds_schema.types)
             )
             schema_str = f"{{{fields}}}"
-        else:
-            schema_str = str(self.schema)
 
         lines = [
             f"RefBundle({len(self.blocks)} blocks,",
@@ -373,6 +377,9 @@ class RefBundle:
         lines.append(")")
 
         return "\n".join(lines)
+
+    def __repr__(self) -> str:
+        return self.__str__()
 
 
 @dataclass
