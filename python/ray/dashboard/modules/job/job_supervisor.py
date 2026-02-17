@@ -366,6 +366,16 @@ class JobSupervisor:
                         node_id_hex=driver_node_id,
                         max_buffer_size=10000,
                     )
+                    self._logger.info(
+                        "Initialized ray event recorder in JobSupervisor "
+                        f"(grpc_port={grpc_port})."
+                    )
+                else:
+                    self._logger.warning(
+                        "Dashboard agent info not found in KV store for "
+                        f"node {driver_node_id}. "
+                        "Event recorder will not be initialized."
+                    )
             except Exception:
                 self._logger.warning(
                     "Failed to initialize ray event recorder in JobSupervisor.",
@@ -502,6 +512,16 @@ class JobSupervisor:
                     f"Exception: {traceback.format_exc()}"
                 )
         finally:
+            # Flush any remaining events before the actor exits.
+            if ray_constants.RAY_ENABLE_RAY_EVENT:
+                try:
+                    from ray._raylet import shutdown_event_recorder
+
+                    shutdown_event_recorder()
+                except Exception:
+                    self._logger.debug(
+                        "Failed to shutdown event recorder.", exc_info=True
+                    )
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
 
