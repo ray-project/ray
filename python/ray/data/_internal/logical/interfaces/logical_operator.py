@@ -19,9 +19,10 @@ class LogicalOperator(Operator):
 
     def __init__(
         self,
-        name: Optional[str],
         input_dependencies: List["LogicalOperator"],
         num_outputs: Optional[int] = None,
+        *,
+        name: Optional[str] = None,
     ):
         if name is None:
             name = self.__class__.__name__

@@ -36,7 +36,7 @@ class AbstractMap(AbstractOneToOne):
 
     def __init__(
         self,
-        name: str,
+        name: Optional[str] = None,
         input_op: Optional[LogicalOperator] = None,
         num_outputs: Optional[int] = None,
         *,
@@ -71,7 +71,12 @@ class AbstractMap(AbstractOneToOne):
                 to use Ray tasks, or ``ActorPoolStrategy`` to use an
                 autoscaling actor pool.
         """
-        super().__init__(name, input_op, can_modify_num_rows, num_outputs)
+        super().__init__(
+            input_op=input_op,
+            can_modify_num_rows=can_modify_num_rows,
+            num_outputs=num_outputs,
+            name=name,
+        )
         self.min_rows_per_bundled_input = min_rows_per_bundled_input
         self.ray_remote_args = ray_remote_args or {}
         self.ray_remote_args_fn = ray_remote_args_fn
@@ -321,7 +326,6 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
             compute = self._detect_and_get_compute_strategy(exprs)
 
         super().__init__(
-            None,
             input_op=input_op,
             can_modify_num_rows=False,
             ray_remote_args=ray_remote_args,
@@ -437,7 +441,7 @@ class StreamingRepartition(AbstractMap):
     ):
         super().__init__(
             f"StreamingRepartition[num_rows_per_block={target_num_rows_per_block}]",
-            input_op,
+            input_op=input_op,
             can_modify_num_rows=False,
         )
         self.target_num_rows_per_block = target_num_rows_per_block

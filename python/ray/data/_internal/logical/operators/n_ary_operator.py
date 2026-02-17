@@ -25,7 +25,10 @@ class NAry(LogicalOperator):
         Args:
             input_ops: The input operators.
         """
-        super().__init__(None, list(input_ops), num_outputs)
+        super().__init__(
+            input_dependencies=list(input_ops),
+            num_outputs=num_outputs,
+        )
 
 
 class Zip(NAry):
