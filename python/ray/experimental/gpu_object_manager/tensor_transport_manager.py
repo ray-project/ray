@@ -1,9 +1,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
-    import jax
     import numpy as np
     import torch
 
@@ -24,15 +23,15 @@ class TensorTransportMetadata:
     """Metadata for tensors stored in the GPU object store.
 
     Args:
-        tensor_meta: A list of tuples, each containing the shape and dtype of a tensor or jax array.
-        tensor_device: The device of the tensor or jax array. Currently, we require all tensors in the
+        tensor_meta: A list of tuples, each containing the shape and dtype of a tensor.
+        tensor_device: The device of the tensor. Currently, we require all tensors in the
         list have the same device type.
     """
 
     tensor_meta: List[
         Union[Tuple["torch.Size", "torch.dtype"], Tuple[Tuple[int, ...], "np.dtype"]]
     ]
-    tensor_device: Optional[Union["torch.device", "jax.Device"]] = None
+    tensor_device: Optional[str] = None
 
 
 class TensorTransportManager(ABC):
@@ -83,7 +82,7 @@ class TensorTransportManager(ABC):
     def extract_tensor_transport_metadata(
         self,
         obj_id: str,
-        gpu_object: Union[List["torch.Tensor"], List["jax.Array"]],
+        gpu_object: List[Any],
     ) -> TensorTransportMetadata:
         """
         Extract the tensor transport metadata from the GPU object. This is called on the
@@ -123,7 +122,7 @@ class TensorTransportManager(ABC):
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
-    ) -> Union[List["torch.Tensor"], List["jax.Array"]]:
+    ) -> List[Any]:
         """
         Receive multiple tensors from the source actor. This is called on the destination actor.
 
@@ -139,7 +138,7 @@ class TensorTransportManager(ABC):
     @abstractmethod
     def send_multiple_tensors(
         self,
-        tensors: Union[List["torch.Tensor"], List["jax.Array"]],
+        tensors: List[Any],
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
     ):

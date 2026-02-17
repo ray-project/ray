@@ -5,7 +5,7 @@ import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
-    import torch
+    pass
 
 import google.protobuf.message
 
@@ -338,7 +338,7 @@ class SerializationContext:
     def _deserialize_pickle5_data(
         self,
         data: Any,
-        out_of_band_tensors: Optional[List["torch.Tensor"]],
+        out_of_band_tensors: Optional[List[Any]],
     ) -> Any:
         """
 
@@ -376,7 +376,7 @@ class SerializationContext:
         self,
         data,
         metadata_fields,
-        out_of_band_tensors: Optional[List["torch.Tensor"]] = None,
+        out_of_band_tensors: Optional[List[Any]] = None,
     ):
         msgpack_data, pickle5_data = split_buffer(data)
 
@@ -426,7 +426,7 @@ class SerializationContext:
         data,
         metadata,
         object_ref,
-        out_of_band_tensors: Optional[List["torch.Tensor"]],
+        out_of_band_tensors: Optional[List[Any]],
     ):
         if metadata:
             metadata_fields = metadata.split(b",")
@@ -569,7 +569,7 @@ class SerializationContext:
         self,
         serialized_ray_objects: List[SerializedRayObject],
         object_refs,
-        gpu_objects: Dict[str, List["torch.Tensor"]],
+        gpu_objects: Dict[str, List[Any]],
     ):
         assert len(serialized_ray_objects) == len(object_refs)
         # initialize the thread-local field
@@ -681,7 +681,7 @@ class SerializationContext:
         self,
         value: Any,
         tensor_transport: str,
-    ) -> Tuple[MessagePackSerializedObject, List["torch.Tensor"]]:
+    ) -> Tuple[MessagePackSerializedObject, List[Any]]:
         """Retrieve GPU data from `value` and store it in the GPU object store. Then, return the serialized value.
 
         Args:
@@ -732,7 +732,7 @@ class SerializationContext:
         return serialized_val, tensors
 
     def store_gpu_objects(
-        self, obj_id: str, tensors: List["torch.Tensor"], tensor_transport: str
+        self, obj_id: str, tensors: List[Any], tensor_transport: str
     ) -> bytes:
         """
         Store GPU objects in the GPU object store.

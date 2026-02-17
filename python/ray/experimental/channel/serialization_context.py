@@ -19,7 +19,7 @@ class _SerializationContext:
         # If _use_external_transport is True, then these are
         # the tensors that should be sent or received
         # out-of-band, through the external transport.
-        self._out_of_band_tensors: List["torch.Tensor"] = []
+        self._out_of_band_tensors: List[Any] = []
         # During serialization, tensors sent out-of-band are replaced with
         # integer placeholders. This tracks the set of placeholders seen.
         self._deserialized_tensor_placeholders: Set[int] = set()
@@ -79,8 +79,8 @@ class _SerializationContext:
         return self._use_external_transport
 
     def reset_out_of_band_tensors(
-        self, tensors: List["torch.Tensor"]
-    ) -> Tuple[List["torch.Tensor"], Set[int]]:
+        self, tensors: List[Any]
+    ) -> Tuple[List[Any], Set[int]]:
         """
         Return and reset the out-of-band tensors and all tensor placeholders
         that were deserialized since the last call to reset.
@@ -92,7 +92,7 @@ class _SerializationContext:
         return prev_tensors, deserialized_tensor_placeholders
 
     def serialize_tensor(
-        self, tensor: "torch.Tensor"
+        self, tensor: Any
     ) -> Union[int, Tuple["np.ndarray", "torch.dtype", str]]:
         from ray.experimental.channel import ChannelContext
 

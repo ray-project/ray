@@ -63,8 +63,6 @@ def register_tensor_transport(
     Raises:
         ValueError: If transport_manager_class is not a subclass of TensorTransportManager.
     """
-    import torch
-
     global transport_manager_info
     global has_custom_transports
 
@@ -77,9 +75,6 @@ def register_tensor_transport(
         raise ValueError(
             f"transport_manager_class {transport_manager_class.__name__} must be a subclass of TensorTransportManager."
         )
-
-    if data_type is None:
-        data_type = torch.Tensor
 
     transport_manager_info[transport_name] = TransportManagerInfo(
         transport_manager_class, devices, data_type
@@ -110,7 +105,12 @@ def get_transport_data_type(tensor_transport: str) -> type:
     if tensor_transport not in transport_manager_info:
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
 
-    return transport_manager_info[tensor_transport].data_type
+    data_type = transport_manager_info[tensor_transport].data_type
+    if data_type is None:
+        import torch
+
+        return torch.Tensor
+    return data_type
 
 
 def get_tensor_transport_manager(
@@ -168,6 +168,7 @@ def register_custom_tensor_transports_on_actor(
                     transport_name,
                     transport_info.devices,
                     transport_info.transport_manager_class,
+                    transport_info.data_type,
                 )
 
     return actor.__ray_call__.options(concurrency_group="_ray_system").remote(
@@ -175,13 +176,13 @@ def register_custom_tensor_transports_on_actor(
     )
 
 
-def device_match_transport(device: "torch.device", tensor_transport: str) -> bool:
+def device_match_transport(device: str, tensor_transport: str) -> bool:
     """Check if the device matches the transport."""
 
     if tensor_transport not in transport_manager_info:
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
 
-    return device.type in transport_manager_info[tensor_transport].devices
+    return device in transport_manager_info[tensor_transport].devices
 
 
 def normalize_and_validate_tensor_transport(tensor_transport: str) -> str:
