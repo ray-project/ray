@@ -98,9 +98,8 @@ class RawPushServerCall : public ServerCall {
       grpc_server_req_handling_counter_.Record(1.0, {{"Method", call_name_}});
     }
     if (!io_service_.stopped()) {
-      io_service_.post(
-          [this] { HandleRequestImpl(); },
-          call_name_ + ".HandleRequestImpl");
+      io_service_.post([this] { HandleRequestImpl(); },
+                       call_name_ + ".HandleRequestImpl");
     } else {
       SendReply(Status::Invalid("HandleServiceClosed"));
     }
@@ -155,9 +154,8 @@ class RawPushServerCall : public ServerCall {
         std::move(parsed.header),
         parsed.data,
         parsed.data_len,
-        [this](Status status,
-               std::function<void()> success,
-               std::function<void()> failure) {
+        [this](
+            Status status, std::function<void()> success, std::function<void()> failure) {
           send_reply_success_callback_ = std::move(success);
           send_reply_failure_callback_ = std::move(failure);
           boost::asio::post(GetServerCallExecutor(),
@@ -217,13 +215,12 @@ class RawPushServerCall : public ServerCall {
 /// Factory that creates RawPushServerCall objects for the Push RPC.
 class RawPushServerCallFactory : public ServerCallFactory {
  public:
-  RawPushServerCallFactory(
-      RawObjectManagerAsyncService &service,
-      RawPushHandler &handler,
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      instrumented_io_context &io_service,
-      std::string call_name,
-      bool record_metrics)
+  RawPushServerCallFactory(RawObjectManagerAsyncService &service,
+                           RawPushHandler &handler,
+                           const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+                           instrumented_io_context &io_service,
+                           std::string call_name,
+                           bool record_metrics)
       : service_(service),
         handler_(handler),
         cq_(cq),
@@ -232,15 +229,14 @@ class RawPushServerCallFactory : public ServerCallFactory {
         record_metrics_(record_metrics) {}
 
   void CreateCall() const override {
-    auto *call = new RawPushServerCall(
-        *this, handler_, io_service_, call_name_, record_metrics_);
-    service_.RequestRawPush(
-        &call->context_,
-        &call->request_buffer_,
-        &call->response_writer_,
-        cq_.get(),
-        cq_.get(),
-        call);
+    auto *call =
+        new RawPushServerCall(*this, handler_, io_service_, call_name_, record_metrics_);
+    service_.RequestRawPush(&call->context_,
+                            &call->request_buffer_,
+                            &call->response_writer_,
+                            cq_.get(),
+                            cq_.get(),
+                            call);
   }
 
   int64_t GetMaxActiveRPCs() const override { return -1; }

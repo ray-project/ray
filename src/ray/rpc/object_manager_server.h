@@ -37,8 +37,8 @@ class ServerCallFactory;
 
 // Only Pull and FreeObjects use standard protobuf handlers.
 // Push uses raw ByteBuffer handling via RawPushServerCall.
-#define RAY_OBJECT_MANAGER_RPC_HANDLERS            \
-  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Pull)     \
+#define RAY_OBJECT_MANAGER_RPC_HANDLERS        \
+  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Pull) \
   RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(FreeObjects)
 
 /// Implementations of the `ObjectManagerGrpcService`, check interface in

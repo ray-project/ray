@@ -13,9 +13,7 @@ def test_multithreaded_ray_get(ray_start_cluster):
     # while making many concurrent ray.get requests for a local object in plasma.
     # TODO(57923): Make this not rely on timing if possible.
     ray_cluster = ray_start_cluster
-    ray_cluster.add_node(
-        _system_config={}
-    )
+    ray_cluster.add_node(_system_config={})
     ray.init(address=ray_cluster.address)
     ray_cluster.add_node(resources={"worker": 1})
 

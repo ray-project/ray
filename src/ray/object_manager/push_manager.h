@@ -57,9 +57,7 @@ class PushManager {
   int64_t NumChunksRemaining() const { return chunks_remaining_; }
 
   /// Return the number of active push destinations. For metrics and testing.
-  int64_t NumPushRequestsWithChunksToSend() const {
-    return active_pushes_.size();
-  };
+  int64_t NumPushRequestsWithChunksToSend() const { return active_pushes_.size(); };
 
   /// Record the internal metrics.
   void RecordMetrics() const;

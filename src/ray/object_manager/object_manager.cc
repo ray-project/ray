@@ -498,8 +498,7 @@ void ObjectManager::SendObjectChunk(
   rpc::PushRequest header;
   header.set_push_id(push_id.Binary());
   header.set_object_id(object_id.Binary());
-  header.mutable_owner_address()->CopyFrom(
-      chunk_reader->GetObject().GetOwnerAddress());
+  header.mutable_owner_address()->CopyFrom(chunk_reader->GetObject().GetOwnerAddress());
   header.set_node_id(self_node_id_.Binary());
   header.set_data_size(chunk_reader->GetObject().GetObjectSize());
   header.set_metadata_size(chunk_reader->GetObject().GetMetadataSize());
@@ -531,8 +530,7 @@ void ObjectManager::SendObjectChunk(
     } else {
       num_bytes_pushed_from_plasma_ += optional_chunk->size();
     }
-    byte_buffer =
-        SerializePushToByteBuffer(header, std::move(optional_chunk.value()));
+    byte_buffer = SerializePushToByteBuffer(header, std::move(optional_chunk.value()));
   }
 
   // Record the time cost between send chunk and receive reply.
@@ -564,9 +562,14 @@ void ObjectManager::HandlePush(rpc::PushRequest header,
   uint64_t data_size = header.data_size();
   const rpc::Address &owner_address = header.owner_address();
 
-  bool success = ReceiveObjectChunk(
-      node_id, object_id, owner_address, data_size, metadata_size, chunk_index,
-      data, data_len);
+  bool success = ReceiveObjectChunk(node_id,
+                                    object_id,
+                                    owner_address,
+                                    data_size,
+                                    metadata_size,
+                                    chunk_index,
+                                    data,
+                                    data_len);
   num_chunks_received_total_++;
   if (!success) {
     num_chunks_received_total_failed_++;
@@ -590,8 +593,8 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
   num_bytes_received_total_ += data_len;
   RAY_LOG(DEBUG).WithField(object_id)
       << "ReceiveObjectChunk on " << self_node_id_ << " from " << node_id
-      << " of object, chunk index: " << chunk_index
-      << ", chunk data size: " << data_len << ", object size: " << data_size;
+      << " of object, chunk index: " << chunk_index << ", chunk data size: " << data_len
+      << ", object size: " << data_size;
 
   if (!pull_manager_->IsObjectActive(object_id)) {
     num_chunks_received_cancelled_++;
@@ -614,7 +617,8 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
 
   if (chunk_status.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
-    buffer_pool_.WriteChunk(object_id, data_size, metadata_size, chunk_index, data, data_len);
+    buffer_pool_.WriteChunk(
+        object_id, data_size, metadata_size, chunk_index, data, data_len);
     return true;
   } else {
     num_chunks_received_failed_due_to_plasma_++;

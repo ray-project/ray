@@ -40,11 +40,10 @@ namespace ray {
 /// Zero-copy variant: the data_slice wraps the provided buffer directly.
 /// The buffer_ref shared_ptr is captured and released when gRPC finishes
 /// sending, keeping the underlying memory (e.g. plasma) alive.
-inline grpc::ByteBuffer SerializePushToByteBuffer(
-    const rpc::PushRequest &header,
-    const uint8_t *data,
-    size_t data_len,
-    std::shared_ptr<Buffer> buffer_ref) {
+inline grpc::ByteBuffer SerializePushToByteBuffer(const rpc::PushRequest &header,
+                                                  const uint8_t *data,
+                                                  size_t data_len,
+                                                  std::shared_ptr<Buffer> buffer_ref) {
   // Serialize header to string.
   std::string header_bytes;
   header.SerializeToString(&header_bytes);

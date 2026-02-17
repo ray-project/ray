@@ -64,8 +64,7 @@ class IObjectReader {
   ///
   /// \param[out] buffer_ref Set to a shared_ptr that keeps the buffer alive.
   /// \return Pointer to the start of data, or nullptr if not supported.
-  virtual const uint8_t *GetContiguousBuffer(
-      std::shared_ptr<Buffer> *buffer_ref) const {
+  virtual const uint8_t *GetContiguousBuffer(std::shared_ptr<Buffer> *buffer_ref) const {
     return nullptr;
   }
 };

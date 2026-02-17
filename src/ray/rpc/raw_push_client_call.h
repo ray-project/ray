@@ -37,8 +37,7 @@ class RawPushClientCall : public ClientCall {
   explicit RawPushClientCall(std::function<void(const Status &)> callback,
                              std::shared_ptr<StatsHandle> stats_handle,
                              int64_t timeout_ms = -1)
-      : callback_(std::move(callback)),
-        stats_handle_(std::move(stats_handle)) {
+      : callback_(std::move(callback)), stats_handle_(std::move(stats_handle)) {
     if (timeout_ms != -1) {
       auto deadline =
           std::chrono::system_clock::now() + std::chrono::milliseconds(timeout_ms);
@@ -92,20 +91,19 @@ class RawPushClientCallManager {
         call_manager_(call_manager) {}
 
   /// Send a raw Push request as a ByteBuffer.
-  void Push(grpc::ByteBuffer request,
-            std::function<void(const Status &)> callback) {
+  void Push(grpc::ByteBuffer request, std::function<void(const Status &)> callback) {
     auto stats_handle = call_manager_.GetMainService().stats()->RecordStart(
         "ObjectManagerService.grpc_client.Push");
 
-    auto call = std::make_shared<RawPushClientCall>(
-        std::move(callback), std::move(stats_handle));
+    auto call =
+        std::make_shared<RawPushClientCall>(std::move(callback), std::move(stats_handle));
 
     // Use GenericStub to prepare a unary call with raw ByteBuffer.
-    call->response_reader_ = generic_stub_->PrepareUnaryCall(
-        &call->context_,
-        "/ray.rpc.ObjectManagerService/Push",
-        request,
-        call_manager_.GetCompletionQueue());
+    call->response_reader_ =
+        generic_stub_->PrepareUnaryCall(&call->context_,
+                                        "/ray.rpc.ObjectManagerService/Push",
+                                        request,
+                                        call_manager_.GetCompletionQueue());
     call->response_reader_->StartCall();
 
     auto *tag = new ClientCallTag(call);
