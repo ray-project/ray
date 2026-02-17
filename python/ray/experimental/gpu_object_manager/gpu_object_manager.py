@@ -110,9 +110,9 @@ def set_buffer_for_ref(ref: ObjectRef, buffers: List["torch.Tensor"]):
     of the tensors in the object (e.g., shape, dtype, device). If validation
     fails, a `ValueError` is raised.
 
-    Note that this only applies for the first `ray.get` call on the ref. Subsequent
-    `ray.get` calls on the same ref will not use the buffers unless they are set again
-    after the first `ray.get` call.
+    Note that this only applies for the first `ray.get` call on the ref on the ref.
+    Subsequent `ray.get` calls on the same ref will not use the buffers unless
+    they are set again after the first `ray.get` call.
 
     Args:
         ref: The ObjectRef to set the buffers for. The ref must be for an RDT object.
@@ -480,7 +480,20 @@ class GPUObjectManager:
         gpu_object_meta = self.get_gpu_object_metadata(obj_id)
         assert gpu_object_meta is not None
 
+        if gpu_object_meta.buffers:
+            # The buffers are only used for the first `ray.get` after the buffers are set. We clear
+            # them from the map here before receiving in case something below errors out.
+            with self._lock:
+                self._managed_gpu_object_metadata[
+                    obj_id
+                ] = self._managed_gpu_object_metadata[obj_id]._replace(buffers=None)
+
         if use_object_store:
+            if gpu_object_meta.buffers:
+                logger.warning(
+                    "Buffers are not supported for use_object_store=True. Ignoring the buffers."
+                )
+
             src_actor = gpu_object_meta.src_actor
             tensors = ray.get(
                 src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
@@ -499,14 +512,6 @@ class GPUObjectManager:
             communicator_meta = tensor_transport_manager.get_communicator_metadata(
                 None, None, tensor_transport
             )
-
-            if gpu_object_meta.buffers:
-                # The buffers are only used for the first `ray.get` after the buffers are set. We clear
-                # them from the map here before receiving in case something below errors out.
-                with self._lock:
-                    self._managed_gpu_object_metadata[
-                        obj_id
-                    ] = self._managed_gpu_object_metadata[obj_id]._replace(buffers=None)
 
             tensor_transport_meta = gpu_object_meta.tensor_transport_meta
             if tensor_transport_meta is None:
