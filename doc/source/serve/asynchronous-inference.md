@@ -227,7 +227,7 @@ In this example:
 
 For workloads with variable traffic you can enable autoscaling so that replicas scale up when messages pile up in the queue and scale back down (optionally to zero) when the queue drains.
 
-Ray Serve provides a built-in `AsyncInferenceAutoscalingPolicy` that polls your message broker for queue length and combines it with in-flight request load to compute the desired replica count. It is a [class-based autoscaling policy](serve-custom-autoscaling-policies) that runs on the Serve controller — on each autoscaling tick it computes `desired = total_workload / target_ongoing_requests`, where total workload is the sum of pending queue messages and in-flight requests. Ray Serve then applies the standard `AutoscalingConfig` bounds, delays, and scaling factors on top of this decision.
+Ray Serve provides a built-in `AsyncInferenceAutoscalingPolicy` — a [class-based autoscaling policy](serve-custom-autoscaling-policies) that polls your message broker for queue length and scales replicas to match demand from both pending queue messages and in-flight requests.
 
 ### Basic example
 
