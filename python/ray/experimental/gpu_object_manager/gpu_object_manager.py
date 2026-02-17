@@ -519,11 +519,12 @@ class GPUObjectManager:
                 tensor_transport,
                 gpu_object_meta.buffers,
             )
-            # The buffers are only used for the first `ray.get` after the buffers are set.
-            with self._lock:
-                self._managed_gpu_object_metadata[
-                    obj_id
-                ] = self._managed_gpu_object_metadata[obj_id]._replace(buffers=None)
+            if gpu_object_meta.buffers:
+                # The buffers are only used for the first `ray.get` after the buffers are set.
+                with self._lock:
+                    self._managed_gpu_object_metadata[
+                        obj_id
+                    ] = self._managed_gpu_object_metadata[obj_id]._replace(buffers=None)
 
     def queue_or_trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
