@@ -3084,7 +3084,7 @@ class DeploymentState:
 
                 if gang_config is not None:
                     upscale = self._add_replicas_with_gang_scheduling(
-                        to_add, gang_config, gang_reservation_result
+                        gang_config, gang_reservation_result
                     )
                 else:
                     logger.info(
@@ -3119,14 +3119,12 @@ class DeploymentState:
 
     def _add_replicas_with_gang_scheduling(
         self,
-        to_add: int,
         gang_config: GangSchedulingConfig,
         gang_reservation_result: Optional[GangReservationResult],
     ) -> List[ReplicaSchedulingRequest]:
         """Add replicas using gang scheduling with reserved placement groups.
 
         Args:
-            to_add: Number of replicas to add.
             gang_config: Gang scheduling configuration.
             gang_reservation_result: Gang reservation result with reserved PGs.
 
