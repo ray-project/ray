@@ -988,28 +988,15 @@ class AsyncioRouter:
 
         This method:
         1. Checks deployment availability
-        2. Registers request in context for tracking
-        3. Checks backpressure (max_queued_requests)
-        4. Increments serve_num_router_requests metric
-        5. Selects a replica and reserves a slot
-        6. Increments serve_reserved_slots_active metric
-        7. Yields the ReplicaSelection
-        8. On exit, releases the slot if not dispatched
+        2. Checks backpressure (max_queued_requests)
+        3. Increments serve_num_router_requests metric
+        4. Selects a replica and reserves a slot
+        5. Increments serve_reserved_slots_active metric
+        6. Yields the ReplicaSelection
+        7. On exit, releases the slot if not dispatched
         """
         if not self._deployment_available:
             raise DeploymentUnavailableError(self.deployment_id)
-
-        # TODO: think if we need those here?
-        response_id = generate_request_id()
-        assign_request_task = asyncio.current_task()
-        ray.serve.context._add_request_pending_assignment(
-            request_meta.internal_request_id, response_id, assign_request_task
-        )
-        assign_request_task.add_done_callback(
-            lambda _: ray.serve.context._remove_request_pending_assignment(
-                request_meta.internal_request_id, response_id
-            )
-        )
 
         # Wait for the router to be initialized before sending the request.
         await self._request_router_initialized.wait()
