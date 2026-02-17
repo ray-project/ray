@@ -23,11 +23,13 @@ if TYPE_CHECKING:
 
 
 class TransportManagerInfo(NamedTuple):
+    # Class that implements TensorTransportManager
     transport_manager_class: type[TensorTransportManager]
-    # list of support device types for the transport
+    # List of supported device types for the transport
     devices: List[str]
-    # data type for this transport (e.g. torch.Tensor or jax.Array)
-    data_type: type
+    # Data type for this transport (e.g. torch.Tensor or jax.Array)
+    # If not provided, defaults to torch.Tensor
+    data_type: Optional[type]
 
 
 transport_manager_info: Dict[str, TransportManagerInfo] = {}
