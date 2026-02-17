@@ -345,6 +345,33 @@ class JobSupervisor:
         driver_agent_http_address = f"http://{build_address(node.node_ip_address, node.dashboard_agent_listen_port)}"
         driver_node_id = ray.get_runtime_context().get_node_id()
 
+        # Initialize ray event recorder if enabled, so lifecycle events
+        # (RUNNING, SUCCEEDED, STOPPED, FAILED) from this process are captured.
+        if ray_constants.RAY_ENABLE_RAY_EVENT:
+            try:
+                from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD
+                from ray._raylet import initialize_event_recorder
+                from ray.dashboard.consts import DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX
+
+                agent_info_raw = await self._job_info_client._gcs_client.async_internal_kv_get(
+                    f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{driver_node_id}".encode(),
+                    namespace=KV_NAMESPACE_DASHBOARD,
+                )
+                if agent_info_raw:
+                    _, _, grpc_port = json.loads(agent_info_raw)
+                    initialize_event_recorder(
+                        aggregator_address=node.node_ip_address,
+                        aggregator_port=int(grpc_port),
+                        node_ip=node.node_ip_address,
+                        node_id_hex=driver_node_id,
+                        max_buffer_size=10000,
+                    )
+            except Exception:
+                self._logger.warning(
+                    "Failed to initialize ray event recorder in JobSupervisor.",
+                    exc_info=True,
+                )
+
         await self._job_info_client.put_status(
             self._job_id,
             JobStatus.RUNNING,
