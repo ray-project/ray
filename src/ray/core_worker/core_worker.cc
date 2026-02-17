@@ -1849,7 +1849,7 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
     uris_updated = true;
   }
 
-  // Bug fix: When URIs are copied from parent, also update serialized_runtime_env JSON
+  // When URIs are copied from parent, also update serialized_runtime_env JSON.
   // The runtime_env agent only looks at serialized_runtime_env, not the uris field.
   // Without this, py_modules and working_dir from the job-level runtime_env are not
   // applied to workers even though the URIs are copied for reference counting.
