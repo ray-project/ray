@@ -4,15 +4,14 @@ import numpy as np
 import pandas as pd
 
 from ray.data.aggregate import Max, Min
-from ray.data.preprocessor import SerializablePreprocessorBase
-from ray.data.preprocessors.version_support import SerializablePreprocessor
+from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset
 
 
-class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
+class _AbstractKBinsDiscretizer(Preprocessor):
     """Abstract base class for all KBinsDiscretizers.
 
     Essentially a thin wraper around ``pd.cut``.
@@ -89,9 +88,6 @@ class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
         )
 
 
-@SerializablePreprocessor(
-    version=1, identifier="io.ray.preprocessors.custom_kbins_discretizer"
-)
 @PublicAPI(stability="alpha")
 class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
     """Bin values into discrete intervals using custom bin edges.
@@ -206,10 +202,8 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         self._include_lowest = include_lowest
         self._duplicates = duplicates
         self._dtypes = dtypes
-        self._output_columns = (
-            SerializablePreprocessorBase._derive_and_validate_output_columns(
-                columns, output_columns
-            )
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
         )
 
         self._validate_bins_columns()
@@ -252,27 +246,6 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
 
     _is_fittable = False
 
-    def _get_serializable_fields(self) -> Dict[str, Any]:
-        return {
-            "columns": self._columns,
-            "bins": self._bins,
-            "right": self._right,
-            "include_lowest": self._include_lowest,
-            "duplicates": self._duplicates,
-            "dtypes": self._dtypes,
-            "output_columns": self._output_columns,
-        }
-
-    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
-        # required fields
-        self._columns = fields["columns"]
-        self._bins = fields["bins"]
-        self._right = fields["right"]
-        self._include_lowest = fields["include_lowest"]
-        self._duplicates = fields["duplicates"]
-        self._dtypes = fields["dtypes"]
-        self._output_columns = fields["output_columns"]
-
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
         # Migrate old public field names to new private field names
@@ -312,9 +285,6 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
             self._output_columns = self._columns
 
 
-@SerializablePreprocessor(
-    version=1, identifier="io.ray.preprocessors.uniform_kbins_discretizer"
-)
 @PublicAPI(stability="alpha")
 class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
     """Bin values into discrete intervals (bins) of uniform width.
@@ -427,10 +397,8 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         self._include_lowest = include_lowest
         self._duplicates = duplicates
         self._dtypes = dtypes
-        self._output_columns = (
-            SerializablePreprocessorBase._derive_and_validate_output_columns(
-                columns, output_columns
-            )
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
         )
 
     @property
@@ -463,7 +431,7 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
     def output_columns(self) -> List[str]:
         return self._output_columns
 
-    def _fit(self, dataset: "Dataset") -> SerializablePreprocessorBase:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         self._validate_on_fit()
 
         if isinstance(self.bins, dict):
@@ -496,30 +464,6 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         stats = self._stat_computation_plan.compute(dataset)
         self.stats_ = post_fit_processor(stats, self.bins, self.right)
         return self
-
-    def _get_serializable_fields(self) -> Dict[str, Any]:
-        return {
-            "columns": self._columns,
-            "bins": self._bins,
-            "right": self._right,
-            "include_lowest": self._include_lowest,
-            "duplicates": self._duplicates,
-            "dtypes": self._dtypes,
-            "output_columns": self._output_columns,
-            "_fitted": getattr(self, "_fitted", None),
-        }
-
-    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
-        # required fields
-        self._columns = fields["columns"]
-        self._bins = fields["bins"]
-        self._right = fields["right"]
-        self._include_lowest = fields["include_lowest"]
-        self._duplicates = fields["duplicates"]
-        self._dtypes = fields["dtypes"]
-        self._output_columns = fields["output_columns"]
-        # optional fields
-        self._fitted = fields.get("_fitted")
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
