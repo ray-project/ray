@@ -53,7 +53,9 @@ SCHEMA = {
 logger = logging.getLogger(__name__)
 
 
-def _validate_deprecated_map_args(kwargs: dict, config: "AlgorithmConfig") -> Tuple[bool, Dict, List]:
+def _validate_deprecated_map_args(
+    kwargs: dict, config: "AlgorithmConfig"
+) -> Tuple[bool, Dict, List]:
     """Handles deprecated args for OfflinePreLearner's map functions
 
     If a user of this API tries to use deprecated arguments, we print a deprecation
