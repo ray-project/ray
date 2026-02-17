@@ -60,6 +60,32 @@ def _infer_flattened_dtype(expr: "Expr") -> DataType:
         return DataType.from_arrow(pyarrow.list_(child_type.value_type))
 
 
+def _normalize_list_for_list_kernels(
+    arr: pyarrow.Array,
+) -> tuple[pyarrow.Array, pyarrow.Array | None]:
+    """Normalize list array for list_* compute kernels (list_flatten, list_parent_indices).
+
+    For fixed_size_list with null entries, fills null rows with fixed-size null-value
+    lists and casts to list<T>. This ensures list_flatten and list_parent_indices
+    produce aligned arrays. Returns the normalized array and the original null mask.
+
+    Example: FixedSizeList<2>[ [1,2], None, [3,4] ]
+    Fill null row -> [[1,2],[None,None],[3,4]], cast to list<child>.
+    list_* kernels require list/large_list, not fixed_size_list.
+    """
+    arr = _ensure_array(arr)
+    null_mask = arr.is_null() if arr.null_count else None
+    if pyarrow.types.is_fixed_size_list(arr.type):
+        child_type = arr.type.value_type
+        list_size = arr.type.list_size
+        if null_mask is not None:
+            filler_values = pyarrow.nulls(len(arr) * list_size, type=child_type)
+            filler = pyarrow.FixedSizeListArray.from_arrays(filler_values, list_size)
+            arr = pc.if_else(null_mask, filler, arr)
+        arr = arr.cast(pyarrow.list_(child_type))
+    return arr, null_mask
+
+
 def _validate_nested_list(arr_type: pyarrow.DataType) -> None:
     """Raise TypeError if arr_type is not a list of lists."""
     if not _is_list_like(arr_type):
@@ -217,34 +243,12 @@ class _ListNamespace:
             # 1) Normalize fixed_size_list -> list for list_* kernels (preserve nulls).
             # 2) Flatten to (row_index, value) pairs, sort by row then value.
             # 3) Rebuild list array using per-row lengths and restore original type.
-            arr = _ensure_array(arr)
-
-            arr_type = arr.type
-            arr_dtype = DataType.from_arrow(arr_type)
+            arr_dtype = DataType.from_arrow(arr.type)
             if not arr_dtype.is_list_type():
                 raise TypeError("list.sort() requires a list column.")
-
-            original_type = arr_type
-            null_mask = arr.is_null() if arr.null_count else None
-            sort_arr = arr
-            if pyarrow.types.is_fixed_size_list(arr_type):
-                # Example: FixedSizeList<2>[ [3,1], None, [2,4] ]
-                # Fill null row -> [[3,1],[None,None],[2,4]], cast to list<child> for sort,
-                # then cast back to fixed_size to preserve schema. list_* kernels operate
-                # on list/large_list, so we cast fixed_size_list<T> to list<T> here.
-                child_type = arr_type.value_type
-                list_size = arr_type.list_size
-                if null_mask is not None:
-                    # Fill null rows with fixed-size null lists so each row keeps
-                    # the same list_size when we sort and rebuild offsets.
-                    filler_values = pyarrow.nulls(len(arr) * list_size, type=child_type)
-                    filler = pyarrow.FixedSizeListArray.from_arrays(
-                        filler_values, list_size
-                    )
-                    sort_arr = pc.if_else(null_mask, filler, arr)
-                list_type = pyarrow.list_(child_type)
-                sort_arr = sort_arr.cast(list_type)
-                arr_type = sort_arr.type
+            original_type = arr.type
+            sort_arr, null_mask = _normalize_list_for_list_kernels(arr)
+            arr_type = sort_arr.type
             # Flatten to (row_index, value) pairs, sort within each row by value.
             values = pc.list_flatten(sort_arr)
             if len(values):
@@ -368,23 +372,8 @@ class _ListNamespace:
 
         @pyarrow_udf(return_dtype=return_dtype)
         def _list_sum(arr: pyarrow.Array) -> pyarrow.Array:
-            arr = _ensure_array(arr)
+            arr, null_mask = _normalize_list_for_list_kernels(arr)
             n_rows = len(arr)
-            null_mask = arr.is_null() if arr.null_count else None
-            if pyarrow.types.is_fixed_size_list(arr.type):
-                # Example: FixedSizeList<2>[ [3,1], None, [2,4] ]
-                # Fill null row -> [[3,1],[None,None],[2,4]], cast to list<child>,
-                # list_* kernels operate on list/large_list, so we cast
-                # fixed_size_list<T> to list<T> here.
-                child_type = arr.type.value_type
-                list_size = arr.type.list_size
-                if null_mask is not None:
-                    filler_values = pyarrow.nulls(len(arr) * list_size, type=child_type)
-                    filler = pyarrow.FixedSizeListArray.from_arrays(
-                        filler_values, list_size
-                    )
-                    arr = pc.if_else(null_mask, filler, arr)
-                arr = arr.cast(pyarrow.list_(child_type))
             values = pc.list_flatten(arr)
             if len(values) == 0:
                 out_type = return_dtype.to_arrow_dtype()
@@ -423,24 +412,8 @@ class _ListNamespace:
 
         @pyarrow_udf(return_dtype=DataType.float64())
         def _list_mean(arr: pyarrow.Array) -> pyarrow.Array:
-
-            arr = _ensure_array(arr)
+            arr, null_mask = _normalize_list_for_list_kernels(arr)
             n_rows = len(arr)
-            null_mask = arr.is_null() if arr.null_count else None
-            if pyarrow.types.is_fixed_size_list(arr.type):
-                # Example: FixedSizeList<2>[ [3,1], None, [2,4] ]
-                # Fill null row -> [[3,1],[None,None],[2,4]], cast to list<child>,
-                # list_* kernels operate on list/large_list, so we cast
-                # fixed_size_list<T> to list<T> here.
-                child_type = arr.type.value_type
-                list_size = arr.type.list_size
-                if null_mask is not None:
-                    filler_values = pyarrow.nulls(len(arr) * list_size, type=child_type)
-                    filler = pyarrow.FixedSizeListArray.from_arrays(
-                        filler_values, list_size
-                    )
-                    arr = pc.if_else(null_mask, filler, arr)
-                arr = arr.cast(pyarrow.list_(child_type))
             values = pc.list_flatten(arr)
             if len(values) == 0:
                 out = pyarrow.nulls(n_rows, type=pyarrow.float64())
