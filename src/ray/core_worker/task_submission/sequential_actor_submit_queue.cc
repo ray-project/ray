@@ -24,11 +24,19 @@ namespace core {
 void SequentialActorSubmitQueue::Emplace(const std::string &concurrency_group,
                                          uint64_t sequence_no,
                                          const TaskSpecification &spec) {
-  auto &requests_for_group = spec.IsRetry() ? retry_requests_per_group_[concurrency_group]
-                                            : requests_per_group_[concurrency_group];
-  RAY_CHECK(requests_for_group
-                .emplace(sequence_no, std::make_pair(spec, /*dependency_resolved*/ false))
-                .second);
+  if (spec.IsRetry()) {
+    auto &requests_for_group = retry_requests_per_group_[concurrency_group];
+    RAY_CHECK(
+        requests_for_group
+            .emplace(sequence_no, std::make_pair(spec, /*dependency_resolved*/ false))
+            .second);
+  } else {
+    auto &requests_for_group = requests_per_group_[concurrency_group];
+    RAY_CHECK(
+        requests_for_group
+            .emplace(sequence_no, std::make_pair(spec, /*dependency_resolved*/ false))
+            .second);
+  }
 }
 
 bool SequentialActorSubmitQueue::Contains(const std::string &concurrency_group,
