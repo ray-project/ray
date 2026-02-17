@@ -749,7 +749,7 @@ py_test(
 
 py_test(
     name = "test_logging",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_logging.py"],
     tags = [
         "exclusive",
@@ -861,7 +861,7 @@ py_test(
 
 py_test(
     name = "test_parquet",
-    size = "medium",
+    size = "large",
     srcs = ["tests/datasource/test_parquet.py"],
     tags = [
         "exclusive",
