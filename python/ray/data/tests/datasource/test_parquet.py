@@ -234,7 +234,7 @@ def test_parquet_read_random_shuffle(
     input_list = list(range(num_files))
     setup_data_path = _unwrap_protocol(data_path)
     for i in range(num_files):
-        table = pa.Table.from_pandas(pd.DataFrame({"one": [i]}))
+        table = pa.Table.from_pandas(pd.DataFrame({"id": [i]}))
         path = os.path.join(setup_data_path, f"test_{i}.parquet")
         pq.write_table(table, path, filesystem=fs)
 
