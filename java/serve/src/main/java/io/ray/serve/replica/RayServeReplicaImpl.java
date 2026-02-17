@@ -50,6 +50,8 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
   private Gauge numProcessingItems;
 
+  private Gauge numProcessingItemsDeprecated;
+
   private DeploymentVersion version;
 
   private boolean isDeleted = false;
@@ -157,7 +159,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
     // Deprecated: Remove in Ray 3.0.
     RayServeMetrics.execute(
         () ->
-            numProcessingItems =
+            numProcessingItemsDeprecated =
                 Metrics.gauge()
                     .name(RayServeMetrics.SERVE_REPLICA_PROCESSING_QUERIES_DEPRECATED.getName())
                     .description(
@@ -185,6 +187,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
     numOngoingRequests.incrementAndGet();
     RayServeMetrics.execute(() -> numProcessingItems.update(numOngoingRequests.get()));
+    RayServeMetrics.execute(() -> numProcessingItemsDeprecated.update(numOngoingRequests.get()));
     Object result = invokeSingle(request);
     numOngoingRequests.decrementAndGet();
 
