@@ -1,7 +1,11 @@
 import logging
 import os
 import pathlib
+import shutil
 import sys
+import tempfile
+import urllib.request
+import zipfile
 from datetime import datetime
 from dataclasses import is_dataclass
 from importlib import import_module
@@ -557,6 +561,58 @@ def process_signature(app, what, name, obj, options, signature, return_annotatio
         return signature.replace("<factory>", "..."), return_annotation
 
 
+# External tutorial archives to fetch during the Sphinx build.
+# Each entry is (url, src_path_in_archive, dest_path_relative_to_doc_source).
+# ``src_path_in_archive`` is the path *inside* the extracted archive to copy from.
+# Set it to "" to copy the entire archive contents.
+EXTERNAL_TUTORIAL_ARCHIVES = [
+    (
+        "https://templates.ci.ray.io/templates/deployment-serve-llm/20260212-015212/build.zip",
+        "",
+        "serve/tutorials/deployment-serve-llm",
+    ),
+]
+
+
+def _fetch_external_tutorials(app):
+    """Download and extract external tutorial archives into the doc source tree.
+
+    This runs at ``builder-inited`` time so that the files are available for the
+    rest of the Sphinx build.  The locally-vendored copies are removed after the
+    build via ``_cleanup_external_tutorials``.
+    """
+    base_path = pathlib.Path(app.srcdir)
+    for url, src_path, dest_path in EXTERNAL_TUTORIAL_ARCHIVES:
+        dest = base_path / dest_path
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = os.path.join(tmp, "archive.zip")
+            extract_dir = os.path.join(tmp, "extracted")
+            logger.info("Downloading %s -> %s", url, dest)
+            urllib.request.urlretrieve(url, archive_path)
+            with zipfile.ZipFile(archive_path) as zf:
+                zf.extractall(extract_dir)
+            src = pathlib.Path(extract_dir) / src_path if src_path else pathlib.Path(extract_dir)
+            if not src.exists():
+                logger.warning(
+                    "Source path %s does not exist in archive from %s – skipping.",
+                    src_path,
+                    url,
+                )
+                continue
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(src, dest)
+
+
+def _cleanup_external_tutorials(app, exception):
+    """Remove fetched tutorial directories so the source tree stays clean."""
+    base_path = pathlib.Path(app.srcdir)
+    for _url, _src_path, dest_path in EXTERNAL_TUTORIAL_ARCHIVES:
+        dest = base_path / dest_path
+        if dest.exists():
+            shutil.rmtree(dest)
+
+
 def setup(app):
     # Only generate versions JSON during RTD build
     if os.getenv("READTHEDOCS") == "True":
@@ -596,6 +652,10 @@ def setup(app):
     app.connect("builder-inited", github_docs.write_new_docs)
     # Restore original file content after build
     app.connect("build-finished", github_docs.write_original_docs)
+
+    # Fetch external tutorial repos (e.g. deployment-serve-llm)
+    app.connect("builder-inited", _fetch_external_tutorials)
+    app.connect("build-finished", _cleanup_external_tutorials)
 
     # Hook into the logger used by linkcheck to display a summary at the end.
     linkcheck_summarizer = LinkcheckSummarizer()
