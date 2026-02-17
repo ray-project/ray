@@ -119,6 +119,9 @@ from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
 from ray.data.datasource.file_datasink import _FileDatasink
+from ray.data.datasource.util import (
+    _validate_head_node_resources_for_local_scheduling,
+)
 from ray.data.datatype import DataType
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
@@ -5545,6 +5548,11 @@ class Dataset:
             ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(),
                 soft=False,
+            )
+
+            _validate_head_node_resources_for_local_scheduling(
+                ray_remote_args,
+                op_description="Writing to a local:// path",
             )
 
         plan = self._plan.copy()
