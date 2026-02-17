@@ -43,6 +43,7 @@
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/subreaper.h"
 #include "ray/util/time.h"
 
@@ -2305,6 +2306,63 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
     return Status::TimedOut(stream.str());
   }
   return status;
+}
+
+ObjectID CoreWorker::AsyncWaitPlacementGroupReady(
+    const PlacementGroupID &placement_group_id,
+    const std::string &serialized_object_data,
+    const std::string &serialized_object_metadata) {
+  // Generate ObjectID and register ownership.
+  // The object will be stored directly in memory_store_ and fate-shares with the owner,
+  // so we set pinned_at_node_id to nullopt (same as small task returns).
+  ObjectID object_id = ObjectID::FromIndex(worker_context_->GetCurrentInternalTaskId(),
+                                           worker_context_->GetNextPutIndex());
+  reference_counter_->AddOwnedObject(object_id,
+                                     /*contained_object_ids=*/{},
+                                     rpc_address_,
+                                     CurrentCallSite(),
+                                     /*object_size=*/-1,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true,
+                                     /*pinned_at_node_id=*/std::nullopt);
+
+  // Async RPC to GCS that returns when the placement group is ready (or removed).
+  // The callback puts the result into memory store, completing ray.get()/wait()/await.
+  rpc::WaitPlacementGroupUntilReadyRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
+
+  gcs_client_->GetGcsRpcClient().WaitPlacementGroupUntilReady(
+      std::move(request),
+      [this, object_id, serialized_object_data, serialized_object_metadata](
+          const Status &status, const rpc::WaitPlacementGroupUntilReadyReply &reply) {
+        // timeout_ms=-1 retries transient gRPC failures, so any other error
+        // here indicates an unexpected GCS server-side failure.
+        RAY_CHECK(status.ok() || status.IsNotFound())
+            << "Unexpected status from WaitPlacementGroupUntilReady: " << status;
+
+        std::shared_ptr<RayObject> result;
+        if (status.ok()) {
+          auto data = std::make_shared<LocalMemoryBuffer>(serialized_object_data.size());
+          memcpy(
+              data->Data(), serialized_object_data.data(), serialized_object_data.size());
+          auto metadata =
+              std::make_shared<LocalMemoryBuffer>(serialized_object_metadata.size());
+          memcpy(metadata->Data(),
+                 serialized_object_metadata.data(),
+                 serialized_object_metadata.size());
+          result = std::make_shared<RayObject>(
+              data, metadata, std::vector<rpc::ObjectReference>());
+        } else {
+          result =
+              std::make_shared<RayObject>(rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED);
+        }
+        memory_store_->Put(*result, object_id, /*has_reference=*/true);
+      },
+      // timeout_ms=-1 means infinite wait with automatic retry.
+      // Users can still set their own timeout via ray.get(ref, timeout=...).
+      /*timeout_ms=*/-1);
+
+  return object_id;
 }
 
 Status CoreWorker::SubmitActorTask(

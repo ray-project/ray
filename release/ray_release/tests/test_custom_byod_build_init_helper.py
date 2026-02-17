@@ -30,11 +30,13 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
             "ray-project/ray-ml:abc123-base",
             "custom_script.sh",
             None,
+            None,
         ),
         (
             "ray-project/ray-ml:abc123-custom1",
             "ray-project/ray-ml:abc123-base",
             "",
+            None,
             None,
         ),
         (
@@ -42,18 +44,28 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
             "ray-project/ray-ml:abc123-py37-cpu-base",
             "custom_script.sh",
             None,
+            None,
         ),  # longer than 40 chars
         (
             "ray-project/ray-ml:abc123-py37-cpu-custom-abcdef123456789abc987654321",
             "ray-project/ray-ml:abc123-py37-cpu-base",
             "custom_script.sh",
             "python_depset.lock",
+            None,
         ),
         (
             "custom_ecr/ray-ml:abc123-py37-cpu-custom-abcdef123456789abc987654321",
             "anyscale/ray:2.50.0-py37-cpu",
             "custom_script.sh",
             "python_depset.lock",
+            None,
+        ),
+        (
+            "ray-project/ray-ml:abc123-envonly-abcdef123456789abc000000000",
+            "ray-project/ray-ml:abc123-base",
+            None,
+            None,
+            {"MY_ENV": "my_value", "OTHER_ENV": "other_value"},
         ),
     ]
     custom_image_test_names_map = {
@@ -70,13 +82,17 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
         "custom_ecr/ray-ml:abc123-py37-cpu-custom-abcdef123456789abc987654321": [
             "test_3",
         ],
+        "ray-project/ray-ml:abc123-envonly-abcdef123456789abc000000000": [
+            "test_4",
+        ],
     }
     mock_get_images_from_tests.return_value = (
         custom_byod_images,
         custom_image_test_names_map,
     )
     step_keys = [
-        generate_custom_build_step_key(image) for image, _, _, _ in custom_byod_images
+        generate_custom_build_step_key(image)
+        for image, _, _, _, _ in custom_byod_images
     ]
     # List of dummy tests
     tests = [
@@ -104,6 +120,13 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
                 "ray_version": "2.50.0",
             },
         ),
+        Test(
+            name="test_4",
+            frequency="manual",
+            group="test_group",
+            team="test_team",
+            working_dir="test_working_dir",
+        ),
     ]
     with tempfile.TemporaryDirectory() as tmpdir:
         create_custom_build_yaml(
@@ -112,7 +135,7 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
         with open(os.path.join(tmpdir, "custom_byod_build.rayci.yml"), "r") as f:
             content = yaml.safe_load(f)
             assert content["group"] == "Custom images build"
-            assert len(content["steps"]) == 4
+            assert len(content["steps"]) == 5
             assert (
                 content["steps"][0]["label"]
                 == f":tapioca: build custom: ray-ml:custom ({step_keys[0]}) test_1"
@@ -150,6 +173,14 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
                 in content["steps"][2]["commands"][6]
             )
             assert content["steps"][3]["depends_on"] == "forge"
+            # Verify env-only image step has --env flags
+            env_only_cmd = content["steps"][4]["commands"][6]
+            assert f"--image-name {custom_byod_images[5][0]}" in env_only_cmd
+            assert "--env MY_ENV=my_value" in env_only_cmd
+            assert "--env OTHER_ENV=other_value" in env_only_cmd
+            # Env-only step should not have --post-build-script or --python-depset
+            assert "--post-build-script" not in env_only_cmd
+            assert "--python-depset" not in env_only_cmd
 
 
 def test_get_prerequisite_step():
