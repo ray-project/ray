@@ -30,7 +30,7 @@ class Write(AbstractMap):
             min_rows_per_bundled_input = None
 
         super().__init__(
-            "Write",
+            None,
             input_op,
             can_modify_num_rows=True,
             min_rows_per_bundled_input=min_rows_per_bundled_input,

@@ -21,7 +21,7 @@ class InputData(LogicalOperator, SourceOperator):
         self,
         input_data: List[RefBundle],
     ):
-        super().__init__("InputData", [], len(input_data))
+        super().__init__(None, [], len(input_data))
         self.input_data = input_data
 
     def output_data(self) -> Optional[List[RefBundle]]:

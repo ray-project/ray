@@ -26,7 +26,7 @@ class AbstractOneToOne(LogicalOperator):
 
     def __init__(
         self,
-        name: str,
+        name: Optional[str],
         input_op: Optional[LogicalOperator],
         can_modify_num_rows: bool,
         num_outputs: Optional[int] = None,
@@ -118,7 +118,7 @@ class Download(AbstractOneToOne):
         ray_remote_args: Optional[Dict[str, Any]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ):
-        super().__init__("Download", input_op, can_modify_num_rows=False)
+        super().__init__(None, input_op, can_modify_num_rows=False)
         if len(uri_column_names) != len(output_bytes_column_names):
             raise ValueError(
                 f"Number of URI columns ({len(uri_column_names)}) must match "

@@ -198,7 +198,7 @@ class MapBatches(AbstractUDFMap):
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            "MapBatches",
+            self.__class__.__name__,
             input_op,
             fn,
             can_modify_num_rows=can_modify_num_rows,
@@ -272,7 +272,7 @@ class Filter(AbstractUDFMap):
         self.predicate_expr = predicate_expr
 
         super().__init__(
-            "Filter",
+            self.__class__.__name__,
             input_op,
             can_modify_num_rows=True,
             fn=fn,
@@ -321,7 +321,7 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
             compute = self._detect_and_get_compute_strategy(exprs)
 
         super().__init__(
-            "Project",
+            None,
             input_op=input_op,
             can_modify_num_rows=False,
             ray_remote_args=ray_remote_args,
@@ -409,7 +409,7 @@ class FlatMap(AbstractUDFMap):
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            "FlatMap",
+            self.__class__.__name__,
             input_op,
             fn,
             can_modify_num_rows=True,

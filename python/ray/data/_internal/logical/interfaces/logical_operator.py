@@ -23,6 +23,8 @@ class LogicalOperator(Operator):
         input_dependencies: List["LogicalOperator"],
         num_outputs: Optional[int] = None,
     ):
+        if name is None:
+            name = self.__class__.__name__
         super().__init__(
             name,
             input_dependencies,
@@ -31,13 +33,6 @@ class LogicalOperator(Operator):
             assert isinstance(x, LogicalOperator), x
 
         self.num_outputs: Optional[int] = num_outputs
-
-    @property
-    def name(self) -> str:
-        name = super().name
-        if name is None:
-            return self.__class__.__name__
-        return name
 
     def estimated_num_outputs(self) -> Optional[int]:
         """Returns the estimated number of blocks that
