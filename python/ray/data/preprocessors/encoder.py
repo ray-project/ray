@@ -1037,6 +1037,38 @@ def compute_unique_value_indices(
     encode_lists: bool = True,
     max_categories: Optional[Dict[str, int]] = None,
 ):
+    """Compute the set of unique values for each column across the full dataset.
+
+    Counts value frequencies globally (summed across all partitions) and then,
+    if ``max_categories`` is specified for a column, selects only the top-k most
+    frequent values. This ensures that a value appearing moderately in many
+    partitions is not missed — e.g. a value with count 3 in each of two
+    partitions (global count 6) is correctly preferred over a value with count 5
+    in a single partition.
+
+    Args:
+        dataset: The Ray Dataset to compute value counts over.
+        columns: Column names to compute unique values for.
+        key_gen: A callable that maps a column name to the key used in the
+            returned dictionary (e.g. ``lambda col: f"unique({col})"``).
+        encode_lists: If ``True``, list-type column elements are exploded so
+            that each list element is counted individually. If ``False``, entire
+            lists are treated as single categorical values (converted to tuples
+            for hashability).
+        max_categories: Optional mapping from column name to the maximum number
+            of unique values to keep. Only the most frequent values (by global
+            count) are retained. Columns not present in the mapping keep all
+            unique values.
+
+    Returns:
+        Dict[str, Set]: A mapping from ``key_gen(col)`` to the set of unique
+        values for that column (limited to top-k if ``max_categories`` applies).
+
+    Raises:
+        ValueError: If a column in ``max_categories`` is not in ``columns``.
+        ValueError: If a column listed in ``columns`` is missing from the
+            dataset.
+    """
     if max_categories is None:
         max_categories = {}
     columns_set = set(columns)
@@ -1079,19 +1111,25 @@ def compute_unique_value_indices(
         return result
 
     value_counts_ds = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
-    unique_values_by_col: Dict[str, Set] = {key_gen(col): set() for col in columns}
+    # Aggregate counters globally per column before applying max_categories,
+    # so that top-k is computed over the full dataset rather than per-partition.
+    global_counters: Dict[str, Counter] = {col: Counter() for col in columns}
     for batch in value_counts_ds.iter_batches(batch_size=None):
         for col, counters in batch.items():
             for counter in counters:
-                counter: Dict[Any, int] = {
+                filtered: Dict[Any, int] = {
                     k: v for k, v in counter.items() if v is not None
                 }
-                if col in max_categories:
-                    counter: Dict[Any, int] = dict(
-                        Counter(counter).most_common(max_categories[col])
-                    )
-                # add only column values since frequencies are needed beyond this point
-                unique_values_by_col[key_gen(col)].update(counter.keys())
+                global_counters[col].update(filtered)
+
+    unique_values_by_col: Dict[str, Set] = {key_gen(col): set() for col in columns}
+    for col in columns:
+        counter = global_counters[col]
+        if col in max_categories:
+            top_k_values = dict(counter.most_common(max_categories[col]))
+            unique_values_by_col[key_gen(col)].update(top_k_values.keys())
+        else:
+            unique_values_by_col[key_gen(col)].update(counter.keys())
 
     return unique_values_by_col
 
