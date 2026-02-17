@@ -815,11 +815,11 @@ def test_actor_pool_scale_logs_include_map_worker_cls_name(
         create_actor_fn,
         ExecutionResources(cpu=1),
         min_size=1,
-        max_size=4,
+        max_size=1,
         initial_size=1,
         max_actor_concurrency=1,
-        max_tasks_in_flight_per_actor=4,
-        _map_worker_cls_name="MapWorker(TestOp)",
+        max_tasks_in_flight_per_actor=1,
+        map_worker_cls_name="MapWorker(TestOp)",
     )
 
     with caplog.at_level(logging.DEBUG, logger=logger_name):
