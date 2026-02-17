@@ -11,32 +11,22 @@ from ci.ray_ci.automation.image_tags_lib import (
     format_platform_tag,
     get_platform_suffixes,
     get_python_suffixes,
-    get_variation_suffix,
     image_exists,
 )
 from ci.ray_ci.configs import (
     ARCHITECTURE,
-    DEFAULT_ARCHITECTURE,
     PYTHON_VERSIONS,
 )
 from ci.ray_ci.docker_container import (
-    ARCHITECTURES_RAY,
-    ARCHITECTURES_RAY_LLM,
-    ARCHITECTURES_RAY_ML,
     PLATFORMS_RAY,
-    PLATFORMS_RAY_LLM,
-    PLATFORMS_RAY_ML,
-    PYTHON_VERSIONS_RAY,
-    PYTHON_VERSIONS_RAY_LLM,
-    PYTHON_VERSIONS_RAY_ML,
-    RAY_REPO_MAP,
     RayType,
 )
+from ci.ray_ci.ray_image import IMAGE_TYPE_CONFIG, RayImage, RayImageError
 from ci.ray_ci.utils import ci_init, ecr_docker_login
 
 from ray_release.configs.global_config import get_global_config
 
-VALID_IMAGE_TYPES = [rt.value for rt in RayType]
+VALID_IMAGE_TYPES = list(IMAGE_TYPE_CONFIG.keys())
 
 logging.basicConfig(
     level=logging.INFO,
@@ -95,42 +85,21 @@ class RayImagePushContext:
         self.rayci_build_id = rayci_build_id
         self.pull_request = pull_request
 
-        arch_suffix = "" if architecture == DEFAULT_ARCHITECTURE else f"-{architecture}"
-        self.arch_suffix = arch_suffix
+        self.ray_image = RayImage(
+            image_type=ray_type.value,
+            python_version=python_version,
+            platform=platform,
+            architecture=architecture,
+        )
+        self.arch_suffix = self.ray_image.arch_suffix
         self.wanda_tag = f"{rayci_build_id}-{self.wanda_image_name()}"
-        self.docker_hub_repo = f"rayproject/{RAY_REPO_MAP[self.ray_type.value]}"
+        self.docker_hub_repo = f"rayproject/{self.ray_image.repo}"
 
     def assert_published_image_type(self) -> None:
-        invalid_python_version = (
-            f"Invalid python version {self.python_version} for {self.ray_type}"
-        )
-        invalid_platform = f"Invalid platform {self.platform} for {self.ray_type}"
-        invalid_architecture = (
-            f"Invalid architecture {self.architecture} for {self.ray_type}"
-        )
-
-        if self.ray_type in [RayType.RAY_ML, RayType.RAY_ML_EXTRA]:
-            if self.python_version not in PYTHON_VERSIONS_RAY_ML:
-                raise PushRayImageError(invalid_python_version)
-            if self.platform not in PLATFORMS_RAY_ML:
-                raise PushRayImageError(invalid_platform)
-            if self.architecture not in ARCHITECTURES_RAY_ML:
-                raise PushRayImageError(invalid_architecture)
-        elif self.ray_type in [RayType.RAY_LLM, RayType.RAY_LLM_EXTRA]:
-            if self.python_version not in PYTHON_VERSIONS_RAY_LLM:
-                raise PushRayImageError(invalid_python_version)
-            if self.platform not in PLATFORMS_RAY_LLM:
-                raise PushRayImageError(invalid_platform)
-            if self.architecture not in ARCHITECTURES_RAY_LLM:
-                raise PushRayImageError(invalid_architecture)
-        else:
-            # ray or ray-extra
-            if self.python_version not in PYTHON_VERSIONS_RAY:
-                raise PushRayImageError(invalid_python_version)
-            if self.platform not in PLATFORMS_RAY:
-                raise PushRayImageError(invalid_platform)
-            if self.architecture not in ARCHITECTURES_RAY:
-                raise PushRayImageError(invalid_architecture)
+        try:
+            self.ray_image.validate()
+        except RayImageError as e:
+            raise PushRayImageError(str(e)) from e
 
     def destination_tags(self) -> List[str]:
         """
@@ -155,14 +124,6 @@ class RayImagePushContext:
                     )
         return tags
 
-    def wanda_image_name(self) -> str:
-        """Get the wanda source image name for this context."""
-        if self.platform == "cpu":
-            return (
-                f"{self.ray_type.value}-py{self.python_version}-cpu{self.arch_suffix}"
-            )
-        return f"{self.ray_type.value}-py{self.python_version}-{self.platform}{self.arch_suffix}"
-
     def _versions(self) -> List[str]:
         """Compute version tags based on branch/schedule/PR status."""
         is_master = self.branch == "master"
@@ -184,9 +145,13 @@ class RayImagePushContext:
         else:
             return [sha_tag, self.rayci_build_id]
 
+    def wanda_image_name(self) -> str:
+        """Get the wanda source image name for this context."""
+        return self.ray_image.wanda_image_name
+
     def _variation_suffix(self) -> str:
         """Get -extra suffix for extra image types."""
-        return get_variation_suffix(self.ray_type.value)
+        return self.ray_image.variation_suffix
 
     def _python_suffixes(self) -> List[str]:
         """Get python version suffixes (includes empty for default version)."""

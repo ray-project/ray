@@ -43,6 +43,7 @@
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/subreaper.h"
 #include "ray/util/time.h"
 
