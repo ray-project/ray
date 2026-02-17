@@ -33,7 +33,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
 #include "ray/observability/fake_metric.h"
-#include "ray/raylet/local_lease_manager.h"
+#include "ray/raylet/scheduling/local_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/tests/util.h"
 #include "mock/ray/gcs_client/gcs_client.h"

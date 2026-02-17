@@ -19,6 +19,7 @@ from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
     DeploymentSchedulingInfo,
     ReplicaSchedulingRequest,
+    ReplicaSchedulingRequestStatus,
     Resources,
     SpreadDeploymentSchedulingPolicy,
 )
@@ -867,6 +868,227 @@ def test_downscale_single_deployment():
     scheduler.on_deployment_deleted(dep_id)
 
 
+def test_schedule_passes_placement_group_options():
+    """Test that bundle_label_selector is passed to CreatePlacementGroupRequest."""
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    captured_requests = []
+
+    def mock_create_pg(request):
+        captured_requests.append(request)
+
+        class MockPG:
+            def wait(self, *args):
+                return True
+
+        return MockPG()
+
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=mock_create_pg,
+    )
+
+    dep_id = DeploymentID(name="pg_options_test")
+    # Use Spread policy here, but the logic is shared across policies.
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+
+    test_labels = [{"region": "us-west"}]
+    # Create a request with the new options
+    req = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r1", dep_id),
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={"name": "r1"},
+        actor_init_args=(),
+        on_scheduled=lambda *args, **kwargs: None,
+        placement_group_bundles=[{"CPU": 1}],
+        placement_group_bundle_label_selector=test_labels,
+        placement_group_strategy="STRICT_PACK",
+    )
+
+    scheduler.schedule(upscales={dep_id: [req]}, downscales={})
+
+    # Verify the PlacementGroupSchedulingRequest is created.
+    assert len(captured_requests) == 1
+    pg_request = captured_requests[0]
+
+    # bundle_label_selector should be passed to request.
+    assert pg_request.bundle_label_selector == test_labels
+
+
+def test_filter_nodes_by_label_selector():
+    """Test _filter_nodes_by_label_selector logic used by _find_best_fit_node_for_pack
+    when bin-packing, such that label constraints are enforced for the preferred node."""
+
+    class MockScheduler(default_impl.DefaultDeploymentScheduler):
+        def __init__(self):
+            pass
+
+    scheduler = MockScheduler()
+
+    nodes = {
+        "n1": Resources(),
+        "n2": Resources(),
+        "n3": Resources(),
+    }
+    node_labels = {
+        "n1": {"region": "us-west", "gpu": "T4", "env": "prod"},
+        "n2": {"region": "us-east", "gpu": "A100", "env": "dev"},
+        "n3": {"region": "me-central", "env": "staging"},  # No GPU label
+    }
+
+    # equals operator
+    filtered = scheduler._filter_nodes_by_label_selector(
+        nodes, {"region": "us-west"}, node_labels
+    )
+    assert set(filtered.keys()) == {"n1"}
+
+    # not equals operator
+    filtered = scheduler._filter_nodes_by_label_selector(
+        nodes, {"region": "!us-west"}, node_labels
+    )
+    assert set(filtered.keys()) == {"n2", "n3"}
+
+    # in operator
+    filtered = scheduler._filter_nodes_by_label_selector(
+        nodes, {"region": "in(us-west,us-east)"}, node_labels
+    )
+    assert set(filtered.keys()) == {"n1", "n2"}
+
+    # !in operator
+    filtered = scheduler._filter_nodes_by_label_selector(
+        nodes, {"env": "!in(dev,staging)"}, node_labels
+    )
+    assert set(filtered.keys()) == {"n1"}
+
+    # Missing labels treated as not a match for equality.
+    filtered = scheduler._filter_nodes_by_label_selector(
+        nodes, {"gpu": "A100"}, node_labels
+    )
+    assert set(filtered.keys()) == {"n2"}
+
+    # Not equal should match node with missing labels.
+    filtered = scheduler._filter_nodes_by_label_selector(
+        nodes, {"gpu": "!T4"}, node_labels
+    )
+    assert set(filtered.keys()) == {"n2", "n3"}
+
+
+def test_build_pack_placement_candidates():
+    """Test strategy generation logic in DefaultDeploymentScheduler._build_pack_placement_candidates,
+    verifying that the scheduler correctly generates a list of (resources, labels) tuples to
+    attempt for scheduling."""
+
+    # Setup scheduler with mocks
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="head_node",
+        create_placement_group_fn_override=None,
+    )
+
+    # Basic Ray Actor
+    req_basic = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r1", DeploymentID(name="d1")),
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={},
+        actor_init_args=(),
+        on_scheduled=Mock(),
+    )
+    strategies = scheduler._build_pack_placement_candidates(req_basic)
+    assert len(strategies) == 1
+    assert strategies[0][0] == {"CPU": 1}
+    assert strategies[0][1] == []
+
+    # Actor with label_selector and fallback_strategy
+    req_fallback = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r2", DeploymentID(name="d1")),
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={
+            "label_selector": {"region": "us-west"},
+            "fallback_strategy": [{"label_selector": {"region": "us-east"}}],
+        },
+        actor_init_args=(),
+        on_scheduled=Mock(),
+    )
+    strategies = scheduler._build_pack_placement_candidates(req_fallback)
+    assert len(strategies) == 2
+
+    assert strategies[0][0] == {"CPU": 1}
+    assert strategies[0][1] == [{"region": "us-west"}]
+    assert strategies[1][0] == {"CPU": 1}
+    assert strategies[1][1] == [{"region": "us-east"}]
+
+    # Scheduling replica with placement group PACK strategy and bundle_label_selector
+    req_pack = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r4", DeploymentID(name="d1")),
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 0.1},
+        actor_options={},
+        actor_init_args=(),
+        on_scheduled=Mock(),
+        placement_group_bundles=[{"CPU": 5}],
+        placement_group_strategy="PACK",
+        placement_group_bundle_label_selector=[
+            {"accelerator-type": "H100"},
+            {"accelerator-type": "H100"},
+        ],
+    )
+
+    with pytest.raises(NotImplementedError):
+        scheduler._build_pack_placement_candidates(req_pack)
+
+    # Scheduling replica with placement group STRICT_PACK strategy and bundle_label_selector
+    req_pg = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r3", DeploymentID(name="d1")),
+        actor_def=MockActorClass(),
+        actor_resources={},
+        actor_options={},
+        actor_init_args=(),
+        on_scheduled=Mock(),
+        placement_group_bundles=[{"CPU": 2}],
+        placement_group_strategy="STRICT_PACK",
+        placement_group_bundle_label_selector=[{"accelerator-type": "A100"}],
+    )
+    strategies = scheduler._build_pack_placement_candidates(req_pg)
+    assert len(strategies) == 1
+
+    assert strategies[0][0] == {"CPU": 2}
+    assert strategies[0][1] == [{"accelerator-type": "A100"}]
+
+
+def test_build_pack_placement_candidates_pg_fallback_error():
+    """
+    Test that providing placement_group_fallback_strategy raises NotImplementedError.
+    """
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="head_node",
+        create_placement_group_fn_override=None,
+    )
+
+    # Create a request with placement_group_fallback_strategy defined.
+    req = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r1", DeploymentID(name="d1")),
+        actor_def=MockActorClass(),
+        actor_resources={},
+        actor_options={},
+        actor_init_args=(),
+        on_scheduled=Mock(),
+        placement_group_bundles=[{"CPU": 1}],
+        placement_group_strategy="STRICT_PACK",
+        # Raises NotImplementedError since not added to placement group options yet.
+        placement_group_fallback_strategy=[{"label_selector": {"zone": "us-east-1a"}}],
+    )
+
+    # Verify the scheduler raises the expected error
+    with pytest.raises(NotImplementedError, match="not yet supported"):
+        scheduler._build_pack_placement_candidates(req)
+
+
 @pytest.mark.skipif(
     not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )
@@ -1202,6 +1424,252 @@ class TestPackScheduling:
             },
             downscales={},
         )
+
+    def test_actor_creation_failure_does_not_decrement_resources(self):
+        """When actor creation fails for a replica, available resources
+        should not be decremented so subsequent replicas in the same
+        scheduling batch can still use that node.
+        """
+
+        d_id = DeploymentID(name="deployment1")
+        node_id = NodeID.from_random().hex()
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        # Node has exactly 1 CPU — enough for one 1-CPU replica.
+        cluster_node_info_cache.add_node(node_id, {"CPU": 1})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id,
+            ReplicaConfig.create(dummy, ray_actor_options={"num_cpus": 1}),
+        )
+
+        # Create a mock actor class whose .options().remote() raises on the
+        # first call (simulating actor creation failure) but succeeds after.
+        call_count = 0
+
+        class FailOnceMockActorClass(MockActorClass):
+            def remote(self, *args):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    raise RuntimeError("Simulated actor creation failure")
+                return super().remote(*args)
+
+        on_scheduled_mock = Mock()
+        r0_id = ReplicaID(unique_id="r0", deployment_id=d_id)
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+
+        req0 = ReplicaSchedulingRequest(
+            replica_id=r0_id,
+            actor_def=FailOnceMockActorClass(),
+            actor_resources={"CPU": 1},
+            actor_options={},
+            actor_init_args=(),
+            on_scheduled=on_scheduled_mock,
+        )
+        req1 = ReplicaSchedulingRequest(
+            replica_id=r1_id,
+            actor_def=MockActorClass(),
+            actor_resources={"CPU": 1},
+            actor_options={},
+            actor_init_args=(),
+            on_scheduled=on_scheduled_mock,
+        )
+
+        scheduler.schedule(
+            upscales={d_id: [req0, req1]},
+            downscales={},
+        )
+
+        # The first replica should have failed.
+        assert req0.status == ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
+
+        # The second replica should have succeeded and been scheduled to the
+        # node.
+        assert req1.status == ReplicaSchedulingRequestStatus.SUCCEEDED
+        assert on_scheduled_mock.call_count == 1
+        call = on_scheduled_mock.call_args_list[0]
+        scheduling_strategy = call.args[0]._options["scheduling_strategy"]
+        assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
+        assert scheduling_strategy.node_id == node_id
+
+    def test_pg_creation_failure_does_not_decrement_resources(self):
+        """When placement group creation fails for a replica, available
+        resources should not be decremented so subsequent replicas in the
+        same scheduling batch can still use that node.
+        """
+
+        d_id = DeploymentID(name="deployment1")
+        node_id = NodeID.from_random().hex()
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        # Node has exactly 1 CPU — enough for one replica with 1-CPU PG.
+        cluster_node_info_cache.add_node(node_id, {"CPU": 1})
+
+        call_count = 0
+
+        def fail_once_create_pg(request):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("Simulated PG creation failure")
+            return MockPlacementGroup(request)
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=fail_once_create_pg,
+        )
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id,
+            ReplicaConfig.create(
+                dummy,
+                ray_actor_options={"num_cpus": 0},
+                placement_group_bundles=[{"CPU": 1}],
+                placement_group_strategy="STRICT_PACK",
+            ),
+        )
+
+        on_scheduled_mock = Mock()
+        r0_id = ReplicaID(unique_id="r0", deployment_id=d_id)
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+
+        req0 = ReplicaSchedulingRequest(
+            replica_id=r0_id,
+            actor_def=MockActorClass(),
+            actor_resources={"CPU": 0},
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="STRICT_PACK",
+            actor_options={"name": "r0"},
+            actor_init_args=(),
+            on_scheduled=on_scheduled_mock,
+        )
+        req1 = ReplicaSchedulingRequest(
+            replica_id=r1_id,
+            actor_def=MockActorClass(),
+            actor_resources={"CPU": 0},
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="STRICT_PACK",
+            actor_options={"name": "r1"},
+            actor_init_args=(),
+            on_scheduled=on_scheduled_mock,
+        )
+
+        scheduler.schedule(
+            upscales={d_id: [req0, req1]},
+            downscales={},
+        )
+
+        # The first replica should have failed at PG creation.
+        assert (
+            req0.status
+            == ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
+        )
+
+        # The second replica should still succeed.
+        assert req1.status == ReplicaSchedulingRequestStatus.SUCCEEDED
+        assert on_scheduled_mock.call_count == 1
+        call = on_scheduled_mock.call_args_list[0]
+        scheduling_strategy = call.args[0]._options["scheduling_strategy"]
+        assert isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy)
+
+    def test_pack_prefers_newly_non_idle_node(self):
+        """After scheduling a replica to a previously idle node, subsequent
+        replicas in the same batch should prefer that node (now non-idle)
+        over other idle nodes, even if the idle node is a tighter fit.
+
+        Regression test: without updating node_to_running_replicas after
+        each scheduling, the PACK scheduler would treat all initially-idle
+        nodes as idle for the entire batch, falling through to pure
+        best-fit and potentially spreading replicas across nodes.
+        """
+
+        d_id1 = DeploymentID(name="deployment1")
+        d_id2 = DeploymentID(name="deployment2")
+        node_id_1 = NodeID.from_random().hex()
+        node_id_2 = NodeID.from_random().hex()
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        # Node 1 has GPU + CPU; node 2 has only CPU.
+        # After the GPU replica is placed on node 1, node 2 would be
+        # a tighter best-fit for a CPU-only replica (2 CPU remaining
+        # vs 4 CPU on node 1). But PACK should prefer node 1 because
+        # it is now non-idle.
+        cluster_node_info_cache.add_node(node_id_1, {"GPU": 1, "CPU": 4})
+        cluster_node_info_cache.add_node(node_id_2, {"CPU": 2})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+
+        scheduler.on_deployment_created(d_id1, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d_id2, SpreadDeploymentSchedulingPolicy())
+
+        scheduler.on_deployment_deployed(
+            d_id1,
+            ReplicaConfig.create(
+                dummy, ray_actor_options={"num_gpus": 1, "num_cpus": 0}
+            ),
+        )
+        scheduler.on_deployment_deployed(
+            d_id2,
+            ReplicaConfig.create(dummy, ray_actor_options={"num_cpus": 1}),
+        )
+
+        on_scheduled_mock1 = Mock()
+        on_scheduled_mock2 = Mock()
+        scheduler.schedule(
+            upscales={
+                d_id1: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(unique_id="r0", deployment_id=d_id1),
+                        actor_def=MockActorClass(),
+                        actor_resources={"GPU": 1},
+                        actor_options={},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled_mock1,
+                    )
+                ],
+                d_id2: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(unique_id="r1", deployment_id=d_id2),
+                        actor_def=MockActorClass(),
+                        actor_resources={"CPU": 1},
+                        actor_options={},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled_mock2,
+                    )
+                ],
+            },
+            downscales={},
+        )
+
+        # The GPU replica must go to node 1 (only node with GPU).
+        assert len(on_scheduled_mock1.call_args_list) == 1
+        call1 = on_scheduled_mock1.call_args_list[0]
+        strategy1 = call1.args[0]._options["scheduling_strategy"]
+        assert isinstance(strategy1, NodeAffinitySchedulingStrategy)
+        assert strategy1.node_id == node_id_1
+        assert call1.kwargs == {"placement_group": None}
+
+        # The CPU replica should also go to node 1 (now non-idle) rather
+        # than node 2 (idle but tighter fit). The PACK scheduler prefers
+        # non-idle nodes to consolidate replicas onto fewer nodes.
+        assert len(on_scheduled_mock2.call_args_list) == 1
+        call2 = on_scheduled_mock2.call_args_list[0]
+        strategy2 = call2.args[0]._options["scheduling_strategy"]
+        assert isinstance(strategy2, NodeAffinitySchedulingStrategy)
+        assert strategy2.node_id == node_id_1
+        assert call2.kwargs == {"placement_group": None}
 
 
 if __name__ == "__main__":

@@ -1,0 +1,29 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+advanced_configurations_json:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+
+head_node_type:
+    name: head-node
+    # Default head node type on Anyscale workspaces.
+    instance_type: m5.2xlarge
+    resources:
+      cpu: 0
+
+worker_node_types:
+    - name: cpu-worker
+      # CPU node for data loading
+      # r8i.4xlarge: 16 vCPU, 128 GiB memory
+      instance_type: r8i.4xlarge
+      min_workers: 1
+      max_workers: 1
+      use_spot: false
+
+    - name: gpu-worker
+      # GPU node for training ingest benchmark
+      # g4dn.8xlarge: 32 vCPU, 1 NVIDIA T4 GPU, 128 GiB memory
+      instance_type: g4dn.8xlarge
+      min_workers: 1
+      max_workers: 1
+      use_spot: false

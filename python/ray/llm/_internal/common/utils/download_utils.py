@@ -57,7 +57,7 @@ class NodeModelDownloadable(enum.Enum):
 def get_model_entrypoint(model_id: str) -> str:
     """Get the path to entrypoint of the model on disk if it exists, otherwise return the model id as is.
 
-    Entrypoint is typically <TRANSFORMERS_CACHE>/models--<model_id>/
+    Entrypoint is typically <HF_HUB_CACHE>/models--<model_id>/
 
     Args:
         model_id: Hugging Face model ID.
@@ -65,10 +65,10 @@ def get_model_entrypoint(model_id: str) -> str:
     Returns:
         The path to the entrypoint of the model on disk if it exists, otherwise the model id as is.
     """
-    from transformers.utils.hub import TRANSFORMERS_CACHE
+    from huggingface_hub.constants import HF_HUB_CACHE
 
     model_dir = Path(
-        TRANSFORMERS_CACHE, f"models--{model_id.replace('/', '--')}"
+        HF_HUB_CACHE, f"models--{model_id.replace('/', '--')}"
     ).expanduser()
     if not model_dir.exists():
         return model_id
@@ -134,7 +134,16 @@ class CloudModelDownloader(CloudModelAccessor):
         if bucket_uri is None:
             return self.model_id
 
-        lock_path = self._get_lock_path()
+        # Use different lock paths for different download types to avoid race conditions
+        # where a tokenizer-only download completes and subsequent full model downloads
+        # incorrectly assume the model weights are already cached.
+        if tokenizer_only:
+            lock_suffix = "-tokenizer"
+        elif exclude_safetensors:
+            lock_suffix = "-exclude-safetensors"
+        else:
+            lock_suffix = "-full"
+        lock_path = self._get_lock_path(suffix=lock_suffix)
         path = self._get_model_path()
         storage_type = self.mirror_config.storage_type
 

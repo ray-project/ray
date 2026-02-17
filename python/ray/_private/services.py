@@ -476,6 +476,7 @@ def get_node_to_connect_for_driver(
     node_ip_address: str = None,
     node_name: str = None,
     temp_dir: str = None,
+    timeout_seconds: int = ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
 ) -> GcsNodeInfo:
     """
     Get the node to connect to for the driver.
@@ -491,46 +492,51 @@ def get_node_to_connect_for_driver(
                          it will be resolved to a ray node on the same host.
         node_name: The name of the node to connect to. If not provided, it will be resolved to a ray node on the same host.
         temp_dir: The temp directory of the node to connect to. If not provided, it will be resolved to a ray node on the same host.
+        timeout_seconds: The time alotted to find the node to connect to
 
     Returns:
         The node info of the node to connect to.
     """
     node_to_connect_info = None
-    possible_node_ids = find_node_ids()
-    node_selectors = []
-    for id in possible_node_ids:
-        id_node_selector = GetAllNodeInfoRequest.NodeSelector(
-            node_id=NodeID.from_hex(id).binary()
-        )
-        node_selectors.append(id_node_selector)
-    try:
-        node_to_connect_infos = gcs_client.get_all_node_info(
-            timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
-            node_selectors=node_selectors,
-            state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
-        ).values()
-    except Exception as e:
-        raise RuntimeError(
-            f"Failed to get node info for possible node ids: {possible_node_ids}"
-            f" when trying to resolve node to connect to. Error: {repr(e)}"
-        )
-    if not node_to_connect_infos:
-        raise RuntimeError(
-            f"No node info found matching node ids: {possible_node_ids}"
-            f" when trying to resolve node to connect to."
-        )
-
+    start_time = time.time()
+    possible_node_ids = []
     filtered_node_to_connect_infos = []
-    for node_info in node_to_connect_infos:
-        if (
-            (
+    while not possible_node_ids or not filtered_node_to_connect_infos:
+        time_left = timeout_seconds - (time.time() - start_time)
+        if time_left <= 0:
+            break
+
+        possible_node_ids = find_node_ids()
+        # no need to make gcs call if raylets are not ready yet
+        if len(possible_node_ids) == 0:
+            time.sleep(1)
+            continue
+
+        node_selectors = []
+        for id in possible_node_ids:
+            id_node_selector = GetAllNodeInfoRequest.NodeSelector(
+                node_id=NodeID.from_hex(id).binary()
+            )
+            node_selectors.append(id_node_selector)
+        try:
+            node_to_connect_infos = gcs_client.get_all_node_info(
+                timeout=time_left,
+                node_selectors=node_selectors,
+                state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
+            ).values()
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to get node info for possible node ids: {possible_node_ids}"
+                f" when trying to resolve node to connect to. Error: {repr(e)}"
+            )
+        for node_info in node_to_connect_infos:
+            if (
                 node_ip_address is None
                 or node_info.node_manager_address == node_ip_address
-            )
-            and (node_name is None or node_info.node_name == node_name)
-            and (temp_dir is None or node_info.temp_dir == temp_dir)
-        ):
-            filtered_node_to_connect_infos.append(node_info)
+            ) and (node_name is None or node_info.node_name == node_name):
+                filtered_node_to_connect_infos.append(node_info)
+        if not filtered_node_to_connect_infos:
+            time.sleep(1)
 
     if not filtered_node_to_connect_infos:
         attrs = [node_ip_address, node_name, temp_dir]
@@ -939,7 +945,7 @@ def start_ray_process(
 
         # TODO(suquark): Any better temp file creation here?
         gdb_init_path = os.path.join(
-            ray._common.utils.get_default_ray_temp_dir(),
+            ray._common.utils.get_ray_temp_dir(),
             f"gdb_init_{process_type}_{time.time()}",
         )
         ray_process_path = command[0]
@@ -2125,7 +2131,6 @@ def determine_plasma_store_config(
 
     Args:
         object_store_memory: The object store memory to use.
-        temp_dir: The user-specified temp directory parameter (defaults to <system_temp_dir>/ray).
         plasma_directory: The user-specified plasma directory parameter.
         fallback_directory: The path extracted from the object_spilling_config when the
                             object spilling config is set and the spilling type is to
@@ -2170,7 +2175,7 @@ def determine_plasma_store_config(
                     )
                 )
             else:
-                plasma_directory = temp_dir
+                plasma_directory = ray._common.utils.get_user_temp_dir()
                 logger.warning(
                     "WARNING: The object store is using {} instead of "
                     "/dev/shm because /dev/shm has only {} bytes available. "
@@ -2180,13 +2185,13 @@ def determine_plasma_store_config(
                     "passing '--shm-size={:.2f}gb' to 'docker run' (or add it "
                     "to the run_options list in a Ray cluster config). Make "
                     "sure to set this to more than 30% of available RAM.".format(
-                        temp_dir,
+                        ray._common.utils.get_user_temp_dir(),
                         shm_avail,
                         object_store_memory * (1.1) / (2**30),
                     )
                 )
         else:
-            plasma_directory = temp_dir
+            plasma_directory = ray._common.utils.get_user_temp_dir()
 
         # Do some sanity checks.
         if object_store_memory > system_memory:

@@ -76,9 +76,22 @@ parser.add_argument(
     default=10,
     help="Number of episodes to do inference over after training.",
 )
+parser.add_argument(
+    "--use-onnx-for-inference",
+    action="store_true",
+    help="Whether to convert the loaded module to ONNX format and then perform "
+    "inference through this ONNX model.",
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    if args.use_onnx_for_inference:
+        if args.explore_during_inference:
+            raise ValueError(
+                "Can't set `--explore-during-inference` and `--use-onnx-for-inference` together!"
+            )
+        import onnxruntime
 
     ray.init(num_cpus=args.num_cpus or None)
 
@@ -133,6 +146,14 @@ if __name__ == "__main__":
     checkpoint = results.get_best_result().checkpoint
     # Create new Algorithm and restore its state from the last checkpoint.
     algo = Algorithm.from_checkpoint(checkpoint)
+    # Export ONNX model if relevant
+    if args.use_onnx_for_inference:
+        algo.get_policy().export_model(
+            "frozenlake_attention_model_onnx",
+            # ONNX opset version 12 required to support einsum operator.
+            # Requires ONNX >= 1.7 and ONNX runtime >= 1.3
+            onnx=12,
+        )
 
     # Create the env to do inference in.
     env = gym.make("FrozenLake-v1")
@@ -159,17 +180,63 @@ if __name__ == "__main__":
         init_prev_r = prev_r = np.array([0.0] * args.prev_n_rewards)
 
     num_episodes = 0
+    ort_session = None
 
     while num_episodes < args.num_episodes_during_inference:
+
         # Compute an action (`a`).
-        a, state_out, _ = algo.compute_single_action(
-            observation=obs,
-            state=state,
-            prev_action=prev_a,
-            prev_reward=prev_r,
-            explore=args.explore_during_inference,
-            policy_id="default_policy",  # <- default value
-        )
+        if args.use_onnx_for_inference:
+            # Prepare the ONNX runtime session.
+            if ort_session is None:
+                ort_session = onnxruntime.InferenceSession(
+                    "frozenlake_attention_model_onnx/model.onnx"
+                )
+            # Prepare the inputs dict.
+            seq_len = np.array([config["model"]["max_seq_len"]], dtype=np.int32)
+
+            # pre-process observation: obs is an integer.
+            # we need to convert it to a one-hot vector (FrozenLake-v1 space).
+            n = env.observation_space.n
+            obs_one_hot = np.zeros(n, dtype=np.float32)
+            obs_one_hot[obs] = 1.0
+            obs = obs_one_hot
+            # Add batch dimension.
+            obs = np.array(obs, dtype=np.float32)[np.newaxis, :]
+
+            state_ins = np.array(state, dtype=np.float32)
+
+            ort_inputs = {
+                "obs": obs,
+                "state_ins": state_ins,
+                "seq_lens": seq_len,
+            }
+
+            if init_prev_a is not None:
+                ort_inputs["prev_actions"] = prev_a.astype(np.int64)[np.newaxis, :]
+            if init_prev_r is not None:
+                ort_inputs["prev_rewards"] = prev_r.astype(np.float32)[np.newaxis, :]
+            # Run the ONNX model.
+            ort_outs = ort_session.run(
+                output_names=["output", "state_outs"],
+                input_feed=ort_inputs,
+            )
+            # Extract action and state-out from the ONNX model outputs.
+            dist_inputs = ort_outs[0][0]
+            # Exploration could be added here based on `dist_inputs`.
+            # This would require using the configured exploration strategy.
+            # Not implemented in this example.
+            a = np.argmax(dist_inputs)
+
+            state_out = [ort_outs[i + 1][0] for i in range(len(state))]
+        else:
+            a, state_out, _ = algo.compute_single_action(
+                observation=obs,
+                state=state,
+                prev_action=prev_a,
+                prev_reward=prev_r,
+                explore=args.explore_during_inference,
+                policy_id="default_policy",  # <- default value
+            )
         # Send the computed action `a` to the env.
         obs, reward, done, truncated, _ = env.step(a)
         # Is the episode `done`? -> Reset.
@@ -188,9 +255,9 @@ if __name__ == "__main__":
                 for i in range(num_transformers)
             ]
             if init_prev_a is not None:
-                prev_a = a
+                prev_a = np.concatenate([prev_a, [a]])[1:]
             if init_prev_r is not None:
-                prev_r = reward
+                prev_r = np.concatenate([prev_r, [reward]])[1:]
 
     algo.stop()
 

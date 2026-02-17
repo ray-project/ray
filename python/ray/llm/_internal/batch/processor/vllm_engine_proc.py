@@ -84,6 +84,14 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         description="The task type to use. If not specified, will use "
         "'generate' by default.",
     )
+    log_engine_metrics: bool = Field(
+        default=True,
+        description="Enable vLLM engine metrics export via Ray's Prometheus endpoint. "
+        "When enabled, metrics like prefix cache hit rate, TTFT, TPOT, KV cache "
+        "utilization, and scheduler state are available at Ray's metrics endpoint. "
+        "Requires Ray to be initialized with _metrics_export_port "
+        "(e.g., ray.init(_metrics_export_port=8080)).",
+    )
     # LoRA configurations.
     dynamic_lora_loading_path: Optional[str] = Field(
         default=None,
@@ -276,6 +284,7 @@ def build_vllm_engine_processor(
                 dynamic_lora_loading_path=config.dynamic_lora_loading_path,
                 placement_group_config=config.placement_group_config,
                 should_continue_on_error=config.should_continue_on_error,
+                log_engine_metrics=config.log_engine_metrics,
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
@@ -327,10 +336,21 @@ def build_vllm_engine_processor(
         download_model=download_model_mode,
         download_extra_files=False,
     )
-    hf_config = transformers.AutoConfig.from_pretrained(
-        model_path,
-        trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
-    )
+
+    try:
+        hf_config = transformers.AutoConfig.from_pretrained(
+            model_path,
+            trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
+        )
+    except Exception:
+        # Failed to retrieve HuggingFace config for telemetry purposes.
+        # This is non-fatal: we fall back to DEFAULT_MODEL_ARCHITECTURE for telemetry.
+        # The actual model loading happens later in vLLM, which may support models
+        # that aren't available via HuggingFace's AutoConfig.
+        logger.warning(
+            f"Failed to retrieve HuggingFace config for {config.model_source}"
+        )
+        hf_config = None
 
     architectures = getattr(hf_config, "architectures", [])
     architecture = architectures[0] if architectures else DEFAULT_MODEL_ARCHITECTURE

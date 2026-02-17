@@ -475,8 +475,6 @@ service CoreWorkerService {
   rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest)
       returns (RayletNotifyGCSRestartReply);
 
-  // Push a task directly to this worker from another or from GCS with
-  // gcs_actor_scheduling_enabled.
   // Failure: PushActorTask, PushNormalTask, and PushNormalTask from GCS all handle
   // failures. TODO: Failure behavior needs to be documented and tested.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);

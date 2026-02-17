@@ -1,0 +1,10 @@
+    anyscale
+    packaging
+    azure-identity
+    adlfs[abfs]
+    boto3
+    google-cloud-storage
+    jupyterlab
+    ipywidgets
+    supervisor
+    smart_open[s3,gcs,azure,http]

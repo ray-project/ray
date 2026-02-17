@@ -15,3 +15,4 @@ For the high level architecture overview, please refer to the `whitepaper <https
     internals/token-authentication.rst
     internals/metric-exporter.rst
     internals/ray-event-exporter.rst
+    internals/port-service-discovery.rst
