@@ -274,17 +274,12 @@ async def test_controller_abort(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_shutdown_worker_group_failure():
-    """Worker group shutdown failures are routed through the failure decision pipeline.
-
-    Case 1 (Finished path): failure transitions to ErroredState.
-    Case 2 (Errored path): original training error is preserved.
-    """
+async def test_shutdown_failure_on_finished_path():
+    """Shutdown failure on the finished path transitions to ErroredState."""
 
     def failing_shutdown():
         raise RuntimeError("Simulated shutdown failure")
 
-    # --- Case 1: ShuttingDownState(FinishedState) → ErroredState ---
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
     controller = TrainController(
@@ -298,6 +293,7 @@ async def test_shutdown_worker_group_failure():
     )
     await controller._run_control_loop_iteration()  # Init -> Scheduling
     await controller._run_control_loop_iteration()  # Scheduling -> Running
+
     for i in range(2):
         controller.get_worker_group().finish_worker(i)
     await controller._run_control_loop_iteration()  # Running -> ShuttingDown(Finished)
@@ -308,7 +304,14 @@ async def test_shutdown_worker_group_failure():
     assert isinstance(controller.get_state(), ErroredState)
     assert isinstance(controller.get_state().training_failed_error, ControllerError)
 
-    # --- Case 2: ShuttingDownState(ErroredState) → preserves original error ---
+
+@pytest.mark.asyncio
+async def test_shutdown_failure_on_errored_path():
+    """Shutdown failure on the errored path preserves the original training error."""
+
+    def failing_shutdown():
+        raise RuntimeError("Simulated shutdown failure")
+
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
     controller = TrainController(
@@ -322,6 +325,7 @@ async def test_shutdown_worker_group_failure():
     )
     await controller._run_control_loop_iteration()  # Init -> Scheduling
     await controller._run_control_loop_iteration()  # Scheduling -> Running
+
     controller.get_worker_group().error_worker(0)
     failure_policy.queue_decision(FailureDecision.RAISE)
     await controller._run_control_loop_iteration()  # Running -> ShuttingDown(Errored)
