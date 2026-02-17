@@ -390,7 +390,7 @@ def test_merge_ref_bundles():
 
     bundle_one = RefBundle(
         blocks=[(block_ref_one, metadata_one), (block_ref_one, metadata_one)],
-        owns_blocks=False,
+        owns_blocks=True,
         schema="schema",
         slices=[
             BlockSlice(start_offset=0, end_offset=1),
@@ -410,6 +410,9 @@ def test_merge_ref_bundles():
     merged = RefBundle.merge_ref_bundles([bundle_one, bundle_two])
 
     assert merged.schema == "schema"
+    # The merged bundle should own the blocks if all input bundles own their blocks.
+    # Since bundle_two doesn't own its blocks, the merged bundle should not own its
+    # blocks.
     assert merged.owns_blocks is False
     assert len(merged.blocks) == 4
     assert merged.slices == [
