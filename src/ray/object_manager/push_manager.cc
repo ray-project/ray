@@ -15,7 +15,6 @@
 #include "ray/object_manager/push_manager.h"
 
 #include <string>
-#include <utility>
 
 namespace ray {
 
@@ -31,6 +30,7 @@ void PushManager::StartPush(const NodeID &dest_id,
     // Duplicate push — resend all chunks.
     RAY_LOG(DEBUG) << "Duplicate push request " << dest_id << ", " << obj_id
                    << ", resending all the chunks.";
+    it->second.chunks_remaining_ += num_chunks;
     chunks_remaining_ += num_chunks;
     chunks_in_flight_ += num_chunks;
     for (int64_t i = 0; i < num_chunks; i++) {
@@ -40,7 +40,7 @@ void PushManager::StartPush(const NodeID &dest_id,
   }
 
   // New push — schedule all chunks immediately.
-  dest_map[obj_id] = PushState{dest_id, obj_id, num_chunks};
+  dest_map[obj_id] = PushState{dest_id, obj_id, num_chunks, num_chunks};
   chunks_remaining_ += num_chunks;
   chunks_in_flight_ += num_chunks;
   for (int64_t i = 0; i < num_chunks; i++) {
@@ -48,9 +48,27 @@ void PushManager::StartPush(const NodeID &dest_id,
   }
 }
 
-void PushManager::OnChunkComplete() {
+void PushManager::OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id) {
   chunks_in_flight_ -= 1;
   chunks_remaining_ -= 1;
+
+  auto dest_it = active_pushes_.find(dest_id);
+  if (dest_it == active_pushes_.end()) {
+    // Already cleaned up (e.g. HandleNodeRemoved was called).
+    return;
+  }
+  auto &dest_map = dest_it->second;
+  auto obj_it = dest_map.find(obj_id);
+  if (obj_it == dest_map.end()) {
+    return;
+  }
+  obj_it->second.chunks_remaining_ -= 1;
+  if (obj_it->second.chunks_remaining_ <= 0) {
+    dest_map.erase(obj_it);
+    if (dest_map.empty()) {
+      active_pushes_.erase(dest_it);
+    }
+  }
 }
 
 void PushManager::HandleNodeRemoved(const NodeID &node_id) {

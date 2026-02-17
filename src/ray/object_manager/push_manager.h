@@ -14,9 +14,7 @@
 
 #pragma once
 
-#include <list>
 #include <string>
-#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
@@ -44,8 +42,9 @@ class PushManager {
                  int64_t num_chunks,
                  std::function<void(int64_t)> send_chunk_fn);
 
-  /// Called every time a chunk completes.
-  void OnChunkComplete();
+  /// Called every time a chunk completes. Cleans up the push entry when all
+  /// chunks for that push have finished.
+  void OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id);
 
   /// Cancel all pushes that have not yet been sent to the removed node.
   void HandleNodeRemoved(const NodeID &node_id);
@@ -56,8 +55,15 @@ class PushManager {
   /// Return the number of chunks remaining. For metrics and testing.
   int64_t NumChunksRemaining() const { return chunks_remaining_; }
 
-  /// Return the number of active push destinations. For metrics and testing.
-  int64_t NumPushRequestsWithChunksToSend() const { return active_pushes_.size(); };
+  /// Return the number of active pushes (individual object-to-node transfers).
+  /// For metrics and testing.
+  int64_t NumPushRequestsWithChunksToSend() const {
+    int64_t count = 0;
+    for (const auto &[_, dest_map] : active_pushes_) {
+      count += dest_map.size();
+    }
+    return count;
+  }
 
   /// Record the internal metrics.
   void RecordMetrics() const;
@@ -73,6 +79,7 @@ class PushManager {
     NodeID node_id_;
     ObjectID object_id_;
     int64_t num_chunks_;
+    int64_t chunks_remaining_;
   };
 
   /// Running count of chunks in flight.
