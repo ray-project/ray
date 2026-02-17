@@ -199,8 +199,6 @@ class FakeCgroupDriver : public CgroupDriverInterface {
     if (!add_constraint_s_.ok()) {
       return add_constraint_s_;
     }
-    RAY_LOG(DEBUG) << "[Kunchd] Adding constraint " << constraint << "=" << value
-                   << " to cgroup " << cgroup;
     (*cgroups_)[cgroup].constraints_.emplace(constraint, value);
     if (cleanup_mode_) {
       constraints_disabled_->emplace_back(

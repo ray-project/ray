@@ -92,12 +92,6 @@ RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)-1)
 /// Default is 0, meaning no memory.low constraint is applied.
 RAY_CONFIG(int64_t, system_memory_bytes_low, 0)
 
-/// The reserved memory bytes for system processes
-/// enforced via cgroup memory.min constraint which prevents
-/// the system processes' memory from being reclaimed.
-/// Default is 0, meaning no memory.min constraint is applied.
-RAY_CONFIG(int64_t, system_memory_bytes_min, 0)
-
 /// The proportion of total memory the user processes are allowed to use.
 /// Enforced by the cgroup memory.high constraint which throttles the
 /// user processes' when the threshold is reached.
