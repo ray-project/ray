@@ -39,7 +39,7 @@ steps:
     matrix:
       setup:
         python:
-          - "3.11"
+          - "3.12"
         cuda:
           - "12.8.1-cudnn"
     env:
@@ -107,7 +107,7 @@ steps:
       - forge
       - ray-llmbaseextra-testdeps
     matrix:
-      - "3.11"
+      - "3.12"
 
   - label: ":tapioca: build: ray-ml py{{matrix}} image for release tests"
     key: anyscalemlbuild

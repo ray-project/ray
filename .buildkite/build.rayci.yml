@@ -225,7 +225,7 @@ steps:
     matrix:
       setup:
         python:
-          - "3.11"
+          - "3.12"
         cuda:
           - "12.8.1-cudnn"
     env_file: rayci.env
@@ -247,7 +247,7 @@ steps:
     matrix:
       setup:
         python:
-          - "3.11"
+          - "3.12"
         cuda:
           - "12.8.1-cudnn"
     env_file: rayci.env
@@ -307,7 +307,7 @@ steps:
         --image-type ray-llm
         --architecture x86_64
     matrix:
-      - "3.11"
+      - "3.12"
     depends_on:
       - ray-llm-image-cuda-build
     tags:
@@ -327,7 +327,7 @@ steps:
         --image-type ray-llm-extra
         --architecture x86_64
     matrix:
-      - "3.11"
+      - "3.12"
     depends_on:
       - ray-llm-extra-image-cuda-build
     tags:
