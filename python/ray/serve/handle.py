@@ -953,8 +953,8 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
 
     def choose_replica(
         self,
-        *args,
-        **kwargs,
+        *args: Any,
+        **kwargs: Any,
     ) -> AsyncContextManager[ReplicaSelection]:
         """Execute the request router to select a replica without dispatching.
 
@@ -968,8 +968,8 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         - If the context exits without dispatch (e.g., exception, early return), the slot is released.
 
         Args:
-            *args, **kwargs: Arguments that may influence routing decisions
-                            (e.g., for multiplexed model routing).
+            *args: Arguments that may influence routing decisions
+            **kwargs: Keyword arguments that may influence routing decisions.
 
         Returns:
             AsyncContextManager[ReplicaSelection] - must be used with async with.
@@ -979,8 +979,8 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
     def dispatch(
         self,
         selection: ReplicaSelection,
-        *args,
-        **kwargs,
+        *args: Any,
+        **kwargs: Any,
     ) -> Union[DeploymentResponse[Any], DeploymentResponseGenerator[Any]]:
         """Dispatch a request to a previously selected replica.
 
@@ -993,7 +993,8 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
 
         Args:
             selection: A ReplicaSelection from choose_replica() context manager.
-            *args, **kwargs: The request arguments to send to the replica
+            *args: The request arguments to send to the replica.
+            **kwargs: The request keyword arguments to send to the replica.
 
         Returns:
             DeploymentResponse or DeploymentResponseGenerator (if streaming).

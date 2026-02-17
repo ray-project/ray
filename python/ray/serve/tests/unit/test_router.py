@@ -1066,7 +1066,7 @@ class TestChooseReplica:
         )
 
         # Choose replica without dispatch
-        async with router.choose_replica(request_metadata) as selection:
+        async with router.choose_replica(request_metadata):
             # Cache should be 1 (reservation)
             assert fake_request_router.replica_queue_len_cache.get(r1_id) == 1
             # Exit without calling dispatch
