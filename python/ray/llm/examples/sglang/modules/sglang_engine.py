@@ -1,7 +1,7 @@
 import copy
+import inspect
 import signal
 import time
-from enum import Enum
 from typing import (
     Any,
     AsyncGenerator,
@@ -16,40 +16,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     CompletionRequest,
     CompletionResponse,
 )
-
-
-class ChatRole(str, Enum):
-    user = "user"
-    assistant = "assistant"
-    system = "system"
-
-
-def format_messages_to_prompt(messages: List[Any]) -> str:
-    prompt = "A conversation between a user and an assistant.\n"
-
-    for message in messages:
-        # Handle dicts (standard OpenAI format) or objects (if Ray passes wrappers)
-        if isinstance(message, dict):
-            role = message.get("role")
-            content = message.get("content")
-            if content is None:
-                content = ""
-        else:
-            # Fallback for object access if it's a Pydantic model
-            role = getattr(message, "role", "user")
-            content = getattr(message, "content", "") or ""
-
-        role_str = str(role)
-
-        if role_str == ChatRole.system.value:
-            prompt += f"### System: {content.strip()}\n"
-        elif role_str == ChatRole.user.value:
-            prompt += f"### User: {content.strip()}\n"
-        elif role_str == ChatRole.assistant.value:
-            prompt += f"### Assistant: {content.strip()}\n"
-
-    prompt += "### Assistant:"
-    return prompt
+from ray.llm._internal.serve.core.protocol import RawRequestInfo
 
 
 class SGLangServer:
@@ -66,6 +33,8 @@ class SGLangServer:
                 "`pip install sglang[all]` to install required dependencies."
             ) from e
 
+        # TODO(issue-61108): remove this once sglang#18752 is merged and included
+        # in the minimum supported SGLang version for this example.
         original_signal_func = signal.signal
 
         def noop_signal_handler(sig, action):
@@ -79,39 +48,89 @@ class SGLangServer:
         finally:
             signal.signal = original_signal_func
 
+    @staticmethod
+    def _build_sampling_params(request: Any) -> dict[str, Any]:
+        sampling_params: dict[str, Any] = {}
+        fields_set = set(getattr(request, "model_fields_set", set()))
+
+        def was_explicitly_set(field_name: str) -> bool:
+            # Use model_fields_set when available to avoid injecting defaults for
+            # fields omitted by the caller.
+            if fields_set:
+                return field_name in fields_set
+            return getattr(request, field_name, None) is not None
+
+        temperature = getattr(request, "temperature", None)
+        top_p = getattr(request, "top_p", None)
+        max_tokens = getattr(request, "max_tokens", None)
+        stop = getattr(request, "stop", None)
+
+        if was_explicitly_set("temperature") and temperature is not None:
+            sampling_params["temperature"] = temperature
+        if was_explicitly_set("top_p") and top_p is not None:
+            sampling_params["top_p"] = top_p
+        if was_explicitly_set("max_tokens") and max_tokens is not None:
+            sampling_params["max_new_tokens"] = max_tokens
+        if was_explicitly_set("stop") and stop is not None:
+            sampling_params["stop"] = stop
+
+        return sampling_params
+
+    @staticmethod
+    def _build_chat_messages(messages: List[Any]) -> List[dict[str, Any]]:
+        def get_field(message: Any, field_name: str, default: Any) -> Any:
+            if isinstance(message, dict):
+                return message.get(field_name, default)
+            return getattr(message, field_name, default)
+
+        converted_messages: List[dict[str, Any]] = []
+        for message in messages:
+            role = get_field(message, "role", "user")
+            content = get_field(message, "content", "")
+            converted_messages.append(
+                {
+                    "role": str(role),
+                    "content": "" if content is None else content,
+                }
+            )
+        return converted_messages
+
+    async def start(self) -> None:
+        # Engine is initialized in __init__; keep start idempotent for protocol
+        # compatibility.
+        return
+
+    async def check_health(self) -> None:
+        if not hasattr(self, "engine") or self.engine is None:
+            raise RuntimeError("SGLang engine is not initialized.")
+
+        engine_check_health = getattr(self.engine, "check_health", None)
+        if callable(engine_check_health):
+            maybe_awaitable = engine_check_health()
+            if inspect.isawaitable(maybe_awaitable):
+                await maybe_awaitable
+
     async def _generate_and_extract_metadata(
-        self, request: Any, prompt_string: str
+        self,
+        request: Any,
+        prompt: Any,
+        *,
+        apply_chat_template: bool = False,
     ) -> dict[str, Any]:
         """
         Handles parameter extraction, calls the SGLang engine, and processes the
         raw response to extract common metadata and generated text.
         """
-        temp = getattr(request, "temperature", None)
-        if temp is None:
-            temp = 0.7
-
-        top_p = getattr(request, "top_p", None)
-        if top_p is None:
-            top_p = 1.0
-
-        max_tokens = getattr(request, "max_tokens", None)
-        if max_tokens is None:
-            max_tokens = 128
-
-        stop_sequences = getattr(request, "stop", None)
-
-        sampling_params = {
-            "temperature": temp,
-            "max_new_tokens": max_tokens,
-            "stop": stop_sequences,
-            "top_p": top_p,
+        sampling_params = self._build_sampling_params(request)
+        generate_kwargs = {
+            "prompt": prompt,
+            "sampling_params": sampling_params,
+            "stream": False,
         }
+        if apply_chat_template:
+            generate_kwargs["apply_chat_template"] = True
 
-        raw = await self.engine.async_generate(
-            prompt=prompt_string,
-            sampling_params=sampling_params,
-            stream=False,
-        )
+        raw = await self.engine.async_generate(**generate_kwargs)
 
         if isinstance(raw, list):
             if not raw:
@@ -144,12 +163,19 @@ class SGLangServer:
         }
 
     async def chat(
-        self, request: ChatCompletionRequest, raw_request: Optional[Any] = None
+        self,
+        request: ChatCompletionRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[ChatCompletionResponse, None]:
+        del raw_request_info  # Unused for now.
 
-        prompt_string = format_messages_to_prompt(request.messages)
+        chat_messages = self._build_chat_messages(request.messages)
 
-        metadata = await self._generate_and_extract_metadata(request, prompt_string)
+        metadata = await self._generate_and_extract_metadata(
+            request,
+            chat_messages,
+            apply_chat_template=True,
+        )
 
         usage_data = {
             "prompt_tokens": metadata["prompt_tokens"],
@@ -159,7 +185,7 @@ class SGLangServer:
 
         choice_data = {
             "index": 0,
-            "message": {"role": ChatRole.assistant.value, "content": metadata["text"]},
+            "message": {"role": "assistant", "content": metadata["text"]},
             "finish_reason": metadata["finish_reason"],
         }
 
@@ -175,8 +201,11 @@ class SGLangServer:
         yield resp
 
     async def completions(
-        self, request: CompletionRequest, raw_request: Optional[Any] = None
+        self,
+        request: CompletionRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[CompletionResponse, None]:
+        del raw_request_info  # Unused for now.
 
         prompt_input = request.prompt
 
@@ -200,7 +229,9 @@ class SGLangServer:
 
         # 2. Loop through all prompts in the batch
         for index, prompt_string in enumerate(prompts_to_process):
-            metadata = await self._generate_and_extract_metadata(request, prompt_string)
+            metadata = await self._generate_and_extract_metadata(
+                request, prompt_string
+            )
             last_metadata = metadata  # Keep track of the metadata from the last run
 
             total_prompt_tokens += metadata["prompt_tokens"]
