@@ -25,6 +25,7 @@ from typing import (
     Tuple,
     TypeVar,
     Union,
+    overload,
 )
 
 import numpy as np
@@ -41,11 +42,14 @@ from ray.util.annotations import DeveloperAPI
 
 import psutil
 
+# TypeVar for preserving function/class signatures through decorators
+F = TypeVar("F", bound=Callable[..., Any])
+
 if TYPE_CHECKING:
     import pandas
 
     from ray.data._internal.compute import ComputeStrategy
-    from ray.data._internal.execution.interfaces import RefBundle
+    from ray.data._internal.execution.interfaces import ExecutionResources, RefBundle
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.block import (
         Block,
@@ -124,7 +128,7 @@ def _lazy_import_pyarrow_dataset() -> LazyModule:
 
 
 def _check_pyarrow_version():
-    ray._private.arrow_utils._check_pyarrow_version()
+    ray.data._internal.utils.arrow_utils._check_pyarrow_version()
 
 
 def _autodetect_parallelism(
@@ -461,9 +465,9 @@ def _consumption_api(
     datasource_metadata: Optional[str] = None,
     extra_condition: Optional[str] = None,
     delegate: Optional[str] = None,
-    pattern="Examples:",
-    insert_after=False,
-):
+    pattern: str = "Examples:",
+    insert_after: bool = False,
+) -> Callable[[F], F]:
     """Annotate the function with an indication that it's a consumption API, and that it
     will trigger Dataset execution.
     """
@@ -486,7 +490,7 @@ def _consumption_api(
             condition += extra_condition + ", "
         message = condition + "then this operation" + base
 
-    def wrap(obj):
+    def wrap(obj: F) -> F:
         _insert_doc_at_pattern(
             obj,
             message=message,
@@ -499,6 +503,22 @@ def _consumption_api(
     return wrap
 
 
+@overload
+def ConsumptionAPI(obj: F) -> F:
+    ...
+
+
+@overload
+def ConsumptionAPI(
+    *,
+    if_more_than_read: bool = False,
+    datasource_metadata: Optional[str] = None,
+    extra_condition: Optional[str] = None,
+    delegate: Optional[str] = None,
+) -> Callable[[F], F]:
+    ...
+
+
 def ConsumptionAPI(*args, **kwargs):
     """Annotate the function with an indication that it's a consumption API, and that it
     will trigger Dataset execution.
@@ -508,12 +528,12 @@ def ConsumptionAPI(*args, **kwargs):
     return _consumption_api(*args, **kwargs)
 
 
-def _all_to_all_api(*args, **kwargs):
+def _all_to_all_api() -> Callable[[F], F]:
     """Annotate the function with an indication that it's a all to all API, and that it
     is an operation that requires all inputs to be materialized in-memory to execute.
     """
 
-    def wrap(obj):
+    def wrap(obj: F) -> F:
         _insert_doc_at_pattern(
             obj,
             message=(
@@ -527,6 +547,11 @@ def _all_to_all_api(*args, **kwargs):
         return obj
 
     return wrap
+
+
+@overload
+def AllToAllAPI(obj: F) -> F:
+    ...
 
 
 def AllToAllAPI(*args, **kwargs):
@@ -1767,3 +1792,17 @@ def infer_compression(path: str) -> Optional[str]:
         if suffix and suffix[1:] == "snappy":
             compression = "snappy"
     return compression
+
+
+def get_max_task_capacity(
+    allocated_resources: Optional["ExecutionResources"],
+    min_scheduling_resources: "ExecutionResources",
+) -> float:
+    if allocated_resources is None:
+        return 0
+
+    if min_scheduling_resources.copy(object_store_memory=0).is_zero():
+        return float("inf")
+
+    capacity = allocated_resources.floordiv(min_scheduling_resources)
+    return min(capacity.cpu, capacity.gpu, capacity.memory)

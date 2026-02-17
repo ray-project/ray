@@ -13,10 +13,10 @@ import torch
 import ray
 import ray._private
 import ray.cluster_utils
+from ray._common.test_utils import run_string_as_driver
 from ray._common.utils import (
     get_or_create_event_loop,
 )
-from ray._private.test_utils import run_string_as_driver
 from ray.dag import DAGContext, InputNode, MultiOutputNode
 from ray.dag.tests.experimental.actor_defs import Actor, Collector
 from ray.exceptions import RayChannelTimeoutError
@@ -177,7 +177,7 @@ def test_two_from_three_returns(ray_start_regular):
     # the number of outputs. Since the value error is raised in the writer,
     # the reader fails to read the outputs and raises a channel error.
 
-    # TODO(wxdeng): Fix exception type. The value error should be catched.
+    # TODO(wxdeng): Fix exception type. The value error should be caught.
     # However, two exceptions are raised in the writer and reader respectively.
 
     # with pytest.raises(RayChannelError, match="Channel closed."):

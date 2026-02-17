@@ -512,7 +512,7 @@ class ExecutionPlan:
         if not self.has_computed_output():
             from ray.data._internal.execution.legacy_compat import (
                 _get_initial_stats_from_plan,
-                execute_to_legacy_block_list,
+                execute_to_ref_bundle,
             )
 
             if (
@@ -544,16 +544,11 @@ class ExecutionPlan:
             else:
                 # Make sure executor is properly shutdown
                 with self.create_executor() as executor:
-                    blocks = execute_to_legacy_block_list(
+                    bundle = execute_to_ref_bundle(
                         executor,
                         self,
                         dataset_uuid=self._dataset_uuid,
                         preserve_order=preserve_order,
-                    )
-                    bundle = RefBundle(
-                        tuple(blocks.iter_blocks_with_metadata()),
-                        owns_blocks=blocks._owned_by_consumer,
-                        schema=blocks.get_schema(),
                     )
 
                 stats = executor.get_stats()
@@ -636,9 +631,9 @@ class ExecutionPlan:
 
     def require_preserve_order(self) -> bool:
         """Whether this plan requires to preserve order."""
-        from ray.data._internal.logical.operators import Sort, Zip
+        from ray.data._internal.logical.operators import Zip
 
         for op in self._logical_plan.dag.post_order_iter():
-            if isinstance(op, (Zip, Sort)):
+            if isinstance(op, Zip):
                 return True
         return False

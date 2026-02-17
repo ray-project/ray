@@ -8,6 +8,7 @@ from ray.data.expressions import (
     DownloadExpr,
     Expr,
     LiteralExpr,
+    MonotonicallyIncreasingIdExpr,
     Operation,
     StarExpr,
     UDFExpr,
@@ -76,6 +77,12 @@ class _ExprVisitorBase(_ExprVisitor[None]):
 
     def visit_download(self, expr: "Expr") -> None:
         """Visit a download expression (no columns to collect)."""
+        pass
+
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> None:
+        """Visit a monotonically_increasing_id expression (no columns to collect)."""
         pass
 
 
@@ -286,6 +293,19 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         """
         return expr
 
+    def visit_monotonically_increasing_id(
+        self, expr: MonotonicallyIncreasingIdExpr
+    ) -> Expr:
+        """Visit a monotonically_increasing_id expression (no rewriting needed).
+
+        Args:
+            expr: The monotonically_increasing_id expression.
+
+        Returns:
+            The original expression.
+        """
+        return expr
+
 
 def _is_col_expr(expr: Expr) -> bool:
     return isinstance(expr, ColumnExpr) or (
@@ -413,6 +433,11 @@ class _TreeReprVisitor(_ExprVisitor[str]):
     def visit_star(self, expr: "StarExpr") -> str:
         return self._make_tree_lines("COL(*)", expr=expr)
 
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> str:
+        return self._make_tree_lines("MONOTONICALLY_INCREASING_ID()", expr=expr)
+
 
 class _InlineExprReprVisitor(_ExprVisitor[str]):
     """Visitor that generates concise inline string representations of expressions.
@@ -501,6 +526,12 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
     def visit_star(self, expr: "StarExpr") -> str:
         """Visit a star expression and return its inline representation."""
         return "col(*)"
+
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> str:
+        """Visit a monotonically_increasing_id expression and return its inline representation."""
+        return "monotonically_increasing_id()"
 
 
 def get_column_references(expr: Expr) -> List[str]:
