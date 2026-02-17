@@ -558,8 +558,8 @@ Windows powershell users need additional escaping:
 @click.option(
     "--temp-dir",
     default=None,
-    help="manually specify the root temporary dir of the Ray process, only "
-    "works when --head is specified",
+    help="manually specify the root temporary dir of the Ray process. Can be "
+    "specified per node.",
 )
 @click.option(
     "--system-config",
@@ -770,14 +770,6 @@ def start(
                 cf.bold('--labels="key1=val1,key2=val2"'),
             )
     labels_dict = {**labels_from_file, **labels_from_string}
-    if temp_dir and not head:
-        cli_logger.warning(
-            f"`--temp-dir={temp_dir}` option will be ignored. "
-            "`--head` is a required flag to use `--temp-dir`. "
-            "temp_dir is only configurable from a head node. "
-            "All the worker nodes will use the same temp_dir as a head node. "
-        )
-        temp_dir = None
 
     available_memory_bytes = ray._private.utils.estimate_available_memory()
     object_store_memory = ray._private.utils.resolve_object_store_memory(
@@ -2175,11 +2167,10 @@ def timeline(address):
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = os.path.join(
-        ray._common.utils.get_user_temp_dir(), f"ray-timeline-{time}.json"
+        ray.get_runtime_context().get_temp_dir(), f"ray-timeline-{time}.json"
     )
     ray.timeline(filename=filename)
-    size = os.path.getsize(filename)
-    logger.info(f"Trace file written to {filename} ({size} bytes).")
+    logger.info(f"Trace file written to {filename} in the ray temp directory.")
     logger.info("You can open this with chrome://tracing in the Chrome browser.")
 
 
