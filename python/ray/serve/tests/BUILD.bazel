@@ -113,6 +113,7 @@ py_test_module_list(
         "test_deployment_scheduler.py",
         "test_deployment_topology.py",
         "test_failure.py",
+        "test_gang_scheduling.py",
         "test_grpc_e2e.py",
         "test_grpc_replica_wrapper.py",
         "test_handle.py",
@@ -136,6 +137,7 @@ py_test_module_list(
         "test_replica_placement_group.py",
         "test_request_timeout.py",
         "test_streaming_response.py",
+        "test_task_consumer_autoscaling.py",
         "test_task_processor.py",
     ],
     tags = [
@@ -248,6 +250,7 @@ py_test_module_list(
         "RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S": "1",
         "RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S": "1",
         "RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS": "10",
+        "RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S": "0.1",
     },
     files = [
         "test_deploy_app.py",
@@ -507,6 +510,7 @@ py_test_module_list(
     env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},
     files = [
         "test_deployment_scheduler.py",
+        "test_gang_scheduling.py",
         "test_standalone_2.py",
     ],
     name_suffix = "_with_pack_scheduling",
@@ -649,6 +653,31 @@ py_test_module_list(
     tags = [
         "direct_ingress",
         "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# HAProxy tests (require RAY_SERVE_ENABLE_HA_PROXY=1).
+py_test_module_list(
+    size = "large",
+    env = {
+        "RAY_SERVE_ENABLE_HA_PROXY": "1",
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+    },
+    files = [
+        "test_haproxy.py",
+        "test_haproxy_api.py",
+        "test_metrics_haproxy.py",
+    ],
+    tags = [
+        "exclusive",
+        "haproxy",
+        "no_windows",
         "team:serve",
     ],
     deps = [
