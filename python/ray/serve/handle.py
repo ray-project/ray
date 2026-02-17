@@ -2,9 +2,8 @@ import asyncio
 import concurrent.futures
 import logging
 import time
-from contextlib import asynccontextmanager
-from typing_extensions import AsyncContextManager
 import warnings
+from contextlib import asynccontextmanager
 from typing import (
     Any,
     AsyncIterator,
@@ -18,6 +17,8 @@ from typing import (
     Union,
     cast,
 )
+
+from typing_extensions import AsyncContextManager
 
 import ray
 from ray import serve
@@ -248,6 +249,8 @@ class _DeploymentHandleBase(Generic[T]):
         metadata = serve._private.default_impl.get_request_metadata(
             self.init_options, self.handle_options
         )
+        if self._router is None:
+            raise RuntimeError("Router is not initialized")
 
         # Call the router's choose_replica and inject the deployment handle
         async with self._router.choose_replica(metadata, *args, **kwargs) as selection:

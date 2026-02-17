@@ -111,6 +111,7 @@ class FakeReplica(RunningReplica):
 
         # Create a minimal _replica_info object to satisfy router.py requirements
         from unittest.mock import Mock
+
         self._replica_info = Mock()
         self._replica_info.node_id = node_id
         self._replica_info.availability_zone = availability_zone
@@ -153,9 +154,7 @@ class FakeReplica(RunningReplica):
         self, pr: PendingRequest, slot_token: str
     ) -> FakeReplicaResult:
         """Send request using a reserved slot."""
-        assert (
-            slot_token in self._reserved_slots
-        ), f"Invalid slot token: {slot_token}"
+        assert slot_token in self._reserved_slots, f"Invalid slot token: {slot_token}"
         assert not self._reserved_slots[
             slot_token
         ], f"Slot already released: {slot_token}"
@@ -170,10 +169,12 @@ class FakeReplica(RunningReplica):
         self, pr: PendingRequest, with_rejection: bool
     ) -> FakeReplicaResult:
         # Track the request
-        self._requests_sent.append({
-            "request_id": pr.metadata.request_id,
-            "with_rejection": with_rejection,
-        })
+        self._requests_sent.append(
+            {
+                "request_id": pr.metadata.request_id,
+                "with_rejection": with_rejection,
+            }
+        )
 
         if with_rejection:
             if self._error:
@@ -256,7 +257,9 @@ class FakeRequestRouter(RequestRouter):
         if self._use_queue_len_cache:
             num_ongoing_requests = self._replica_queue_len_cache.get(replica_id) or 0
             if num_ongoing_requests > 0:
-                self._replica_queue_len_cache.update(replica_id, num_ongoing_requests - 1)
+                self._replica_queue_len_cache.update(
+                    replica_id, num_ongoing_requests - 1
+                )
 
     def on_replica_actor_unavailable(self, replica_id: ReplicaID):
         self._replica_queue_len_cache.invalidate_key(replica_id)
@@ -1100,10 +1103,7 @@ class TestChooseReplica:
                 return selection
 
         # Create tasks
-        tasks = [
-            asyncio.create_task(choose_and_hold(f"request-{i}"))
-            for i in range(3)
-        ]
+        tasks = [asyncio.create_task(choose_and_hold(f"request-{i}")) for i in range(3)]
 
         # Wait a bit for all to enter context
         await asyncio.sleep(0.005)

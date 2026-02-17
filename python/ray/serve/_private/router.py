@@ -22,7 +22,6 @@ from typing import (
     Union,
 )
 
-from ray.serve._private.request_router.common import ReplicaSelection
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
@@ -54,6 +53,7 @@ from ray.serve._private.metrics_utils import (
 )
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import PendingRequest, RequestRouter
+from ray.serve._private.request_router.common import ReplicaSelection
 from ray.serve._private.request_router.pow_2_router import (
     PowerOfTwoChoicesRequestRouter,
 )

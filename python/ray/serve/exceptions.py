@@ -106,4 +106,5 @@ class DeploymentUnavailableError(RayServeException):
 @PublicAPI(stability="alpha")
 class ReplicaUnavailableError(RayServeException):
     """Raised when the selected replica is no longer available."""
+
     pass

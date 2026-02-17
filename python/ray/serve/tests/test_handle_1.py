@@ -430,22 +430,34 @@ async def test_choose_replica_and_dispatch_parallel(serve_instance):
                     self.prefill.chat.dispatch(p_selection, p_msg),
                     self.decode.chat.dispatch(d_selection, d_msg),
                 )
-                return {"prefill": {"selected_replica_id": p_selection.replica_id, **p_result},
-                        "decode": {"selected_replica_id": d_selection.replica_id, **d_result}}
+                return {
+                    "prefill": {
+                        "selected_replica_id": p_selection.replica_id,
+                        **p_result,
+                    },
+                    "decode": {
+                        "selected_replica_id": d_selection.replica_id,
+                        **d_result,
+                    },
+                }
 
     h = serve.run(PDProxy.bind(PrefillServer.bind(), DecodeServer.bind()))
     result = await h.handle_request.remote("test_parallel")
-
 
     assert result["prefill"]["response"] == "prefill:test_parallel"
     assert result["decode"]["response"] == "decode:test_parallel"
 
     # Verify that dispatch sent the request to the replica we selected
-    assert result["prefill"]["actual_replica_id"] == result["prefill"]["selected_replica_id"], (
+    assert (
+        result["prefill"]["actual_replica_id"]
+        == result["prefill"]["selected_replica_id"]
+    ), (
         f"dispatch sent request to wrong replica for prefill: "
         f"selected {result['prefill']['selected_replica_id']}, but got response from {result['prefill']['actual_replica_id']}"
     )
-    assert result["decode"]["actual_replica_id"] == result["decode"]["selected_replica_id"], (
+    assert (
+        result["decode"]["actual_replica_id"] == result["decode"]["selected_replica_id"]
+    ), (
         f"dispatch sent request to wrong replica for prefill: "
         f"selected {result['decode']['selected_replica_id']}, but got response from {result['decode']['actual_replica_id']}"
     )

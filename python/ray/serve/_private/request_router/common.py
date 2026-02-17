@@ -96,7 +96,9 @@ class ReplicaSelection:
     _deployment_handle: "DeploymentHandle"
     _method_name: str
     _slot_token: str  # Token for reserved slot
-    _dispatched: bool = field(default=False, init=False)  # Tracks if dispatch was called
+    _dispatched: bool = field(
+        default=False, init=False
+    )  # Tracks if dispatch was called
 
     @property
     def address(self) -> str:
