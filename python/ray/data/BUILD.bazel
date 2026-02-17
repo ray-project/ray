@@ -423,7 +423,7 @@ py_test(
 
 py_test(
     name = "test_unique_e2e",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_unique_e2e.py"],
     tags = [
         "exclusive",
@@ -735,7 +735,7 @@ py_test(
 
 py_test(
     name = "test_logging_dataset",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_logging_dataset.py"],
     tags = [
         "exclusive",
@@ -791,7 +791,7 @@ py_test(
 
 py_test(
     name = "test_with_column",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_with_column.py"],
     tags = [
         "exclusive",
@@ -1073,7 +1073,7 @@ py_test(
 
 py_test(
     name = "test_operator_fusion",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_operator_fusion.py"],
     tags = [
         "exclusive",
