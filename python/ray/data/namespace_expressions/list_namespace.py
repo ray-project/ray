@@ -372,7 +372,19 @@ class _ListNamespace:
             n_rows = len(arr)
             null_mask = arr.is_null() if arr.null_count else None
             if pyarrow.types.is_fixed_size_list(arr.type):
-                arr = arr.cast(pyarrow.list_(arr.type.value_type))
+                # Example: FixedSizeList<2>[ [3,1], None, [2,4] ]
+                # Fill null row -> [[3,1],[None,None],[2,4]], cast to list<child>,
+                # list_* kernels operate on list/large_list, so we cast
+                # fixed_size_list<T> to list<T> here.
+                child_type = arr.type.value_type
+                list_size = arr.type.list_size
+                if null_mask is not None:
+                    filler_values = pyarrow.nulls(len(arr) * list_size, type=child_type)
+                    filler = pyarrow.FixedSizeListArray.from_arrays(
+                        filler_values, list_size
+                    )
+                    arr = pc.if_else(null_mask, filler, arr)
+                arr = arr.cast(pyarrow.list_(child_type))
             values = pc.list_flatten(arr)
             if len(values) == 0:
                 out_type = return_dtype.to_arrow_dtype()
@@ -416,7 +428,19 @@ class _ListNamespace:
             n_rows = len(arr)
             null_mask = arr.is_null() if arr.null_count else None
             if pyarrow.types.is_fixed_size_list(arr.type):
-                arr = arr.cast(pyarrow.list_(arr.type.value_type))
+                # Example: FixedSizeList<2>[ [3,1], None, [2,4] ]
+                # Fill null row -> [[3,1],[None,None],[2,4]], cast to list<child>,
+                # list_* kernels operate on list/large_list, so we cast
+                # fixed_size_list<T> to list<T> here.
+                child_type = arr.type.value_type
+                list_size = arr.type.list_size
+                if null_mask is not None:
+                    filler_values = pyarrow.nulls(len(arr) * list_size, type=child_type)
+                    filler = pyarrow.FixedSizeListArray.from_arrays(
+                        filler_values, list_size
+                    )
+                    arr = pc.if_else(null_mask, filler, arr)
+                arr = arr.cast(pyarrow.list_(child_type))
             values = pc.list_flatten(arr)
             if len(values) == 0:
                 out = pyarrow.nulls(n_rows, type=pyarrow.float64())
