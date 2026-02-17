@@ -921,18 +921,17 @@ def test_deployment_error_counter_exception_type(metrics_start_shutdown):
     url = get_application_url("HTTP", "value_error_app") + "/value_error"
     assert httpx.get(url).status_code == 500
 
-    wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_deployment_error_counter_total"))
-        == 1,
-        timeout=40,
-    )
+    def check_metric():
+        err_metrics = get_metric_dictionaries("ray_serve_deployment_error_counter_total")
+        value_error_metrics = [
+            m for m in err_metrics if m.get("exception_type") == "ValueError"
+        ]
+        if len(value_error_metrics) == 1:
+            assert value_error_metrics[0]["exception_type"] == "ValueError"
+            return True
+        return False
 
-    err_metrics = get_metric_dictionaries("ray_serve_deployment_error_counter_total")
-    value_error_metrics = [
-        m for m in err_metrics if m.get("exception_type") == "ValueError"
-    ]
-    assert len(value_error_metrics) == 1
-    assert value_error_metrics[0]["exception_type"] == "ValueError"
+    wait_for_condition(check_metric, timeout=40)
 
 
 def test_queue_wait_time_metric(metrics_start_shutdown):
