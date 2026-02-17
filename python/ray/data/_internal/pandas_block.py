@@ -338,7 +338,9 @@ class PandasBlockBuilder(TableBlockBuilder):
         return True
 
     @staticmethod
-    def _empty_table(schema=None) -> "pandas.DataFrame":
+    def _empty_table(
+        schema: Optional["PandasBlockSchema"] = None,
+    ) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         if schema is not None:
             # Create empty DataFrame with preserved column names from schema.

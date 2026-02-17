@@ -184,7 +184,7 @@ class ArrowBlockBuilder(TableBlockBuilder):
         return False
 
     @staticmethod
-    def _empty_table(schema=None) -> "pyarrow.Table":
+    def _empty_table(schema: Optional["pyarrow.lib.Schema"] = None) -> "pyarrow.Table":
         if schema is not None:
             # Create empty table with preserved schema.
             # This is critical for join operations where empty blocks need to

@@ -115,8 +115,11 @@ class TableBlockBuilder(BlockBuilder):
         self._num_rows += accessor.num_rows()
         # Capture schema from the first block that has one.
         # This ensures we preserve schema even when combining empty blocks.
+        # We use accessor.schema() rather than getattr(block, "schema", None)
+        # because Pandas DataFrames don't have a .schema attribute — only
+        # PandasBlockAccessor exposes schema() as a method.
         if self._schema is None:
-            block_schema = getattr(block, "schema", None)
+            block_schema = accessor.schema()
             if block_schema is not None:
                 self._schema = block_schema
 
@@ -129,7 +132,7 @@ class TableBlockBuilder(BlockBuilder):
         raise NotImplementedError
 
     @staticmethod
-    def _empty_table(schema=None) -> Any:
+    def _empty_table(schema: Optional[Any] = None) -> Any:
         raise NotImplementedError
 
     @staticmethod
@@ -151,9 +154,11 @@ class TableBlockBuilder(BlockBuilder):
         tables.extend(self._tables)
 
         if len(tables) == 0:
-            # Pass schema to create an empty table that preserves column information.
-            # This is critical for join operations where empty blocks still need
-            # their schema for downstream operations.
+            # This happens when no rows were added via add() and no blocks via
+            # add_block(), e.g. a shuffle partition that received no data. Pass
+            # the captured schema so the resulting empty table still carries
+            # column information — critical for downstream operations like
+            # chained joins.
             return self._empty_table(schema=self._schema)
         else:
             return self._combine_tables(tables)
