@@ -94,6 +94,13 @@ static void log_header_append(const char *op) {
              op ? op : "(null)");
 }
 
+static void log_finish_fields_append(void) {
+  buf_append("ts_ms=%lld pid=%ld tid=%lld ",
+             now_ms_utc(),
+             (long)getpid(),
+             get_tid());
+}
+
 static void log_backtrace_append() {
   void *buf[MAX_FRAMES];
   int n = backtrace(buf, MAX_FRAMES);
@@ -109,40 +116,71 @@ static void log_backtrace_append() {
 char *getenv(const char *name) {
   log_pos = 0;
   log_header_append("getenv");
-  buf_append("name=%s\n", name ? name : "(null)");
+  buf_append("phase=start name=%s\n", name ? name : "(null)");
   log_backtrace_append();
   buf_flush();
-  return getenv_real(name);
+  char *ret = getenv_real(name);
+  log_pos = 0;
+  log_header_append("getenv");
+  buf_append("phase=finish ");
+  log_finish_fields_append();
+  buf_append("name=%s ret=%p is_null=%d\n",
+             name ? name : "(null)",
+             (void *)ret,
+             ret == NULL ? 1 : 0);
+  buf_flush();
+  return ret;
 }
 
 int setenv(const char *name, const char *value, int overwrite) {
   log_pos = 0;
   log_header_append("setenv");
-  buf_append("name=%s value=%s overwrite=%d\n",
+  buf_append("phase=start name=%s value=%s overwrite=%d\n",
              name ? name : "(null)",
              value ? value : "(null)",
              overwrite);
   log_backtrace_append();
   buf_flush();
-  return setenv_real(name, value, overwrite);
+  int ret = setenv_real(name, value, overwrite);
+  log_pos = 0;
+  log_header_append("setenv");
+  buf_append("phase=finish ");
+  log_finish_fields_append();
+  buf_append("name=%s ret=%d\n", name ? name : "(null)", ret);
+  buf_flush();
+  return ret;
 }
 
 int unsetenv(const char *name) {
   log_pos = 0;
   log_header_append("unsetenv");
-  buf_append("name=%s\n", name ? name : "(null)");
+  buf_append("phase=start name=%s\n", name ? name : "(null)");
   log_backtrace_append();
   buf_flush();
-  return unsetenv_real(name);
+  int ret = unsetenv_real(name);
+  log_pos = 0;
+  log_header_append("unsetenv");
+  buf_append("phase=finish ");
+  log_finish_fields_append();
+  buf_append("name=%s ret=%d\n", name ? name : "(null)", ret);
+  buf_flush();
+  return ret;
 }
 
 int putenv(char *string) {
   log_pos = 0;
   log_header_append("putenv");
-  buf_append("string=%s\n", string ? string : "(null)");
+  buf_append("phase=start string=%s\n", string ? string : "(null)");
   log_backtrace_append();
   buf_flush();
-  return putenv_real(string);
+  int ret = putenv_real(string);
+  log_pos = 0;
+  log_header_append("putenv");
+  buf_append("phase=finish ");
+  log_finish_fields_append();
+  buf_append("string=%s ret=%d\n", string ? string : "(null)", ret);
+  buf_flush();
+  return ret;
 }
 
 GETENV_EOF
