@@ -601,8 +601,8 @@ class AsyncioRouter:
             metrics.Gauge(
                 "serve_num_ongoing_requests_at_replicas",
                 description=(
-                    "The current number of requests to this deployment that "
-                    "have been submitted to a replica."
+                    "Current number of requests assigned and sent to replicas "
+                    "but not yet completed."
                 ),
                 tag_keys=("deployment", "application", "handle", "actor_id"),
             ),
