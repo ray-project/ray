@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, List, Optional
 
@@ -10,6 +11,8 @@ from ray.experimental.gpu_object_manager.tensor_transport_manager import (
 
 if TYPE_CHECKING:
     import torch
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -118,6 +121,7 @@ class CudaIpcTransport(TensorTransportManager):
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
+        buffers: Optional[List["torch.Tensor"]] = None,
     ) -> List["torch.Tensor"]:
 
         assert isinstance(
@@ -126,6 +130,11 @@ class CudaIpcTransport(TensorTransportManager):
         assert isinstance(
             communicator_metadata, CudaIpcCommunicatorMetadata
         ), "metadata must be a CudaIpcCommunicatorMetadata object for CUDA IPC transport"
+
+        if buffers:
+            logger.warning(
+                "The CUDA IPC transport does not support receiving into buffers."
+            )
 
         tensors = []
         if tensor_transport_metadata.tensor_meta:

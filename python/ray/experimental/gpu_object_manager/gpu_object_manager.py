@@ -50,6 +50,8 @@ class GPUObjectMeta(NamedTuple):
     sent_dest_actors: Set[str]
     # sent_to_src_actor_and_others_warned indicates whether the object has already triggered a warning about being sent back to the source actor and other actors simultaneously.
     sent_to_src_actor_and_others_warned: bool
+    # If the user set a buffer for the object, the object will be fetched directly into the buffer on a ray.get
+    buffers: Optional[List["torch.Tensor"]]
 
 
 # This is used to periodically check in on the RDT transfer through the refs from
@@ -93,6 +95,16 @@ def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
     """
     gpu_object_manager = ray.worker.global_worker.gpu_object_manager
     gpu_object_manager.gpu_object_store.wait_tensor_freed(tensor, timeout)
+
+
+@PublicAPI(stability="alpha")
+def set_buffer_for_ref(ref: ObjectRef, buffers: List["torch.Tensor"]):
+    """
+    After setting the buffer for a ref, the object will be fetched directly into the buffer when
+    you ray.get the object if possible.
+    """
+    gpu_object_manager = ray.worker.global_worker.gpu_object_manager
+    gpu_object_manager.set_buffer_for_ref(ref, buffers)
 
 
 class GPUObjectManager:
@@ -408,6 +420,15 @@ class GPUObjectManager:
                 # Trigger the transfer now that the metadata is available.
                 self.trigger_out_of_band_tensor_transfer(dst_actor, obj_id)
 
+    def set_buffer_for_ref(self, ref: ObjectRef, buffers: List["torch.Tensor"]):
+        with self._lock:
+            if ref.hex() not in self._managed_gpu_object_metadata:
+                raise ValueError(f"Ref {ref} is not an RDT object.")
+
+            self._managed_gpu_object_metadata[
+                ref.hex()
+            ] = self._managed_gpu_object_metadata[ref.hex()]._replace(buffers=buffers)
+
     def _fetch_object(
         self,
         obj_id: str,
@@ -480,6 +501,7 @@ class GPUObjectManager:
                 tensor_transport_meta,
                 communicator_meta,
                 tensor_transport,
+                gpu_object_meta.buffers,
             )
 
     def queue_or_trigger_out_of_band_tensor_transfer(
