@@ -1035,14 +1035,12 @@ class _ActorPool(AutoscalingActorPool):
         if not self._can_apply(req):
             return 0
 
-        map_worker_cls_name = (
-            (self.map_worker_cls_name) if self.map_worker_cls_name else ""
-        )
+        map_worker_cls_name = self.map_worker_cls_name
 
         if req.delta > 0:
             target_num_actors = req.delta
             logger.debug(
-                f"Scaling up {map_worker_cls_name}actor pool by {target_num_actors} (reason={req.reason}, "
+                f"Scaling up {map_worker_cls_name} actor pool by {target_num_actors} (reason={req.reason}, "
                 f"{self.get_actor_info()})"
             )
 
@@ -1065,7 +1063,7 @@ class _ActorPool(AutoscalingActorPool):
 
             if num_released > 0:
                 logger.debug(
-                    f"Scaled down {map_worker_cls_name}actor pool by {num_released} "
+                    f"Scaled down {map_worker_cls_name} actor pool by {num_released} "
                     f"(reason={req.reason}; {self.get_actor_info()})"
                 )
 
