@@ -229,9 +229,7 @@ class SGLangServer:
 
         # 2. Loop through all prompts in the batch
         for index, prompt_string in enumerate(prompts_to_process):
-            metadata = await self._generate_and_extract_metadata(
-                request, prompt_string
-            )
+            metadata = await self._generate_and_extract_metadata(request, prompt_string)
             last_metadata = metadata  # Keep track of the metadata from the last run
 
             total_prompt_tokens += metadata["prompt_tokens"]
