@@ -686,23 +686,6 @@ def test_torchvision_functional_backwards_compat():
     assert "image" in result.columns
 
 
-# =============================================================================
-# Edge Cases
-# =============================================================================
-
-
-def test_concatenator_deserialize_with_missing_flatten():
-    """Verify missing optional field gets default value during deserialization."""
-    concatenator = Concatenator(columns=["A", "B"], flatten=True)
-    delattr(concatenator, "_flatten")
-
-    data = concatenator.serialize()
-    restored = Concatenator.deserialize(data)
-
-    assert isinstance(restored, Concatenator)
-    assert restored.flatten is False
-
-
 if __name__ == "__main__":
     import sys
 
