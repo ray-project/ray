@@ -315,7 +315,6 @@ class TestOfflinePreLearner:
             .environment(
                 env="CartPole-v1",
             )
-            .training(train_batch_size_per_learner=256)
             .env_runners(
                 batch_mode="complete_episodes",
                 # num_env_runners=1,
