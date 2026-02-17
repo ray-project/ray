@@ -95,7 +95,7 @@ steps:
     matrix:
       setup:
         python:
-          - "3.11"
+          - "3.12"
         cuda:
           - "12.8.1-cudnn"
     env:
@@ -108,7 +108,7 @@ steps:
     matrix:
       setup:
         python:
-          - "3.11"
+          - "3.12"
         cuda:
           - "12.8.1-cudnn"
     env:

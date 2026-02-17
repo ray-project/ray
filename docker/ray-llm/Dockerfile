@@ -19,8 +19,8 @@ PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.
 # ray-llm image only support cuda 12.8
 CUDA_CODE=cu128
 
-if [[ "${PYTHON_CODE}" != "py311" ]]; then
-    echo "ray-llm only support Python 3.11 now (this image is for ${PYTHON_CODE})."
+if [[ "${PYTHON_CODE}" != "py312" ]]; then
+    echo "ray-llm only support Python 3.12 now (this image is for ${PYTHON_CODE})."
     exit 1
 fi
 

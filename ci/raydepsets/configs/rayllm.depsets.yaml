@@ -1,15 +1,15 @@
 build_arg_sets:
   cpu:
-    PYTHON_VERSION: py311
+    PYTHON_VERSION: py312
     CUDA_CODE: cpu
   cu128:
-    PYTHON_VERSION: py311
+    PYTHON_VERSION: py312
     CUDA_CODE: cu128
 
 
 .common_settings: &common_settings
   append_flags:
-    - --python-version=3.11
+    - --python-version=3.12
     - --unsafe-package ray
     - --python-platform=x86_64-manylinux_2_31
     - --index https://download.pytorch.org/whl/${CUDA_CODE}
