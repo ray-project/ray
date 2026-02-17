@@ -783,30 +783,15 @@ def test_async_inference_queue_length_metric(
         }
 
         # Wait for the queue length metric to be emitted with correct value and tags
+        # get_metric_float already filters by expected_tags, so if it
+        # returns a matching value the tags are guaranteed correct.
         def check_queue_length_metric():
             value = get_metric_float(
                 "ray_serve_async_inference_queue_length",
                 expected_tags=base_tags,
                 timeseries=timeseries,
             )
-            if value != num_messages:
-                return False
-
-            # Verify correct tags are attached
-            metrics_dicts = get_metric_dictionaries(
-                "ray_serve_async_inference_queue_length",
-                timeout=5,
-                timeseries=timeseries,
-            )
-            for m in metrics_dicts:
-                if (
-                    m.get("deployment") == test_deployment_id.name
-                    and m.get("application") == test_deployment_id.app_name
-                ):
-                    assert "deployment" in m, "Missing 'deployment' tag"
-                    assert "application" in m, "Missing 'application' tag"
-                    return True
-            return False
+            return value == num_messages
 
         wait_for_condition(check_queue_length_metric, timeout=30)
 
