@@ -36,7 +36,6 @@ namespace core {
  */
 class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
  public:
-  OutofOrderActorSubmitQueue();
   /// Add a task into the queue.
   void Emplace(const std::string &concurrency_group,
                uint64_t position,

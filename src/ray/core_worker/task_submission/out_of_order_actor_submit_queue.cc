@@ -21,8 +21,6 @@
 namespace ray {
 namespace core {
 
-OutofOrderActorSubmitQueue::OutofOrderActorSubmitQueue() {}
-
 void OutofOrderActorSubmitQueue::Emplace(const std::string &concurrency_group,
                                          uint64_t position,
                                          const TaskSpecification &spec) {
@@ -79,9 +77,11 @@ void OutofOrderActorSubmitQueue::MarkTaskCanceled(const std::string &concurrency
                                                   uint64_t position) {
   auto pending_it = pending_queue_per_group_.find(concurrency_group);
   if (pending_it != pending_queue_per_group_.end()) {
-    pending_it->second.erase(position);
-    if (pending_it->second.empty()) {
-      pending_queue_per_group_.erase(pending_it);
+    if (pending_it->second.erase(position) > 0) {
+      if (pending_it->second.empty()) {
+        pending_queue_per_group_.erase(pending_it);
+      }
+      return;
     }
   }
   auto sending_it = sending_queue_per_group_.find(concurrency_group);

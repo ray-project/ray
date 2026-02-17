@@ -24,17 +24,11 @@ namespace core {
 void SequentialActorSubmitQueue::Emplace(const std::string &concurrency_group,
                                          uint64_t sequence_no,
                                          const TaskSpecification &spec) {
-  if (spec.IsRetry()) {
-    RAY_CHECK(
-        retry_requests_per_group_[concurrency_group]
-            .emplace(sequence_no, std::make_pair(spec, /*dependency_resolved*/ false))
-            .second);
-  } else {
-    RAY_CHECK(
-        requests_per_group_[concurrency_group]
-            .emplace(sequence_no, std::make_pair(spec, /*dependency_resolved*/ false))
-            .second);
-  }
+  auto &requests_for_group = spec.IsRetry() ? retry_requests_per_group_[concurrency_group]
+                                            : requests_per_group_[concurrency_group];
+  RAY_CHECK(requests_for_group
+                .emplace(sequence_no, std::make_pair(spec, /*dependency_resolved*/ false))
+                .second);
 }
 
 bool SequentialActorSubmitQueue::Contains(const std::string &concurrency_group,
@@ -75,11 +69,12 @@ void SequentialActorSubmitQueue::MarkDependencyFailed(
     const std::string &concurrency_group, uint64_t sequence_no) {
   auto req_it = requests_per_group_.find(concurrency_group);
   if (req_it != requests_per_group_.end()) {
-    req_it->second.erase(sequence_no);
-    if (req_it->second.empty()) {
-      requests_per_group_.erase(req_it);
+    if (req_it->second.erase(sequence_no) > 0) {
+      if (req_it->second.empty()) {
+        requests_per_group_.erase(req_it);
+      }
+      return;
     }
-    return;
   }
   auto retry_it = retry_requests_per_group_.find(concurrency_group);
   if (retry_it != retry_requests_per_group_.end()) {
@@ -94,11 +89,12 @@ void SequentialActorSubmitQueue::MarkTaskCanceled(const std::string &concurrency
                                                   uint64_t sequence_no) {
   auto req_it = requests_per_group_.find(concurrency_group);
   if (req_it != requests_per_group_.end()) {
-    req_it->second.erase(sequence_no);
-    if (req_it->second.empty()) {
-      requests_per_group_.erase(req_it);
+    if (req_it->second.erase(sequence_no) > 0) {
+      if (req_it->second.empty()) {
+        requests_per_group_.erase(req_it);
+      }
+      return;
     }
-    return;
   }
   auto retry_it = retry_requests_per_group_.find(concurrency_group);
   if (retry_it != retry_requests_per_group_.end()) {
@@ -148,8 +144,7 @@ std::vector<TaskID> SequentialActorSubmitQueue::ClearAllTasks() {
 
 std::optional<std::pair<TaskSpecification, bool>>
 SequentialActorSubmitQueue::PopNextTaskToSend() {
-  // First pass: pop any resolved retry from any group (retries have priority,
-  // skip_queue=true).
+  // Pop any resolved retry from any group (retries have priority)
   for (auto it = retry_requests_per_group_.begin();
        it != retry_requests_per_group_.end();) {
     auto &retries = it->second;
@@ -168,8 +163,7 @@ SequentialActorSubmitQueue::PopNextTaskToSend() {
     }
     ++it;
   }
-  // Second pass: for each group, check if the head-of-line task has dependencies
-  // resolved. If so, pop it.
+  // For each group, check if the head task has dependencies resolved.
   for (auto it = requests_per_group_.begin(); it != requests_per_group_.end();) {
     auto &requests = it->second;
     if (requests.begin()->second.second) {
