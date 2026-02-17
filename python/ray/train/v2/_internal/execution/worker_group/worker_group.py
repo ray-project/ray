@@ -329,7 +329,7 @@ class WorkerGroup(BaseWorkerGroup):
             )
             worker_group_state_builder.with_workers(workers)
             logger.debug(
-                "[Train Worker Initialization] {num_workers} actors created in "
+                f"[Worker Group Initialization] {worker_group_context.num_workers} worker actors created in "
                 f"{time_monotonic() - create_workers_start:.2f}s."
             )
 
