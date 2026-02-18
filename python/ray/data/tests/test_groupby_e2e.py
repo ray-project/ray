@@ -1476,6 +1476,7 @@ def test_estimate_input_size_bytes(ray_start_regular_shared_2_cpus):
 
     ref_bundle = RefBundle(
         [(ray_block, metadata)],
+        schema=None,
         owns_blocks=True,
     )
 

@@ -47,6 +47,9 @@ def _generate_local_aggregate_fn(
     )
     from ray.data._internal.util import unify_ref_bundles_schema
 
+    if len(aggs) == 0:
+        raise ValueError("Aggregate requires at least one aggregation")
+
     def fn(
         refs: List[RefBundle],
         ctx: TaskContext,
@@ -63,7 +66,7 @@ def _generate_local_aggregate_fn(
 
         sort_key = SortKey(key)
 
-        all_blocks: List[Block] = [ray.get(block_ref) for block_ref in blocks]
+        all_blocks: List[Block] = ray.get(blocks)
 
         pruned_blocks = [
             SortAggregateTaskSpec._prune_unused_columns(block, sort_key, aggs)
@@ -79,9 +82,6 @@ def _generate_local_aggregate_fn(
             BlockAccessor.for_block(block)._aggregate(sort_key, aggs)
             for block in pruned_blocks
         ]
-
-        if len(aggregated_blocks) == 0:
-            return ([], {})
 
         target_block_type = ExchangeTaskSpec._derive_target_block_type(batch_format)
         normalized_blocks = TableBlockAccessor.normalize_block_types(
