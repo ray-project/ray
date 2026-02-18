@@ -218,7 +218,6 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
-    # Ray Data now supports pandas 3.x through graceful version checking
     pandas_dep = "pandas >= 1.3"
     numpy_dep = "numpy >= 1.20"
     pyarrow_deps = [
@@ -271,7 +270,7 @@ if setup_spec.type == SetupType.RAY:
             "watchfiles",
         ],
         "tune": [
-            pandas_dep,
+            "pandas",
             # TODO: Remove pydantic dependency from tune once tune doesn't import train
             pydantic_dep,
             "tensorboardX>=1.9",
