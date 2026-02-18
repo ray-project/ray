@@ -202,7 +202,7 @@ def train_torch_ray_train(
 
 
 @ray.remote(num_cpus=0)
-def run_cluster_node_killing_events():
+def run_cluster_node_killing_events(target_gpu_count: int):
     logging.basicConfig(level=logging.INFO)
     terminator_logger = logging.getLogger(__name__)
     terminator_logger.addHandler(get_file_handler())
@@ -253,8 +253,8 @@ def run_cluster_node_killing_events():
         status_str += "-" * 80 + "\n\n"
         terminator_logger.info(status_str)
 
-    log_status("Waiting to upscale back to 12 GPUs...")
-    while get_cluster_resources().get("GPU", 0) < 12:
+    log_status(f"Waiting to upscale back to {target_gpu_count} GPUs...")
+    while get_cluster_resources().get("GPU", 0) < target_gpu_count:
         time.sleep(1)
 
     log_status("Waiting for 30s before modifying cluster resources...")
@@ -266,8 +266,8 @@ def run_cluster_node_killing_events():
     while not all_nodes_dead(nodes_to_kill):
         time.sleep(1)
 
-    log_status("Waiting to upscale back to 12 GPUs...")
-    while get_cluster_resources().get("GPU", 0) < 12:
+    log_status(f"Waiting to upscale back to {target_gpu_count} GPUs...")
+    while get_cluster_resources().get("GPU", 0) < target_gpu_count:
         time.sleep(1)
 
     log_status("Waiting for 30s before modifying cluster resources...")
@@ -279,8 +279,8 @@ def run_cluster_node_killing_events():
     while not all_nodes_dead(nodes_to_kill):
         time.sleep(1)
 
-    log_status("Waiting to upscale back to 12 GPUs...")
-    while get_cluster_resources().get("GPU", 0) < 12:
+    log_status(f"Waiting to upscale back to {target_gpu_count} GPUs...")
+    while get_cluster_resources().get("GPU", 0) < target_gpu_count:
         time.sleep(1)
 
     log_status("Waiting for 30s before modifying cluster resources...")
@@ -323,7 +323,7 @@ def run(
             node_id=head_node_id, soft=False
         ),
         runtime_env={"env_vars": {"RAY_TRAIN_V2_ENABLED": "1"}},
-    ).remote()
+    ).remote(target_gpu_count=num_workers[1])
 
     result = train_torch_ray_train(
         config=config,

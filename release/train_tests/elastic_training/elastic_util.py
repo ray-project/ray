@@ -32,14 +32,17 @@ def terminate_current_instance():
     token = requests.put(
         "http://169.254.169.254/latest/api/token",
         headers={"X-aws-ec2-metadata-token-ttl-seconds": "300"},
+        timeout=10,
     ).text
     instance_id = requests.get(
         "http://169.254.169.254/latest/meta-data/instance-id",
         headers={"X-aws-ec2-metadata-token": token},
+        timeout=10,
     ).text
     region = requests.get(
         "http://169.254.169.254/latest/meta-data/placement/region",
         headers={"X-aws-ec2-metadata-token": token},
+        timeout=10,
     ).text
     return subprocess.run(
         [
