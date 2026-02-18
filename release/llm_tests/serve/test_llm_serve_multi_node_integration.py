@@ -1,4 +1,7 @@
+import pathlib
+
 import pytest
+import yaml
 
 import ray
 from ray import serve
@@ -6,6 +9,7 @@ from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.llm import (
     build_dp_deployment,
+    build_dp_openai_app,
     build_pd_openai_app,
     build_openai_app,
     LLMConfig,
@@ -13,6 +17,8 @@ from ray.serve.llm import (
     ModelLoadingConfig,
 )
 from ray.serve.schema import ApplicationStatus
+
+CONFIGS_DIR = pathlib.Path(__file__).parent / "configs"
 
 
 @pytest.fixture(autouse=True)
@@ -113,6 +119,54 @@ def test_llm_serve_data_parallelism():
     )
 
     app = build_dp_deployment(llm_config)
+    serve.run(app, blocking=False)
+
+    wait_for_condition(is_default_app_running, timeout=300)
+
+
+def test_llm_serve_gang_data_parallelism():
+    """Test Data Parallelism deployment with gang scheduling.
+
+    Validates that DP deployments work correctly with gang scheduling and placement group
+    bundles for resource reservation.
+    """
+    placement_group_config = {
+        "bundles": [{"GPU": 1, "CPU": 1}],
+    }
+
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="microsoft/Phi-tiny-MoE-instruct",
+            model_source="microsoft/Phi-tiny-MoE-instruct",
+        ),
+        deployment_config=dict(),
+        engine_kwargs=dict(
+            tensor_parallel_size=1,
+            pipeline_parallel_size=1,
+            data_parallel_size=4,
+            distributed_executor_backend="ray",
+            max_model_len=1024,
+            max_num_seqs=32,
+            enforce_eager=True,
+        ),
+        placement_group_config=placement_group_config,
+        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
+    )
+
+    app = build_dp_deployment(llm_config, enable_fault_tolerance=True)
+    serve.run(app, blocking=False)
+
+    wait_for_condition(is_default_app_running, timeout=300)
+
+
+def test_llm_serve_gang_data_parallelism_declarative():
+    """Test gang DP deployment via declarative config."""
+    config_path = CONFIGS_DIR / "serve_phi_tiny_moe_dp4_gang.yaml"
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+
+    app_config = config["applications"][0]
+    app = build_dp_openai_app(app_config["args"])
     serve.run(app, blocking=False)
 
     wait_for_condition(is_default_app_running, timeout=300)
