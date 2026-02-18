@@ -2,11 +2,14 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Union
 
-import time
+import requests
+from openai import OpenAI
+
 import anyscale
 import boto3
 import ray
@@ -16,6 +19,7 @@ from anyscale.compute_config.models import ComputeConfig
 from anyscale.service.models import ServiceState
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.utils import get_random_string
+
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
@@ -231,3 +235,35 @@ def get_vllm_s3_storage_path() -> str:
     storage_path = f"s3://{S3_BUCKET}/{S3_PREFIX}/vllm-perf-results-{unique_id}.jsonl"
 
     return storage_path
+
+
+def create_openai_client(server_url: str) -> OpenAI:
+    return OpenAI(base_url=f"{server_url}/v1", api_key="fake-key")
+
+
+def wait_for_server_ready(
+    url: str,
+    model_id: str,
+    timeout: int = 300,
+    retry_interval: int = 2,
+) -> None:
+    """Poll the server until it can handle a completion request."""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            resp = requests.post(
+                f"{url}/v1/completions",
+                json={
+                    "model": model_id,
+                    "prompt": "test",
+                    "max_tokens": 5,
+                    "temperature": 0,
+                },
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                return
+        except Exception:
+            pass
+        time.sleep(retry_interval)
+    raise TimeoutError(f"Server at {url} not ready within {timeout}s")
