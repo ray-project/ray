@@ -820,6 +820,7 @@ def test_actor_pool_scale_logs_include_map_worker_cls_name(
         max_actor_concurrency=1,
         max_tasks_in_flight_per_actor=1,
         map_worker_cls_name="MapWorker(TestOp)",
+        debounce_period_s=0,
     )
 
     with caplog.at_level(logging.DEBUG, logger=logger_name):
@@ -830,21 +831,15 @@ def test_actor_pool_scale_logs_include_map_worker_cls_name(
             caplog.text,
         ), f"Expected scale-up log with map worker name; got: {caplog.text}"
 
-        with freeze_time() as frozen_time:
-            frozen_time.tick(
-                datetime.timedelta(
-                    seconds=_ActorPool._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S + 1
-                )
-            )
-            caplog.clear()
-            pool.scale(
-                ActorPoolScalingRequest.downscale(delta=-1, reason="scale down test")
-            )
-            assert re.search(
-                r"Scaled down MapWorker\(TestOp\) actor pool by \d+ "
-                r"\(reason=scale down test",
-                caplog.text,
-            ), f"Expected scale-down log with map worker name; got: {caplog.text}"
+        caplog.clear()
+        pool.scale(
+            ActorPoolScalingRequest.downscale(delta=-1, reason="scale down test")
+        )
+        assert re.search(
+            r"Scaled down MapWorker\(TestOp\) actor pool by \d+ "
+            r"\(reason=scale down test",
+            caplog.text,
+        ), f"Expected scale-down log with map worker name; got: {caplog.text}"
 
 
 def _create_bundle_with_single_row(row):

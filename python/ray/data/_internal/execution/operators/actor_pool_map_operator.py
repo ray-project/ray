@@ -892,6 +892,7 @@ class _ActorPool(AutoscalingActorPool):
         max_actor_concurrency: int,
         max_tasks_in_flight_per_actor: int,
         map_worker_cls_name: str = "MapWorker",
+        debounce_period_s: int = _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S,
         _enable_actor_pool_on_exit_hook: bool = False,
     ):
         """Initialize the actor pool.
@@ -914,6 +915,7 @@ class _ActorPool(AutoscalingActorPool):
             max_tasks_in_flight_per_actor: The maximum number of tasks that can
                 be submitted to a single actor at any given time.
             map_worker_cls_name: Name of the map worker class for logging purposes.
+            debounce_period_s: Debounce period for scaling down after scaling up
             _enable_actor_pool_on_exit_hook: Whether to enable the actor pool
                 on exit hook.
         """
@@ -924,6 +926,7 @@ class _ActorPool(AutoscalingActorPool):
         self._max_actor_concurrency: int = max_actor_concurrency
         self._max_tasks_in_flight: int = max_tasks_in_flight_per_actor
         self._map_worker_cls_name = map_worker_cls_name
+        self._debounce_period_s = debounce_period_s
         self._create_actor_fn = create_actor_fn
         self._per_actor_resource_usage = per_actor_resource_usage
 
@@ -1012,11 +1015,7 @@ class _ActorPool(AutoscalingActorPool):
             if (
                 not config.force
                 and self._last_upscaled_at is not None
-                and (
-                    time.time()
-                    <= self._last_upscaled_at
-                    + self._ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S
-                )
+                and (time.time() <= self._last_upscaled_at + self._debounce_period_s)
             ):
                 # NOTE: To avoid spamming logs unnecessarily, debounce log is produced once
                 #       per upscaling event
