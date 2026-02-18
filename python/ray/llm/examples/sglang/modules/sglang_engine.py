@@ -1,5 +1,6 @@
 import copy
 import inspect
+import logging
 import signal
 import time
 from typing import (
@@ -17,6 +18,8 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     CompletionResponse,
 )
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
+
+logger = logging.getLogger(__name__)
 
 
 class SGLangServer:
@@ -136,25 +139,31 @@ class SGLangServer:
                     add_generation_prompt=True,
                     **template_kwargs,
                 )
-            except TypeError:
-                # Keep broad tokenizer compatibility by retrying with fewer kwargs.
+            except Exception as first_error:
                 fallback_kwargs = dict(template_kwargs)
-                fallback_kwargs.pop("tokenize", None)
-                fallback_kwargs.pop("reasoning_effort", None)
-                fallback_kwargs.pop("tools", None)
+                tools = fallback_kwargs.get("tools")
+                # Try an alternative tools payload shape used by some templates.
+                if tools:
+                    fallback_kwargs["tools"] = [
+                        item
+                        if isinstance(item, dict) and "function" in item
+                        else {"function": item}
+                        for item in tools
+                    ]
                 try:
                     return tokenizer.apply_chat_template(
                         messages,
+                        tokenize=False,
                         add_generation_prompt=True,
                         **fallback_kwargs,
                     )
-                except TypeError:
-                    return tokenizer.apply_chat_template(
-                        messages,
-                        add_generation_prompt=True,
+                except Exception as second_error:
+                    logger.warning(
+                        "SGLang chat template rendering failed; falling back to "
+                        "simple role/content prompt. first_error=%s second_error=%s",
+                        first_error,
+                        second_error,
                     )
-            except Exception:
-                pass
 
         # Fallback prompt format for tokenizers without chat-template support.
         prompt_lines: List[str] = []
@@ -233,8 +242,6 @@ class SGLangServer:
         request: ChatCompletionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[ChatCompletionResponse, None]:
-        del raw_request_info  # Unused for now.
-
         chat_messages = self._build_chat_messages(request.messages)
         prompt = self._render_chat_prompt(request, chat_messages)
 
@@ -271,8 +278,6 @@ class SGLangServer:
         request: CompletionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[CompletionResponse, None]:
-        del raw_request_info  # Unused for now.
-
         prompt_input = request.prompt
 
         prompts_to_process: List[str] = []
