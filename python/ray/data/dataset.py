@@ -7204,7 +7204,6 @@ class _ExecutionCache:
         self._bundle: Optional[RefBundle] = None
 
         # --- Metadata layer (from streaming iteration) ---
-        self._metadata_cached = False
         self._num_rows: Optional[int] = None
         self._size_bytes: Optional[int] = None
         # Note schema can be cached via other means as well.
@@ -7221,12 +7220,6 @@ class _ExecutionCache:
         # has changed, so there may have been a change in schema,
         # count, etc.
         return self._operator == dag
-
-    def has_cached_metadata(self, dag: "LogicalOperator") -> bool:
-        """Whether this cache has cached metadata: num_rows, size_bytes, schema"""
-        has_bundle = self.get_bundle(dag) is not None
-        has_explicit_metadata = self._cache_is_fresh(dag) and self._metadata_cached
-        return has_bundle or has_explicit_metadata
 
     def get_bundle(self, dag: "LogicalOperator") -> Optional[RefBundle]:
         if self._cache_is_fresh(dag):
@@ -7265,19 +7258,16 @@ class _ExecutionCache:
         # stats are cached independently
         self._stats = stats
 
-    def set_metadata(
-        self,
-        dag: "LogicalOperator",
-        schema: Optional["Schema"],
-        num_rows: int,
-        size_bytes: int,
-    ) -> None:
+    def set_num_rows(self, dag: "LogicalOperator", num_rows: int) -> None:
         if dag != self._operator:
             self._clear_dag_dependent_cache()
-        self._metadata_cached = True
         self._operator = dag
-        self._schema = schema
         self._num_rows = num_rows
+
+    def set_size_bytes(self, dag: "LogicalOperator", size_bytes: int) -> None:
+        if dag != self._operator:
+            self._clear_dag_dependent_cache()
+        self._operator = dag
         self._size_bytes = size_bytes
 
     def set_schema(self, dag: "LogicalOperator", schema: "Schema") -> None:
@@ -7304,7 +7294,6 @@ class _ExecutionCache:
         self._schema = None
         self._num_rows = None
         self._size_bytes = None
-        self._metadata_cached = False
 
     def copy(self) -> "_ExecutionCache":
         new = _ExecutionCache()
@@ -7314,7 +7303,6 @@ class _ExecutionCache:
         new._schema = self._schema
         new._num_rows = self._num_rows
         new._size_bytes = self._size_bytes
-        new._metadata_cached = self._metadata_cached
         return new
 
     def deep_copy(self) -> "_ExecutionCache":
@@ -7325,5 +7313,4 @@ class _ExecutionCache:
         new._schema = copy.copy(self._schema)
         new._num_rows = self._num_rows
         new._size_bytes = self._size_bytes
-        new._metadata_cached = self._metadata_cached
         return new

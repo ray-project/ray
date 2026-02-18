@@ -73,9 +73,10 @@ def execute_to_legacy_bundle_iterator(
                 # Traverse the topology backwards and find the first available schema
                 schema = next(reversed(topology.values()))._schema
 
-                plan._cache.set_metadata(
-                    plan._logical_plan.dag, schema, self._num_rows, self._size_bytes
-                )
+                dag = plan._logical_plan.dag
+                plan._cache.set_num_rows(dag, self._num_rows)
+                plan._cache.set_size_bytes(dag, self._size_bytes)
+                plan._cache.set_schema(dag, schema)
                 raise
 
         def _collect_metadata(self, bundle: RefBundle) -> RefBundle:

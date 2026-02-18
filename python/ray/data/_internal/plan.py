@@ -183,8 +183,10 @@ class ExecutionPlan:
                 self._logical_plan.dag, including_source=False
             )
 
-        if not self._cache.has_cached_metadata(self._logical_plan.dag):
-            # This plan hasn't executed any operators.
+        schema = self.schema(fetch_if_missing=False)
+        count = self._cache.get_num_rows(self._logical_plan.dag)
+
+        if schema is None or count is None:
             has_n_ary_operator = False
             dag = self._logical_plan.dag
 
@@ -196,22 +198,17 @@ class ExecutionPlan:
                 dag = dag.input_dependencies[0]
 
             # TODO(@bveeramani): Handle schemas for n-ary operators like `Union`.
-            if has_n_ary_operator:
-                schema = None
-                count = None
-            else:
+            if not has_n_ary_operator:
                 assert isinstance(dag, SourceOperator), dag
                 plan = ExecutionPlan(
                     DatasetStats(metadata={}, parent=None),
                     self._context,
                 )
                 plan.link_logical_plan(LogicalPlan(dag, plan._context))
-                schema = plan.schema()
-                count = plan.meta_count()
-        else:
-            # Get schema of output blocks.
-            schema = self.schema(fetch_if_missing=False)
-            count = self._cache.get_num_rows(self._logical_plan.dag)
+                if plan.schema() is not None:
+                    schema = plan.schema()
+                if plan.meta_count() is not None:
+                    count = plan.meta_count()
 
         if schema is None:
             schema_str = "Unknown schema"
