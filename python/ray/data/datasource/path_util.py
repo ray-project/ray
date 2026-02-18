@@ -291,15 +291,16 @@ def _resolve_paths_and_filesystem(
     """
     if isinstance(paths, str):
         paths = [paths]
-    if isinstance(paths, pathlib.Path):
+    elif isinstance(paths, pathlib.Path):
         paths = [str(paths)]
-    elif not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
-        raise ValueError(
-            "Expected `paths` to be a `str`, `pathlib.Path`, or `list[str]`, but got "
-            f"`{paths}`"
-        )
-    elif len(paths) == 0:
-        raise ValueError("Must provide at least one path.")
+    elif isinstance(paths, list):
+        paths = [str(p) if isinstance(p, pathlib.Path) else p for p in paths]
+        if not paths:
+            raise ValueError("Must provide at least one path.")
+        if any(not isinstance(p, str) for p in paths):
+            raise ValueError("All paths must be str or pathlib.Path")
+    else:
+        raise ValueError(f"paths must be str, pathlib.Path, or list, got {type(paths)}")
 
     # Validate/wrap filesystem upfront so we return a proper PyArrow filesystem
     filesystem = _validate_and_wrap_filesystem(filesystem)

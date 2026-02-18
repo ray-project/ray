@@ -353,12 +353,17 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
     """
     if isinstance(paths, str):
         paths = [paths]
-    if isinstance(paths, pathlib.Path):
+    elif isinstance(paths, pathlib.Path):
         paths = [str(paths)]
-    elif not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
-        raise ValueError("paths must be a path string or a list of path strings.")
-    elif len(paths) == 0:
-        raise ValueError("Must provide at least one path.")
+    elif isinstance(paths, list):
+        paths = [str(p) if isinstance(p, pathlib.Path) else p for p in paths]
+        if any(not isinstance(p, str) for p in paths):
+            raise ValueError("paths must be a path string or a list of path strings.")
+        if len(paths) == 0:
+            raise ValueError("Must provide at least one path.")
+    else:
+        raise ValueError(f"paths must be str, pathlib.Path, or list, got {type(paths)}")
+
     num = sum(urllib.parse.urlparse(path).scheme == _LOCAL_SCHEME for path in paths)
     if num > 0 and num < len(paths):
         raise ValueError(

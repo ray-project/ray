@@ -44,6 +44,25 @@ def test_read_text(ray_start_regular_shared, tmp_path):
     assert ds.count() == 4
 
 
+def test_read_text_with_pathlib(ray_start_regular_shared, tmp_path):
+    from pathlib import Path
+
+    path = Path(tmp_path) / "test_pathlib"
+    path.mkdir()
+
+    file1 = path / "file1.txt"
+    file2 = path / "file2.txt"
+
+    file1.write_text("hello\nworld")
+    file2.write_text("goodbye")
+
+    ds = ray.data.read_text([file1, file2])
+    assert sorted(_to_lines(ds.take())) == ["goodbye", "hello", "world"]
+
+    ds = ray.data.read_text(file1)
+    assert sorted(_to_lines(ds.take())) == ["hello", "world"]
+
+
 def test_read_text_remote_args(ray_start_cluster, tmp_path):
     cluster = ray_start_cluster
     cluster.add_node(
