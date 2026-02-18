@@ -179,16 +179,16 @@ class StreamingExecutor(Executor, threading.Thread):
                 log_path = get_log_directory()
                 if log_path is not None:
                     message += f" Full logs are in {log_path}"
-                logger.debug(message)
-                logger.debug(
+                logger.info(message)
+                logger.info(
                     f"Execution plan of Dataset {self._dataset_id}: {dag.dag_str}"
                 )
 
             # Log the full DataContext for traceability
             option_str = pprint.pformat(vars(self._options))
-            logger.info("Execution config:\n%s", option_str)
+            logger.debug("Execution config:\n%s", option_str)
             context_str = pprint.pformat(vars(self._data_context))
-            logger.info("Data Context:\n%s", context_str)
+            logger.debug("Data Context:\n%s", context_str)
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology = build_streaming_topology(dag, self._options)
