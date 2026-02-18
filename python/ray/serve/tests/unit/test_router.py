@@ -1619,8 +1619,6 @@ class TestCustomRequestRouterAPIs:
         will respect it."""
 
         class CustomBackoffRouter(RequestRouter):
-            backoff_multiplier = 1.5
-
             async def choose_replicas(self, candidate_replicas, pending_request=None):
                 return [candidate_replicas]
 
@@ -1628,6 +1626,7 @@ class TestCustomRequestRouterAPIs:
             deployment_id=DeploymentID(name="test"),
             handle_source=DeploymentHandleSource.UNKNOWN,
             create_replica_wrapper_func=lambda ri: FakeReplica(ri),
+            backoff_multiplier=1.5,
         )
 
         b0 = r._compute_backoff_s(0)
