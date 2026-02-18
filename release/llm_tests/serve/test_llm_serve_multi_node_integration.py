@@ -129,6 +129,7 @@ def test_llm_serve_data_parallelism():
     [
         (4, None),  # Single group, single node
         (8, None),  # Single group, multi-node
+        (2, 4),  # Multi-group, single node
         (4, 8),  # Multi-group, multi-node
     ],
 )
