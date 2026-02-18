@@ -97,22 +97,22 @@ def test_message_format(configure_logging, reset_logging, shutdown_only):
     assert logged_msg == "ham"
 
 
-@pytest.mark.skipif(os.name != "nt", reason="Windows-specific encoding defaults.")
-def test_file_handler_uses_utf8_on_windows(
-    configure_logging, reset_logging, shutdown_only
-):
-    ray.init()
-    logger = logging.getLogger("ray.data")
-
-    logger.info("ham")
-
-    file_handler = next(
-        handler
-        for handler in logger.handlers
-        if isinstance(handler, SessionFileHandler)
+def test_file_handler_uses_utf8_on_windows(monkeypatch, tmp_path):
+    monkeypatch.setattr(os, "name", "nt")
+    handler = SessionFileHandler(
+        "ray-data.log", get_log_directory=lambda: str(tmp_path)
     )
-    assert file_handler._handler is not None
-    assert file_handler._handler.encoding.lower() == "utf-8"
+
+    logger = logging.getLogger("ray.data.test_windows_encoding")
+    logger.addHandler(handler)
+    try:
+        logger.info("ham")
+
+        assert handler._handler is not None
+        assert handler._handler.encoding.lower() == "utf-8"
+    finally:
+        logger.removeHandler(handler)
+        handler.close()
 
 
 def test_custom_config(reset_logging, monkeypatch, tmp_path):
