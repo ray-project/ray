@@ -112,7 +112,7 @@ class FakeReplica(RunningReplica):
         self._is_cross_language = is_cross_language
         self._queue_len_info = queue_len_info
         self._error = error
-        self._reserved_slots: Dict[str, bool] = {}  # token -> is_released
+        self._reserved_slots: Set[str] = set()
         self._slot_counter = 0
         self._requests_sent = []  # Track all requests sent to this replica
 
@@ -149,22 +149,18 @@ class FakeReplica(RunningReplica):
         """Reserve a slot and return a token."""
         self._slot_counter += 1
         token = f"slot-token-{self._slot_counter}"
-        self._reserved_slots[token] = False  # Not released yet
+        self._reserved_slots.add(token)
         return token
 
     def release_slot(self, slot_token: str) -> None:
         """Release a reserved slot."""
-        if slot_token in self._reserved_slots:
-            self._reserved_slots[slot_token] = True
+        self._reserved_slots.discard(slot_token)
 
     def send_request_with_slot(
         self, pr: PendingRequest, slot_token: str
     ) -> FakeReplicaResult:
         """Send request using a reserved slot."""
         assert slot_token in self._reserved_slots, f"Invalid slot token: {slot_token}"
-        assert not self._reserved_slots[
-            slot_token
-        ], f"Slot already released: {slot_token}"
 
         # Create result same way as try_send_request
         if pr.metadata.is_streaming:
@@ -873,15 +869,14 @@ class TestChooseReplica:
             assert selection._replica == replica
             assert selection._method_name == "test_method"
             assert selection._slot_token in replica._reserved_slots
-            assert not replica._reserved_slots[selection._slot_token]  # Not released
 
             # Dispatch request
             replica_result = await router.dispatch(selection, request_metadata)
             assert replica_result._replica_id == r1_id
             assert not replica_result._is_generator_object
 
-        # After context exit, slot should not be released (dispatch was called)
-        assert not replica._reserved_slots[selection._slot_token]
+        # After context exit, slot should be released
+        assert selection._slot_token not in replica._reserved_slots
 
     async def test_choose_without_dispatch_releases_slot(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
@@ -904,11 +899,10 @@ class TestChooseReplica:
         async with router.choose_replica(request_metadata) as selection:
             slot_token = selection._slot_token
             assert slot_token in replica._reserved_slots
-            assert not replica._reserved_slots[slot_token]  # Not released
             # Exit without calling dispatch
 
         # After context exit, slot should be released
-        assert replica._reserved_slots[slot_token] is True
+        assert slot_token not in replica._reserved_slots
 
     async def test_choose_with_exception_releases_slot(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
@@ -932,11 +926,10 @@ class TestChooseReplica:
             async with router.choose_replica(request_metadata) as selection:
                 slot_token = selection._slot_token
                 assert slot_token in replica._reserved_slots
-                assert not replica._reserved_slots[slot_token]
                 raise RuntimeError("Test exception")
 
         # After exception, slot should be released
-        assert replica._reserved_slots[slot_token] is True
+        assert slot_token not in replica._reserved_slots
 
     @pytest.mark.parametrize("is_streaming", [False, True])
     async def test_choose_and_dispatch_streaming(
