@@ -71,6 +71,8 @@ double BucketHistogram::GetMean() const {
   return sum / static_cast<double>(count_);
 }
 
+// PercentileTracker
+
 /**
   Flush the current histogram and return the old histogram.
 

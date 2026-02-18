@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <memory>
 #include <string>
 #include <vector>
@@ -88,15 +89,16 @@ class PercentileMetric : public ray::observability::MetricInterface {
                    const std::string &unit,
                    double max_expected_value,
                    int num_buckets = 256)
-      : name_(name),
-        description_(description),
-        unit_(unit),
-        tracker_(PercentileTracker::Create(num_buckets, max_expected_value)),
+      : tracker_(PercentileTracker::Create(num_buckets, max_expected_value)),
         p50_gauge_(name + "_p50", description + " (P50)", unit),
         p95_gauge_(name + "_p95", description + " (P95)", unit),
         p99_gauge_(name + "_p99", description + " (P99)", unit),
         max_gauge_(name + "_max", description + " (Max)", unit),
         mean_gauge_(name + "_mean", description + " (Mean)", unit) {}
+
+  // --- MetricInterface implementation ---
+  // Tags are intentionally ignored: percentile tracking is per-process/node and
+  // should never be aggregated across tag dimensions.
 
   /**
     Record a latency value.
@@ -111,8 +113,6 @@ class PercentileMetric : public ray::observability::MetricInterface {
     tracker_.Record(value);
   }
 
-  // Tags are ignored for now. There's no correct notion of aggregation, so it
-  // seems to be of limited usefulness.
   void Record(double value, stats::TagsType /*tags*/) override { Record(value); }
 
   void Record(double value,
@@ -123,27 +123,21 @@ class PercentileMetric : public ray::observability::MetricInterface {
   /**
     Calculate current percentiles and update gauge metrics.
 
-    This should be called periodically.
-
-    This method uses a double-buffering approach th:
-    1. Quickly swap out the current histogram for a new empty one (under lock)
-    2. Calculate percentiles from the old histogram
-    3. Update gauges and discard the old histogram
-
-    This ensures Record() calls are only blocked for the pointer swap, not the expensive
-    percentile calculations.
+    This uses a double-buffering approach: quickly swap out the current histogram
+    for a new empty one (under lock), then calculate percentiles from the old
+    histogram outside the lock. This ensures Record() calls are only blocked for
+    the pointer swap, not the percentile calculations.
 
     This method is thread-safe.
    */
   void Flush() override {
-    // Atomically swap out the histogram (under lock)
+    // Atomically swap out the histogram (under lock).
     std::unique_ptr<BucketHistogram> old_histogram;
     {
       absl::MutexLock lock(&mutex_);
       old_histogram = tracker_.GetAndFlushHistogram();
     }
 
-    // Calculate percentiles from old histogram
     if (old_histogram->GetCount() == 0) {
       return;
     }
@@ -154,7 +148,6 @@ class PercentileMetric : public ray::observability::MetricInterface {
     double max_val = old_histogram->GetMax();
     double mean = old_histogram->GetMean();
 
-    // Update gauges (gauges have their own thread-safety)
     if (!std::isnan(p50)) {
       p50_gauge_.Record(p50);
     }
@@ -180,18 +173,7 @@ class PercentileMetric : public ray::observability::MetricInterface {
     tracker_.Clear();
   }
 
-  /**
-    Get the base metric name.
-
-    @return The base metric name (without _p50, _p95, etc. suffixes).
-   */
-  const std::string &GetName() const { return name_; }
-
  private:
-  std::string name_;
-  std::string description_;
-  std::string unit_;
-
   absl::Mutex mutex_;
   PercentileTracker tracker_ ABSL_GUARDED_BY(mutex_);
 

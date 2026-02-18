@@ -123,7 +123,6 @@ class NormalTaskSubmitter {
   /// Schedule a task for direct submission to a worker.
   void SubmitTask(TaskSpecification task_spec);
 
-  /// Flush buffered metric data. Called periodically by CoreWorker::RecordMetrics().
   void FlushMetrics() { scheduler_placement_time_ms_histogram_.Flush(); }
 
   /// Either remove a pending task or send an RPC to kill a running task
