@@ -65,7 +65,7 @@ g[Rr][Pp][Cc]
 [Gg]rayscale
 GGUF
 GKE
-GPT
+(?i)gpt
 GPTQ
 GPU(s)?
 hostfile
