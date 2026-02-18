@@ -1461,15 +1461,17 @@ def test_estimate_input_size_bytes():
     from ray.data._internal.planner.plan_all_to_all_op import (
         _estimate_input_size_bytes,
     )
+    from ray.data.block import BlockMetadata
     import pyarrow as pa
 
     block = pa.table({"a": [1, 2, 3], "b": [4, 5, 6]})
     ray_block = ray.put(block)
-    metadata = type(
-        "BlockMetadata",
-        (),
-        {"size_bytes": 100, "num_rows": 3, "schema": None},
-    )()
+    metadata = BlockMetadata(
+        num_rows=3,
+        size_bytes=100,
+        exec_stats=None,
+        input_files=None,
+    )
 
     ref_bundle = RefBundle(
         [(ray_block, metadata)],

@@ -52,10 +52,8 @@ def _generate_local_aggregate_fn(
         ctx: TaskContext,
     ) -> AllToAllTransformFnResult:
         blocks = []
-        metadata = []
         for ref_bundle in refs:
             blocks.extend(ref_bundle.block_refs)
-            metadata.extend(ref_bundle.metadata)
         if len(blocks) == 0:
             return ([], {})
 
