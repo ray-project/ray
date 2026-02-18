@@ -788,11 +788,6 @@ def test_workload_placement_metrics(ray_start_regular):
     pg = placement_group(bundles=[{"CPU": 1}], strategy="SPREAD")
     ray.get(pg.ready())
 
-    # scheduler_placement_time_ms is now tracked as a percentile metric that
-    # emits p50/p95/p99/max/mean gauges. Tags (including WorkloadType) are not
-    # supported — all workload types are merged into a single histogram. We
-    # simply verify that the gauges are exported with any value after at least
-    # one workload has been placed.
     timeseries = PrometheusTimeseries()
     placement_metric_condition = get_metric_check_condition(
         [
