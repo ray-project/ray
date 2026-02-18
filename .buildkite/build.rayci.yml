@@ -100,6 +100,26 @@ steps:
       - ray-wheel-build
       - raycpubase
 
+  - name: ray-image-tpu-build
+    label: "wanda: ray py{{matrix}} tpu (x86_64)"
+    wanda: ci/docker/ray-image-tpu.wanda.yaml
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+    env_file: rayci.env
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    depends_on:
+      - ray-wheel-build
+      - raytpubase
+
   - name: ray-image-cuda-build
     label: "wanda: ray py{{matrix.python}} cu{{matrix.cuda}} (x86_64)"
     wanda: ci/docker/ray-image-cuda.wanda.yaml
@@ -141,6 +161,7 @@ steps:
       - bazel run //ci/ray_ci/automation:push_ray_image --
         --python-version {{matrix}}
         --platform cpu
+        --platform tpu
         --platform cu11.7.1-cudnn8
         --platform cu11.8.0-cudnn8
         --platform cu12.1.1-cudnn8
@@ -159,6 +180,7 @@ steps:
       - "3.13"
     depends_on:
       - ray-image-cpu-build
+      - ray-image-tpu-build
       - ray-image-cuda-build
     tags:
       - python_dependencies
@@ -185,6 +207,26 @@ steps:
     depends_on:
       - ray-wheel-build
       - raycpubaseextra
+
+  - name: ray-extra-image-tpu-build
+    label: "wanda: ray-extra py{{matrix}} tpu (x86_64)"
+    wanda: ci/docker/ray-extra-image-tpu.wanda.yaml
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+    env_file: rayci.env
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    depends_on:
+      - ray-wheel-build
+      - raytpubaseextra
 
   - name: ray-extra-image-cuda-build
     label: "wanda: ray-extra py{{matrix.python}} cu{{matrix.cuda}} (x86_64)"
@@ -271,6 +313,7 @@ steps:
       - bazel run //ci/ray_ci/automation:push_ray_image --
         --python-version {{matrix}}
         --platform cpu
+        --platform tpu
         --platform cu11.7.1-cudnn8
         --platform cu11.8.0-cudnn8
         --platform cu12.1.1-cudnn8
@@ -289,6 +332,7 @@ steps:
       - "3.13"
     depends_on:
       - ray-extra-image-cpu-build
+      - ray-extra-image-tpu-build
       - ray-extra-image-cuda-build
     tags:
       - python_dependencies
