@@ -120,6 +120,7 @@ from ray.serve._private.logging_utils import (
     configure_component_logger,
     configure_component_memory_profiler,
     format_client_address,
+    format_grpc_peer_address,
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
@@ -2098,6 +2099,7 @@ class Replica(ReplicaBase):
             tracing_context=None,
             is_streaming=False,
             is_direct_ingress=True,
+            _client=format_grpc_peer_address(context.peer()),
         )
 
         if not self._can_accept_request(request_metadata):

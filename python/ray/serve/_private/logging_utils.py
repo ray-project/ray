@@ -180,6 +180,21 @@ class ServeFormatter(TextFormatter):
             return self.base_formatter.format(record)
 
 
+def format_grpc_peer_address(peer: str) -> str:
+    """Extract the client address from a gRPC peer() string.
+
+    gRPC peer() returns "ipv4:host:port" or "ipv6:%5Bhost%5D:port".
+    Strips the protocol prefix and URL-decodes IPv6 brackets.
+    """
+    if not peer:
+        return ""
+    for prefix in ("ipv4:", "ipv6:"):
+        if peer.startswith(prefix):
+            addr = peer[len(prefix) :]
+            return addr.replace("%5B", "[").replace("%5D", "]")
+    return peer
+
+
 def format_client_address(client) -> str:
     """Format a raw ASGI scope client value into a string."""
     if isinstance(client, (tuple, list)):

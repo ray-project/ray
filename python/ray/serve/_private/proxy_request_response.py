@@ -10,6 +10,7 @@ from starlette.types import Receive, Scope, Send
 
 from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
 from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.logging_utils import format_grpc_peer_address
 from ray.serve._private.utils import DEFAULT
 from ray.serve.grpc_util import RayServegRPCContext
 
@@ -183,16 +184,7 @@ class gRPCProxyRequest(ProxyRequest):
 
     @property
     def client(self) -> str:
-        peer = self.context.peer()
-        if not peer:
-            return ""
-        # peer() returns "ipv4:host:port" or "ipv6:%5Bhost%5D:port"
-        # (brackets are URL-encoded in the URI format)
-        for prefix in ("ipv4:", "ipv6:"):
-            if peer.startswith(prefix):
-                addr = peer[len(prefix) :]
-                return addr.replace("%5B", "[").replace("%5D", "]")
-        return peer
+        return format_grpc_peer_address(self.context.peer())
 
     def send_request_id(self, request_id: str):
         # Setting the trailing metadata on the ray_serve_grpc_context object, so it's
