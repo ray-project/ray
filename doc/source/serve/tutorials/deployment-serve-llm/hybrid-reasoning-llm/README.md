@@ -5,7 +5,8 @@ orphan: true
 <!--
 Do not modify this README. This file is a copy of the notebook and is not used to display the content.
 Modify notebook.ipynb instead, then regenerate this file with:
-jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
+jupyter nbconvert "hybrid-reasoning-llm/notebook.ipynb" --to markdown --output "README.md"
+Or use this script: bash convert_to_md.sh
 -->
 
 # Deploy a hybrid reasoning LLM
@@ -182,7 +183,7 @@ In a terminal, run:
 
 
 ```python
-serve run serve_qwen_3_32b:app --non-blocking
+!serve run serve_qwen_3_32b:app --non-blocking
 ```
 
 Deployment typically takes a few minutes as the cluster is provisioned, the vLLM server starts, and the model is downloaded. 
@@ -197,18 +198,6 @@ Use the `model_id` defined in your config (here, `my-qwen-3-32b`) to query your 
 
 You can disable thinking in Qwen-3 by either adding a `/no_think` tag in the prompt or by forwarding `enable_thinking: False` to the vLLM inference engine.  
 
-Example curl with `/no_think`:
-
-
-```python
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer FAKE_KEY" \
-  -d '{ "model": "my-qwen-3-32b", "messages": [{"role": "user", "content": "What is greater between 7.8 and 7.11 ? /no_think"}] }'
-```
-
-Example Python with `enable_thinking: False`:
-
 
 ```python
 #client_thinking_disabled.py
@@ -220,7 +209,7 @@ BASE_URL = "http://localhost:8000"
 
 client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
-# Example: Complex query with thinking process
+# Example with `enable_thinking: False`
 response = client.chat.completions.create(
     model="my-qwen-3-32b",
     messages=[
@@ -230,10 +219,22 @@ response = client.chat.completions.create(
 )
 
 print(f"Reasoning: \n{response.choices[0].message.reasoning_content}\n\n")
-print(f"Answer: \n {response.choices[0].message.content}")
+print(f"Answer with `enable_thinking: False`: \n {response.choices[0].message.content}")
+
+
+# Example with `/no_think`
+response = client.chat.completions.create(
+    model="my-qwen-3-32b",
+    messages=[
+        {"role": "user", "content": "What is greater between 7.8 and 7.11 ? /no_think"}
+    ]
+)
+
+print(f"Reasoning: \n{response.choices[0].message.reasoning_content}\n\n")
+print(f"Answer with `/no_think`: \n {response.choices[0].message.content}")
 ```
 
-Notice the `reasoning_content` is empty here. 
+Notice the `reasoning_content` is empty here.  
 **Note:** Depending on your model's documentation, empty could mean `None`, an empty string or even empty tags `"<think></think>"`.
 
 ---
@@ -241,18 +242,6 @@ Notice the `reasoning_content` is empty here.
 ### Send request with thinking enabled
  
 You can enable thinking in Qwen-3 by either adding a `/think` tag in the prompt or by forwarding `enable_thinking: True` to the vLLM inference engine.  
-
-Example curl with `/think`:
-
-
-```python
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer FAKE_KEY" \
-  -d '{ "model": "my-qwen-3-32b", "messages": [{"role": "user", "content": "What is greater between 7.8 and 7.11 ? /think"}] }'
-```
-
- Example Python with `enable_thinking: True`:
 
 
 ```python
@@ -265,7 +254,7 @@ BASE_URL = "http://localhost:8000"
 
 client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
-# Example: Complex query with thinking process
+# Example with `enable_thinking: True`
 response = client.chat.completions.create(
     model="my-qwen-3-32b",
     messages=[
@@ -275,7 +264,19 @@ response = client.chat.completions.create(
 )
 
 print(f"Reasoning: \n{response.choices[0].message.reasoning_content}\n\n")
-print(f"Answer: \n {response.choices[0].message.content}")
+print(f"Answer with `enable_thinking: True`: \n {response.choices[0].message.content}")
+
+
+# Example with `/think`
+response = client.chat.completions.create(
+    model="my-qwen-3-32b",
+    messages=[
+        {"role": "user", "content": "What is greater between 7.8 and 7.11 ? /think"}
+    ]
+)
+
+print(f"Reasoning: \n{response.choices[0].message.reasoning_content}\n\n")
+print(f"Answer with `/think`: \n {response.choices[0].message.content}")
 ```
 
 If you configure a valid reasoning parser, the reasoning output should appear in the `reasoning_content` field of the response message. Otherwise, it may be included in the main `content` field, typically wrapped in `<think>...</think>` tags. See [Parse reasoning outputs](#parse-reasoning-outputs) for more information.
@@ -288,7 +289,7 @@ Shutdown your LLM service:
 
 
 ```python
-serve shutdown -y
+!serve shutdown -y
 ```
 
 

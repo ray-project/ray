@@ -5,7 +5,8 @@ orphan: true
 <!--
 Do not modify this README. This file is a copy of the notebook and is not used to display the content.
 Modify notebook.ipynb instead, then regenerate this file with:
-jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
+jupyter nbconvert "vision-llm/notebook.ipynb" --to markdown --output "README.md"
+Or use this script: bash convert_to_md.sh
 -->
 
 # Deploy a vision LLM
@@ -82,7 +83,7 @@ In a terminal, run:
 
 
 ```python
-serve run serve_qwen_VL:app --non-blocking
+!serve run serve_qwen_VL:app --non-blocking
 ```
 
 Deployment typically takes a few minutes as the cluster is provisioned, the vLLM server starts, and the model is downloaded. 
@@ -92,18 +93,6 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 ### Sending requests with images
 
 Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`.
-
-Example curl with image URL:
-
-
-```python
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Authorization: Bearer FAKE_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{ "model": "my-qwen-VL", "messages": [ { "role": "user", "content": [ {"type": "text", "text": "What do you see in this image?"}, {"type": "image_url", "image_url": { "url": "http://images.cocodataset.org/val2017/000000039769.jpg" }} ] } ] }'
-```
-
-Example Python with image URL:
 
 
 ```python
@@ -186,7 +175,7 @@ Shutdown your LLM service:
 
 
 ```python
-serve shutdown -y
+!serve shutdown -y
 ```
 
 

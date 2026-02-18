@@ -5,7 +5,8 @@ orphan: true
 <!--
 Do not modify this README. This file is a copy of the notebook and is not used to display the content.
 Modify notebook.ipynb instead, then regenerate this file with:
-jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
+jupyter nbconvert "large-size-llm/notebook.ipynb" --to markdown --output "README.md"
+Or use this script: bash convert_to_md.sh
 -->
 
 # Deploy a large-sized LLM
@@ -99,7 +100,7 @@ In a terminal, run:
 
 
 ```python
-serve run serve_deepseek_r1:app --non-blocking
+!serve run serve_deepseek_r1:app --non-blocking
 ```
 
 Deployment typically takes a few minutes as the cluster is provisioned, the vLLM server starts, and the model is downloaded. 
@@ -109,18 +110,6 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 ### Send requests
 
 Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`.
-
-Example curl:
-
-
-```python
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Authorization: Bearer FAKE_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{ "model": "my-deepseek-r1", "messages": [{"role": "user", "content": "What is 2 + 2?"}] }'
-```
-
-Example Python:
 
 
 ```python
@@ -162,7 +151,7 @@ Shutdown your LLM service:
 
 
 ```python
-serve shutdown -y
+!serve shutdown -y
 ```
 
 
@@ -190,7 +179,7 @@ Create your Anyscale service configuration in a new `service.yaml` file:
 ```yaml
 #service.yaml
 name: deploy-deepseek-r1
-image_uri: anyscale/ray-llm:2.52.0-py311-cu128 # Anyscale Ray Serve LLM image. To build an image from a custom Dockerfile, set `containerfile: ./Dockerfile`
+image_uri: anyscale/ray-llm:2.54.0-py311-cu128 # Anyscale Ray Serve LLM image. To build an image from a custom Dockerfile, set `containerfile: ./Dockerfile`
 compute_config:
   auto_select_worker_config: true 
   # Change default disk size to 1000GB
@@ -223,7 +212,7 @@ Deploy your service
 
 
 ```python
-anyscale service deploy -f service.yaml
+!anyscale service deploy -f service.yaml
 ```
 
 **Note:** If your model is gated, make sure to pass your Hugging Face token to the service with `--env HF_TOKEN=<YOUR_HUGGINGFACE_TOKEN>`
@@ -234,7 +223,7 @@ You can customize the container by building your own Dockerfile. In your Anyscal
 ```yaml
 # service.yaml
 # Replace:
-# image_uri: anyscale/ray-llm:2.49.0-py311-cu128
+# image_uri: FROM anyscale/ray-llm:2.54.0-py311-cu128
 
 # with:
 containerfile: ./Dockerfile
@@ -269,7 +258,7 @@ Shutdown your Anyscale service:
 
 
 ```python
-anyscale service terminate -n deploy-deepseek-r1
+!anyscale service terminate -n deploy-deepseek-r1
 ```
 
 

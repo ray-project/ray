@@ -5,7 +5,8 @@ orphan: true
 <!--
 Do not modify this README. This file is a copy of the notebook and is not used to display the content.
 Modify notebook.ipynb instead, then regenerate this file with:
-jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
+jupyter nbconvert "reasoning-llm/notebook.ipynb" --to markdown --output "README.md"
+Or use this script: bash convert_to_md.sh
 -->
 
 # Deploy a reasoning LLM
@@ -157,7 +158,7 @@ In a terminal, run:
 
 
 ```python
-serve run serve_qwq_32b:app --non-blocking
+!serve run serve_qwq_32b:app --non-blocking
 ```
 
 Deployment typically takes a few minutes as the cluster is provisioned, the vLLM server starts, and the model is downloaded. 
@@ -167,18 +168,6 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 ### Send requests
 
 Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`.
-
-Example curl:
-
-
-```python
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Authorization: Bearer FAKE_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{ "model": "my-qwq-32B", "messages": [{"role": "user", "content": "Pick three random words with 3 syllables each and count the number of R'\''s in each of them"}] }'
-```
-
-Example Python:
 
 
 ```python
@@ -212,7 +201,7 @@ Shutdown your LLM service:
 
 
 ```python
-serve shutdown -y
+!serve shutdown -y
 ```
 
 

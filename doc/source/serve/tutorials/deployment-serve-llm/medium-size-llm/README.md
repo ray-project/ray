@@ -5,7 +5,8 @@ orphan: true
 <!--
 Do not modify this README. This file is a copy of the notebook and is not used to display the content.
 Modify notebook.ipynb instead, then regenerate this file with:
-jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
+jupyter nbconvert "medium-size-llm/notebook.ipynb" --to markdown --output "README.md"
+Or use this script: bash convert_to_md.sh
 -->
 
 # Deploy a medium-sized LLM
@@ -87,12 +88,22 @@ pip install "ray[serve,llm]"
 
 Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) to define your app in a Python module `serve_llama_3_1_70b.py`.  
 
-In a terminal, run:  
+Set your HuggingFace token. In a terminal, run
+```bash
+export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
+```
+In a notebook, run:
 
 
 ```python
-export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
-serve run serve_llama_3_1_70b:app --non-blocking
+%env HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
+```
+
+Deploy your application
+
+
+```python
+!serve run serve_llama_3_1_70b:app --non-blocking
 ```
 
 Deployment typically takes a few minutes as the cluster is provisioned, the vLLM server starts, and the model is downloaded. 
@@ -102,18 +113,6 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 ### Send requests
 
 Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`.
-
-Example curl:
-
-
-```python
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Authorization: Bearer FAKE_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{ "model": "my-llama-3.1-70b", "messages": [{"role": "user", "content": "What is 2 + 2?"}] }'
-```
-
-Example Python:
 
 
 ```python
@@ -147,7 +146,7 @@ Shutdown your LLM service:
 
 
 ```python
-serve shutdown -y
+!serve shutdown -y
 ```
 
 
@@ -167,7 +166,7 @@ Create your Anyscale service configuration in a new `service.yaml` file:
 ```yaml
 # service.yaml
 name: deploy-llama-3-70b
-image_uri: anyscale/ray-llm:2.52.0-py311-cu128 # Anyscale Ray Serve LLM image. To build an image from a custom Dockerfile, set `containerfile: ./Dockerfile`
+image_uri: anyscale/ray-llm:2.54.0-py311-cu128 # Anyscale Ray Serve LLM image. To build an image from a custom Dockerfile, set `containerfile: ./Dockerfile`
 compute_config:
   auto_select_worker_config: true 
 working_dir: .
@@ -181,7 +180,7 @@ Deploy your service. Make sure you forward your Hugging Face token to the comman
 
 
 ```python
-anyscale service deploy -f service.yaml --env HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
+!anyscale service deploy -f service.yaml --env HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
 ```
 
 **Custom Dockerfile**  
@@ -190,7 +189,7 @@ You can customize the container by building your own Dockerfile. In your Anyscal
 ```yaml
 # service.yaml
 # Replace:
-# image_uri: anyscale/ray-llm:2.49.0-py311-cu128
+# image_uri: anyscale/ray-llm:2.54.0-py311-cu128
 
 # with:
 containerfile: ./Dockerfile
@@ -225,7 +224,7 @@ Shutdown your Anyscale service:
 
 
 ```python
-anyscale service terminate -n deploy-llama-3-70b
+!anyscale service terminate -n deploy-llama-3-70b
 ```
 
 
