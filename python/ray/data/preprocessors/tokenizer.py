@@ -3,7 +3,10 @@ from typing import Any, Callable, Dict, List, Optional
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors.utils import simple_split_tokenizer
+from ray.data.preprocessors.utils import (
+    migrate_private_fields,
+    simple_split_tokenizer,
+)
 from ray.util.annotations import PublicAPI
 
 
@@ -105,21 +108,12 @@ class Tokenizer(Preprocessor):
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if (
-            "_tokenization_fn" not in self.__dict__
-            and "tokenization_fn" in self.__dict__
-        ):
-            self._tokenization_fn = self.__dict__.pop("tokenization_fn")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized Tokenizer: missing required field 'columns'."
-            )
-        if "_tokenization_fn" not in self.__dict__:
-            self._tokenization_fn = simple_split_tokenizer
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
+        migrate_private_fields(
+            self,
+            {
+                "_columns": ("columns", None),
+                "_tokenization_fn": ("tokenization_fn", simple_split_tokenizer),
+                "_output_columns": ("output_columns", lambda obj: obj._columns),
+            },
+            ["_columns"],
+        )

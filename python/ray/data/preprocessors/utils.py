@@ -1,6 +1,16 @@
 import hashlib
 from collections import deque
-from typing import TYPE_CHECKING, Any, Callable, Deque, Dict, List, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Deque,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray.air.util.data_batch_conversion import BatchFormat
@@ -243,3 +253,25 @@ def make_post_processor(base_fn, callbacks: List[Callable]):
         return processed
 
     return wrapper
+
+
+def migrate_private_fields(
+    obj, field_mappings: Dict[str, Tuple[str, Any]], required: List[str]
+):
+    """
+    Migrates old public field names to new private field names during unpickling for backwards compatibility.
+    """
+    for private_field, (public_field, default) in field_mappings.items():
+        if private_field not in obj.__dict__:
+            if public_field in obj.__dict__:
+                # Migrate from old public field names to new private field names
+                setattr(obj, private_field, obj.__dict__.pop(public_field))
+            elif private_field in required:
+                raise ValueError(
+                    f"Invalid serialized {type(obj).__name__}: missing required field '{private_field}'."
+                )
+            else:
+                # Set defaults for missing fields
+                setattr(
+                    obj, private_field, default(obj) if callable(default) else default
+                )

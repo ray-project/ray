@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessors.utils import migrate_private_fields
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -182,32 +183,14 @@ class Concatenator(Preprocessor):
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if (
-            "_output_column_name" not in self.__dict__
-            and "output_column_name" in self.__dict__
-        ):
-            self._output_column_name = self.__dict__.pop("output_column_name")
-        if "_dtype" not in self.__dict__ and "dtype" in self.__dict__:
-            self._dtype = self.__dict__.pop("dtype")
-        if (
-            "_raise_if_missing" not in self.__dict__
-            and "raise_if_missing" in self.__dict__
-        ):
-            self._raise_if_missing = self.__dict__.pop("raise_if_missing")
-        if "_flatten" not in self.__dict__ and "flatten" in self.__dict__:
-            self._flatten = self.__dict__.pop("flatten")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized Concatenator: missing required field 'columns'."
-            )
-        if "_output_column_name" not in self.__dict__:
-            self._output_column_name = "concat_out"
-        if "_dtype" not in self.__dict__:
-            self._dtype = None
-        if "_raise_if_missing" not in self.__dict__:
-            self._raise_if_missing = False
-        if "_flatten" not in self.__dict__:
-            self._flatten = False
+        migrate_private_fields(
+            self,
+            {
+                "_columns": ("columns", None),
+                "_output_column_name": ("output_column_name", "concat_out"),
+                "_dtype": ("dtype", None),
+                "_raise_if_missing": ("raise_if_missing", False),
+                "_flatten": ("flatten", False),
+            },
+            ["_columns"],
+        )

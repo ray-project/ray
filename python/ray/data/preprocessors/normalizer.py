@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessors.utils import migrate_private_fields
 from ray.util.annotations import PublicAPI
 
 
@@ -145,18 +146,12 @@ class Normalizer(Preprocessor):
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_norm" not in self.__dict__ and "norm" in self.__dict__:
-            self._norm = self.__dict__.pop("norm")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized Normalizer: missing required field 'columns'."
-            )
-        if "_norm" not in self.__dict__:
-            self._norm = "l2"
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
+        migrate_private_fields(
+            self,
+            {
+                "_columns": ("columns", None),
+                "_norm": ("norm", "l2"),
+                "_output_columns": ("output_columns", lambda obj: obj._columns),
+            },
+            ["_columns"],
+        )

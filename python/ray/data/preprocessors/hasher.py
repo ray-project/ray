@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors.utils import simple_hash
+from ray.data.preprocessors.utils import migrate_private_fields, simple_hash
 from ray.util.annotations import PublicAPI
 
 
@@ -138,22 +138,12 @@ class FeatureHasher(Preprocessor):
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_num_features" not in self.__dict__ and "num_features" in self.__dict__:
-            self._num_features = self.__dict__.pop("num_features")
-        if "_output_column" not in self.__dict__ and "output_column" in self.__dict__:
-            self._output_column = self.__dict__.pop("output_column")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized FeatureHasher: missing required field 'columns'."
-            )
-        if "_num_features" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized FeatureHasher preprocessor: missing required field 'num_features'."
-            )
-        if "_output_column" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized FeatureHasher preprocessor: missing required field 'output_column'."
-            )
+        migrate_private_fields(
+            self,
+            {
+                "_columns": ("columns", None),
+                "_num_features": ("num_features", None),
+                "_output_column": ("output_column", None),
+            },
+            ["_columns", "_num_features", "_output_column"],
+        )

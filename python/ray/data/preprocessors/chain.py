@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessors.utils import migrate_private_fields
 from ray.data.util.data_batch_conversion import BatchFormat
 
 if TYPE_CHECKING:
@@ -44,8 +45,6 @@ class Chain(Preprocessor):
     def fit_status(self):
         fittable_count = 0
         fitted_count = 0
-
-        from ray.data.preprocessor import Preprocessor
 
         for p in self._preprocessors:
             if p.fit_status() == Preprocessor.FitStatus.FITTED:
@@ -126,12 +125,10 @@ class Chain(Preprocessor):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
         super().__setstate__(state)
-        # Migrate from old public field names to new private field names
-        if "_preprocessors" not in self.__dict__ and "preprocessors" in self.__dict__:
-            self._preprocessors = self.__dict__.pop("preprocessors")
-
-        # Set defaults for missing fields
-        if "_preprocessors" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized Chain preprocessor: missing required field 'preprocessors'."
-            )
+        migrate_private_fields(
+            self,
+            {
+                "_preprocessors": ("preprocessors", None),
+            },
+            ["_preprocessors"],
+        )

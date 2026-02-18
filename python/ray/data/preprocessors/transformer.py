@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessors.utils import migrate_private_fields
 from ray.util.annotations import PublicAPI
 
 
@@ -119,24 +120,13 @@ class PowerTransformer(Preprocessor):
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_power" not in self.__dict__ and "power" in self.__dict__:
-            self._power = self.__dict__.pop("power")
-        if "_method" not in self.__dict__ and "method" in self.__dict__:
-            self._method = self.__dict__.pop("method")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized PowerTransformer: missing required field 'columns'."
-            )
-        if "_power" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized PowerTransformer: missing required field 'power'."
-            )
-        if "_method" not in self.__dict__:
-            self._method = "yeo-johnson"
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
+        migrate_private_fields(
+            self,
+            {
+                "_columns": ("columns", None),
+                "_power": ("power", None),
+                "_method": ("method", "yeo-johnson"),
+                "_output_columns": ("output_columns", lambda obj: obj._columns),
+            },
+            ["_columns", "_power"],
+        )
