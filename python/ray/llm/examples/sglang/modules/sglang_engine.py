@@ -95,6 +95,36 @@ class SGLangServer:
             )
         return converted_messages
 
+    def _render_chat_prompt(self, messages: List[dict[str, Any]]) -> str:
+        tokenizer = getattr(
+            getattr(self.engine, "tokenizer_manager", None), "tokenizer", None
+        )
+
+        if tokenizer is not None and hasattr(tokenizer, "apply_chat_template"):
+            try:
+                return tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+            except TypeError:
+                # Some tokenizers do not accept `tokenize`; keep a compatibility path.
+                return tokenizer.apply_chat_template(
+                    messages,
+                    add_generation_prompt=True,
+                )
+            except Exception:
+                pass
+
+        # Fallback prompt format for tokenizers without chat-template support.
+        prompt_lines: List[str] = []
+        for message in messages:
+            role = str(message.get("role", "user"))
+            content = message.get("content", "")
+            prompt_lines.append(f"{role}: {content}")
+        prompt_lines.append("assistant:")
+        return "\n".join(prompt_lines)
+
     async def start(self) -> None:
         # Engine is initialized in __init__; keep start idempotent for protocol
         # compatibility.
@@ -127,7 +157,14 @@ class SGLangServer:
             "sampling_params": sampling_params,
             "stream": False,
         }
-        if apply_chat_template:
+        # Older SGLang versions do not support this kwarg. Gate it by
+        # signature to keep compatibility while preserving chat templating
+        # when available.
+        if (
+            apply_chat_template
+            and "apply_chat_template"
+            in inspect.signature(self.engine.async_generate).parameters
+        ):
             generate_kwargs["apply_chat_template"] = True
 
         raw = await self.engine.async_generate(**generate_kwargs)
@@ -170,11 +207,11 @@ class SGLangServer:
         del raw_request_info  # Unused for now.
 
         chat_messages = self._build_chat_messages(request.messages)
+        prompt = self._render_chat_prompt(chat_messages)
 
         metadata = await self._generate_and_extract_metadata(
             request,
-            chat_messages,
-            apply_chat_template=True,
+            prompt,
         )
 
         usage_data = {
