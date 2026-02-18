@@ -223,10 +223,22 @@ steps:
     label: "wanda: ray-llm py{{matrix.python}} cu{{matrix.cuda}} (x86_64)"
     wanda: ci/docker/ray-llm-image-cuda.wanda.yaml
     matrix:
-      - python: "3.11"
-        cuda: "12.8.1-cudnn"
-      - python: "3.12"
-        cuda: "12.9.1-cudnn"
+      setup:
+        python:
+          - "3.11"
+          - "3.12"
+        cuda:
+          - "12.8.1-cudnn"
+          - "12.9.1-cudnn"
+      adjustments:
+        - with:
+            python: "3.11"
+            cuda: "12.9.1-cudnn"
+          skip: true
+        - with:
+            python: "3.12"
+            cuda: "12.8.1-cudnn"
+          skip: true
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{matrix.python}}"
@@ -244,10 +256,22 @@ steps:
     label: "wanda: ray-llm-extra py{{matrix.python}} cu{{matrix.cuda}} (x86_64)"
     wanda: ci/docker/ray-llm-extra-image-cuda.wanda.yaml
     matrix:
-      - python: "3.11"
-        cuda: "12.8.1-cudnn"
-      - python: "3.12"
-        cuda: "12.9.1-cudnn"
+      setup:
+        python:
+          - "3.11"
+          - "3.12"
+        cuda:
+          - "12.8.1-cudnn"
+          - "12.9.1-cudnn"
+      adjustments:
+        - with:
+            python: "3.11"
+            cuda: "12.9.1-cudnn"
+          skip: true
+        - with:
+            python: "3.12"
+            cuda: "12.8.1-cudnn"
+          skip: true
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{matrix.python}}"
@@ -305,10 +329,22 @@ steps:
         --image-type ray-llm
         --architecture x86_64
     matrix:
-      - python: "3.11"
-        platform: cu12.8.1-cudnn
-      - python: "3.12"
-        platform: cu12.9.1-cudnn
+      setup:
+        python:
+          - "3.11"
+          - "3.12"
+        platform:
+          - cu12.8.1-cudnn
+          - cu12.9.1-cudnn
+      adjustments:
+        - with:
+            python: "3.11"
+            platform: "cu12.9.1-cudnn"
+          skip: true
+        - with:
+            python: "3.12"
+            platform: "cu12.8.1-cudnn"
+          skip: true
     depends_on:
       - ray-llm-image-cuda-build
     tags:
@@ -328,10 +364,22 @@ steps:
         --image-type ray-llm-extra
         --architecture x86_64
     matrix:
-      - python: "3.11"
-        platform: cu12.8.1-cudnn
-      - python: "3.12"
-        platform: cu12.9.1-cudnn
+      setup:
+        python:
+          - "3.11"
+          - "3.12"
+        platform:
+          - cu12.8.1-cudnn
+          - cu12.9.1-cudnn
+      adjustments:
+        - with:
+            python: "3.11"
+            platform: "cu12.9.1-cudnn"
+          skip: true
+        - with:
+            python: "3.12"
+            platform: "cu12.8.1-cudnn"
+          skip: true
     depends_on:
       - ray-llm-extra-image-cuda-build
     tags:
