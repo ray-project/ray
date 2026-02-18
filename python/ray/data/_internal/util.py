@@ -357,10 +357,10 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
         paths = [str(paths)]
     elif isinstance(paths, list):
         paths = [str(p) if isinstance(p, pathlib.Path) else p for p in paths]
-        if any(not isinstance(p, str) for p in paths):
-            raise ValueError("paths must be a path string or a list of path strings.")
-        if len(paths) == 0:
+        if not paths:
             raise ValueError("Must provide at least one path.")
+        if any(not isinstance(p, str) for p in paths):
+            raise ValueError("All paths must be str or pathlib.Path")
     else:
         raise ValueError(f"paths must be str, pathlib.Path, or list, got {type(paths)}")
 
