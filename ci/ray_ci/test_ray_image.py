@@ -60,6 +60,15 @@ class TestWandaImageName:
                 DEFAULT_ARCHITECTURE,
                 f"ray-llm-extra-py3.11-{DEFAULT_TEST_CUDA_PLATFORM}",
             ),
+            # TPU images
+            (RayType.RAY, "3.10", "tpu", DEFAULT_ARCHITECTURE, "ray-py3.10-tpu"),
+            (
+                RayType.RAY_EXTRA,
+                "3.10",
+                "tpu",
+                DEFAULT_ARCHITECTURE,
+                "ray-extra-py3.10-tpu",
+            ),
             # ray-ml types
             (RayType.RAY_ML, "3.10", "cpu", DEFAULT_ARCHITECTURE, "ray-ml-py3.10-cpu"),
             (
@@ -125,6 +134,12 @@ class TestVariationSuffix:
 class TestValidateValid:
     def test_ray_cpu(self):
         RayImage("ray", "3.10", "cpu").validate()
+
+    def test_ray_tpu(self):
+        RayImage("ray", "3.10", "tpu").validate()
+
+    def test_ray_extra_tpu(self):
+        RayImage("ray-extra", "3.12", "tpu").validate()
 
     def test_ray_cuda(self):
         RayImage("ray", "3.13", "cu12.8.1-cudnn").validate()

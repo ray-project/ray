@@ -8,6 +8,7 @@ from ci.ray_ci.linux_container import LinuxContainer
 
 PLATFORMS_RAY = [
     "cpu",
+    "tpu",
     "cu11.7.1-cudnn8",
     "cu11.8.0-cudnn8",
     "cu12.1.1-cudnn8",
@@ -144,6 +145,8 @@ class DockerContainer(LinuxContainer):
     def _get_platform_tag(self) -> str:
         if self.platform == "cpu":
             return "-cpu"
+        if self.platform == "tpu":
+            return "-tpu"
         versions = self.platform.split(".")
         return f"-{versions[0]}{versions[1]}"  # cu11.8.0 -> cu118
 
