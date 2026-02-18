@@ -350,7 +350,7 @@ class JobSupervisor:
         if ray_constants.RAY_ENABLE_RAY_EVENT:
             try:
                 from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD
-                from ray._raylet import initialize_event_recorder
+                from ray._raylet import EventRecorder
                 from ray.dashboard.consts import DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX
 
                 agent_info_raw = await self._job_info_client._gcs_client.async_internal_kv_get(
@@ -359,12 +359,13 @@ class JobSupervisor:
                 )
                 if agent_info_raw:
                     _, _, grpc_port = json.loads(agent_info_raw)
-                    initialize_event_recorder(
+                    EventRecorder.initialize(
                         aggregator_address=node.node_ip_address,
                         aggregator_port=int(grpc_port),
                         node_ip=node.node_ip_address,
                         node_id_hex=driver_node_id,
                         max_buffer_size=10000,
+                        metric_source="job_supervisor",
                     )
                     self._logger.info(
                         "Initialized ray event recorder in JobSupervisor "
@@ -515,9 +516,9 @@ class JobSupervisor:
             # Flush any remaining events before the actor exits.
             if ray_constants.RAY_ENABLE_RAY_EVENT:
                 try:
-                    from ray._raylet import shutdown_event_recorder
+                    from ray._raylet import EventRecorder
 
-                    shutdown_event_recorder()
+                    EventRecorder.shutdown()
                 except Exception:
                     self._logger.debug(
                         "Failed to shutdown event recorder.", exc_info=True

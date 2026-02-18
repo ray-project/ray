@@ -306,9 +306,9 @@ class JobInfoStorageClient:
         from ray._common.observability import (
             SubmissionJobDefinitionEventBuilder,
             SubmissionJobLifecycleEventBuilder,
-            emit_event,
             job_status_to_proto_state,
         )
+        from ray._raylet import EventRecorder
 
         # Emit definition event once per job (first write)
         if is_new:
@@ -324,7 +324,7 @@ class JobInfoStorageClient:
                 entrypoint_memory=job_info.entrypoint_memory,
                 entrypoint_resources=job_info.entrypoint_resources,
             )
-            emit_event(builder.build())
+            EventRecorder.emit(builder.build())
 
         # Emit lifecycle event on every status change
         state = job_status_to_proto_state(job_info.status.name)
@@ -345,7 +345,7 @@ class JobInfoStorageClient:
             driver_agent_http_address=job_info.driver_agent_http_address,
             driver_exit_code=job_info.driver_exit_code,
         )
-        emit_event(builder.build())
+        EventRecorder.emit(builder.build())
 
     def _write_submission_job_export_event(
         self, job_id: str, job_info: JobInfo

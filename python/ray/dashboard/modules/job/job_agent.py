@@ -206,14 +206,15 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     async def run(self, server):
         if ray_constants.RAY_ENABLE_RAY_EVENT:
             try:
-                from ray._raylet import initialize_event_recorder
+                from ray._raylet import EventRecorder
 
-                initialize_event_recorder(
+                EventRecorder.initialize(
                     aggregator_address=self._dashboard_agent.ip,
                     aggregator_port=self._dashboard_agent.grpc_port,
                     node_ip=self._dashboard_agent.ip,
                     node_id_hex=self._dashboard_agent.node_id,
                     max_buffer_size=10000,
+                    metric_source="job_agent",
                 )
                 logger.info("Initialized ray event recorder in JobAgent.")
             except Exception:
