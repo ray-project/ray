@@ -100,6 +100,41 @@ steps:
       - ray-wheel-build
       - raycpubase
 
+  - name: ray-image-tpu-build
+    label: "wanda: ray py{{matrix}} tpu (x86_64)"
+    wanda: ci/docker/ray-image-tpu.wanda.yaml
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+    env_file: rayci.env
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    depends_on:
+      - ray-wheel-build
+      - raytpubase
+
+  - label: ":tapioca: smoke test: ray tpu image"
+    instance_type: small
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    commands:
+      - aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com
+      - docker run --rm
+        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-ray-py3.10-tpu
+        /bin/bash -c "python -c \"import ray; print('ray', ray.__version__); import jax; print('jax', jax.__version__)\""
+    depends_on:
+      - ray-image-tpu-build
+      - forge
+
   - name: ray-image-cuda-build
     label: "wanda: ray py{{matrix.python}} cu{{matrix.cuda}} (x86_64)"
     wanda: ci/docker/ray-image-cuda.wanda.yaml
@@ -141,6 +176,7 @@ steps:
       - bazel run //ci/ray_ci/automation:push_ray_image --
         --python-version {{matrix}}
         --platform cpu
+        --platform tpu
         --platform cu11.7.1-cudnn8
         --platform cu11.8.0-cudnn8
         --platform cu12.1.1-cudnn8
@@ -159,6 +195,7 @@ steps:
       - "3.13"
     depends_on:
       - ray-image-cpu-build
+      - ray-image-tpu-build
       - ray-image-cuda-build
     tags:
       - python_dependencies
