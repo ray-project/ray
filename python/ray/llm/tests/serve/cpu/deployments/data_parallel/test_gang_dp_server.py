@@ -87,49 +87,22 @@ class TestGetDeploymentOptions:
 
 
 class TestGangMasterInfoRegistry:
-    """Test suite for GangMasterInfoRegistry using mocked KV store."""
+    _KV_MODULE = "ray.llm._internal.serve.serving_patterns.data_parallel.gang_dp_server"
 
     def _make_kv_store(self):
-        """Return a dict-backed fake KV store with put/get functions."""
         store = {}
-
-        def fake_put(key, value, overwrite=False):
-            store[key] = value
-
-        def fake_get(key):
-            return store.get(key)
-
-        return store, fake_put, fake_get
-
-    @patch(
-        "ray.llm._internal.serve.serving_patterns.data_parallel.gang_dp_server._internal_kv_get"
-    )
-    @patch(
-        "ray.llm._internal.serve.serving_patterns.data_parallel.gang_dp_server._internal_kv_put"
-    )
-    def test_register_and_get(self, mock_put, mock_get):
-        """Test round-trip: register master info then retrieve it."""
-        store, fake_put, fake_get = self._make_kv_store()
-        mock_put.side_effect = fake_put
-        mock_get.side_effect = fake_get
-
-        GangMasterInfoRegistry.register("gang-abc", "10.0.0.1", 12345)
-        addr, port = asyncio.get_event_loop().run_until_complete(
-            GangMasterInfoRegistry.get("gang-abc")
+        return (
+            store,
+            lambda key, value, overwrite=False: store.__setitem__(key, value),
+            lambda key: store.get(key),
+            lambda key: store.pop(key, None) is not None,
+            lambda key: key in store,
         )
-        assert addr == "10.0.0.1"
-        assert port == 12345
 
-    @patch(
-        "ray.llm._internal.serve.serving_patterns.data_parallel.gang_dp_server._internal_kv_get"
-    )
-    @patch(
-        "ray.llm._internal.serve.serving_patterns.data_parallel.gang_dp_server._internal_kv_put"
-    )
+    @patch(f"{_KV_MODULE}._internal_kv_get")
+    @patch(f"{_KV_MODULE}._internal_kv_put")
     def test_get_timeout(self, mock_put, mock_get):
-        """Test that get raises TimeoutError when key is never registered."""
         mock_get.return_value = None
-
         with pytest.raises(TimeoutError, match="Timed out"):
             asyncio.get_event_loop().run_until_complete(
                 GangMasterInfoRegistry.get(
@@ -137,15 +110,10 @@ class TestGangMasterInfoRegistry:
                 )
             )
 
-    @patch(
-        "ray.llm._internal.serve.serving_patterns.data_parallel.gang_dp_server._internal_kv_get"
-    )
-    @patch(
-        "ray.llm._internal.serve.serving_patterns.data_parallel.gang_dp_server._internal_kv_put"
-    )
-    def test_multiple_gangs_isolated(self, mock_put, mock_get):
-        """Test that different gang_ids store and retrieve independently."""
-        _, fake_put, fake_get = self._make_kv_store()
+    @patch(f"{_KV_MODULE}._internal_kv_get")
+    @patch(f"{_KV_MODULE}._internal_kv_put")
+    def test_gang_isolation(self, mock_put, mock_get):
+        _, fake_put, fake_get, _, _ = self._make_kv_store()
         mock_put.side_effect = fake_put
         mock_get.side_effect = fake_get
 
@@ -158,6 +126,46 @@ class TestGangMasterInfoRegistry:
 
         assert (addr1, port1) == ("10.0.0.1", 1111)
         assert (addr2, port2) == ("10.0.0.2", 2222)
+
+    @patch(f"{_KV_MODULE}._internal_kv_exists")
+    @patch(f"{_KV_MODULE}._internal_kv_del")
+    @patch(f"{_KV_MODULE}._internal_kv_get")
+    @patch(f"{_KV_MODULE}._internal_kv_put")
+    def test_member_lifecycle(self, mock_put, mock_get, mock_del, mock_exists):
+        """Register master + members, partial teardown preserves master, full teardown cleans up, redeploy works."""
+        store, fake_put, fake_get, fake_del, fake_exists = self._make_kv_store()
+        mock_put.side_effect = fake_put
+        mock_get.side_effect = fake_get
+        mock_del.side_effect = fake_del
+        mock_exists.side_effect = fake_exists
+
+        gang_id = "gang-lifecycle"
+        world_size = 3
+        loop = asyncio.get_event_loop()
+        master_key = GangMasterInfoRegistry._make_key(gang_id)
+
+        GangMasterInfoRegistry.register(gang_id, "10.0.0.1", 5555)
+        for rank in range(world_size):
+            GangMasterInfoRegistry.register_member(gang_id, rank)
+
+        addr, port = loop.run_until_complete(GangMasterInfoRegistry.get(gang_id))
+        assert (addr, port) == ("10.0.0.1", 5555)
+
+        # Partial teardown: master info preserved while any member remains
+        GangMasterInfoRegistry.unregister_member(gang_id, 0, world_size)
+        GangMasterInfoRegistry.unregister_member(gang_id, 2, world_size)
+        assert store.get(master_key) is not None
+        assert not fake_exists(GangMasterInfoRegistry._make_member_key(gang_id, 0))
+        assert fake_exists(GangMasterInfoRegistry._make_member_key(gang_id, 1))
+
+        # Last member triggers cleanup
+        GangMasterInfoRegistry.unregister_member(gang_id, 1, world_size)
+        assert store.get(master_key) is None
+
+        # Redeploy on same gang_id
+        GangMasterInfoRegistry.register(gang_id, "10.0.0.2", 6666)
+        addr, port = loop.run_until_complete(GangMasterInfoRegistry.get(gang_id))
+        assert (addr, port) == ("10.0.0.2", 6666)
 
 
 if __name__ == "__main__":

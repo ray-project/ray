@@ -247,7 +247,7 @@ def wait_for_server_ready(
     timeout: int = 300,
     retry_interval: int = 2,
 ) -> None:
-    """Poll the server until it can handle a completion request."""
+    """Poll the server until it's ready or timeout is reached."""
     start_time = time.time()
     while time.time() - start_time < timeout:
         try:
@@ -262,8 +262,11 @@ def wait_for_server_ready(
                 timeout=10,
             )
             if resp.status_code == 200:
+                print(f"Server at {url} is ready to handle requests!")
                 return
         except Exception:
             pass
+
+        print(f"Waiting for server at {url} to be ready...")
         time.sleep(retry_interval)
     raise TimeoutError(f"Server at {url} not ready within {timeout}s")
