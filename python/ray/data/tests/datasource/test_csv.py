@@ -10,9 +10,6 @@ import ray
 from ray.data import Schema
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
-from ray.data.datasource.file_based_datasource import (
-    FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
-)
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -62,55 +59,6 @@ def test_csv_read(
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
-
-
-# TODO(test-refactor): This is a stress test for parallel file metadata
-# fetching with many files in a single directory. Should be moved to
-# test_file_based_datasource.py after PR #60993 merges.
-def test_csv_read_many_files_basic(ray_start_regular_shared, tmp_path):
-    paths = []
-    dfs = []
-    num_dfs = 4 * FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
-    for i in range(num_dfs):
-        df = pd.DataFrame({"one": list(range(i * 3, (i + 1) * 3))})
-        dfs.append(df)
-        path = os.path.join(tmp_path, f"test_{i}.csv")
-        paths.append(path)
-        df.to_csv(path, index=False)
-    ds = ray.data.read_csv(paths)
-
-    dsdf = ds.to_pandas()
-    df = pd.concat(dfs).reset_index(drop=True)
-    pd.testing.assert_frame_equal(df, dsdf)
-
-
-# TODO(test-refactor): This tests generic file discovery across multiple
-# directories with many files. Should be moved to test_file_based_datasource.py
-# after PR #60993 merges, as this behavior is format-agnostic.
-def test_csv_read_many_files_diff_dirs(
-    ray_start_regular_shared,
-    tmp_path,
-):
-    dir1 = os.path.join(tmp_path, "dir1")
-    dir2 = os.path.join(tmp_path, "dir2")
-    os.mkdir(dir1)
-    os.mkdir(dir2)
-
-    paths = []
-    dfs = []
-    num_dfs = 2 * FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
-    for i, dir_path in enumerate([dir1, dir2]):
-        for j in range(num_dfs * i, num_dfs * (i + 1)):
-            df = pd.DataFrame({"one": list(range(3 * j, 3 * (j + 1)))})
-            dfs.append(df)
-            path = os.path.join(dir_path, f"test_{j}.csv")
-            paths.append(path)
-            df.to_csv(path, index=False)
-    ds = ray.data.read_csv([dir1, dir2])
-
-    dsdf = ds.to_pandas().sort_values(by=["one"]).reset_index(drop=True)
-    df = pd.concat(dfs).reset_index(drop=True)
-    pd.testing.assert_frame_equal(df, dsdf)
 
 
 def test_csv_write(
@@ -232,27 +180,6 @@ def test_csv_invalid_file_handler(
             delimiter=",", invalid_row_handler=lambda i: "skip"
         ),
     )
-
-
-# TODO(test-refactor): This tests a generic write parameter (min_rows_per_file)
-# that works identically across all formats. Should be moved to
-# test_file_based_datasource.py after PR #60993 merges.
-@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
-def test_write_min_rows_per_file(
-    tmp_path,
-    ray_start_regular_shared,
-    min_rows_per_file,
-    target_max_block_size_infinite_or_default,
-):
-    ray.data.range(100, override_num_blocks=20).write_csv(
-        tmp_path, min_rows_per_file=min_rows_per_file
-    )
-
-    for filename in os.listdir(tmp_path):
-        with open(os.path.join(tmp_path, filename), "r") as file:
-            # Subtract 1 from the number of lines to account for the header.
-            num_rows_written = len(file.read().splitlines()) - 1
-            assert num_rows_written == min_rows_per_file
 
 
 def test_read_example_data(ray_start_regular_shared, tmp_path):

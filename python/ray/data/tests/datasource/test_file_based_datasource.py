@@ -442,6 +442,74 @@ def test_read_s3_file_error(shutdown_only, s3_path):
         _handle_read_os_error(error, dummy_path)
 
 
+def test_read_many_files_basic(ray_start_regular_shared, tmp_path):
+
+    from ray.data.datasource.file_based_datasource import (
+        FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
+    )
+
+    num_files = 4 * FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
+
+    for i in range(num_files):
+        path = tmp_path / f"test_{i}.txt"
+        path.write_bytes(f"file_{i}".encode())
+
+    datasource = MockFileBasedDatasource(str(tmp_path))
+    tasks = datasource.get_read_tasks(1)
+    rows = execute_read_tasks(tasks)
+
+    assert len(rows) == num_files
+
+
+def test_read_many_files_diff_dirs(ray_start_regular_shared, tmp_path):
+
+    from ray.data.datasource.file_based_datasource import (
+        FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
+    )
+
+    dir1 = tmp_path / "dir1"
+    dir2 = tmp_path / "dir2"
+    dir1.mkdir()
+    dir2.mkdir()
+
+    num_files_per_dir = 2 * FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
+    total_files = 0
+
+    for dir_path in [dir1, dir2]:
+        for i in range(num_files_per_dir):
+            path = dir_path / f"test_{i}.txt"
+            path.write_bytes(f"data_from_{dir_path.name}_{i}".encode())
+            total_files += 1
+
+    datasource = MockFileBasedDatasource([str(dir1), str(dir2)])
+    tasks = datasource.get_read_tasks(1)
+    rows = execute_read_tasks(tasks)
+
+    assert len(rows) == total_files
+
+
+@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
+def test_write_min_rows_per_file(
+    tmp_path,
+    ray_start_regular_shared,
+    min_rows_per_file,
+    target_max_block_size_infinite_or_default,
+):
+    """Test min_rows_per_file ensures exact row count per output file.
+
+    Uses CSV format to verify this generic behavior that works identically
+    across all file-based formats (CSV, JSON, Parquet, etc.).
+    """
+    ray.data.range(100, override_num_blocks=20).write_csv(
+        tmp_path, min_rows_per_file=min_rows_per_file
+    )
+
+    for filename in os.listdir(tmp_path):
+        file_path = tmp_path / filename
+        num_rows_written = len(file_path.read_text().splitlines()) - 1
+        assert num_rows_written == min_rows_per_file
+
+
 if __name__ == "__main__":
     import sys
 
