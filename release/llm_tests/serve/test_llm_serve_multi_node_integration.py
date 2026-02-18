@@ -6,6 +6,10 @@ import yaml
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
+from ray.experimental.internal_kv import _internal_kv_list
+from ray.llm._internal.serve.serving_patterns.data_parallel.gang_dp_server import (
+    GangMasterInfoRegistry,
+)
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.llm import (
     build_dp_deployment,
@@ -166,6 +170,53 @@ def test_llm_serve_gang_data_parallelism(dp_size, num_replicas):
     serve.run(app, blocking=False)
 
     wait_for_condition(is_default_app_running, timeout=300)
+
+
+def test_llm_serve_gang_data_parallelism_cleanup():
+    """Test that gang DP KV entries are cleaned up on shutdown."""
+    placement_group_config = {
+        "bundles": [{"GPU": 1, "CPU": 1}],
+    }
+
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="microsoft/Phi-tiny-MoE-instruct",
+            model_source="microsoft/Phi-tiny-MoE-instruct",
+        ),
+        deployment_config=dict(),
+        engine_kwargs=dict(
+            tensor_parallel_size=1,
+            pipeline_parallel_size=1,
+            data_parallel_size=4,
+            distributed_executor_backend="ray",
+            max_model_len=1024,
+            max_num_seqs=32,
+            enforce_eager=True,
+        ),
+        placement_group_config=placement_group_config,
+        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
+    )
+
+    app = build_dp_deployment(llm_config, enable_fault_tolerance=True)
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=300)
+
+    master_keys = _internal_kv_list(GangMasterInfoRegistry._KEY_PREFIX)
+    member_keys = _internal_kv_list(GangMasterInfoRegistry._MEMBER_KEY_PREFIX)
+    assert len(master_keys) > 0
+    assert len(member_keys) > 0
+
+    new_master = set(master_keys)
+    new_member = set(member_keys)
+
+    serve.shutdown()
+
+    def kv_entries_cleaned_up():
+        cur_master = set(_internal_kv_list(GangMasterInfoRegistry._KEY_PREFIX))
+        cur_member = set(_internal_kv_list(GangMasterInfoRegistry._MEMBER_KEY_PREFIX))
+        return new_master.isdisjoint(cur_master) and new_member.isdisjoint(cur_member)
+
+    wait_for_condition(kv_entries_cleaned_up, timeout=30)
 
 
 def test_llm_serve_gang_data_parallelism_declarative():
