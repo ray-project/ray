@@ -107,8 +107,9 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
    * \param system_memory snapshot of memory usage.
    * \return the debug string.
    */
-  static std::string PolicyDebugString(const std::vector<Group> &groups,
-                                       const MemorySnapshot &system_memory);
+  static std::string PolicyDebugString(
+      const std::vector<Group> &groups,
+      const ProcessesMemorySnapshot &process_memory_snapshot);
 };
 
 }  // namespace raylet
