@@ -634,5 +634,6 @@ def test_vllm_autoscaling_no_starvation():
     assert all(out.get("resp_1") for out in results)
     assert all(out.get("resp_2") for out in results)
 
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
