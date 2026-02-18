@@ -169,7 +169,7 @@ class GPUObjectStore:
 
     def has_tensor(self, tensor: "torch.Tensor") -> bool:
         with self._lock:
-            return tensor.data_ptr() in self._tensor_to_object_ids
+            return id(tensor) in self._tensor_to_object_ids
 
     def get_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
         with self._lock:
@@ -198,7 +198,7 @@ class GPUObjectStore:
                 )
             else:
                 for tensor in gpu_object:
-                    self._tensor_to_object_ids[tensor.data_ptr()].add(obj_id)
+                    self._tensor_to_object_ids[id(tensor)].add(obj_id)
                 # Append to the queue instead of overwriting
                 self._gpu_object_store[obj_id].append(
                     _GPUObject(
@@ -242,36 +242,6 @@ class GPUObjectStore:
         with self._lock:
             self._wait_object(obj_id, timeout)
             return self.get_object(obj_id)
-
-    def get_duplicate_objects(
-        self,
-        src_obj_id: str,
-        src_gpu_object: List["torch.Tensor"],
-    ) -> Optional[str]:
-        """
-        Get another object ID of the GPU object that duplicates the given GPU object.
-        Returns the object id if there is a duplicate, None if there is no duplicate.
-        """
-        with self._lock:
-            if len(src_gpu_object) == 0:
-                return None
-            obj_id_set = set()
-            for tensor in src_gpu_object:
-                for obj_id in self._tensor_to_object_ids[tensor.data_ptr()]:
-                    obj_id_set.add(obj_id)
-
-            for dst_obj_id in obj_id_set:
-                if dst_obj_id != src_obj_id:
-                    dst_gpu_object = self._gpu_object_store[dst_obj_id][0].data
-                    is_same_tensors = len(src_gpu_object) == len(
-                        dst_gpu_object
-                    ) and all(
-                        t1.data_ptr() == t2.data_ptr()
-                        for t1, t2 in zip(src_gpu_object, dst_gpu_object)
-                    )
-                    if is_same_tensors:
-                        return dst_obj_id
-            return None
 
     def wait_and_pop_object(
         self, obj_id: str, timeout: Optional[float] = None
@@ -323,9 +293,9 @@ class GPUObjectStore:
             if gpu_object.error:
                 raise gpu_object.error
             for tensor in gpu_object.data:
-                self._tensor_to_object_ids[tensor.data_ptr()].remove(obj_id)
-                if len(self._tensor_to_object_ids[tensor.data_ptr()]) == 0:
-                    self._tensor_to_object_ids.pop(tensor.data_ptr())
+                self._tensor_to_object_ids[id(tensor)].remove(obj_id)
+                if len(self._tensor_to_object_ids[id(tensor)]) == 0:
+                    self._tensor_to_object_ids.pop(id(tensor))
             self._object_freed_cv.notify_all()
             return gpu_object.data
 
@@ -337,7 +307,7 @@ class GPUObjectStore:
         """
         with self._object_freed_cv:
             if not self._object_freed_cv.wait_for(
-                lambda: tensor.data_ptr() not in self._tensor_to_object_ids,
+                lambda: id(tensor) not in self._tensor_to_object_ids,
                 timeout=timeout,
             ):
                 raise TimeoutError(
