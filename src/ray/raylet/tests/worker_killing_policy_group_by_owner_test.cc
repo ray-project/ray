@@ -72,8 +72,9 @@ class WorkerKillingGroupByOwnerTest : public ::testing::Test {
 TEST_F(WorkerKillingGroupByOwnerTest, TestEmptyWorkerPoolSelectsNullWorker) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   auto worker_to_kill_and_should_retry_ =
-      worker_killing_policy_.SelectWorkersToKill(workers, MemorySnapshot());
-  ASSERT_TRUE(worker_to_kill_and_should_retry_.empty());
+      worker_killing_policy_.SelectWorkerToKill(workers, ProcessesMemorySnapshot());
+  auto worker_to_kill = worker_to_kill_and_should_retry_.first;
+  ASSERT_TRUE(worker_to_kill == nullptr);
 }
 
 TEST_F(WorkerKillingGroupByOwnerTest, TestLastWorkerInGroupShouldNotRetry) {
@@ -94,7 +95,7 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestLastWorkerInGroupShouldNotRetry) {
 
   for (const auto &entry : expected) {
     auto worker_to_kill_and_should_retry_ =
-        worker_killing_policy_.SelectWorkersToKill(workers, MemorySnapshot()).front();
+        worker_killing_policy_.SelectWorkerToKill(workers, ProcessesMemorySnapshot());
     auto worker_to_kill = worker_to_kill_and_should_retry_.first;
     bool retry = worker_to_kill_and_should_retry_.second;
     ASSERT_EQ(worker_to_kill->WorkerId(), entry.first->WorkerId());
@@ -119,7 +120,7 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestNonRetriableBelongsToItsOwnGroupAndLIF
   expected.push_back(std::make_pair(second_submitted, should_not_retry_));
 
   auto worker_to_kill_and_should_retry_ =
-      worker_killing_policy_.SelectWorkersToKill(workers, MemorySnapshot()).front();
+      worker_killing_policy_.SelectWorkerToKill(workers, ProcessesMemorySnapshot());
 
   auto worker_to_kill = worker_to_kill_and_should_retry_.first;
   bool retry = worker_to_kill_and_should_retry_.second;
@@ -161,7 +162,7 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByGroupSizeThenFirstSubmitt
 
   for (const auto &entry : expected) {
     auto worker_to_kill_and_should_retry_ =
-        worker_killing_policy_.SelectWorkersToKill(workers, MemorySnapshot()).front();
+        worker_killing_policy_.SelectWorkerToKill(workers, ProcessesMemorySnapshot());
     auto worker_to_kill = worker_to_kill_and_should_retry_.first;
     bool retry = worker_to_kill_and_should_retry_.second;
     ASSERT_EQ(worker_to_kill->WorkerId(), entry.first->WorkerId());
@@ -190,7 +191,7 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByRetriableLifo) {
 
   for (const auto &entry : expected) {
     auto worker_to_kill_and_should_retry_ =
-        worker_killing_policy_.SelectWorkersToKill(workers, MemorySnapshot()).front();
+        worker_killing_policy_.SelectWorkerToKill(workers, ProcessesMemorySnapshot());
     auto worker_to_kill = worker_to_kill_and_should_retry_.first;
     bool retry = worker_to_kill_and_should_retry_.second;
     ASSERT_EQ(worker_to_kill->WorkerId(), entry.first->WorkerId());
@@ -216,7 +217,7 @@ TEST_F(WorkerKillingGroupByOwnerTest,
 
   for (const auto &entry : expected) {
     auto worker_to_kill_and_should_retry_ =
-        worker_killing_policy_.SelectWorkersToKill(workers, MemorySnapshot()).front();
+        worker_killing_policy_.SelectWorkerToKill(workers, ProcessesMemorySnapshot());
     auto worker_to_kill = worker_to_kill_and_should_retry_.first;
     bool retry = worker_to_kill_and_should_retry_.second;
     ASSERT_EQ(worker_to_kill->WorkerId(), entry.first->WorkerId());

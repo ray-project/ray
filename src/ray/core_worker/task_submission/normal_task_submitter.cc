@@ -26,6 +26,7 @@
 #include "ray/common/lease/lease_spec.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/task_submission/task_submission_util.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/time.h"
 
 namespace ray {
