@@ -92,18 +92,17 @@ llm_config = LLMConfig(
 app = build_openai_app({"llm_configs": [llm_config]})
 ```
 
-**Note:** Before moving to a production setup, migrate to using a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. For an example, see [Serving LLMs - Quickstart Examples: Production Guide](https://docs.ray.io/en/latest/serve/llm/quick-start.html#production-deployment).
+**Note:** Before moving to a production setup, migrate to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. For an example, see [Serving LLMs - Quickstart Examples: Production Guide](https://docs.ray.io/en/latest/serve/llm/quick-start.html#production-deployment).
 
 ---
 
 ## Deploy locally
 
-### Prerequisites
+**Prerequisites**
 
 * Access to GPU compute.
 
-### Dependencies
-
+**Dependencies:**  
 gpt-oss integration is available starting from `ray>=2.49.0` and `vllm==0.10.1`.
 
 ```bash
@@ -113,7 +112,7 @@ pip install "vllm==0.10.1"
 
 ---
 
-### Launch the service
+### Launch
 
 Follow the instructions in [Configure Ray Serve LLM](#configure-ray-serve-llm) according to the model size you choose, and define your app in a Python module `serve_gpt_oss.py`.
 
@@ -138,10 +137,10 @@ Your endpoint is available locally at `http://localhost:8000`. You can use a pla
 from urllib.parse import urljoin
 from openai import OpenAI
 
-api_key = "FAKE_KEY"
-base_url = "http://localhost:8000"
+API_KEY = "FAKE_KEY"
+BASE_URL = "http://localhost:8000"
 
-client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
+client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
 # Example query
 response = client.chat.completions.create(
@@ -169,9 +168,9 @@ for chunk in response:
 
 ---
 
-### Shut down the service
+### Shutdown
 
-To shutdown your LLM service: 
+Shutdown your LLM service: 
 
 
 ```python
@@ -215,7 +214,7 @@ Deploy your service:
 ```
 
 **Custom Dockerfile**  
-You can customize the container by building your own Dockerfile. In your Anyscale Service config file `service.yaml`, reference the Dockerfile with `containerfile` (instead of `image_uri`):
+You can customize the container by building your own Dockerfile. In your Anyscale Service config, reference the Dockerfile with `containerfile` (instead of `image_uri`):
 
 ```yaml
 # service.yaml
@@ -238,23 +237,22 @@ The `anyscale service deploy` command output shows both the endpoint and authent
 (anyscale +3.9s) curl -H "Authorization: Bearer <YOUR-TOKEN>" <YOUR-ENDPOINT>
 ```
 
-You can also retrieve both from the service page in the Anyscale console. Click **Query** at the top. See [Send requests](#send-requests) for example requests, but make sure to use the correct endpoint and authentication token.  
+You can also retrieve both from the service page in the Anyscale Console. Click the **Query** button at the top. See [Send requests](#send-requests) for example requests, but make sure to use the correct endpoint and authentication token.  
 
 ---
 
-### Access the Serve LLM dashboard
+### Access the Serve LLM Dashboard
 
-For instructions on enabling LLM-specific logging, see [Enable LLM monitoring](#enable-llm-monitoring). To open the Ray Serve LLM Dashboard from an Anyscale service:
-
-1. In the Anyscale console, go to the **Service** or **Workspace** tab.
-1. Navigate to the **Metrics** tab.
-1. Click **View in Grafana** and click **Serve LLM Dashboard**.
+See [Enable LLM monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM Dashboard from an Anyscale Service:
+1. In the Anyscale Console, go to your **Service** or **Workspace**.
+2. Navigate to the **Metrics** tab.
+3. Click **View in Grafana** and click **Serve LLM Dashboard**.
 
 ---
 
 ### Shutdown
 
-To shutdown your Anyscale Service:
+Shutdown your Anyscale Service:
 
 
 ```python

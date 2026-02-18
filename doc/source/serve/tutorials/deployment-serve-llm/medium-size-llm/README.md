@@ -49,8 +49,8 @@ llm_config = LLMConfig(
             max_replicas=4,
         )
     ),
-    ### If your model is not gated, you can skip `HF_TOKEN`
-    # Share your Hugging Face token with the vllm engine so it can access the gated Llama 3.
+    ### If your model isn't gated, you can skip `HF_TOKEN`
+    # Share your Hugging Face token with the vllm engine so it can access the gated Llama 3
     # Type `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>` in a terminal
     runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),
     engine_kwargs=dict(
@@ -61,10 +61,9 @@ llm_config = LLMConfig(
 )
 
 app = build_openai_app({"llm_configs": [llm_config]})
-
 ```
 
-**Note:** Before moving to a production setup, migrate to using a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs - Quickstart Examples: Production Guide](https://docs.ray.io/en/latest/serve/llm/quick-start.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, migrate to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs - Quickstart Examples: Production Guide](https://docs.ray.io/en/latest/serve/llm/quick-start.html#production-deployment) for an example.
 
 ---
 
@@ -73,9 +72,9 @@ app = build_openai_app({"llm_configs": [llm_config]})
 **Prerequisites**
 
 * Access to GPU compute.
-* (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>`.
+* (Optional) A **Hugging Face token** if using gated models like Meta's Llama. Store it in `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>`.
 
-**Note: **Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama model approval can take anywhere from a few hours to several weeks.
+**Note:** Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta's Llama models approval can take anywhere from a few hours to several weeks.
 
 **Dependencies:**  
 ```bash
@@ -88,7 +87,7 @@ pip install "ray[serve,llm]"
 
 Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) to define your app in a Python module `serve_llama_3_1_70b.py`.  
 
-Set your HuggingFace token. In a terminal, run
+Set your Hugging Face token. In a terminal, run
 ```bash
 export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
 ```
@@ -112,7 +111,7 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 
 ### Send requests
 
-Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`.
+Your endpoint is available locally at `http://localhost:8000`. You can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`.
 
 
 ```python
@@ -162,7 +161,7 @@ For production deployment, use Anyscale services to deploy the Ray Serve app to 
 
 Anyscale provides out-of-the-box images (`anyscale/ray-llm`), which come pre-loaded with Ray Serve LLM, vLLM, and all required GPU/runtime dependencies. This makes it easy to get started without building a custom image.
 
-Create your Anyscale service configuration in a new `service.yaml` file:
+Create your Anyscale Service configuration in a new `service.yaml` file:
 ```yaml
 # service.yaml
 name: deploy-llama-3-70b
@@ -176,7 +175,7 @@ applications:
   - import_path: serve_llama_3_1_70b:app
 ```
 
-Deploy your service. Make sure you forward your Hugging Face token to the command.
+Deploy your service. Make sure to forward your Hugging Face token:
 
 
 ```python
@@ -205,22 +204,22 @@ The `anyscale service deploy` command output shows both the endpoint and authent
 ```console
 (anyscale +3.9s) curl -H "Authorization: Bearer <YOUR-TOKEN>" <YOUR-ENDPOINT>
 ```
-You can also retrieve both from the service page in the Anyscale console. Click the **Query** button at the top. See [Send requests](#send-requests) for example requests, but make sure to use the correct endpoint and authentication token.  
+You can also retrieve both from the service page in the Anyscale Console. Click the **Query** button at the top. See [Send requests](#send-requests) for example requests, but make sure to use the correct endpoint and authentication token.  
 
 ---
 
-### Access the Serve LLM dashboard
+### Access the Serve LLM Dashboard
 
-See [Enable LLM monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM dashboard from an Anyscale service:
-1. In the Anyscale console, go to your **Service** or **Workspace**
-2. Navigate to the **Metrics** tab
-3. Click **View in Grafana** and click **Serve LLM Dashboard**
+See [Enable LLM monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM Dashboard from an Anyscale Service:
+1. In the Anyscale Console, go to your **Service** or **Workspace**.
+2. Navigate to the **Metrics** tab.
+3. Click **View in Grafana** and click **Serve LLM Dashboard**.
 
 ---
 
 ### Shutdown 
  
-Shutdown your Anyscale service:
+Shutdown your Anyscale Service:
 
 
 ```python
@@ -234,9 +233,9 @@ Shutdown your Anyscale service:
 
 The *Serve LLM Dashboard* offers deep visibility into model performance, latency, and system behavior, including:
 
-* Token throughput (tokens/sec).
-* Latency metrics: Time To First Token (TTFT), Time Per Output Token (TPOT).
-* KV cache utilization.
+- Token throughput (tokens/sec).
+- Latency metrics: Time To First Token (TTFT), Time Per Output Token (TPOT).
+- KV cache utilization.
 
 To enable these metrics, go to your LLM config and set `log_engine_metrics: true`. 
 ```yaml
@@ -252,7 +251,7 @@ applications:
 
 ## Improve concurrency
 
-Ray Serve LLM uses [vLLM](https://docs.vllm.ai/en/latest/) as its backend engine, which logs the *maximum concurrency* it can support based on your configuration.  
+Ray Serve LLM uses [vLLM](https://docs.vllm.ai/en/stable/) as its backend engine, which logs the *maximum concurrency* it can support based on your configuration.  
 
 Example log for 8xL40S:
 ```console
@@ -265,10 +264,10 @@ The following are a few ways to improve concurrency depending on your model and 
 Lowering `max_model_len` reduces the memory needed for KV cache.
 
 **Example:** Running Llama-3.1-70&nbsp;B on 8xL40S:
-* `max_model_len = 32,768` → concurrency ≈ 18
-* `max_model_len = 16,384` → concurrency ≈ 36
+- `max_model_len = 32,768` → concurrency ≈ 18
+- `max_model_len = 16,384` → concurrency ≈ 36
 
-**Use Quantized models**  
+**Use quantized models**  
 Quantizing your model (for example, to FP8) reduces the model's memory footprint, freeing up memory for more KV cache and enabling more concurrent requests.
 
 **Use pipeline parallelism**  
@@ -294,7 +293,7 @@ deployment_config:
 ## Troubleshooting
 
 **Hugging Face authentication errors**  
-Some models, such as Llama-3.1, are gated and require prior authorization from the organization. See your model’s documentation for instructions on obtaining access.
+Some models, such as Llama-3.1, are gated and require prior authorization from the organization. See your model's documentation for instructions on obtaining access.
 
 **Out-of-memory errors**  
 Out-of-memory (OOM) errors are one of the most common failure modes when deploying LLMs, especially as model sizes and context length increase.  
