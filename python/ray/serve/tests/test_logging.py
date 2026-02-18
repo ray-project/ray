@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import List, Tuple
 from unittest.mock import patch
 
-import grpc
 import httpx
 import pytest
 import starlette
@@ -34,12 +33,10 @@ from ray.serve._private.logging_utils import (
     get_serve_logs_dir,
     redirected_print,
 )
-from ray.serve._private.test_utils import get_application_url, ping_grpc_call_method
+from ray.serve._private.test_utils import get_application_url
 from ray.serve._private.utils import get_component_file_name
-from ray.serve.config import gRPCOptions
 from ray.serve.context import _get_global_client
 from ray.serve.schema import EncodingType, LoggingConfig
-from ray.serve.tests.test_config_files.grpc_deployment import g
 from ray.util.state import list_actors, list_nodes
 
 
@@ -1193,6 +1190,10 @@ def test_http_access_log_client_address(
         wait_for_condition(check_log, timeout=20)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1",
+    reason="gRPC test not compatible with HAProxy environment",
+)
 @pytest.mark.parametrize(
     "ray_instance",
     [
@@ -1202,6 +1203,12 @@ def test_http_access_log_client_address(
 )
 def test_grpc_access_log_client_address(serve_and_ray_shutdown, ray_instance):
     """Test that gRPC access logs include client address when feature flag is on."""
+    import grpc
+
+    from ray.serve._private.test_utils import ping_grpc_call_method
+    from ray.serve.config import gRPCOptions
+    from ray.serve.tests.test_config_files.grpc_deployment import g
+
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc."
