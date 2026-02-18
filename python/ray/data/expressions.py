@@ -1545,13 +1545,13 @@ class UUIDExpr(Expr):
         >>> from ray.data.expressions import UUIDExpr
         >>> # Generate UUIDs
         >>> UUIDExpr()
-        UUIDExpr()
+        UUID()
     """
 
     data_type: DataType = field(default_factory=lambda: DataType.string(), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
-        return isinstance(other, UUIDExpr)
+        return False
 
 
 @PublicAPI(stability="beta")
