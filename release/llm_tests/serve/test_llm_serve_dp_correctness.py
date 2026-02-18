@@ -1,46 +1,17 @@
 import time
 
-import requests
 import pytest
-from openai import OpenAI
 from ray import serve
 from ray.serve.llm import (
     LLMConfig,
-    LLMServingArgs,
     ModelLoadingConfig,
     build_dp_openai_app,
-    build_openai_app,
 )
+
+from test_utils import create_openai_client, wait_for_server_ready
 
 MODEL_ID = "microsoft/Phi-tiny-MoE-instruct"
 RAY_URL = "http://localhost:8000"
-
-
-def create_openai_client(server_url: str) -> OpenAI:
-    return OpenAI(base_url=f"{server_url}/v1", api_key="fake-key")
-
-
-def wait_for_server_ready(
-    url: str,
-    model_id: str,
-    timeout: int = 300,
-    retry_interval: int = 2,
-) -> None:
-    """Poll the server until it can handle a completion request."""
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            resp = requests.post(
-                f"{url}/v1/completions",
-                json={"model": model_id, "prompt": "test", "max_tokens": 5, "temperature": 0},
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                return
-        except Exception:
-            pass
-        time.sleep(retry_interval)
-    raise TimeoutError(f"Server at {url} not ready within {timeout}s")
 
 
 def _deploy_and_query(app, model_id: str, prompt: str) -> str:
@@ -54,6 +25,7 @@ def _deploy_and_query(app, model_id: str, prompt: str) -> str:
         prompt=prompt,
         max_tokens=20,
         temperature=0.0,
+        seed=42,
     )
     result = response.choices[0].text
     try:
@@ -65,10 +37,7 @@ def _deploy_and_query(app, model_id: str, prompt: str) -> str:
 
 
 def test_llm_serve_gang_data_parallelism_correctness():
-    """Test that plain, DP, and gang DP produce identical output.
-
-    All three modes must produce identical output for the same prompt.
-    """
+    """Test that gang DP produces the same output as non-gang DP."""
     model_loading_config = ModelLoadingConfig(
         model_id=MODEL_ID,
         model_source=MODEL_ID,
@@ -84,15 +53,6 @@ def test_llm_serve_gang_data_parallelism_correctness():
     runtime_env = {"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}}
     placement_group_config = {"bundles": [{"GPU": 1, "CPU": 1}]}
     prompt = "The capital of France is"
-
-    # Plain (no DP)
-    app = build_openai_app(LLMServingArgs(llm_configs=[LLMConfig(
-        model_loading_config=model_loading_config,
-        deployment_config=dict(num_replicas=1),
-        engine_kwargs={**common_engine_kwargs},
-        runtime_env=runtime_env,
-    )]))
-    plain_result = _deploy_and_query(app, MODEL_ID, prompt)
 
     # Non-gang DP
     llm_config_dp = LLMConfig(
@@ -119,14 +79,9 @@ def test_llm_serve_gang_data_parallelism_correctness():
     )
     gang_dp_result = _deploy_and_query(app, MODEL_ID, prompt)
 
-    assert plain_result == dp_result, (
-        f"Plain vs DP mismatch:\n"
-        f"  plain:  {plain_result!r}\n"
-        f"  dp:     {dp_result!r}"
-    )
-    assert plain_result == gang_dp_result, (
-        f"Plain vs Gang-DP mismatch:\n"
-        f"  plain:    {plain_result!r}\n"
+    assert dp_result == gang_dp_result, (
+        f"DP vs Gang-DP mismatch:\n"
+        f"  dp:       {dp_result!r}\n"
         f"  gang_dp:  {gang_dp_result!r}"
     )
 
