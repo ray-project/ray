@@ -445,5 +445,39 @@ def test_storage_level_overlapping_views(ray_start_regular):
     assert result == 15
 
 
+@ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+class WaitTensorFreedActor:
+    def test_wait_tensor_freed_views(self):
+        from ray.experimental import wait_tensor_freed
+
+        tensor = torch.tensor([1, 2, 3, 4, 5], dtype=torch.float32).to("cuda")
+        slices = [tensor[0:3], tensor[1:4], tensor[2:5]]
+        ref1 = ray.put(slices[0], _tensor_transport="nixl")
+        ref2 = ray.put(slices[1], _tensor_transport="nixl")
+        ref3 = ray.put(slices[2], _tensor_transport="nixl")
+        del ref1
+        wait_tensor_freed(slices[0], timeout=10)
+        with pytest.raises(TimeoutError):
+            wait_tensor_freed(slices[1], timeout=1)
+        with pytest.raises(TimeoutError):
+            wait_tensor_freed(slices[2], timeout=1)
+        del ref2
+        with pytest.raises(TimeoutError):
+            wait_tensor_freed(slices[2], timeout=1)
+        wait_tensor_freed(slices[1], timeout=10)
+        del ref3
+        wait_tensor_freed(slices[2], timeout=10)
+        return "Success"
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_wait_tensor_freed_views(ray_start_regular):
+    """Test that wait_tensor_freed tracks each view independently,
+    not the shared underlying storage."""
+    actor = WaitTensorFreedActor.remote()
+    result = ray.get(actor.test_wait_tensor_freed_views.remote())
+    assert result == "Success"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
