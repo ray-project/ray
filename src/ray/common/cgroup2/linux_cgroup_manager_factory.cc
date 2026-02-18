@@ -27,7 +27,7 @@
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/cgroup2/noop_cgroup_manager.h"
 #include "ray/common/cgroup2/sysfs_cgroup_driver.h"
-#include "ray/common/memory_monitor.h"
+#include "ray/common/memory_monitor_utils.h"
 #include "ray/common/ray_config.h"
 
 namespace ray {
@@ -59,7 +59,7 @@ std::unique_ptr<CgroupManagerInterface> CgroupManagerFactory::Create(
   int64_t system_memory_bytes_low = RayConfig::instance().system_memory_bytes_low();
 
   // Compute user memory limits from proportions
-  auto memory_snapshot = MemoryMonitor::TakeSystemMemorySnapshot(cgroup_path);
+  auto memory_snapshot = MemoryMonitorUtils::TakeSystemMemorySnapshot(cgroup_path);
   int64_t total_memory_bytes = memory_snapshot.total_bytes;
   float user_memory_proportion_high = RayConfig::instance().user_memory_proportion_high();
   float user_memory_proportion_max = RayConfig::instance().user_memory_proportion_max();

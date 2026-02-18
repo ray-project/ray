@@ -31,6 +31,7 @@ ray_cc_library(
             ":cgroup_driver_interface",
             ":cgroup_manager",
             ":sysfs_cgroup_driver",
+            "//src/ray/common:memory_monitor_utils",
             "//src/ray/common:status",
             "//src/ray/common:status_or",
             "@com_google_absl//absl/strings",
@@ -66,7 +67,6 @@ ray_cc_library(
     deps = [
         ":cgroup_driver_interface",
         ":cgroup_manager_interface",
-        "//src/ray/common:memory_monitor",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
