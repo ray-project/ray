@@ -1028,16 +1028,21 @@ class AsyncioRouter:
             if not pr.resolved:
                 await self._resolve_request_arguments(pr)
 
-            replica = await self.request_router._choose_replica_for_request(pr)
+            # Increment queued requests while choosing replica and reserving slot
+            num_curr_replicas = len(self.request_router.curr_replicas)
+            with self._metrics_manager.wrap_queued_request(
+                is_retry=False, num_curr_replicas=num_curr_replicas
+            ):
+                replica = await self.request_router._choose_replica_for_request(pr)
 
-            # Reserve a slot on the replica
-            slot_token = replica.reserve_slot()
+                # Reserve a slot on the replica
+                slot_token = replica.reserve_slot()
 
-            # Update queue length cache to reflect the reservation
-            # This ensures concurrent choose_replica calls see the correct load
-            self.request_router.on_send_request(replica.replica_id)
+                # Update queue length cache to reflect the reservation
+                # This ensures concurrent choose_replica calls see the correct load
+                self.request_router.on_send_request(replica.replica_id)
 
-            # Increment reserved slots metric
+            # Increment reserved slots metric (after queue metric is decremented)
             self._metrics_manager.inc_reserved_slots()
 
             selection = ReplicaSelection(
