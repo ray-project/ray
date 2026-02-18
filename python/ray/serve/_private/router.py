@@ -1072,7 +1072,24 @@ class AsyncioRouter:
         *request_args,
         **request_kwargs,
     ) -> ReplicaResult:
-        """Dispatch to a specific replica, consuming the reserved slot."""
+        """Dispatch to a specific replica, consuming the reserved slot.
+
+        Args:
+            selection: The replica selection from choose_replica().
+            request_meta: Request metadata.
+            *request_args: Request positional arguments.
+            **request_kwargs: Request keyword arguments.
+
+        Returns:
+            ReplicaResult for the dispatched request.
+
+        Raises:
+            RuntimeError: If the selection has already been dispatched.
+            ReplicaUnavailableError: If the replica is no longer available.
+        """
+        # Mark as dispatched (this will raise if already dispatched)
+        selection._mark_dispatched()
+
         # Verify replica is still available
         replica = selection._replica
         if replica.replica_id not in self.request_router.curr_replicas:
@@ -1089,9 +1106,6 @@ class AsyncioRouter:
         # Resolve request arguments
         if not pr.resolved:
             await self._resolve_request_arguments(pr)
-
-        # Mark as dispatched so __aexit__ won't release the slot
-        selection._mark_dispatched()
 
         # Send the request without rejection since we already reserved a slot
         # The slot reservation guarantees that the replica will accept this request

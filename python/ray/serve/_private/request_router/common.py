@@ -118,7 +118,16 @@ class ReplicaSelection:
         }
 
     def _mark_dispatched(self) -> None:
-        """Internal: Mark this selection as dispatched (slot consumed)."""
+        """Internal: Mark this selection as dispatched (slot consumed).
+
+        Raises:
+            RuntimeError: If the selection has already been dispatched.
+        """
+        if self._dispatched:
+            raise RuntimeError(
+                f"ReplicaSelection for {self.replica_id} has already been dispatched. "
+                "Each selection can only be dispatched once."
+            )
         self._dispatched = True
 
     def _release_slot(self) -> None:
