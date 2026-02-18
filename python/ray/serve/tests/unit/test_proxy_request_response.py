@@ -240,6 +240,38 @@ class TestgRPCProxyRequest:
         assert request_object.user_request_proto == request_proto
 
 
+class TestGRPCProxyRequestClient:
+    """Tests for gRPCProxyRequest.client property."""
+
+    def _make_request(self, peer_value):
+        context = MagicMock()
+        context.peer.return_value = peer_value
+        context.invocation_metadata.return_value = ()
+        return gRPCProxyRequest(
+            request_proto=MagicMock(),
+            context=context,
+            service_method="/ray.serve.RayServeAPIService/Healthz",
+            stream=False,
+        )
+
+    def test_ipv4_peer(self):
+        req = self._make_request("ipv4:127.0.0.1:54321")
+        assert req.client == "127.0.0.1:54321"
+
+    def test_ipv6_peer(self):
+        # gRPC URL-encodes brackets in IPv6 peer addresses
+        req = self._make_request("ipv6:%5B::1%5D:54321")
+        assert req.client == "[::1]:54321"
+
+    def test_none_peer(self):
+        req = self._make_request(None)
+        assert req.client == ""
+
+    def test_empty_peer(self):
+        req = self._make_request("")
+        assert req.client == ""
+
+
 class TestFormatClientAddress:
     """Tests for format_client_address in proxy.py."""
 
@@ -257,6 +289,15 @@ class TestFormatClientAddress:
 
     def test_none(self):
         assert format_client_address(None) == ""
+
+    def test_ipv6_tuple(self):
+        assert format_client_address(("::1", 54321)) == "[::1]:54321"
+
+    def test_ipv6_full_tuple(self):
+        assert format_client_address(("2001:db8::1", 8080)) == "[2001:db8::1]:8080"
+
+    def test_ipv6_string_passthrough(self):
+        assert format_client_address("[::1]:54321") == "[::1]:54321"
 
 
 class TestAccessLogMsg:

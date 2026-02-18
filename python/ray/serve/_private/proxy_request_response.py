@@ -181,6 +181,19 @@ class gRPCProxyRequest(ProxyRequest):
     def is_health_request(self) -> bool:
         return self.service_method == "/ray.serve.RayServeAPIService/Healthz"
 
+    @property
+    def client(self) -> str:
+        peer = self.context.peer()
+        if not peer:
+            return ""
+        # peer() returns "ipv4:host:port" or "ipv6:%5Bhost%5D:port"
+        # (brackets are URL-encoded in the URI format)
+        for prefix in ("ipv4:", "ipv6:"):
+            if peer.startswith(prefix):
+                addr = peer[len(prefix) :]
+                return addr.replace("%5B", "[").replace("%5D", "]")
+        return peer
+
     def send_request_id(self, request_id: str):
         # Setting the trailing metadata on the ray_serve_grpc_context object, so it's
         # not overriding the ones set from the user and will be sent back to the

@@ -1893,6 +1893,7 @@ class Replica(ReplicaBase):
                 app_name=self._deployment_id.app_name,
                 multiplexed_model_id=request_metadata.multiplexed_model_id,
                 grpc_context=request_metadata.grpc_context,
+                _client=request_metadata._client,
                 cancel_on_parent_request_cancel=self._ingress
                 and RAY_SERVE_ENABLE_DIRECT_INGRESS,
                 _ray_trace_ctx=ray_trace_ctx,

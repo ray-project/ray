@@ -183,7 +183,13 @@ class ServeFormatter(TextFormatter):
 def format_client_address(client) -> str:
     """Format a raw ASGI scope client value into a string."""
     if isinstance(client, (tuple, list)):
-        return ":".join(str(x) for x in client)
+        if len(client) != 2:
+            return ":".join(str(x) for x in client)
+        host, port = str(client[0]), str(client[1])
+        # Wrap IPv6 addresses in brackets to avoid ambiguity (e.g. [::1]:54321).
+        if ":" in host:
+            return f"[{host}]:{port}"
+        return f"{host}:{port}"
     elif isinstance(client, str):
         return client
     return str(client) if client else ""
