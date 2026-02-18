@@ -222,6 +222,55 @@ In this example:
 
  Manage concurrency by setting `max_ongoing_requests` on the consumer deployment; this caps how many tasks each replica can process simultaneously. For at-least-once delivery, adapters should acknowledge a task only after the handler completes successfully. Failed tasks are retried up to `max_retries`; once exhausted, they are routed to the failed-task DLQ when configured. The default Celery adapter acknowledges on success, providing at-least-once processing.
 
+(serve-async-inference-autoscaling)=
+## Autoscaling
+
+For workloads with variable traffic you can enable autoscaling so that replicas scale up when messages pile up in the queue and scale back down (optionally to zero) when the queue drains.
+
+Ray Serve provides a built-in `AsyncInferenceAutoscalingPolicy` — a [class-based autoscaling policy](serve-custom-autoscaling-policies) that polls your message broker for queue length and scales replicas to match demand from both pending queue messages and in-flight requests.
+
+### Basic example
+
+::::{tab-set}
+
+:::{tab-item} Python (imperative)
+
+```{literalinclude} doc_code/async_inference_autoscaling.py
+:language: python
+:start-after: __basic_example_begin__
+:end-before: __basic_example_end__
+```
+
+:::
+
+:::{tab-item} YAML (declarative)
+
+```{literalinclude} doc_code/async_inference_autoscaling.yaml
+:language: yaml
+:start-after: __basic_example_begin__
+:end-before: __basic_example_end__
+```
+
+:::
+
+::::
+
+:::{note}
+The `broker_url` and `queue_name` in `policy_kwargs` must match the values in your `TaskProcessorConfig`. The policy reads queue length from the same broker that your task consumer reads tasks from.
+:::
+
+
+### Policy parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `broker_url` | `str` | *(required)* | URL of the message broker (e.g. `redis://localhost:6379/0` or `amqp://guest:guest@localhost:5672//`). |
+| `queue_name` | `str` | *(required)* | Name of the queue to monitor. Must match `TaskProcessorConfig.queue_name`. |
+| `rabbitmq_management_url` | `str` | `None` | RabbitMQ HTTP management API URL (e.g. `http://guest:guest@localhost:15672/api/`). Required only for RabbitMQ brokers. |
+| `poll_interval_s` | `float` | `10.0` | How often (seconds) to poll the broker for queue length. Lower values increase responsiveness but add broker load. |
+
+All standard `AutoscalingConfig` parameters (`upscale_delay_s`, `downscale_delay_s`, `upscaling_factor`, `downscaling_factor`, etc.) apply on top of this policy. See [Advanced Ray Serve Autoscaling](serve-advanced-autoscaling) for details.
+
 ## Dead letter queues (DLQs)
 
 Dead letter queues handle two types of problematic tasks:

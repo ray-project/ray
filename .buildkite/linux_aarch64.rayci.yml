@@ -190,6 +190,7 @@ steps:
       - release_wheels
       - linux_wheels
       - oss
+      - skip-on-premerge
 
   - name: ray-cpp-core-build-aarch64
     label: "wanda: cpp core (aarch64)"
@@ -236,6 +237,7 @@ steps:
       - release_wheels
       - linux_wheels
       - oss
+      - skip-on-premerge
 
   - name: ray-image-cpu-build-aarch64
     label: "wanda: ray py{{matrix}} cpu (aarch64)"
@@ -428,6 +430,7 @@ steps:
       - manylinux-aarch64
       - oss-ci-base_build-aarch64
       - forge-aarch64
+      - ray-wheel-build-aarch64
     job_env: forge-aarch64
 
   - label: ":ray-serve: serve: wheel-aarch64 tests"
@@ -445,4 +448,5 @@ steps:
       - manylinux-aarch64
       - oss-ci-base_build-aarch64
       - forge-aarch64
+      - ray-wheel-build-aarch64
     job_env: forge-aarch64
