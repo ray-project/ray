@@ -206,7 +206,7 @@ ray_cc_library(
             ":worker_killing_policy_group_by_owner",
         ],
         "//conditions:default": [
-            ":noop_worker_killing_policy_interface",
+            ":noop_worker_killing_policy",
         ],
     }),
 )
