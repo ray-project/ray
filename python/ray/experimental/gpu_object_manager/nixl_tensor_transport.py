@@ -306,17 +306,16 @@ class NixlTensorTransport(TensorTransportManager):
         )
 
     def garbage_collect(
-        self, obj_id: str, tensor_transport_meta: TensorTransportMetadata
+        self,
+        obj_id: str,
+        tensor_transport_meta: TensorTransportMetadata,
+        tensors: List["torch.Tensor"],
     ):
-        from ray._private.worker import global_worker
-
         with self._cache_lock:
             assert isinstance(tensor_transport_meta, NixlTransportMetadata)
-            gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
             if obj_id not in self._managed_meta_nixl:
                 return
             self._managed_meta_nixl.pop(obj_id, None)
-            tensors = gpu_object_store.get_object(obj_id)
             for tensor in tensors:
                 key = tensor.untyped_storage().data_ptr()
                 if key in self._tensor_desc_cache:

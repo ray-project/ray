@@ -421,14 +421,14 @@ def test_storage_level_overlapping_views_reference_count(ray_start_regular):
     # Simulate the obj ref for view0 going out of scope and check that the nixl memory registration is
     # not cleared since the object ref for view1 is still in scope
     with patch("ray._private.worker.global_worker", mock_worker):
-        transport.garbage_collect(obj_id1, meta1)
+        transport.garbage_collect(obj_id1, meta1, [view0])
     gpu_object_store.pop_object(obj_id1)
     assert storage_key in transport._tensor_desc_cache
     assert transport._tensor_desc_cache[storage_key].metadata_count == 1
 
     # Simulate the obj ref for view1 going out of scope and check that the nixl memory registration is cleared
     with patch("ray._private.worker.global_worker", mock_worker):
-        transport.garbage_collect(obj_id2, meta2)
+        transport.garbage_collect(obj_id2, meta2, [view1])
     gpu_object_store.pop_object(obj_id2)
     assert storage_key not in transport._tensor_desc_cache
 
