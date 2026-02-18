@@ -1201,11 +1201,38 @@ class SingletonThreadRouter(Router):
         *request_args,
         **request_kwargs,
     ) -> AsyncIterator[ReplicaSelection]:
-        """Delegate to AsyncioRouter's choose_replica."""
-        async with self._asyncio_router.choose_replica(
-            request_meta, *request_args, **request_kwargs
-        ) as selection:
+        """Bridge async context manager to router event loop.
+
+        This ensures choose_replica runs on the singleton router loop,
+        maintaining thread safety for all state modifications.
+        """
+        import sys
+
+        # Enter context on router loop
+        async def enter_context():
+            cm = self._asyncio_router.choose_replica(
+                request_meta, *request_args, **request_kwargs
+            )
+            selection = await cm.__aenter__()
+            return selection, cm
+
+        future = asyncio.run_coroutine_threadsafe(
+            enter_context(), self._asyncio_loop
+        )
+        selection, context_manager = await asyncio.wrap_future(future)
+
+        try:
             yield selection
+        finally:
+            # Exit context on router loop
+            async def exit_context(exc_type, exc_val, exc_tb):
+                return await context_manager.__aexit__(exc_type, exc_val, exc_tb)
+
+            exc_info = sys.exc_info()
+            future = asyncio.run_coroutine_threadsafe(
+                exit_context(*exc_info), self._asyncio_loop
+            )
+            await asyncio.wrap_future(future)
 
     def dispatch(
         self,
