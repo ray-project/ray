@@ -1,5 +1,6 @@
 import math
 import time
+from dataclasses import replace
 from typing import Any, Collection, Dict, List, Optional, Tuple
 
 from ray._common.utils import env_float
@@ -179,7 +180,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         for i, count in enumerate(allocation):
             bundles = self._split_from_buffer(count)
             for b in bundles:
-                b.output_split_idx = i
+                b = replace(b, output_split_idx=i)
                 self._output_queue.add(b)
                 self._metrics.on_output_queued(b)
         self._buffer.clear()
@@ -258,7 +259,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             self._buffer.remove(target_bundle)
             self._metrics.on_input_dequeued(target_bundle, input_index=0)
 
-            target_bundle.output_split_idx = target_output_index
+            target_bundle = replace(target_bundle, output_split_idx=target_output_index)
 
             self._num_output[target_output_index] += target_bundle.num_rows()
             self._output_queue.add(target_bundle)

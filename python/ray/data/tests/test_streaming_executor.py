@@ -2,6 +2,7 @@ import os
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from typing import List, Literal, Optional, Union
 from unittest.mock import MagicMock, patch
 
@@ -725,7 +726,7 @@ class OpBufferQueueTest(unittest.TestCase):
 
         queue = OpBufferQueue()
         for i, ref_bundle in enumerate(ref_bundles):
-            ref_bundle.output_split_idx = i % num_splits
+            ref_bundle = replace(ref_bundle, output_split_idx=i % num_splits)
             queue.append(ref_bundle)
 
         def consume(output_split_idx):
