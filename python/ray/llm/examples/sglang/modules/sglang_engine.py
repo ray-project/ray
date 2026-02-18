@@ -95,24 +95,64 @@ class SGLangServer:
             )
         return converted_messages
 
-    def _render_chat_prompt(self, messages: List[dict[str, Any]]) -> str:
+    @staticmethod
+    def _build_chat_template_kwargs(request: ChatCompletionRequest) -> dict[str, Any]:
+        """
+        Build optional chat-template kwargs using request fields when present.
+        This mirrors SGLang's chat-serving pipeline semantics without directly
+        coupling to its internal server classes.
+        """
+        kwargs: dict[str, Any] = {}
+
+        tools = getattr(request, "tools", None)
+        if tools is not None:
+            kwargs["tools"] = tools
+
+        reasoning_effort = getattr(request, "reasoning_effort", None)
+        if reasoning_effort is not None:
+            kwargs["reasoning_effort"] = reasoning_effort
+
+        chat_template_kwargs = getattr(request, "chat_template_kwargs", None)
+        if isinstance(chat_template_kwargs, dict):
+            kwargs.update(chat_template_kwargs)
+
+        return kwargs
+
+    def _render_chat_prompt(
+        self,
+        request: ChatCompletionRequest,
+        messages: List[dict[str, Any]],
+    ) -> str:
         tokenizer = getattr(
             getattr(self.engine, "tokenizer_manager", None), "tokenizer", None
         )
 
         if tokenizer is not None and hasattr(tokenizer, "apply_chat_template"):
+            template_kwargs = self._build_chat_template_kwargs(request)
             try:
                 return tokenizer.apply_chat_template(
                     messages,
                     tokenize=False,
                     add_generation_prompt=True,
+                    **template_kwargs,
                 )
             except TypeError:
-                # Some tokenizers do not accept `tokenize`; keep a compatibility path.
-                return tokenizer.apply_chat_template(
-                    messages,
-                    add_generation_prompt=True,
-                )
+                # Keep broad tokenizer compatibility by retrying with fewer kwargs.
+                fallback_kwargs = dict(template_kwargs)
+                fallback_kwargs.pop("tokenize", None)
+                fallback_kwargs.pop("reasoning_effort", None)
+                fallback_kwargs.pop("tools", None)
+                try:
+                    return tokenizer.apply_chat_template(
+                        messages,
+                        add_generation_prompt=True,
+                        **fallback_kwargs,
+                    )
+                except TypeError:
+                    return tokenizer.apply_chat_template(
+                        messages,
+                        add_generation_prompt=True,
+                    )
             except Exception:
                 pass
 
@@ -144,8 +184,6 @@ class SGLangServer:
         self,
         request: Any,
         prompt: Any,
-        *,
-        apply_chat_template: bool = False,
     ) -> dict[str, Any]:
         """
         Handles parameter extraction, calls the SGLang engine, and processes the
@@ -157,15 +195,6 @@ class SGLangServer:
             "sampling_params": sampling_params,
             "stream": False,
         }
-        # Older SGLang versions do not support this kwarg. Gate it by
-        # signature to keep compatibility while preserving chat templating
-        # when available.
-        if (
-            apply_chat_template
-            and "apply_chat_template"
-            in inspect.signature(self.engine.async_generate).parameters
-        ):
-            generate_kwargs["apply_chat_template"] = True
 
         raw = await self.engine.async_generate(**generate_kwargs)
 
@@ -207,7 +236,7 @@ class SGLangServer:
         del raw_request_info  # Unused for now.
 
         chat_messages = self._build_chat_messages(request.messages)
-        prompt = self._render_chat_prompt(chat_messages)
+        prompt = self._render_chat_prompt(request, chat_messages)
 
         metadata = await self._generate_and_extract_metadata(
             request,
