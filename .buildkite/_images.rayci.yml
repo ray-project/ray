@@ -93,13 +93,10 @@ steps:
     wanda: docker/ray-llm/cuda.wanda.yaml
     depends_on: raycudabase
     matrix:
-      setup:
-        python:
-          - "3.11"
-          - "3.12"
-        cuda:
-          - "12.8.1-cudnn"
-          - "12.9.1-cudnn"
+      - python: "3.11"
+        cuda: "12.8.1-cudnn"
+      - python: "3.12"
+        cuda: "12.9.1-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -108,13 +105,10 @@ steps:
     label: "wanda: ray-llm-py{{matrix.python}}-cu{{matrix.cuda}}-base-extra"
     wanda: docker/base-extra/cuda.wanda.yaml
     matrix:
-      setup:
-        python:
-          - "3.11"
-          - "3.12"
-        cuda:
-          - "12.8.1-cudnn"
-          - "12.9.1-cudnn"
+      - python: "3.11"
+        cuda: "12.8.1-cudnn"
+      - python: "3.12"
+        cuda: "12.9.1-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
