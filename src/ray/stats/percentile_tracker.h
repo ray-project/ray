@@ -15,44 +15,6 @@
 // This implementation is based on tehuti's Percentiles class:
 // https://github.com/tehuti-io/tehuti
 // Original implementation: Copyright LinkedIn Corp. under Apache License 2.0
-//
-// ─── Math reference ─────────────────────────────────────────────────────────
-//
-// BUCKET BOUNDARIES
-//   boundary(b) = scale * b * (b+1) / 2        (b = 0, 1, 2, …, N-1)
-//   scale = max_value / (N * (N-1) / 2)
-//   Bucket b contains values in [boundary(b), boundary(b+1)).
-//   Bucket widths grow linearly (b0 width = scale, b1 width = 2*scale, …),
-//   giving finer resolution where most latencies live.
-//
-// TOBUCKET (inverse)
-//   Given value v, find b such that b*(b+1)/2 ≤ v/scale < (b+1)*(b+2)/2.
-//   Solving the quadratic b*(b+1)/2 = v/scale:
-//     b = floor( -0.5 + sqrt(2*v/scale + 0.25) )
-//   std::min clamps against floating-point rounding at bucket boundaries.
-//
-// GETPERCENTILE
-//   Scan buckets left to right, accumulating counts.  Return FromBucket(i)
-//   for the first i where cumulative_count / total_count > quantile.
-//   Error bound: ≤ one bucket width at the returned percentile value.
-//   With N buckets and max_value M, width at bucket i ≈ M*i / (N*(N-1)/2).
-//
-// GETMEAN
-//   Weighted average of bucket representative values (lower boundary for all
-//   but the last bucket, max_value for the overflow bucket).  Slightly
-//   underestimates the true mean when values cluster near the top of a bucket.
-//
-// ─── Worked example ─────────────────────────────────────────────────────────
-//
-//   N=10 buckets, max_value=10s → scale = 10/(10*9/2) ≈ 0.222s
-//   Boundaries: b0=0, b1=0.22, b2=0.67, b3=1.33, b4=2.22, b5=3.33, …
-//
-//   First sample: v=10s → ToBucket returns 9 (overflow bucket, clamped).
-//   Next samples cluster at 1–2s → ToBucket returns 3 or 4.
-//   After many such samples, P95 resolves into the 1–2s range even though
-//   the very first spike landed in the overflow bucket.
-//
-// ────────────────────────────────────────────────────────────────────────────
 
 #pragma once
 
@@ -126,7 +88,7 @@ class QuadraticBucketScheme {
   /**
     Get the representative value for a bucket index.
 
-    For buckets 0 through num_buckets-2 this returns the lower boundary of the
+    For buckets 0 through num_buckets-2 this returns the upper boundary of the
     bucket. For the last bucket (overflow bucket) this returns max_value.
 
     @param bucket The bucket index.
