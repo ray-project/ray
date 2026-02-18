@@ -299,10 +299,9 @@ class FuseOperators(Rule):
                 and up_logical_op.batch_size % down_logical_op.target_num_rows_per_block
                 == 0
             )
-        # StreamingRepartition can only fuse in non-strict mode.
-        # In strict mode, it does not support further fusion.
+        # Other operators cannot fuse with StreamingRepartition.
         if isinstance(up_logical_op, StreamingRepartition):
-            return not up_logical_op._strict
+            return False
 
         # Otherwise, ops are compatible for fusion.
         return True
