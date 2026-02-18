@@ -57,7 +57,7 @@ class GPUTestActor:
         assert gpu_manager.is_managed_object(obj_id)
         assert obj_id in nixl_transport._managed_meta_nixl
         # Tensor-level metadata counting: the tensor should have metadata_count=1
-        key = tensor.data_ptr()
+        key = tensor.untyped_storage().data_ptr()
         assert key in nixl_transport._tensor_desc_cache
         assert nixl_transport._tensor_desc_cache[key].metadata_count == 1
 
