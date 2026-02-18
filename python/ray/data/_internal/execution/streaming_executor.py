@@ -179,8 +179,8 @@ class StreamingExecutor(Executor, threading.Thread):
                 log_path = get_log_directory()
                 if log_path is not None:
                     message += f" Full logs are in {log_path}"
-                logger.info(message)
-                logger.info(
+                logger.debug(message)
+                logger.debug(
                     f"Execution plan of Dataset {self._dataset_id}: {dag.dag_str}"
                 )
 
