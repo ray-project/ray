@@ -93,28 +93,7 @@ _event_recorder_instance = None
 
 
 cdef class EventRecorder:
-    """Per-process singleton for recording Ray events.
-
-    Access the singleton and its lifecycle via static methods::
-
-        # Initialization (once per process)
-        EventRecorder.initialize(
-            aggregator_address, aggregator_port,
-            node_ip, node_id_hex, max_buffer_size,
-        )
-
-        # Emit events (no-op if not initialized)
-        EventRecorder.emit(event)
-        EventRecorder.emit_batch([event1, event2])
-
-        # Shutdown (flushes buffered events)
-        EventRecorder.shutdown()
-
-    Thread safety: initialize() and shutdown() are expected to be called from
-    the main thread (same as ray.init/ray.shutdown). emit() and emit_batch()
-    are safe to call from any thread — the GIL serializes Python-level access,
-    and the underlying C++ RayEventRecorder is protected by absl::Mutex.
-    """
+    """Per-process singleton for recording Ray events."""
     cdef unique_ptr[CPythonEventRecorder] _recorder
 
     def __dealloc__(self):
