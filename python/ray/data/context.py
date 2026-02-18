@@ -652,9 +652,9 @@ class DataContext:
     )
     write_file_retry_on_errors: List[str] = DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
     warn_on_driver_memory_usage_bytes: int = DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES
-    actor_task_retry_on_errors: Union[bool, List[BaseException]] = (
-        DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
-    )
+    actor_task_retry_on_errors: Union[
+        bool, List[BaseException]
+    ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
     actor_init_retry_on_errors: bool = DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS
     actor_init_max_retries: int = DEFAULT_ACTOR_INIT_MAX_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
@@ -694,9 +694,9 @@ class DataContext:
         default_factory=_issue_detectors_config_factory
     )
 
-    downstream_capacity_backpressure_ratio: Optional[float] = (
-        DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO
-    )
+    downstream_capacity_backpressure_ratio: Optional[
+        float
+    ] = DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO
 
     enable_dynamic_output_queue_size_backpressure: bool = (
         DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE

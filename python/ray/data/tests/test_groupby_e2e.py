@@ -1457,12 +1457,13 @@ def test_local_aggregation_global_agg(
 
 def test_estimate_input_size_bytes():
     """Test the _estimate_input_size_bytes function."""
+    import pyarrow as pa
+
     from ray.data._internal.execution.interfaces import RefBundle
     from ray.data._internal.planner.plan_all_to_all_op import (
         _estimate_input_size_bytes,
     )
     from ray.data.block import BlockMetadata
-    import pyarrow as pa
 
     block = pa.table({"a": [1, 2, 3], "b": [4, 5, 6]})
     ray_block = ray.put(block)
