@@ -7,6 +7,11 @@ head_node_type:
   instance_type: m5.2xlarge
 
 # Worker nodes
-auto_select_worker_config: true
+worker_node_types:
+  - name: 1xL4:16CPU-64GB
+    instance_type: g6.4xlarge
+    min_workers: 1
+    max_workers: 1
+
 flags:
   allow-cross-zone-autoscaling: true
