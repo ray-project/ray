@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import logging
+import sys
 import threading
 import time
 import weakref
@@ -1111,6 +1112,21 @@ class AsyncioRouter:
         # The slot reservation guarantees that the replica will accept this request
         result = replica.try_send_request(pr, with_rejection=False)
 
+        # Keep track of requests that have been sent out to replicas
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            self._metrics_manager.inc_num_running_requests_for_replica(
+                replica.replica_id
+            )
+
+        # Always register callback to notify router when request completes
+        # (needed for token release in queue-based routing, metrics tracking, etc.)
+        callback = partial(
+            self._process_finished_request,
+            replica.replica_id,
+            pr.metadata.internal_request_id,
+        )
+        result.add_done_callback(callback)
+
         return result
 
     async def shutdown(self):
@@ -1220,8 +1236,6 @@ class SingletonThreadRouter(Router):
         This ensures choose_replica runs on the singleton router loop,
         maintaining thread safety for all state modifications.
         """
-        import sys
-
         # Enter context on router loop
         async def enter_context():
             cm = self._asyncio_router.choose_replica(
