@@ -294,7 +294,7 @@ steps:
       - oss
       - skip-on-premerge
 
-  - label: ":crane: publish: ray-llm py{{matrix.python}} cu{{matrix.platform}} (x86_64)"
+  - label: ":crane: publish: ray-llm py{{matrix.python}} {{matrix.platform}} (x86_64)"
     key: ray_llm_images_cuda_push
     instance_type: small
     commands:
@@ -317,7 +317,7 @@ steps:
       - oss
       - skip-on-premerge
 
-  - label: ":crane: publish: ray-llm-extra py{{matrix.python}} cu{{matrix.platform}} (x86_64)"
+  - label: ":crane: publish: ray-llm-extra py{{matrix.python}} {{matrix.platform}} (x86_64)"
     key: ray_llm_extra_images_cuda_push
     instance_type: small
     commands:
