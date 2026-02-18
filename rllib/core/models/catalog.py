@@ -296,6 +296,9 @@ class Catalog:
                     hidden_layer_use_layernorm=model_config_dict.get(
                         "fcnet_use_layernorm", False
                     ),
+                    output_layer_use_layernorm=model_config_dict.get(
+                        "fcnet_use_layernorm", False
+                    ),
                     hidden_layer_weights_initializer=model_config_dict[
                         "fcnet_kernel_initializer"
                     ],
