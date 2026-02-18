@@ -741,10 +741,6 @@ bool IsProcessAlive(pid_t pid) {
   }
   return false;
 #else
-  // Invalid process are considered dead.
-  if (pid <= 0) {
-    return false;
-  }
   // Note if the process is a zombie (dead but not yet reaped), it will
   // still be alive by this check.
   if (kill(pid, 0) == -1 && errno == ESRCH) {

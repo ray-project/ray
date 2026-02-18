@@ -95,27 +95,11 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
  public:
   GroupByOwnerIdWorkerKillingPolicy() = default;
 
-  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> SelectWorkersToKill(
-      const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      const MemorySnapshot &system_memory);
-
- private:
-  /**
-   * Executes the worker killing selection policy.
-   * Here we prioritize killing groups that are retriable first.
-   * Else we prioritize killing the group with the largest number of workers.
-   * Else we prioritize killing the newest group.
-   *
-   * \param workers the list of workers to select and kill from.
-   * \param system_memory snapshot of memory usage. Used to print the memory usage of the
-   * workers.
-   * \return the list of workers to kill and whether the task on each worker
-   * should be retried.
-   */
-  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> Policy(
+  std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const MemorySnapshot &system_memory) const;
 
+ private:
   /**
    * Creates the debug string of the groups created by the policy.
    *
@@ -125,10 +109,6 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
    */
   static std::string PolicyDebugString(const std::vector<Group> &groups,
                                        const MemorySnapshot &system_memory);
-
-  // The current selected workers to be killed and whether the task on each worker
-  // should be retried.
-  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> targets_to_kill;
 };
 
 }  // namespace raylet

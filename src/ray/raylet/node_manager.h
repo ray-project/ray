@@ -898,6 +898,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Throttler for global gc
   Throttler global_gc_throttler_;
 
+  /// Target being evicted or null if no target
+  std::shared_ptr<typename Tp><WorkerInterface> high_memory_eviction_target_;
+
   ray::observability::MetricInterface &memory_manager_worker_eviction_total_count_;
 
   /// These classes make up the new scheduler. ClusterResourceScheduler is

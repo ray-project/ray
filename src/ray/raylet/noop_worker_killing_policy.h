@@ -33,10 +33,10 @@ class NoopWorkerKillingPolicy : public WorkerKillingPolicyInterface {
   NoopWorkerKillingPolicy() = default;
   ~NoopWorkerKillingPolicy() override = default;
 
-  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> SelectWorkersToKill(
+  std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const MemorySnapshot &system_memory) const override {
-    return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
+    return std::pair<std::shared_ptr<WorkerInterface>, bool>(nullptr, false);
   }
 };
 

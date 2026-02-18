@@ -40,12 +40,11 @@ class WorkerKillingPolicyInterface {
    *
    * @param workers the list of candidate workers.
    * @param system_memory snapshot of memory usage.
-   * @return the list of workers to kill and whether the task on each worker should be
-   * retried.
+   * @return the worker to kill and whether the task on the worker should be retried.
    */
-  virtual std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
-  SelectWorkersToKill(const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-                      const MemorySnapshot &system_memory) = 0;
+  virtual std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
+      const std::vector<std::shared_ptr<WorkerInterface>> &workers,
+      const MemorySnapshot &system_memory) const = 0;
 
   virtual ~WorkerKillingPolicyInterface() = default;
 };
