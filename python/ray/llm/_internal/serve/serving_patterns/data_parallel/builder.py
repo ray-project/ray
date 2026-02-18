@@ -19,6 +19,10 @@ from ray.llm._internal.serve.serving_patterns.data_parallel.dp_rank_assigner imp
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
     DPServer,
 )
+from ray.llm._internal.serve.serving_patterns.data_parallel.gang_dp_server import (
+    GangDPServer,
+    _GangDPMasterInfoBroker,
+)
 from ray.serve.deployment import Application
 
 logger = get_logger(__name__)
@@ -29,6 +33,7 @@ def build_dp_deployment(
     *,
     name_prefix: Optional[str] = None,
     override_serve_options: Optional[dict] = None,
+    enable_fault_tolerance: bool = False,
 ) -> Application:
     """Build a data parallel attention LLM deployment.
 
@@ -37,10 +42,22 @@ def build_dp_deployment(
         name_prefix: The prefix to add to the deployment name.
         override_serve_options: The optional serve options to override the
             default options.
+        enable_fault_tolerance: When True, uses Ray Serve's gang scheduling
+            for fault-tolerant DP.
 
     Returns:
         The Ray Serve Application for the data parallel attention LLM deployment.
     """
+    if enable_fault_tolerance:
+        master_info_broker = _GangDPMasterInfoBroker.bind()
+        return build_llm_deployment(
+            llm_config,
+            name_prefix=name_prefix,
+            bind_kwargs={"master_info_broker": master_info_broker},
+            override_serve_options=override_serve_options,
+            deployment_cls=GangDPServer,
+        )
+
     dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
 
     # TODO(rui): figure out a better way to pass in dp_size_per_node.
@@ -81,6 +98,13 @@ class DPOpenAiServingArgs(BaseModelExtended):
         default_factory=dict,
         description="The Ray @server.deployment options for the ingress server.",
     )
+    enable_fault_tolerance: bool = Field(
+        default=False,
+        description=(
+            "When True, use gang scheduling for fault-tolerant DP. "
+            "If any replica fails the entire gang is restarted atomically."
+        ),
+    )
 
     @field_validator("llm_config")
     @classmethod
@@ -117,7 +141,10 @@ def build_dp_openai_app(builder_config: dict) -> Application:
     builder_config = DPOpenAiServingArgs.model_validate(builder_config)
     llm_config = builder_config.llm_config
 
-    dp_deployment = build_dp_deployment(llm_config)
+    dp_deployment = build_dp_deployment(
+        llm_config,
+        enable_fault_tolerance=builder_config.enable_fault_tolerance,
+    )
 
     ingress_cls_config = builder_config.ingress_cls_config
     ingress_options = ingress_cls_config.ingress_cls.get_deployment_options(

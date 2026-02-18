@@ -1,0 +1,25 @@
+applications:
+  - args:
+      llm_config:
+        model_loading_config:
+          model_id: microsoft/Phi-tiny-MoE-instruct
+          model_source: microsoft/Phi-tiny-MoE-instruct
+        engine_kwargs:
+          tensor_parallel_size: 1
+          pipeline_parallel_size: 1
+          data_parallel_size: 4
+          distributed_executor_backend: ray
+          max_model_len: 1024
+          max_num_seqs: 32
+          enforce_eager: true
+        placement_group_config:
+          bundles:
+            - GPU: 1
+              CPU: 1
+        runtime_env:
+          env_vars:
+            VLLM_DISABLE_COMPILE_CACHE: "1"
+      enable_fault_tolerance: true
+    import_path: ray.serve.llm:build_dp_openai_app
+    name: llm-endpoint
+    route_prefix: /
