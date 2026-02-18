@@ -81,21 +81,22 @@ class SGLangServer:
 
     @staticmethod
     def _build_chat_messages(messages: List[Any]) -> List[dict[str, Any]]:
-        def get_field(message: Any, field_name: str, default: Any) -> Any:
-            if isinstance(message, dict):
-                return message.get(field_name, default)
-            return getattr(message, field_name, default)
-
         converted_messages: List[dict[str, Any]] = []
         for message in messages:
-            role = get_field(message, "role", "user")
-            content = get_field(message, "content", "")
-            converted_messages.append(
-                {
-                    "role": str(role),
-                    "content": "" if content is None else content,
+            if isinstance(message, dict):
+                message_dict = dict(message)
+            elif hasattr(message, "model_dump") and callable(message.model_dump):
+                message_dict = dict(message.model_dump())
+            else:
+                message_dict = {
+                    "role": getattr(message, "role", "user"),
+                    "content": getattr(message, "content", ""),
                 }
-            )
+
+            message_dict["role"] = str(message_dict.get("role", "user"))
+            content = message_dict.get("content", "")
+            message_dict["content"] = "" if content is None else content
+            converted_messages.append(message_dict)
         return converted_messages
 
     @staticmethod
@@ -143,13 +144,20 @@ class SGLangServer:
                 fallback_kwargs = dict(template_kwargs)
                 tools = fallback_kwargs.get("tools")
                 # Try an alternative tools payload shape used by some templates.
-                if tools:
-                    fallback_kwargs["tools"] = [
-                        item
-                        if isinstance(item, dict) and "function" in item
-                        else {"function": item}
-                        for item in tools
-                    ]
+                if not tools:
+                    logger.warning(
+                        "SGLang chat template rendering failed; falling back to "
+                        "simple role/content prompt. first_error=%s",
+                        first_error,
+                    )
+                    return self._render_fallback_prompt(messages)
+
+                fallback_kwargs["tools"] = [
+                    item
+                    if isinstance(item, dict) and "function" in item
+                    else {"function": item}
+                    for item in tools
+                ]
                 try:
                     return tokenizer.apply_chat_template(
                         messages,
@@ -165,6 +173,10 @@ class SGLangServer:
                         second_error,
                     )
 
+        return self._render_fallback_prompt(messages)
+
+    @staticmethod
+    def _render_fallback_prompt(messages: List[dict[str, Any]]) -> str:
         # Fallback prompt format for tokenizers without chat-template support.
         prompt_lines: List[str] = []
         for message in messages:
