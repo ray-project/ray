@@ -334,16 +334,10 @@ class FuseOperators(Rule):
                 f"({down_logical_op.target_num_rows_per_block})"
             )
             ref_bundler = StreamingRepartitionRefBundler(batch_size)
-            # No further fusion because StreamingRepartitionRefBundler is stateful
-            # and maintains internal buffering state across bundles.
-            supports_fusion = False
         else:
             # Non-strict mode: use default pass-through bundler.
             # Works with any batch_size without cross-task buffering.
             ref_bundler = None
-            # Can fuse further because the default bundler is stateless
-            # and processes each bundle independently.
-            supports_fusion = True
 
         compute = self._fuse_compute_strategy(
             up_logical_op.compute, down_logical_op.compute
@@ -377,7 +371,7 @@ class FuseOperators(Rule):
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
-            supports_fusion=supports_fusion,
+            supports_fusion=True,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         for map_task_kwargs_fn in itertools.chain(
