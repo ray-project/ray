@@ -9,7 +9,7 @@ from pandas.api.types import is_categorical_dtype
 
 from ray.data.aggregate import Mean
 from ray.data.preprocessor import SerializablePreprocessorBase
-from ray.data.preprocessors.utils import migrate_private_fields
+from ray.data.preprocessors.utils import _Computed, migrate_private_fields
 from ray.data.preprocessors.version_support import (
     SerializablePreprocessor as Serializable,
 )
@@ -259,11 +259,14 @@ class SimpleImputer(SerializablePreprocessorBase):
             self,
             {
                 "_columns": ("columns", None),
-                "_output_columns": ("output_columns", lambda obj: obj._columns),
+                "_output_columns": (
+                    "output_columns",
+                    _Computed(lambda obj: obj._columns),
+                ),
                 "_strategy": ("strategy", None),
                 "_fill_value": (
                     "fill_value",
-                    lambda obj: None,
+                    _Computed(lambda obj: None),
                 ),  # _fill_value is optional
             },
             ["_columns", "_strategy"],

@@ -8,7 +8,7 @@ import pyarrow.compute as pc
 from ray.data.aggregate import AbsMax, ApproximateQuantile, Max, Mean, Min, Std
 from ray.data.block import BlockAccessor
 from ray.data.preprocessor import Preprocessor, SerializablePreprocessorBase
-from ray.data.preprocessors.utils import migrate_private_fields
+from ray.data.preprocessors.utils import _Computed, migrate_private_fields
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -202,7 +202,10 @@ class StandardScaler(SerializablePreprocessorBase):
             self,
             {
                 "_columns": ("columns", None),
-                "_output_columns": ("output_columns", lambda obj: obj._columns),
+                "_output_columns": (
+                    "output_columns",
+                    _Computed(lambda obj: obj._columns),
+                ),
             },
             ["_columns"],
         )
@@ -335,7 +338,10 @@ class MinMaxScaler(SerializablePreprocessorBase):
             self,
             {
                 "_columns": ("columns", None),
-                "_output_columns": ("output_columns", lambda obj: obj._columns),
+                "_output_columns": (
+                    "output_columns",
+                    _Computed(lambda obj: obj._columns),
+                ),
             },
             ["_columns"],
         )
@@ -461,7 +467,10 @@ class MaxAbsScaler(SerializablePreprocessorBase):
             self,
             {
                 "_columns": ("columns", None),
-                "_output_columns": ("output_columns", lambda obj: obj._columns),
+                "_output_columns": (
+                    "output_columns",
+                    _Computed(lambda obj: obj._columns),
+                ),
             },
             ["_columns"],
         )
@@ -649,7 +658,10 @@ class RobustScaler(SerializablePreprocessorBase):
             self,
             {
                 "_columns": ("columns", None),
-                "_output_columns": ("output_columns", lambda obj: obj._columns),
+                "_output_columns": (
+                    "output_columns",
+                    _Computed(lambda obj: obj._columns),
+                ),
                 "_quantile_range": ("quantile_range", (0.25, 0.75)),
                 "_quantile_precision": (
                     "quantile_precision",

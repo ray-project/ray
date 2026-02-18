@@ -5,6 +5,7 @@ import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors.utils import (
+    _Computed,
     migrate_private_fields,
     simple_hash,
     simple_split_tokenizer,
@@ -194,7 +195,10 @@ class HashingVectorizer(Preprocessor):
                 "_columns": ("columns", None),
                 "_num_features": ("num_features", None),
                 "_tokenization_fn": ("tokenization_fn", simple_split_tokenizer),
-                "_output_columns": ("output_columns", lambda obj: obj._columns),
+                "_output_columns": (
+                    "output_columns",
+                    _Computed(lambda obj: obj._columns),
+                ),
             },
             ["_columns", "_num_features"],
         )
@@ -386,7 +390,10 @@ class CountVectorizer(Preprocessor):
                 "_columns": ("columns", None),
                 "_tokenization_fn": ("tokenization_fn", simple_split_tokenizer),
                 "_max_features": ("max_features", None),
-                "_output_columns": ("output_columns", lambda obj: obj._columns),
+                "_output_columns": (
+                    "output_columns",
+                    _Computed(lambda obj: obj._columns),
+                ),
             },
             ["_columns"],
         )

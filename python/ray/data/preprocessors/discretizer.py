@@ -5,7 +5,7 @@ import pandas as pd
 
 from ray.data.aggregate import Max, Min
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors.utils import migrate_private_fields
+from ray.data.preprocessors.utils import _Computed, migrate_private_fields
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -258,7 +258,10 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
                 "_include_lowest": ("include_lowest", False),
                 "_duplicates": ("duplicates", "raise"),
                 "_dtypes": ("dtypes", None),
-                "_output_columns": ("output_columns", lambda obj: obj._columns),
+                "_output_columns": (
+                    "output_columns",
+                    _Computed(lambda obj: obj._columns),
+                ),
             },
             ["_columns", "_bins"],
         )
@@ -455,7 +458,10 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
                 "_include_lowest": ("include_lowest", False),
                 "_duplicates": ("duplicates", "raise"),
                 "_dtypes": ("dtypes", None),
-                "_output_columns": ("output_columns", lambda obj: obj._columns),
+                "_output_columns": (
+                    "output_columns",
+                    _Computed(lambda obj: obj._columns),
+                ),
             },
             ["_columns", "_bins"],
         )

@@ -28,6 +28,7 @@ from ray.data.preprocessor import (
     SerializablePreprocessorBase,
 )
 from ray.data.preprocessors.utils import (
+    _Computed,
     make_post_processor,
     migrate_private_fields,
 )
@@ -318,7 +319,10 @@ class OrdinalEncoder(SerializablePreprocessorBase):
             self,
             {
                 "_columns": ("columns", None),
-                "_output_columns": ("output_columns", lambda obj: obj._columns),
+                "_output_columns": (
+                    "output_columns",
+                    _Computed(lambda obj: obj._columns),
+                ),
                 "_encode_lists": ("encode_lists", True),
             },
             ["_columns"],
@@ -598,7 +602,10 @@ class OneHotEncoder(SerializablePreprocessorBase):
             self,
             {
                 "_columns": ("columns", None),
-                "_output_columns": ("output_columns", lambda obj: obj._columns),
+                "_output_columns": (
+                    "output_columns",
+                    _Computed(lambda obj: obj._columns),
+                ),
                 "_max_categories": ("max_categories", {}),
             },
             ["_columns"],
@@ -780,7 +787,10 @@ class MultiHotEncoder(SerializablePreprocessorBase):
             self,
             {
                 "_columns": ("columns", None),
-                "_output_columns": ("output_columns", lambda obj: obj._columns),
+                "_output_columns": (
+                    "output_columns",
+                    _Computed(lambda obj: obj._columns),
+                ),
                 "_max_categories": ("max_categories", {}),
             },
             ["_columns"],
@@ -967,7 +977,10 @@ class LabelEncoder(SerializablePreprocessorBase):
             self,
             {
                 "_label_column": ("label_column", None),
-                "_output_column": ("output_column", lambda obj: obj._label_column),
+                "_output_column": (
+                    "output_column",
+                    _Computed(lambda obj: obj._label_column),
+                ),
             },
             ["_label_column"],
         )
@@ -1137,7 +1150,10 @@ class Categorizer(SerializablePreprocessorBase):
             self,
             {
                 "_columns": ("columns", None),
-                "_output_columns": ("output_columns", lambda obj: obj._columns),
+                "_output_columns": (
+                    "output_columns",
+                    _Computed(lambda obj: obj._columns),
+                ),
                 "_dtypes": ("dtypes", {}),
             },
             ["_columns"],

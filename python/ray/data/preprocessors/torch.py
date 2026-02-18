@@ -4,7 +4,7 @@ import numpy as np
 
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors.utils import migrate_private_fields
+from ray.data.preprocessors.utils import _Computed, migrate_private_fields
 from ray.data.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import PublicAPI
 
@@ -182,7 +182,10 @@ class TorchVisionPreprocessor(Preprocessor):
                 "_columns": ("columns", None),
                 "_torchvision_transform": ("torchvision_transform", None),
                 "_batched": ("batched", False),
-                "_output_columns": ("output_columns", lambda obj: obj._columns),
+                "_output_columns": (
+                    "output_columns",
+                    _Computed(lambda obj: obj._columns),
+                ),
             },
             ["_columns", "_torchvision_transform"],
         )

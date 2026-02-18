@@ -4,6 +4,7 @@ import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors.utils import (
+    _Computed,
     migrate_private_fields,
     simple_split_tokenizer,
 )
@@ -113,7 +114,10 @@ class Tokenizer(Preprocessor):
             {
                 "_columns": ("columns", None),
                 "_tokenization_fn": ("tokenization_fn", simple_split_tokenizer),
-                "_output_columns": ("output_columns", lambda obj: obj._columns),
+                "_output_columns": (
+                    "output_columns",
+                    _Computed(lambda obj: obj._columns),
+                ),
             },
             ["_columns"],
         )

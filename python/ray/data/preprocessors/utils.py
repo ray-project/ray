@@ -255,6 +255,21 @@ def make_post_processor(base_fn, callbacks: List[Callable]):
     return wrapper
 
 
+class _Computed:
+    """
+    Wraps a factory callable for defaults that must be computed from the object.
+
+    Plain callable values (e.g. a tokenizer function stored as an attribute)
+    must NOT be wrapped — they will be stored as-is.
+    """
+
+    def __init__(self, factory: Callable[[Any], Any]) -> None:
+        self._factory = factory
+
+    def __call__(self, obj: Any) -> Any:
+        return self._factory(obj)
+
+
 def migrate_private_fields(
     obj, field_mappings: Dict[str, Tuple[str, Any]], required: List[str]
 ):
@@ -271,7 +286,11 @@ def migrate_private_fields(
                     f"Invalid serialized {type(obj).__name__}: missing required field '{private_field}'."
                 )
             else:
-                # Set defaults for missing fields
+                # Set defaults for missing fields.
+                # _Computed defaults are called with obj; all other values are stored as-is,
+                # including callable objects like tokenizer functions.
                 setattr(
-                    obj, private_field, default(obj) if callable(default) else default
+                    obj,
+                    private_field,
+                    default(obj) if isinstance(default, _Computed) else default,
                 )
