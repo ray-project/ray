@@ -14,7 +14,10 @@
 
 #pragma once
 
+#include <memory>
+
 #include "ray/stats/metric.h"
+#include "ray/stats/percentile_metric.h"
 
 namespace ray {
 namespace core {
@@ -70,6 +73,18 @@ inline ray::stats::Gauge GetTotalLineageBytesGaugeMetric() {
       /*unit=*/"",
       /*tag_keys=*/{},
   };
+}
+
+inline std::unique_ptr<ray::stats::PercentileMetric> GetSchedulerPlacementTimeMsMetric() {
+  return std::make_unique<ray::stats::PercentileMetric>(
+      /*name=*/"scheduler_placement_time_ms",
+      /*description=*/
+      "The time it takes for a workload (task, actor, placement group) to be placed. "
+      "This is the time from when the tasks dependencies are resolved to when it "
+      "actually reserves resources on a node to run.",
+      /*unit=*/"ms",
+      /*max_expected_value=*/10000.0,
+      /*num_buckets=*/128);
 }
 
 }  // namespace core

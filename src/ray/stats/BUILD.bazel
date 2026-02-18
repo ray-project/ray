@@ -62,3 +62,25 @@ ray_cc_library(
         "//src/ray/observability:metric_interface",
     ],
 )
+
+ray_cc_library(
+    name = "percentile_tracker",
+    srcs = ["percentile_tracker.cc"],
+    hdrs = ["percentile_tracker.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/util:logging",
+    ],
+)
+
+ray_cc_library(
+    name = "percentile_metric",
+    hdrs = ["percentile_metric.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":percentile_tracker",
+        ":stats_metric",
+        "//src/ray/observability:metric_interface",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
