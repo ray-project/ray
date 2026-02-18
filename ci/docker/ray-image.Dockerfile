@@ -16,6 +16,7 @@ ARG RAY_WHEEL_IMAGE=cr.ray.io/rayproject/ray-wheel-py${PYTHON_VERSION}${ARCH_SUF
 FROM ${RAY_WHEEL_IMAGE} AS wheel-source
 FROM ${BASE_IMAGE}
 
+ARG IMAGE_TYPE=ray
 ARG RAY_COMMIT=unknown-commit
 ARG RAY_VERSION=3.0.0.dev0
 
