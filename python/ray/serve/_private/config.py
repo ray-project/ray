@@ -32,6 +32,9 @@ from ray.serve.config import (
     AggregationFunction,
     AutoscalingConfig,
     DeploymentMode,
+    GangPlacementStrategy,
+    GangRuntimeFailurePolicy,
+    GangSchedulingConfig,
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
@@ -41,6 +44,9 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentConfig as DeploymentConfigProto,
     DeploymentLanguage,
     EncodingType as EncodingTypeProto,
+    GangPlacementStrategy as GangPlacementStrategyProto,
+    GangRuntimeFailurePolicy as GangRuntimeFailurePolicyProto,
+    GangSchedulingConfig as GangSchedulingConfigProto,
     LoggingConfig as LoggingConfigProto,
     ReplicaConfig as ReplicaConfigProto,
     RequestRouterConfig as RequestRouterConfigProto,
@@ -199,6 +205,10 @@ class DeploymentConfig(BaseModel):
         default=DEFAULT_CONSTRUCTOR_RETRY_COUNT,
         update_type=DeploymentOptionUpdateType.NeedsReconfigure,
     )
+    gang_scheduling_config: Optional[GangSchedulingConfig] = Field(
+        default=None,
+        update_type=DeploymentOptionUpdateType.HeavyWeight,
+    )
 
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
@@ -246,6 +256,19 @@ class DeploymentConfig(BaseModel):
 
         return v
 
+    @validator("gang_scheduling_config", always=True)
+    def validate_gang_scheduling_config(cls, v, values):
+        if v is None:
+            return v
+        num_replicas = values.get("num_replicas")
+        if num_replicas is not None and num_replicas % v.gang_size != 0:
+            raise ValueError(
+                f"num_replicas ({num_replicas}) must be a multiple of "
+                f"gang_size ({v.gang_size})."
+            )
+
+        return v
+
     def needs_pickle(self):
         return _needs_pickle(self.deployment_language, self.is_cross_language)
 
@@ -260,6 +283,15 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"]["policy"][
                 "_serialized_policy_def"
             ] = self.autoscaling_config.policy._serialized_policy_def
+            # Serialize policy_kwargs dict to bytes for the proto
+            policy_kwargs = data["autoscaling_config"]["policy"].get("policy_kwargs")
+            if policy_kwargs is not None:
+                if not policy_kwargs:
+                    data["autoscaling_config"]["policy"]["policy_kwargs"] = b""
+                else:
+                    data["autoscaling_config"]["policy"][
+                        "policy_kwargs"
+                    ] = cloudpickle.dumps(policy_kwargs)
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
@@ -295,6 +327,19 @@ class DeploymentConfig(BaseModel):
         data["user_configured_option_names"] = list(
             data["user_configured_option_names"]
         )
+        if data.get("gang_scheduling_config"):
+            gang_config = data["gang_scheduling_config"]
+            placement_strategy = GangPlacementStrategyProto.Value(
+                gang_config["gang_placement_strategy"]
+            )
+            failure_policy = GangRuntimeFailurePolicyProto.Value(
+                gang_config["runtime_failure_policy"]
+            )
+            data["gang_scheduling_config"] = GangSchedulingConfigProto(
+                gang_size=gang_config["gang_size"],
+                gang_placement_strategy=placement_strategy,
+                runtime_failure_policy=failure_policy,
+            )
         return DeploymentConfigProto(**data)
 
     def to_proto_bytes(self):
@@ -361,6 +406,17 @@ class DeploymentConfig(BaseModel):
                 data["autoscaling_config"][
                     "aggregation_function"
                 ] = AggregationFunction.MEAN
+            # Deserialize policy_kwargs bytes back to a dict
+            if "policy" in data["autoscaling_config"]:
+                policy_data = data["autoscaling_config"]["policy"]
+                if "policy_kwargs" in policy_data:
+                    raw = policy_data["policy_kwargs"]
+                    if raw and raw != b"":
+                        policy_data["policy_kwargs"] = cloudpickle.loads(
+                            proto.autoscaling_config.policy.policy_kwargs
+                        )
+                    else:
+                        policy_data["policy_kwargs"] = {}
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":
@@ -374,6 +430,19 @@ class DeploymentConfig(BaseModel):
                 data["logging_config"]["encoding"] = EncodingTypeProto.Name(
                     data["logging_config"]["encoding"]
                 )
+        if "gang_scheduling_config" in data and data["gang_scheduling_config"]:
+            gang_config = data["gang_scheduling_config"]
+            gang_config["gang_placement_strategy"] = GangPlacementStrategy(
+                GangPlacementStrategyProto.Name(gang_config["gang_placement_strategy"])
+            )
+            gang_config["runtime_failure_policy"] = GangRuntimeFailurePolicy(
+                GangRuntimeFailurePolicyProto.Name(
+                    gang_config["runtime_failure_policy"]
+                )
+            )
+            data["gang_scheduling_config"] = GangSchedulingConfig(**gang_config)
+        else:
+            data.pop("gang_scheduling_config", None)
 
         return cls(**data)
 
