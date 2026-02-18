@@ -2,6 +2,9 @@
 # isort: skip_file
 
 # __tf_train_start__
+import os
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
+
 import ray
 import tensorflow as tf
 
@@ -33,6 +36,10 @@ def build_model() -> tf.keras.Model:
 
 
 def train_func(config: dict):
+    import os
+    os.environ["TF_USE_LEGACY_KERAS"] = "1"
+    import tensorflow as tf
+
     batch_size = config.get("batch_size", 64)
     epochs = config.get("epochs", 3)
 
@@ -42,8 +49,8 @@ def train_func(config: dict):
         multi_worker_model = build_model()
         multi_worker_model.compile(
             optimizer=tf.keras.optimizers.SGD(learning_rate=config.get("lr", 1e-3)),
-            loss=tf.keras.losses.mean_squared_error,
-            metrics=[tf.keras.metrics.mean_squared_error],
+            loss="mean_squared_error",
+            metrics=["mean_squared_error"],
         )
 
     dataset = train.get_dataset_shard("train")

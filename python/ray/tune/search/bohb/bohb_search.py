@@ -2,6 +2,7 @@
 
 import copy
 import logging
+import math
 from typing import Dict, List, Optional, Union
 
 # use cloudpickle instead of pickle to make BOHB obj
@@ -313,7 +314,12 @@ class TuneBOHB(Searcher):
                         par, lower=domain.lower, upper=domain.upper, log=False
                     )
                 elif isinstance(sampler, Normal):
-                    if domain.lower is None or domain.upper is None:
+                    if (
+                        domain.lower is None
+                        or domain.upper is None
+                        or not math.isfinite(domain.lower)
+                        or not math.isfinite(domain.upper)
+                    ):
                         raise ValueError(
                             f"TuneBOHB does not support unbounded normal "
                             f"distributions. Please specify bounds for "

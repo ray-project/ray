@@ -244,6 +244,7 @@ These concrete examples demonstrate how Ray Train appropriately saves checkpoint
     import numpy as np
 
     def train_func(config):
+        os.environ["TF_USE_LEGACY_KERAS"] = "1"
         import tensorflow as tf
         n = 100
         # create a toy dataset
@@ -254,7 +255,7 @@ These concrete examples demonstrate how Ray Train appropriately saves checkpoint
 
         dataset = tf.data.Dataset.from_tensor_slices((X, Y)).batch(20)
 
-        strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+        strategy = tf.distribute.MultiWorkerMirroredStrategy()
         with strategy.scope():
             # toy neural network : 1-layer
             model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
@@ -298,6 +299,7 @@ Load checkpoints
     import numpy as np
 
     def train_func(config):
+        os.environ["TF_USE_LEGACY_KERAS"] = "1"
         import tensorflow as tf
         n = 100
         # create a toy dataset
@@ -308,7 +310,7 @@ Load checkpoints
 
         dataset = tf.data.Dataset.from_tensor_slices((X, Y)).batch(20)
 
-        strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+        strategy = tf.distribute.MultiWorkerMirroredStrategy()
         with strategy.scope():
             # toy neural network : 1-layer
             checkpoint = train.get_checkpoint()
