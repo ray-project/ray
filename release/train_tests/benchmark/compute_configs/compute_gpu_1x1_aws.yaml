@@ -7,5 +7,3 @@ flags:
 head_node_type:
     name: head_node
     instance_type: g4dn.8xlarge
-    resources:
-        cpu: 0
