@@ -288,6 +288,78 @@ def test_field_migration_from_old_public_names(
             assert actual_value == expected_value, f"Mismatch in {attr_name}"
 
 
+@pytest.mark.parametrize(
+    "preprocessor_class,minimal_state,expected_defaults",
+    [
+        # Callable default: tokenization_fn must be stored as the function itself,
+        # not called. This would have failed with the old callable() check.
+        (
+            Tokenizer,
+            {"columns": ["text"]},
+            {"tokenization_fn": "callable", "output_columns": ["text"]},
+        ),
+        (
+            HashingVectorizer,
+            {"columns": ["text"], "num_features": 100},
+            {"tokenization_fn": "callable", "output_columns": ["text"]},
+        ),
+        (
+            CountVectorizer,
+            {"columns": ["text"]},
+            {"tokenization_fn": "callable", "output_columns": ["text"]},
+        ),
+        # _Computed default: output_columns derives from _columns.
+        (
+            StandardScaler,
+            {"columns": ["A", "B"]},
+            {"output_columns": ["A", "B"]},
+        ),
+        # _Computed default deriving from a different source field.
+        (
+            LabelEncoder,
+            {"label_column": "label"},
+            {"output_column": "label"},
+        ),
+        # Plain value default alongside a _Computed default.
+        (
+            Normalizer,
+            {"columns": ["A", "B"]},
+            {"norm": "l2", "output_columns": ["A", "B"]},
+        ),
+    ],
+    ids=[
+        "Tokenizer",
+        "HashingVectorizer",
+        "CountVectorizer",
+        "StandardScaler",
+        "LabelEncoder",
+        "Normalizer",
+    ],
+)
+def test_missing_optional_fields_use_defaults(
+    preprocessor_class, minimal_state, expected_defaults
+):
+    """
+    Verify that absent optional fields are filled with their correct defaults.
+
+    This exercises the default-fallback branch of migrate_private_fields. The minimal_state
+    deliberately omits optional fields to force the default path.
+    """
+    preprocessor = preprocessor_class.__new__(preprocessor_class)
+    preprocessor.__setstate__(minimal_state)
+
+    for attr_name, expected_value in expected_defaults.items():
+        actual_value = getattr(preprocessor, attr_name)
+        if expected_value == "callable":
+            assert callable(
+                actual_value
+            ), f"{attr_name} should be a stored callable, not the result of calling it"
+        else:
+            assert (
+                actual_value == expected_value
+            ), f"Mismatch in {attr_name}: {actual_value!r} != {expected_value!r}"
+
+
 def test_torchvision_preprocessor_field_migration():
     try:
         from torchvision import transforms
