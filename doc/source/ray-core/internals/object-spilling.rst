@@ -183,9 +183,9 @@ When the Plasma store cannot allocate space for a new object, the `CreateRequest
 
    Based on the return value, ``CreateRequestQueue`` decides what to do next:
 
-   - **``true``** (spilling is in progress): The **LocalObjectManager** has identified eligible **pinned primary copies** (objects with reference count == 1, meaning only the owner holds a reference and no task is actively using it, see `PlasmaStore::IsObjectSpillable <https://github.com/ray-project/ray/blob/master/src/ray/object_manager/plasma/store.cc#L560>`__) and spill workers are actively writing them to external storage.
-   - **``false``** (no active spills): The **LocalObjectManager** has no ongoing spills. This occurs if:
-   
+   - ``true`` (spilling is in progress): The **LocalObjectManager** has identified eligible **pinned primary copies** (objects with reference count == 1, meaning only the owner holds a reference and no task is actively using it, see `PlasmaStore::IsObjectSpillable <https://github.com/ray-project/ray/blob/master/src/ray/object_manager/plasma/store.cc#L560>`__) and spill workers are actively writing them to external storage.
+   - ``false`` (no active spills): The **LocalObjectManager** has no ongoing spills. This occurs if:
+     
      *   No eligible objects were found (e.g., all pinned objects are currently **in use** by running tasks).
      *   The total size of spillable objects is too small (below ``min_spilling_size``) to justify an immediate spill, so Ray waits to batch more objects.
      *   Spilling is disabled in the configuration.
