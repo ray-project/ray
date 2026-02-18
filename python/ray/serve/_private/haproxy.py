@@ -1,6 +1,5 @@
 import asyncio
 import csv
-import fcntl
 import io
 import json
 import logging
@@ -676,12 +675,16 @@ class HAProxyApi(ProxyApi):
             # Use file locking to prevent concurrent writes from multiple processes
             # This is important in test environments where multiple nodes may run
             # on the same machine
-            with open(self.config_file_path, "w") as f:
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            import fcntl
+
+            lock_file_path = self.config_file_path + ".lock"
+            with open(lock_file_path, "w") as lock_f:
+                fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)
                 try:
-                    f.write(config_content)
+                    with open(self.config_file_path, "w") as f:
+                        f.write(config_content)
                 finally:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                    fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
 
             logger.debug(
                 f"Succesfully generated HAProxy configuration: {self.config_file_path}."
@@ -1014,6 +1017,9 @@ class HAProxyManager(ProxyActorInterface):
 
         ready_to_serve = False
         while not ready_to_serve:
+            if self._is_draining():
+                return
+
             try:
                 all_backends = set()
                 ready_backends = set()

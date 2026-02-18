@@ -985,14 +985,6 @@ python/ray/data/_internal/block_batching/iter_batches.py
 python/ray/data/_internal/block_batching/util.py
     DOC402: Function `resolve_block_refs` has "yield" statements, but the docstring does not have a "Yields" section
     DOC404: Function `resolve_block_refs` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
-    DOC402: Function `blocks_to_batches` has "yield" statements, but the docstring does not have a "Yields" section
-    DOC404: Function `blocks_to_batches` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
-    DOC402: Function `format_batches` has "yield" statements, but the docstring does not have a "Yields" section
-    DOC404: Function `format_batches` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
-    DOC402: Function `collate` has "yield" statements, but the docstring does not have a "Yields" section
-    DOC404: Function `collate` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
-    DOC402: Function `finalize_batches` has "yield" statements, but the docstring does not have a "Yields" section
-    DOC404: Function `finalize_batches` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
 --------------------
 python/ray/data/_internal/datasource/lance_datasink.py
     DOC101: Method `LanceDatasink.__init__`: Docstring contains fewer arguments than in function signature.
@@ -1119,12 +1111,6 @@ python/ray/data/_internal/iterator/stream_split_iterator.py
 python/ray/data/_internal/logging.py
     DOC201: Function `register_dataset_logger` does not have a return section in docstring
     DOC201: Function `unregister_dataset_logger` does not have a return section in docstring
---------------------
-python/ray/data/_internal/logical/operators/all_to_all_operator.py
-    DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
-    DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
-    DOC101: Method `AbstractAllToAll.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `AbstractAllToAll.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [input_op: LogicalOperator, name: str, num_outputs: Optional[int], ray_remote_args: Optional[Dict[str, Any]], sub_progress_bar_names: Optional[List[str]]].
 --------------------
 python/ray/data/_internal/logical/operators/join_operator.py
     DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
@@ -1471,9 +1457,6 @@ python/ray/serve/_private/controller.py
 --------------------
 python/ray/serve/_private/deploy_utils.py
     DOC201: Function `get_app_code_version` does not have a return section in docstring
---------------------
-python/ray/serve/_private/deployment_scheduler.py
-    DOC201: Method `DeploymentScheduler._schedule_replica` does not have a return section in docstring
 --------------------
 python/ray/serve/_private/deployment_state.py
     DOC201: Method `ReplicaStateContainer.get` does not have a return section in docstring
