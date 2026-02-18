@@ -1,3 +1,5 @@
+name: multi-agent-a2a
+
 logging_config:
   encoding: JSON
   log_level: INFO
