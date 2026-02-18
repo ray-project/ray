@@ -134,9 +134,6 @@ class NixlTensorTransport(TensorTransportManager):
         with self._cache_lock:
             device = None
             tensor_meta = []
-            duplicate_meta = self._record_and_get_meta_if_duplicate(obj_id, gpu_object)
-            if duplicate_meta is not None:
-                return duplicate_meta
 
             if gpu_object:
                 # We assume all tensors in one GPU object have the same device type,
@@ -345,31 +342,6 @@ class NixlTensorTransport(TensorTransportManager):
     ):
         with self._aborted_transfer_obj_ids_lock:
             self._aborted_transfer_obj_ids.add(obj_id)
-
-    # NOTE: The below methods are intended to be used internally hence they assume the caller is already holding the cache lock.
-    def _record_and_get_meta_if_duplicate(
-        self, src_obj_id: str, src_gpu_object: List["torch.Tensor"]
-    ) -> Optional[NixlTransportMetadata]:
-        """
-        Record the NIXL managed meta for the given object ID if it is a duplicate of another object, and return the meta if it is.
-        Assumes that the caller is already holding the cache lock.
-        """
-        from ray._private.worker import global_worker
-
-        gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-        duplicate_obj_id = gpu_object_store.get_duplicate_objects(
-            src_obj_id, src_gpu_object
-        )
-        if duplicate_obj_id is not None:
-            meta = self._get_meta(duplicate_obj_id)
-            if meta is None:
-                raise ValueError(
-                    f"NIXL transport metadata for object id {duplicate_obj_id} not found"
-                )
-            self._put_meta(src_obj_id, meta)
-            self._add_tensor_descs(src_gpu_object)
-            return meta
-        return None
 
     def _get_num_managed_meta_nixl(self) -> int:
         with self._cache_lock:
