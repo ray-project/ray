@@ -22,7 +22,7 @@ This works well when the working set fits in memory. However, when the Plasma st
 
 .. note::
 
-   Object spilling is fully fully abstracted away to user applications. No application-level code changes are needed to automatically spill pinned objects to disk when under plasma store memory pressure.
+   Object spilling is fully abstracted away to user applications. No application-level code changes are needed to automatically spill pinned objects to disk when under plasma store memory pressure.
 
 
 Architecture
