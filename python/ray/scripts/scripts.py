@@ -2736,7 +2736,7 @@ def cpp(show_library_path, generate_bazel_project_template_to, bazel_version):
         shutil.copytree(lib_dir, out_lib_dir)
 
         with open(os.path.join(out_dir, ".bazelversion"), "w") as f:
-            f.write(bazel_version)
+            f.write(bazel_version.strip() + "\n")
 
         cli_logger.print(
             "Project template generated to {}",
