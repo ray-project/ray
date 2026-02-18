@@ -1,4 +1,5 @@
 import io
+import json
 import logging
 import os
 import pathlib
@@ -80,17 +81,36 @@ extensions = [
 
 # -- sphinx-collections: pull external template files at build time -----------
 
+_ANYSCALE_HOST = os.environ.get(
+    "ANYSCALE_HOST", "https://console.anyscale.com"
+)
+_TEMPLATE_README_API = (
+    _ANYSCALE_HOST + "/api/v2/experimental_workspaces/template/readme/{name}"
+)
+
 _TEMPLATE_COLLECTIONS = {
     "deployment-serve-llm": {
-        "url": "https://templates.ci.ray.io/templates/deployment-serve-llm/20260212-015212/build.zip",
         "target": "serve/tutorials/deployment-serve-llm",
     },
 }
 
 
+def _resolve_template_url(name):
+    """Fetch the build zip URL for a template from the readme API."""
+    api_url = _TEMPLATE_README_API.format(name=name)
+    logger.info("sphinx-collections: resolving template URL from %s", api_url)
+    with urlopen(api_url) as resp:
+        data = json.loads(resp.read())
+    url = data["result"]["url"]
+    # The readme API returns a preview.zip; swap to build.zip for docs builds.
+    url = url.replace("/preview.zip", "/build.zip")
+    logger.info("sphinx-collections: resolved URL %s", url)
+    return url
+
+
 def _fetch_and_extract_zip(config):
     """Download a zip archive and extract it into the collection target directory."""
-    url = config["url"]
+    url = _resolve_template_url(config["name"])
     target = pathlib.Path(config["target"])
     target.mkdir(parents=True, exist_ok=True)
     logger.info("sphinx-collections: downloading %s -> %s", url, target)
@@ -106,7 +126,7 @@ collections = {
         "driver": "function",
         "source": _fetch_and_extract_zip,
         "target": coll["target"],
-        "url": coll["url"],
+        "name": name,
         "write_result": False,
     }
     for name, coll in _TEMPLATE_COLLECTIONS.items()
