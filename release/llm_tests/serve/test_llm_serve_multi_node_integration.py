@@ -124,26 +124,34 @@ def test_llm_serve_data_parallelism():
     wait_for_condition(is_default_app_running, timeout=300)
 
 
-def test_llm_serve_gang_data_parallelism():
-    """Test Data Parallelism deployment with gang scheduling.
-
-    Validates that DP deployments work correctly with gang scheduling and placement group
-    bundles for resource reservation.
-    """
+@pytest.mark.parametrize(
+    "dp_size,num_replicas",
+    [
+        (4, None),  # Single group, single node
+        (8, None),  # Single group, multi-node
+        (4, 8),  # Multi-group, multi-node
+    ],
+)
+def test_llm_serve_gang_data_parallelism(dp_size, num_replicas):
+    """Test gang-scheduled Data Parallelism deployment."""
     placement_group_config = {
         "bundles": [{"GPU": 1, "CPU": 1}],
     }
+
+    deployment_config = dict()
+    if num_replicas is not None:
+        deployment_config["num_replicas"] = num_replicas
 
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id="microsoft/Phi-tiny-MoE-instruct",
             model_source="microsoft/Phi-tiny-MoE-instruct",
         ),
-        deployment_config=dict(),
+        deployment_config=deployment_config,
         engine_kwargs=dict(
             tensor_parallel_size=1,
             pipeline_parallel_size=1,
-            data_parallel_size=4,
+            data_parallel_size=dp_size,
             distributed_executor_backend="ray",
             max_model_len=1024,
             max_num_seqs=32,

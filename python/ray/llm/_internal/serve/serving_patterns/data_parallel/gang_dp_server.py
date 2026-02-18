@@ -1,35 +1,76 @@
 import asyncio
+import json
 import logging
 import os
 import time
+from typing import Tuple
 
 from ray import serve
+from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
-from ray.serve.config import GangPlacementStrategy, GangSchedulingConfig, GangRuntimeFailurePolicy
-from ray.serve.handle import DeploymentHandle
+from ray.serve.config import (
+    GangPlacementStrategy,
+    GangRuntimeFailurePolicy,
+    GangSchedulingConfig,
+)
 from ray.util.collective.collective import get_address_and_port
 
 logger = logging.getLogger(__name__)
 
+TIMEOUT_SECONDS = 120
+POLL_INTERVAL_SECONDS = 0.5
 
-@serve.deployment(num_replicas=1)
-class _GangDPMasterInfoBroker:
-    """Holds the DP master address/port for other DP replicas to retrieve."""
 
-    def __init__(self):
-        self.dp_address = None
-        self.dp_rpc_port = None
-        self.event = asyncio.Event()
+class GangMasterInfoRegistry:
+    """Registry for gang DP master info using Ray's internal KV store."""
 
-    async def set_master_info(self, dp_address: str, dp_rpc_port: int):
-        self.dp_address = dp_address
-        self.dp_rpc_port = dp_rpc_port
-        self.event.set()
+    _KEY_PREFIX = "LLMServeRegistry:serve_global:gang_dp_master/"
 
-    async def get_master_info(self):
-        await self.event.wait()
-        return self.dp_address, self.dp_rpc_port
+    @classmethod
+    def _make_key(cls, gang_id: str) -> bytes:
+        return (cls._KEY_PREFIX + gang_id).encode("utf-8")
+
+    @classmethod
+    def register(cls, gang_id: str, address: str, port: int) -> None:
+        """Store the DP master info in GCS KV store."""
+        key = cls._make_key(gang_id)
+        value = json.dumps({"address": address, "port": port}).encode("utf-8")
+        _internal_kv_put(key, value, overwrite=True)
+
+    @classmethod
+    async def get(
+        cls,
+        gang_id: str,
+        timeout: float = TIMEOUT_SECONDS,
+        poll_interval: float = POLL_INTERVAL_SECONDS,
+    ) -> Tuple[str, int]:
+        """Retrieve the DP master info for gang_id, polling until available.
+
+        Args:
+            gang_id: The ID of the gang.
+            timeout: The timeout in seconds.
+            poll_interval: The poll interval in seconds.
+
+        Returns:
+            A tuple of (address, port).
+
+        Raises:
+            TimeoutError: If the info is not available within timeout_seconds seconds.
+        """
+        key = cls._make_key(gang_id)
+        deadline = time.monotonic() + timeout
+        while True:
+            data = _internal_kv_get(key)
+            if data is not None:
+                info = json.loads(data)
+                return info["address"], info["port"]
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"Timed out waiting for DP master info for gang {gang_id} "
+                    f"after {timeout}s."
+                )
+            await asyncio.sleep(poll_interval)
 
 
 class GangDPServer(LLMServer):
@@ -40,9 +81,7 @@ class GangDPServer(LLMServer):
     fails, the entire group is restarted atomically.
     """
 
-    async def __init__(
-        self, llm_config: LLMConfig, master_info_broker: DeploymentHandle
-    ):
+    async def __init__(self, llm_config: LLMConfig):
         ctx = serve.get_replica_context()
         gang_context = ctx.gang_context
 
@@ -63,8 +102,8 @@ class GangDPServer(LLMServer):
 
         if self.dp_rank == 0:
             self.dp_address, self.dp_rpc_port = get_address_and_port()
-            await master_info_broker.set_master_info.remote(
-                self.dp_address, self.dp_rpc_port
+            GangMasterInfoRegistry.register(
+                self.gang_id, self.dp_address, self.dp_rpc_port
             )
             logger.info(
                 f"DP rank {self.dp_rank} has set DP master info: "
@@ -73,10 +112,9 @@ class GangDPServer(LLMServer):
             )
         else:
             timestamp = time.time()
-            (
-                self.dp_address,
-                self.dp_rpc_port,
-            ) = await master_info_broker.get_master_info.remote()
+            self.dp_address, self.dp_rpc_port = await GangMasterInfoRegistry.get(
+                self.gang_id
+            )
             logger.info(
                 f"DP rank {self.dp_rank} got DP master info: "
                 f"data_parallel_address={self.dp_address}, "
@@ -106,18 +144,23 @@ class GangDPServer(LLMServer):
                 f"Invalid data_parallel_size: {dp_size}, expecting positive integer."
             )
         if dp_size != 1:
-            if "num_replicas" in deployment_options:
-                raise ValueError(
-                    "num_replicas should not be specified for DP deployment, "
-                    f"use engine_kwargs.data_parallel_size={dp_size} instead."
-                )
             if "autoscaling_config" in deployment_options:
                 raise ValueError(
                     "autoscaling_config is not supported for DP deployment, "
                     "remove autoscaling_config instead. The `num_replicas` "
                     "will be set to `data_parallel_size`."
                 )
-            deployment_options["num_replicas"] = dp_size
+
+            num_replicas = deployment_options.get("num_replicas")
+            if num_replicas is not None:
+                if num_replicas % dp_size != 0:
+                    raise ValueError(
+                        f"num_replicas ({num_replicas}) must be a multiple of "
+                        f"data_parallel_size ({dp_size}) for gang DP deployment."
+                    )
+            else:
+                deployment_options["num_replicas"] = dp_size
+
             deployment_options["gang_scheduling_config"] = GangSchedulingConfig(
                 gang_size=dp_size,
                 gang_placement_strategy=GangPlacementStrategy.PACK,

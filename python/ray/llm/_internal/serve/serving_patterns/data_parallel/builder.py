@@ -21,7 +21,6 @@ from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
 )
 from ray.llm._internal.serve.serving_patterns.data_parallel.gang_dp_server import (
     GangDPServer,
-    _GangDPMasterInfoBroker,
 )
 from ray.serve.deployment import Application
 
@@ -49,11 +48,9 @@ def build_dp_deployment(
         The Ray Serve Application for the data parallel attention LLM deployment.
     """
     if enable_fault_tolerance:
-        master_info_broker = _GangDPMasterInfoBroker.bind()
         return build_llm_deployment(
             llm_config,
             name_prefix=name_prefix,
-            bind_kwargs={"master_info_broker": master_info_broker},
             override_serve_options=override_serve_options,
             deployment_cls=GangDPServer,
         )
