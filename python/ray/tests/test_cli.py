@@ -1511,7 +1511,15 @@ def test_serve_cli_registered():
 
     # Verify serve subcommands are accessible
     serve_cli = scripts.cli.commands["serve"]
-    expected_commands = {"start", "deploy", "run", "config", "status", "shutdown", "build"}
+    expected_commands = {
+        "start",
+        "deploy",
+        "run",
+        "config",
+        "status",
+        "shutdown",
+        "build",
+    }
     assert expected_commands.issubset(set(serve_cli.commands.keys()))
 
 
