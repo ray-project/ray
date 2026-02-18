@@ -317,7 +317,7 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_output_columns": (
                     "output_columns",
@@ -325,7 +325,7 @@ class OrdinalEncoder(SerializablePreprocessorBase):
                 ),
                 "_encode_lists": ("encode_lists", True),
             },
-            ["_columns"],
+            required=["_columns"],
         )
 
     def __repr__(self):
@@ -600,7 +600,7 @@ class OneHotEncoder(SerializablePreprocessorBase):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_output_columns": (
                     "output_columns",
@@ -608,7 +608,7 @@ class OneHotEncoder(SerializablePreprocessorBase):
                 ),
                 "_max_categories": ("max_categories", {}),
             },
-            ["_columns"],
+            required=["_columns"],
         )
 
     def __repr__(self):
@@ -785,7 +785,7 @@ class MultiHotEncoder(SerializablePreprocessorBase):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_output_columns": (
                     "output_columns",
@@ -793,7 +793,7 @@ class MultiHotEncoder(SerializablePreprocessorBase):
                 ),
                 "_max_categories": ("max_categories", {}),
             },
-            ["_columns"],
+            required=["_columns"],
         )
 
     def __repr__(self):
@@ -975,14 +975,14 @@ class LabelEncoder(SerializablePreprocessorBase):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_label_column": ("label_column", None),
                 "_output_column": (
                     "output_column",
                     _Computed(lambda obj: obj._label_column),
                 ),
             },
-            ["_label_column"],
+            required=["_label_column"],
         )
 
     def __repr__(self):
@@ -1148,7 +1148,7 @@ class Categorizer(SerializablePreprocessorBase):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_output_columns": (
                     "output_columns",
@@ -1156,7 +1156,7 @@ class Categorizer(SerializablePreprocessorBase):
                 ),
                 "_dtypes": ("dtypes", {}),
             },
-            ["_columns"],
+            required=["_columns"],
         )
 
     def __repr__(self):

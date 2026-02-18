@@ -140,10 +140,10 @@ class FeatureHasher(Preprocessor):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_num_features": ("num_features", None),
                 "_output_column": ("output_column", None),
             },
-            ["_columns", "_num_features", "_output_column"],
+            required=["_columns", "_num_features", "_output_column"],
         )

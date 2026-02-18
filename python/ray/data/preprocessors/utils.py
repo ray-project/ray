@@ -271,12 +271,15 @@ class _Computed:
 
 
 def migrate_private_fields(
-    obj, field_mappings: Dict[str, Tuple[str, Any]], required: List[str]
-):
+    obj: Any,
+    *,
+    fields: Dict[str, Tuple[str, Any]],
+    required: List[str],
+) -> None:
     """
     Migrates old public field names to new private field names during unpickling for backwards compatibility.
     """
-    for private_field, (public_field, default) in field_mappings.items():
+    for private_field, (public_field, default) in fields.items():
         if private_field not in obj.__dict__:
             if public_field in obj.__dict__:
                 # Migrate from old public field names to new private field names

@@ -111,7 +111,7 @@ class Tokenizer(Preprocessor):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_tokenization_fn": ("tokenization_fn", simple_split_tokenizer),
                 "_output_columns": (
@@ -119,5 +119,5 @@ class Tokenizer(Preprocessor):
                     _Computed(lambda obj: obj._columns),
                 ),
             },
-            ["_columns"],
+            required=["_columns"],
         )

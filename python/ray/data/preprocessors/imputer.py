@@ -257,7 +257,7 @@ class SimpleImputer(SerializablePreprocessorBase):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_output_columns": (
                     "output_columns",
@@ -269,7 +269,7 @@ class SimpleImputer(SerializablePreprocessorBase):
                     _Computed(lambda obj: None),
                 ),  # _fill_value is optional
             },
-            ["_columns", "_strategy"],
+            required=["_columns", "_strategy"],
         )
 
 

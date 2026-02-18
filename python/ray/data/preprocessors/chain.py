@@ -127,8 +127,8 @@ class Chain(Preprocessor):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_preprocessors": ("preprocessors", None),
             },
-            ["_preprocessors"],
+            required=["_preprocessors"],
         )

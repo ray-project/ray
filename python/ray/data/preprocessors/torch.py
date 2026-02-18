@@ -178,7 +178,7 @@ class TorchVisionPreprocessor(Preprocessor):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_torchvision_transform": ("torchvision_transform", None),
                 "_batched": ("batched", False),
@@ -187,5 +187,5 @@ class TorchVisionPreprocessor(Preprocessor):
                     _Computed(lambda obj: obj._columns),
                 ),
             },
-            ["_columns", "_torchvision_transform"],
+            required=["_columns", "_torchvision_transform"],
         )

@@ -191,7 +191,7 @@ class HashingVectorizer(Preprocessor):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_num_features": ("num_features", None),
                 "_tokenization_fn": ("tokenization_fn", simple_split_tokenizer),
@@ -200,7 +200,7 @@ class HashingVectorizer(Preprocessor):
                     _Computed(lambda obj: obj._columns),
                 ),
             },
-            ["_columns", "_num_features"],
+            required=["_columns", "_num_features"],
         )
 
 
@@ -386,7 +386,7 @@ class CountVectorizer(Preprocessor):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_tokenization_fn": ("tokenization_fn", simple_split_tokenizer),
                 "_max_features": ("max_features", None),
@@ -395,5 +395,5 @@ class CountVectorizer(Preprocessor):
                     _Computed(lambda obj: obj._columns),
                 ),
             },
-            ["_columns"],
+            required=["_columns"],
         )

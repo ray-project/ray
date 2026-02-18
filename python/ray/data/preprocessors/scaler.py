@@ -200,14 +200,14 @@ class StandardScaler(SerializablePreprocessorBase):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_output_columns": (
                     "output_columns",
                     _Computed(lambda obj: obj._columns),
                 ),
             },
-            ["_columns"],
+            required=["_columns"],
         )
 
     def __repr__(self):
@@ -336,14 +336,14 @@ class MinMaxScaler(SerializablePreprocessorBase):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_output_columns": (
                     "output_columns",
                     _Computed(lambda obj: obj._columns),
                 ),
             },
-            ["_columns"],
+            required=["_columns"],
         )
 
     def __repr__(self):
@@ -465,14 +465,14 @@ class MaxAbsScaler(SerializablePreprocessorBase):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_output_columns": (
                     "output_columns",
                     _Computed(lambda obj: obj._columns),
                 ),
             },
-            ["_columns"],
+            required=["_columns"],
         )
 
     def __repr__(self):
@@ -656,7 +656,7 @@ class RobustScaler(SerializablePreprocessorBase):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_output_columns": (
                     "output_columns",
@@ -668,7 +668,7 @@ class RobustScaler(SerializablePreprocessorBase):
                     self.DEFAULT_QUANTILE_PRECISION,
                 ),
             },
-            ["_columns"],
+            required=["_columns"],
         )
 
     def __repr__(self):

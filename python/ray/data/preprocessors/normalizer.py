@@ -148,7 +148,7 @@ class Normalizer(Preprocessor):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_norm": ("norm", "l2"),
                 "_output_columns": (
@@ -156,5 +156,5 @@ class Normalizer(Preprocessor):
                     _Computed(lambda obj: obj._columns),
                 ),
             },
-            ["_columns"],
+            required=["_columns"],
         )

@@ -251,7 +251,7 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_bins": ("bins", None),
                 "_right": ("right", True),
@@ -263,7 +263,7 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
                     _Computed(lambda obj: obj._columns),
                 ),
             },
-            ["_columns", "_bins"],
+            required=["_columns", "_bins"],
         )
 
 
@@ -451,7 +451,7 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_bins": ("bins", None),
                 "_right": ("right", True),
@@ -463,7 +463,7 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
                     _Computed(lambda obj: obj._columns),
                 ),
             },
-            ["_columns", "_bins"],
+            required=["_columns", "_bins"],
         )
 
 

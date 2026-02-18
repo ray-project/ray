@@ -122,7 +122,7 @@ class PowerTransformer(Preprocessor):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_power": ("power", None),
                 "_method": ("method", "yeo-johnson"),
@@ -131,5 +131,5 @@ class PowerTransformer(Preprocessor):
                     _Computed(lambda obj: obj._columns),
                 ),
             },
-            ["_columns", "_power"],
+            required=["_columns", "_power"],
         )

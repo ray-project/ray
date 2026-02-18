@@ -185,12 +185,12 @@ class Concatenator(Preprocessor):
         super().__setstate__(state)
         migrate_private_fields(
             self,
-            {
+            fields={
                 "_columns": ("columns", None),
                 "_output_column_name": ("output_column_name", "concat_out"),
                 "_dtype": ("dtype", None),
                 "_raise_if_missing": ("raise_if_missing", False),
                 "_flatten": ("flatten", False),
             },
-            ["_columns"],
+            required=["_columns"],
         )
