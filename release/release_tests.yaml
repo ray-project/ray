@@ -1387,6 +1387,11 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.haproxy
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_ENABLE_HA_PROXY=1
 
 - name: pytest_serve_multi_deployment_1k_noop_replica
   python: "3.10"
@@ -1412,6 +1417,11 @@
     - __suffix__: aws
     - __suffix__: aws.py312
       python: "3.12"
+    - __suffix__: aws.haproxy
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_ENABLE_HA_PROXY=1
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1442,6 +1452,11 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.haproxy
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_ENABLE_HA_PROXY=1
 
 - name: pytest_serve_microbenchmarks
   python: "3.10"
@@ -1527,6 +1542,11 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.haproxy
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_ENABLE_HA_PROXY=1
     - __suffix__: gce
       env: gce
       frequency: manual

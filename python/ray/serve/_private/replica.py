@@ -354,7 +354,7 @@ class ReplicaMetricsManager:
             description=(
                 "The number of exceptions that have occurred in this replica."
             ),
-            tag_keys=("route",),
+            tag_keys=("route", "exception_type"),
         )
         if self._cached_metrics_enabled:
             self._cached_error_counter = defaultdict(int)
@@ -529,8 +529,10 @@ class ReplicaMetricsManager:
             self._request_counter.inc(count, tags={"route": route})
         self._cached_request_counter.clear()
 
-        for route, count in self._cached_error_counter.items():
-            self._error_counter.inc(count, tags={"route": route})
+        for (route, exception_type), count in self._cached_error_counter.items():
+            self._error_counter.inc(
+                count, tags={"route": route, "exception_type": exception_type}
+            )
         self._cached_error_counter.clear()
 
         for route, latencies in self._cached_latencies.items():
@@ -773,7 +775,14 @@ class ReplicaMetricsManager:
 
         return utilization_percent
 
-    def record_request_metrics(self, *, route: str, latency_ms: float, was_error: bool):
+    def record_request_metrics(
+        self,
+        *,
+        route: str,
+        latency_ms: float,
+        was_error: bool,
+        exception_type: Optional[str] = None,
+    ):
         """Records per-request metrics."""
         # Track latency for utilization calculation (rolling window).
         self._user_code_time_accumulator.add(latency_ms)
@@ -781,13 +790,17 @@ class ReplicaMetricsManager:
         if self._cached_metrics_enabled:
             self._cached_latencies[route].append(latency_ms)
             if was_error:
-                self._cached_error_counter[route] += 1
+                exc_type = exception_type or "Unknown"
+                self._cached_error_counter[(route, exc_type)] += 1
             else:
                 self._cached_request_counter[route] += 1
         else:
             self._processing_latency_tracker.observe(latency_ms, tags={"route": route})
             if was_error:
-                self._error_counter.inc(tags={"route": route})
+                exc_type = exception_type or "Unknown"
+                self._error_counter.inc(
+                    tags={"route": route, "exception_type": exc_type}
+                )
             else:
                 self._request_counter.inc(tags={"route": route})
 
@@ -1276,10 +1289,14 @@ class ReplicaBase(ABC):
             ),
             extra=self._access_log_context,
         )
+        exception_type = (
+            type(user_exception).__name__ if user_exception is not None else None
+        )
         self._metrics_manager.record_request_metrics(
             route=http_route,
             latency_ms=latency_ms,
             was_error=user_exception is not None,
+            exception_type=exception_type,
         )
 
         # Record ingress metrics for direct ingress HTTP requests
