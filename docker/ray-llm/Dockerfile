@@ -16,11 +16,14 @@ set -euo pipefail
 
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 
-# ray-llm image only support cuda 12.8
-CUDA_CODE=cu128
-
-if [[ "${PYTHON_CODE}" != "py311" ]]; then
-    echo "ray-llm only support Python 3.11 now (this image is for ${PYTHON_CODE})."
+if [[ "${PYTHON_CODE}" == "py311" ]]; then
+    CUDA_CODE=cu128
+    NVSHMEM_VER=3.3.20
+elif [[ "${PYTHON_CODE}" == "py312" ]]; then
+    CUDA_CODE=cu129
+    NVSHMEM_VER=3.3.20
+else
+    echo "ray-llm supports Python 3.11 and 3.12 only (this image is ${PYTHON_CODE})."
     exit 1
 fi
 
@@ -44,9 +47,8 @@ export UV_SYSTEM_PYTHON=1
 export TORCH_CUDA_ARCH_LIST="9.0a 10.0a"
 
 # Install EP kernels (PPLX, DeepEP, and NVSHMEM)
-# Use nvshmem 3.3.20 which was compiled with CUDA 12.8 to be compatible with Ray LLM image built with CUDA 12.8
 curl -fsSL "${VLLM_RAW}/tools/ep_kernels/install_python_libraries.sh" | \
-    bash -s -- --workspace /home/ray/llm_ep_support --nvshmem-ver 3.3.20
+    bash -s -- --workspace /home/ray/llm_ep_support --nvshmem-ver ${NVSHMEM_VER}
 
 # Install DeepGEMM
 curl -fsSL "${VLLM_RAW}/tools/install_deepgemm.sh" | bash

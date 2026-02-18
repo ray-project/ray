@@ -226,8 +226,10 @@ steps:
       setup:
         python:
           - "3.11"
+          - "3.12"
         cuda:
           - "12.8.1-cudnn"
+          - "12.9.1-cudnn"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{matrix.python}}"
@@ -248,8 +250,10 @@ steps:
       setup:
         python:
           - "3.11"
+          - "3.12"
         cuda:
           - "12.8.1-cudnn"
+          - "12.9.1-cudnn"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{matrix.python}}"
@@ -304,10 +308,12 @@ steps:
       - bazel run //ci/ray_ci/automation:push_ray_image --
         --python-version {{matrix}}
         --platform cu12.8.1-cudnn
+        --platform cu12.9.1-cudnn
         --image-type ray-llm
         --architecture x86_64
     matrix:
       - "3.11"
+      - "3.12"
     depends_on:
       - ray-llm-image-cuda-build
     tags:
@@ -324,10 +330,12 @@ steps:
       - bazel run //ci/ray_ci/automation:push_ray_image --
         --python-version {{matrix}}
         --platform cu12.8.1-cudnn
+        --platform cu12.9.1-cudnn
         --image-type ray-llm-extra
         --architecture x86_64
     matrix:
       - "3.11"
+      - "3.12"
     depends_on:
       - ray-llm-extra-image-cuda-build
     tags:

@@ -40,9 +40,15 @@ WHEEL_FILE="${WHEEL_FILES[0]}"
 
 echo "Installing wheel: $WHEEL_FILE"
 
+if [[ "${IMAGE_TYPE}" == "ray-llm" ]]; then
+  RAY_EXTRAS="default,data,serve"
+else
+  RAY_EXTRAS="all"
+fi
+
 $HOME/anaconda3/bin/pip --no-cache-dir install \
     -c /home/ray/requirements_compiled.txt \
-    "${WHEEL_FILE}[all]"
+    "${WHEEL_FILE}[${RAY_EXTRAS}]"
 
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
