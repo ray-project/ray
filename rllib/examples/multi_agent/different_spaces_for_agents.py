@@ -23,7 +23,7 @@ For logging to your WandB account, use:
 import gymnasium as gym
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )

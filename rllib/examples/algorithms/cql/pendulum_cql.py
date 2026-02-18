@@ -2,15 +2,15 @@ import warnings
 from pathlib import Path
 
 from ray.rllib.algorithms.cql.cql import CQLConfig
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-)
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
 )
 
 parser = add_rllib_example_script_args()
@@ -27,13 +27,14 @@ base_path = Path(__file__).parents[3]
 # Use the larger data set of Pendulum we have. Note, these are
 # parquet data, the default in `AlgorithmConfig.offline_data`.
 data_path = base_path / "offline/tests/data/pendulum/pendulum-v1_enormous"
-
+data_path_uri = f"local://{data_path.as_posix()}"
+print(f"data_path_uri={data_path_uri}")
 # Define the configuration.
 config = (
     CQLConfig()
     .environment("Pendulum-v1")
     .offline_data(
-        input_=[data_path.as_posix()],
+        input_=[data_path_uri],
         # The `kwargs` for the `map_batches` method in which our
         # `OfflinePreLearner` is run. 2 data workers should be run
         # concurrently.

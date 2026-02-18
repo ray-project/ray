@@ -17,7 +17,7 @@ Reading files
 
 Ray Data reads files from local disk or cloud storage in a variety of file formats.
 To view the full list of supported file formats, see the
-:ref:`Input/Output reference <input-output>`.
+:ref:`Loading Data API <loading-data-api>`.
 
 .. tab-set::
 
@@ -157,7 +157,7 @@ Reading files from local disk
 To read files from local disk, call a function like :func:`~ray.data.read_parquet` and
 specify paths with the ``local://`` schema. Paths can point to files or directories.
 
-To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
+To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
 
 .. tip::
 
@@ -190,7 +190,7 @@ To read files in cloud storage, authenticate all nodes with your cloud service p
 Then, call a method like :func:`~ray.data.read_parquet` and specify URIs with the
 appropriate schema. URIs can point to buckets, folders, or objects.
 
-To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
+To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
 
 .. tab-set::
 
@@ -302,7 +302,7 @@ Reading files from NFS
 To read files from NFS filesystems, call a function like :func:`~ray.data.read_parquet`
 and specify files on the mounted filesystem. Paths can point to files or directories.
 
-To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
+To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
 
 .. testcode::
     :skipif: True
@@ -338,6 +338,33 @@ You can use any `codec supported by Arrow <https://arrow.apache.org/docs/python/
         arrow_open_stream_args={"compression": "gzip"},
     )
 
+
+Downloading files from URIs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes you may have a metadata table with a column of URIs and you want to download the files referenced by the URIs.
+
+You can download data in bulk by leveraging the :func:`~ray.data.Dataset.with_column` method together with the :func:`~ray.data.expressions.download` expression. This approach lets the system handle the parallel downloading of files referenced by URLs in your dataset, without needing to manage async code within your own transformations.
+
+The following example shows how to download a batch of images from URLs listed in a Parquet file:
+
+.. testcode::
+
+    import ray
+    from ray.data.expressions import download
+
+    # Read a Parquet file containing a column of image URLs
+    ds = ray.data.read_parquet("s3://anonymous@ray-example-data/imagenet/metadata_file.parquet")
+
+    # Use `with_column` and `download` to download the images in parallel.
+    # This creates a new column 'bytes' with the downloaded file contents.
+    ds = ds.with_column(
+        "bytes",
+        download("image_url"),
+    )
+
+    ds.take(1)
+
 Loading data from other libraries
 =================================
 
@@ -368,11 +395,17 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=3,
-               num_rows=3,
-               schema={food: string, price: double}
-            )
+            shape: (3, 2)
+            ╭────────┬────────╮
+            │ food   ┆ price  │
+            │ ---    ┆ ---    │
+            │ string ┆ double │
+            ╞════════╪════════╡
+            │ spam   ┆ 9.34   │
+            │ ham    ┆ 5.37   │
+            │ eggs   ┆ 0.94   │
+            ╰────────┴────────╯
+            (Showing 3 of 3 rows)
 
         You can also create a :class:`~ray.data.dataset.Dataset` from a list of regular
         Python objects. In the schema, the column name defaults to "item". 
@@ -387,7 +420,19 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(num_blocks=5, num_rows=5, schema={item: int64})
+            shape: (5, 1)
+            ╭───────╮
+            │ item  │
+            │ ---   │
+            │ int64 │
+            ╞═══════╡
+            │ 1     │
+            │ 2     │
+            │ 3     │
+            │ 4     │
+            │ 5     │
+            ╰───────╯
+            (Showing 5 of 5 rows)
 
     .. tab-item:: NumPy
 
@@ -400,18 +445,24 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             import numpy as np
             import ray
 
-            array = np.ones((3, 2, 2))
+            array = np.arange(3)
             ds = ray.data.from_numpy(array)
 
             print(ds)
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=1,
-               num_rows=3,
-               schema={data: ArrowTensorTypeV2(shape=(2, 2), dtype=double)}
-            )
+            shape: (3, 1)
+            ╭───────╮
+            │ data  │
+            │ ---   │
+            │ int64 │
+            ╞═══════╡
+            │ 0     │
+            │ 1     │
+            │ 2     │
+            ╰───────╯
+            (Showing 3 of 3 rows)
 
     .. tab-item:: pandas
 
@@ -433,11 +484,17 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=1,
-               num_rows=3,
-               schema={food: object, price: float64}
-            )
+            shape: (3, 2)
+            ╭────────┬────────╮
+            │ food   ┆ price  │
+            │ ---    ┆ ---    │
+            │ object ┆ double │
+            ╞════════╪════════╡
+            │ spam   ┆ 9.34   │
+            │ ham    ┆ 5.37   │
+            │ eggs   ┆ 0.94   │
+            ╰────────┴────────╯
+            (Showing 3 of 3 rows)
 
     .. tab-item:: PyArrow
 
@@ -458,11 +515,17 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=1,
-               num_rows=3,
-               schema={food: string, price: double}
-            )
+            shape: (3, 2)
+            ╭────────┬────────╮
+            │ food   ┆ price  │
+            │ ---    ┆ ---    │
+            │ string ┆ double │
+            ╞════════╪════════╡
+            │ spam   ┆ 9.34   │
+            │ ham    ┆ 5.37   │
+            │ eggs   ┆ 0.94   │
+            ╰────────┴────────╯
+            (Showing 3 of 3 rows)
 
 .. _loading_datasets_from_distributed_df:
 
@@ -663,10 +726,6 @@ performance and scalability than loading datasets into memory first.
 
 First, install the required dependencies
 
-.. warning::
-
-    If you encounter serialization errors when reading from Hugging Face filesystems, try upgrading ``huggingface_hub`` to version 1.1.6 or later. For more details, see this issue: https://github.com/ray-project/ray/issues/59029
-
 .. code-block:: console
 
     pip install huggingface_hub
@@ -708,6 +767,11 @@ read from the dataset path:
     title   string
     text    string
 
+.. tip::
+
+    If you encounter serialization errors when reading from Hugging Face filesystems, try upgrading ``huggingface_hub`` to version 1.1.6 or later. For more details, see this issue: https://github.com/ray-project/ray/issues/59029
+
+
 
 .. _loading_datasets_from_ml_libraries:
 
@@ -717,6 +781,29 @@ Loading data from ML libraries
 Ray Data interoperates with PyTorch and TensorFlow datasets.
 
 .. tab-set::
+
+    .. tab-item:: HuggingFace
+
+        To load a HuggingFace Dataset into Ray Data, use the HuggingFace Hub ``HfFileSystem``
+        with :func:`~ray.data.read_parquet`, :func:`~ray.data.read_csv`, or :func:`~ray.data.read_json`.
+        Since HuggingFace datasets are often backed by these file formats, this approach enables efficient distributed
+        reads directly from the Hub.
+
+        .. testcode::
+            :skipif: True
+
+            import ray.data
+            from huggingface_hub import HfFileSystem
+
+            path = "hf://datasets/Salesforce/wikitext/wikitext-2-raw-v1/"
+            fs = HfFileSystem()
+            ds = ray.data.read_parquet(path, filesystem=fs)
+            print(ds.take(5))
+
+        .. testoutput::
+            :options: +MOCK
+
+            [{'text': '...'}, {'text': '...'}]
 
     .. tab-item:: PyTorch
 
@@ -1022,7 +1109,8 @@ Ray Data reads from message queues like Kafka.
 
 To read data from Kafka topics, call :func:`~ray.data.read_kafka` and specify
 the topic names and broker addresses. Ray Data performs bounded reads between
-a start and end offset.
+a start and end offset. You can specify offsets as integers, ``"earliest"``/``"latest"``
+strings, or ``datetime`` objects for time-based ranges.
 
 First, install the required dependencies:
 
@@ -1051,6 +1139,15 @@ Then, specify your Kafka configuration and read from topics.
         bootstrap_servers="localhost:9092",
         start_offset="earliest",
         end_offset="latest",
+    )
+
+    # Read messages within a datetime range (datetimes with no timezone info are treated as UTC)
+    from datetime import datetime
+    ds = ray.data.read_kafka(
+        topics="my-topic",
+        bootstrap_servers="localhost:9092",
+        start_offset=datetime(2025, 1, 1),
+        end_offset=datetime(2025, 1, 2),
     )
 
     # Read with authentication

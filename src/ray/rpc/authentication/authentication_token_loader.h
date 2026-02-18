@@ -14,11 +14,12 @@
 
 #pragma once
 
+#include <chrono>
+#include <memory>
 #include <optional>
 #include <string>
 
 #include "absl/synchronization/mutex.h"
-#include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/authentication_token.h"
 
 namespace ray {
@@ -45,12 +46,13 @@ class AuthenticationTokenLoader {
  public:
   static AuthenticationTokenLoader &instance();
 
-  /// Get the authentication token.
+  /// Get the authentication token as shared_ptr.
   /// If token authentication is enabled but no token is found, fails with RAY_CHECK.
+  /// Callers should cache this pointer instead of calling repeatedly.
   /// \param ignore_auth_mode If true, bypass auth mode check and attempt to load token
   ///                         regardless of RAY_AUTH_MODE setting.
-  /// \return The authentication token, or std::nullopt if auth is disabled.
-  std::optional<AuthenticationToken> GetToken(bool ignore_auth_mode = false);
+  /// \return Shared pointer to the authentication token, or nullptr if auth is disabled.
+  std::shared_ptr<const AuthenticationToken> GetToken(bool ignore_auth_mode = false);
 
   /// Try to load a token, returning error message instead of crashing.
   /// Use this for Python entry points where we want to raise AuthenticationError.
@@ -60,7 +62,8 @@ class AuthenticationTokenLoader {
 
   void ResetCache() {
     absl::MutexLock lock(&token_mutex_);
-    cached_token_.reset();
+    cached_token_ = nullptr;
+    cached_token_expiration_time_ = std::nullopt;
   }
 
   AuthenticationTokenLoader(const AuthenticationTokenLoader &) = delete;
@@ -82,8 +85,15 @@ class AuthenticationTokenLoader {
   /// Trim whitespace from the beginning and end of the string.
   std::string TrimWhitespace(const std::string &str);
 
+  /// Extract expiration time from a JWT token.
+  /// \param token The JWT token string.
+  /// \return The expiration time, or std::nullopt if not a valid JWT or no exp claim.
+  std::optional<std::chrono::system_clock::time_point> GetJWTTokenExpiration(
+      const std::string &token);
+
   absl::Mutex token_mutex_;
-  std::optional<AuthenticationToken> cached_token_;
+  std::shared_ptr<const AuthenticationToken> cached_token_;
+  std::optional<std::chrono::system_clock::time_point> cached_token_expiration_time_;
 };
 
 }  // namespace rpc

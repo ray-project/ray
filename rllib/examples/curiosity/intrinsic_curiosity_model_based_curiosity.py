@@ -90,14 +90,14 @@ from ray.rllib.examples.learners.classes.intrinsic_curiosity_learners import (
 from ray.rllib.examples.rl_modules.classes.intrinsic_curiosity_model_rlm import (
     IntrinsicCuriosityModel,
 )
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-)
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
 )
 
 parser = add_rllib_example_script_args(

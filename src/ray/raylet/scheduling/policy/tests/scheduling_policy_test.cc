@@ -39,6 +39,16 @@ NodeResources CreateNodeResources(double available_cpu,
   return resources;
 }
 
+// Helper to create resources with labels
+NodeResources CreateNodeResourcesWithLabels(
+    double available_cpu,
+    double total_cpu,
+    const absl::flat_hash_map<std::string, std::string> &labels) {
+  NodeResources resources = CreateNodeResources(available_cpu, total_cpu, 0, 0, 0, 0);
+  resources.labels = labels;
+  return resources;
+}
+
 class SchedulingPolicyTest : public ::testing::Test {
  public:
   scheduling::NodeID local_node = scheduling::NodeID(0);
@@ -553,6 +563,118 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
                     .Schedule(req_list, strict_pack_op);
   ASSERT_TRUE(to_schedule.status.IsSuccess());
   ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
+}
+
+TEST_F(SchedulingPolicyTest, StrictPackBundleLabelSelectorSuccessTest) {
+  nodes.emplace(local_node, CreateNodeResourcesWithLabels(10, 10, {{"zone", "us-east"}}));
+  nodes.emplace(remote_node,
+                CreateNodeResourcesWithLabels(10, 10, {{"zone", "us-west"}}));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  // Request 2 bundles requiring "zone: us-east", both should succeed on local_node.
+  ResourceRequest req_east = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  req_east.SetLabelSelector(
+      LabelSelector(absl::flat_hash_map<std::string, std::string>{{"zone", "us-east"}}));
+
+  std::vector<const ResourceRequest *> req_list = {&req_east, &req_east};
+
+  auto strict_pack_op = SchedulingOptions::BundleStrictPack(scheduling::NodeID::Nil());
+  auto result = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
+                    *cluster_resource_manager, [](auto) { return true; })
+                    .Schedule(req_list, strict_pack_op);
+
+  ASSERT_TRUE(result.status.IsSuccess());
+  ASSERT_EQ(result.selected_nodes.size(), 2);
+  ASSERT_EQ(result.selected_nodes[0], local_node);
+  ASSERT_EQ(result.selected_nodes[1], local_node);
+}
+
+TEST_F(SchedulingPolicyTest, StrictPackBundleLabelSelectorInfeasibleTest) {
+  nodes.emplace(local_node, CreateNodeResourcesWithLabels(10, 10, {{"zone", "us-east"}}));
+  nodes.emplace(remote_node,
+                CreateNodeResourcesWithLabels(10, 10, {{"zone", "us-west"}}));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  // No node has both labels in the label selector, so this should be infeasible.
+  ResourceRequest req_east = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  req_east.SetLabelSelector(
+      LabelSelector(absl::flat_hash_map<std::string, std::string>{{"zone", "us-east"}}));
+
+  ResourceRequest req_west = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  req_west.SetLabelSelector(
+      LabelSelector(absl::flat_hash_map<std::string, std::string>{{"zone", "us-west"}}));
+
+  std::vector<const ResourceRequest *> req_list = {&req_east, &req_west};
+
+  auto strict_pack_op = SchedulingOptions::BundleStrictPack(scheduling::NodeID::Nil());
+  auto result = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
+                    *cluster_resource_manager, [](auto) { return true; })
+                    .Schedule(req_list, strict_pack_op);
+
+  // Should correctly detect that aggregate constraints cannot be satisfied.
+  ASSERT_TRUE(result.status.IsInfeasible());
+}
+
+TEST_F(SchedulingPolicyTest, PackBundleLabelSelectorInfeasibleTest) {
+  nodes.emplace(local_node, CreateNodeResourcesWithLabels(10, 10, {{"zone", "us-east"}}));
+  nodes.emplace(remote_node,
+                CreateNodeResourcesWithLabels(10, 10, {{"zone", "us-west"}}));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  // Create an infeasible resource request for zone:eu-central label.
+  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  req.SetLabelSelector(LabelSelector(
+      absl::flat_hash_map<std::string, std::string>{{"zone", "eu-central"}}));
+
+  std::vector<const ResourceRequest *> req_list = {&req};
+
+  // The PACK policy should detect the missing label and return Infeasible immediately.
+  auto pack_op = SchedulingOptions::BundlePack();
+  auto result = raylet_scheduling_policy::BundlePackSchedulingPolicy(
+                    *cluster_resource_manager, [](auto) { return true; })
+                    .Schedule(req_list, pack_op);
+
+  ASSERT_TRUE(result.status.IsInfeasible());
+}
+
+TEST_F(SchedulingPolicyTest, SpreadBundleLabelSelectorInfeasibleTest) {
+  nodes.emplace(local_node, CreateNodeResourcesWithLabels(10, 10, {{"zone", "us-east"}}));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  // Create an infeasible resource request.
+  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  req.SetLabelSelector(LabelSelector(
+      absl::flat_hash_map<std::string, std::string>{{"zone", "eu-central"}}));
+
+  std::vector<const ResourceRequest *> req_list = {&req};
+
+  // The SPREAD policy should detect request is infeasible due to the label.
+  auto spread_op = SchedulingOptions::BundleSpread();
+  auto result = raylet_scheduling_policy::BundleSpreadSchedulingPolicy(
+                    *cluster_resource_manager, [](auto) { return true; })
+                    .Schedule(req_list, spread_op);
+
+  ASSERT_TRUE(result.status.IsInfeasible());
+}
+
+TEST_F(SchedulingPolicyTest, StrictSpreadBundleLabelSelectorInfeasibleTest) {
+  nodes.emplace(local_node, CreateNodeResourcesWithLabels(10, 10, {{"zone", "us-east"}}));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  // Create an infeasible resource request.
+  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  req.SetLabelSelector(LabelSelector(
+      absl::flat_hash_map<std::string, std::string>{{"zone", "eu-central"}}));
+
+  std::vector<const ResourceRequest *> req_list = {&req};
+
+  // STRICT_SPREAD scheduling policy should correctly determine request is infeasible.
+  auto strict_spread_op = SchedulingOptions::BundleStrictSpread();
+  auto result = raylet_scheduling_policy::BundleStrictSpreadSchedulingPolicy(
+                    *cluster_resource_manager, [](auto) { return true; })
+                    .Schedule(req_list, strict_spread_op);
+
+  ASSERT_TRUE(result.status.IsInfeasible());
 }
 
 int main(int argc, char **argv) {

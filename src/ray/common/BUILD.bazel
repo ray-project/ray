@@ -1,11 +1,6 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
 ray_cc_library(
-    name = "compat",
-    hdrs = ["compat.h"],
-)
-
-ray_cc_library(
     name = "constants",
     hdrs = ["constants.h"],
 )
@@ -86,7 +81,7 @@ ray_cc_library(
     deps = [
         ":asio",
         ":ray_config",
-        "//src/ray/util:process",
+        "//src/ray/util:compat",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_prod",
@@ -387,14 +382,6 @@ ray_cc_library(
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:time",
         "@com_google_absl//absl/time",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_callback_types",
-    hdrs = ["gcs_callback_types.h"],
-    deps = [
-        "//src/ray/common:status",
     ],
 )
 

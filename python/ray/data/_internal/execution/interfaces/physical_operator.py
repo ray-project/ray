@@ -28,7 +28,6 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict, Timer
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
@@ -76,20 +75,23 @@ class OpTask(ABC):
         ...
 
     def _cancel(self, force: bool):
+
+        is_actor_task = not self.get_task_id().actor_id().is_nil()
+
+        ray.cancel(
+            self.get_waitable(),
+            recursive=True,
+            # NOTE: Actor tasks can't be force-cancelled
+            force=force and not is_actor_task,
+        )
+
+    def get_task_id(self) -> ray.TaskID:
         object_ref = self.get_waitable()
 
         # Get generator's `ObjectRef`
         if isinstance(object_ref, ObjectRefGenerator):
             object_ref = object_ref._generator_ref
-
-        is_actor_task = not object_ref.task_id().actor_id().is_nil()
-
-        ray.cancel(
-            object_ref,
-            recursive=True,
-            # NOTE: Actor tasks can't be force-cancelled
-            force=force and not is_actor_task,
-        )
+        return object_ref.task_id()
 
 
 class DataOpTask(OpTask):
@@ -340,7 +342,9 @@ class PhysicalOperator(Operator):
         self._started = False
         self._shutdown = False
         self._in_task_submission_backpressure = False
+        self._task_submission_backpressure_policy: Optional[str] = None
         self._in_task_output_backpressure = False
+        self._task_output_backpressure_policy: Optional[str] = None
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
         self._is_execution_marked_finished = False
@@ -420,14 +424,13 @@ class PhysicalOperator(Operator):
         #       - All input blocks have been ingested
         #       - Internal queue is empty
         #       - There are no active or pending tasks
-
         return self._is_execution_marked_finished or (
             self._inputs_complete
             and self.num_active_tasks() == 0
             and internal_input_queue_num_blocks == 0
         )
 
-    def completed(self) -> bool:
+    def has_completed(self) -> bool:
         """Returns whether this operator has been fully completed.
 
         An operator is completed iff:
@@ -441,13 +444,14 @@ class PhysicalOperator(Operator):
             internal_output_queue_num_blocks = self.internal_output_queue_num_blocks()
 
         # NOTE: We check for (internal_output_queue_size == 0) and
-        # (not self.has_next()) because _OrderedOutputQueue can
+        # (not self.has_next()) because ReorderingBundleQueue can
         # return False for self.has_next(), but have a non-empty queue size.
         # Draining the internal output queue is important to free object refs.
         return (
             self.has_execution_finished()
-            and not self.has_next()
             and internal_output_queue_num_blocks == 0
+            # TODO following check is redundant; remove
+            and not self.has_next()
         )
 
     def get_stats(self) -> StatsDict:
@@ -489,7 +493,7 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources.zero()
 
-    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
+    def get_max_concurrency_limit(self: "PhysicalOperator") -> Optional[int]:
         """The maximum number of tasks that can be run concurrently.
 
         Some operators manually configure a maximum concurrency. For example, if you
@@ -506,7 +510,7 @@ class PhysicalOperator(Operator):
         For regular tasks, this is the resources required to schedule a task. For actor
         tasks, this is the resources required to schedule an actor.
         """
-        return ExecutionResources.zero()
+        return self.incremental_resource_usage()
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
@@ -549,7 +553,7 @@ class PhysicalOperator(Operator):
         """
         self._started = True
 
-    def should_add_input(self) -> bool:
+    def can_add_input(self) -> bool:
         """Return whether it is desirable to add input to this operator right now.
 
         Operators can customize the implementation of this method to apply additional
@@ -584,7 +588,7 @@ class PhysicalOperator(Operator):
         raise NotImplementedError
 
     def input_done(self, input_index: int) -> None:
-        """Called when the upstream operator at index `input_index` has completed().
+        """Called when the upstream operator at index `input_index` has_completed().
 
         After this is called, the executor guarantees that no more inputs will be added
         via `add_input` for the given input index.
@@ -592,7 +596,7 @@ class PhysicalOperator(Operator):
         pass
 
     def all_inputs_done(self) -> None:
-        """Called when all upstream operators have completed().
+        """Called when all upstream operators has_completed().
 
         After this is called, the executor guarantees that no more inputs will be added
         via `add_input` for any input index.
@@ -675,40 +679,40 @@ class PhysicalOperator(Operator):
         # Default implementation simply cancels any outstanding active task
         self._cancel_active_tasks(force=force)
 
-    def current_processor_usage(self) -> ExecutionResources:
-        """Returns the current estimated CPU and GPU usage of this operator, excluding
-        object store memory.
+    def current_logical_usage(self) -> ExecutionResources:
+        """Returns the current estimated CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
 
-        This method is called by the executor to decide how to allocate processors
+        This method is called by the executor to decide how to allocate resources
         between different operators.
         """
-        return ExecutionResources(0, 0, 0)
+        return ExecutionResources.zero()
 
-    def running_processor_usage(self) -> ExecutionResources:
-        """Returns the estimated running CPU and GPU usage of this operator, excluding
-        object store memory.
+    def running_logical_usage(self) -> ExecutionResources:
+        """Returns the estimated running CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
 
         This method is called by the resource manager and the streaming
-        executor to display the number of currently running CPUs and GPUs in the
-        progress bar.
+        executor to display the number of currently running CPUs, GPUs, and memory in
+        the progress bar.
 
-        Note, this method returns `current_processor_usage() -
-        pending_processor_usage()` by default. Subclasses should only override
-        `pending_processor_usage()` if needed.
+        Note, this method returns `current_logical_usage() -
+        pending_logical_usage()` by default. Subclasses should only override
+        `pending_logical_usage()` if needed.
         """
-        usage = self.current_processor_usage()
-        usage = usage.subtract(self.pending_processor_usage())
+        usage = self.current_logical_usage()
+        usage = usage.subtract(self.pending_logical_usage())
         return usage
 
-    def pending_processor_usage(self) -> ExecutionResources:
-        """Returns the estimated pending CPU and GPU usage of this operator, excluding
-        object store memory.
+    def pending_logical_usage(self) -> ExecutionResources:
+        """Returns the estimated pending CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
 
         This method is called by the resource manager and the streaming
         executor to display the number of currently pending actors in the
         progress bar.
         """
-        return ExecutionResources(0, 0, 0)
+        return ExecutionResources.zero()
 
     def min_max_resource_requirements(
         self,
@@ -730,48 +734,41 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources()
 
-    def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
+    def notify_in_task_submission_backpressure(
+        self, in_backpressure: bool, policy_name: Optional[str] = None
+    ) -> None:
         """Called periodically from the executor to update internal in backpressure
         status for stats collection purposes.
 
         Args:
             in_backpressure: Value this operator's in_backpressure should be set to.
+            policy_name: Name of the backpressure policy that triggered.
         """
         # only update on change to in_backpressure
         if self._in_task_submission_backpressure != in_backpressure:
             self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
             self._in_task_submission_backpressure = in_backpressure
+        self._task_submission_backpressure_policy = policy_name
 
-    def notify_in_task_output_backpressure(self, in_backpressure: bool) -> None:
+    def notify_in_task_output_backpressure(
+        self, in_backpressure: bool, policy_name: Optional[str] = None
+    ) -> None:
         """Called periodically from the executor to update internal output backpressure
         status for stats collection purposes.
 
         Args:
             in_backpressure: Value this operator's output backpressure should be set to.
+            policy_name: Name of the backpressure policy that triggered.
         """
         # only update on change to in_backpressure
         if self._in_task_output_backpressure != in_backpressure:
             self._metrics.on_toggle_task_output_backpressure(in_backpressure)
             self._in_task_output_backpressure = in_backpressure
+        self._task_output_backpressure_policy = policy_name
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""
         return []
-
-    def implements_accurate_memory_accounting(self) -> bool:
-        """Return whether this operator implements accurate memory accounting.
-
-        An operator that implements accurate memory accounting should properly
-        report its memory usage via the following APIs:
-          - `self._metrics.on_input_queued`.
-          - `self._metrics.on_input_dequeued`.
-          - `self._metrics.on_output_queued`.
-          - `self._metrics.on_output_dequeued`.
-        """
-        # TODO(hchen): Currently we only enable `ReservationOpResourceAllocator` when
-        # all operators in the dataset have implemented accurate memory accounting.
-        # Eventually all operators should implement accurate memory accounting.
-        return False
 
     def supports_fusion(self) -> bool:
         """Returns ```True``` if this operator can be fused with other operators."""
@@ -815,11 +812,6 @@ class PhysicalOperator(Operator):
             op.num_outputs_total() or 0 for op in self.input_dependencies
         )
         return upstream_op_num_outputs
-
-    def get_max_concurrency_limit(self) -> Optional[int]:
-        """Max value of how many tasks this operator could run
-        concurrently (if limited)"""
-        return None
 
 
 class ReportsExtraResourceUsage(abc.ABC):
@@ -866,19 +858,3 @@ def estimate_total_num_of_blocks(
         )
 
     return (0, 0, 0)
-
-
-def _create_sub_pb(
-    name: str, total_output_rows: Optional[int], position: int
-) -> Tuple[ProgressBar, int]:
-    progress_bar = ProgressBar(
-        name,
-        total_output_rows or 1,
-        unit="row",
-        position=position,
-    )
-    # NOTE: call `set_description` to trigger the initial print of progress
-    # bar on console.
-    progress_bar.set_description(f"  *- {name}")
-    position += 1
-    return progress_bar, position

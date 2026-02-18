@@ -169,7 +169,7 @@ class ListApiOptions:
         # Check the filters in the ListApiOptions conflicts. Specifically for:
         # - multiple '=' filters with the same key but different values.
         # TODO(myan): More conflicts situation can be added for further optimization.
-        # For exmaple, 2 filters with same key and same value but one with '=' predicate
+        # For example, 2 filters with same key and same value but one with '=' predicate
         # and ther other with '!=' predicate
         equal_filters = {}
         for filter in self.filters:
@@ -1335,7 +1335,7 @@ class TaskSummaries:
             task_groups.sort(key=lambda x: 0 if x.type == "ACTOR_CREATION_TASK" else 1)
             task_groups.sort(key=lambda x: x.timestamp or sys.maxsize)
             task_groups.sort(
-                key=lambda x: x.state_counts.get("FAIELD", 0), reverse=True
+                key=lambda x: x.state_counts.get("FAILED", 0), reverse=True
             )
             task_groups.sort(key=get_pending_tasks_count, reverse=True)
             task_groups.sort(key=get_running_tasks_count, reverse=True)

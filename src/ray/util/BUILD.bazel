@@ -16,6 +16,15 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "graceful_shutdown",
+    hdrs = ["graceful_shutdown.h"],
+    deps = [
+        ":logging",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
     name = "thread_utils",
     hdrs = ["thread_utils.h"],
     deps = [
@@ -66,6 +75,30 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "file_persistence",
+    srcs = ["file_persistence.cc"],
+    hdrs = ["file_persistence.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+    ],
+)
+
+ray_cc_library(
+    name = "port_persistence",
+    srcs = ["port_persistence.cc"],
+    hdrs = ["port_persistence.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":file_persistence",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+    ],
+)
+
+ray_cc_library(
     name = "container_util",
     hdrs = ["container_util.h"],
     deps = [
@@ -74,6 +107,31 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
     ],
+)
+
+ray_cc_library(
+    name = "process_interface",
+    hdrs = ["process_interface.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":compat",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "process_utils",
+    srcs = ["process_utils.cc"],
+    hdrs = ["process_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":compat",
+        ":logging",
+        "@com_google_absl//absl/strings:str_format",
+    ] + select({
+        "@platforms//os:linux": [":filesystem"],
+        "//conditions:default": [],
+    }),
 )
 
 ray_cc_library(
@@ -86,15 +144,30 @@ ray_cc_library(
         "process.h",
         "subreaper.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":cmd_line_utils",
         ":compat",
         ":filesystem",
         ":logging",
         ":macros",
+        ":process_interface",
+        ":process_utils",
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_process",
+    hdrs = ["fake_process.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":process_interface",
     ],
 )
 
@@ -172,14 +245,6 @@ ray_cc_library(
 ray_cc_library(
     name = "type_traits",
     hdrs = ["type_traits.h"],
-)
-
-ray_cc_library(
-    name = "throttler",
-    hdrs = ["throttler.h"],
-    deps = [
-        "@com_google_absl//absl/time",
-    ],
 )
 
 ray_cc_library(

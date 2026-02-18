@@ -162,12 +162,10 @@ downscaling.
 * **[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) [default_value=10]**: In future this deployment level
 config will be removed in favor of cross-application level global config.
   
-This controls how often each replica and handle sends reports on current ongoing
-requests to the autoscaler. Note that the autoscaler can't make new decisions if
-it doesn't receive updated metrics, so you most likely want to set these values to
-be less than or equal to the upscale and downscale delay values. For instance, if
-you set `upscale_delay_s = 3`, but keep the push interval at 10s, the autoscaler
-only upscales roughly every 10 seconds.
+This controls how often each replica and handle sends reports on current ongoing requests to the autoscaler.
+::{note}
+If metrics are reported infrequently, Ray Serve can take longer to notice a change in autoscaling metrics, so scaling can start later even if your delays are short. For example, if you set `upscale_delay_s = 3` but metrics are pushed every 10 seconds, Ray Serve might not see a change until the next push, so scaling up can be limited to about once every 10 seconds.
+::
 
 * **[`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) [default_value=30]**: This is the window over which the
 average number of ongoing requests per replica is calculated.
@@ -269,7 +267,7 @@ The timing parameters interact in important ways:
 - With default values: Each push contains 1 data points (10s ÷ 10s)
 
 **Push interval vs look-back period:**
-- [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) (30s) should be ≥ push interval (10s)
+- [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) (30s) should be > push interval (10s)
 - If look-back is too short, you won't have enough data for stable decisions
 - If look-back is too long, autoscaling becomes less responsive
 
@@ -279,10 +277,10 @@ The timing parameters interact in important ways:
 - New scaling decisions only happen when fresh metrics arrive
 
 **Push interval vs upscale/downscale delays:**
-- Delays (30s/600s) should be ≥ push interval (10s)
-- Generally the delay should be set to some multiples of push interval, so the autoscaler only reacts after 
-  multiple consecutive metric breaches—this filters out short-lived spikes and prevents noisy, oscillating scale-ups.
-- Example: `upscale_delay_s = 5` but push interval = 10s means actual delay ≈ 10s
+- Delays control when Ray Serve applies a scale up or scale down.
+- The metrics push interval controls how quickly Ray Serve receives fresh metrics.
+- If the push interval < delay, Ray Serve can use multiple metric updates before it scales.
+- Example: push every 10s with `upscale_delay_s = 20` means up to 2 new metric updates before scaling
 
 **Recommendation:** Keep default values unless you have specific needs. If you
 need faster autoscaling, decrease push intervals first, then adjust delays.
@@ -611,6 +609,7 @@ Custom policies let you implement scaling logic based on any metrics or rules yo
 
 A custom autoscaling policy is a user-provided Python function that takes an [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst) and returns a tuple `(target_replicas, policy_state)` for a single Deployment.
 
+An `AutoscalingContext` object provides the following information to the custom autoscaling policy:
 * **Current state:** Current replica count and deployment metadata.
 * **Built-in metrics:** Total requests, queued requests, per-replica counts.
 * **Custom metrics:** Values your deployment reports via `record_autoscaling_stats()`. (See below.)
@@ -620,12 +619,14 @@ A custom autoscaling policy is a user-provided Python function that takes an [`A
 
 The following example showcases a policy that scales up during business hours and evening batch processing, and scales down during off-peak hours:
 
+`autoscaling_policy.py` file:
 ```{literalinclude} ../doc_code/autoscaling_policy.py
 :language: python
 :start-after: __begin_scheduled_batch_processing_policy__
 :end-before: __end_scheduled_batch_processing_policy__
 ```
 
+`main.py` file:
 ```{literalinclude} ../doc_code/scheduled_batch_processing.py
 :language: python
 :start-after: __serve_example_begin__
@@ -636,9 +637,39 @@ Policies are defined **per deployment**. If you don’t provide one, Ray Serve f
 
 The policy function is invoked by the Ray Serve controller every `RAY_SERVE_CONTROL_LOOP_INTERVAL_S` seconds (default **0.1s**), so your logic runs against near-real-time state.
 
+Your policy can return an `int` or a `float` for `target_replicas`. If it returns a float, Ray Serve converts it to an integer replica count by rounding up to the next greatest integer.
+
 :::{warning}
 Keep policy functions **fast and lightweight**. Slow logic can block the Serve controller and degrade cluster responsiveness.
 :::
+
+
+### Applying standard autoscaling parameters to custom policies  
+  
+Ray Serve automatically applies the following standard autoscaling parameters from your [`AutoscalingConfig`](../api/doc/ray.serve.config.AutoscalingConfig.rst) to custom policies:
+- `upscale_delay_s`, `downscale_delay_s`, `downscale_to_zero_delay_s`
+- `upscaling_factor`, `downscaling_factor`
+- `min_replicas`, `max_replicas`
+
+The following example shows a custom autoscaling policy with standard autoscaling parameters applied.
+
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin_apply_autoscaling_config_example__
+:end-before: __end_apply_autoscaling_config_example__
+```
+
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin_apply_autoscaling_config_usage__
+:end-before: __end_apply_autoscaling_config_usage__
+```
+
+::::{note}
+Your policy function should return the "raw" desired number of replicas. Ray Serve applies the `autoscaling_config` settings (delays, factors, and bounds) on top of your decision.
+
+Your policy can return an `int` or a `float` "raw desired" replica count. Ray Serve returns an integer decision number.
+::::
 
 
 ### Custom metrics
@@ -647,12 +678,14 @@ You can make richer decisions by emitting your own metrics from the deployment. 
 
 This example demonstrates how deployments can provide their own metrics (CPU usage, memory usage) and how autoscaling policies can use these metrics to make scaling decisions:
 
+`autoscaling_policy.py` file:
 ```{literalinclude} ../doc_code/autoscaling_policy.py
 :language: python
 :start-after: __begin_custom_metrics_autoscaling_policy__
 :end-before: __end_custom_metrics_autoscaling_policy__
 ```
 
+`main.py` file:
 ```{literalinclude} ../doc_code/custom_metrics_autoscaling.py
 :language: python
 :start-after: __serve_example_begin__
@@ -670,26 +703,71 @@ In your policy, access custom metrics via:
 * **`ctx.aggregated_metrics[metric_name]`** — A time-weighted average computed from the raw metric values for each replica.
 
 
+### Class-based policies
+
+When your policy needs long-running setup — such as polling an external metrics service, maintaining a persistent connection, or running background computation — you can define it as a **class** instead of a plain function. Pass the class reference through `policy_function` and supply constructor arguments through `policy_kwargs`.
+
+Ray Serve instantiates the class once on the controller when the deployment starts. `__init__` runs one-time setup, and `__call__` runs on every autoscaling tick with the current [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst).
+
+The following example shows a policy that reads a target replica count from a JSON file in a background loop. In production you could replace the file read with an HTTP call, a message-queue consumer, or any other async IO operation:
+
+`class_based_autoscaling_policy.py` file:
+```{literalinclude} ../doc_code/class_based_autoscaling_policy.py
+:language: python
+:start-after: __begin_class_based_autoscaling_policy__
+:end-before: __end_class_based_autoscaling_policy__
+```
+
+`main.py` file:
+```{literalinclude} ../doc_code/class_based_autoscaling.py
+:language: python
+:start-after: __serve_example_begin__
+:end-before: __serve_example_end__
+```
+
+:::{note}
+The instance lives only on the Serve controller and is never serialized after creation, so it's safe to hold non-picklable state such as `asyncio.Task` objects, open connections, or thread pools. `policy_kwargs` values must be JSON-serializable because they travel through the deployment config.
+:::
+
+:::{tip}
+If you're using `@task_consumer` deployments for asynchronous inference, Ray Serve provides a built-in `AsyncInferenceAutoscalingPolicy` that scales based on message queue length. See [Asynchronous Inference: Autoscaling](serve-async-inference-autoscaling) for setup and configuration.
+:::
+
+
 ### Application level autoscaling
 
 By default, each deployment in Ray Serve autoscales independently. When you have multiple deployments that need to scale in a coordinated way—such as deployments that share backend resources, have dependencies on each other, or need load-aware routing—you can define an **application-level autoscaling policy**. This policy makes scaling decisions for all deployments within an application simultaneously.
 
 #### Define an application level policy
 
-An application-level autoscaling policy is a function that takes a Dict[DeploymentID, [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst)] objects (one per deployment) and returns a tuple of `(decisions, policy_state)`. Each context contains metrics and bounds for one deployment, and the policy returns target replica counts for all deployments.
+An application-level autoscaling policy is a function that takes a `dict[DeploymentID, AutoscalingContext]` objects (one per deployment) and returns a tuple of `(decisions, policy_state)`. Each context contains metrics and bounds for one deployment, and the policy returns target replica counts for all deployments.
 
+The `policy_state` returned from an application-level policy must be a `Dict[DeploymentID, Dict]`— a dictionary mapping each deployment ID to its own state dictionary. Serve stores this per-deployment state and on the next control-loop iteration, injects each deployment's state back into that deployment's `AutoscalingContext.policy_state`. 
+The per deployment number replicas returned from the policy can be an `int` or a `float`. If it returns a float, Ray Serve converts it to an integer replica count by rounding up to the next greatest integer.
+
+Serve itself does not interpret the contents of `policy_state`. All the keys in each deployment's state dictionary are user-controlled except for internal keys that are used when default parameters are applied to custom autoscaling policies.
 The following example shows a policy that scales deployments based on their relative load, ensuring that downstream deployments have enough capacity for upstream traffic:
 
+`autoscaling_policy.py` file:
 ```{literalinclude} ../doc_code/autoscaling_policy.py
 :language: python
 :start-after: __begin_application_level_autoscaling_policy__
 :end-before: __end_application_level_autoscaling_policy__
+```
+The following example shows a stateful application-level policy that persists state between control-loop iterations:
+
+`autoscaling_policy.py` file:
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin_stateful_application_level_policy__
+:end-before: __end_stateful_application_level_policy__
 ```
 
 #### Configure application level autoscaling
 
 To use an application-level policy, you need to define your deployments:
 
+`main.py` file:
 ```{literalinclude} ../doc_code/application_level_autoscaling.py
 :language: python
 :start-after: __serve_example_begin__
@@ -698,6 +776,7 @@ To use an application-level policy, you need to define your deployments:
 
 Then specify the application-level policy in your application config:
 
+`serve.yaml` file:
 ```{literalinclude} ../doc_code/application_level_autoscaling.yaml
 :language: yaml
 :emphasize-lines: 4-5
@@ -711,6 +790,19 @@ Programmatic configuration of application-level autoscaling policies through `se
 When you specify both a deployment-level policy and an application-level policy, the application-level policy takes precedence. Ray Serve logs a warning if you configure both.
 :::
 
+
+#### Applying standard autoscaling parameters to application-level policies
+Ray Serve automatically applies standard autoscaling parameters (delays, factors, and min/max bounds) to application-level policies on a per-deployment basis.
+These parameters include:
+- `upscale_delay_s`, `downscale_delay_s`, `downscale_to_zero_delay_s`
+- `upscaling_factor`, `downscaling_factor`
+- `min_replicas`, `max_replicas`
+
+The YAML configuration file shows the default parameters applied to the application level policy.
+```{literalinclude} ../doc_code/application_level_autoscaling_with_defaults.yaml
+:language: yaml
+```
+Your application level policy can return per deployment desired replicas as `int` or `float` values. Ray Serve applies the autoscaling config parameters per deployment and returns integer decisions.
 :::{warning}
 ### Gotchas and limitations
 

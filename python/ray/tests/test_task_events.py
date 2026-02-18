@@ -7,18 +7,30 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import (
+    PrometheusTimeseries,
+    SignalActor,
+    wait_for_condition,
+)
 from ray._private.state_api_test_utils import (
     verify_failed_task,
 )
 from ray._private.test_utils import (
-    PrometheusTimeseries,
     raw_metric_timeseries,
+    wait_for_aggregator_agent_if_enabled,
 )
 from ray._private.worker import RayContext
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
 from ray.util.state import list_tasks
+
+# Run every test in this module twice: default and with core-worker to aggregator feature flag enabled
+pytestmark = [
+    pytest.mark.parametrize(
+        "event_routing_config", ["default", "aggregator"], indirect=True
+    ),
+    pytest.mark.usefixtures("event_routing_config"),
+]
 
 _SYSTEM_CONFIG = {
     "task_events_report_interval_ms": 100,
@@ -237,7 +249,12 @@ def test_failed_task_runtime_env_setup(shutdown_only):
     def f():
         pass
 
-    bad_env = RuntimeEnv(conda={"dependencies": ["_this_does_not_exist"]})
+    bad_env = RuntimeEnv(
+        conda={
+            "channels": ["defaults"],
+            "dependencies": ["_this_does_not_exist"],
+        }
+    )
     with pytest.raises(
         RuntimeEnvSetupError,
     ):
@@ -394,7 +411,10 @@ def test_parent_task_id_concurrent_actor(shutdown_only, actor_concurrency):
 
 
 def test_is_debugger_paused(shutdown_only):
-    ray.init(num_cpus=1, _system_config=_SYSTEM_CONFIG)
+    ray_context = ray.init(num_cpus=1, _system_config=_SYSTEM_CONFIG)
+    address = ray_context.address_info["address"]
+    node_id = ray_context.address_info["node_id"]
+    wait_for_aggregator_agent_if_enabled(address, node_id)
 
     @ray.remote(max_retries=0)
     def f():

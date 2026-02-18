@@ -42,11 +42,14 @@ from ray.serve.llm import LLMConfig, build_dp_openai_app
 # Configure the model with data parallel settings
 config = LLMConfig(
     model_loading_config={
-        "model_id": "Qwen/Qwen2.5-0.5B-Instruct"
+        "model_id": "microsoft/Phi-tiny-MoE-instruct"
     },
     engine_kwargs={
         "data_parallel_size": 2,  # Number of DP replicas
         "tensor_parallel_size": 1,  # TP size per replica
+        # Reduced for CI compatibility
+        "max_model_len": 1024,
+        "max_num_seqs": 32,
     },
     experimental_configs={
         # This is a temporary required config. We will remove this in future versions.

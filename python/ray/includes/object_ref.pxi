@@ -1,12 +1,17 @@
 from ray.includes.unique_ids cimport CObjectID
+from ray.includes.optional cimport (
+    optional,
+    nullopt,
+)
 
 import asyncio
 import concurrent.futures
 import functools
 import logging
 import threading
-from typing import Callable, Any, Union
+from typing import Callable, Any, Union, Optional
 from _collections_abc import GenericAlias
+from builtins import StopAsyncIteration
 
 import ray
 import cython
@@ -26,7 +31,15 @@ def _set_future_helper(
         return
 
     if isinstance(result, RayTaskError):
-        py_future.set_exception(result.as_instanceof_cause())
+        exc = result.as_instanceof_cause()
+        # Convert StopIteration to RuntimeError to prevent segfaults due to
+        # Cpython's behavior w.r.t. PEP479
+        if isinstance(exc, StopIteration) or isinstance(exc, StopAsyncIteration):
+            runtime_error = RuntimeError(f"generator raised {type(exc).__name__}")
+            runtime_error.__cause__ = exc
+            py_future.set_exception(runtime_error)
+        else:
+            py_future.set_exception(exc)
     elif isinstance(result, RayError):
         # Directly raise exception for RayActorError
         py_future.set_exception(result)
@@ -42,12 +55,12 @@ cdef class ObjectRef(BaseID):
 
     def __init__(
             self, id, owner_addr="", call_site_data="",
-            skip_adding_local_ref=False, tensor_transport_val=0):
+            skip_adding_local_ref=False, tensor_transport: Optional[str] = None):
         self._set_id(id)
         self.owner_addr = owner_addr
         self.in_core_worker = False
         self.call_site_data = call_site_data
-        self.tensor_transport_val = tensor_transport_val
+        self._tensor_transport = tensor_transport
         worker = ray._private.worker.global_worker
         # TODO(edoakes): We should be able to remove the in_core_worker flag.
         # But there are still some dummy object refs being created outside the
@@ -157,7 +170,13 @@ cdef class ObjectRef(BaseID):
         return self
 
     def tensor_transport(self):
-        return self.tensor_transport_val
+        return self._tensor_transport
 
-    cdef CTensorTransport c_tensor_transport(self):
-        return <CTensorTransport>self.tensor_transport_val
+    cdef optional[c_string] c_tensor_transport(self):
+        cdef:
+            optional[c_string] c_tensor_transport = nullopt
+            c_string c_tensor_transport_str
+        if self._tensor_transport is not None:
+            c_tensor_transport_str = self._tensor_transport.encode("utf-8")
+            c_tensor_transport.emplace(move(c_tensor_transport_str))
+        return c_tensor_transport

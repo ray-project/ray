@@ -17,10 +17,22 @@ def test_scaling_config_validation():
 
     with pytest.raises(
         ValueError,
-        match="If `bundle_label_selector` is a list, it must be the same length as `num_workers`",
+        match=(
+            "If `label_selector` is a list, it must be the same length as "
+            "`max_workers`"
+        ),
+    ):
+        ScalingConfig(num_workers=2, label_selector=[{"subcluster": "my_subcluster"}])
+    with pytest.raises(
+        ValueError,
+        match=(
+            "If `label_selector` is a list, it must be the same length as "
+            "`max_workers`"
+        ),
     ):
         ScalingConfig(
-            num_workers=2, bundle_label_selector=[{"subcluster": "my_subcluster"}]
+            num_workers=(2, 3),
+            label_selector=[{"subcluster": "a"}, {"subcluster": "b"}],
         )
 
 
@@ -40,10 +52,32 @@ def test_scaling_config_accelerator_type():
     }
 
 
+def test_scaling_config_tpu_min_workers_multiple():
+    with pytest.raises(ValueError, match="min_workers"):
+        ScalingConfig(
+            num_workers=(1, 2),
+            use_tpu=True,
+            topology="2x2x2",
+            accelerator_type="TPU-V4",
+            resources_per_worker={"TPU": 4},
+        )
+
+
 def test_storage_filesystem_repr():
     """Test for https://github.com/ray-project/ray/pull/40851"""
     config = RunConfig(storage_filesystem=pyarrow.fs.S3FileSystem())
     repr(config)
+
+
+def test_scaling_config_default_workers():
+    """Test that num_workers defaults to 1 for non-TPU workloads."""
+    config = ScalingConfig()
+    assert config.num_workers == 1
+    assert config.total_resources == {"CPU": 1}
+
+    config_gpu = ScalingConfig(use_gpu=True)
+    assert config_gpu.num_workers == 1
+    assert config_gpu.total_resources == {"GPU": 1}
 
 
 if __name__ == "__main__":

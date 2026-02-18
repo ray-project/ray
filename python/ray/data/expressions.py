@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -11,6 +12,9 @@ from typing import (
     Dict,
     Generic,
     List,
+    Optional,
+    Tuple,
+    Type,
     TypeVar,
     Union,
 )
@@ -23,12 +27,16 @@ from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
+    from ray.data.namespace_expressions.arr_namespace import _ArrayNamespace
     from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
     from ray.data.namespace_expressions.list_namespace import _ListNamespace
     from ray.data.namespace_expressions.string_namespace import _StringNamespace
     from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 
 T = TypeVar("T")
+
+UDFCallable = Callable[..., "UDFExpr"]
+Decorated = Union[UDFCallable, Type[T]]
 
 
 @DeveloperAPI(stability="alpha")
@@ -43,6 +51,7 @@ class Operation(Enum):
         SUB: Subtraction operation (-)
         MUL: Multiplication operation (*)
         DIV: Division operation (/)
+        MOD: Modulo operation (%)
         FLOORDIV: Floor division operation (//)
         GT: Greater than comparison (>)
         LT: Less than comparison (<)
@@ -63,6 +72,7 @@ class Operation(Enum):
     SUB = "sub"
     MUL = "mul"
     DIV = "div"
+    MOD = "mod"
     FLOORDIV = "floordiv"
     GT = "gt"
     LT = "lt"
@@ -99,6 +109,8 @@ class _ExprVisitor(ABC, Generic[T]):
             return self.visit_download(expr)
         elif isinstance(expr, StarExpr):
             return self.visit_star(expr)
+        elif isinstance(expr, MonotonicallyIncreasingIdExpr):
+            return self.visit_monotonically_increasing_id(expr)
         else:
             raise TypeError(f"Unsupported expression type for conversion: {type(expr)}")
 
@@ -134,16 +146,20 @@ class _ExprVisitor(ABC, Generic[T]):
     def visit_download(self, expr: "DownloadExpr") -> T:
         pass
 
+    @abstractmethod
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> T:
+        pass
+
 
 class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
     """Visitor that converts Ray Data expressions to PyArrow compute expressions."""
 
     def visit_column(self, expr: "ColumnExpr") -> "pyarrow.compute.Expression":
-
         return pc.field(expr.name)
 
     def visit_literal(self, expr: "LiteralExpr") -> "pyarrow.compute.Expression":
-
         return pc.scalar(expr.value)
 
     def visit_binary(self, expr: "BinaryExpr") -> "pyarrow.compute.Expression":
@@ -199,6 +215,13 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
 
     def visit_star(self, expr: "StarExpr") -> "pyarrow.compute.Expression":
         raise TypeError("Star expressions cannot be converted to PyArrow expressions")
+
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> "pyarrow.compute.Expression":
+        raise TypeError(
+            "Monotonically Increasing ID expressions cannot be converted to PyArrow expressions"
+        )
 
 
 @DeveloperAPI(stability="alpha")
@@ -295,7 +318,10 @@ class Expr(ABC):
             other = LiteralExpr(other)
         return BinaryExpr(op, self, other)
 
-    # arithmetic
+    #
+    # Arithmetic ops
+    #
+
     def __add__(self, other: Any) -> "Expr":
         """Addition operator (+)."""
         return self._bin(other, Operation.ADD)
@@ -319,6 +345,14 @@ class Expr(ABC):
     def __rmul__(self, other: Any) -> "Expr":
         """Reverse multiplication operator (for literal * expr)."""
         return LiteralExpr(other)._bin(self, Operation.MUL)
+
+    def __mod__(self, other: Any):
+        """Modulation operator (%)."""
+        return self._bin(other, Operation.MOD)
+
+    def __rmod__(self, other: Any):
+        """Modulation operator (%)."""
+        return LiteralExpr(other)._bin(self, Operation.MOD)
 
     def __truediv__(self, other: Any) -> "Expr":
         """Division operator (/)."""
@@ -418,12 +452,226 @@ class Expr(ABC):
             data_type=self.data_type, expr=self, _name=name, _is_rename=False
         )
 
+    # rounding helpers
+    def ceil(self) -> "UDFExpr":
+        """Round values up to the nearest integer."""
+        return _create_pyarrow_compute_udf(pc.ceil)(self)
+
+    def floor(self) -> "UDFExpr":
+        """Round values down to the nearest integer."""
+        return _create_pyarrow_compute_udf(pc.floor)(self)
+
+    def round(self) -> "UDFExpr":
+        """Round values to the nearest integer using PyArrow semantics."""
+        return _create_pyarrow_compute_udf(pc.round)(self)
+
+    def trunc(self) -> "UDFExpr":
+        """Truncate fractional values toward zero."""
+        return _create_pyarrow_compute_udf(pc.trunc)(self)
+
+    # logarithmic helpers
+    def ln(self) -> "UDFExpr":
+        """Compute the natural logarithm of the expression."""
+        return _create_pyarrow_compute_udf(pc.ln, return_dtype=DataType.float64())(self)
+
+    def log10(self) -> "UDFExpr":
+        """Compute the base-10 logarithm of the expression."""
+        return _create_pyarrow_compute_udf(pc.log10, return_dtype=DataType.float64())(
+            self
+        )
+
+    def log2(self) -> "UDFExpr":
+        """Compute the base-2 logarithm of the expression."""
+        return _create_pyarrow_compute_udf(pc.log2, return_dtype=DataType.float64())(
+            self
+        )
+
+    def exp(self) -> "UDFExpr":
+        """Compute the natural exponential of the expression."""
+        return _create_pyarrow_compute_udf(pc.exp, return_dtype=DataType.float64())(
+            self
+        )
+
+    # trigonometric helpers
+    def sin(self) -> "UDFExpr":
+        """Compute the sine of the expression (in radians)."""
+        return _create_pyarrow_compute_udf(pc.sin, return_dtype=DataType.float64())(
+            self
+        )
+
+    def cos(self) -> "UDFExpr":
+        """Compute the cosine of the expression (in radians)."""
+        return _create_pyarrow_compute_udf(pc.cos, return_dtype=DataType.float64())(
+            self
+        )
+
+    def tan(self) -> "UDFExpr":
+        """Compute the tangent of the expression (in radians)."""
+        return _create_pyarrow_compute_udf(pc.tan, return_dtype=DataType.float64())(
+            self
+        )
+
+    def asin(self) -> "UDFExpr":
+        """Compute the arcsine (inverse sine) of the expression, returning radians."""
+        return _create_pyarrow_compute_udf(pc.asin, return_dtype=DataType.float64())(
+            self
+        )
+
+    def acos(self) -> "UDFExpr":
+        """Compute the arccosine (inverse cosine) of the expression, returning radians."""
+        return _create_pyarrow_compute_udf(pc.acos, return_dtype=DataType.float64())(
+            self
+        )
+
+    def atan(self) -> "UDFExpr":
+        """Compute the arctangent (inverse tangent) of the expression, returning radians."""
+        return _create_pyarrow_compute_udf(pc.atan, return_dtype=DataType.float64())(
+            self
+        )
+
+    # arithmetic helpers
+    def negate(self) -> "UDFExpr":
+        """Compute the negation of the expression.
+
+        Returns:
+            A UDFExpr that computes the negation (multiplies values by -1).
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> import ray
+            >>> ds = ray.data.from_items([{"x": 5}, {"x": -3}])
+            >>> ds = ds.with_column("neg_x", col("x").negate())
+            >>> # Result: neg_x = [-5, 3]
+        """
+        return _create_pyarrow_compute_udf(pc.negate_checked)(self)
+
+    def sign(self) -> "UDFExpr":
+        """Compute the sign of the expression.
+
+        Returns:
+            A UDFExpr that returns -1 for negative values, 0 for zero, and 1 for positive values.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> import ray
+            >>> ds = ray.data.from_items([{"x": 5}, {"x": -3}, {"x": 0}])
+            >>> ds = ds.with_column("sign_x", col("x").sign())
+            >>> # Result: sign_x = [1, -1, 0]
+        """
+        return _create_pyarrow_compute_udf(pc.sign)(self)
+
+    def power(self, exponent: Any) -> "UDFExpr":
+        """Raise the expression to the given power.
+
+        Args:
+            exponent: The exponent to raise the expression to.
+
+        Returns:
+            A UDFExpr that computes the power operation.
+
+        Example:
+            >>> from ray.data.expressions import col, lit
+            >>> import ray
+            >>> ds = ray.data.from_items([{"x": 2}, {"x": 3}])
+            >>> ds = ds.with_column("x_squared", col("x").power(2))
+            >>> # Result: x_squared = [4, 9]
+            >>> ds = ds.with_column("x_cubed", col("x").power(3))
+            >>> # Result: x_cubed = [8, 27]
+        """
+        return _create_pyarrow_compute_udf(pc.power)(self, exponent)
+
+    def abs(self) -> "UDFExpr":
+        """Compute the absolute value of the expression.
+
+        Returns:
+            A UDFExpr that computes the absolute value.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> import ray
+            >>> ds = ray.data.from_items([{"x": 5}, {"x": -3}])
+            >>> ds = ds.with_column("abs_x", col("x").abs())
+            >>> # Result: abs_x = [5, 3]
+        """
+        return _create_pyarrow_compute_udf(pc.abs_checked)(self)
+
+    def cast(self, target_type: DataType, *, safe: bool = True) -> "UDFExpr":
+        """Cast the expression to a specified type.
+
+        This method allows you to convert the expression result to a different
+        data type using PyArrow's cast function. By default, it uses safe casting
+        which raises errors on overflow or invalid conversions.
+
+        Args:
+            target_type: The Ray Data :class:`~ray.data.datatype.DataType` to cast to,
+                for example ``DataType.int64()``, ``DataType.float64()``,
+                or ``DataType.string()``.
+            safe: If True (default), raise errors on overflow or invalid conversions.
+                If False, allow unsafe conversions (which may result in data loss).
+
+        Returns:
+            A UDFExpr that casts the expression to the target type.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> from ray.data.datatype import DataType
+            >>> import ray
+            >>>
+            >>> ds = ray.data.range(10)
+            >>> # Cast float result to int64
+            >>> ds = ds.with_column("part", (col("id") % 2).cast(DataType.int64()))
+            >>> # Cast to float64
+            >>> ds = ds.with_column("id_float", col("id").cast(DataType.float64()))
+            >>> # Cast to string
+            >>> ds = ds.with_column("id_str", col("id").cast(DataType.string()))
+        """
+
+        # Only Ray Data's DataType is supported to keep the API surface small.
+        if not isinstance(target_type, DataType):
+            raise TypeError(
+                f"target_type must be a ray.data.datatype.DataType, got: "
+                f"{type(target_type).__name__}. "
+                "Use the DataType factories (e.g., DataType.int64(), DataType.string())."
+            )
+
+        # Python-type-backed DataTypes (e.g., DataType(int)) require values to infer
+        # the Arrow type, which isn't available in the expression context. Provide
+        # a clear error instead of a confusing failure later.
+        if target_type.is_python_type():
+            raise TypeError(
+                "Python-type-backed DataType (e.g., DataType(int), DataType(str)) "
+                "requires values to infer the Arrow type, which is not available in "
+                "the cast() context. Please use an Arrow-backed DataType instead, "
+                "such as DataType.int64(), DataType.float64(), or DataType.string()."
+            )
+
+        # Convert the target DataType to its Arrow representation.
+        pa_target_type = target_type.to_arrow_dtype()
+
+        # The expression result uses the provided DataType as its logical type.
+        ray_target_dtype = target_type
+
+        # Create UDF that performs the cast
+        @pyarrow_udf(return_dtype=ray_target_dtype)
+        def cast_udf(arr: pyarrow.Array) -> pyarrow.Array:
+            return pc.cast(arr, pa_target_type, safe=safe)
+
+        return cast_udf(self)
+
+    @property
+    def arr(self) -> "_ArrayNamespace":
+        """Access array operations for this expression."""
+        from ray.data.namespace_expressions.arr_namespace import _ArrayNamespace
+
+        return _ArrayNamespace(self)
+
     @property
     def list(self) -> "_ListNamespace":
         """Access list operations for this expression.
 
         Returns:
-            A _ListNamespace that provides list-specific operations.
+            A _ListNamespace that provides list-specific operations for both
+            PyArrow ``List`` and ``FixedSizeList`` columns.
 
         Example:
             >>> from ray.data.expressions import col
@@ -641,6 +889,164 @@ class UnaryExpr(Expr):
         )
 
 
+@dataclass(frozen=True)
+class _CallableClassSpec:
+    """Specification for a callable class UDF.
+
+    This dataclass captures the class type and constructor arguments needed
+    to instantiate a callable class UDF on an actor. It consolidates the
+    callable class metadata that was previously spread across multiple fields.
+
+    Attributes:
+        cls: The original callable class type
+        args: Positional arguments for the constructor
+        kwargs: Keyword arguments for the constructor
+        _cached_key: Pre-computed key that survives serialization
+    """
+
+    cls: type
+    args: Tuple[Any, ...] = ()
+    kwargs: Dict[str, Any] = field(default_factory=dict)
+    _cached_key: Optional[Tuple] = field(default=None, compare=False, repr=False)
+
+    def __post_init__(self):
+        """Pre-compute and cache the key at construction time.
+
+        This ensures the same key survives serialization, since the cached
+        key tuple (containing the already-computed repr strings) gets pickled
+        and unpickled as-is.
+        """
+        if self._cached_key is None:
+            class_id = f"{self.cls.__module__}.{self.cls.__qualname__}"
+            try:
+                key = (
+                    class_id,
+                    self.args,
+                    tuple(sorted(self.kwargs.items())),
+                )
+                # Verify the key is actually hashable (args may contain lists)
+                hash(key)
+            except TypeError:
+                # Fallback for unhashable args/kwargs - use repr for comparison
+                key = (class_id, repr(self.args), repr(self.kwargs))
+            # Use object.__setattr__ since dataclass is frozen
+            object.__setattr__(self, "_cached_key", key)
+
+    def make_key(self) -> Tuple:
+        """Return the pre-computed hashable key for UDF instance lookup.
+
+        The key uniquely identifies a UDF by its class and constructor arguments.
+        This ensures that the same class with different constructor args
+        (e.g., Multiplier(2) vs Multiplier(3)) are treated as distinct UDFs.
+
+        Returns:
+            A hashable tuple that uniquely identifies this UDF configuration.
+        """
+        return self._cached_key
+
+
+class _CallableClassUDF:
+    """A wrapper that makes callable class UDFs appear as regular functions.
+
+    This class wraps callable class UDFs for use in expressions. It provides
+    an `init()` method that should be called at actor startup via `init_fn`
+    to instantiate the underlying class before any blocks are processed.
+
+    Key responsibilities:
+    1. Store the callable class and constructor arguments
+    2. Provide init() for actor startup initialization
+    3. Handle async bridging for coroutine/async generator UDFs
+    4. Reuse the same instance across all calls (actor semantics)
+
+    Example:
+        >>> @udf(return_dtype=DataType.int32())
+        ... class AddOffset:
+        ...     def __init__(self, offset=1):
+        ...         self.offset = offset
+        ...     def __call__(self, x):
+        ...         return pc.add(x, self.offset)
+        >>>
+        >>> add_five = AddOffset(5)  # Creates _CallableClassUDF internally
+        >>> expr = add_five(col("value"))  # Creates UDFExpr with fn=_CallableClassUDF
+    """
+
+    def __init__(
+        self,
+        cls: type,
+        ctor_args: Tuple[Any, ...],
+        ctor_kwargs: Dict[str, Any],
+        return_dtype: DataType,
+    ):
+        """Initialize the _CallableClassUDF wrapper.
+
+        Args:
+            cls: The original callable class
+            ctor_args: Constructor positional arguments
+            ctor_kwargs: Constructor keyword arguments
+            return_dtype: The return data type for schema inference
+        """
+        self._cls = cls
+        self._ctor_args = ctor_args
+        self._ctor_kwargs = ctor_kwargs
+        self._return_dtype = return_dtype
+        # Instance created by init() at actor startup
+        self._instance = None
+        # Cache the spec to avoid creating new instances on each access
+        self._callable_class_spec = _CallableClassSpec(
+            cls=cls,
+            args=ctor_args,
+            kwargs=ctor_kwargs,
+        )
+
+    @property
+    def __name__(self) -> str:
+        """Return the original class name for error messages."""
+        return self._cls.__name__
+
+    @property
+    def callable_class_spec(self) -> _CallableClassSpec:
+        """Return the callable class spec for this UDF.
+
+        Used for deduplication when the same UDF appears multiple times
+        in an expression tree.
+        """
+        return self._callable_class_spec
+
+    def init(self) -> None:
+        """Initialize the UDF instance. Called at actor startup via init_fn.
+
+        This ensures the callable class is instantiated before any blocks
+        are processed, matching the behavior of map_batches callable classes.
+        """
+        if self._instance is None:
+            self._instance = self._cls(*self._ctor_args, **self._ctor_kwargs)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        """Call the UDF instance.
+
+        Args:
+            *args: Evaluated expression arguments (PyArrow arrays, etc.)
+            **kwargs: Evaluated expression keyword arguments
+
+        Returns:
+            The result of calling the UDF instance
+
+        Raises:
+            RuntimeError: If init() was not called before __call__
+        """
+        if self._instance is None:
+            raise RuntimeError(
+                f"_CallableClassUDF '{self._cls.__name__}' was not initialized. "
+                f"init() must be called before __call__. This typically happens "
+                f"via init_fn at actor startup."
+            )
+
+        from ray.data.util.expression_utils import _call_udf_instance_with_async_bridge
+
+        # Call instance directly, handling async if needed
+        return _call_udf_instance_with_async_bridge(self._instance, *args, **kwargs)
+
+
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
 class UDFExpr(Expr):
@@ -653,15 +1059,16 @@ class UDFExpr(Expr):
     as a PyArrow Array containing multiple values from that column across the batch.
 
     Args:
-        fn: The user-defined function to call
+        fn: The user-defined function to call. For callable classes, this is an
+            _CallableClassUDF instance that handles lazy instantiation internally.
         args: List of argument expressions (positional arguments)
         kwargs: Dictionary of keyword argument expressions
-        function_name: Optional name for the function (for debugging)
 
     Example:
         >>> from ray.data.expressions import col, udf
         >>> import pyarrow as pa
         >>> import pyarrow.compute as pc
+        >>> from ray.data.datatype import DataType
         >>>
         >>> @udf(return_dtype=DataType.int32())
         ... def add_one(x: pa.Array) -> pa.Array:
@@ -669,17 +1076,52 @@ class UDFExpr(Expr):
         >>>
         >>> # Use in expressions
         >>> expr = add_one(col("value"))
+
+        >>> # Callable class example
+        >>> @udf(return_dtype=DataType.int32())
+        ... class AddOffset:
+        ...     def __init__(self, offset=1):
+        ...         self.offset = offset
+        ...     def __call__(self, x: pa.Array) -> pa.Array:
+        ...         return pc.add(x, self.offset)
+        >>>
+        >>> # Use callable class
+        >>> add_five = AddOffset(5)
+        >>> expr = add_five(col("value"))
     """
 
-    fn: Callable[..., BatchColumn]
+    fn: Callable[..., BatchColumn]  # Can be regular function OR _CallableClassUDF
     args: List[Expr]
     kwargs: Dict[str, Expr]
 
+    @property
+    def callable_class_spec(self) -> Optional[_CallableClassSpec]:
+        """Return callable_class_spec if fn is an _CallableClassUDF, else None.
+
+        This property maintains backward compatibility with code that checks
+        for callable_class_spec.
+        """
+        if isinstance(self.fn, _CallableClassUDF):
+            return self.fn.callable_class_spec
+        return None
+
     def structurally_equals(self, other: Any) -> bool:
+        if not isinstance(other, UDFExpr):
+            return False
+
+        # For callable class UDFs (_CallableClassUDF), compare the callable_class_spec.
+        # For regular function UDFs, compare fn directly.
+        if isinstance(self.fn, _CallableClassUDF):
+            if not isinstance(other.fn, _CallableClassUDF):
+                return False
+            if self.fn.callable_class_spec != other.fn.callable_class_spec:
+                return False
+        else:
+            if self.fn != other.fn:
+                return False
+
         return (
-            isinstance(other, UDFExpr)
-            and self.fn == other.fn
-            and len(self.args) == len(other.args)
+            len(self.args) == len(other.args)
             and all(a.structurally_equals(b) for a, b in zip(self.args, other.args))
             and self.kwargs.keys() == other.kwargs.keys()
             and all(
@@ -690,9 +1132,19 @@ class UDFExpr(Expr):
 
 
 def _create_udf_callable(
-    fn: Callable[..., BatchColumn], return_dtype: DataType
+    fn: Callable[..., BatchColumn],
+    return_dtype: DataType,
 ) -> Callable[..., UDFExpr]:
-    """Create a callable that generates UDFExpr when called with expressions."""
+    """Create a callable that generates UDFExpr when called with expressions.
+
+    Args:
+        fn: The user-defined function to wrap. Can be a regular function
+            or an _CallableClassUDF instance (for callable classes).
+        return_dtype: The return data type of the UDF
+
+    Returns:
+        A callable that creates UDFExpr instances when called with expressions
+    """
 
     def udf_callable(*args, **kwargs) -> UDFExpr:
         # Convert arguments to expressions if they aren't already
@@ -761,6 +1213,14 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         ... def format_name(first: pa.Array, last: pa.Array) -> pa.Array:
         ...     return pc.binary_join_element_wise(first, last, " ")  # Vectorized string concatenation
         >>>
+        >>> # Callable class UDF
+        >>> @udf(return_dtype=DataType.int32())
+        ... class AddOffset:
+        ...     def __init__(self, offset=1):
+        ...         self.offset = offset
+        ...     def __call__(self, x: pa.Array) -> pa.Array:
+        ...         return pc.add(x, self.offset)
+        >>>
         >>> # Use in dataset operations
         >>> ds = ray.data.from_items([
         ...     {"value": 5, "first": "John", "last": "Doe"},
@@ -773,12 +1233,63 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         >>> # Multi-column transformation (each column becomes a PyArrow Array)
         >>> ds_formatted = ds.with_column("full_name", format_name(col("first"), col("last")))
         >>>
+        >>> # Callable class usage
+        >>> add_five = AddOffset(5)
+        >>> ds_with_offset = ds.with_column("value_plus_five", add_five(col("value")))
+        >>>
         >>> # Can also be used in complex expressions
         >>> ds_complex = ds.with_column("doubled_plus_one", add_one(col("value")) * 2)
     """
 
-    def decorator(func: Callable[..., BatchColumn]) -> Callable[..., UDFExpr]:
-        return _create_udf_callable(func, return_dtype)
+    def decorator(
+        func_or_class: Union[Callable[..., BatchColumn], Type[T]]
+    ) -> Decorated:
+        # Check if this is a callable class (has __call__ method defined)
+        if isinstance(func_or_class, type) and issubclass(func_or_class, Callable):
+            # Wrapper that delays instantiation and returns expressions instead of executing.
+            # Without this, MyClass(args) would instantiate on the driver and
+            # instance(col(...)) would try to execute rather than building an expression.
+            class ExpressionAwareCallableClass:
+                """Intercepts callable class instantiation to delay until actor execution.
+
+                Allows natural syntax like:
+                    add_five = AddOffset(5)
+                    ds.with_column("result", add_five(col("x")))
+
+                When instantiated, creates an _CallableClassUDF that is completely
+                self-contained - it handles lazy instantiation and async bridging
+                internally. From the planner's perspective, this is just a regular
+                callable function.
+                """
+
+                def __init__(self, *args, **kwargs):
+                    # Create an _CallableClassUDF that is self-contained.
+                    # It lazily instantiates the class on first call (on the worker)
+                    # and handles async bridging internally.
+                    self._expr_udf = _CallableClassUDF(
+                        cls=func_or_class,
+                        ctor_args=args,
+                        ctor_kwargs=kwargs,
+                        return_dtype=return_dtype,
+                    )
+
+                def __call__(self, *call_args, **call_kwargs):
+                    # Create UDFExpr with fn=_CallableClassUDF
+                    # The _CallableClassUDF is self-contained - no external setup needed
+                    return _create_udf_callable(
+                        self._expr_udf,
+                        return_dtype,
+                    )(*call_args, **call_kwargs)
+
+            # Preserve the original class name and module for better error messages
+            ExpressionAwareCallableClass.__name__ = func_or_class.__name__
+            ExpressionAwareCallableClass.__qualname__ = func_or_class.__qualname__
+            ExpressionAwareCallableClass.__module__ = func_or_class.__module__
+
+            return ExpressionAwareCallableClass
+        else:
+            # Regular function
+            return _create_udf_callable(func_or_class, return_dtype)
 
     return decorator
 
@@ -865,12 +1376,29 @@ def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
     return decorator
 
 
+def _create_pyarrow_compute_udf(
+    pc_func: Callable[..., pyarrow.Array],
+    return_dtype: DataType | None = None,
+) -> Callable[..., "UDFExpr"]:
+    """Create an expression UDF backed by a PyArrow compute function."""
+
+    def wrapper(expr: "Expr", *positional: Any, **kwargs: Any) -> "UDFExpr":
+        @pyarrow_udf(return_dtype=return_dtype or expr.data_type)
+        def udf(arr: pyarrow.Array) -> pyarrow.Array:
+            return pc_func(arr, *positional, **kwargs)
+
+        return udf(expr)
+
+    return wrapper
+
+
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
 class DownloadExpr(Expr):
     """Expression that represents a download operation."""
 
     uri_column_name: str
+    filesystem: "pyarrow.fs.FileSystem" = None
     data_type: DataType = field(default_factory=lambda: DataType.binary(), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
@@ -908,7 +1436,7 @@ class AliasExpr(Expr):
             isinstance(other, AliasExpr)
             and self.expr.structurally_equals(other.expr)
             and self.name == other.name
-            and self._is_rename == self._is_rename
+            and self._is_rename == other._is_rename
         )
 
 
@@ -934,6 +1462,21 @@ class StarExpr(Expr):
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, StarExpr)
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False, repr=False)
+class MonotonicallyIncreasingIdExpr(Expr):
+    """Expression that represents a monotonically increasing ID column."""
+
+    # Unique identifier for each expression to isolate row count state
+    _instance_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+
+    data_type: DataType = field(default_factory=lambda: DataType.int64(), init=False)
+
+    def structurally_equals(self, other: Any) -> bool:
+        # Non-deterministic, never structurally equal to another expression
+        return False
 
 
 @PublicAPI(stability="beta")
@@ -1015,7 +1558,11 @@ def star() -> StarExpr:
 
 
 @PublicAPI(stability="alpha")
-def download(uri_column_name: str) -> DownloadExpr:
+def download(
+    uri_column_name: str,
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+) -> DownloadExpr:
     """
     Create a download expression that downloads content from URIs.
 
@@ -1025,6 +1572,8 @@ def download(uri_column_name: str) -> DownloadExpr:
 
     Args:
         uri_column_name: The name of the column containing URIs to download from
+        filesystem: PyArrow filesystem to use for reading remote files.
+            If None, the filesystem is auto-detected from the path scheme.
     Returns:
         A DownloadExpr that will download content from the specified URI column
 
@@ -1039,7 +1588,38 @@ def download(uri_column_name: str) -> DownloadExpr:
         >>> # Add downloaded bytes column
         >>> ds_with_bytes = ds.with_column("bytes", download("uri"))
     """
-    return DownloadExpr(uri_column_name=uri_column_name)
+    return DownloadExpr(uri_column_name=uri_column_name, filesystem=filesystem)
+
+
+@PublicAPI(stability="alpha")
+def monotonically_increasing_id() -> MonotonicallyIncreasingIdExpr:
+    """
+    Create an expression that generates monotonically increasing IDs.
+
+    The generated IDs are guaranteed to be monotonically increasing and unique,
+    but not consecutive. The current implementation puts the task ID in the upper
+    31 bits, and the record number within each task in the lower 33 bits. Records
+    within the block(s) assigned to a task receive consecutive IDs. Note that IDs
+    are not globally ordered across tasks.
+
+    The assumption is that the dataset schedules less than 1 billion tasks, and
+    each task processes less than 8 billion records.
+
+    The function is non-deterministic because its result depends on task IDs.
+
+    Returns:
+        A MonotonicallyIncreasingIdExpr that generates unique IDs.
+
+    Example:
+        >>> from ray.data.expressions import monotonically_increasing_id
+        >>> import ray
+        >>> ds = ray.data.range(4, override_num_blocks=2)
+        >>> ds = ds.with_column("uid", monotonically_increasing_id())
+        >>> ds.take_all()  # doctest: +SKIP
+        [{'id': 0, 'uid': 0}, {'id': 1, 'uid': 1}, {'id': 2, 'uid': 8589934592}, {'id': 3, 'uid': 8589934593}]
+
+    """
+    return MonotonicallyIncreasingIdExpr()
 
 
 # ──────────────────────────────────────
@@ -1060,12 +1640,15 @@ __all__ = [
     "DownloadExpr",
     "AliasExpr",
     "StarExpr",
+    "MonotonicallyIncreasingIdExpr",
     "pyarrow_udf",
     "udf",
     "col",
     "lit",
     "download",
     "star",
+    "monotonically_increasing_id",
+    "_ArrayNamespace",
     "_ListNamespace",
     "_StringNamespace",
     "_StructNamespace",
@@ -1075,7 +1658,11 @@ __all__ = [
 
 def __getattr__(name: str):
     """Lazy import of namespace classes to avoid circular imports."""
-    if name == "_ListNamespace":
+    if name == "_ArrayNamespace":
+        from ray.data.namespace_expressions.arr_namespace import _ArrayNamespace
+
+        return _ArrayNamespace
+    elif name == "_ListNamespace":
         from ray.data.namespace_expressions.list_namespace import _ListNamespace
 
         return _ListNamespace

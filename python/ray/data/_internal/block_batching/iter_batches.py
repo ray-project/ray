@@ -4,7 +4,7 @@ from contextlib import contextmanager, nullcontext
 from typing import Any, Callable, Dict, Iterator, Optional
 
 import ray
-from ray._private.ray_constants import env_integer
+from ray._common.utils import env_integer
 from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
 from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
@@ -96,6 +96,8 @@ class BatchIterator:
             the specified amount of formatted batches from blocks. This improves
             performance for non-CPU bound UDFs, allowing batch fetching compute and
             formatting to be overlapped with the UDF. Defaults to 1.
+        prefetch_bytes_callback: A callback to report prefetched bytes to the executor's
+            resource manager.
     """
 
     UPDATE_METRICS_INTERVAL_S: float = 5.0
@@ -116,6 +118,7 @@ class BatchIterator:
         shuffle_seed: Optional[int] = None,
         ensure_copy: bool = False,
         prefetch_batches: int = 1,
+        prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
     ):
         self._ref_bundles = ref_bundles
         self._stats = stats
@@ -129,6 +132,7 @@ class BatchIterator:
         self._shuffle_seed = shuffle_seed
         self._ensure_copy = ensure_copy
         self._prefetch_batches = prefetch_batches
+        self._prefetch_bytes_callback = prefetch_bytes_callback
         self._eager_free = (
             clear_block_after_read and DataContext.get_current().eager_free
         )
@@ -257,6 +261,10 @@ class BatchIterator:
         self._yielded_first_batch = False
 
     def after_epoch_end(self):
+        # Report 0 prefetched bytes at the end of iteration.
+        if self._prefetch_bytes_callback is not None:
+            self._prefetch_bytes_callback(0)
+
         if self._stats is None:
             return
 
@@ -285,6 +293,10 @@ class BatchIterator:
     def yield_batch_context(self, batch: Batch):
         with self._stats.iter_user_s.timer() if self._stats else nullcontext():
             yield
+
+        # Report prefetched bytes to the executor's resource manager.
+        if self._prefetch_bytes_callback is not None and self._stats is not None:
+            self._prefetch_bytes_callback(self._stats.iter_prefetched_bytes)
 
         if self._stats is None:
             return
@@ -329,7 +341,8 @@ def _format_in_threadpool(
             formatted_batch_iter = collate(
                 formatted_batch_iter, collate_fn=collate_fn, stats=stats
             )
-        yield from formatted_batch_iter
+
+        return formatted_batch_iter
 
     if num_threadpool_workers > 0:
         collated_iter = make_async_gen(
@@ -340,6 +353,7 @@ def _format_in_threadpool(
         )
     else:
         collated_iter = threadpool_computations_format_collate(batch_iter)
+
     return collated_iter
 
 

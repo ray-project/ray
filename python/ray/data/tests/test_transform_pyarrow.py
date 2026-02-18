@@ -9,11 +9,6 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import (
-    ArrowTensorTypeV2,
-    _extension_array_concat_supported,
-)
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
@@ -23,6 +18,11 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     try_combine_chunked_columns,
     unify_schemas,
 )
+from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    _extension_array_concat_supported,
+)
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.extensions import (
@@ -471,6 +471,64 @@ def test_struct_with_arrow_variable_shaped_tensor_type(
             np.testing.assert_array_equal(
                 struct["tensor"], np.zeros((2, 1), dtype=np.float32)
             )
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    reason="Requires PyArrow >= 14.0.0 for type promotion in nested struct fields",
+)
+def test_struct_with_diverging_primitive_types():
+    """Test concatenating tables with struct fields that have diverging primitive types.
+
+    This tests the scenario where struct fields have the same name but different
+    primitive types (e.g., int64 vs float64), which requires type promotion.
+    """
+    import pyarrow as pa
+
+    # Table 1: struct with (a: int64, b: string)
+    t1 = pa.table(
+        {
+            "data": pa.array(
+                [{"a": 1, "b": "hello"}, {"a": 2, "b": "world"}],
+                type=pa.struct([pa.field("a", pa.int64()), pa.field("b", pa.string())]),
+            )
+        }
+    )
+
+    # Table 2: struct with (a: float64, c: int32)
+    # Field 'a' has different type, field 'b' missing, field 'c' new
+    t2 = pa.table(
+        {
+            "data": pa.array(
+                [{"a": 1.5, "c": 100}, {"a": 2.5, "c": 200}],
+                type=pa.struct(
+                    [pa.field("a", pa.float64()), pa.field("c", pa.int32())]
+                ),
+            )
+        }
+    )
+
+    # Concatenate with type promotion
+    result = concat([t1, t2], promote_types=True)
+
+    # Verify schema: field 'a' should be promoted to float64
+    expected_struct_type = pa.struct(
+        [
+            pa.field("a", pa.float64()),
+            pa.field("b", pa.string()),
+            pa.field("c", pa.int32()),
+        ]
+    )
+    assert result.schema == pa.schema([pa.field("data", expected_struct_type)])
+
+    # Verify data: int64 values should be cast to float64, missing fields filled with None
+    expected_data = [
+        {"a": 1.0, "b": "hello", "c": None},
+        {"a": 2.0, "b": "world", "c": None},
+        {"a": 1.5, "b": None, "c": 100},
+        {"a": 2.5, "b": None, "c": 200},
+    ]
+    assert result.column("data").to_pylist() == expected_data
 
 
 def test_arrow_concat_object_with_tensor_fails(object_with_tensor_fails_blocks):
@@ -2712,7 +2770,7 @@ def struct_variable_shaped_tensor_expected():
 @pytest.fixture
 def unify_schemas_object_types_schemas():
     """Fixture for object types unify schemas test data."""
-    from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 
     schema1 = pa.schema([("obj_col", ArrowPythonObjectType())])
     schema2 = pa.schema([("obj_col", pa.int32())])
@@ -2738,7 +2796,7 @@ def unify_schemas_incompatible_tensor_schemas():
 @pytest.fixture
 def unify_schemas_objects_and_tensors_schemas():
     """Fixture for objects and tensors unify schemas test data."""
-    from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 
     schema1 = pa.schema([("col", ArrowPythonObjectType())])
     schema2 = pa.schema([("col", ArrowTensorType((2, 2), pa.int32()))])

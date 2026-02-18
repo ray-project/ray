@@ -6,7 +6,7 @@ import os
 import socket
 import sys
 import traceback
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple
 
@@ -25,7 +25,6 @@ import ray
 import ray._private.prometheus_exporter as prometheus_exporter
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._common.network_utils import parse_address
 from ray._common.utils import (
     get_or_create_event_loop,
     get_user_temp_dir,
@@ -41,7 +40,13 @@ from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
 from ray._private.utils import get_system_memory
-from ray._raylet import GCS_PID_KEY, RayletClient, WorkerID
+from ray._raylet import (
+    GCS_PID_KEY,
+    METRICS_EXPORT_PORT_NAME,
+    RayletClient,
+    WorkerID,
+    persist_port,
+)
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
@@ -183,6 +188,18 @@ METRICS_GAUGES = {
         "node_gram_available",
         "Total GPU RAM available on a ray node",
         "bytes",
+        GPU_TAG_KEYS,
+    ),
+    "node_gpu_power_milliwatts": Gauge(
+        "node_gpu_power_milliwatts",
+        "Current GPU power draw in milliwatts",
+        "milliwatts",
+        GPU_TAG_KEYS,
+    ),
+    "node_gpu_temperature_celsius": Gauge(
+        "node_gpu_temperature_celsius",
+        "Current GPU temperature in Celsius",
+        "celsius",
         GPU_TAG_KEYS,
     ),
     # TPU metrics
@@ -382,11 +399,10 @@ PSUTIL_PROCESS_ATTRS = (
         "cpu_times",
         "cmdline",
         "memory_info",
-        "memory_full_info",
     ]
-    + ["num_fds"]
-    if sys.platform != "win32"
-    else []
+    + (["num_fds"] if sys.platform != "win32" else [])
+    # Only collect memory_full_info in Mac OS X
+    + (["memory_full_info"] if sys.platform == "darwin" else [])
 )
 
 
@@ -424,7 +440,7 @@ class ReporterAgent(
         self._gcs_client = dashboard_agent.gcs_client
         self._ip = dashboard_agent.ip
         self._log_dir = dashboard_agent.log_dir
-        self._is_head_node = self._ip == parse_address(dashboard_agent.gcs_address)[0]
+        self._is_head_node = dashboard_agent.is_head
         self._hostname = socket.gethostname()
         # (pid, created_time) -> psutil.Process
         self._workers = {}
@@ -444,23 +460,14 @@ class ReporterAgent(
         self._open_telemetry_metric_recorder = None
         self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
-            try:
-                stats_exporter = prometheus_exporter.new_stats_exporter(
-                    prometheus_exporter.Options(
-                        namespace="ray",
-                        port=dashboard_agent.metrics_export_port,
-                        address="127.0.0.1" if self._ip == "127.0.0.1" else "",
-                    )
+            stats_exporter = prometheus_exporter.new_stats_exporter(
+                prometheus_exporter.Options(
+                    namespace="ray",
+                    port=dashboard_agent.metrics_export_port,
+                    address="127.0.0.1" if self._ip == "127.0.0.1" else "",
                 )
-            except Exception:
-                # TODO(SongGuyang): Catch the exception here because there is
-                # port conflict issue which brought from static port. We should
-                # remove this after we find better port resolution.
-                logger.exception(
-                    "Failed to start prometheus stats exporter. Agent will stay "
-                    "alive but disable the stats."
-                )
-                stats_exporter = None
+            )
+            dashboard_agent.metrics_export_port = stats_exporter.port
 
             self._metrics_agent = MetricsAgent(
                 stats_module.stats.view_manager,
@@ -472,6 +479,18 @@ class ReporterAgent(
                 # proxy_exporter_collector is None
                 # if Prometheus server is not started.
                 REGISTRY.register(self._metrics_agent.proxy_exporter_collector)
+
+        # Metrics collection is disabled, write -1 to indicate the port is not in use.
+        persist_port(
+            dashboard_agent.session_dir,
+            self._dashboard_agent.node_id,
+            METRICS_EXPORT_PORT_NAME,
+            (
+                dashboard_agent.metrics_export_port
+                if not self._metrics_collection_disabled
+                else -1
+            ),
+        )
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
         )
@@ -606,27 +625,25 @@ class ReporterAgent(
             metric.description,
             data_points[0].explicit_bounds,
         )
+        # Collect all data points and record using a single call
+        batch_data_points = []
         for data_point in data_points:
             if data_point.count == 0:
                 continue
 
-            bucket_midpoints = (
-                self._open_telemetry_metric_recorder.get_histogram_bucket_midpoints(
-                    metric.name
-                )
-            )
-            assert len(bucket_midpoints) == len(data_point.bucket_counts)
             tags = {tag.key: tag.value.string_value for tag in data_point.attributes}
-            for i, bucket_count in enumerate(data_point.bucket_counts):
-                if bucket_count == 0:
-                    continue
-                bucket_midpoint = bucket_midpoints[i]
-                for _ in range(bucket_count):
-                    self._open_telemetry_metric_recorder.set_metric_value(
-                        metric.name,
-                        tags,
-                        bucket_midpoint,
-                    )
+            batch_data_points.append(
+                {
+                    "tags": tags,
+                    "bucket_counts": list(data_point.bucket_counts),
+                }
+            )
+
+        if batch_data_points:
+            self._open_telemetry_metric_recorder.record_histogram_aggregated_batch(
+                metric.name,
+                batch_data_points,
+            )
 
     def _export_number_data(
         self,
@@ -872,9 +889,9 @@ class ReporterAgent(
     def _get_disk_usage():
         if IN_KUBERNETES_POD and not ENABLE_K8S_DISK_USAGE:
             # If in a K8s pod, disable disk display by passing in dummy values.
-            return {
-                "/": psutil._common.sdiskusage(total=1, used=0, free=1, percent=0.0)
-            }
+            sdiskusage = namedtuple("sdiskusage", ["total", "used", "free", "percent"])
+            return {"/": sdiskusage(total=1, used=0, free=1, percent=0.0)}
+
         if sys.platform == "win32":
             root = psutil.disk_partitions()[0].mountpoint
         else:
@@ -908,31 +925,59 @@ class ReporterAgent(
             logger.exception("Failed to get worker pids from raylet")
             return []
 
+    async def _async_get_agent_pids_from_raylet(self) -> List[int]:
+        try:
+            # Get agents pids from raylet via gRPC.
+            return await self._raylet_client.async_get_agent_pids()
+        except (GetTimeoutError, RpcError):
+            logger.exception("Failed to get agents pids from raylet")
+            return []
+
     def _get_agent_proc(self) -> psutil.Process:
         # Agent is the current process.
         # This method is not necessary, but we have it for mock testing.
         return psutil.Process()
 
-    def _generate_worker_key(self, proc: psutil.Process) -> Tuple[int, float]:
+    def _generate_proc_key(self, proc: psutil.Process) -> Tuple[int, float]:
         return (proc.pid, proc.create_time())
 
     async def _async_get_worker_processes(self):
         pids = await self._async_get_worker_pids_from_raylet()
         logger.debug(f"Worker PIDs from raylet: {pids}")
         if not pids:
-            return []
+            return {}
         workers = {}
         for pid in pids:
             try:
                 proc = psutil.Process(pid)
-                workers[self._generate_worker_key(proc)] = proc
+                workers[self._generate_proc_key(proc)] = proc
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 logger.error(f"Failed to access worker process {pid}")
                 continue
         return workers
 
-    async def _async_get_workers(self, gpus: Optional[List[GpuUtilizationInfo]] = None):
-        workers = await self._async_get_worker_processes()
+    async def _async_get_agent_processes(self):
+        pids = await self._async_get_agent_pids_from_raylet()
+        logger.debug(f"Agent PIDs from raylet: {pids}")
+        if not pids:
+            return {}
+        agents = {}
+        for pid in pids:
+            try:
+                proc = psutil.Process(pid)
+                agents[self._generate_proc_key(proc)] = proc
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                logger.error(f"Failed to access agent process {pid}")
+                continue
+        return agents
+
+    async def _async_get_workers_and_agents(
+        self, gpus: Optional[List[GpuUtilizationInfo]] = None
+    ):
+        workers, agents = await asyncio.gather(
+            self._async_get_worker_processes(), self._async_get_agent_processes()
+        )
+        workers.update(agents)
         if not workers:
             return []
         else:
@@ -1092,7 +1137,7 @@ class ReporterAgent(
             "mem": self._get_mem_usage(),
             # Unit is in bytes. None if
             "shm": self._get_shm_usage(),
-            "workers": await self._async_get_workers(gpus),
+            "workers": await self._async_get_workers_and_agents(gpus),
             "raylet": raylet,
             "agent": self._get_agent(),
             "bootTime": self._get_boot_time(),
@@ -1193,13 +1238,21 @@ class ReporterAgent(
 
             memory_info = stat.get("memory_info")
             if memory_info:
-                mem = stat["memory_info"]
-                total_rss += float(mem.rss) / 1.0e6
-                if hasattr(mem, "shared"):
-                    total_shm += float(mem.shared)
+                total_rss += float(memory_info.rss) / 1.0e6
+                if hasattr(memory_info, "shared"):
+                    total_shm += float(memory_info.shared)
             mem_full_info = stat.get("memory_full_info")
             if mem_full_info is not None:
+                # For Mac OS X, directly get USS metric from memory_full_info
                 total_uss += float(mem_full_info.uss) / 1.0e6
+            elif memory_info is not None:
+                # For linux or windows, memory_full_info is not collected. Approximated USS from memory_info
+                if hasattr(memory_info, "shared"):
+                    # Linux: USS ≈ RSS - shared
+                    total_uss += float(memory_info.rss - memory_info.shared) / 1.0e6
+                elif hasattr(memory_info, "private"):
+                    # Windows: private IS USS
+                    total_uss += float(memory_info.private) / 1.0e6
             total_num_fds += int(stat.get("num_fds", 0))
 
         tags = {"ip": self._ip, "Component": component_name}
@@ -1465,6 +1518,8 @@ class ReporterAgent(
                 gram_total += gpu["memory_total"]
                 gpu_index = gpu.get("index")
                 gpu_name = gpu.get("name")
+                gpu_power_mw = gpu.get("power_mw")
+                gpu_temperature_c = gpu.get("temperature_c")
 
                 gram_available = gram_total - gram_used
 
@@ -1494,14 +1549,30 @@ class ReporterAgent(
                         value=gram_available,
                         tags=gpu_tags,
                     )
-                    records_reported.extend(
-                        [
-                            gpus_available_record,
-                            gpus_utilization_record,
-                            gram_used_record,
-                            gram_available_record,
-                        ]
-                    )
+                    gpu_records_to_add = [
+                        gpus_available_record,
+                        gpus_utilization_record,
+                        gram_used_record,
+                        gram_available_record,
+                    ]
+                    # Optional GPU power and temperature (e.g. NVIDIA, AMD)
+                    if gpu_power_mw is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS_GAUGES["node_gpu_power_milliwatts"],
+                                value=gpu_power_mw,
+                                tags=gpu_tags,
+                            )
+                        )
+                    if gpu_temperature_c is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS_GAUGES["node_gpu_temperature_celsius"],
+                                value=gpu_temperature_c,
+                                tags=gpu_tags,
+                            )
+                        )
+                    records_reported.extend(gpu_records_to_add)
 
         # -- TPU per node --
         tpus = stats["tpus"]

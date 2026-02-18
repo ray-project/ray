@@ -3,9 +3,11 @@ import collections
 import inspect
 import logging
 import queue
+from dataclasses import dataclass
 from threading import Thread
 from types import GeneratorType
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -17,14 +19,16 @@ from typing import (
     TypeVar,
 )
 
+if TYPE_CHECKING:
+    from ray.data.expressions import _CallableClassSpec
+
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 
 import ray
-from ray._common.utils import get_or_create_event_loop
-from ray._private.ray_constants import env_integer
-from ray.data._internal.compute import get_compute
+from ray._common.utils import env_integer, get_or_create_event_loop
+from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy, get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -36,8 +40,8 @@ from ray.data._internal.execution.operators.map_transformer import (
     Row,
     RowMapTransformFn,
 )
-from ray.data._internal.execution.util import make_callable_class_concurrent
-from ray.data._internal.logical.operators.map_operator import (
+from ray.data._internal.execution.util import make_callable_class_single_threaded
+from ray.data._internal.logical.operators import (
     AbstractUDFMap,
     Filter,
     FlatMap,
@@ -75,18 +79,35 @@ DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY = env_integer(
 )
 
 
+@dataclass
+class UDFSpec:
+    """Specification for a callable class UDF to be instantiated in an actor.
+
+    Attributes:
+        spec: The callable class specification (contains class and constructor args)
+        instantiation_class: The class to instantiate (may be wrapped, e.g., for concurrency)
+    """
+
+    spec: "_CallableClassSpec"
+    instantiation_class: type
+
+
 class _MapActorContext:
     def __init__(
         self,
-        udf_map_cls: UserDefinedFunction,
-        udf_map_fn: Callable[[Any], Any],
-        is_async: bool,
+        is_async: bool = False,
+        udf_instances: Optional[Dict[int, Any]] = None,
     ):
-        self.udf_map_cls = udf_map_cls
-        self.udf_map_fn = udf_map_fn
+        """Initialize the map actor context.
+
+        Args:
+            is_async: Whether any UDF is async
+            udf_instances: Dict mapping UDF class ID to instantiated instance
+        """
         self.is_async = is_async
         self.udf_map_asyncio_loop = None
         self.udf_map_asyncio_thread = None
+        self.udf_instances = udf_instances or {}
 
         if is_async:
             self._init_async()
@@ -99,7 +120,7 @@ class _MapActorContext:
             asyncio.set_event_loop(loop)
             loop.run_forever()
 
-        thread = Thread(target=run_loop)
+        thread = Thread(target=run_loop, daemon=True)
         thread.start()
         self.udf_map_asyncio_loop = loop
         self.udf_map_asyncio_thread = thread
@@ -118,6 +139,15 @@ def plan_project_op(
     # datasources with weak references, e.g., PyIceberg tables)
     projection_exprs = op.exprs
 
+    compute = get_compute(op.compute)
+
+    # Create init_fn to initialize all callable class UDFs at actor startup
+    from ray.data.util.expression_utils import (
+        create_callable_class_udf_init_fn,
+    )
+
+    init_fn = create_callable_class_udf_init_fn(projection_exprs)
+
     def _project_block(block: Block) -> Block:
         try:
             from ray.data._internal.planner.plan_expression.expression_evaluator import (
@@ -128,14 +158,14 @@ def plan_project_op(
         except Exception as e:
             _try_wrap_udf_exception(e)
 
-    compute = get_compute(op._compute)
     map_transformer = MapTransformer(
         [
             BlockMapTransformFn(
                 _generate_transform_fn_for_map_block(_project_block),
                 disable_block_shaping=(len(op.exprs) == 0),
             )
-        ]
+        ],
+        init_fn=init_fn,
     )
     return MapOperator.create(
         map_transformer,
@@ -143,8 +173,8 @@ def plan_project_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
-        ray_remote_args=op._ray_remote_args,
-        ray_remote_args_fn=op._ray_remote_args_fn,
+        ray_remote_args=op.ray_remote_args,
+        ray_remote_args_fn=op.ray_remote_args_fn,
     )
 
 
@@ -155,7 +185,7 @@ def plan_streaming_repartition_op(
 ) -> MapOperator:
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
-    compute = get_compute(op._compute)
+    compute = get_compute(op.compute)
     transform_fn = BlockMapTransformFn(
         lambda blocks, ctx: blocks,
         output_block_size_option=OutputBlockSizeOption.of(
@@ -172,9 +202,8 @@ def plan_streaming_repartition_op(
         name=op.name,
         compute_strategy=compute,
         ref_bundler=StreamingRepartitionRefBundler(op.target_num_rows_per_block),
-        ray_remote_args=op._ray_remote_args,
-        ray_remote_args_fn=op._ray_remote_args_fn,
-        supports_fusion=False,
+        ray_remote_args=op.ray_remote_args,
+        ray_remote_args_fn=op.ray_remote_args_fn,
     )
 
     return operator
@@ -192,8 +221,8 @@ def plan_filter_op(
         target_max_block_size=data_context.target_max_block_size,
     )
 
-    predicate_expr = op._predicate_expr
-    compute = get_compute(op._compute)
+    predicate_expr = op.predicate_expr
+    compute = get_compute(op.compute)
     if predicate_expr is not None:
 
         def filter_block_fn(
@@ -211,13 +240,14 @@ def plan_filter_op(
             output_block_size_option=output_block_size_option,
         )
     else:
-        udf_is_callable_class = isinstance(op._fn, CallableClass)
+        udf_is_callable_class = isinstance(op.fn, CallableClass)
         filter_fn, init_fn = _get_udf(
-            op._fn,
-            op._fn_args,
-            op._fn_kwargs,
-            op._fn_constructor_args if udf_is_callable_class else None,
-            op._fn_constructor_kwargs if udf_is_callable_class else None,
+            op.fn,
+            op.fn_args,
+            op.fn_kwargs,
+            op.fn_constructor_args if udf_is_callable_class else None,
+            op.fn_constructor_kwargs if udf_is_callable_class else None,
+            compute=compute,
         )
 
         transform_fn = RowMapTransformFn(
@@ -234,8 +264,8 @@ def plan_filter_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
-        ray_remote_args=op._ray_remote_args,
-        ray_remote_args_fn=op._ray_remote_args_fn,
+        ray_remote_args=op.ray_remote_args,
+        ray_remote_args_fn=op.ray_remote_args_fn,
     )
 
 
@@ -256,22 +286,23 @@ def plan_udf_map_op(
         target_max_block_size=data_context.target_max_block_size,
     )
 
-    compute = get_compute(op._compute)
-    udf_is_callable_class = isinstance(op._fn, CallableClass)
+    compute = get_compute(op.compute)
+    udf_is_callable_class = isinstance(op.fn, CallableClass)
     fn, init_fn = _get_udf(
-        op._fn,
-        op._fn_args,
-        op._fn_kwargs,
-        op._fn_constructor_args if udf_is_callable_class else None,
-        op._fn_constructor_kwargs if udf_is_callable_class else None,
+        op.fn,
+        op.fn_args,
+        op.fn_kwargs,
+        op.fn_constructor_args if udf_is_callable_class else None,
+        op.fn_constructor_kwargs if udf_is_callable_class else None,
+        compute=compute,
     )
 
     if isinstance(op, MapBatches):
         transform_fn = BatchMapTransformFn(
             _generate_transform_fn_for_map_batches(fn),
-            batch_size=op._batch_size,
-            batch_format=op._batch_format,
-            zero_copy_batch=op._zero_copy_batch,
+            batch_size=op.batch_size,
+            batch_format=op.batch_format,
+            zero_copy_batch=op.zero_copy_batch,
             is_udf=True,
             output_block_size_option=output_block_size_option,
         )
@@ -298,10 +329,10 @@ def plan_udf_map_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
-        min_rows_per_bundle=op._min_rows_per_bundled_input,
-        ray_remote_args_fn=op._ray_remote_args_fn,
-        ray_remote_args=op._ray_remote_args,
-        per_block_limit=op._per_block_limit,
+        min_rows_per_bundle=op.min_rows_per_bundled_input,
+        ray_remote_args_fn=op.ray_remote_args_fn,
+        ray_remote_args=op.ray_remote_args,
+        per_block_limit=op.per_block_limit,
     )
 
 
@@ -311,6 +342,7 @@ def _get_udf(
     op_fn_kwargs: Dict[str, Any],
     op_fn_constructor_args: Optional[Tuple[Any, ...]],
     op_fn_constructor_kwargs: Optional[Dict[str, Any]],
+    compute: Optional[ComputeStrategy],
 ):
     # Note, it's important to define these standalone variables.
     # So the parsed functions won't need to capture the entire operator, which may not
@@ -320,35 +352,57 @@ def _get_udf(
     fn_kwargs = op_fn_kwargs or {}
 
     if isinstance(udf, CallableClass):
+        from ray.data.expressions import _CallableClassSpec
+
         fn_constructor_args = op_fn_constructor_args or ()
         fn_constructor_kwargs = op_fn_constructor_kwargs or {}
 
         is_async_udf = _is_async_udf(udf.__call__)
 
-        if not is_async_udf:
-            # TODO(ak) this constrains concurrency for user UDFs to run in a single
-            #          thread irrespective of max_concurrency. Remove
-            udf = make_callable_class_concurrent(udf)
+        # Capture original class BEFORE wrapping for use as dict key
+        original_udf_class = udf
 
-        def init_fn():
-            if ray.data._map_actor_context is None:
-                ray.data._map_actor_context = _MapActorContext(
-                    udf_map_cls=udf,
-                    udf_map_fn=udf(
-                        *fn_constructor_args,
-                        **fn_constructor_kwargs,
-                    ),
-                    is_async=is_async_udf,
-                )
+        if (
+            not is_async_udf
+            and isinstance(compute, ActorPoolStrategy)
+            and not compute.enable_true_multi_threading
+        ):
+            # NOTE: By default Actor-based UDFs are restricted to run within a
+            # single-thread (when enable_true_multi_threading=False).
+            #
+            # Historically, this has been done to allow block-fetching, batching, etc to
+            # be overlapped with the actual UDF invocation, while avoiding the
+            # pitfalls of concurrent GPU access (like OOMs, etc) when specifying
+            # max_concurrency > 1.
+            udf = make_callable_class_single_threaded(udf)
+
+        # Create the callable class spec for this UDF
+        callable_class_spec = _CallableClassSpec(
+            cls=original_udf_class,
+            args=fn_constructor_args,
+            kwargs=fn_constructor_kwargs,
+        )
+
+        # Use the shared init function creator (handles both map_batches and expressions)
+        init_fn = create_actor_context_init_fn(
+            udf_specs=[UDFSpec(spec=callable_class_spec, instantiation_class=udf)]
+        )
+
+        # Capture the spec for lookup on the actor
+        captured_spec = callable_class_spec
 
         if inspect.iscoroutinefunction(udf.__call__):
-
+            # Async coroutine UDF: wrapper must be async to work with async transform machinery
             async def _wrapped_udf_map_fn(item: Any) -> Any:
                 assert ray.data._map_actor_context is not None
                 assert ray.data._map_actor_context.is_async
 
                 try:
-                    return await ray.data._map_actor_context.udf_map_fn(
+                    # Use spec's key for lookup
+                    udf_key = captured_spec.make_key()
+                    udf_instance = ray.data._map_actor_context.udf_instances[udf_key]
+                    # Direct await - already in async context
+                    return await udf_instance(
                         item,
                         *fn_args,
                         **fn_kwargs,
@@ -363,7 +417,10 @@ def _get_udf(
                 assert ray.data._map_actor_context.is_async
 
                 try:
-                    gen = ray.data._map_actor_context.udf_map_fn(
+                    # Use spec's key for lookup
+                    udf_key = captured_spec.make_key()
+                    udf_instance = ray.data._map_actor_context.udf_instances[udf_key]
+                    gen = udf_instance(
                         item,
                         *fn_args,
                         **fn_kwargs,
@@ -383,7 +440,10 @@ def _get_udf(
                 assert ray.data._map_actor_context is not None
                 assert not ray.data._map_actor_context.is_async
                 try:
-                    return ray.data._map_actor_context.udf_map_fn(
+                    # Use spec's key for lookup
+                    udf_key = captured_spec.make_key()
+                    udf_instance = ray.data._map_actor_context.udf_instances[udf_key]
+                    return udf_instance(
                         item,
                         *fn_args,
                         **fn_kwargs,
@@ -461,6 +521,86 @@ def _validate_batch_output(batch: Block) -> None:
                 )
 
 
+class _TransformingBatchIterator(Iterator[DataBatch]):
+    """Iterator that applies a UDF to batches.
+
+    Unlike a generator, local variables in __next__ go out of scope when the method
+    returns, avoiding holding references to yielded values.
+
+    Uses a deque with popleft() to actually release references when items are consumed,
+    rather than keeping them in an iterator.
+    """
+
+    def __init__(self, batches: Iterable[DataBatch], fn: UserDefinedFunction):
+        self._input_iter = iter(batches)
+        self._fn = fn
+        self._cur_output_iter: Optional[Iterator[DataBatch]] = None
+
+    def __iter__(self) -> "_TransformingBatchIterator":
+        return self
+
+    def __next__(self) -> DataBatch:
+        while True:
+            # Check if there's pending output iter we'd continue fetching
+            # from
+            if self._cur_output_iter is not None:
+                try:
+                    out_batch = next(self._cur_output_iter)
+                except StopIteration:
+                    pass
+                else:
+                    _validate_batch_output(out_batch)
+                    return out_batch
+
+            # Fetch the next batch from upstream
+            input_batch = next(self._input_iter)
+
+            if (
+                not isinstance(input_batch, collections.abc.Mapping)
+                and BlockAccessor.for_block(input_batch).num_rows() == 0
+            ):
+                # For empty input blocks, we directly output them without
+                # calling the UDF.
+                # TODO(hchen): This workaround is because some all-to-all
+                # operators output empty blocks with no schema.
+                self._cur_output_iter = _ReleasingIterator(
+                    collections.deque([input_batch])
+                )
+            else:
+                try:
+                    res = self._fn(input_batch)
+
+                    if not isinstance(res, GeneratorType):
+                        # NOTE: It's critical that we're utilizing *releasing* iterator
+                        #       to avoid capturing intermediate objects along the whole
+                        #       iterator chain
+                        self._cur_output_iter = _ReleasingIterator(
+                            collections.deque([res])
+                        )
+                    else:
+                        # In cases when UDF returns a generator we iterate over it
+                        # as is (given that we can't release intermediate state from
+                        # UDF anyway)
+                        self._cur_output_iter = res
+                except ValueError as e:
+                    read_only_msgs = [
+                        "assignment destination is read-only",
+                        "buffer source array is read-only",
+                    ]
+                    err_msg = str(e)
+                    if any(msg in err_msg for msg in read_only_msgs):
+                        raise ValueError(
+                            f"Batch mapper function {self._fn.__name__} tried to mutate a "
+                            "zero-copy read-only batch. To be able to mutate the "
+                            "batch, pass zero_copy_batch=False to map_batches(); "
+                            "this will create a writable copy of the batch before "
+                            "giving it to fn. To elide this copy, modify your mapper "
+                            "function so it doesn't try to mutate its input."
+                        ) from e
+                    else:
+                        raise e from None
+
+
 def _generate_transform_fn_for_map_batches(
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[DataBatch, DataBatch]:
@@ -477,48 +617,56 @@ def _generate_transform_fn_for_map_batches(
         def transform_fn(
             batches: Iterable[DataBatch], _: TaskContext
         ) -> Iterable[DataBatch]:
-            for batch in batches:
-                try:
-                    if (
-                        not isinstance(batch, collections.abc.Mapping)
-                        and BlockAccessor.for_block(batch).num_rows() == 0
-                    ):
-                        # For empty input blocks, we directly output them without
-                        # calling the UDF.
-                        # TODO(hchen): This workaround is because some all-to-all
-                        # operators output empty blocks with no schema.
-                        res = [batch]
-                    else:
-                        res = fn(batch)
-                        if not isinstance(res, GeneratorType):
-                            res = [res]
-                except ValueError as e:
-                    read_only_msgs = [
-                        "assignment destination is read-only",
-                        "buffer source array is read-only",
-                    ]
-                    err_msg = str(e)
-                    if any(msg in err_msg for msg in read_only_msgs):
-                        raise ValueError(
-                            f"Batch mapper function {fn.__name__} tried to mutate a "
-                            "zero-copy read-only batch. To be able to mutate the "
-                            "batch, pass zero_copy_batch=False to map_batches(); "
-                            "this will create a writable copy of the batch before "
-                            "giving it to fn. To elide this copy, modify your mapper "
-                            "function so it doesn't try to mutate its input."
-                        ) from e
-                    else:
-                        raise e from None
-                else:
-                    for out_batch in res:
-                        _validate_batch_output(out_batch)
-                        yield out_batch
+            return _TransformingBatchIterator(batches, fn)
 
     return transform_fn
 
 
 def _is_async_udf(fn: UserDefinedFunction) -> bool:
     return inspect.iscoroutinefunction(fn) or inspect.isasyncgenfunction(fn)
+
+
+def create_actor_context_init_fn(
+    udf_specs: List[UDFSpec],
+):
+    """Create an init function for registering callable class UDFs in actor context.
+
+    This is the shared core logic between map_batches (single UDF) and expressions (multiple UDFs).
+
+    Args:
+        udf_specs: List of UDF specifications
+
+    Returns:
+        An init function that sets up all UDFs in the actor context
+    """
+
+    def init_fn():
+        import ray
+
+        if ray.data._map_actor_context is None:
+            # Check if any UDF is async
+            has_async_udf = any(
+                _is_async_udf(spec.instantiation_class.__call__) for spec in udf_specs
+            )
+
+            # Create instances for all callable class UDFs
+            udf_instances = {}
+            for spec in udf_specs:
+                # Use the spec's key for deduplication and lookup
+                udf_key = spec.spec.make_key()
+                if udf_key not in udf_instances:
+                    # Instantiate using the wrapped/processed class
+                    udf_instances[udf_key] = spec.instantiation_class(
+                        *spec.spec.args, **spec.spec.kwargs
+                    )
+
+            # Single unified context for all UDFs
+            ray.data._map_actor_context = _MapActorContext(
+                is_async=has_async_udf,
+                udf_instances=udf_instances,
+            )
+
+    return init_fn
 
 
 def _validate_row_output(item):
@@ -792,3 +940,17 @@ def _generate_transform_fn_for_async_map(
                     yield item
 
     return _transform
+
+
+class _ReleasingIterator(Iterator[T]):
+    def __init__(self, d: collections.deque):
+        self._d = d
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if not self._d:
+            raise StopIteration
+
+        return self._d.popleft()

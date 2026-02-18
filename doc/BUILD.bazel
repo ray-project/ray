@@ -520,7 +520,7 @@ py_test(
         ["external/*.py"],
         exclude = ["external/test_hashes.py"],
     ),
-    exec_compatible_with = ["//bazel:py310"],
+    exec_compatible_with = ["//bazel:py3"],
     main = "external/test_hashes.py",
     tags = ["team:ml"],
     deps = [
@@ -623,6 +623,9 @@ doctest(
         ],
         exclude = [
             "source/rllib/getting-started.rst",
+            "source/rllib/algorithm-config.rst",
+            "source/rllib/checkpoints.rst",
+            "source/rllib/connector-v2.rst",
         ],
     ),
     tags = ["team:rllib"],
@@ -634,6 +637,9 @@ doctest(
     files = glob(
         include = [
             "source/rllib/getting-started.rst",
+            "source/rllib/algorithm-config.rst",
+            "source/rllib/checkpoints.rst",
+            "source/rllib/connector-v2.rst",
         ],
     ),
     tags = ["team:rllib"],
@@ -683,7 +689,6 @@ doctest(
         "source/train/user-guides/data-loading-preprocessing.rst",
         "source/train/user-guides/using-gpus.rst",
     ],
-    # TODO: [V2] Migrate
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = ["team:ml"],
     gpu = True,
@@ -704,16 +709,23 @@ doctest(
 # Discover the Anyscale Jobs compute configs .yaml for release tests in CI
 # --------------------------------------------------------------------
 
+# Comprehensive filegroup that aggregates all CI compute configs from across the docs.
+# This includes a general glob pattern + references to filegroups in existing child BUILD.bazel
+# Following the standard structure: doc/source/<path>/my_example/ci/{aws,gce}.yaml
 filegroup(
-    name = "example_configs",
+    name = "all_examples_ci_configs",
     srcs = glob([
-        "source/ray-overview/examples/**/*.yaml"
-    ]),
-    visibility = ["//release:__pkg__"],
-)
-
-filegroup(
-    name = "deployment_serve_llm_example_configs",
-    srcs = glob(["source/serve/tutorials/deployment-serve-llm/**/*.yaml"]),
+        "source/ray-overview/examples/**/ci/aws.yaml",
+        "source/ray-overview/examples/**/ci/gce.yaml",
+        "source/serve/tutorials/**/ci/aws.yaml",
+        "source/serve/tutorials/**/ci/gce.yaml",
+        "source/train/tutorials/ci/aws.yaml",
+        "source/train/tutorials/ci/gce.yaml",
+    ]) + [
+        "//doc/source/data/examples:data_examples_ci_configs",
+        "//doc/source/tune/examples:tune_examples_ci_configs",
+        "//doc/source/ray-core/examples:core_examples_ci_configs",
+        "//doc/source/train/examples:train_examples_ci_configs",
+    ],
     visibility = ["//release:__pkg__"],
 )

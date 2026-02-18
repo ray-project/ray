@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import signal
 import subprocess
@@ -13,14 +14,16 @@ from filelock import FileLock
 
 import ray
 from ray._common.network_utils import parse_address
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private import ray_constants
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import (
     external_redis_test_enabled,
     generate_system_config_map,
     redis_sentinel_replicas,
-    run_string_as_driver,
     wait_for_pid_to_exit,
 )
 from ray._raylet import GcsClient
@@ -136,8 +139,7 @@ def test_autoscaler_init(
     cluster.head_node.start_gcs_server()
 
     # Fetch the cluster status from the autoscaler and check that it works.
-    status = get_cluster_status(cluster.address)
-    wait_for_condition(lambda: len(status.idle_nodes) == 2)
+    wait_for_condition(lambda: len(get_cluster_status(cluster.address).idle_nodes) == 2)
 
 
 @pytest.mark.parametrize(
@@ -1261,7 +1263,16 @@ def test_mark_job_finished_rpc_retry_and_idempotency(shutdown_only, monkeypatch)
     # We inject request failures to force retries and test idempotency
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "ray::rpc::JobInfoGcsService.grpc_client.MarkJobFinished=3:50:0:0",
+        json.dumps(
+            {
+                "ray::rpc::JobInfoGcsService.grpc_client.MarkJobFinished": {
+                    "num_failures": 3,
+                    "req_failure_prob": 50,
+                    "resp_failure_prob": 0,
+                    "in_flight_failure_prob": 0,
+                }
+            }
+        ),
     )
 
     ray.init(num_cpus=1)

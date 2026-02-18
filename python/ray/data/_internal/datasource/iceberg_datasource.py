@@ -21,6 +21,7 @@ from ray.data.expressions import (
     ColumnExpr,
     DownloadExpr,
     LiteralExpr,
+    MonotonicallyIncreasingIdExpr,
     Operation,
     StarExpr,
     UDFExpr,
@@ -77,11 +78,13 @@ if TYPE_CHECKING:
     from pyiceberg.table import DataScan, FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
 
+    from ray.data.context import DataContext
+
 logger = logging.getLogger(__name__)
 
 
 class _IcebergExpressionVisitor(
-    _ExprVisitor["BooleanExpression | UnboundTerm[Any] | Literal[Any]"]
+    _ExprVisitor["BooleanExpression | UnboundTerm | Literal"]
 ):
     """
     Visitor that converts Ray Data expressions to PyIceberg expressions.
@@ -96,11 +99,11 @@ class _IcebergExpressionVisitor(
         >>> # iceberg_expr can now be used with PyIceberg's filter APIs
     """
 
-    def visit_column(self, expr: "ColumnExpr") -> "UnboundTerm[Any]":
+    def visit_column(self, expr: "ColumnExpr") -> "UnboundTerm":
         """Convert a column reference to an Iceberg reference."""
         return Reference(expr.name)
 
-    def visit_literal(self, expr: "LiteralExpr") -> "Literal[Any]":
+    def visit_literal(self, expr: "LiteralExpr") -> "Literal":
         """Convert a literal value to an Iceberg literal."""
         return literal(expr.value)
 
@@ -145,13 +148,11 @@ class _IcebergExpressionVisitor(
 
     def visit_alias(
         self, expr: "AliasExpr"
-    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+    ) -> "BooleanExpression | UnboundTerm | Literal":
         """Convert an aliased expression (just unwrap the alias)."""
         return self.visit(expr.expr)
 
-    def visit_udf(
-        self, expr: "UDFExpr"
-    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+    def visit_udf(self, expr: "UDFExpr") -> "BooleanExpression | UnboundTerm | Literal":
         """UDF expressions cannot be converted to Iceberg expressions."""
         raise TypeError(
             "UDF expressions cannot be converted to Iceberg expressions. "
@@ -160,7 +161,7 @@ class _IcebergExpressionVisitor(
 
     def visit_download(
         self, expr: "DownloadExpr"
-    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+    ) -> "BooleanExpression | UnboundTerm | Literal":
         """Download expressions cannot be converted to Iceberg expressions."""
         raise TypeError(
             "Download expressions cannot be converted to Iceberg expressions."
@@ -168,10 +169,18 @@ class _IcebergExpressionVisitor(
 
     def visit_star(
         self, expr: "StarExpr"
-    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+    ) -> "BooleanExpression | UnboundTerm | Literal":
         """Star expressions cannot be converted to Iceberg expressions."""
         raise TypeError(
             "Star expressions cannot be converted to Iceberg filter expressions."
+        )
+
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> "BooleanExpression | UnboundTerm | Literal":
+        """Monotonically increasing ID expressions cannot be converted to Iceberg expressions."""
+        raise TypeError(
+            "monotonically_increasing_id expressions cannot be converted to Iceberg filter expressions."
         )
 
 
@@ -408,7 +417,10 @@ class IcebergDatasource(Datasource):
         return chunks
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         from pyiceberg.io import pyarrow as pyi_pa_io
         from pyiceberg.manifest import DataFileContent
@@ -429,8 +441,7 @@ class IcebergDatasource(Datasource):
         if parallelism > len(list(plan_files)):
             parallelism = len(list(plan_files))
             logger.warning(
-                f"Reducing the parallelism to {parallelism}, as that is the"
-                "number of files"
+                f"Reducing the parallelism to {parallelism}, as that is the number of files"
             )
 
         # Get required properties for reading tasks - table IO, table metadata,
@@ -477,7 +488,7 @@ class IcebergDatasource(Datasource):
             metadata = BlockMetadata(
                 num_rows=sum(task.file.record_count for task in chunk_tasks)
                 - position_delete_count,
-                size_bytes=sum(task.length for task in chunk_tasks),
+                size_bytes=sum(task.file.file_size_in_bytes for task in chunk_tasks),
                 input_files=[task.file.file_path for task in chunk_tasks],
                 exec_stats=None,
             )

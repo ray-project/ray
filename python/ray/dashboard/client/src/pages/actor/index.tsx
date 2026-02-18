@@ -8,11 +8,11 @@ import ActorList from "./ActorList";
 const Actors = () => {
   return (
     <Box
-      sx={{
+      sx={(theme) => ({
         padding: 2,
         width: "100%",
-        backgroundColor: "white",
-      }}
+        backgroundColor: theme.palette.background.paper,
+      })}
     >
       <ActorList />
     </Box>

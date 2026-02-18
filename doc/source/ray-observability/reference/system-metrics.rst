@@ -6,7 +6,17 @@ Ray exports a number of system metrics, which provide introspection into the sta
 
 .. note::
 
-   Certain labels are common across all metrics, such as `SessionName` (uniquely identifies a Ray cluster instance), `instance` (per-node label applied by Prometheus), and `JobId` (Ray job ID, as applicable).
+  Certain labels are common across all metrics, such as `SessionName` (uniquely identifies a Ray cluster instance), `instance` (per-node label applied by Prometheus), and `JobId` (Ray job ID, as applicable).
+
+  Starting with Ray 2.53+, the `WorkerId` label is no longer exported by default due to its high cardinality. 
+  The Ray team doesn't expect this to be a breaking change, as none of Ray’s built-in components rely on this label. 
+  However, if you have custom tooling that depends on `WorkerId` label, take note of this change.
+
+  You can restore or adjust label behavior using the environment variable `RAY_metric_cardinality_level`:
+
+  - `legacy`: Preserve all labels. (This was the default behavior before Ray 2.53.)
+  - `recommended`: Drop high-cardinality labels. Ray internally determines specific labels; currently this includes only `WorkerId`. (This is the default behavior since Ray 2.53.)
+  - `low`: Same as `recommended`, but also drops the Name label for tasks and actors.
 
 .. list-table:: Ray System Metrics
    :header-rows: 1
@@ -22,10 +32,10 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - Current number of actors in each state described in `rpc::ActorTableData::ActorState <https://github.com/ray-project/ray/blob/b3799a53dcabd8d1a4d20f22faa98e781b0059c7/src/ray/protobuf/gcs.proto#L79>`. ALIVE has two sub-states: ALIVE_IDLE, and ALIVE_RUNNING_TASKS. An actor is considered ALIVE_IDLE if it is not running any tasks.
    * - `ray_resources`
      - `Name`, `State`, `instance`
-     - Logical resource usage for each node of the cluster. Each resource has some quantity that is in either `USED or AVAILABLE state <https://github.com/ray-project/ray/blob/9eab65ed77bdd9907989ecc3e241045954a09cb4/src/ray/stats/metric_defs.cc#L188>`_. The Name label defines the resource name (e.g., CPU, GPU).
+     - Logical resource usage for each node of the cluster. Each resource has some quantity that's either in the USED or AVAILABLE state. The Name label defines the resource name (e.g., CPU, GPU).
    * - `ray_object_store_memory`
      - `Location`, `ObjectState`, `instance`
-     - Object store memory usage in bytes, `broken down <https://github.com/ray-project/ray/blob/9eab65ed77bdd9907989ecc3e241045954a09cb4/src/ray/stats/metric_defs.cc#L231>`_ by logical Location (SPILLED, MMAP_DISK, MMAP_SHM, and WORKER_HEAP). Definitions are as follows. SPILLED--Objects that have spilled to disk or a remote Storage solution (for example, AWS S3). The default is the disk. MMAP_DISK--Objects stored on a memory-mapped page on disk. This mode very slow and only happens under severe memory pressure. MMAP_SHM--Objects store on a memory-mapped page in Shared Memory. This mode is the default, in the absence of memory pressure. WORKER_HEAP--Objects, usually smaller, stored in the memory of the Ray Worker process itself. Small objects are stored in the worker heap.
+     - Object store memory usage in bytes, broken down by logical Location (SPILLED, MMAP_DISK, MMAP_SHM, and WORKER_HEAP). Definitions are as follows. SPILLED--Objects that have spilled to disk or a remote Storage solution (for example, AWS S3). The default is the disk. MMAP_DISK--Objects stored on a memory-mapped page on disk. This mode very slow and only happens under severe memory pressure. MMAP_SHM--Objects store on a memory-mapped page in Shared Memory. This mode is the default, in the absence of memory pressure. WORKER_HEAP--Objects, usually smaller, stored in the memory of the Ray Worker process itself. Small objects are stored in the worker heap.
    * - `ray_placement_groups`
      - `State`
      - Current number of placement groups by state. The State label (e.g., PENDING, CREATED, REMOVED) describes the state of the placement group. See `rpc::PlacementGroupTable <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L517>`_ for more information.

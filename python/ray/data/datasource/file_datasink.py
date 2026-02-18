@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 from urllib.parse import urlparse
 
 from ray._common.retry import call_with_retry
-from ray._private.arrow_utils import add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
@@ -13,6 +12,7 @@ from ray.data._internal.util import (
     RetryingPyFileSystem,
     _is_local_scheme,
 )
+from ray.data._internal.utils.arrow_utils import add_creatable_buckets_param_if_s3_uri
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
@@ -81,11 +81,18 @@ class _FileDatasink(Datasink[None]):
         self.file_format = file_format
         self.mode = mode
         self.has_created_dir = False
+        self._skip_write = False
+        self._write_started = False
 
     def open_output_stream(self, path: str) -> "pyarrow.NativeFile":
         return self.filesystem.open_output_stream(path, **self.open_stream_args)
 
-    def on_write_start(self) -> None:
+    def on_write_start(self, schema: Optional["pyarrow.Schema"] = None) -> None:
+        # Make idempotent - if already called, return early.
+        if self._write_started:
+            return
+        self._write_started = True
+
         from pyarrow.fs import FileType
 
         dir_exists = (
@@ -94,10 +101,12 @@ class _FileDatasink(Datasink[None]):
         if dir_exists:
             if self.mode == SaveMode.ERROR:
                 raise ValueError(
-                    f"Path {self.path} already exists. If this is unexpected, use mode='ignore' to ignore those files"
+                    f"Path {self.path} already exists. "
+                    "If this is unexpected, use mode='ignore' to ignore those files"
                 )
             if self.mode == SaveMode.IGNORE:
                 logger.warning(f"[SaveMode={self.mode}] Skipping {self.path}")
+                self._skip_write = True
                 return
             if self.mode == SaveMode.OVERWRITE:
                 logger.warning(f"[SaveMode={self.mode}] Replacing contents {self.path}")

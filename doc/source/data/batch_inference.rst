@@ -189,7 +189,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             :skipif: True
 
             import ray
-            from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+            from ray.data.llm import vLLMEngineProcessorConfig, build_processor
             import numpy as np
 
             config = vLLMEngineProcessorConfig(
@@ -202,7 +202,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
                 concurrency=1,
                 batch_size=64,
             )
-            processor = build_llm_processor(
+            processor = build_processor(
                 config,
                 preprocess=lambda row: dict(
                     messages=[
@@ -235,6 +235,25 @@ Configuration and troubleshooting
 ---------------------------------
 
 .. _batch_inference_gpu:
+
+Job-level Checkpointing
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Use job-level checkpointing to make offline batch inference jobs resilient to failures
+like node restarts or transient execution errors.
+
+When enabled, Ray Data records progress during execution. If a batch inference
+job fails partway through processing, rerunning the same pipeline with the same
+checkpoint configuration resumes by skipping already-processed records instead
+of reprocessing the entire dataset.
+
+This is especially useful for large batch inference workloads where restarting
+from the beginning would be expensive.
+
+To enable job-level checkpointing, configure a
+:class:`~ray.data.checkpoint.CheckpointConfig` on the current
+:class:`~ray.data.DataContext`. See the
+:ref:`Execution Configurations <execution_configurations>` guide for details.
 
 Using GPUs for inference
 ~~~~~~~~~~~~~~~~~~~~~~~~

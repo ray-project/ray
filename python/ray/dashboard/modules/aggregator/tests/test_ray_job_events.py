@@ -5,10 +5,8 @@ import sys
 import pytest
 
 import ray
-from ray._private.test_utils import (
-    wait_for_condition,
-    wait_for_dashboard_agent_available,
-)
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_dashboard_agent_available
 from ray.dashboard.tests.conftest import *  # noqa
 
 _RAY_EVENT_PORT = 12345
@@ -46,6 +44,8 @@ def test_ray_job_events(ray_start_cluster, httpserver):
     wait_for_condition(lambda: len(httpserver.log) >= 1)
     req, _ = httpserver.log[0]
     req_json = json.loads(req.data)
+    head_node_id = cluster.head_node.node_id
+    assert base64.b64decode(req_json[0]["nodeId"]).hex() == head_node_id
     assert (
         base64.b64decode(req_json[0]["driverJobDefinitionEvent"]["jobId"]).hex()
         == ray.get_runtime_context().get_job_id()

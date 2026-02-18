@@ -10,6 +10,7 @@ import yaml
 
 from ray import serve
 from ray._common.test_utils import wait_for_condition
+from ray.llm._internal.serve.constants import DEFAULT_MAX_TARGET_ONGOING_REQUESTS
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
@@ -306,6 +307,176 @@ class TestBuildOpenaiApp:
         assert deployment.ray_actor_options["num_cpus"] == 4
         assert deployment.ray_actor_options["memory"] == 1024
         assert deployment._deployment_config.max_ongoing_requests == 200
+
+    def test_default_autoscaling_config_included_without_num_replicas(
+        self, llm_config, disable_placement_bundles
+    ):
+        """Test that default autoscaling_config with target_ongoing_requests is included
+        when num_replicas is not specified.
+        """
+        app = build_openai_app(
+            dict(
+                llm_configs=[llm_config],
+            )
+        )
+
+        deployment = app._bound_deployment
+        autoscaling_config = deployment._deployment_config.autoscaling_config
+        assert autoscaling_config is not None
+        assert (
+            autoscaling_config.target_ongoing_requests
+            == DEFAULT_MAX_TARGET_ONGOING_REQUESTS
+        )
+
+    def test_autoscaling_config_removed_from_defaults_when_num_replicas_specified(
+        self, llm_config, disable_placement_bundles
+    ):
+        """Test that autoscaling_config from defaults is removed when user specifies
+        num_replicas, since Ray Serve does not allow both.
+        """
+        app = build_openai_app(
+            dict(
+                llm_configs=[llm_config],
+                ingress_deployment_config={
+                    "num_replicas": 2,
+                },
+            )
+        )
+
+        deployment = app._bound_deployment
+        assert deployment._deployment_config.num_replicas == 2
+        # autoscaling_config should be None since num_replicas is set
+        assert deployment._deployment_config.autoscaling_config is None
+
+    def test_user_target_ongoing_requests_respected(
+        self, llm_config, disable_placement_bundles
+    ):
+        """Test that user-specified target_ongoing_requests is respected and not
+        overridden by defaults.
+        """
+        user_target = 50
+        app = build_openai_app(
+            dict(
+                llm_configs=[llm_config],
+                ingress_deployment_config={
+                    "autoscaling_config": {
+                        "target_ongoing_requests": user_target,
+                    },
+                },
+            )
+        )
+
+        deployment = app._bound_deployment
+        autoscaling_config = deployment._deployment_config.autoscaling_config
+        assert autoscaling_config is not None
+        assert autoscaling_config.target_ongoing_requests == user_target
+
+
+class TestIngressScaleToZero:
+    """Tests for ingress scale-to-zero behavior when all models have min_replicas=0."""
+
+    def test_all_models_scale_to_zero(self, disable_placement_bundles):
+        """When all models have min_replicas=0, ingress should also have min_replicas=0."""
+        llm_cfg_dict_autoscaling = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="model_a"),
+            accelerator_type="L4",
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "max_replicas": 2,
+                }
+            },
+        )
+        llm_cfg_obj_autoscaling = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="model_b"),
+            accelerator_type="L4",
+            deployment_config={
+                "autoscaling_config": AutoscalingConfig(
+                    min_replicas=0,
+                    max_replicas=4,
+                )
+            },
+        )
+
+        app = build_openai_app(
+            LLMServingArgs(
+                llm_configs=[llm_cfg_dict_autoscaling, llm_cfg_obj_autoscaling],
+            )
+        )
+        autoscaling_config = app._bound_deployment._deployment_config.autoscaling_config
+        assert autoscaling_config.min_replicas == 0
+
+    def test_mixed_min_replicas_keeps_default(self, disable_placement_bundles):
+        """When some models have min_replicas>0, ingress should keep default min_replicas."""
+        llm_cfg_zero = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="model_a"),
+            accelerator_type="L4",
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "max_replicas": 2,
+                }
+            },
+        )
+        llm_cfg_nonzero = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="model_b"),
+            accelerator_type="L4",
+            deployment_config={
+                "autoscaling_config": AutoscalingConfig(
+                    min_replicas=1,
+                    max_replicas=4,
+                )
+            },
+        )
+
+        app = build_openai_app(
+            LLMServingArgs(
+                llm_configs=[llm_cfg_zero, llm_cfg_nonzero],
+            )
+        )
+        autoscaling_config = app._bound_deployment._deployment_config.autoscaling_config
+        # Default min_replicas from AutoscalingConfig is 1
+        assert autoscaling_config.min_replicas == 1
+
+    def test_no_autoscaling_config_keeps_default(self, disable_placement_bundles):
+        """When models don't have autoscaling_config, ingress should keep default."""
+        llm_cfg = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="model_a"),
+            accelerator_type="L4",
+        )
+
+        app = build_openai_app(
+            LLMServingArgs(llm_configs=[llm_cfg]),
+        )
+        autoscaling_config = app._bound_deployment._deployment_config.autoscaling_config
+        assert autoscaling_config.min_replicas == 1
+
+    def test_user_override_takes_precedence(self, disable_placement_bundles):
+        """User-specified ingress min_replicas should override scale-to-zero logic."""
+        llm_cfg = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="model_a"),
+            accelerator_type="L4",
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "max_replicas": 2,
+                }
+            },
+        )
+
+        app = build_openai_app(
+            LLMServingArgs(
+                llm_configs=[llm_cfg],
+                ingress_deployment_config={
+                    "autoscaling_config": {
+                        "min_replicas": 3,
+                        "max_replicas": 5,
+                    }
+                },
+            )
+        )
+        autoscaling_config = app._bound_deployment._deployment_config.autoscaling_config
+        assert autoscaling_config.min_replicas == 3
 
 
 def extract_applications_from_output(output: bytes) -> dict:

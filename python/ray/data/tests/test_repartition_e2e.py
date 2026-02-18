@@ -18,21 +18,19 @@ def test_repartition_shuffle(
     ds = ray.data.range(20, override_num_blocks=10)
     assert ds._plan.initial_num_blocks() == 10
     assert ds.sum() == 190
-    assert ds._block_num_rows() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=True)
     assert ds2._plan.initial_num_blocks() == 5
     assert ds2.sum() == 190
-    assert ds2._block_num_rows() == [10, 10, 0, 0, 0]
 
     ds3 = ds2.repartition(20, shuffle=True)
     assert ds3._plan.initial_num_blocks() == 20
     assert ds3.sum() == 190
-    assert ds3._block_num_rows() == [2] * 10 + [0] * 10
 
     large = ray.data.range(10000, override_num_blocks=10)
     large = large.repartition(20, shuffle=True)
-    assert large._block_num_rows() == [500] * 20
+    assert large._plan.initial_num_blocks() == 20
+    assert large.sum() == 49995000
 
 
 def test_key_based_repartition_shuffle(
@@ -109,21 +107,19 @@ def test_repartition_shuffle_arrow(
     ds = ray.data.range(20, override_num_blocks=10)
     assert ds._plan.initial_num_blocks() == 10
     assert ds.count() == 20
-    assert ds._block_num_rows() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=True)
     assert ds2._plan.initial_num_blocks() == 5
     assert ds2.count() == 20
-    assert ds2._block_num_rows() == [10, 10, 0, 0, 0]
 
     ds3 = ds2.repartition(20, shuffle=True)
     assert ds3._plan.initial_num_blocks() == 20
     assert ds3.count() == 20
-    assert ds3._block_num_rows() == [2] * 10 + [0] * 10
 
     large = ray.data.range(10000, override_num_blocks=10)
     large = large.repartition(20, shuffle=True)
-    assert large._block_num_rows() == [500] * 20
+    assert large._plan.initial_num_blocks() == 20
+    assert large.count() == 10000
 
 
 @pytest.mark.parametrize(
@@ -236,16 +232,27 @@ def test_repartition_empty_datasets(ray_start_regular_shared_2_cpus, shuffle):
         assert metadata.size_bytes == 0
 
 
-def test_streaming_repartition_write_no_operator_fusion(
-    ray_start_regular_shared_2_cpus, tmp_path, disable_fallback_to_object_extension
+@pytest.mark.parametrize("streaming_repartition_first", [True, False])
+@pytest.mark.parametrize("n_target_num_rows", [1, 5])
+def test_streaming_repartition_write_with_operator_fusion(
+    ray_start_regular_shared_2_cpus,
+    tmp_path,
+    disable_fallback_to_object_extension,
+    streaming_repartition_first,
+    n_target_num_rows,
 ):
     """Test that write with streaming repartition produces exact partitions
-    without operator fusion.
+    with operator fusion.
     This test verifies:
-    1. StreamingRepartition and Write operators are not fused
-    2. Exact partition structure is maintained
-    3. Skewed data is properly distributed across partitions
+    * StreamingRepartition and MapBatches operators are fused, with both orders
     """
+    target_num_rows = 20
+
+    def fn(batch):
+        # Get number of rows from the first column (batch is a dict of column_name -> array)
+        num_rows = len(batch["id"])
+        assert num_rows == b_s, f"Expected batch size {b_s}, got {num_rows}"
+        return batch
 
     # Configure shuffle strategy
     ctx = DataContext.get_current()
@@ -262,47 +269,32 @@ def test_streaming_repartition_write_no_operator_fusion(
     # Repartition by key to simulate shuffle
     ds = ds.repartition(num_blocks=2, keys=[partition_col])
 
-    # Further rebalance to meet target row size
-    ds = ds.repartition(target_num_rows_per_block=20)
+    # mess up with the block size
+    ds = ds.repartition(target_num_rows_per_block=30)
 
-    # Verify non-fusion of map_batches with repartition
-    ds = ds.map_batches(lambda x: x)
+    # Verify fusion of StreamingRepartition and MapBatches operators
+    b_s = target_num_rows * n_target_num_rows
+    if streaming_repartition_first:
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
+        ds = ds.map_batches(fn, batch_size=b_s)
+    else:
+        ds = ds.map_batches(fn, batch_size=b_s)
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
     planner = create_planner()
     physical_plan = planner.plan(ds._logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
-    assert physical_op.name == "MapBatches(<lambda>)"
-    assert len(physical_op.input_dependencies) == 1
-
-    # Verify that StreamingRepartition physical operator has supports_fusion=False
-    up_physical_op = physical_op.input_dependencies[0]
-    assert up_physical_op.name == "StreamingRepartition[num_rows_per_block=20]"
-    assert not getattr(
-        up_physical_op, "_supports_fusion", True
-    ), "StreamingRepartition should have supports_fusion=False"
+    if streaming_repartition_first:
+        # Not fused
+        assert physical_op.name == "MapBatches(fn)"
+    else:
+        assert (
+            physical_op.name
+            == f"MapBatches(fn)->StreamingRepartition[num_rows_per_block={target_num_rows}]"
+        )
 
     # Write output to local Parquet files partitioned by key
     ds.write_parquet(path=tmp_path, partition_cols=[partition_col])
-
-    # Verify exact number of files created based on target_num_rows_per_block=20
-    # 80 rows with key=0 should create 4 files (80/20=4)
-    # 20 rows with key=1 should create 1 file (20/20=1)
-    # Total should be 5 files
-    # Note: Partition column values are returned as strings when reading partitioned Parquet
-    partition_0_files = list((tmp_path / f"{partition_col}=0").glob("*.parquet"))
-    partition_1_files = list((tmp_path / f"{partition_col}=1").glob("*.parquet"))
-
-    assert (
-        len(partition_0_files) == 4
-    ), f"Expected 4 files in partition 0, got {len(partition_0_files)}"
-    assert (
-        len(partition_1_files) == 1
-    ), f"Expected 1 file in partition 1, got {len(partition_1_files)}"
-
-    total_files = len(partition_0_files) + len(partition_1_files)
-    assert (
-        total_files == 5
-    ), f"Expected exactly 5 parquet files total, got {total_files}"
 
     # Verify data can be read back correctly with expected row count
     ds_read_back = ray.data.read_parquet(str(tmp_path))
@@ -316,6 +308,55 @@ def test_streaming_repartition_write_no_operator_fusion(
 
     assert partition_0_ds.count() == 80, "Expected 80 rows in partition 0"
     assert partition_1_ds.count() == 20, "Expected 20 rows in partition 1"
+
+
+def test_streaming_repartition_fusion_output_shape(
+    ray_start_regular_shared_2_cpus,
+    tmp_path,
+    disable_fallback_to_object_extension,
+):
+    """
+    When we use `map_batches -> streaming_repartition`, the output shape should be exactly the same as batch_size.
+    """
+
+    def fn(batch):
+        # Get number of rows from the first column (batch is a dict of column_name -> array)
+        num_rows = len(batch["id"])
+        assert num_rows == 20, f"Expected batch size 20, got {num_rows}"
+        return batch
+
+    # Configure shuffle strategy
+    ctx = DataContext.get_current()
+    ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+    num_rows = 100
+    partition_col = "skewed_key"
+
+    # Create sample data with skewed partitioning
+    # 1 occurs for every 5th row (20 rows), 0 for others (80 rows)
+    table = [{"id": n, partition_col: 1 if n % 5 == 0 else 0} for n in range(num_rows)]
+    ds = ray.data.from_items(table)
+
+    # Repartition by key to simulate shuffle
+    ds = ds.repartition(num_blocks=2, keys=[partition_col])
+
+    # mess up with the block size
+    ds = ds.repartition(target_num_rows_per_block=30)
+
+    # Verify fusion of StreamingRepartition and MapBatches operators
+    ds = ds.map_batches(fn, batch_size=20)
+    ds = ds.repartition(target_num_rows_per_block=20)
+    planner = create_planner()
+    physical_plan = planner.plan(ds._logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_op = physical_plan.dag
+    assert (
+        physical_op.name
+        == "MapBatches(fn)->StreamingRepartition[num_rows_per_block=20]"
+    )
+
+    for block in ds.iter_batches(batch_size=None):
+        assert len(block["id"]) == 20
 
 
 @pytest.mark.parametrize(
@@ -371,6 +412,69 @@ def test_repartition_guarantee_row_num_to_be_exact(
                 f"Expected remainder block to have {expected_remaining_rows} rows, "
                 f"got {remaining_blocks[0]}. Block counts: {block_row_counts}"
             )
+
+
+def test_streaming_repartition_with_partial_last_block(
+    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+):
+    """Test repartition with target_num_rows_per_block where last block has fewer rows.
+    This test verifies:
+    1. N-1 blocks have exactly target_num_rows_per_block rows
+    2. Only the last block can have fewer rows (remainder)
+    """
+    # Configure shuffle strategy
+    ctx = DataContext.get_current()
+    ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+    num_rows = 101
+
+    table = [{"id": n} for n in range(num_rows)]
+    ds = ray.data.from_items(table)
+
+    ds = ds.repartition(target_num_rows_per_block=20)
+
+    ds = ds.materialize()
+
+    block_row_counts = []
+    for ref_bundle in ds.iter_internal_ref_bundles():
+        for _, metadata in ref_bundle.blocks:
+            block_row_counts.append(metadata.num_rows)
+
+    assert sum(block_row_counts) == num_rows, f"Expected {num_rows} total rows"
+
+    # Verify that all blocks have 20 rows except one block with 10 rows
+    # The block with 10 rows should be the last one
+    assert (
+        block_row_counts[-1] == 1
+    ), f"Expected last block to have 1 row, got {block_row_counts[-1]}"
+    assert all(
+        count == 20 for count in block_row_counts[:-1]
+    ), f"Expected all blocks except last to have 20 rows, got {block_row_counts}"
+
+
+@pytest.mark.timeout(60)
+def test_streaming_repartition_empty_dataset(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """Test streaming repartition with empty dataset (0 rows).
+
+    This test reproduces the scenario where:
+    1. Upstream produces empty results (e.g., filter, map, etc.)
+    2. Repartition with target_num_rows_per_block is applied
+
+    The test ensures that operation completes without hanging.
+    Previously, empty bundles would get stuck in _pending_bundles.
+    """
+    # Create empty dataset via filter, then repartition
+    ds = (
+        ray.data.range(10)
+        .filter(lambda x: x["id"] > 100)
+        .repartition(target_num_rows_per_block=8)
+    )
+
+    # Verify dataset is empty
+    assert ds.count() == 0, "Expected empty dataset"
 
 
 if __name__ == "__main__":

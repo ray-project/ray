@@ -21,6 +21,7 @@ ray_cc_library(
         ":cluster_resource_scheduler",
         ":composite_scheduling_policy",
         ":hybrid_scheduling_policy",
+        ":local_lease_manager",
         ":local_resource_manager",
         ":node_affinity_scheduling_policy",
         ":node_label_scheduling_policy",
@@ -52,6 +53,7 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common/scheduling:cluster_resource_data",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/raylet:metrics",
         "//src/ray/util:container_util",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -67,10 +69,34 @@ ray_cc_library(
         ":cluster_resource_manager",
         ":composite_scheduling_policy",
         ":scheduler_internal",
+        "//src/ray/observability:metric_interface",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "local_lease_manager",
+    srcs = ["local_lease_manager.cc"],
+    hdrs = ["local_lease_manager.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/common:lease",
+        "//src/ray/common:ray_object",
+        "//src/ray/common/scheduling:cluster_resource_data",
+        "//src/ray/common/scheduling:placement_group_util",
+        "//src/ray/object_manager:object_manager_common",
+        "//src/ray/raylet:lease_dependency_manager",
+        "//src/ray/raylet:metrics",
+        "//src/ray/raylet:worker_interface",
+        "//src/ray/raylet:worker_pool",
+        "//src/ray/raylet/scheduling:cluster_resource_scheduler",
+        "//src/ray/raylet/scheduling:local_lease_manager_interface",
+        "//src/ray/raylet/scheduling:scheduler_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -112,6 +138,8 @@ ray_cc_library(
     hdrs = ["local_lease_manager_interface.h"],
     deps = [
         ":scheduler_internal",
+        "//src/ray/observability:fake_metric",
+        "//src/ray/raylet:metrics",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

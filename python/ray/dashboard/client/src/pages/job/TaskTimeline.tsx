@@ -41,7 +41,10 @@ const TimelineDownloadButton = ({
 }: TimelineDownloadButtonProps) => {
   return (
     <Button
-      sx={sx}
+      sx={[
+        { "& svg": { color: "text.secondary" } },
+        ...(Array.isArray(sx) ? sx : [sx]),
+      ]}
       className={className}
       variant="outlined"
       startIcon={<RiDownload2Line />}

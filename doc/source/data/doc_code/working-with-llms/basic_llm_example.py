@@ -3,20 +3,11 @@ This file serves as a documentation example and CI test for basic LLM batch infe
 
 """
 
-# Dependency setup
-import subprocess
-import sys
-
-subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "ray[llm]"])
-subprocess.check_call(
-    [sys.executable, "-m", "pip", "install", "--upgrade", "transformers"]
-)
-subprocess.check_call([sys.executable, "-m", "pip", "install", "numpy==1.26.4"])
-
-
 # __basic_llm_example_start__
+import os
+import shutil
 import ray
-from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+from ray.data.llm import vLLMEngineProcessorConfig, build_processor
 
 # __basic_config_example_start__
 # Basic vLLM configuration
@@ -32,7 +23,7 @@ config = vLLMEngineProcessorConfig(
 )
 # __basic_config_example_end__
 
-processor = build_llm_processor(
+processor = build_processor(
     config,
     preprocess=lambda row: dict(
         messages=[
@@ -136,6 +127,66 @@ s3_config = vLLMEngineProcessorConfig(
 )
 # __s3_config_example_end__
 
+base_dir = "/tmp/llm_checkpoint_demo"
+input_path = os.path.join(base_dir, "input")
+output_path = os.path.join(base_dir, "output")
+checkpoint_path = os.path.join(base_dir, "checkpoint")
+
+# Reset directories
+for path in (input_path, output_path, checkpoint_path):
+    shutil.rmtree(path, ignore_errors=True)
+    os.makedirs(path)
+
+# __row_level_fault_tolerance_config_example_start__
+# Row-level fault tolerance configuration
+config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    concurrency=1,
+    batch_size=64,
+    should_continue_on_error=True,
+)
+# __row_level_fault_tolerance_config_example_end__
+
+# __checkpoint_config_setup_example_start__
+from ray.data.checkpoint import CheckpointConfig
+
+ctx = ray.data.DataContext.get_current()
+ctx.checkpoint_config = CheckpointConfig(
+    id_column="id",
+    checkpoint_path=checkpoint_path,
+    delete_checkpoint_on_success=False,
+)
+# __checkpoint_config_setup_example_end__
+
+# __checkpoint_usage_example_start__
+processor_config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    concurrency=1,
+    batch_size=16,
+)
+
+processor = build_processor(
+    processor_config,
+    preprocess=lambda row: dict(
+        id=row["id"], # Preserve the ID column for checkpointing
+        prompt=row["prompt"],
+        sampling_params=dict(
+            temperature=0.3,
+            max_tokens=10,
+        ),
+    ),
+    postprocess=lambda row: {
+        "id": row["id"], # Preserve the ID column for checkpointing
+        "answer": row.get("generated_text"),
+    },
+)
+
+ds = ray.data.read_parquet(input_path)
+ds = processor(ds)
+ds.write_parquet(output_path)
+# __checkpoint_usage_example_end__
+
+
 # __gpu_memory_config_example_start__
 # GPU memory management configuration
 # If you encounter CUDA out of memory errors, try these optimizations:
@@ -179,13 +230,13 @@ embedding_config = vLLMEngineProcessorConfig(
     ),
     batch_size=32,
     concurrency=1,
-    apply_chat_template=False,
-    detokenize=False,
+    chat_template_stage=False,  # Skip chat templating for embeddings
+    detokenize_stage=False,     # Skip detokenization for embeddings
 )
 
 # Example usage for embeddings
 def create_embedding_processor():
-    return build_llm_processor(
+    return build_processor(
         embedding_config,
         preprocess=lambda row: dict(prompt=row["text"]),
         postprocess=lambda row: {
@@ -197,10 +248,45 @@ def create_embedding_processor():
 
 # __embedding_config_example_end__
 
+# __classification_config_example_start__
+# Sequence classification model configuration
+# Use task_type="classify" for classification models (e.g., sentiment, quality scoring)
+# Use task_type="score" for cross-encoder scoring models
+classification_config = vLLMEngineProcessorConfig(
+    model_source="nvidia/nemocurator-fineweb-nemotron-4-edu-classifier",
+    task_type="classify",
+    engine_kwargs=dict(
+        max_model_len=512,
+        enforce_eager=True,
+    ),
+    batch_size=8,
+    concurrency=1,
+    chat_template_stage=False,
+    detokenize_stage=False,
+)
+
+
+# Example usage for classification
+def create_classification_processor():
+    return build_processor(
+        classification_config,
+        preprocess=lambda row: dict(prompt=row["text"]),
+        postprocess=lambda row: {
+            "text": row["prompt"],
+            # Classification models return logits in the 'embeddings' field
+            "score": float(row["embeddings"][0])
+            if row.get("embeddings") is not None and len(row["embeddings"]) > 0
+            else None,
+        },
+    )
+
+
+# __classification_config_example_end__
+
 # __shared_vllm_engine_config_example_start__
 import ray
 from ray import serve
-from ray.data.llm import ServeDeploymentProcessorConfig, build_llm_processor
+from ray.data.llm import ServeDeploymentProcessorConfig, build_processor
 from ray.serve.llm import (
     LLMConfig,
     ModelLoadingConfig,
@@ -245,7 +331,7 @@ config = ServeDeploymentProcessorConfig(
     batch_size=64,
 )
 
-processor1 = build_llm_processor(
+processor1 = build_processor(
     config,
     preprocess=lambda row: dict(
         method="completions",
@@ -261,7 +347,7 @@ processor1 = build_llm_processor(
     ),
 )
 
-processor2 = build_llm_processor(
+processor2 = build_processor(
     config,
     preprocess=lambda row: dict(
         method="completions",
@@ -328,4 +414,24 @@ config = vLLMEngineProcessorConfig(
     batch_size=64,
 )
 # __concurrent_config_example_end__
+
+# __concurrent_batches_tuning_example_start__
+# Tuning concurrent batch processing
+# Configure both parameters together for optimal throughput
+config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs={
+        "enable_chunked_prefill": True,
+        "max_num_batched_tokens": 4096,
+    },
+    batch_size=64,
+    # Dataset-level concurrency (number of actor replicas)
+    concurrency=1,
+    # Number of batches that can run concurrently per actor (default: 8)
+    max_concurrent_batches=8,
+    # Number of tasks Ray Data queues per actor (default: 16)
+    # Increase to keep actor task queue saturated
+    experimental={"max_tasks_in_flight_per_actor": 16},
+)
+# __concurrent_batches_tuning_example_end__
 # __basic_llm_example_end__

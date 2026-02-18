@@ -15,11 +15,13 @@ from google.protobuf import text_format
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
 from ray._common.network_utils import build_address
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    fetch_prometheus,
+    wait_for_condition,
+)
 from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
 from ray._private.test_utils import (
-    fetch_prometheus,
     format_web_url,
     wait_until_server_available,
 )
@@ -297,9 +299,11 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
     wait_for_condition(test_worker_stats, retry_interval_ms=1000)
 
 
-def test_report_stats():
+def test_report_stats(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
     raylet_client = MagicMock()
     agent = ReporterAgent(dashboard_agent, raylet_client)
     # Assume it is a head node.
@@ -373,9 +377,11 @@ def test_report_stats():
     assert isinstance(stats_payload, str)
 
 
-def test_report_stats_gpu():
+def test_report_stats_gpu(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
     raylet_client = MagicMock()
     agent = ReporterAgent(dashboard_agent, raylet_client)
     # Assume it is a head node.
@@ -484,9 +490,106 @@ def test_report_stats_gpu():
     assert isinstance(stats_payload, str)
 
 
-def test_get_tpu_usage():
+def test_report_stats_gpu_power_and_temperature(tmp_path):
+    """Test that GPU power and temperature metrics are reported when present in stats."""
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+    agent._is_head_node = True
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["gpus"] = [
+        {
+            "index": 0,
+            "uuid": "GPU-aaa",
+            "name": "NVIDIA A10G",
+            "utilization_gpu": 10,
+            "memory_used": 100,
+            "memory_total": 1024,
+            "processes": [],
+            "power_mw": 125000,  # 125 W
+            "temperature_c": 65,
+        },
+        {
+            "index": 1,
+            "uuid": "GPU-bbb",
+            "name": "NVIDIA A10G",
+            "utilization_gpu": 20,
+            "memory_used": 200,
+            "memory_total": 1024,
+            "processes": [],
+            "power_mw": 200000,  # 200 W
+            "temperature_c": 72,
+        },
+    ]
+
+    records = agent._to_records(stats, {})
+
+    power_records = [r for r in records if r.gauge.name == "node_gpu_power_milliwatts"]
+    temp_records = [
+        r for r in records if r.gauge.name == "node_gpu_temperature_celsius"
+    ]
+
+    assert len(power_records) == 2
+    assert len(temp_records) == 2
+
+    power_by_index = {r.tags["GpuIndex"]: r.value for r in power_records}
+    assert power_by_index["0"] == 125000
+    assert power_by_index["1"] == 200000
+
+    temp_by_index = {r.tags["GpuIndex"]: r.value for r in temp_records}
+    assert temp_by_index["0"] == 65
+    assert temp_by_index["1"] == 72
+
+    # Tags should include GpuIndex and GpuDeviceName
+    for r in power_records + temp_records:
+        assert "GpuIndex" in r.tags
+        assert r.tags.get("GpuDeviceName") == "NVIDIA A10G"
+
+
+def test_report_stats_gpu_without_power_temperature(tmp_path):
+    """Test that no power/temperature records are emitted when fields are absent."""
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+    agent._is_head_node = True
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["gpus"] = [
+        {
+            "index": 0,
+            "uuid": "GPU-ccc",
+            "name": "NVIDIA A10G",
+            "utilization_gpu": 0,
+            "memory_used": 0,
+            "memory_total": 1024,
+            "processes": [],
+            # no power_mw or temperature_c
+        },
+    ]
+
+    records = agent._to_records(stats, {})
+
+    power_records = [r for r in records if r.gauge.name == "node_gpu_power_milliwatts"]
+    temp_records = [
+        r for r in records if r.gauge.name == "node_gpu_temperature_celsius"
+    ]
+
+    assert len(power_records) == 0
+    assert len(temp_records) == 0
+
+
+def test_get_tpu_usage(tmp_path):
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
     raylet_client = MagicMock()
     agent = ReporterAgent(dashboard_agent, raylet_client)
 
@@ -542,9 +645,11 @@ def test_get_tpu_usage():
             assert tpu_utilizations == expected_utilizations
 
 
-def test_report_stats_tpu():
+def test_report_stats_tpu(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
     raylet_client = MagicMock()
     agent = ReporterAgent(dashboard_agent, raylet_client)
 
@@ -622,9 +727,11 @@ def test_report_stats_tpu():
     assert isinstance(stats_payload, str)
 
 
-def test_report_per_component_stats():
+def test_report_per_component_stats(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
     raylet_client = MagicMock()
     agent = ReporterAgent(dashboard_agent, raylet_client)
     # Assume it is a head node.
@@ -868,7 +975,7 @@ async def test_reporter_worker_cpu_percent():
         def _get_agent_proc(self):
             return psutil.Process(agent_mock.pid)
 
-        def _generate_worker_key(self, proc):
+        def _generate_proc_key(self, proc):
             return (proc.pid, proc.create_time())
 
         async def _async_get_worker_pids_from_raylet(self):
@@ -877,6 +984,12 @@ async def test_reporter_worker_cpu_percent():
         async def _async_get_worker_processes(self):
             return await ReporterAgent._async_get_worker_processes(self)
 
+        async def _async_get_agent_pids_from_raylet(self):
+            return []
+
+        async def _async_get_agent_processes(self):
+            return await ReporterAgent._async_get_agent_processes(self)
+
     obj = ReporterAgentDummy()
 
     try:
@@ -884,12 +997,12 @@ async def test_reporter_worker_cpu_percent():
         for child_proc in children:
             child_proc.start()
         children_pids = {p.pid for p in children}
-        workers = await ReporterAgent._async_get_workers(obj)
+        workers = await ReporterAgent._async_get_workers_and_agents(obj)
         # In the first run, the percent should be 0.
         assert all([worker["cpu_percent"] == 0.0 for worker in workers])
         for _ in range(10):
             time.sleep(0.1)
-            workers = await ReporterAgent._async_get_workers(obj)
+            workers = await ReporterAgent._async_get_workers_and_agents(obj)
             workers_pids = {w["pid"] for w in workers}
 
             # Make sure all children are registered.
@@ -905,14 +1018,14 @@ async def test_reporter_worker_cpu_percent():
         print("killed ", children[0].pid)
         children[0].kill()
         wait_for_condition(lambda: not children[0].is_alive())
-        workers = await ReporterAgent._async_get_workers(obj)
+        workers = await ReporterAgent._async_get_workers_and_agents(obj)
         workers_pids = {w["pid"] for w in workers}
         assert children[0].pid not in workers_pids
         assert children[1].pid in workers_pids
 
         children[1].kill()
         wait_for_condition(lambda: not children[1].is_alive())
-        workers = await ReporterAgent._async_get_workers(obj)
+        workers = await ReporterAgent._async_get_workers_and_agents(obj)
         workers_pids = {w["pid"] for w in workers}
         assert children[0].pid not in workers_pids
         assert children[1].pid not in workers_pids
@@ -1190,6 +1303,10 @@ async def test_reporter_raylet_agent(ray_start_with_dashboard):
     dashboard_agent.node_manager_port = (
         ray._private.worker.global_worker.node.node_manager_port
     )
+    dashboard_agent.session_dir = (
+        ray._private.worker.global_worker.node.get_session_dir_path()
+    )
+    dashboard_agent.node_id = ray._private.worker.global_worker.node.unique_id
     agent = ReporterAgent(dashboard_agent)
     pids = await agent._async_get_worker_pids_from_raylet()
     assert len(pids) == 2
@@ -1197,6 +1314,39 @@ async def test_reporter_raylet_agent(ray_start_with_dashboard):
     assert worker_pid in pids
     # check if driver is reported
     assert os.getpid() in pids
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ray_start_with_dashboard",
+    [
+        {"num_cpus": 1},
+    ],
+    indirect=True,
+)
+async def test_reporter_dashboard_and_runtime_env_agent(
+    ray_start_with_dashboard, tmp_path
+):
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    dashboard_agent.ip = "127.0.0.1"
+    dashboard_agent.node_manager_port = (
+        ray._private.worker.global_worker.node.node_manager_port
+    )
+    agent = ReporterAgent(dashboard_agent)
+    agent_pids = await agent._async_get_agent_pids_from_raylet()
+    assert len(agent_pids) == 2
+    for pid in agent_pids:
+        proc = psutil.Process(pid)
+
+        def verify():
+            # If linux, proctitle will be cut to 15 chars. So we only check if the
+            # proctitle is a substring
+            return any(proc.cmdline()[0] in s for s in ray_constants.AGENT_PROCESS_LIST)
+
+        wait_for_condition(verify, timeout=5, retry_interval_ms=100)
 
 
 if __name__ == "__main__":

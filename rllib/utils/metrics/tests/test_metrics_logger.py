@@ -2,189 +2,383 @@ import time
 
 import numpy as np
 import pytest
-import torch
 
-import ray
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.metrics.stats import (
+    EmaStats,
+    LifetimeSumStats,
+    MeanStats,
+    SumStats,
+)
 from ray.rllib.utils.test_utils import check
 
 
 @pytest.fixture
-def logger():
+def root_logger():
     return MetricsLogger(root=True)
 
 
-def test_log_value(logger):
-    """Test basic value logging and reduction."""
-    # Test simple value logging
-    logger.log_value("loss", 0.1)
-    logger.log_value("loss", 0.2)
+@pytest.fixture
+def leaf1():
+    return MetricsLogger(root=False)
 
-    # Test peek
-    check(logger.peek("loss"), 0.101)
 
-    # Test reduce
-    results = logger.reduce()
-    check(results["loss"], 0.101)
+@pytest.fixture
+def leaf2():
+    return MetricsLogger(root=False)
+
+
+@pytest.fixture
+def intermediate():
+    return MetricsLogger(root=False)
 
 
 @pytest.mark.parametrize(
     "reduce_method,values,expected",
     [
-        ("mean", [0.1, 0.2], 0.101),
+        ("mean", [0.1, 0.2], 0.15),
         ("min", [0.3, 0.1, 0.2], 0.1),
         ("sum", [10, 20], 30),
+        ("lifetime_sum", [10, 20], 30),
+        ("ema", [1.0, 2.0], 1.01),
+        ("item", [0.1, 0.2], 0.2),
+        ("item_series", [0.1, 0.2], [0.1, 0.2]),
     ],
 )
-def test_basic_reduction_methods(logger, reduce_method, values, expected):
+def test_basic_peek_and_reduce(root_logger, reduce_method, values, expected):
     """Test different reduction methods (mean, min, sum) with parameterization."""
     key = f"{reduce_method}_metric"
 
-    # Log the first value with the reduction method specified
-    logger.log_value(key, values[0], reduce=reduce_method)
-
-    # Log remaining values
-    for val in values[1:]:
-        logger.log_value(key, val)
+    for val in values:
+        root_logger.log_value(key, val, reduce=reduce_method)
 
     # Check the result
-    check(logger.peek(key), expected)
+    check(root_logger.peek(key), expected)
 
     # Test that reduce() returns the same result
-    results = logger.reduce()
+    results = root_logger.reduce()
     check(results[key], expected)
 
 
-def test_ema(logger):
-    """Comprehensive test of EMA behavior for mean reduction."""
-    # Test default EMA coefficient (0.01)
-    logger.log_value("default_ema", 1.0, reduce="mean")
-    logger.log_value("default_ema", 2.0)
-    # Expected: 0.99 * 1.0 + 0.01 * 2.0 = 1.01
-    check(logger.peek("default_ema"), 1.01)
+@pytest.mark.parametrize(
+    "reduce_method,leaf1_values,leaf2_values,intermediate_values,"
+    "leaf1_expected,leaf2_expected,intermediate_expected_after_aggregate,"
+    "intermediate_expected_after_log,root_expected_leafs,root_expected_intermediate",
+    [
+        # MeanStats
+        (
+            "mean",  # reduction method name
+            [1.0, 2.0],  # values logged to leaf1 logger
+            [3.0, 4.0],  # values logged to leaf2 logger
+            [5.0, 6.0],  # values logged at intermediate logger
+            1.5,  # result from leaf1 after logging (mean of [1, 2])
+            3.5,  # result from leaf2 after logging (mean of [3, 4])
+            2.5,  # result at intermediate after aggregating from leafs (mean of [1.5, 3.5])
+            5.5,  # result at intermediate after logging values (mean of [5.0, 6.0])
+            2.5,  # result at root from aggregated leafs (mean of [1.5, 3.5])
+            5.5,  # result at root from intermediate logged values (mean of [5.0, 6.0])
+        ),
+        # EmaStats with default coefficient (0.01)
+        (
+            "ema",  # reduction method name
+            [1.0, 2.0],  # values logged to leaf1 logger
+            [3.0, 4.0],  # values logged to leaf2 logger
+            [5.0, 6.0],  # values logged at intermediate logger
+            1.01,  # result from leaf1 after logging (EMA of [1, 2] with coeff 0.01)
+            3.01,  # result from leaf2 after logging (EMA of [3, 4] with coeff 0.01)
+            2.01,  # result at intermediate after aggregating from leafs (mean of [1.01, 3.01])
+            5.01,  # result at intermediate after logging values (EMA of [5.0, 6.0] with coeff 0.01)
+            2.01,  # result at root from aggregated leafs (mean of [1.01, 3.01])
+            5.01,  # result at root from intermediate logged values (EMA of [5.0, 6.0] with coeff 0.01)
+        ),
+        # SumStats
+        (
+            "sum",  # reduction method name
+            [10, 20],  # values logged to leaf1 logger
+            [30, 40],  # values logged to leaf2 logger
+            [50, 60],  # values logged at intermediate logger
+            30,  # result from leaf1 after logging (sum of [10, 20])
+            70,  # result from leaf2 after logging (sum of [30, 40])
+            100,  # result at intermediate after aggregating from leafs (sum of [30, 70])
+            110,  # result at intermediate after logging values (sum of [50, 60])
+            100,  # result at root from aggregated leafs (sum of [30, 70])
+            110,  # result at root from intermediate logged values (sum of [50, 60])
+        ),
+        # LifetimeSumStats
+        (
+            "lifetime_sum",  # reduction method name
+            [10, 20],  # values logged to leaf1 logger
+            [30, 40],  # values logged to leaf2 logger
+            [50, 60],  # values logged at intermediate logger
+            [
+                30
+            ],  # result from leaf1 after logging (lifetime sum of [10, 20], returns list)
+            [
+                70
+            ],  # result from leaf2 after logging (lifetime sum of [30, 40], returns list)
+            [
+                100
+            ],  # result at intermediate after aggregating from leafs (sum of [30, 70], returns list)
+            [
+                110
+            ],  # result at intermediate after logging values (sum of [50, 60], returns list)
+            100,  # result at root from aggregated leafs (root logger converts list to scalar)
+            110,  # result at root from intermediate logged values (root logger converts list to scalar)
+        ),
+        # MinStats
+        (
+            "min",  # reduction method name
+            [5.0, 3.0],  # values logged to leaf1 logger
+            [4.0, 2.0],  # values logged to leaf2 logger
+            [1.0, 0.5],  # values logged at intermediate logger
+            3.0,  # result from leaf1 after logging (min of [5.0, 3.0])
+            2.0,  # result from leaf2 after logging (min of [4.0, 2.0])
+            2.0,  # result at intermediate after aggregating from leafs (min of [3.0, 2.0])
+            0.5,  # result at intermediate after logging values (min of [1.0, 0.5])
+            2.0,  # result at root from aggregated leafs (min of [3.0, 2.0])
+            0.5,  # result at root from intermediate logged values (min of [1.0, 0.5])
+        ),
+        # MaxStats
+        (
+            "max",  # reduction method name
+            [5.0, 7.0],  # values logged to leaf1 logger
+            [4.0, 6.0],  # values logged to leaf2 logger
+            [8.0, 9.0],  # values logged at intermediate logger
+            7.0,  # result from leaf1 after logging (max of [5.0, 7.0])
+            6.0,  # result from leaf2 after logging (max of [4.0, 6.0])
+            7.0,  # result at intermediate after aggregating from leafs (max of [7.0, 6.0])
+            9.0,  # result at intermediate after logging values (max of [8.0, 9.0])
+            7.0,  # result at root from aggregated leafs (max of [7.0, 6.0])
+            9.0,  # result at root from intermediate logged values (max of [8.0, 9.0])
+        ),
+        # PercentilesStats
+        (
+            "percentiles",  # reduction method name
+            [10.0, 20.0],  # values logged to leaf1 logger
+            [30.0, 40.0],  # values logged to leaf2 logger
+            [50.0, 60.0],  # values logged at intermediate logger
+            {
+                0.5: 10.05
+            },  # result from leaf1 after logging (percentile 0.5 of [10.0, 20.0])
+            {
+                0.5: 30.05
+            },  # result from leaf2 after logging (percentile 0.5 of [30.0, 40.0])
+            {
+                0.5: 10.15
+            },  # result at intermediate after aggregating from leafs (percentile 0.5 of merged [10.0, 20.0, 30.0, 40.0])
+            {
+                0.5: 50.05
+            },  # result at intermediate after logging values (percentile 0.5 of [50.0, 60.0])
+            {
+                0.5: 10.15
+            },  # result at root from aggregated leafs (same as intermediate after aggregate)
+            {
+                0.5: 50.05
+            },  # result at root from intermediate logged values (percentile 0.5 of [50.0, 60.0])
+        ),
+        # ItemSeriesStats
+        (
+            "item_series",  # reduction method name
+            [1.0, 2.0],  # values logged to leaf1 logger
+            [3.0, 4.0],  # values logged to leaf2 logger
+            [5.0, 6.0],  # values logged at intermediate logger
+            [
+                1.0,
+                2.0,
+            ],  # result from leaf1 after logging (series of [1.0, 2.0])
+            [
+                3.0,
+                4.0,
+            ],  # result from leaf2 after logging (series of [3.0, 4.0])
+            [
+                1.0,
+                2.0,
+                3.0,
+                4.0,
+            ],  # result at intermediate after aggregating from leafs (concatenated series from leafs)
+            [
+                5.0,
+                6.0,
+            ],  # result at intermediate after logging values (series of [5.0, 6.0])
+            [
+                1.0,
+                2.0,
+                3.0,
+                4.0,
+            ],  # result at root from aggregated leafs (concatenated series from leafs)
+            [
+                5.0,
+                6.0,
+            ],  # result at root from intermediate logged values (series of [5.0, 6.0])
+        ),
+    ],
+)
+def test_multi_stage_aggregation(
+    root_logger,
+    leaf1,
+    leaf2,
+    intermediate,
+    reduce_method,
+    leaf1_values,
+    leaf2_values,
+    intermediate_values,
+    leaf1_expected,
+    leaf2_expected,
+    intermediate_expected_after_aggregate,
+    intermediate_expected_after_log,
+    root_expected_leafs,
+    root_expected_intermediate,
+):
+    """Test multi-stage aggregation for different Stats classes.
 
-    ema_coeff = 0.2
-    logger.log_value("custom_ema", 1.0, ema_coeff=ema_coeff)
+    This is a comprehensive test of how we envision MetricsLogger to be used in RLlib.
+    It also creates a bunch of test coverage for Stats classes, which are tighly cloupled with MetricsLogger.
 
-    # Log a series of values and check if EMA approaches the expected value
-    values = [5.0] * 100  # Actual mean is 5.0
-    expected = 1.0  # Initial value
+    Tests the aggregation flow:
+    1. Two leaf loggers log values
+    2. One intermediate logger aggregates from leaf loggers and logs values
+    3. One root logger aggregates only
+    """
+    metric_name_leafs = reduce_method + "_metric_leaf"
+    metric_name_intermediate = reduce_method + "_metric_intermediate"
 
-    for val in values:
-        logger.log_value("custom_ema", val)
-        # EMA formula: new_ema = (1 - ema_coeff) * old_ema + ema_coeff * new_value
-        expected = (1.0 - ema_coeff) * expected + ema_coeff * val
-        check(logger.peek("custom_ema"), expected)
+    # Helper function to check values (handles PercentilesStats specially)
+    def check_value(actual, expected):
+        if reduce_method == "percentiles":
+            # If actual is a PercentilesStats object (from reduce(compile=False)), call peek() to get dict
+            if hasattr(actual, "peek"):
+                actual = actual.peek()
+            assert isinstance(actual, dict)
+            assert 0.5 in actual
+            if expected is not None:
+                check(actual[0.5], expected[0.5], atol=0.01)
+        elif expected is not None:
+            check(actual, expected)
 
-    # After several updates, EMA should be approaching the actual mean
-    assert abs(expected - 5.0) < 1e-9, f"EMA {expected} should be approaching 5.0"
+    # Leaf stage
+    # Prepare kwargs for PercentileStats if needed
+    if reduce_method == "percentiles":
+        log_kwargs = {"window": 10, "percentiles": [0.5]}
+    else:
+        log_kwargs = {}
 
-    # Test EMA with larger coefficient (faster adaptation)
-    logger.log_value("fast_ema", 0.1, ema_coeff=0.5)
-    logger.log_value("fast_ema", 0.2)
-    logger.log_value("fast_ema", 0.3)
-    # Expected: first update = 0.5*0.1 + 0.5*0.2 = 0.15
-    #           second update = 0.5*0.15 + 0.5*0.3 = 0.225
-    check(logger.peek("fast_ema"), 0.225)
+    for val in leaf1_values:
+        leaf1.log_value(metric_name_leafs, val, reduce=reduce_method, **log_kwargs)
+    for val in leaf2_values:
+        leaf2.log_value(metric_name_leafs, val, reduce=reduce_method, **log_kwargs)
+
+    check_value(leaf1.peek(metric_name_leafs), leaf1_expected)
+    check_value(leaf2.peek(metric_name_leafs), leaf2_expected)
+
+    leaf1_metrics = leaf1.reduce(compile=False)
+    leaf2_metrics = leaf2.reduce(compile=False)
+
+    # Intermediate stage
+    # Note: For percentiles, intermediate loggers cannot log values directly
+    # So we skip intermediate logging for percentiles and only test aggregation
+    if reduce_method != "percentiles":
+        for val in intermediate_values:
+            intermediate.log_value(
+                metric_name_intermediate, val, reduce=reduce_method, **log_kwargs
+            )
+
+    intermediate.aggregate([leaf1_metrics, leaf2_metrics])
+    intermediate_metrics_after_aggregate = intermediate.reduce(compile=False)
+    check_value(
+        intermediate_metrics_after_aggregate[metric_name_leafs],
+        intermediate_expected_after_aggregate,
+    )
+    if reduce_method != "percentiles":
+        check_value(
+            intermediate_metrics_after_aggregate[metric_name_intermediate],
+            intermediate_expected_after_log,
+        )
+
+    # Aggregate at root level
+    root_logger.aggregate([intermediate_metrics_after_aggregate])
+    root_value_leafs = root_logger.peek(metric_name_leafs)
+    check_value(root_value_leafs, root_expected_leafs)
+    if reduce_method != "percentiles":
+        root_value_intermediate = root_logger.peek(metric_name_intermediate)
+        check_value(root_value_intermediate, root_expected_intermediate)
 
 
-def test_windowed_reduction(logger):
+def test_windowed_reduction(root_logger, leaf1, leaf2):
     """Test window-based reduction with various window sizes."""
-    # Test with window=2
-    logger.log_value("window_loss", 0.1, window=2)
-    logger.log_value("window_loss", 0.2, window=2)
-    logger.log_value("window_loss", 0.3, window=2)
-    check(logger.peek("window_loss"), 0.25)  # mean of [0.2, 0.3]
 
-    # Test with window=3
-    logger.log_value("window3_loss", 0.1, window=3)
-    logger.log_value("window3_loss", 0.2, window=3)
-    logger.log_value("window3_loss", 0.3, window=3)
-    logger.log_value("window3_loss", 0.4, window=3)
-    check(logger.peek("window3_loss"), 0.3)  # mean of [0.2, 0.3, 0.4]
+    # Test window with 'mean' reduction method
+    leaf1.log_value("window_loss", 0.1, reduce="mean", window=2)
+    leaf1.log_value("window_loss", 0.2)
+    leaf1.log_value("window_loss", 0.3)
+    leaf2.log_value("window_loss", 0.1, reduce="mean", window=2)
+    leaf2.log_value("window_loss", 0.2)
+    leaf2.log_value("window_loss", 0.3)
 
-    # Test window with different reduction methods
-    logger.log_value("window_min", 0.3, window=2, reduce="min")
-    logger.log_value("window_min", 0.1, window=2)
-    logger.log_value("window_min", 0.2, window=2)
-    check(logger.peek("window_min"), 0.1)  # min of [0.1, 0.2]
+    leaf1_metrics = leaf1.reduce(compile=False)
+    leaf2_metrics = leaf2.reduce(compile=False)
+    root_logger.aggregate([leaf1_metrics, leaf2_metrics])
+    check(root_logger.peek("window_loss"), 0.25)  # mean of [0.2, 0.3]
 
-    logger.log_value("window_sum", 10, window=2, reduce="sum")
-    logger.log_value("window_sum", 20, window=2)
-    logger.log_value("window_sum", 30, window=2)
-    check(logger.peek("window_sum"), 50)  # sum of [20, 30]
+    # Test window with 'min' reduction method
+    leaf1.log_value("window_min", 0.3, reduce="min", window=2)
+    leaf1.log_value("window_min", 0.1)
+    leaf1.log_value("window_min", 0.2)
+    leaf2.log_value("window_min", 0.3, reduce="min", window=2)
+    leaf2.log_value("window_min", 0.1)
+    leaf2.log_value("window_min", 0.2)
+
+    leaf1_metrics = leaf1.reduce(compile=False)
+    leaf2_metrics = leaf2.reduce(compile=False)
+    root_logger.aggregate([leaf1_metrics, leaf2_metrics])
+    check(root_logger.peek("window_min"), 0.1)  # min of [0.1, 0.2]
+
+    # Test window with 'sum' reduction method
+    leaf1.log_value("window_sum", 10, reduce="sum", window=2)
+    leaf1.log_value("window_sum", 20)
+    leaf1.log_value("window_sum", 30)
+    leaf2.log_value("window_sum", 10, reduce="sum", window=2)
+    leaf2.log_value("window_sum", 20)
+    leaf2.log_value("window_sum", 30)
+
+    leaf1_metrics = leaf1.reduce(compile=False)
+    leaf2_metrics = leaf2.reduce(compile=False)
+    root_logger.aggregate([leaf1_metrics, leaf2_metrics])
+    check(root_logger.peek("window_sum"), 100)  # sum of [20, 30]
 
 
-def test_nested_keys(logger):
+def test_nested_keys(root_logger):
     """Test logging with nested key structures."""
     # Test nested key logging
-    logger.log_value(("nested", "key"), 1.0)
-    logger.log_value(("nested", "key"), 2.0)
+    root_logger.log_value(("nested", "key"), 1.0)
+    root_logger.log_value(("nested", "key"), 2.0)
 
     # Test peek with nested key
-    check(logger.peek(("nested", "key")), 1.01)
+    check(root_logger.peek(("nested", "key")), 1.01)
 
     # Test reduce with nested key
-    results = logger.reduce()
+    results = root_logger.reduce()
     check(results["nested"]["key"], 1.01)
 
-    # Test deeply nested keys
-    logger.log_value(["deeply", "nested", "key"], 0.1)
-    logger.log_value(["deeply", "nested", "key"], 0.2)
-    check(logger.peek(["deeply", "nested", "key"]), 0.101)
 
-    # Test different reduction methods with nested keys
-    logger.log_value(["nested", "sum"], 10, reduce="sum")
-    logger.log_value(["nested", "sum"], 20)
-    check(logger.peek(["nested", "sum"]), 30)
-
-    logger.log_value(["nested", "min"], 0.3, reduce="min")
-    logger.log_value(["nested", "min"], 0.1)
-    check(logger.peek(["nested", "min"]), 0.1)
-
-
-def test_tensor_mode(logger):
-    """Test tensor mode functionality."""
-    # Test with PyTorch tensors
-    logger.activate_tensor_mode()
-    logger.log_value("torch_loss", torch.tensor(0.1))
-    logger.log_value("torch_loss", torch.tensor(0.2))
-    logger.deactivate_tensor_mode()
-    value = logger.peek("torch_loss")
-    check(value, 0.101)
-    check(isinstance(value, torch.Tensor), True)
-
-
-def test_time_logging(logger):
-    """Test time logging functionality."""
-    # Test time logging with EMA
-    with logger.log_time("block_time", ema_coeff=0.1):
-        time.sleep(0.1)
+def test_time_logging(root_logger):
 
     # Test time logging with window
-    with logger.log_time("window_time", window=2):
-        time.sleep(0.2)
+    with root_logger.log_time("mean_time", reduce="mean", window=2):
+        time.sleep(0.01)
+    with root_logger.log_time("mean_time", reduce="mean", window=2):
+        time.sleep(0.02)
 
-    # Check that times are approximately correct
-    check(logger.peek("block_time"), 0.1, atol=0.05)
-    check(logger.peek("window_time"), 0.2, atol=0.05)
-
-    # Test time logging with different reduction methods
-    with logger.log_time("sum_time", reduce="sum"):
-        time.sleep(0.1)
-    with logger.log_time("sum_time"):
-        time.sleep(0.1)
-    check(logger.peek("sum_time"), 0.2, atol=0.05)
+    check(root_logger.peek("mean_time"), 0.015, atol=0.05)
 
 
-def test_state_management(logger):
+def test_state_management(root_logger):
     """Test state management (get_state and set_state)."""
     # Log some values
-    logger.log_value("state_test", 0.1)
-    logger.log_value("state_test", 0.2)
+    root_logger.log_value("state_test", 0.1)
+    root_logger.log_value("state_test", 0.2)
 
     # Get state
-    state = logger.get_state()
+    state = root_logger.get_state()
 
     # Create new logger and set state
     new_logger = MetricsLogger()
@@ -194,363 +388,370 @@ def test_state_management(logger):
     check(new_logger.peek("state_test"), 0.101)
 
 
-def test_aggregate(logger):
-    """Test merging multiple stats dictionaries."""
-    # Create two loggers with different values
-    logger1 = MetricsLogger()
-    logger1.log_value("loss", 0.1, window=2)
-    logger1.log_value("loss", 0.2, window=2)
-
-    logger2 = MetricsLogger()
-    logger2.log_value("loss", 0.3, window=2)
-    logger2.log_value("loss", 0.4, window=2)
-
-    logger.log_value("loss", 0.5, window=2)
-    logger.log_value("loss", 0.6, window=2)
-
-    # Reduce both loggers
-    results1 = logger1.reduce()
-    results2 = logger2.reduce()
-
-    # Merge results into main logger
-    logger.aggregate([results1, results2])
-
-    # Check merged results
-    # This may seem counterintuitive, because mean(0.1, 0.2, 0.3, 0.4, 0.5, 0.6) = 0.35.
-    # However, we are aggregating in logger, so values from logger1 and logger2 are merged in parallel and are given priority over already existing values in logger.
-    # Therefore, mean(0.2, 0.4) = 0.3
-    check(logger.peek("loss"), 0.3, rtol=0.01)
-
-
-def test_throughput_tracking(logger):
+def test_throughput_tracking(root_logger, leaf1, leaf2):
     """Test throughput tracking functionality."""
-    # Test basic throughput tracking
+    # Override the initialization time to make the test more accurate.
+    root_logger._time_when_initialized = time.perf_counter()
     start_time = time.perf_counter()
-    logger.log_value("count", 1, reduce="sum", with_throughput=True)
-    num_iters = 100
-    for _ in range(num_iters):
-        time.sleep(0.1 / num_iters)  # Simulate some time passing
-        logger.log_value("count", 2, reduce="sum", with_throughput=True)
+
+    leaf1.log_value("value", 1, reduce="sum", with_throughput=True)
+    leaf1.log_value("value", 2)
+    leaf2.log_value("value", 3, reduce="sum", with_throughput=True)
+    leaf2.log_value("value", 4)
+
+    metrics = [leaf1.reduce(compile=False), leaf2.reduce(compile=False)]
+    time.sleep(0.1)
+
     end_time = time.perf_counter()
+    throughput = 10 / (end_time - start_time)
 
-    # Get value and throughput
-    check(logger.peek("count"), num_iters * 2 + 1)
-    approx_throughput = (num_iters * 2 + 1) / (end_time - start_time)
-    check(
-        logger.peek("count", throughput=True), approx_throughput, rtol=0.15
-    )  # 15% tolerance in throughput
+    root_logger.aggregate(metrics)
+    check(root_logger.peek("value"), 10)
+    check(root_logger.stats["value"].throughputs, throughput, rtol=0.1)
 
-    # Test _get_throughputs() method without key (returns all throughputs)
-    throughputs = logger.peek(throughput=True)
-    check(throughputs["count_throughput"], approx_throughput, rtol=0.2)
+    # Test again but now don't initialize time since we are not starting a new experiment.
+    leaf1.log_value("value", 5)
+    leaf1.log_value("value", 6)
+    leaf2.log_value("value", 7)
+    leaf2.log_value("value", 8)
 
-    # Test with nested keys
-    nested_start_time = time.perf_counter()
-    logger.log_value(("nested", "count"), 1, reduce="sum", with_throughput=True)
-    for _ in range(num_iters):
-        time.sleep(0.1 / num_iters)  # Simulate some time passing
-        logger.log_value(("nested", "count"), 3, reduce="sum", with_throughput=True)
-    nested_end_time = time.perf_counter()
+    metrics = [leaf1.reduce(compile=False), leaf2.reduce(compile=False)]
+    time.sleep(0.1)
 
-    # Check nested value
-    check(logger.peek(("nested", "count")), num_iters * 3 + 1)
+    end_time = time.perf_counter()
+    throughput = 36 / (end_time - start_time)
 
-    # Check nested throughput with specific key
-    nested_approx_throughput = (num_iters * 3 + 1) / (
-        nested_end_time - nested_start_time
-    )
-    check(
-        logger.peek(("nested", "count"), throughput=True),
-        nested_approx_throughput,
-        rtol=0.2,
-    )
-
-    # Check getting throughput for a parent key
-    nested_throughputs = logger.peek("nested", throughput=True)
-    check(nested_throughputs, {"count_throughput": nested_approx_throughput}, rtol=0.2)
-
-    # Verify all throughputs are present in the full throughput dict
-    all_throughputs = logger.peek(throughput=True)
-    check("count_throughput" in all_throughputs, True)
-    check("nested" in all_throughputs, True)
-    check("count_throughput" in all_throughputs["nested"], True)
+    root_logger.aggregate(metrics)
+    check(root_logger.peek("value"), 36)
+    check(root_logger.peek("value", throughput=True), throughput, rtol=0.1)
 
 
-def test_throughput_aggregation():
-    """Test aggregation of throughput metrics from different (remote) sources."""
-
-    @ray.remote
-    class EnvRunner:
-        def __init__(self):
-            self.metrics = MetricsLogger()
-
-        def increase(self, count=1):
-            self.metrics.log_value(
-                "counter",
-                count,
-                reduce="sum",
-                clear_on_reduce=False,  # lifetime counter
-                with_throughput=True,
-            )
-
-        def get_metrics(self):
-            return self.metrics.reduce()
-
-    env_runners = [EnvRunner.remote() for _ in range(3)]
-
-    # Main logger.
-    main_metrics = MetricsLogger()
-
-    env_runners[0].increase.remote(count=0)
-    env_runners[1].increase.remote(count=0)
-    _ = [ray.get(act.get_metrics.remote()) for act in env_runners]
-
-    # Add 1 count for actor0 and 5 counts for actor1 to the lifetime counters
-    # in each of the 5 iterations.
-    # 5 iterations -> expect final count of 5 * 6 = 30
-    for _ in range(5):
-        time.sleep(0.1)
-        env_runners[0].increase.remote(count=1)
-        env_runners[1].increase.remote(count=5)
-
-    # Pull metrics from both actors.
-    results = [ray.get(act.get_metrics.remote()) for act in env_runners]
-    main_metrics.aggregate(results)
-    # The first aggregate (before the key even exists in `main_metrics`, throughput
-    # should be NaN.
-    check(main_metrics.peek("counter"), 30)
-    # After first aggregation, throughput should be NaN, b/c the Stats did not exist
-    # within the `MetricsLogger`.
-    assert np.isnan(main_metrics.stats["counter"].throughput)
-
-    # Add 1 count for actor0 and 2 counts for actor1 to the lifetime counters
-    # in each of the 5 iterations.
-    # 5 iterations each 1 sec -> expect throughput of 3/0.2sec = 5/sec.
-    for _ in range(5):
-        time.sleep(0.2)
-        env_runners[0].increase.remote(count=1)
-        env_runners[1].increase.remote(count=2)
-    results = [ray.get(act.get_metrics.remote()) for act in env_runners]
-    main_metrics.aggregate(results)
-
-    check(main_metrics.peek("counter"), 30 + 15)
-    tp = main_metrics.stats["counter"].throughput
-    check(tp, 15, atol=2)
-
-    time.sleep(1.0)
-    env_runners[2].increase.remote(count=50)
-    results = ray.get(env_runners[2].get_metrics.remote())
-    main_metrics.aggregate([results])
-
-    check(main_metrics.peek("counter"), 30 + 15 + 50)
-    tp = main_metrics.stats["counter"].throughput
-    # Expect throughput - due to the EMA - to be only slightly higher than
-    # the original value of 15.
-    check(tp, 16, atol=2)
-
-
-def test_reset_and_delete(logger):
+def test_reset_and_delete(root_logger):
     """Test reset and delete functionality."""
     # Log some values
-    logger.log_value("test1", 0.1)
-    logger.log_value("test2", 0.2)
+    root_logger.log_value("test1", 0.1)
+    root_logger.log_value("test2", 0.2)
 
     # Test delete
-    logger.delete("test1")
+    root_logger.delete("test1")
     with pytest.raises(KeyError):
-        logger.peek("test1")
+        root_logger.peek("test1")
 
     # Test reset
-    logger.reset()
-    check(logger.reduce(), {})
+    root_logger.reset()
+    check(root_logger.reduce(), {})
 
 
-def test_compile(logger):
+def test_compile(root_logger):
     """Test the compile method that combines values and throughputs."""
+    # Override the initialization time to make the test more accurate.
+    root_logger._time_when_initialized = time.perf_counter()
+    start_time = time.perf_counter()
+
     # Log some values with throughput tracking
-    logger.log_value("count", 1, reduce="sum", with_throughput=True)
-    time.sleep(0.1)
-    logger.log_value("count", 2, reduce="sum", with_throughput=True)
+    root_logger.log_value("count", 1, reduce="sum", with_throughput=True)
+    root_logger.log_value("count", 2)
 
     # Log some nested values with throughput tracking
-    logger.log_value(["nested", "count"], 3, reduce="sum", with_throughput=True)
-    time.sleep(0.1)
-    logger.log_value(["nested", "count"], 4, reduce="sum", with_throughput=True)
+    root_logger.log_value(
+        ["nested", "count"], 1, reduce="lifetime_sum", with_throughput=True
+    )
+    root_logger.log_value(["nested", "count"], 2)
 
     # Log some values without throughput tracking
-    logger.log_value("simple", 5.0)
-    logger.log_value("simple", 6.0)
+    root_logger.log_value("simple", 1)
+    root_logger.log_value("simple", 2)
+
+    time.sleep(0.1)
+
+    end_time = time.perf_counter()
+    throughput = 3 / (end_time - start_time)
 
     # Get compiled results
-    compiled = logger.compile()
+    compiled = root_logger.compile()
 
     # Check that values and throughputs are correctly combined
     check(compiled["count"], 3)  # sum of [1, 2]
-    check(compiled["count_throughput"], 20, rtol=0.1)  # initial throughput
-    check(compiled["nested"]["count"], 7)  # sum of [3, 4]
-    check(compiled["nested"]["count_throughput"], 40, rtol=0.1)  # initial throughput
+    check(compiled["count_throughput"], throughput, rtol=0.1)  # initial throughput
+    check(compiled["nested"]["count"], 3)  # sum of [1, 2]
+    check(
+        compiled["nested"]["count_throughput"]["throughput_since_last_reduce"],
+        throughput,
+        rtol=0.1,
+    )  # initial throughput
+    check(
+        compiled["nested"]["count_throughput"]["throughput_since_last_restore"],
+        throughput,
+        rtol=0.1,
+    )  # initial throughput
 
-    check(compiled["simple"], 5.01)
+    check(compiled["simple"], 1.01)
     assert (
         "simple_throughput" not in compiled
     )  # no throughput for non-throughput metric
 
 
-def test_peek_with_default(logger):
+def test_peek_with_default(root_logger):
     """Test peek method with default argument."""
     # Test with non-existent key
-    check(logger.peek("non_existent", default=0.0), 0.0)
+    check(root_logger.peek("non_existent", default=0.0), 0.0)
 
     # Test with existing key
-    logger.log_value("existing", 1.0)
-    ret = logger.peek("existing", default=0.0)
+    root_logger.log_value("existing", 1.0)
+    ret = root_logger.peek("existing", default=0.0)
     check(ret, 1.0)  # Should return actual value, not default
 
 
-def test_edge_cases(logger):
+def test_edge_cases(root_logger):
     """Test edge cases and error handling."""
     # Test invalid reduction method
     with pytest.raises(ValueError):
-        logger.log_value("invalid_reduce", 0.1, reduce="invalid")
+        root_logger.log_value("invalid_reduce", 0.1, reduce="invalid")
 
     # Test window and ema_coeff together
     with pytest.raises(ValueError):
-        logger.log_value("invalid_window_ema", 0.1, window=2, ema_coeff=0.1)
+        root_logger.log_value("invalid_window_ema", 0.1, window=2, ema_coeff=0.1)
 
-    # Test clear_on_reduce
-    logger.log_value("clear_test", 0.1, clear_on_reduce=True)
-    logger.log_value("clear_test", 0.2, clear_on_reduce=True)
-    results = logger.reduce()
+    # Test clearing on reduce
+    root_logger.log_value("clear_test", 0.1)
+    root_logger.log_value("clear_test", 0.2)
+    results = root_logger.reduce()
     check(results["clear_test"], 0.101)
-    check(logger.peek("clear_test"), np.nan)  # Should be cleared
+    check(root_logger.peek("clear_test"), np.nan)  # Should be cleared
 
 
-def test_lifetime_stats():
-    """Test lifetime stats behavior with clear_on_reduce=False."""
-    # Create a root logger
-    root_logger = MetricsLogger(root=True)
+def test_legacy_stats_conversion():
+    """Test converting legacy Stats objects to MetricsLogger state dict."""
+    from ray.rllib.utils.metrics.legacy_stats import Stats
 
-    # Create non-root loggers
-    child1 = MetricsLogger()
-    child2 = MetricsLogger()
+    # Create a nested structure of legacy Stats objects with various configurations
+    legacy_stats = {}
 
-    # Log lifetime stats to both children
-    child1.log_value("lifetime_metric", 10, reduce="sum", clear_on_reduce=False)
-    child2.log_value("lifetime_metric", 20, reduce="sum", clear_on_reduce=False)
+    # 1. Top-level stats with different reduction methods
+    # Mean with window
+    legacy_stats["mean_metric"] = Stats(
+        init_values=[1.0, 2.0, 3.0],
+        reduce="mean",
+        window=10,
+    )
 
-    # Reduce both children and merge into root
-    results1 = child1.reduce()
-    results2 = child2.reduce()
-    root_logger.aggregate([results1, results2])
-    check(root_logger.peek("lifetime_metric"), 30)
+    # Mean with EMA coefficient
+    legacy_stats["ema_metric"] = Stats(
+        init_values=[5.0, 6.0],
+        reduce="mean",
+        ema_coeff=0.1,
+    )
 
-    # Log more values to child loggers
-    child1.log_value("lifetime_metric", 5, reduce="sum", clear_on_reduce=False)
-    child2.log_value("lifetime_metric", 15, reduce="sum", clear_on_reduce=False)
+    # Min with window
+    legacy_stats["min_metric"] = Stats(
+        init_values=[10.0, 5.0, 15.0],
+        reduce="min",
+        window=5,
+    )
 
-    # Reduce children again - non-root loggers should not retain previous values and return lists to merge downstream
-    results1 = child1.reduce()
-    results2 = child2.reduce()
-    check(results1["lifetime_metric"], [15])  # 15 (10+5)
-    check(results2["lifetime_metric"], [35])  # 35 (20+15)
+    # Max with window
+    legacy_stats["max_metric"] = Stats(
+        init_values=[10.0, 25.0, 15.0],
+        reduce="max",
+        window=5,
+    )
 
-    # Merge new results into root - root should accumulate
-    root_logger.aggregate([results1, results2])
-    check(root_logger.peek("lifetime_metric"), 50)  # 30 + 5 + 15
+    # Sum with window
+    legacy_stats["sum_metric"] = Stats(
+        init_values=[1.0, 2.0, 3.0],
+        reduce="sum",
+        window=10,
+        clear_on_reduce=True,
+    )
+
+    # Lifetime sum (sum with clear_on_reduce=False)
+    legacy_stats["lifetime_sum_metric"] = Stats(
+        init_values=[10.0, 20.0, 30.0],
+        reduce="sum",
+        window=None,
+        clear_on_reduce=False,
+    )
+
+    # 2. Nested stats (one level deep)
+    legacy_stats["nested"] = {
+        "loss": Stats(
+            init_values=[0.5, 0.4, 0.3],
+            reduce="mean",
+            window=100,
+        ),
+        "reward": Stats(
+            init_values=[10.0, 15.0, 20.0],
+            reduce="mean",
+            window=50,
+        ),
+    }
+
+    # Create a MetricsLogger state dict from legacy stats
+    def create_state_from_legacy(legacy_stats_dict, prefix=""):
+        """Recursively convert legacy stats to MetricsLogger state format."""
+        state = {}
+
+        def traverse(d, path_parts):
+            for key, value in d.items():
+                current_path = path_parts + [key]
+                if isinstance(value, Stats):
+                    # Convert Stats to state dict
+                    flat_key = "--".join(current_path)
+                    state[flat_key] = value.get_state()
+                elif isinstance(value, dict):
+                    # Recurse into nested dict
+                    traverse(value, current_path)
+
+        traverse(legacy_stats_dict, [])
+        return {"stats": state}
+
+    # Create state dict from legacy stats
+    legacy_state_dict = create_state_from_legacy(legacy_stats)
+
+    # Create a new MetricsLogger and load the legacy state
+    logger = MetricsLogger(root=False)
+    logger.set_state(legacy_state_dict)
+
+    # Verify that values are correctly loaded
+    # Check top-level stats
+    check(logger.peek("mean_metric"), 2.0)  # mean of [1, 2, 3]
+    check(logger.peek("min_metric"), 5.0)  # min of [10, 5, 15]
+    check(logger.peek("max_metric"), 25.0)  # max of [10, 25, 15]
+    check(logger.peek("sum_metric"), 6.0)  # sum of [1, 2, 3]
+    check(
+        logger.peek("lifetime_sum_metric"), 0.0
+    )  # logger is not a root logger, so lifetime sum is 0
+
+    # Check nested stats
+    check(logger.peek(("nested", "loss")), 0.4)  # mean of [0.5, 0.4, 0.3]
+    check(logger.peek(("nested", "reward")), 15.0)  # mean of [10, 15, 20]
+
+    # Verify that we can continue logging to the restored logger
+    logger.log_value("mean_metric", 4.0, reduce="mean", window=10)
+    logger.log_value(("nested", "loss"), 0.2, reduce="mean", window=100)
+
+    # Check that new values are properly integrated
+    results = logger.reduce(compile=True)
+    assert "mean_metric" in results
+    assert "nested" in results
+    assert "loss" in results["nested"]
 
 
-def test_hierarchical_metrics_system():
-    """Test a hierarchical system of MetricsLoggers.
+def test_log_dict():
+    """Test logging dictionaries of values.
 
-    This test creates a tree structure of MetricsLoggers:
+    MetricsLogger.log_dict is a thin wrapper around MetricsLogger.log_value.
+    We therefore don't test extensively here.
 
-        Root        (Root/Algorithm object)
-        ┌─┴─┐
-      A1    A2      (AggregatorActor)
-    ┌─┴─┐  ┌─┴─┐
-    E1 E2  E3  E4   (EnvRunner)
-
-    We test the aggregation of all these metrics through multiple reduction steps.
+    Note: log_dict can only be used with non-root loggers. Root loggers can only aggregate.
     """
-    # Test parameters
-    # Change the metric_name to test different metrics if ever needed
-    metric_name = "window_mean"
-    metric_config = {"reduce": "mean", "window": 2}
-    leaf_values_round1 = [[10, 20], [30, 40], [50, 60], [70, 80]]
-    leaf_values_round2 = [[25, 35], [45, 55], [65, 75], [85, 95]]
-    expected_leaf_results_round1 = [15.0, 35.0, 55.0, 75.0]
-    expected_root_peek_round1 = 50.0
-    expected_compiled_result = 65.0
+    # Create a non-root logger for logging values
+    logger = MetricsLogger(root=False)
 
-    # Create the logger hierarchy
-    root = MetricsLogger(root=True)  # Root logger
+    # Test simple flat dictionary
+    flat_dict = {
+        "metric1": 1.0,
+        "metric2": 2.0,
+    }
+    logger.log_dict(flat_dict, reduce="mean")
 
-    # Level 1 loggers
-    node_a = MetricsLogger()
-    node_b = MetricsLogger()
+    check(logger.peek("metric1"), 1.0)
+    check(logger.peek("metric2"), 2.0)
 
-    # Level 2 loggers (leaves)
-    leaf_a1 = MetricsLogger()
-    leaf_a2 = MetricsLogger()
-    leaf_b1 = MetricsLogger()
-    leaf_b2 = MetricsLogger()
+    # Test logging more values to the same keys
+    flat_dict2 = {
+        "metric1": 2.0,
+        "metric2": 3.0,
+    }
+    logger.log_dict(flat_dict2, reduce="mean")
 
-    leaves = [leaf_a1, leaf_a2, leaf_b1, leaf_b2]
+    check(logger.peek("metric1"), 1.5)
+    check(logger.peek("metric2"), 2.5)
 
-    # Round 1: Log values to leaf nodes
-    for leaf, values in zip(leaves, leaf_values_round1):
-        for value in values:
-            leaf.log_value(metric_name, value, **metric_config)
 
-    # Reduce level 2 (leaves) and merge into level 1
-    results_a1 = leaf_a1.reduce()
-    results_a2 = leaf_a2.reduce()
-    results_b1 = leaf_b1.reduce()
-    results_b2 = leaf_b2.reduce()
+def test_log_dict_root_logger(root_logger):
+    """Test that root loggers can use log_dict and create leaf stats."""
+    flat_dict = {
+        "metric1": 1.0,
+        "metric2": 2.0,
+    }
 
-    leaf_results = [results_a1, results_a2, results_b1, results_b2]
+    # Root loggers should be able to use log_dict
+    root_logger.log_dict(flat_dict, reduce="mean")
 
-    # Verify leaf results
-    for i, result in enumerate(leaf_results):
-        check(result[metric_name], expected_leaf_results_round1[i])
+    check(root_logger.peek("metric1"), 1.0)
+    check(root_logger.peek("metric2"), 2.0)
 
-    # Merge level 2 results into level 1 nodes
-    node_a.aggregate([results_a1, results_a2])
-    node_b.aggregate([results_b1, results_b2])
+    # Should be able to push to these leaf stats
+    root_logger.log_value("metric1", 2.0)
+    check(root_logger.peek("metric1"), 1.5)
 
-    # Reduce level 1 and merge into root
-    results_a = node_a.reduce()
-    results_b = node_b.reduce()
+    root_logger.log_value("metric3", 3.0)
+    check(root_logger.peek("metric3"), 3.0)
 
-    # Merge level 1 results into root
-    root.aggregate([results_a, results_b])
 
-    # Verify root aggregation from first round
-    if isinstance(metric_name, list):
-        check(root.peek(metric_name), expected_root_peek_round1)
-    else:
-        check(root.peek(metric_name), expected_root_peek_round1)
+def test_compatibility_logic(root_logger):
+    """Test compatibility logic that supersedes the 'legacy usage of MetricsLogger' comment."""
+    # Test behavior 1: No reduce method + window -> should use mean reduction
+    root_logger.log_value("metric_with_window", 1, window=2)
+    root_logger.log_value("metric_with_window", 2)
+    root_logger.log_value("metric_with_window", 3)
+    check(root_logger.peek("metric_with_window"), 2.5)
+    assert isinstance(root_logger.stats["metric_with_window"], MeanStats)
 
-    # Round 2: Log more values to leaf nodes
-    for leaf, values in zip(leaves, leaf_values_round2):
-        for value in values:
-            leaf.log_value(metric_name, value, **metric_config)
+    # Test behavior 2: No reduce method (and no window) -> should default to "ema"
+    root_logger.log_value("metric_no_reduce", 1.0)
+    root_logger.log_value("metric_no_reduce", 2.0)
+    check(root_logger.peek("metric_no_reduce"), 1.01)
+    assert isinstance(root_logger.stats["metric_no_reduce"], EmaStats)
 
-    # Reduce level 2 (leaves) and merge into level 1
-    results_a1 = leaf_a1.reduce()
-    results_a2 = leaf_a2.reduce()
-    results_b1 = leaf_b1.reduce()
-    results_b2 = leaf_b2.reduce()
+    # Test behavior 3: reduce=sum + clear_on_reduce=False -> should use lifetime_sum
+    root_logger.log_value("metric_lifetime", 10, reduce="sum", clear_on_reduce=False)
+    root_logger.log_value("metric_lifetime", 20)
+    check(root_logger.peek("metric_lifetime"), 30)
+    assert isinstance(root_logger.stats["metric_lifetime"], LifetimeSumStats)
 
-    node_a.aggregate([results_a1, results_a2])
-    node_b.aggregate([results_b1, results_b2])
-    results_a = node_a.reduce()
-    results_b = node_b.reduce()
-    root.aggregate([results_a, results_b])
+    # Test behavior 4: reduce=sum + clear_on_reduce=True -> should use SumStats (not lifetime_sum)
+    root_logger.log_value("metric_sum_clear", 10, reduce="sum", clear_on_reduce=True)
+    root_logger.log_value("metric_sum_clear", 20)
+    check(root_logger.peek("metric_sum_clear"), 30)
+    assert isinstance(root_logger.stats["metric_sum_clear"], SumStats)
 
-    # Verify all metrics using compile() to get a complete snapshot
-    compiled_results = root.compile()
-    check(compiled_results[metric_name], expected_compiled_result)
+    # Test behavior 5: reduce=sum + clear_on_reduce=None -> should use SumStats
+    root_logger.log_value("metric_sum_default", 10, reduce="sum")
+    root_logger.log_value("metric_sum_default", 20)
+    check(root_logger.peek("metric_sum_default"), 30)
+    assert isinstance(root_logger.stats["metric_sum_default"], SumStats)
+
+    # Test behavior 6: clear_on_reduce=True with other reduce methods -> should warn but still work
+    root_logger.log_value(
+        "metric_mean_clear", 1.0, reduce="mean", clear_on_reduce=True, window=5
+    )
+    root_logger.log_value("metric_mean_clear", 2.0)
+    check(root_logger.peek("metric_mean_clear"), 1.5)
+    assert isinstance(root_logger.stats["metric_mean_clear"], MeanStats)
+
+    # Test behavior 7: Compatibility logic works with log_dict
+    logger = MetricsLogger(root=False)
+    logger.log_dict({"metric_dict": 1.0}, window=3)
+    logger.log_dict({"metric_dict": 2.0})
+    logger.log_dict({"metric_dict": 3.0})
+    check(logger.peek("metric_dict"), 2.0)  # mean of [1, 2, 3]
+    assert isinstance(logger.stats["metric_dict"], MeanStats)
+
+    # Test behavior 9: Default EMA coefficient (0.01) is used when not specified
+    root_logger.log_value("metric_ema_default", 1.0)
+    assert root_logger.stats["metric_ema_default"]._ema_coeff == 0.01
+
+    # Test behavior 10: Custom EMA coefficient is preserved
+    root_logger.log_value("metric_ema_custom", 1.0, reduce="ema", ema_coeff=0.1)
+    assert root_logger.stats["metric_ema_custom"]._ema_coeff == 0.1
+
+    # Test behavior 11: reduce=None with window -> should use mean (not ema)
+    root_logger.log_value("metric_none_window", 1.0, reduce=None, window=2)
+    root_logger.log_value("metric_none_window", 2.0)
+    check(root_logger.peek("metric_none_window"), 1.5)
+    assert isinstance(root_logger.stats["metric_none_window"], MeanStats)
 
 
 if __name__ == "__main__":

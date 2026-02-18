@@ -9,9 +9,33 @@ py_library(
 py_test_run_all_subdirectory(
     size = "small",
     include = glob(["test_*.py"]),
-    exclude = [],
+    exclude = [
+        "test_controller_haproxy.py",  # Requires RAY_SERVE_ENABLE_HA_PROXY=1
+    ],
     extra_srcs = [],
     tags = ["team:serve"],
+    deps = [
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+        "//python/ray/serve/tests:common",
+    ],
+)
+
+# HAProxy controller unit tests (require RAY_SERVE_ENABLE_HA_PROXY=1).
+py_test_module_list(
+    size = "small",
+    env = {
+        "RAY_SERVE_ENABLE_HA_PROXY": "1",
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+    },
+    files = [
+        "test_controller_haproxy.py",
+    ],
+    tags = [
+        "haproxy",
+        "no_windows",
+        "team:serve",
+    ],
     deps = [
         ":conftest",
         "//python/ray/serve:serve_lib",
@@ -23,14 +47,14 @@ py_test_module_list(
     size = "small",
     timeout = "short",
     env = {
-        "RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1",
+        "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1",
         "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
     },
     files = [
         "test_deployment_scheduler.py",
         "test_deployment_state.py",
     ],
-    name_suffix = "_with_compact_scheduling",
+    name_suffix = "_with_pack_scheduling",
     tags = [
         "no_windows",
         "team:serve",

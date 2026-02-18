@@ -16,7 +16,6 @@ from typing import List, Optional, Set, Tuple
 import click
 import colorama
 import requests
-import yaml
 
 import ray
 import ray._common.usage.usage_constants as usage_constant
@@ -76,7 +75,7 @@ def _check_ray_version(gcs_client):
     if cluster_metadata and cluster_metadata["ray_version"] != ray.__version__:
         raise RuntimeError(
             "Ray version mismatch: cluster has Ray version "
-            f'{cluster_metadata["ray_version"]} '
+            f"{cluster_metadata['ray_version']} "
             f"but local Ray version is {ray.__version__}"
         )
 
@@ -670,7 +669,6 @@ Windows powershell users need additional escaping:
 @click.option(
     "--cgroup-path",
     required=False,
-    hidden=True,
     type=str,
     help="The path for the cgroup the raylet should use to enforce resource isolation. "
     "By default, the cgroup used for resource isolation will be /sys/fs/cgroup. "
@@ -781,14 +779,31 @@ def start(
         )
         temp_dir = None
 
+    available_memory_bytes = ray._private.utils.estimate_available_memory()
+    object_store_memory = ray._private.utils.resolve_object_store_memory(
+        available_memory_bytes, object_store_memory
+    )
+
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
         cgroup_path=cgroup_path,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
+        object_store_memory=object_store_memory,
     )
 
-    redirect_output = None if not no_redirect_output else True
+    # - For non-worker processes, thread the behavior explicitly via RayParams.log_to_stderr.
+    # - For worker processes, stdout/stderr redirection is controlled in C++ via
+    #   `RAY_LOG_TO_STDERR`, so we pass it to the raylet/worker subprocess env via
+    #   RayParams.env_vars (without touching os.environ).
+    if no_redirect_output:
+        log_to_stderr = True
+        env_vars = {
+            ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE: "1",
+        }
+    else:
+        log_to_stderr = None
+        env_vars = None
 
     # no  client, no  port -> ok
     # no  port, has client -> default to 10001
@@ -808,10 +823,11 @@ def start(
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         memory=memory,
+        available_memory_bytes=available_memory_bytes,
         object_store_memory=object_store_memory,
         redis_username=redis_username,
         redis_password=redis_password,
-        redirect_output=redirect_output,
+        log_to_stderr=log_to_stderr,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
@@ -835,6 +851,7 @@ def start(
         ray_debugger_external=ray_debugger_external,
         include_log_monitor=include_log_monitor,
         resource_isolation_config=resource_isolation_config,
+        env_vars=env_vars,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
@@ -858,7 +875,8 @@ def start(
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
             ray_params.env_vars = {
-                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
+                **(ray_params.env_vars or {}),
+                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
             }
 
         if (
@@ -966,9 +984,11 @@ def start(
                 # of the cluster. Please be careful when updating this line.
                 cli_logger.print(
                     cf.bold(" {} ray start --address='{}'"),
-                    f" {ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1"
-                    if ray_constants.IS_WINDOWS_OR_OSX
-                    else "",
+                    (
+                        f" {ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1"
+                        if ray_constants.IS_WINDOWS_OR_OSX
+                        else ""
+                    ),
                     bootstrap_address,
                 )
 
@@ -979,11 +999,13 @@ def start(
                 cli_logger.print(
                     "ray{}init({})",
                     cf.magenta("."),
-                    "_node_ip_address{}{}".format(
-                        cf.magenta("="), cf.yellow("'" + node_ip_address + "'")
-                    )
-                    if include_node_ip_address
-                    else "",
+                    (
+                        "_node_ip_address{}{}".format(
+                            cf.magenta("="), cf.yellow("'" + node_ip_address + "'")
+                        )
+                        if include_node_ip_address
+                        else ""
+                    ),
                 )
 
             if dashboard_url:
@@ -1090,7 +1112,7 @@ def start(
                 cf.bold("--address"),
                 cf.bold(address),
             )
-            raise Exception("Cannot canonicalize address " f"`--address={address}`.")
+            raise Exception(f"Cannot canonicalize address `--address={address}`.")
 
         ray_params.gcs_address = bootstrap_address
 
@@ -1386,6 +1408,89 @@ def stop(force: bool, grace_period: int):
     ray._common.utils.reset_ray_address()
 
 
+@cli.command(name="kill-actor")
+@click.option(
+    "--address", required=False, type=str, help="Override the address to connect to."
+)
+@click.option(
+    "--name",
+    required=False,
+    type=str,
+    help="Named actor to kill.",
+)
+@click.option(
+    "--namespace",
+    required=False,
+    type=str,
+    help="Namespace for named actor (when using --name).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="If set, kill the actor forcefully. Otherwise, request graceful termination.",
+)
+@click.option(
+    "--no-restart",
+    is_flag=True,
+    default=False,
+    help="Disable automatic restart of the actor after kill."
+    "NOTE: This flag only takes effect when using --force.",
+)
+def kill_actor(
+    address: Optional[str],
+    name: Optional[str],
+    namespace: Optional[str],
+    force: bool,
+    no_restart: bool,
+):
+    """Kill an actor by name.
+    Args:
+        address: Override the address to connect to.
+        name: Named actor to kill.
+        namespace: Namespace for named actor.
+        force: If set, kill the actor forcefully. Otherwise attempt graceful termination.
+        no_restart: If set, the actor will not be restarted after being killed.
+
+    Examples:
+        ray kill-actor MyActor
+        ray kill-actor MyActor --namespace my_namespace
+        ray kill-actor MyActor --force
+        ray kill-actor MyActor --force --no-restart
+    """
+    # Validate input: require a name
+    if not name:
+        raise click.ClickException("Must specify --name to identify the actor.")
+
+    address = services.canonicalize_bootstrap_address_or_die(address)
+
+    # Respect token-based authentication when enabled.
+    ensure_token_if_auth_enabled(None, create_token_if_missing=False)
+
+    # Connect to the cluster (no driver logging)
+    if not ray.is_initialized():
+        ray.init(address=address, namespace=namespace, log_to_driver=False)
+
+    if not force and no_restart:
+        click.echo(
+            "WARNING: --no-restart flag is only effective with --force (graceful termination does not support controlling actor restart).",
+            err=True,
+        )
+
+    try:
+        actor_handle = ray.get_actor(name, namespace=namespace)
+    except ValueError:
+        raise click.ClickException(
+            f"No named actor found: {name} (namespace={namespace})"
+        )
+    if force:
+        ray.kill(actor_handle, no_restart=no_restart)
+        click.echo(f"Actor killed (force): {name}")
+    else:
+        actor_handle.__ray_terminate__.remote()
+        click.echo(f"Requested graceful termination for actor: {name}")
+
+
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
@@ -1616,6 +1721,12 @@ def monitor(cluster_config_file, lines, cluster_name):
     type=int,
     help="Port to forward. Use this multiple times to forward multiple ports.",
 )
+@click.option(
+    "--node-ip",
+    required=False,
+    type=str,
+    help="IP address of the node to attach to. If not specified, attaches to head node.",
+)
 @add_click_logging_options
 @PublicAPI
 def attach(
@@ -1627,6 +1738,7 @@ def attach(
     no_config_cache,
     new,
     port_forward,
+    node_ip,
 ):
     """Create or attach to a SSH session to a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]
@@ -1639,6 +1751,7 @@ def attach(
         no_config_cache=no_config_cache,
         new=new,
         port_forward=port_forward,
+        node_ip=node_ip,
     )
 
 
@@ -2557,63 +2670,6 @@ def healthcheck(address, component, skip_version_check):
 
 
 @cli.command()
-@click.option("-v", "--verbose", is_flag=True)
-@click.option(
-    "--dryrun",
-    is_flag=True,
-    help="Identifies the wheel but does not execute the installation.",
-)
-def install_nightly(verbose, dryrun):
-    """Install the latest wheels for Ray.
-
-    This uses the same python environment as the one that Ray is currently
-    installed in. Make sure that there is no Ray processes on this
-    machine (ray stop) when running this command.
-    """
-    raydir = os.path.abspath(os.path.dirname(ray.__file__))
-    all_wheels_path = os.path.join(raydir, "nightly-wheels.yaml")
-
-    wheels = None
-    if os.path.exists(all_wheels_path):
-        with open(all_wheels_path) as f:
-            wheels = yaml.safe_load(f)
-
-    if not wheels:
-        raise click.ClickException(
-            f"Wheels not found in '{all_wheels_path}'! "
-            "Please visit https://docs.ray.io/en/master/installation.html to "
-            "obtain the latest wheels."
-        )
-
-    platform = sys.platform
-    py_version = "{0}.{1}".format(*sys.version_info[:2])
-
-    matching_wheel = None
-    for target_platform, wheel_map in wheels.items():
-        if verbose:
-            print(f"Evaluating os={target_platform}, python={list(wheel_map)}")
-        if platform.startswith(target_platform):
-            if py_version in wheel_map:
-                matching_wheel = wheel_map[py_version]
-                break
-        if verbose:
-            print("Not matched.")
-
-    if matching_wheel is None:
-        raise click.ClickException(
-            "Unable to identify a matching platform. "
-            "Please visit https://docs.ray.io/en/master/installation.html to "
-            "obtain the latest wheels."
-        )
-    if dryrun:
-        print(f"Found wheel: {matching_wheel}")
-    else:
-        cmd = [sys.executable, "-m", "pip", "install", "-U", matching_wheel]
-        print(f"Running: {' '.join(cmd)}.")
-        subprocess.check_call(cmd)
-
-
-@cli.command()
 @click.option(
     "--show-library-path",
     "-show",
@@ -2630,7 +2686,11 @@ def install_nightly(verbose, dryrun):
 )
 @add_click_logging_options
 def cpp(show_library_path, generate_bazel_project_template_to):
-    """Show the cpp library path and generate the bazel project template."""
+    """Show the cpp library path and generate the bazel project template.
+
+    This command MUST be run from the ray project root directory if
+    --generate-bazel-project-template-to is set.
+    """
     if sys.platform == "win32":
         raise click.ClickException("Ray C++ API is not supported on Windows currently.")
 
@@ -2639,9 +2699,10 @@ def cpp(show_library_path, generate_bazel_project_template_to):
             "Please input at least one option of '--show-library-path'"
             " and '--generate-bazel-project-template-to'."
         )
+
     raydir = os.path.abspath(os.path.dirname(ray.__file__))
     cpp_dir = os.path.join(raydir, "cpp")
-    cpp_templete_dir = os.path.join(cpp_dir, "example")
+    cpp_template_dir = os.path.join(cpp_dir, "example")
     include_dir = os.path.join(cpp_dir, "include")
     lib_dir = os.path.join(cpp_dir, "lib")
     if not os.path.isdir(cpp_dir):
@@ -2650,13 +2711,22 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
         cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
     if generate_bazel_project_template_to:
+
+        bazel_version_filename = ".bazelversion"
+
+        if not os.path.exists(bazel_version_filename):
+            raise ValueError(
+                "This command can only be run from the ray project's root directory. "
+                "It expects a .bazelversion file to be present."
+            )
+
         out_dir = generate_bazel_project_template_to
         # copytree expects that the dst dir doesn't exist
         # so we manually delete it if it exists.
         if os.path.exists(out_dir):
             shutil.rmtree(out_dir)
 
-        shutil.copytree(cpp_templete_dir, out_dir)
+        shutil.copytree(cpp_template_dir, out_dir)
         for filename in ["_WORKSPACE", "_BUILD.bazel", "_.bazelrc"]:
             # Renames the bazel related files by removing the leading underscore.
             dest_name = os.path.join(out_dir, filename[1:])
@@ -2667,10 +2737,17 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         out_lib_dir = os.path.join(out_dir, "thirdparty/lib")
         shutil.copytree(lib_dir, out_lib_dir)
 
+        # This assumes that your current working directory has a .bazelversion file.
+        shutil.copyfile(
+            bazel_version_filename,
+            os.path.join(out_dir, bazel_version_filename),
+        )
+
         cli_logger.print(
             "Project template generated to {}",
             cf.bold(f"{os.path.abspath(out_dir)}"),
         )
+
         cli_logger.print("To build and run this template, run")
         cli_logger.print(cf.bold(f"    cd {os.path.abspath(out_dir)} && bash run.sh"))
 
@@ -2770,7 +2847,6 @@ cli.add_command(local_dump)
 cli.add_command(cluster_dump)
 cli.add_command(global_gc)
 cli.add_command(timeline)
-cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
@@ -2780,6 +2856,7 @@ cli.add_command(check_open_ports)
 cli.add_command(sanity_check)
 cli.add_command(symmetric_run, name="symmetric-run")
 cli.add_command(get_auth_token)
+cli.add_command(kill_actor)
 
 try:
     from ray.util.state.state_cli import (

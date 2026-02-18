@@ -54,7 +54,10 @@ class AggregatorActor(FaultAwareApply):
         # Set device and node.
         self._node = platform.node()
         self._device = torch.device("cpu")
-        self.metrics = MetricsLogger()
+        self.metrics: MetricsLogger = MetricsLogger(
+            stats_cls_lookup=config.stats_cls_lookup,
+            root=True,
+        )
 
         # Create the RLModule.
         # TODO (sven): For now, this RLModule (its weights) never gets updated.
@@ -176,33 +179,26 @@ def _get_offline_eval_runner_bundles(config):
 
 
 def _get_learner_bundles(config):
-    try:
-        from ray.rllib.extensions.algorithm_utils import _get_learner_bundles as func
-
-        return func(config)
-    except Exception:
-        pass
-
     if config.num_learners == 0:
         if config.num_aggregator_actors_per_learner > 0:
-            return [{"CPU": config.num_aggregator_actors_per_learner}]
+            return [{"CPU": 1} for _ in range(config.num_aggregator_actors_per_learner)]
         else:
             return []
 
-    num_cpus_per_learner = (
-        config.num_cpus_per_learner
-        if config.num_cpus_per_learner != "auto"
-        else 1
-        if config.num_gpus_per_learner == 0
-        else 0
-    )
+    if config.num_cpus_per_learner != "auto":
+        num_cpus_per_learner = config.num_cpus_per_learner
+    elif config.num_gpus_per_learner == 0:
+        num_cpus_per_learner = 1
+    else:
+        num_cpus_per_learner = 0
 
+    # aggregator actors are co-located with learners and use 1 CPU each
     bundles = [
         {
-            "CPU": config.num_learners
-            * (num_cpus_per_learner + config.num_aggregator_actors_per_learner),
-            "GPU": config.num_learners * config.num_gpus_per_learner,
+            "CPU": num_cpus_per_learner + config.num_aggregator_actors_per_learner,
+            "GPU": config.num_gpus_per_learner,
         }
+        for _ in range(config.num_learners)
     ]
 
     return bundles
@@ -210,13 +206,13 @@ def _get_learner_bundles(config):
 
 def _get_main_process_bundle(config):
     if config.num_learners == 0:
-        num_cpus_per_learner = (
-            config.num_cpus_per_learner
-            if config.num_cpus_per_learner != "auto"
-            else 1
-            if config.num_gpus_per_learner == 0
-            else 0
-        )
+        if config.num_cpus_per_learner != "auto":
+            num_cpus_per_learner = config.num_cpus_per_learner
+        elif config.num_gpus_per_learner == 0:
+            num_cpus_per_learner = 1
+        else:
+            num_cpus_per_learner = 0
+
         bundle = {
             "CPU": max(num_cpus_per_learner, config.num_cpus_for_main_process),
             "GPU": config.num_gpus_per_learner,

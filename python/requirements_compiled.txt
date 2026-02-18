@@ -44,10 +44,9 @@ aiofiles==22.1.0
     # via
     #   aim
     #   gradio
-    #   ypy-websocket
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.11.16
+aiohttp==3.13.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -60,6 +59,7 @@ aiohttp==3.11.16
     #   google-auth
     #   pytest-aiohttp
     #   s3fs
+    #   taskiq
     #   torch-geometric
 aiohttp-cors==0.7.0
     # via -r python/requirements.txt
@@ -67,10 +67,8 @@ aioitertools==0.11.0
     # via aiobotocore
 aiorwlock==1.3.0
     # via -r python/requirements.txt
-aiosignal==1.3.1
+aiosignal==1.4.0
     # via aiohttp
-aiosqlite==0.19.0
-    # via ypy-websocket
 alabaster==0.7.13
     # via sphinx
 ale-py==0.10.1
@@ -84,17 +82,21 @@ altair==5.1.2
     # via gradio
 amqp==5.3.1
     # via kombu
+annotated-doc==0.0.4
+    # via fastapi
 annotated-types==0.6.0
     # via pydantic
 antlr4-python3-runtime==4.11.1
     # via
     #   fugue-sql-antlr
+    #   moto
     #   qpd
-anyio==3.7.1
+anyio==4.12.0
     # via
     #   httpx
     #   jupyter-server
     #   starlette
+    #   taskiq
     #   watchfiles
 appdirs==1.4.4
     # via fs
@@ -107,10 +109,7 @@ argcomplete==3.3.0
     #   knack
     #   yq
 argon2-cffi==23.1.0
-    # via
-    #   jupyter-server
-    #   nbclassic
-    #   notebook
+    # via jupyter-server
 argon2-cffi-bindings==21.2.0
     # via argon2-cffi
 argparse==1.4.0
@@ -133,6 +132,8 @@ async-exit-stack==1.0.1
     # via -r python/requirements/test-requirements.txt
 async-generator==1.10
     # via -r python/requirements/test-requirements.txt
+async-lru==2.0.5
+    # via jupyterlab
 async-timeout==4.0.3
     # via redis
 attrs==25.1.0
@@ -281,8 +282,9 @@ certifi==2025.1.31
     #   requests
     #   sentry-sdk
     #   snowflake-connector-python
-cffi==1.16.0
+cffi==1.17.1
     # via
+    #   -r python/requirements/test-requirements.txt
     #   argon2-cffi-bindings
     #   azure-datalake-store
     #   cryptography
@@ -340,7 +342,6 @@ cloudpickle==2.2.0 ; python_version < "3.12"
     #   distributed
     #   gymnasium
     #   hyperopt
-    #   mlagents-envs
     #   mlflow-skinny
     #   pymars
     #   statsforecast
@@ -386,7 +387,7 @@ crc32c==2.3
     # via -r python/requirements/ml/data-requirements.txt
 crcmod==1.7
     # via gsutil
-cryptography==44.0.3 ; sys_platform != "darwin"
+cryptography==44.0.3
     # via
     #   -r python/requirements/test-requirements.txt
     #   adal
@@ -394,14 +395,13 @@ cryptography==44.0.3 ; sys_platform != "darwin"
     #   azure-cli-core
     #   azure-identity
     #   azure-storage-blob
+    #   joserfc
     #   moto
     #   msal
     #   paramiko
     #   pyjwt
     #   pyopenssl
-    #   python-jose
     #   snowflake-connector-python
-    #   sshpubkeys
     #   trustme
 cupy-cuda12x==13.4.0 ; sys_platform != "darwin"
     # via
@@ -410,9 +410,7 @@ cupy-cuda12x==13.4.0 ; sys_platform != "darwin"
 cycler==0.12.1
     # via matplotlib
 cython==0.29.37
-    # via
-    #   -r python/requirements/test-requirements.txt
-    #   gpy
+    # via -r python/requirements/test-requirements.txt
 dask==2023.6.1 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-requirements.txt
@@ -432,7 +430,6 @@ decorator==5.1.1
     # via
     #   ipython
     #   moviepy
-    #   paramz
     #   tensorflow-probability
 decord==0.6.0
     # via -r python/requirements/ml/data-test-requirements.txt
@@ -480,8 +477,6 @@ docker==7.1.0
     #   moto
     #   pytest-docker-tools
     #   testcontainers
-docker-pycreds==0.4.0
-    # via wandb
 docstring-parser==0.15
     # via yahp
 docutils==0.19
@@ -491,15 +486,8 @@ docutils==0.19
     #   sphinx
 dulwich==0.21.6
     # via comet-ml
-ecdsa==0.18.0
-    # via
-    #   moto
-    #   python-jose
-    #   sshpubkeys
 entrypoints==0.4
-    # via
-    #   jupyter-client
-    #   nbconvert
+    # via nbconvert
 et-xmlfile==1.1.0
     # via openpyxl
 etils==1.5.2 ; python_version < "3.12"
@@ -522,7 +510,7 @@ fairscale==0.4.6
     # via -r python/requirements/ml/tune-test-requirements.txt
 farama-notifications==0.0.4
     # via gymnasium
-fastapi==0.115.12
+fastapi==0.121.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -537,8 +525,10 @@ fasteners==0.19
     #   gsutil
 fastjsonschema==2.19.0
     # via nbformat
-fastrlock==0.8.2
-    # via cupy-cuda12x
+fastrlock==0.8.3 ; sys_platform != "darwin"
+    # via
+    #   -r python/requirements/test-requirements.txt
+    #   cupy-cuda12x
 feather-format==0.4.1
     # via -r python/requirements/test-requirements.txt
 ffmpy==0.3.1
@@ -690,8 +680,6 @@ googleapis-common-protos==1.61.0
     #   google-api-core
     #   grpcio-status
     #   tensorflow-metadata
-gpy==1.13.1
-    # via -r python/requirements/ml/tune-test-requirements.txt
 gpytorch==1.10
     # via botorch
 gradio==3.50.2 ; platform_system != "Windows"
@@ -711,7 +699,7 @@ graphviz==0.20.3
     # via -r python/requirements/test-requirements.txt
 greenlet==3.0.1
     # via sqlalchemy
-grpcio==1.74.0 ; python_version >= "3.10"
+grpcio==1.74.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -719,7 +707,6 @@ grpcio==1.74.0 ; python_version >= "3.10"
     #   google-cloud-bigquery
     #   grpcio-status
     #   grpcio-tools
-    #   mlagents-envs
     #   tensorboard
     #   tensorflow
 grpcio-status==1.62.3
@@ -730,7 +717,7 @@ gsutil==5.27
     # via -r python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0
     # via mlflow
-gymnasium==1.1.1
+gymnasium==1.2.2
     # via
     #   -r python/requirements.txt
     #   minigrid
@@ -742,7 +729,7 @@ h11==0.16.0
     #   -r python/requirements/test-requirements.txt
     #   httpcore
     #   uvicorn
-h5py==3.10.0
+h5py==3.12.1
     # via
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   tensorflow
@@ -773,6 +760,7 @@ httpx==0.28.1
     #   -r python/requirements/test-requirements.txt
     #   gradio
     #   gradio-client
+    #   jupyterlab
     #   openlineage-python
 hudi==0.4.0
     # via -r python/requirements/ml/data-test-requirements.txt
@@ -811,7 +799,6 @@ imageio==2.34.2
     # via
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   moviepy
-    #   scikit-image
 imageio-ffmpeg==0.4.5
     # via -r python/requirements/ml/rllib-requirements.txt
 imagesize==1.4.1
@@ -835,20 +822,14 @@ iniconfig==2.0.0
     # via pytest
 ipykernel==6.27.1
     # via
+    #   jupyterlab
     #   myst-nb
-    #   nbclassic
-    #   notebook
 ipython==8.12.3
     # via
     #   -r python/requirements/docker/ray-docker-requirements.txt
     #   ipykernel
     #   ipywidgets
-    #   jupyterlab
     #   myst-nb
-ipython-genutils==0.2.0
-    # via
-    #   nbclassic
-    #   notebook
 ipywidgets==8.1.3
     # via
     #   -r python/requirements/cloud-requirements.txt
@@ -866,9 +847,11 @@ isoduration==20.11.0
     # via jsonschema
 itsdangerous==2.1.2
     # via flask
-jax==0.4.13 ; python_version < "3.12" and sys_platform != "darwin"
+izulu==0.50.0
+    # via taskiq
+jax==0.4.22 ; python_version < "3.12" and sys_platform != "darwin"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-jaxlib==0.4.13 ; python_version < "3.12" and sys_platform != "darwin"
+jaxlib==0.4.22 ; python_version < "3.12" and sys_platform != "darwin"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 jedi==0.19.1
     # via ipython
@@ -889,12 +872,9 @@ jinja2==3.1.6
     #   jupyterlab
     #   jupyterlab-server
     #   memray
-    #   mlflow
     #   moto
     #   myst-parser
-    #   nbclassic
     #   nbconvert
-    #   notebook
     #   sphinx
     #   torch
     #   torch-geometric
@@ -908,17 +888,19 @@ joblib==1.2.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   scikit-learn
+joserfc==1.5.0
+    # via moto
 jschema-to-python==1.2.3
     # via cfn-lint
 json5==0.9.14
     # via jupyterlab-server
-jsondiff==2.0.0
-    # via moto
 jsonpatch==1.32
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   cfn-lint
+jsonpath-ng==1.7.0
+    # via moto
 jsonpickle==3.0.2
     # via jschema-to-python
 jsonpointer==2.4
@@ -951,47 +933,38 @@ junit-xml==1.9
     # via cfn-lint
 jupyter-cache==0.6.1
     # via myst-nb
-jupyter-client==7.3.4
+jupyter-client==8.7.0
     # via
     #   ipykernel
     #   jupyter-server
-    #   nbclassic
     #   nbclient
-    #   notebook
 jupyter-core==5.5.0
     # via
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
     #   jupyterlab
-    #   nbclassic
     #   nbconvert
     #   nbformat
-    #   notebook
 jupyter-events==0.6.3
-    # via jupyter-server-fileid
-jupyter-server==1.24.0
+    # via jupyter-server
+jupyter-lsp==2.3.0
+    # via jupyterlab
+jupyter-server==2.10.0
     # via
-    #   jupyter-server-fileid
+    #   jupyter-lsp
     #   jupyterlab
     #   jupyterlab-server
-    #   nbclassic
     #   notebook-shim
-jupyter-server-fileid==0.9.0
-    # via jupyter-server-ydoc
-jupyter-server-ydoc==0.6.1
-    # via jupyterlab
-jupyter-ydoc==0.2.5
-    # via
-    #   jupyter-server-ydoc
-    #   jupyterlab
-jupyterlab==3.6.1
+jupyter-server-terminals==0.5.3
+    # via jupyter-server
+jupyterlab==4.5.1
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
 jupyterlab-pygments==0.3.0
     # via nbconvert
-jupyterlab-server==2.24.0
+jupyterlab-server==2.28.0
     # via jupyterlab
 jupyterlab-widgets==3.0.11
     # via ipywidgets
@@ -1001,7 +974,7 @@ kafka-python==2.2.15
     # via -r python/requirements/ml/data-test-requirements.txt
 keras==2.15.0
     # via tensorflow
-kiwisolver==1.4.5
+kiwisolver==1.4.7
     # via matplotlib
 knack==0.11.0
     # via azure-cli-core
@@ -1011,8 +984,6 @@ kubernetes==24.2.0
     # via -r python/requirements/test-requirements.txt
 labmaze==1.0.6
     # via dm-control
-lazy-loader==0.4
-    # via scikit-image
 lazy-object-proxy==1.9.0
     # via openapi-spec-validator
 libclang==18.1.1
@@ -1043,17 +1014,16 @@ lxml==6.0.2
     #   dm-control
     #   nbconvert
     #   vsphere-automation-sdk
-lz4==4.3.3
+lz4==4.4.5
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/test-requirements.txt
     #   clickhouse-connect
     #   dask
 mako==1.3.0
     # via alembic
 markdown==3.5.1
-    # via
-    #   mlflow
-    #   tensorboard
+    # via tensorboard
 markdown-it-py==2.2.0
     # via
     #   -r python/requirements/test-requirements.txt
@@ -1102,11 +1072,11 @@ ml-dtypes==0.3.2
     #   jax
     #   jaxlib
     #   tensorflow
-mlagents-envs==0.28.0
-    # via -r python/requirements/ml/rllib-test-requirements.txt
-mlflow==2.22.0
-    # via -r python/requirements/ml/core-requirements.txt
-mlflow-skinny==2.22.0
+mlflow==3.1.4
+    # via
+    #   -r python/requirements/ml/core-requirements.txt
+    #   -r python/requirements/test-requirements.txt
+mlflow-skinny==3.1.4
     # via mlflow
 mmh3==4.1.0
     # via pyiceberg
@@ -1120,7 +1090,7 @@ more-itertools==10.7.0
     # via configspace
 mosaicml==0.3.1 ; python_version < "3.12"
     # via -r python/requirements/ml/train-test-requirements.txt
-moto==4.2.12
+moto==5.1.18
     # via -r python/requirements/test-requirements.txt
 moviepy==0.2.3.1
     # via -r python/requirements/ml/rllib-test-requirements.txt
@@ -1136,10 +1106,11 @@ msal-extensions==1.2.0b1
     # via
     #   azure-cli-core
     #   azure-identity
-msgpack==1.0.7
+msgpack==1.1.2
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/rllib-requirements.txt
+    #   -r python/requirements/test-requirements.txt
     #   distributed
     #   msgpack-numpy
     #   ray
@@ -1180,37 +1151,25 @@ myst-parser==1.0.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   myst-nb
-nbclassic==1.0.0
-    # via
-    #   jupyterlab
-    #   notebook
 nbclient==0.5.13
     # via
     #   jupyter-cache
     #   myst-nb
     #   nbconvert
 nbconvert==6.5.4
-    # via
-    #   jupyter-server
-    #   nbclassic
-    #   notebook
+    # via jupyter-server
 nbformat==5.9.2
     # via
     #   jupyter-cache
     #   jupyter-server
     #   jupytext
     #   myst-nb
-    #   nbclassic
     #   nbclient
     #   nbconvert
-    #   notebook
 nest-asyncio==1.5.8
     # via
     #   ipykernel
-    #   jupyter-client
-    #   nbclassic
     #   nbclient
-    #   notebook
 netifaces==0.11.0
     # via
     #   hpbandster
@@ -1219,18 +1178,17 @@ networkx==3.2.1
     # via
     #   cfn-lint
     #   hyperopt
-    #   scikit-image
     #   torch
 nevergrad==0.4.3.post7
     # via -r python/requirements/ml/tune-requirements.txt
 ninja==1.11.1.1
     # via deepspeed
 nodeenv==1.9.1
-    # via pre-commit
-notebook==6.5.7
-    # via jupyterlab
+    # via
+    #   pre-commit
+    #   pyright
 notebook-shim==0.2.3
-    # via nbclassic
+    # via jupyterlab
     # via vsphere-automation-sdk
     # via vsphere-automation-sdk
     # via vsphere-automation-sdk
@@ -1267,7 +1225,6 @@ numpy==1.26.4
     #   dm-env
     #   etils
     #   evaluate
-    #   gpy
     #   gradio
     #   gymnasium
     #   h5py
@@ -1281,7 +1238,6 @@ numpy==1.26.4
     #   matplotlib
     #   minigrid
     #   ml-dtypes
-    #   mlagents-envs
     #   mlflow
     #   modin
     #   moviepy
@@ -1297,7 +1253,6 @@ numpy==1.26.4
     #   opt-einsum
     #   optuna
     #   pandas
-    #   paramz
     #   patsy
     #   pettingzoo
     #   prophet
@@ -1306,7 +1261,6 @@ numpy==1.26.4
     #   pyro-ppl
     #   pytorch-lightning
     #   raydp
-    #   scikit-image
     #   scikit-learn
     #   scipy
     #   shimmy
@@ -1320,7 +1274,6 @@ numpy==1.26.4
     #   tensorflow
     #   tensorflow-datasets
     #   tensorflow-probability
-    #   tifffile
     #   tinyscaler
     #   torch-geometric
     #   torchmetrics
@@ -1414,8 +1367,12 @@ orjson==3.9.15
     #   gradio
     #   tensordict
 ormsgpack==1.7.0
-    # via -r python/requirements/ml/rllib-requirements.txt
-packaging==23.0
+    # via
+    #   -r python/requirements.txt
+    #   -r python/requirements/ml/rllib-requirements.txt
+overrides==7.7.0
+    # via jupyter-server
+packaging==24.2
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -1442,7 +1399,6 @@ packaging==23.0
     #   jupytext
     #   knack
     #   kombu
-    #   lazy-loader
     #   lightning-utilities
     #   matplotlib
     #   mlflow-skinny
@@ -1458,17 +1414,18 @@ packaging==23.0
     #   pytest-sugar
     #   pytorch-lightning
     #   ray
-    #   scikit-image
     #   semgrep
     #   snowflake-connector-python
     #   sphinx
     #   statsmodels
+    #   taskiq
     #   tensorboardx
     #   tensordict
     #   tensorflow
     #   torchmetrics
     #   transformers
     #   utilsforecast
+    #   wandb
 pandas==1.5.3 ; python_version < "3.12"
     # via
     #   -r python/requirements.txt
@@ -1495,8 +1452,6 @@ pandocfilters==1.5.0
     # via nbconvert
 paramiko==2.12.0
     # via azure-cli-core
-paramz==0.9.6
-    # via gpy
 parso==0.8.3
     # via jedi
 partd==1.4.1
@@ -1523,7 +1478,7 @@ pexpect==4.8.0
     #   ipython
 pickleshare==0.7.5
     # via ipython
-pillow==10.3.0 ; platform_system != "Windows"
+pillow==10.4.0 ; platform_system != "Windows"
     # via
     #   -r python/requirements/test-requirements.txt
     #   aim
@@ -1531,8 +1486,6 @@ pillow==10.3.0 ; platform_system != "Windows"
     #   gradio
     #   imageio
     #   matplotlib
-    #   mlagents-envs
-    #   scikit-image
     #   torchvision
 pkginfo==1.9.6
     # via azure-cli-core
@@ -1548,8 +1501,12 @@ plotly==5.23.0
     # via ax-platform
 pluggy==1.3.0
     # via pytest
-polars==1.32.3
+ply==3.11
+    # via jsonpath-ng
+polars==1.36.1
     # via -r python/requirements/test-requirements.txt
+polars-runtime-32==1.36.1
+    # via polars
 portalocker==2.8.2
     # via
     #   azure-cli-telemetry
@@ -1560,8 +1517,6 @@ prometheus-client==0.19.0
     # via
     #   -r python/requirements.txt
     #   jupyter-server
-    #   nbclassic
-    #   notebook
     #   opentelemetry-exporter-prometheus
 promise==2.3
     # via tensorflow-datasets
@@ -1591,7 +1546,6 @@ protobuf==4.25.8
     #   googleapis-common-protos
     #   grpcio-status
     #   grpcio-tools
-    #   mlagents-envs
     #   mlflow-skinny
     #   onnx
     #   onnxruntime
@@ -1621,7 +1575,6 @@ psutil==5.9.6
     #   raydp
     #   tensorflow-datasets
     #   torch-geometric
-    #   wandb
 ptyprocess==0.7.0
     # via
     #   pexpect
@@ -1632,7 +1585,7 @@ py==1.11.0
     # via pytest-forked
 py-cpuinfo==9.0.0
     # via deepspeed
-py-partiql-parser==0.5.0
+py-partiql-parser==0.6.3
     # via moto
 py-spy==0.4.0 ; python_version < "3.12"
     # via -r python/requirements.txt
@@ -1658,7 +1611,6 @@ pyasn1==0.5.1
     # via
     #   oauth2client
     #   pyasn1-modules
-    #   python-jose
     #   rsa
 pyasn1-modules==0.3.0
     # via
@@ -1668,9 +1620,11 @@ pybase64==1.4.2
     # via -r python/requirements/ml/data-test-requirements.txt
 pycparser==2.21
     # via cffi
-pycurl==7.45.3
+pycron==3.2.0
+    # via taskiq
+pycurl==7.45.4
     # via -r python/requirements/cloud-requirements.txt
-pydantic==2.11.7
+pydantic==2.12.4
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1680,7 +1634,9 @@ pydantic==2.11.7
     #   gradio
     #   mlflow-skinny
     #   pyiceberg
-pydantic-core==2.33.2
+    #   taskiq
+    #   wandb
+pydantic-core==2.41.5
     # via pydantic
 pydot==1.4.2
     # via -r python/requirements/test-requirements.txt
@@ -1700,7 +1656,7 @@ pygments==2.18.0
     #   nbconvert
     #   rich
     #   sphinx
-pyiceberg==0.10.0
+pyiceberg==0.11.0
     # via -r python/requirements/ml/data-test-requirements.txt
 pyjwt==2.8.0
     # via
@@ -1746,6 +1702,8 @@ pyparsing==3.1.1
     #   torch-geometric
 pyproject-hooks==1.2.0
     # via build
+pyright==1.1.408
+    # via -r python/requirements/test-requirements.txt
 pyro-api==0.1.2
     # via pyro-ppl
 pyro-ppl==1.9.1
@@ -1838,8 +1796,6 @@ python-dateutil==2.8.2
     #   strictyaml
 python-dotenv==1.2.1
     # via testcontainers
-python-jose==3.3.0
-    # via moto
 python-json-logger==2.0.7
     # via jupyter-events
 python-lsp-jsonrpc==1.0.0
@@ -1863,10 +1819,11 @@ pyu2f==0.1.5
     # via google-reauth
 pyvmomi==8.0.3.0.1
     # via vsphere-automation-sdk
-pyyaml==6.0.1
+pyyaml==6.0.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/test-requirements.txt
     #   accelerate
     #   bokeh
     #   cfn-lint
@@ -1882,7 +1839,6 @@ pyyaml==6.0.1
     #   knack
     #   kubernetes
     #   ml-collections
-    #   mlagents-envs
     #   mlflow-skinny
     #   mosaicml
     #   moto
@@ -1894,20 +1850,19 @@ pyyaml==6.0.1
     #   pymars
     #   pytorch-lightning
     #   ray
+    #   responses
     #   timm
     #   transformers
     #   wandb
     #   webdataset
     #   yahp
     #   yq
-pyzmq==26.0.3
+pyzmq==27.1.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
-    #   nbclassic
-    #   notebook
 qpd==0.4.4
     # via fugue
 raydp==1.7.0b20250423.dev0
@@ -1980,7 +1935,7 @@ requests-oauthlib==2.0.0
     #   msrest
 requests-toolbelt==1.0.0
     # via comet-ml
-responses==0.13.4
+responses==0.25.8
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   moto
@@ -1999,7 +1954,7 @@ rfc3986-validator==0.1.1
     # via
     #   jsonschema
     #   jupyter-events
-rich==13.3.3
+rich==13.7.1
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -2019,7 +1974,6 @@ rsa==4.7.2
     #   gcs-oauth2-boto-plugin
     #   google-auth
     #   oauth2client
-    #   python-jose
 ruamel-yaml==0.17.40
     # via
     #   semgrep
@@ -2041,9 +1995,7 @@ safetensors==0.4.3
     #   transformers
 sarif-om==1.0.4
     # via cfn-lint
-scikit-image==0.24.0
-    # via -r python/requirements.txt
-scikit-learn==1.3.2
+scikit-learn==1.5.2
     # via
     #   -r python/requirements/test-requirements.txt
     #   ax-platform
@@ -2060,7 +2012,6 @@ scipy==1.11.4
     #   botorch
     #   configspace
     #   dm-control
-    #   gpy
     #   hpbandster
     #   hyperopt
     #   jax
@@ -2069,9 +2020,7 @@ scipy==1.11.4
     #   linear-operator
     #   mlflow
     #   open-spiel
-    #   paramz
     #   pymars
-    #   scikit-image
     #   scikit-learn
     #   statsforecast
     #   statsmodels
@@ -2088,10 +2037,7 @@ semantic-version==2.10.0
 semgrep==1.32.0
     # via -r python/requirements/lint-requirements.txt
 send2trash==1.8.3
-    # via
-    #   jupyter-server
-    #   nbclassic
-    #   notebook
+    # via jupyter-server
 sentencepiece==0.1.96
     # via -r python/requirements/ml/train-test-requirements.txt
 sentry-sdk==2.10.0
@@ -2102,8 +2048,6 @@ serpent==1.41
     # via
     #   hpbandster
     #   pyro4
-setproctitle==1.3.6
-    # via wandb
 shellcheck-py==0.7.1.1
     # via -r python/requirements/lint-requirements.txt
 shellingham==1.5.4
@@ -2122,13 +2066,10 @@ six==1.16.0
     #   azure-core
     #   bleach
     #   configobj
-    #   docker-pycreds
-    #   ecdsa
     #   fs
     #   gcs-oauth2-boto-plugin
     #   google-apitools
     #   google-pasta
-    #   gpy
     #   gsutil
     #   halo
     #   isodate
@@ -2139,7 +2080,6 @@ six==1.16.0
     #   oauth2client
     #   opencensus
     #   paramiko
-    #   paramz
     #   patsy
     #   promise
     #   pytest-remotedata
@@ -2147,7 +2087,6 @@ six==1.16.0
     #   python-dateutil
     #   pyu2f
     #   pyvmomi
-    #   responses
     #   rfc3339-validator
     #   tensorboard
     #   tensorflow
@@ -2161,8 +2100,6 @@ smart-open==6.2.0
     #   -r python/requirements/test-requirements.txt
 smmap==5.0.1
     # via gitdb
-sniffio==1.3.1
-    # via anyio
 snowballstemmer==2.2.0
     # via sphinx
 snowflake-connector-python==3.15.0
@@ -2170,7 +2107,6 @@ snowflake-connector-python==3.15.0
 sortedcontainers==2.4.0
     # via
     #   distributed
-    #   pyiceberg
     #   snowflake-connector-python
 soundfile==0.12.1
     # via -r python/requirements/ml/data-test-requirements.txt
@@ -2208,13 +2144,11 @@ sqlglot==25.6.1
     # via fugue
 sqlparse==0.5.1
     # via mlflow-skinny
-sshpubkeys==3.3.1
-    # via moto
 stack-data==0.6.3
     # via ipython
 stanio==0.3.0
     # via cmdstanpy
-starlette==0.46.2
+starlette==0.49.1
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -2239,6 +2173,10 @@ tabulate==0.9.0
     #   -r python/requirements/cloud-requirements.txt
     #   jupyter-cache
     #   knack
+taskiq==0.12.1
+    # via -r python/requirements.txt
+taskiq-dependencies==1.5.7
+    # via taskiq
 tblib==3.0.0
     # via
     #   -r python/requirements/docker/ray-docker-requirements.txt
@@ -2290,8 +2228,7 @@ termcolor==2.4.0
 terminado==0.18.1
     # via
     #   jupyter-server
-    #   nbclassic
-    #   notebook
+    #   jupyter-server-terminals
 testcontainers==4.13.3
     # via -r python/requirements/ml/data-test-requirements.txt
 testfixtures==7.0.0
@@ -2302,8 +2239,6 @@ threadpoolctl==3.1.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   scikit-learn
-tifffile==2024.7.21
-    # via scikit-image
 timm==0.9.2
     # via -r python/requirements/ml/tune-test-requirements.txt
 tinycss2==1.3.0
@@ -2371,7 +2306,7 @@ torchvision==0.18.0
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   mosaicml
     #   timm
-tornado==6.1 ; python_version < "3.12"
+tornado==6.5.4
     # via
     #   -r python/requirements/test-requirements.txt
     #   bokeh
@@ -2380,8 +2315,6 @@ tornado==6.1 ; python_version < "3.12"
     #   jupyter-client
     #   jupyter-server
     #   jupyterlab
-    #   nbclassic
-    #   notebook
     #   pymars
     #   terminado
 tqdm==4.67.1
@@ -2420,12 +2353,11 @@ traitlets==5.14.3
     #   jupyter-core
     #   jupyter-events
     #   jupyter-server
+    #   jupyterlab
     #   matplotlib-inline
-    #   nbclassic
     #   nbclient
     #   nbconvert
     #   nbformat
-    #   notebook
 transformers==4.36.2
     # via -r python/requirements/ml/core-requirements.txt
 triad==0.9.8
@@ -2438,7 +2370,7 @@ trustme==0.9.0
     # via -r python/requirements/test-requirements.txt
 typeguard==2.13.3
     # via ax-platform
-typer==0.12.3
+typer==0.15.1
     # via -r python/requirements.txt
 types-pycurl==7.45.3.20240421
     # via -r python/requirements/lint-requirements.txt
@@ -2452,10 +2384,12 @@ types-setuptools==80.9.0.20250822
     # via -r python/requirements/lint-requirements.txt
 types-urllib3==1.26.25.14
     # via types-requests
-typing-extensions==4.12.2
+typing-extensions==4.15.0
     # via
     #   -r python/requirements/test-requirements.txt
+    #   aiosignal
     #   alembic
+    #   anyio
     #   aws-sam-translator
     #   azure-core
     #   azure-identity
@@ -2480,18 +2414,21 @@ typing-extensions==4.12.2
     #   pydantic
     #   pydantic-core
     #   pyopenssl
+    #   pyright
     #   pytorch-lightning
     #   referencing
     #   semgrep
     #   snowflake-connector-python
     #   sqlalchemy
+    #   starlette
     #   tensorflow
     #   testcontainers
     #   textual
     #   torch
     #   typer
     #   typing-inspection
-typing-inspection==0.4.1
+    #   wandb
+typing-inspection==0.4.2
     # via pydantic
 tzdata==2025.2
     # via kombu
@@ -2567,7 +2504,7 @@ virtualenv==20.29.1
     # via vsphere-automation-sdk
 vsphere-automation-sdk @ git+https://github.com/vmware/vsphere-automation-sdk-python.git@v8.0.1.0
     # via -r python/requirements/test-requirements.txt
-wandb==0.17.0
+wandb==0.23.1
     # via -r python/requirements/ml/core-requirements.txt
 watchfiles==0.19.0
     # via
@@ -2632,18 +2569,12 @@ xxhash==3.4.1
     # via
     #   datasets
     #   evaluate
-y-py==0.6.2
-    # via
-    #   jupyter-ydoc
-    #   ypy-websocket
 yahp==0.1.1
     # via mosaicml
 yarl==1.18.3
     # via
     #   aiohttp
     #   delta-sharing
-ypy-websocket==0.8.4
-    # via jupyter-server-ydoc
 yq==3.2.2
     # via
     #   -r python/requirements/lint-requirements.txt
@@ -2657,7 +2588,9 @@ zipp==3.19.2
 zoopt==0.4.1
     # via -r python/requirements/ml/tune-test-requirements.txt
 zstandard==0.23.0
-    # via clickhouse-connect
+    # via
+    #   clickhouse-connect
+    #   pyiceberg
 
 # The following packages are considered to be unsafe in a requirements file:
 # pip

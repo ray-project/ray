@@ -1,5 +1,5 @@
 name: mllightning2gpubuild
-froms: [cr.ray.io/rayproject/oss-ci-base_gpu]
+froms: ["cr.ray.io/rayproject/oss-ci-base_gpu-py3.10"]
 dockerfile: ci/docker/ml.build.Dockerfile
 srcs:
   - ci/env/install-dependencies.sh
@@ -20,7 +20,7 @@ srcs:
   - python/requirements/ml/rllib-requirements.txt
   - python/requirements/ml/rllib-test-requirements.txt
 build_args:
-  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_gpu
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_gpu-py3.10
   - RAYCI_IS_GPU_BUILD=true
   - RAYCI_LIGHTNING_2=true
 tags:

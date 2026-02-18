@@ -21,9 +21,6 @@
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
-/// The duration at which the GCS tries to run global GC.
-RAY_CONFIG(uint64_t, gcs_global_gc_interval_milliseconds, 10000)
-
 /// Whether to enable Ray event stats collection.
 RAY_CONFIG(bool, event_stats, true)
 
@@ -40,6 +37,9 @@ RAY_CONFIG(bool, enable_cluster_auth, true)
 /// rpc/authentication/authentication_mode.h
 /// use GetAuthenticationMode() to get the authentication mode enum value.
 RAY_CONFIG(std::string, AUTH_MODE, "disabled")
+
+/// Whether to enable Kubernetes token-based authentication for RPC calls.
+RAY_CONFIG(bool, ENABLE_K8S_TOKEN_AUTH, false)
 
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available
@@ -262,11 +262,6 @@ RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
 RAY_CONFIG(int64_t, raylet_client_num_connect_attempts, 10)
 RAY_CONFIG(int64_t, raylet_client_connect_timeout_milliseconds, 1000)
 
-/// The duration that the raylet will wait before reinitiating a
-/// fetch request for a missing task dependency. This time may adapt based on
-/// the number of missing task dependencies.
-RAY_CONFIG(int64_t, raylet_fetch_timeout_milliseconds, 1000)
-
 /// The duration that we wait after sending a worker SIGTERM before sending
 /// the worker SIGKILL.
 RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 5000)
@@ -356,19 +351,19 @@ RAY_CONFIG(uint32_t, maximum_gcs_storage_operation_batch_size, 1000)
 /// When getting objects from object store, max number of ids to print in the warning
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
-/// Number of threads used by rpc server in gcs server.
+
+/// Number of polling threads used by rpc server in gcs server. These threads poll for
+/// requests and copy from the socket buffer to create the proto request object.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_server_thread_num,
            std::max(1U, std::thread::hardware_concurrency() / 4U))
-/// Number of threads used by rpc server in gcs server.
+
+/// Number of polling threads for raylet + worker clients on the GCS. These threads poll
+/// for replies and copy from the socket buffer to create the proto Reply object.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_client_thread_num,
            std::max(1U, std::thread::hardware_concurrency() / 4U))
-/// Allow up to 5 seconds for connecting to gcs service.
-/// Note: this only takes effect when gcs service is enabled.
-RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
-/// Waiting time for each gcs service connection.
-RAY_CONFIG(int64_t, internal_gcs_service_connect_wait_milliseconds, 100)
+
 /// The interval at which the gcs server will health check the connection to the
 /// external Redis server. If a health check fails, the GCS will crash itself.
 /// Set to zero to disable health checking.
@@ -385,10 +380,6 @@ RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
-// The interval at which the gcs server will pull a new resource.
-RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
-// The number of concurrent polls to polls to GCS.
-RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
 RAY_CONFIG(std::string, gcs_storage, "memory")
 
@@ -428,9 +419,6 @@ RAY_CONFIG(uint32_t, gcs_rpc_server_reconnect_timeout_s, 60)
 
 /// The timeout for GCS connection in seconds
 RAY_CONFIG(int32_t, gcs_rpc_server_connect_timeout_s, 5)
-
-/// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
-RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 
 /// gRPC channel reconnection related configs to GCS.
 /// Check https://grpc.github.io/grpc/core/group__grpc__arg__keys.html for details
@@ -516,6 +504,11 @@ RAY_CONFIG(uint64_t, task_events_max_num_profile_events_buffer_on_worker, 10 * 1
 /// Setting the value to -1 allows unlimited dropped task attempts in a single
 /// report to GCS.
 RAY_CONFIG(int64_t, task_events_dropped_task_attempt_batch_size, 10 * 1000)
+
+/// Timeout in milliseconds to wait for task events to be flushed during shutdown.
+/// During graceful shutdown, the TaskEventBuffer and RayEventRecorder will wait up to
+/// this duration for in-flight gRPC calls to complete before stopping the io_service.
+RAY_CONFIG(int64_t, task_events_shutdown_flush_timeout_ms, 5000)
 
 /// The delay in ms that GCS should mark any running tasks from a job as failed.
 /// Setting this value too smaller might result in some finished tasks marked as failed by
@@ -666,6 +659,16 @@ RAY_CONFIG(int, max_io_workers, 4)
 /// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
+/// Maximum size (bytes) of a single spilled file (i.e. one spill worker request).
+/// When > 0, the raylet caps the total bytes fused into a single spill request.
+/// This helps avoid generating very large spill files that may be hard to delete promptly
+/// when multiple object references keep them alive (to avoid disk out of space).
+/// Trade-off: smaller caps reduce spill fusion and can lower effective spill throughput
+/// due to higher per-file overhead. If spilling cannot keep up with allocation under
+/// memory pressure, this may increase the likelihood of object store OOMs.
+/// Set to -1 to disable this limit.
+RAY_CONFIG(int64_t, max_spilling_file_size_bytes, -1)
+
 /// If set to less than 1.0, Ray will start spilling objects when existing primary objects
 /// take more than this percentage of the available memory.
 RAY_CONFIG(float, object_spilling_threshold, 0.8)
@@ -748,9 +751,6 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 300 * 1000)
 // This is the minimum time an actor will remain in the actor table before
 // being garbage collected when a job finishes
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
-
-/// Whether to enable GCS-based actor scheduling.
-RAY_CONFIG(bool, gcs_actor_scheduling_enabled, false)
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 
@@ -858,13 +858,17 @@ RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
 /// To use this,
-///  export
-///  RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob:in_flight_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob:in_flight_failure_prob"
-/// If you want to test all rpc failures you can use * as the method name and you can set
-/// -1 max_num_failures to have unlimited failures.
-/// Ex. unlimited failures for all rpc's with 25% request failures, 50% response
+///     export
+///     RAY_testing_rpc_failure='{"method1":{"num_failures":X,"req_failure_prob":Y,"resp_failure_prob":Z,"in_flight_failure_prob":W}}'
+///
+/// If you want to test all RPC failures you can use * as the method name and you can set
+/// -1 num_failures to have unlimited failures.
+/// Ex. unlimited failures for all RPCs with 25% request failures, 50% response
 /// failures, and 10% in-flight failures.
-///     export RAY_testing_rpc_failure="*=-1:25:50:10"
+///     export
+///     RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":25,"resp_failure_prob":50,"in_flight_failure_prob":10}}'
+/// This will set the probabilities for all RPCs to 25% for request failures, 50% for
+/// response failures, and 10% for in-flight failures.
 /// NOTE: Setting the wildcard will override any configuration for other methods.
 ///
 /// You can also provide an optional fifth, sixth, and/or seventh parameter to specify
@@ -878,10 +882,11 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 /// Afterwards, it will revert to the probabilistic failures. You can combine this with
 /// the wildcard so that each RPC method will have the same lower bounds applied.
 ///
-/// Ex. unlimited failures for all rpc's with 25% request failures, 50% response failures,
+/// Ex. unlimited failures for all RPCs with 25% request failures, 50% response failures,
 /// and 10% in-flight failures with at least 2 request failures, 3 response failures, and
-/// 1 in-flight failure.
-///     export RAY_testing_rpc_failure="*=-1:25:50:10:2:3:1"
+/// 1 in-flight failure:
+///     export
+///     RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":25,"resp_failure_prob":50,"in_flight_failure_prob":10,"num_lower_bound_req_failures":2,"num_lower_bound_resp_failures":3,"num_lower_bound_in_flight_failures":1}}'
 RAY_CONFIG(std::string, testing_rpc_failure, "")
 /// If this is set, when injecting RPC failures, we'll check if the server and client have
 /// the same address. If they do, we won't inject the failure.
@@ -957,8 +962,19 @@ RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
 // The number of grpc clients between object managers.
 RAY_CONFIG(int, object_manager_client_connection_num, 4)
 
-// The number of object manager thread. By default, it's
-//     std::min(std::max(2, num_cpus / 4), 8)
+// The actual number of threads for object transfers through the object manager is this
+// number * 3. There num_threads started for each of these 3 things:
+//   1. RPC server polling threads - poll for new requests and copy the requests from
+//      the socket buffer to the proto request objects.
+//   2. RPC client polling threads - poll for replies and copy the replies from the
+//      socket buffer to proto reply objects.
+//   3. RPC server handling io_context threads - These are the threads that execute the
+//      HandleX functions and mainly do both the server-side copying from the PushRequest
+//      to plasma and the client-side copying from plasma to PushRequest to socket buffer.
+// This means that this number of threads * 3 is the # of threads that will be
+// started for transfers.
+// By default, it's
+//     std::min(std::max(2, num_cpus / 4), 8) - At least 2, at most 8
 // Update this to overwrite it.
 RAY_CONFIG(int, object_manager_rpc_threads_num, 0)
 
