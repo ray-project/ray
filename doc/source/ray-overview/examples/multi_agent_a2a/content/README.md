@@ -282,8 +282,8 @@ In a notebook:
 
 
 ```python
-%env BASE_URL=https://multi-agent-a2a-draft-v3-brave-search-jgz99.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com
-%env ANYSCALE_API_TOKEN=M2whssog4Df6_dmYhGuL9uqc-1tSaJa2CRzAZ4V4xL8
+%env BASE_URL=<ANYSCALE_SERVICE_URL>
+%env ANYSCALE_API_TOKEN=<AUTH_TOKEN>
 ```
 
 > Note: Don't include a trailing `/` at the end of `BASE_URL` (after `.anyscaleuserdata.com`).
