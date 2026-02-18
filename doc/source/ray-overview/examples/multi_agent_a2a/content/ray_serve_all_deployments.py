@@ -40,15 +40,6 @@ from agent_runtime.serve_deployment import create_agent_deployment
 
 
 # ============================================================
-# LLM and MCP Server Imports (for multi-app deployment)
-# ============================================================
-
-from llm.llm_deploy_qwen import app as llm_app
-from mcps.web_search_mcp_server import app as web_search_mcp_app
-from mcps.weather_mcp_server import app as weather_mcp_app
-
-
-# ============================================================
 # Agent Cards (A2A Discovery Metadata)
 # ============================================================
 
