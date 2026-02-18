@@ -475,9 +475,6 @@ TEST_F(RayEventRecorderTest, TestSkipMergeForNonMergeableEvents) {
   def_event_2.set_submission_id("sub-1");
   def_event_2.set_entrypoint("python script2.py");
 
-  // Field number 19 = submission_job_definition_event in RayEvent proto.
-  constexpr int kFieldNumber = 19;
-
   std::vector<std::unique_ptr<RayEventInterface>> events;
   events.push_back(CreatePythonRayEvent(
       static_cast<int>(rpc::events::RayEvent::GCS),
@@ -487,7 +484,7 @@ TEST_F(RayEventRecorderTest, TestSkipMergeForNonMergeableEvents) {
       "",
       "test_session",
       def_event_1.SerializeAsString(),
-      kFieldNumber));
+      rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber));
   events.push_back(CreatePythonRayEvent(
       static_cast<int>(rpc::events::RayEvent::GCS),
       static_cast<int>(rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT),
@@ -496,7 +493,7 @@ TEST_F(RayEventRecorderTest, TestSkipMergeForNonMergeableEvents) {
       "",
       "test_session",
       def_event_2.SerializeAsString(),
-      kFieldNumber));
+      rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber));
   recorder_->AddEvents(std::move(events));
   io_service_.run_one();
 

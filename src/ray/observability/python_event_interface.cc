@@ -18,7 +18,6 @@
 #include "google/protobuf/message.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
-#include "ray/observability/metric_constants.h"
 #include "ray/observability/metrics.h"
 #include "ray/util/logging.h"
 
@@ -48,8 +47,8 @@ std::string PythonRayEvent::GetEntityId() const { return entity_id_; }
 bool PythonRayEvent::SupportsMerge() const { return false; }
 
 void PythonRayEvent::Merge(RayEventInterface &&other) {
-  RAY_LOG(FATAL) << "Merge should never be called on PythonRayEvent. "
-                 << "The recorder should skip grouping for non-mergeable events.";
+  RAY_CHECK(false) << "Merge should never be called on PythonRayEvent. "
+                   << "The recorder should skip grouping for non-mergeable events.";
 }
 
 rpc::events::RayEvent PythonRayEvent::Serialize() && {
@@ -66,7 +65,7 @@ rpc::events::RayEvent PythonRayEvent::Serialize() && {
       absl::ToInt64Nanoseconds(event_timestamp_ - absl::UnixEpoch())));
 
   // Use protobuf reflection to set the nested event message by field number.
-  // Adding new Python event types requires no C++ changes.
+  // this way, adding new Python event types will not require C++ changes.
   const auto *descriptor = event.GetDescriptor();
   const auto *field = descriptor->FindFieldByNumber(nested_event_field_number_);
   if (field != nullptr &&
@@ -111,8 +110,10 @@ PythonEventRecorder::PythonEventRecorder(const std::string &aggregator_address,
                                          int aggregator_port,
                                          const std::string &node_ip,
                                          const std::string &node_id_hex,
-                                         size_t max_buffer_size)
-    : dropped_events_counter_(GetRayEventRecorderDroppedEventsCounterMetric()) {
+                                         size_t max_buffer_size,
+                                         const std::string &metric_source)
+    : dropped_events_counter_(GetRayEventRecorderDroppedEventsCounterMetric()),
+      metric_source_str_(metric_source) {
   io_context_ = std::make_unique<instrumented_io_context>(
       /*emit_metrics=*/false, /*running_on_single_thread=*/true);
 
@@ -132,7 +133,7 @@ PythonEventRecorder::PythonEventRecorder(const std::string &aggregator_address,
   recorder_ = std::make_unique<RayEventRecorder>(*event_aggregator_client_,
                                                  *io_context_,
                                                  max_buffer_size,
-                                                 kMetricSourcePython,
+                                                 metric_source_str_,
                                                  dropped_events_counter_,
                                                  NodeID::FromHex(node_id_hex));
   recorder_->StartExportingEvents();
