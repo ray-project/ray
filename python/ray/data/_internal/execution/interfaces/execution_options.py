@@ -350,7 +350,6 @@ class ExecutionOptions:
         return (
             f"ExecutionOptions(resource_limits={self.resource_limits}, "
             f"exclude_resources={self.exclude_resources}, "
-            f"locality_with_output={self.locality_with_output}, "
             f"preserve_order={self.preserve_order}, "
             f"actor_locality_enabled={self.actor_locality_enabled}, "
             f"verbose_progress={self.verbose_progress})"
