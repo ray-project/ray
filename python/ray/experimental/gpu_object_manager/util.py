@@ -8,7 +8,6 @@ from ray.experimental.gpu_object_manager.collective_tensor_transport import (
     NCCLTensorTransport,
 )
 from ray.experimental.gpu_object_manager.cuda_ipc_transport import CudaIpcTransport
-from ray.experimental.gpu_object_manager.jax_tensor_transport import JaxTensorTransport
 from ray.experimental.gpu_object_manager.nixl_tensor_transport import (
     NixlTensorTransport,
 )
@@ -29,7 +28,7 @@ class TransportManagerInfo(NamedTuple):
     devices: List[str]
     # Data type for this transport (e.g. torch.Tensor or jax.Array)
     # If not provided, defaults to torch.Tensor
-    data_type: Optional[type]
+    data_type: type
 
 
 transport_manager_info: Dict[str, TransportManagerInfo] = {}
@@ -49,7 +48,7 @@ def register_tensor_transport(
     transport_name: str,
     devices: List[str],
     transport_manager_class: type[TensorTransportManager],
-    data_type: Optional[type] = None,
+    data_type: type,
 ):
     """
     Register a new tensor transport for use in Ray. Note that this needs to be called
@@ -61,7 +60,6 @@ def register_tensor_transport(
         devices: List of PyTorch device types supported by this transport (e.g., ["cuda", "cpu"]).
         transport_manager_class: A class that implements TensorTransportManager.
         data_type: The data type for this transport (e.g. torch.Tensor or jax.Array).
-            If not provided, defaults to torch.Tensor.
     Raises:
         ValueError: If transport_manager_class is not a subclass of TensorTransportManager.
     """
@@ -86,19 +84,17 @@ def register_tensor_transport(
         has_custom_transports = True
 
 
-DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC", "JAX"]
-
-register_tensor_transport("NIXL", ["cuda", "cpu"], NixlTensorTransport)
-register_tensor_transport("GLOO", ["cpu"], GLOOTensorTransport)
-register_tensor_transport("NCCL", ["cuda"], NCCLTensorTransport)
-register_tensor_transport("CUDA_IPC", ["cuda"], CudaIpcTransport)
+DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC"]
 
 try:
-    import jax
+    import torch
 
     register_tensor_transport(
-        "JAX", ["tpu", "cpu", "cuda"], JaxTensorTransport, jax.Array
+        "NIXL", ["cuda", "cpu"], NixlTensorTransport, torch.Tensor
     )
+    register_tensor_transport("GLOO", ["cpu"], GLOOTensorTransport, torch.Tensor)
+    register_tensor_transport("NCCL", ["cuda"], NCCLTensorTransport, torch.Tensor)
+    register_tensor_transport("CUDA_IPC", ["cuda"], CudaIpcTransport, torch.Tensor)
 except ImportError:
     pass
 

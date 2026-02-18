@@ -2,10 +2,7 @@ import logging
 import threading
 import traceback
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
-
-if TYPE_CHECKING:
-    pass
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import google.protobuf.message
 

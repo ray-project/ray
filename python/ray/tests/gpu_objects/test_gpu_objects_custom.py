@@ -4,8 +4,8 @@ import sys
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+import numpy
 import pytest
-import torch
 
 import ray
 from ray.experimental import (
@@ -48,16 +48,12 @@ class SharedMemoryTransport(TensorTransportManager):
     def extract_tensor_transport_metadata(
         self,
         obj_id: str,
-        gpu_object: List[torch.Tensor],
+        gpu_object: List[numpy.ndarray],
     ) -> TensorTransportMetadata:
 
         tensor_meta = []
         if gpu_object:
             for tensor in gpu_object:
-                if tensor.device.type != "cpu":
-                    raise ValueError(
-                        "Shared memory transport only supports CPU tensors"
-                    )
                 tensor_meta.append((tensor.shape, tensor.dtype))
 
         serialized_gpu_object = pickle.dumps(gpu_object)
@@ -95,7 +91,7 @@ class SharedMemoryTransport(TensorTransportManager):
 
     def send_multiple_tensors(
         self,
-        tensors: List["torch.Tensor"],
+        tensors: List[numpy.ndarray],
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
     ):
@@ -117,7 +113,9 @@ class SharedMemoryTransport(TensorTransportManager):
 
 
 def test_register_and_use_custom_transport(ray_start_regular):
-    register_tensor_transport("shared_memory", ["cpu"], SharedMemoryTransport)
+    register_tensor_transport(
+        "shared_memory", ["cpu"], SharedMemoryTransport, numpy.ndarray
+    )
 
     @ray.remote
     class Actor:
@@ -137,7 +135,7 @@ def test_register_and_use_custom_transport(ray_start_regular):
     cloudpickle.register_pickle_by_value(sys.modules[SharedMemoryTransport.__module__])
 
     actors = [Actor.remote() for _ in range(2)]
-    ref = actors[0].echo.remote(torch.tensor([1, 2, 3]))
+    ref = actors[0].echo.remote(numpy.array([1, 2, 3]))
     result = actors[1].sum.remote(ref)
     assert ray.get(result) == 6
 

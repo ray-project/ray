@@ -146,7 +146,7 @@ class GPUObjectStore:
         # Note: Currently, `_gpu_object_store` is only supported for Ray Actors.
         self._gpu_object_store: Dict[str, deque[_GPUObject]] = defaultdict(deque)
         # Mapping from tensor data pointer to the IDs of objects that contain it.
-        self._tensor_to_object_ids: Dict[int, Set[str]] = defaultdict[int, Set[str]](
+        self._tensor_to_object_ids: Dict[Any, Set[str]] = defaultdict[int, Set[str]](
             set
         )
         # Synchronization for GPU object store.
@@ -164,6 +164,7 @@ class GPUObjectStore:
             return existed
 
     def has_tensor(self, tensor: Any) -> bool:
+        # Method only used for testing.
         with self._lock:
             return tensor.data_ptr() in self._tensor_to_object_ids
 
