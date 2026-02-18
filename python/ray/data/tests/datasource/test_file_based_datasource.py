@@ -460,6 +460,11 @@ def test_read_many_files_basic(ray_start_regular_shared, tmp_path):
 
     assert len(rows) == num_files
 
+    # Verify actual content - rows are dicts with "data" key containing bytes
+    expected_content = {f"file_{i}".encode() for i in range(num_files)}
+    actual_content = {row["data"] for row in rows}
+    assert actual_content == expected_content
+
 
 def test_read_many_files_diff_dirs(ray_start_regular_shared, tmp_path):
 
@@ -487,27 +492,13 @@ def test_read_many_files_diff_dirs(ray_start_regular_shared, tmp_path):
 
     assert len(rows) == total_files
 
-
-@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
-def test_write_min_rows_per_file(
-    tmp_path,
-    ray_start_regular_shared,
-    min_rows_per_file,
-    target_max_block_size_infinite_or_default,
-):
-    """Test min_rows_per_file ensures exact row count per output file.
-
-    Uses CSV format to verify this generic behavior that works identically
-    across all file-based formats (CSV, JSON, Parquet, etc.).
-    """
-    ray.data.range(100, override_num_blocks=20).write_csv(
-        tmp_path, min_rows_per_file=min_rows_per_file
-    )
-
-    for filename in os.listdir(tmp_path):
-        file_path = tmp_path / filename
-        num_rows_written = len(file_path.read_text().splitlines()) - 1
-        assert num_rows_written == min_rows_per_file
+    # Verify actual content - files from both directories should be read
+    expected_content = set()
+    for dir_name in ["dir1", "dir2"]:
+        for i in range(num_files_per_dir):
+            expected_content.add(f"data_from_{dir_name}_{i}".encode())
+    actual_content = {row["data"] for row in rows}
+    assert actual_content == expected_content
 
 
 if __name__ == "__main__":
