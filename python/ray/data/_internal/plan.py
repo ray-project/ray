@@ -205,9 +205,9 @@ class ExecutionPlan:
                     self._context,
                 )
                 plan.link_logical_plan(LogicalPlan(dag, plan._context))
-                if plan.schema() is not None:
+                if schema is None:
                     schema = plan.schema()
-                if plan.meta_count() is not None:
+                if count is None:
                     count = plan.meta_count()
 
         if schema is None:
