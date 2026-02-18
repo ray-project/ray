@@ -182,7 +182,7 @@ Shutdown your LLM service:
 
 ## Deploy to production with Anyscale services
 
-For production deployment, use Anyscale services to deploy the Ray Serve app to a dedicated cluster without modifying the code. Anyscale ensures scalability, fault tolerance, and load balancing, keeping the service resilient against node failures, high traffic, and rolling updates.
+For production deployment, use Anyscale services to deploy the Ray Serve app to a dedicated cluster without modifying the code. Anyscale ensures scalability, fault tolerance, and load balancing, keeping the service resilient against node failures, high traffic, and rolling updates. For more details, see [Serve LLMs with Anyscale](https://docs.anyscale.com/llm/serving).
 
 ---
 
@@ -299,15 +299,15 @@ INFO 09-09 00:32:32 [kv_cache_utils.py:1017] Maximum concurrency for 32,768 toke
 
 To improve concurrency for gpt-oss models, see [Deploy a small-sized LLM: Improve concurrency](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html#improve-concurrency) for small-sized models such as `gpt-oss-20b`, and [Deploy a medium-sized LLM: Improve concurrency](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#improve-concurrency) for medium-sized models such as `gpt-oss-120b`.
 
-**Note:** Some example guides recommend using quantization to boost concurrency. `gpt-oss` weights are already 4-bit by default, so further quantization typically isn’t applicable.  
+**Note:** Some example guides recommend using quantization to boost concurrency. `gpt-oss` weights are already 4-bit by default, so further quantization typically isn't applicable.  
 
-For broader guidance, also see [Choose a GPU for LLM serving](https://docs.anyscale.com/llm/serving/gpu-guidance) and [Optimize performance for Ray Serve LLM](https://docs.anyscale.com/llm/serving/performance-optimization).
+For broader guidance, also see [Choose a GPU for LLM serving](https://docs.anyscale.com/llm/serving/gpu-guidance), [Optimize performance for Ray Serve LLM](https://docs.anyscale.com/llm/serving/performance-optimization), and [Tune parameters for LLMs on Anyscale services](https://docs.anyscale.com/llm/serving/parameter-tuning).
 
 ---
 
 ## Reasoning configuration
 
-You don’t need a custom reasoning parser when deploying `gpt-oss` with Ray Serve LLM, you can access the reasoning content in the model's response directly. You can also control the reasoning effort of the model in the request.
+You don't need a custom reasoning parser when deploying `gpt-oss` with Ray Serve LLM, you can access the reasoning content in the model's response directly. You can also control the reasoning effort of the model in the request.
 
 ---
 
@@ -386,6 +386,8 @@ Older vLLM and Transformers versions don't register `gpt_oss`, raising an error 
 ```bash
 pip install -U "vllm>=0.10.1"
 ```
+
+For more common errors and how to fix them, see this [Troubleshooting Guide](https://docs.anyscale.com/llm/serving/troubleshooting).
 
 ---
 
