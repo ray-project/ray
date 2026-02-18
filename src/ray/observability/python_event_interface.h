@@ -112,11 +112,14 @@ class PythonEventRecorder {
   /// \param node_ip The IP address of the current node.
   /// \param node_id_hex Hex-encoded node ID.
   /// \param max_buffer_size Maximum number of events to buffer before dropping.
+  /// \param metric_source Label for the "Source" tag on dropped-events metrics
+  ///        (e.g., "python", "gcs").
   PythonEventRecorder(const std::string &aggregator_address,
                       int aggregator_port,
                       const std::string &node_ip,
                       const std::string &node_id_hex,
-                      size_t max_buffer_size);
+                      size_t max_buffer_size,
+                      const std::string &metric_source);
   ~PythonEventRecorder();
 
   PythonEventRecorder(const PythonEventRecorder &) = delete;
@@ -138,6 +141,9 @@ class PythonEventRecorder {
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::unique_ptr<rpc::EventAggregatorClientImpl> event_aggregator_client_;
   ray::stats::Count dropped_events_counter_;
+  // Owned storage for the metric source label. Declared before recorder_ because
+  // RayEventRecorder stores a string_view into this string.
+  std::string metric_source_str_;
   std::unique_ptr<RayEventRecorder> recorder_;
 };
 

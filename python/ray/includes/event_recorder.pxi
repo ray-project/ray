@@ -14,6 +14,10 @@ from libcpp.memory cimport unique_ptr
 from libcpp.vector cimport vector as c_vector
 from libcpp.string cimport string as c_string
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 cdef class RayEvent:
     """Python wrapper holding event data for transfer to C++.
@@ -85,24 +89,49 @@ cdef class RayEvent:
 
 
 cdef class EventRecorder:
-    """Python wrapper for PythonEventRecorder (singleton)."""
+    """Per-process singleton for recording Ray events.
+
+    Access the singleton and its lifecycle via static methods::
+
+        # Initialization (once per process)
+        EventRecorder.initialize(
+            aggregator_address, aggregator_port,
+            node_ip, node_id_hex, max_buffer_size,
+        )
+
+        # Emit events (no-op if not initialized)
+        EventRecorder.emit(event)
+        EventRecorder.emit_batch([event1, event2])
+
+        # Shutdown (flushes buffered events)
+        EventRecorder.shutdown()
+
+    Thread safety: initialize() and shutdown() are expected to be called from
+    the main thread (same as ray.init/ray.shutdown). emit() and emit_batch()
+    are safe to call from any thread — the GIL serializes Python-level access,
+    and the underlying C++ RayEventRecorder is protected by absl::Mutex.
+    """
     cdef unique_ptr[CPythonEventRecorder] _recorder
 
-    def is_initialized(self):
-        """Check if the recorder has been initialized."""
-        return self._recorder.get() != NULL
+    def __dealloc__(self):
+        """Safety-net cleanup. C++ destructor also calls Shutdown()."""
+        if self._recorder.get() != NULL:
+            self._recorder.get().Shutdown()
+        self._recorder.reset()
 
+    @staticmethod
     def initialize(
-        self,
         str aggregator_address,
         int aggregator_port,
         str node_ip,
         str node_id_hex,
         int max_buffer_size,
+        str metric_source = "python",
     ):
-        """Initialize the underlying C++ PythonEventRecorder.
+        """Initialize the per-process event recorder.
 
-        No-op if already initialized.
+        Creates the underlying C++ PythonEventRecorder with a background I/O
+        thread and gRPC client. No-op if already initialized.
 
         Args:
             aggregator_address: Address of the event aggregator server.
@@ -110,96 +139,97 @@ cdef class EventRecorder:
             node_ip: IP address of the current node.
             node_id_hex: Hex-encoded node ID.
             max_buffer_size: Maximum number of events to buffer.
+            metric_source: Label for the "Source" tag on dropped-events metrics
+                (default "python").
         """
-        if self._recorder.get() != NULL:
+        if EventRecorder._instance is not None:
             return
 
-        self._recorder.reset(
+        cdef EventRecorder rec = EventRecorder()
+        rec._recorder.reset(
             new CPythonEventRecorder(
                 aggregator_address.encode("utf-8"),
                 aggregator_port,
                 node_ip.encode("utf-8"),
                 node_id_hex.encode("utf-8"),
                 max_buffer_size,
+                metric_source.encode("utf-8"),
             )
         )
+        EventRecorder._instance = rec
 
-    def shutdown(self):
-        """Shutdown the recorder.
-
-        Stops exporting events, performs a final flush, and releases all
-        C++ resources. After this call, events will be silently dropped
-        until initialize() is called again.
-        """
-        if self._recorder.get() != NULL:
-            self._recorder.get().Shutdown()
-        self._recorder.reset()
-
-    def add_events(self, list events):
-        """Add events to the recorder buffer.
-
-        Events will be periodically sent to the event aggregator.
-
-        Args:
-            events: List of RayEvent objects to add.
+    @staticmethod
+    def instance():
+        """Get the per-process EventRecorder singleton.
 
         Returns:
-            True if events were added, False if recorder not initialized.
+            The EventRecorder instance if initialized, None otherwise.
         """
-        if self._recorder.get() == NULL:
+        return EventRecorder._instance
+
+    @staticmethod
+    def shutdown():
+        """Shutdown the event recorder.
+
+        Stops exporting events, performs a final flush, and releases all
+        C++ resources. After this call, emit() and emit_batch() will be
+        no-ops until initialize() is called again.
+        """
+        if EventRecorder._instance is None:
+            return
+
+        cdef EventRecorder rec = <EventRecorder>EventRecorder._instance
+        if rec._recorder.get() != NULL:
+            rec._recorder.get().Shutdown()
+        rec._recorder.reset()
+        EventRecorder._instance = None
+
+    @staticmethod
+    def emit(RayEvent event):
+        """Emit a single event. No-op if not initialized.
+
+        Args:
+            event: A RayEvent object (created via InternalEventBuilder.build()).
+
+        Returns:
+            True if the event was successfully queued, False otherwise.
+        """
+        return EventRecorder.emit_batch([event])
+
+    @staticmethod
+    def emit_batch(list events):
+        """Emit multiple events. No-op if not initialized.
+
+        Args:
+            events: List of RayEvent objects to emit.
+
+        Returns:
+            True if events were successfully queued, False otherwise.
+        """
+        if not events:
+            return True
+
+        if EventRecorder._instance is None:
+            logger.debug(
+                "Event recorder not initialized, dropping %d events",
+                len(events),
+            )
             return False
 
+        cdef EventRecorder rec = <EventRecorder>EventRecorder._instance
         cdef c_vector[unique_ptr[CRayEventInterface]] cpp_events
-        cdef RayEvent event
+        cdef RayEvent ev
 
-        for event in events:
-            cpp_events.push_back(move(event.to_cpp_event()))
+        for ev in events:
+            cpp_events.push_back(move(ev.to_cpp_event()))
 
         with nogil:
-            self._recorder.get().AddEvents(move(cpp_events))
+            rec._recorder.get().AddEvents(move(cpp_events))
 
         return True
 
 
-# Global singleton EventRecorder instance.
-cdef EventRecorder _global_event_recorder = EventRecorder()
-
-
-def _get_global_event_recorder():
-    """Get the global EventRecorder singleton.
-
-    Returns:
-        The global EventRecorder instance (may not be initialized).
-    """
-    return _global_event_recorder
-
-
-def initialize_event_recorder(
-    str aggregator_address,
-    int aggregator_port,
-    str node_ip,
-    str node_id_hex,
-    int max_buffer_size,
-):
-    """Initialize the global event recorder.
-
-    Args:
-        aggregator_address: Address of the event aggregator server.
-        aggregator_port: Port of the event aggregator server.
-        node_ip: IP address of the current node.
-        node_id_hex: Hex-encoded node ID.
-        max_buffer_size: Maximum number of events to buffer.
-    """
-    _global_event_recorder.initialize(
-        aggregator_address, aggregator_port, node_ip, node_id_hex, max_buffer_size,
-    )
-
-
-def shutdown_event_recorder():
-    """Shutdown the global event recorder.
-
-    Stops exporting events, performs a final flush, and releases all
-    C++ resources. After this call, events will be silently dropped
-    until initialize_event_recorder() is called again.
-    """
-    _global_event_recorder.shutdown()
+# Singleton state lives on the class itself as a Python class attribute.
+# Cython cdef class doesn't support class-level attributes in the body,
+# so we set it after the class definition.
+EventRecorder._instance = None

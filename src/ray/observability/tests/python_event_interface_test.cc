@@ -22,10 +22,6 @@
 namespace ray {
 namespace observability {
 
-// Field numbers from the RayEvent proto for submission job events.
-constexpr int kSubmissionJobDefinitionFieldNumber = 19;
-constexpr int kSubmissionJobLifecycleFieldNumber = 20;
-
 TEST(PythonRayEventTest, TestSerializeDefinitionEvent) {
   // Create a SubmissionJobDefinitionEvent and serialize it.
   rpc::events::SubmissionJobDefinitionEvent def_event;
@@ -44,7 +40,8 @@ TEST(PythonRayEventTest, TestSerializeDefinitionEvent) {
       /*message=*/"",
       /*session_name=*/"test-session",
       /*serialized_event_data=*/serialized,
-      /*nested_event_field_number=*/kSubmissionJobDefinitionFieldNumber);
+      /*nested_event_field_number=*/
+      rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber);
 
   // Verify metadata.
   EXPECT_EQ(event->GetEntityId(), "test-submission-123");
@@ -88,7 +85,8 @@ TEST(PythonRayEventTest, TestSerializeLifecycleEvent) {
       /*message=*/"",
       /*session_name=*/"test-session",
       /*serialized_event_data=*/serialized,
-      /*nested_event_field_number=*/kSubmissionJobLifecycleFieldNumber);
+      /*nested_event_field_number=*/
+      rpc::events::RayEvent::kSubmissionJobLifecycleEventFieldNumber);
 
   rpc::events::RayEvent ray_event = std::move(*event).Serialize();
 
@@ -143,7 +141,8 @@ TEST(PythonRayEventTest, TestSupportsMerge) {
       /*message=*/"",
       /*session_name=*/"test-session",
       /*serialized_event_data=*/serialized,
-      /*nested_event_field_number=*/kSubmissionJobDefinitionFieldNumber);
+      /*nested_event_field_number=*/
+      rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber);
 
   // PythonRayEvent should not support merge.
   EXPECT_FALSE(event->SupportsMerge());

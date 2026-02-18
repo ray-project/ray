@@ -5,7 +5,6 @@ via the ONE-Event system. Events are buffered and exported through
 the C++ RayEventRecorder.
 """
 
-from ray._common.observability.emitter import emit_event, emit_events
 from ray._common.observability.internal_event import InternalEventBuilder
 from ray._common.observability.submission_job_events import (
     SubmissionJobDefinitionEventBuilder,
@@ -14,8 +13,6 @@ from ray._common.observability.submission_job_events import (
 )
 
 __all__ = [
-    "emit_event",
-    "emit_events",
     "InternalEventBuilder",
     "SubmissionJobDefinitionEventBuilder",
     "SubmissionJobLifecycleEventBuilder",

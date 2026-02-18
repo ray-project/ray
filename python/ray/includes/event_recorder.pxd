@@ -22,6 +22,7 @@ cdef extern from "ray/observability/python_event_interface.h" namespace "ray::ob
                              int aggregator_port,
                              const c_string &node_ip,
                              const c_string &node_id_hex,
-                             size_t max_buffer_size)
+                             size_t max_buffer_size,
+                             const c_string &metric_source)
         void AddEvents(c_vector[unique_ptr[CRayEventInterface]] &&data_list)
         void Shutdown()

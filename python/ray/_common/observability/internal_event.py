@@ -35,11 +35,18 @@ class InternalEventBuilder(ABC):
         """Initialize the event builder.
 
         Args:
-            source_type: RayEvent.SourceType enum value (e.g., JOBS = 6).
-            event_type: RayEvent.EventType enum value.
+            source_type: RayEvent.SourceType enum value. Use
+                RayEventProto.SourceType.<NAME> constants (e.g.,
+                RayEventProto.SourceType.JOBS,
+                RayEventProto.SourceType.GCS).
+            event_type: RayEvent.EventType enum value. Use
+                RayEventProto.EventType.<NAME> constants (e.g.,
+                RayEventProto.EventType.SUBMISSION_JOB_DEFINITION_EVENT,
+                RayEventProto.EventType.DRIVER_JOB_LIFECYCLE_EVENT).
             nested_event_field_number: The field number in RayEvent proto for the
-                nested event message. Use RayEventProto.<FIELD>_FIELD_NUMBER constants
-                (e.g., RayEventProto.SUBMISSION_JOB_DEFINITION_EVENT_FIELD_NUMBER).
+                nested event message. Use RayEventProto.<FIELD>_FIELD_NUMBER
+                constants (e.g.,
+                RayEventProto.SUBMISSION_JOB_DEFINITION_EVENT_FIELD_NUMBER).
             severity: RayEvent.Severity enum value (default INFO).
             message: Optional message associated with the event.
             session_name: The Ray session name.
@@ -59,7 +66,7 @@ class InternalEventBuilder(ABC):
         and lifecycle events for the same job) and for event merging.
 
         Returns:
-            A string identifier unique to this entity (e.g., submission_id).
+            A string identifier unique to this entity (e.g., node_id/task_id/actor_id/job_id).
         """
         pass
 
@@ -77,7 +84,7 @@ class InternalEventBuilder(ABC):
         """Build the Cython RayEvent object for submission.
 
         Returns:
-            A RayEvent object that can be passed to emit_event() or emit_events().
+            A RayEvent object.
         """
         return RayEvent(
             source_type=self._source_type,
