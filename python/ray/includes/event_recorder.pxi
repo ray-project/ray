@@ -88,6 +88,10 @@ cdef class RayEvent:
         return self._event_type
 
 
+# module-level Singleton instance, lazily created by EventRecorder.initialize().
+_event_recorder_instance = None
+
+
 cdef class EventRecorder:
     """Per-process singleton for recording Ray events.
 
@@ -142,7 +146,8 @@ cdef class EventRecorder:
             metric_source: Label for the "Source" tag on dropped-events metrics
                 (default "python").
         """
-        if EventRecorder._instance is not None:
+        global _event_recorder_instance
+        if _event_recorder_instance is not None:
             return
 
         cdef EventRecorder rec = EventRecorder()
@@ -156,7 +161,7 @@ cdef class EventRecorder:
                 metric_source.encode("utf-8"),
             )
         )
-        EventRecorder._instance = rec
+        _event_recorder_instance = rec
 
     @staticmethod
     def instance():
@@ -165,7 +170,7 @@ cdef class EventRecorder:
         Returns:
             The EventRecorder instance if initialized, None otherwise.
         """
-        return EventRecorder._instance
+        return _event_recorder_instance
 
     @staticmethod
     def shutdown():
@@ -175,14 +180,15 @@ cdef class EventRecorder:
         C++ resources. After this call, emit() and emit_batch() will be
         no-ops until initialize() is called again.
         """
-        if EventRecorder._instance is None:
+        global _event_recorder_instance
+        if _event_recorder_instance is None:
             return
 
-        cdef EventRecorder rec = <EventRecorder>EventRecorder._instance
+        cdef EventRecorder rec = <EventRecorder>_event_recorder_instance
         if rec._recorder.get() != NULL:
             rec._recorder.get().Shutdown()
         rec._recorder.reset()
-        EventRecorder._instance = None
+        _event_recorder_instance = None
 
     @staticmethod
     def emit(RayEvent event):
@@ -209,14 +215,14 @@ cdef class EventRecorder:
         if not events:
             return True
 
-        if EventRecorder._instance is None:
+        if _event_recorder_instance is None:
             logger.debug(
                 "Event recorder not initialized, dropping %d events",
                 len(events),
             )
             return False
 
-        cdef EventRecorder rec = <EventRecorder>EventRecorder._instance
+        cdef EventRecorder rec = <EventRecorder>_event_recorder_instance
         cdef c_vector[unique_ptr[CRayEventInterface]] cpp_events
         cdef RayEvent ev
 
@@ -227,9 +233,3 @@ cdef class EventRecorder:
             rec._recorder.get().AddEvents(move(cpp_events))
 
         return True
-
-
-# Singleton state lives on the class itself as a Python class attribute.
-# Cython cdef class doesn't support class-level attributes in the body,
-# so we set it after the class definition.
-EventRecorder._instance = None
