@@ -721,7 +721,9 @@ class DataContext:
         self._kv_configs: Dict[str, Any] = {}
 
         # Sync hash shuffle aggregator fields to its detector config
-        self.issue_detectors_config.hash_shuffle_detector_config.detection_time_interval_s = self.hash_shuffle_aggregator_health_warning_interval_s
+        self.issue_detectors_config.hash_shuffle_detector_config.detection_time_interval_s = (
+            self.hash_shuffle_aggregator_health_warning_interval_s
+        )
         self.issue_detectors_config.hash_shuffle_detector_config.min_wait_time_s = (
             self.min_hash_shuffle_aggregator_wait_time_in_s
         )
