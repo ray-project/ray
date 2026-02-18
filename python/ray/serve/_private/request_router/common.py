@@ -122,9 +122,8 @@ class ReplicaSelection:
         self._dispatched = True
 
     def _release_slot(self) -> None:
-        """Internal: Release the reserved slot if not yet dispatched."""
-        if not self._dispatched:
-            self._replica.release_slot(self._slot_token)
+        """Internal: Release the reserved slot."""
+        self._replica.release_slot(self._slot_token)
 
 
 class ReplicaQueueLengthCache:
