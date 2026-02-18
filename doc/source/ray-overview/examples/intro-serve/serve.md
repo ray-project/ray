@@ -17,6 +17,8 @@ This template introduces Ray Serve, a scalable model-serving framework built on 
 8. Dynamic Request Batching
 9. Model Multiplexing
 10. Asynchronous Inference
+11. Custom Request Routing
+12. Custom Autoscaling
 
 ## Imports
 
@@ -57,7 +59,6 @@ Consider using Ray Serve when your serving workload has one or more of the follo
 | **Scalability** — needs to handle variable or high traffic | Autoscaling replicas based on request queue depth; scales across a Ray cluster |
 | **Hardware utilization** — GPUs underutilized by one-at-a-time inference | Dynamic request batching and fractional GPU allocation |
 | **Service composition** — multiple models or processing stages | Compose deployments; Ray's object store for efficient data sharing |
-| **Expensive startup** — large model weights to load | Stateful replicas (Ray actors) keep models in memory across requests |
 | **Slow iteration speed** — Kubernetes YAML, container builds | Python-first API; develop locally, deploy distributed with the same code |
 
 #### Key Ray Serve Features
@@ -120,11 +121,11 @@ class OnlineMNISTClassifier:
         self.model.eval()
 
     async def __call__(self, request: Request) -> dict[str, Any]:
-        batch = json.loads(await request.json())
+        batch = await request.json()
         return await self.predict(batch)
-    
+
     async def predict(self, batch: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
-        images = torch.tensor(batch["image"]).float().to("cuda")
+        images = torch.from_numpy(np.stack(batch["image"])).float().to("cuda")
 
         with torch.no_grad():
             logits = self.model(images).cpu().numpy()
@@ -146,9 +147,32 @@ mnist_deployment = OnlineMNISTClassifier.options(
 mnist_app = mnist_deployment.bind(local_path="/mnt/cluster_storage/model.pt")
 ```
 
-`.options()` configures the deployment — replicas, resources, autoscaling, and more. See the [full list of deployment configuration options](https://docs.ray.io/en/latest/serve/configure-serve-deployment.html).
+Deployment configuration — replicas, resources, autoscaling, and more — can be specified in three ways:
 
-> **Note:** `.bind()` is a lazy call — it captures the constructor arguments without creating instances. Replicas are created when `serve.run()` is called.
+- **`@serve.deployment` decorator** — set defaults at class definition time; useful when the config is stable across environments
+- **`.options()`** — override at bind time; useful for environment-specific tuning without changing source code
+- **Anyscale Service YAML** — declarative configuration for production deployments on Anyscale; supports per-environment overrides without code changes. See the [Anyscale Services docs](https://docs.anyscale.com/services/get-started) for details.
+
+Using the decorator:
+
+```python
+@serve.deployment(num_replicas=1, ray_actor_options={"num_gpus": 1})
+class OnlineMNISTClassifier:
+    ...
+
+mnist_app = OnlineMNISTClassifier.bind(local_path="/mnt/cluster_storage/model.pt")
+```
+
+Using `.options()` (overrides decorator defaults):
+
+```python
+mnist_app = OnlineMNISTClassifier.options(
+    num_replicas=2,
+    ray_actor_options={"num_gpus": 1},
+).bind(local_path="/mnt/cluster_storage/model.pt")
+```
+
+See the [full list of deployment configuration options](https://docs.ray.io/en/latest/serve/configure-serve-deployment.html).
 
 `serve.run()` creates an **Application** — a group of deployments deployed together — and starts the Serve system:
 
@@ -176,8 +200,7 @@ When you send a request to `localhost:8000`, the **Proxy** receives it, the **Ro
 
 ```python
 images = np.random.rand(2, 1, 28, 28).tolist()
-json_request = json.dumps({"image": images})
-response = requests.post("http://localhost:8000/", json=json_request)
+response = requests.post("http://localhost:8000/", json={"image": images})
 response.json()["predicted_label"]
 ```
 
@@ -217,8 +240,8 @@ class MNISTFastAPIService:
 
     @fastapi_app.post("/predict")
     async def predict(self, request: Request):
-        batch = json.loads(await request.json())
-        images = torch.tensor(batch["image"]).float().to("cuda")
+        batch = await request.json()
+        images = torch.from_numpy(np.stack(batch["image"])).float().to("cuda")
         with torch.no_grad():
             logits = self.model(images).cpu().numpy()
         return {"predicted_label": np.argmax(logits, axis=1).tolist()}
@@ -232,7 +255,7 @@ serve.run(app, name="mnist_fastapi", blocking=False)
 
 ```python
 images = np.random.rand(2, 1, 28, 28).tolist()
-response = requests.post("http://localhost:8000/predict", json=json.dumps({"image": images}))
+response = requests.post("http://localhost:8000/predict", json={"image": images})
 response.json()["predicted_label"]
 ```
 
@@ -284,7 +307,7 @@ class ImageServiceIngress:
         self.model = model
 
     async def __call__(self, request: Request):
-        batch = json.loads(await request.json())
+        batch = await request.json()
         response = await self.preprocessor.run.remote(batch)
         return await self.model.predict.remote(response)
 ```
@@ -307,8 +330,7 @@ handle = serve.run(image_classifier_app, name="image_classifier", blocking=False
 ds = ray.data.read_images("s3://anyscale-public-materials/ray-ai-libraries/mnist/50_per_index/", include_paths=True)
 image_batch = ds.take_batch(10)
 
-json_request = json.dumps({"image": image_batch["image"].tolist()})
-response = requests.post("http://localhost:8000/", json=json_request)
+response = requests.post("http://localhost:8000/", json={"image": image_batch["image"].tolist()})
 response.json()["predicted_label"]
 ```
 
@@ -334,13 +356,13 @@ mnist_handle = serve.run(mnist_app, name="mnist_classifier", blocking=False)
 ```
 
 #### Request routing
-With multiple replicas, Serve uses the **Power of Two Choices** algorithm by default: randomly sample 2 replicas, pick the one with the shorter queue. You can also implement [custom routing logic](https://docs.ray.io/en/latest/serve/advanced-guides/custom-request-router.html) by subclassing `RequestRouter`.
+With multiple replicas, Serve uses the **Power of Two Choices** algorithm by default: randomly sample 2 replicas, pick the one with the shorter queue. For workloads requiring cache affinity, latency-aware selection, or priority queues, see [Section 11: Custom Request Routing](#11-custom-request-routing).
 
 ---
 Test the fractional GPU deployment
 ```python
 images = np.random.rand(2, 1, 28, 28).tolist()
-response = requests.post("http://localhost:8000/", json=json.dumps({"image": images}))
+response = requests.post("http://localhost:8000/", json={"image": images})
 response.json()["predicted_label"]
 ```
 
@@ -396,7 +418,7 @@ batch = {"image": np.random.rand(10, 1, 28, 28)}
 serve.shutdown()
 ```
 
-For advanced use cases, Ray Serve supports [custom autoscaling policies](https://docs.ray.io/en/latest/serve/advanced-guides/advanced-autoscaling.html#custom-autoscaling-policies) that go beyond queue-depth — such as pre-scaling based on time of day, scaling on CPU/memory utilization, or targeting a P90 latency SLA.
+For workloads where request count doesn't correlate with actual load — predictable traffic patterns, resource-constrained stages, latency SLAs, or multi-deployment pipelines — see [Section 12: Custom Autoscaling](#12-custom-autoscaling).
 
 ---
 
@@ -472,7 +494,7 @@ For a comprehensive overview of monitoring and debugging on Anyscale, see the [A
 
 # Part 2: Advanced Topics
 
-The following sections cover additional serving patterns, operational features, and production concerns. They don't require running code in sequence and can be read as reference material.
+The following sections cover additional serving patterns, operational features, and production concerns.
 
 ---
 
@@ -527,6 +549,52 @@ For the full walkthrough — including configuration, code examples, and monitor
 
 ---
 
+## 11. Custom Request Routing
+
+For routing decisions that require replica-specific state — which KV-cache prefix is loaded, per-user session affinity, or request priority — subclass `RequestRouter` and implement `choose_replicas()`, which returns a ranked list of candidate groups. The base class handles queue-length probing, exponential backoff, and dead-replica removal.
+
+```python
+from ray.serve._private.request_router import RequestRouter, FIFOMixin, LocalityMixin
+
+class MyRouter(FIFOMixin, LocalityMixin, RequestRouter):
+    async def choose_replicas(self, candidate_replicas, pending_request):
+        candidates = self.apply_locality_routing(pending_request)
+        # sort by a custom stat exposed via record_routing_stats()
+        return [sorted(candidates, key=lambda r: r.routing_stats.get("load", 0))]
+```
+
+Optional mixins compose common behaviors: `FIFOMixin` for FIFO ordering, `LocalityMixin` for same-node → same-AZ preference, and `MultiplexMixin` for model-affinity routing. Replicas report custom statistics to the router by implementing `record_routing_stats() -> dict[str, float]`, polled periodically by the Controller.
+
+For the full walkthrough — uniform random router, throughput-aware router, and the complete `RunningReplica` API — see the [Custom Request Routing docs](https://docs.ray.io/en/latest/serve/advanced-guides/custom-request-router.html).
+
+---
+
+## 12. Custom Autoscaling
+
+Custom policies let you encode any scaling logic in Python — pre-scale by time of day, respond to CPU/memory metrics reported by replicas, target a P90 latency SLA, or coordinate replica counts across a multi-deployment pipeline.
+
+```python
+from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
+
+def scheduled_policy(ctx: AutoscalingContext) -> tuple[int, dict]:
+    hour = datetime.now(ZoneInfo("America/Los_Angeles")).hour
+    desired = 8 if 9 <= hour < 17 else (4 if 7 <= hour < 20 else 1)
+    return max(ctx.capacity_adjusted_min_replicas,
+               min(ctx.capacity_adjusted_max_replicas, desired)), {}
+
+@serve.deployment(autoscaling_config=AutoscalingConfig(
+    min_replicas=1, max_replicas=12,
+    policy=AutoscalingPolicy(policy_function=scheduled_policy),
+))
+class MyDeployment: ...
+```
+
+The Controller calls your policy at each tick with an `AutoscalingContext` containing the current target replica count, per-replica metrics from `record_autoscaling_stats()`, and state returned from the previous tick. Always use `ctx.target_num_replicas` as the baseline — not `ctx.current_num_replicas` — since it reflects pending decisions that haven't materialized yet. Application-level policies receive contexts for all deployments at once and return joint scaling decisions, enabling proportional scaling across pipeline stages.
+
+For the full walkthrough — schedule-based, CPU/memory metrics, Prometheus latency SLA, and the external scaler REST API — see the [Custom Autoscaling docs](https://docs.ray.io/en/latest/serve/advanced-guides/advanced-autoscaling.html#custom-autoscaling-policies).
+
+---
+
 ## Summary and Next Steps
 
 In this template, you learned how to:
@@ -537,6 +605,8 @@ In this template, you learned how to:
 - **Configure** autoscaling, fractional GPUs, and resource allocation
 - **Monitor** with built-in metrics, custom metrics, tracing, and alerts
 - **Understand** batching, model multiplexing, and async inference patterns
+- **Customize** autoscaling with custom policies (schedule, resource, latency SLA, pipeline coordination)
+- **Extend** request routing with custom replica selection logic (cache affinity, priority, latency-aware)
 
 ### Next Steps
 
