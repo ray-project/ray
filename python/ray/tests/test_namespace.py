@@ -4,11 +4,11 @@ import time
 import pytest
 
 import ray
+from ray._common.test_utils import run_string_as_driver
 from ray._private import ray_constants
 from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
-    run_string_as_driver,
 )
 from ray.cluster_utils import Cluster
 
