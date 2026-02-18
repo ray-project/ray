@@ -15,10 +15,6 @@ from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import (
-    BlockMetadata,
-    BlockMetadataWithSchema,
-)
 
 # Warn about tasks larger than this.
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
@@ -62,12 +58,8 @@ def execute_to_legacy_bundle_iterator(
             # defined within `StreamingExecutor.execute()`. It must
             # support the `get_next()` method.
             self._base_iterator = base_iterator
-            self._collected_metadata = BlockMetadata(
-                num_rows=0,
-                size_bytes=0,
-                input_files=None,
-                exec_stats=None,
-            )
+            self._num_rows = 0
+            self._size_bytes = 0
 
         def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
             try:
@@ -81,19 +73,18 @@ def execute_to_legacy_bundle_iterator(
                 # Traverse the topology backwards and find the first available schema
                 schema = next(reversed(topology.values()))._schema
 
-                meta_with_schema = BlockMetadataWithSchema(
-                    metadata=self._collected_metadata,
-                    schema=schema,
-                )
-                plan._snapshot_metadata_schema = meta_with_schema
+                dag = plan._logical_plan.dag
+                plan._cache.set_num_rows(dag, self._num_rows)
+                plan._cache.set_size_bytes(dag, self._size_bytes)
+                plan._cache.set_schema(dag, schema)
                 raise
 
         def _collect_metadata(self, bundle: RefBundle) -> RefBundle:
             """Collect the metadata from each output bundle and accumulate
             results, so we can access important information, such as
             row count, schema, etc., after iteration completes."""
-            self._collected_metadata.num_rows += bundle.num_rows()
-            self._collected_metadata.size_bytes += bundle.size_bytes()
+            self._num_rows += bundle.num_rows()
+            self._size_bytes += bundle.size_bytes()
             return bundle
 
     return CacheMetadataIterator(bundle_iter)
@@ -153,8 +144,8 @@ def _get_execution_dag(
 
 
 def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
-    if plan._snapshot_bundle is not None:
-        return plan._snapshot_stats
+    if plan.has_computed_output():
+        return plan._cache.get_stats()
     # For Datasets created from "read_xxx", `plan._in_stats` contains useless data.
     # For Datasets created from "from_xxx", we need to use `plan._in_stats` as
     # the initial stats. Because the `FromXxx` logical operators will be translated to
