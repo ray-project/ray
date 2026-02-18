@@ -390,9 +390,13 @@ def test_storage_level_overlapping_views_reference_count(ray_start_regular):
     transport = NixlTensorTransport()
 
     tensor = torch.tensor([[1, 1], [2, 2], [3, 3]], dtype=torch.float32).to("cuda")
-    view0 = tensor[0:1]
-    view1 = tensor[1:2]
+    view0 = tensor[0:2]
+    view1 = tensor[1:3]
     storage_key = tensor.untyped_storage().data_ptr()
+
+    assert view0.untyped_storage().data_ptr() == storage_key
+    assert view1.untyped_storage().data_ptr() == storage_key
+    assert view0.data_ptr() != view1.data_ptr()
 
     # Simulate ray.put(view0)
     obj_id1 = "test_obj_id_1"
@@ -418,15 +422,25 @@ def test_storage_level_overlapping_views_reference_count(ray_start_regular):
     assert storage_key not in transport._tensor_desc_cache
 
 
+@ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+class OverlappingViewProducer:
+    def produce_overlapping_views(self):
+        tensor = torch.tensor([1, 2, 3, 4, 5], dtype=torch.float32).to("cuda")
+        slices = [tensor[0:2], tensor[1:3], tensor[2:4]]
+        refs = []
+        for s in slices:
+            refs.append(ray.put(s, _tensor_transport="nixl"))
+        return refs
+
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_storage_level_overlapping_views(ray_start_regular):
-    """Test that overlapping views of the same tensor are properly transferred."""
-    actors = [GPUTestActor.remote() for _ in range(2)]
-    src_actor, dst_actor = actors[0], actors[1]
-    tensor = torch.tensor([1, 2, 3, 4, 5], dtype=torch.float32).to("cuda")
-    slices = [tensor[0:2], tensor[1:3], tensor[2:4]]
+    """Test that overlapping views of the same storage tensor are properly transferred."""
 
-    refs = ray.get(src_actor.produce.remote(slices))
+    actors = [OverlappingViewProducer.remote(), GPUTestActor.remote()]
+    src_actor, dst_actor = actors[0], actors[1]
+
+    refs = ray.get(src_actor.produce_overlapping_views.remote())
     result = ray.get(dst_actor.consume_with_nixl.remote(refs))
     assert result == 15
 

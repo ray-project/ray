@@ -106,6 +106,8 @@ def __ray_free__(
         gpu_object_manager = global_worker.gpu_object_manager
         gpu_object_store = gpu_object_manager.gpu_object_store
 
+        if not gpu_object_store.has_object(obj_id):
+            return
         tensors = gpu_object_store.get_object(obj_id)
         tensor_transport_manager.garbage_collect(obj_id, tensor_transport_meta, tensors)
 
