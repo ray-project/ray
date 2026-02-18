@@ -1455,7 +1455,7 @@ def test_local_aggregation_global_agg(
         ctx.small_data_threshold_for_local_aggregation = original_threshold
 
 
-def test_estimate_input_size_bytes():
+def test_estimate_input_size_bytes(ray_start_regular_shared_2_cpus):
     """Test the _estimate_input_size_bytes function."""
     import pyarrow as pa
 
