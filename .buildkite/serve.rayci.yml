@@ -16,9 +16,6 @@ steps:
       PYTHON: "{{matrix}}"
     tags: cibase
 
-  - name: servepydantic1build
-    wanda: ci/docker/servepydantic1.build.wanda.yaml
-    tags: cibase
 
   - name: servetracingbuild
     wanda: ci/docker/servetracing.build.wanda.yaml
