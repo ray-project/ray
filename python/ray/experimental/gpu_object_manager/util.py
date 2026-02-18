@@ -119,7 +119,7 @@ def register_custom_tensor_transports_on_actor(
 ) -> Optional[ObjectRef]:
     """
     If there's no custom transports to register, returns None.
-    Otherwise returns an object ref for a task on the actor that will register the custom transports.
+    Otherwise returns an ObjectRef for a task on the actor that will register the custom transports.
     """
     global transport_manager_info
     global has_custom_transports
@@ -180,9 +180,9 @@ def validate_one_sided(tensor_transport: str, ray_usage_func: str):
 def register_nixl_memory(tensor: "torch.Tensor") -> None:
     """Registers the tensor's memory with NIXL and bumps the reference count so the memory region is never deregistered.
 
-    By default, the lifetime of the NIXL memory registration is tied to the object ref. This means that only when the object ref is created
-    do we register the memory with NIXL and deregister it when the object ref goes out of scope. However, this function can be used
-    to pre-register a tensor's memory with NIXL and keep it registered for the lifetime of the process which is especially useful
+    By default, the lifetime of the NIXL memory registration is tied to the ObjectRef. This means that only when the ObjectRef is created
+    do we register the memory with NIXL and deregister it when the ObjectRef goes out of scope. However, this function can be used
+    to pre-register a tensor's memory with NIXL and keep it registered for the lifetime of the process which can improve performance
     if the same tensor is re-used in multiple RDT objects.
 
     If called on a tensor that is already registered with NIXL, the reference count is still bumped to prevent the memory from being deregistered.
