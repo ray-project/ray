@@ -6,7 +6,12 @@ import time
 from typing import Tuple
 
 from ray import serve
-from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
+from ray.experimental.internal_kv import (
+    _internal_kv_del,
+    _internal_kv_exists,
+    _internal_kv_get,
+    _internal_kv_put,
+)
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.serve.config import (
@@ -23,13 +28,18 @@ POLL_INTERVAL_SECONDS = 0.5
 
 
 class GangMasterInfoRegistry:
-    """Registry for gang DP master info using Ray's internal KV store."""
+    """Registry for gang DP master info using GCS KV store."""
 
     _KEY_PREFIX = "LLMServeRegistry:serve_global:gang_dp_master/"
+    _MEMBER_KEY_PREFIX = "LLMServeRegistry:serve_global:gang_dp_member/"
 
     @classmethod
     def _make_key(cls, gang_id: str) -> bytes:
         return (cls._KEY_PREFIX + gang_id).encode("utf-8")
+
+    @classmethod
+    def _make_member_key(cls, gang_id: str, rank: int) -> bytes:
+        return (cls._MEMBER_KEY_PREFIX + f"{gang_id}/{rank}").encode("utf-8")
 
     @classmethod
     def register(cls, gang_id: str, address: str, port: int) -> None:
@@ -37,6 +47,54 @@ class GangMasterInfoRegistry:
         key = cls._make_key(gang_id)
         value = json.dumps({"address": address, "port": port}).encode("utf-8")
         _internal_kv_put(key, value, overwrite=True)
+
+    @classmethod
+    def unregister(cls, gang_id: str) -> None:
+        """Remove the DP master info from GCS KV store."""
+        key = cls._make_key(gang_id)
+        try:
+            _internal_kv_del(key)
+        except Exception:
+            logger.warning(
+                f"Failed to unregister gang master info for gang {gang_id}.",
+                exc_info=True,
+            )
+
+    @classmethod
+    def register_member(cls, gang_id: str, rank: int) -> None:
+        """Register a gang member in the KV store."""
+        key = cls._make_member_key(gang_id, rank)
+        _internal_kv_put(key, b"1", overwrite=True)
+
+    @classmethod
+    def unregister_member(cls, gang_id: str, rank: int, world_size: int) -> None:
+        """
+        Unregister a gang member. If all members are gone, clean up master info.
+        """
+        cls._delete_member_key(gang_id, rank)
+
+        for current_rank in range(world_size):
+            if current_rank == rank:
+                continue
+            if _internal_kv_exists(cls._make_member_key(gang_id, current_rank)):
+                return
+
+        logger.info(
+            f"All gang members unregistered for gang {gang_id}, "
+            "cleaning up master info from KV store."
+        )
+        cls.unregister(gang_id)
+
+    @classmethod
+    def _delete_member_key(cls, gang_id: str, rank: int) -> None:
+        key = cls._make_member_key(gang_id, rank)
+        try:
+            _internal_kv_del(key)
+        except Exception:
+            logger.warning(
+                f"Failed to delete member key for gang {gang_id} rank {rank}.",
+                exc_info=True,
+            )
 
     @classmethod
     async def get(
@@ -93,7 +151,8 @@ class GangDPServer(LLMServer):
 
         self.dp_rank = gang_context.rank
         self.gang_id = gang_context.gang_id
-        dp_size = gang_context.world_size
+        self.dp_size = gang_context.world_size
+        dp_size = self.dp_size
 
         logger.info(
             f"GangDPServer replica initialized: dp_rank={self.dp_rank}, "
@@ -133,6 +192,14 @@ class GangDPServer(LLMServer):
         os.environ["VLLM_RAY_BUNDLE_INDICES"] = str(self.dp_rank)
 
         await super().__init__(llm_config)
+
+        GangMasterInfoRegistry.register_member(self.gang_id, self.dp_rank)
+
+    def __del__(self):
+        if hasattr(self, "gang_id") and hasattr(self, "dp_rank"):
+            GangMasterInfoRegistry.unregister_member(
+                self.gang_id, self.dp_rank, self.dp_size
+            )
 
     @classmethod
     def get_deployment_options(cls, llm_config: "LLMConfig"):
