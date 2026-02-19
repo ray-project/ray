@@ -19,7 +19,6 @@ ALL_PLATFORMS = [
     "macosx_12_0_arm64",
     "win_amd64",
 ]
-RAY_TYPES = ["ray", "ray_cpp"]
 
 
 def _check_downloaded_wheels(directory_path: str, wheels: List[str]) -> None:
@@ -49,13 +48,18 @@ def _check_downloaded_wheels(directory_path: str, wheels: List[str]) -> None:
 def _get_wheel_names(ray_version: str) -> List[str]:
     """List all wheel names for the given ray version."""
     wheel_names = []
+
     for python_version in PYTHON_VERSIONS:
         for platform in ALL_PLATFORMS:
-            for ray_type in RAY_TYPES:
-                if python_version == "cp313-cp313" and platform == "win_amd64":
-                    continue
-                wheel_name = f"{ray_type}-{ray_version}-{python_version}-{platform}"
-                wheel_names.append(wheel_name)
+            if python_version == "cp313-cp313" and platform == "win_amd64":
+                continue
+            wheel_name = f"ray-{ray_version}-{python_version}-{platform}"
+            wheel_names.append(wheel_name)
+
+    for platform in ALL_PLATFORMS:
+        wheel_name = f"ray_cpp-{ray_version}-py3-none-{platform}"
+        wheel_names.append(wheel_name)
+
     return wheel_names
 
 

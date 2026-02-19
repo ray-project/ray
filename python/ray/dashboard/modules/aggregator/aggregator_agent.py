@@ -40,12 +40,18 @@ CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS = ray_constants.env_float(
     "RAY_DASHBOARD_AGGREGATOR_AGENT_CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS", 0.1
 )
 # Maximum size of the event buffer in the aggregator agent
+# The default value was 1,000,000 but was reduced to 100,000 now to avoid being OOM Killed.
+# We observed that the previous 1,000,000 could take up to 20 GB of memory.
+# TODO (rueian): Find a better way for the event buffer to store events while avoiding being OOM Killed. For example:
+# 1. Store bytes instead of python objects and count the size in bytes.
+# 2. Compress the bytes before storing them in the buffer? (This will increase the CPU usage)
+# 3. Don't be fixed at 10,0000 but adjust the buffer size based on the available memory on startup.
 MAX_EVENT_BUFFER_SIZE = ray_constants.env_integer(
-    "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE", 1000000
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE", 100000
 )
 # Maximum number of events to send in a single batch to the destination
 MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
-    "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_SEND_BATCH_SIZE", 10000
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_SEND_BATCH_SIZE", 1000
 )
 # Address of the external service to send events with format of "http://<ip>:<port>"
 EVENTS_EXPORT_ADDR = os.environ.get(
