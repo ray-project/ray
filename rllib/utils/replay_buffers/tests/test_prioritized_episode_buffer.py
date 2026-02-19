@@ -98,12 +98,17 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
             == {"3", "4", "5", "6", "7", "8", "9", "G", "H"}
         )
         # Episode 3 is next for eviction.
-        buffer.add([
-            self._get_episode(id_="3", episode_len=1),
-        ])
-        self.assertTrue(
-            {eps.id_ for eps in buffer.episodes}
-            == {"4", "5", "6", "7", "8", "9", "G", "H"}
+        buffer.add(
+            [
+                self._get_episode(id_="3", episode_len=1),
+                self._get_episode(id_="I", episode_len=1),
+            ]
+        )
+        self.assertEqual(buffer.get_num_timesteps(), 91)
+        self.assertEqual(buffer.get_num_episodes(), 9)
+        self.assertEqual(
+            {eps.id_ for eps in buffer.episodes},
+            {"4", "5", "6", "7", "8", "9", "G", "H", "I"},
         )
 
     def test_buffer_sample_logic(self):

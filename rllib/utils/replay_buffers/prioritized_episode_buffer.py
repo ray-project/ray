@@ -236,7 +236,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Evict episode
             eps_evicted.append(self.episodes.popleft())
             eps_evicted_ids.append(eps_evicted[-1].id_)
-            eps_evicted_indices.append(self.episode_id_to_index.pop(eps_evicted_ids[-1]))
+            eps_evicted_indices.append(
+                self.episode_id_to_index.pop(eps_evicted_ids[-1])
+            )
             num_episodes_evicted += 1
             num_env_steps_evicted += len(eps_evicted[-1])
             agent_to_num_episodes_evicted[DEFAULT_AGENT_ID] += 1
