@@ -88,8 +88,11 @@ class QuadraticBucketScheme {
   /**
     Get the representative value for a bucket index.
 
-    For buckets 0 through num_buckets-2 this returns the upper boundary of the
-    bucket. For the last bucket (overflow bucket) this returns max_value.
+    For buckets 0 through num_buckets-2 this returns the midpoint of the
+    bucket, i.e. the average of its lower and upper boundaries. Using the
+    midpoint gives an unbiased estimate (assuming uniform distribution within
+    each bucket) and maintains strict monotonicity across all buckets.
+    For the last bucket (overflow bucket) this returns max_value.
 
     @param bucket The bucket index.
     @return The representative value for this bucket.

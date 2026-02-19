@@ -36,8 +36,8 @@ TEST(PercentileTrackerTest, BasicPercentiles) {
   }
 
   EXPECT_EQ(tracker.GetCount(), 12);
-  EXPECT_GT(tracker.GetP50(), 10.0);   // Median should be around 12.5
-  EXPECT_LT(tracker.GetP50(), 20.0);   // Should be less than 20
+  EXPECT_GT(tracker.GetP50(), 10.0);   // Median should be around 17.5
+  EXPECT_LT(tracker.GetP50(), 25.0);   // Should be less than 25
   EXPECT_GT(tracker.GetP95(), 200.0);  // P95 should be > 200
   EXPECT_GT(tracker.GetP99(), 500.0);  // P99 should be > 500
   EXPECT_FALSE(std::isnan(tracker.GetMax()));

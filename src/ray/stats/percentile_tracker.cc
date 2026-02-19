@@ -25,7 +25,7 @@ double QuadraticBucketScheme::FromBucket(int bucket) const {
   if (bucket >= num_buckets_ - 1) {
     return max_value_;
   }
-  double unscaled = (bucket * (bucket + 1.0)) / 2.0;
+  double unscaled = ((bucket + 1.0) * (bucket + 1.0)) / 2.0;
   return unscaled * scale_;
 }
 
