@@ -136,7 +136,7 @@ class NormalizeAndClipActions(ConnectorV2):
         # computed/sampled actions intact.
         if self.normalize_actions or self.clip_actions:
             # Copy actions into separate column, just to go to the env.
-            batch[Columns.ACTIONS_FOR_ENV] = copy.deepcopy(batch[Columns.ACTIONS])
+            batch[Columns.ACTIONS_FOR_ENV] = copy.copy(batch[Columns.ACTIONS])
             self.foreach_batch_item_change_in_place(
                 batch=batch,
                 column=Columns.ACTIONS_FOR_ENV,

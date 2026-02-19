@@ -48,7 +48,7 @@ def get_original_space(space: gym.Space) -> gym.Space:
 def is_composite_space(space: gym.Space) -> bool:
     """Returns true, if the space is composite.
 
-    Note, we follow here the glossary of `gymnasium` by which any spoace
+    Note, we follow here the glossary of `gymnasium` by which any space
     that holds other spaces is defined as being 'composite'.
 
     Args:
@@ -57,15 +57,15 @@ def is_composite_space(space: gym.Space) -> bool:
     Returns:
         True, if the space is composed of other spaces, otherwise False.
     """
-    if type(space) in [
-        gym.spaces.Dict,
-        gym.spaces.Graph,
-        gym.spaces.Sequence,
-        gym.spaces.Tuple,
-    ]:
-        return True
-    else:
-        return False
+    return isinstance(
+        space,
+        (
+            gym.spaces.Dict,
+            gym.spaces.Graph,
+            gym.spaces.Sequence,
+            gym.spaces.Tuple,
+        ),
+    )
 
 
 @DeveloperAPI
