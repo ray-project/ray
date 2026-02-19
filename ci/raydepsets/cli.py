@@ -24,6 +24,7 @@ DEFAULT_UV_FLAGS = """
     --emit-index-url
     --emit-find-links
     --quiet
+    --no-upgrade
 """.split()
 
 
