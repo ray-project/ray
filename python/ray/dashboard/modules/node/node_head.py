@@ -282,9 +282,9 @@ class NodeHead(SubprocessModule):
 
             self._dead_node_queue.append(node_id)
             if len(self._dead_node_queue) > node_consts.MAX_DEAD_NODES_TO_CACHE:
-                node_id = self._dead_node_queue.popleft()
-                DataSource.nodes.pop(node_id, None)
-                self._stubs.pop(node_id, None)
+                evicted_node_id = self._dead_node_queue.popleft()
+                DataSource.nodes.pop(evicted_node_id, None)
+                self._stubs.pop(evicted_node_id, None)
         DataSource.nodes[node_id] = node
         # TODO(fyrestone): Handle exceptions.
         address = "{}:{}".format(
