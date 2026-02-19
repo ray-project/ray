@@ -58,15 +58,8 @@ Consider using Ray Serve when your serving workload has one or more of the follo
 |---|---|
 | **Scalability** — needs to handle variable or high traffic | Autoscaling replicas based on request queue depth; scales across a Ray cluster |
 | **Hardware utilization** — GPUs underutilized by one-at-a-time inference | Dynamic request batching and fractional GPU allocation |
-| **Service composition** — multiple models or processing stages | Compose deployments; Ray's object store for efficient data sharing |
+| **Model composition** — multiple models or processing stages | Compose heterogeneous deployments with independent scaling; Efficient data transfer between deployments through the Ray object store |
 | **Slow iteration speed** — Kubernetes YAML, container builds | Python-first API; develop locally, deploy distributed with the same code |
-
-#### Key Ray Serve Features
-
-- [Response streaming](https://docs.ray.io/en/latest/serve/tutorials/streaming.html)
-- [Dynamic request batching](https://docs.ray.io/en/latest/serve/advanced-guides/dyn-req-batch.html)
-- [Model multiplexing](https://docs.ray.io/en/latest/serve/model-multiplexing.html)
-- [Fractional compute resource usage](https://docs.ray.io/en/latest/serve/configure-serve-deployment.html)
 
 ---
 
@@ -151,7 +144,7 @@ Deployment configuration — replicas, resources, autoscaling, and more — can 
 
 - **`@serve.deployment` decorator** — set defaults at class definition time; useful when the config is stable across environments
 - **`.options()`** — override at bind time; useful for environment-specific tuning without changing source code
-- **Anyscale Service YAML** — declarative configuration for production deployments on Anyscale; supports per-environment overrides without code changes. See the [Anyscale Services docs](https://docs.anyscale.com/services/get-started) for details.
+- **Anyscale Service YAML** — declarative configuration for production deployments on Anyscale; supports per-environment overrides without code changes. See the [Anyscale Services docs](https://docs.anyscale.com/services/tutorial) for details.
 
 Using the decorator:
 
@@ -258,8 +251,6 @@ images = np.random.rand(2, 1, 28, 28).tolist()
 response = requests.post("http://localhost:8000/predict", json={"image": images})
 response.json()["predicted_label"]
 ```
-
-Visit `http://localhost:8000/docs` for the auto-generated interactive API documentation.
 
 For more details on HTTP handling in Ray Serve, see the [HTTP Guide](https://docs.ray.io/en/latest/serve/http-guide.html).
 
