@@ -281,7 +281,7 @@ class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
-        from ax.service.ax_client import AxClient
+        from ax.service.ax_client import AxClient, ObjectiveProperties
 
         space = AxSearch.convert_search_space(
             {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}
@@ -318,7 +318,10 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             )
 
         client = AxClient(random_seed=4321, generation_strategy=gs)
-        client.create_experiment(parameters=space, objective_name="loss", minimize=True)
+        client.create_experiment(
+            parameters=space,
+            objectives={"loss": ObjectiveProperties(minimize=True)},
+        )
 
         def cost(space):
             tune.report(

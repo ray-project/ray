@@ -473,7 +473,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertSequenceEqual(choices_1, choices_2)
 
     def testConvertAx(self):
-        from ax.service.ax_client import AxClient
+        from ax.service.ax_client import AxClient, ObjectiveProperties
 
         from ray.tune.search.ax import AxSearch
 
@@ -505,13 +505,15 @@ class SearchSpaceTest(unittest.TestCase):
 
         client1 = AxClient(random_seed=1234)
         client1.create_experiment(
-            parameters=converted_config, objective_name="a", minimize=False
+            parameters=converted_config,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher1 = AxSearch(ax_client=client1)
 
         client2 = AxClient(random_seed=1234)
         client2.create_experiment(
-            parameters=ax_config, objective_name="a", minimize=False
+            parameters=ax_config,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher2 = AxSearch(ax_client=client2)
 
@@ -544,7 +546,7 @@ class SearchSpaceTest(unittest.TestCase):
             GenerationStep,
             GenerationStrategy,
         )
-        from ax.service.ax_client import AxClient
+        from ax.service.ax_client import AxClient, ObjectiveProperties
 
         from ray.tune.search.ax import AxSearch
 
@@ -582,8 +584,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         client1.create_experiment(
             parameters=AxSearch.convert_search_space(config),
-            objective_name="a",
-            minimize=False,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher1 = AxSearch(ax_client=client1)
 
