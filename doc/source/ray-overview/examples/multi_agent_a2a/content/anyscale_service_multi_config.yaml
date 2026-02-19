@@ -1,5 +1,7 @@
 name: multi-agent-a2a
 
+working_dir: .
+
 logging_config:
   encoding: JSON
   log_level: INFO
