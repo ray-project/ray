@@ -119,6 +119,7 @@ class TensorTransportManager(ABC):
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
+        target_buffers: Optional[List["torch.Tensor"]] = None,
     ) -> List["torch.Tensor"]:
         """
         Receive multiple tensors from the source actor. This is called on the destination actor.
@@ -127,7 +128,7 @@ class TensorTransportManager(ABC):
             obj_id: The object ID for related GPU object.
             tensor_transport_metadata: The tensor transport metadata for the GPU object.
             communicator_metadata: The communicator metadata for the send/recv operation.
-
+            target_buffers: Pre-allocated buffers to receive the tensors into if possible.
         Returns:
             List[torch.Tensor]: The received tensors.
         """

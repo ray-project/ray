@@ -38,3 +38,4 @@ Advanced APIs
     ray.experimental.register_tensor_transport
     ray.experimental.register_nixl_memory
     ray.experimental.TensorTransportManager
+    ray.experimental.set_target_for_ref
