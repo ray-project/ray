@@ -4,8 +4,8 @@ orphan: true
 
 <!--
 Do not modify this README. This file is a copy of the notebook and is not used to display the content.
-Modify notebook.ipynb instead, then regenerate this file with:
-jupyter nbconvert "large-size-llm/notebook.ipynb" --to markdown --output "README.md"
+Modify README.ipynb instead, then regenerate this file with:
+jupyter nbconvert "large-size-llm/README.ipynb" --to markdown --output "README.md"
 Or use this script: bash convert_to_md.sh
 -->
 
@@ -13,7 +13,7 @@ Or use this script: bash convert_to_md.sh
 
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Flarge-size-llm"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
-<a href="https://github.com/ray-proj    ect/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/large-size-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/large-size-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
 A large LLM typically runs on multiple nodes with multiple GPUs, prioritizing peak quality and capability: stronger reasoning, broader knowledge, longer context windows, more robust generalization. When higher latency, complexity, and cost are acceptable trade-offs because you require state-of-the-art results.

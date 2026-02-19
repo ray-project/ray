@@ -4,8 +4,8 @@ orphan: true
 
 <!--
 Do not modify this README. This file is a copy of the notebook and is not used to display the content.
-Modify notebook.ipynb instead, then regenerate this file with:
-jupyter nbconvert "vision-llm/notebook.ipynb" --to markdown --output "README.md"
+Modify README.ipynb instead, then regenerate this file with:
+jupyter nbconvert "vision-llm/README.ipynb" --to markdown --output "README.md"
 Or use this script: bash convert_to_md.sh
 -->
 
@@ -126,7 +126,7 @@ for chunk in response:
         print(content, end="", flush=True)
 ```
 
-Example Python with local image:
+Example with local image. Download our [`example.jpg`](https://github.com/ray-project/ray/blob/master/doc/source/serve/tutorials/deployment-serve-llm/vision-llm/example.jpg):
 
 
 ```python
