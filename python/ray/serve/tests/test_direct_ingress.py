@@ -16,8 +16,7 @@ from starlette.responses import PlainTextResponse
 
 import ray
 from ray import serve
-from ray._common.test_utils import Semaphore, SignalActor
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import Semaphore, SignalActor, wait_for_condition
 from ray.actor import ActorHandle
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private.common import DeploymentID
@@ -30,6 +29,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
     RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -79,9 +79,9 @@ def _skip_if_ff_not_enabled():
 
 @pytest.fixture
 def _skip_if_haproxy_enabled():
-    if False:
+    if RAY_SERVE_ENABLE_HA_PROXY:
         pytest.skip(
-            reason="HAProxy is enabled.",
+            reason="RAY_SERVE_ENABLE_HA_PROXY is set.",
         )
 
 
@@ -92,7 +92,7 @@ def _shared_serve_instance():
     env_var_name = "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S"
     original_value = os.environ.get(env_var_name)
 
-    if False:
+    if RAY_SERVE_ENABLE_HA_PROXY:
         # Setting a longer minimum draining period ensures that the client connecting
         # to the uvicorn server closes the connection first. This prevents the socket
         # used by the uvicorn server from entering the TIME_WAIT tcp state, which blocks
@@ -1062,8 +1062,12 @@ def test_only_running_apps_are_used_for_target_groups(
     grpc_ports = get_grpc_ports(first_only=False)
     # In HAProxy mode, we don't return itself or the Serve proxy as a target yet.
     # This will change when we support scale to/from zero.
-    assert set(http_ports) == {30000, 30001} if False else {30000, 30001, 8000}
-    assert set(grpc_ports) == {40000, 40001} if False else {40000, 40001, 9000}
+    assert set(http_ports) == (
+        {30000, 30001} if RAY_SERVE_ENABLE_HA_PROXY else {30000, 30001, 8000}
+    )
+    assert set(grpc_ports) == (
+        {40000, 40001} if RAY_SERVE_ENABLE_HA_PROXY else {40000, 40001, 9000}
+    )
 
     ray.get(signal_actor.send.remote())
 
@@ -2037,8 +2041,9 @@ def test_shutdown_replica_only_after_draining_requests(
     """Test that the replica is shutdown correctly when the deployment is shutdown."""
     signal = SignalActor.remote()
 
-    # Increase graceful_shutdown_timeout_s to ensure replicas aren't force-killed
-    # before requests complete when RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
+    # In direct ingress mode, graceful_shutdown_timeout_s is automatically bumped to
+    # max(graceful_shutdown_timeout_s, RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S)
+    # to give external load balancers time to deregister the replica.
     @serve.deployment(name="replica-shutdown-deployment", graceful_shutdown_timeout_s=5)
     class ReplicaShutdownTest:
         async def __call__(self):
@@ -2071,10 +2076,7 @@ def test_shutdown_replica_only_after_draining_requests(
     )
 
 
-# TODO: haproxy doesn't support /-/routes yet so skipping this test
-def test_http_routes_endpoint(
-    _skip_if_ff_not_enabled, _skip_if_haproxy_enabled, serve_instance
-):
+def test_http_routes_endpoint(_skip_if_ff_not_enabled, serve_instance):
     """Test that the routes endpoint returns pair of routes_prefix and
     app_name of which the replica is serving for.
     """
@@ -2093,12 +2095,20 @@ def test_http_routes_endpoint(
     serve.run(D2.bind(), name="app2", route_prefix="/hello/world")
 
     # Test routes endpoint on the replica running for app1 directly
-    url = get_application_url(app_name="app1", exclude_route_prefix=True)
+    url = get_application_url(
+        app_name="app1",
+        exclude_route_prefix=True,
+        from_proxy_manager=True,
+    )
     routes = httpx.get(f"{url}/-/routes").json()
     assert routes == {"/D1": "app1"}, routes
 
     # Test routes endpoint on the replica running for app2 directly
-    url = get_application_url(app_name="app2", exclude_route_prefix=True)
+    url = get_application_url(
+        app_name="app2",
+        exclude_route_prefix=True,
+        from_proxy_manager=True,
+    )
     routes = httpx.get(f"{url}/-/routes").json()
     assert routes == {"/hello/world": "app2"}, routes
 
@@ -2319,7 +2329,8 @@ def test_get_serve_instance_details_json_serializable(
                                     "upscale_delay_s": 30.0,
                                     "aggregation_function": "mean",
                                     "policy": {
-                                        "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+                                        "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+                                        "policy_kwargs": {},
                                     },
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
@@ -2376,31 +2387,31 @@ def test_get_serve_instance_details_json_serializable(
                     "targets": [
                         {
                             "ip": node_ip,
-                            "port": 8000 if False else 30000,
+                            "port": 8000 if RAY_SERVE_ENABLE_HA_PROXY else 30000,
                             "instance_id": node_instance_id,
                             "name": proxy_details.actor_name
-                            if False
+                            if RAY_SERVE_ENABLE_HA_PROXY
                             else replica.actor_name,
                         },
                     ],
                     "route_prefix": "/",
                     "protocol": "HTTP",
-                    "app_name": "" if False else "default",
+                    "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
                 },
                 {
                     "targets": [
                         {
                             "ip": node_ip,
-                            "port": 9000 if False else 40000,
+                            "port": 9000 if RAY_SERVE_ENABLE_HA_PROXY else 40000,
                             "instance_id": node_instance_id,
                             "name": proxy_details.actor_name
-                            if False
+                            if RAY_SERVE_ENABLE_HA_PROXY
                             else replica.actor_name,
                         },
                     ],
                     "route_prefix": "/",
                     "protocol": "gRPC",
-                    "app_name": "" if False else "default",
+                    "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
                 },
             ],
         }
@@ -2437,6 +2448,89 @@ def test_get_deployment_config(_skip_if_ff_not_enabled, serve_instance):
     )
     # After the deployment is created, the config should be DeploymentConfig.
     assert isinstance(deployment_config, DeploymentConfig)
+
+
+def test_stuck_requests_are_force_killed(_skip_if_ff_not_enabled, serve_instance):
+    """This test is really slow, because it waits for the ports to be released from TIME_WAIT state.
+    The ports are in TIME_WAIT state because the replicas are force-killed and the ports are not
+    released immediately."""
+    import socket
+
+    def _can_bind_to_port(port):
+        """Check if we can bind to the port (not just if nothing is listening)."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("0.0.0.0", port))
+            sock.close()
+            return True
+        except OSError:
+            sock.close()
+            return False
+
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        name="stuck-requests-deployment",
+        graceful_shutdown_timeout_s=1,
+    )
+    class StuckRequestsTest:
+        async def __call__(self):
+            # This request will never complete - it waits forever
+            await signal.wait.remote()
+            return "ok"
+
+    serve.run(
+        StuckRequestsTest.bind(),
+        name="stuck-requests-deployment",
+        route_prefix="/stuck-requests-deployment",
+    )
+
+    # Collect all ports used by the application before deleting it
+    http_ports = get_http_ports(route_prefix="/stuck-requests-deployment")
+    grpc_ports = get_grpc_ports(route_prefix="/stuck-requests-deployment")
+
+    http_url = get_application_url("HTTP", app_name="stuck-requests-deployment")
+
+    with ThreadPoolExecutor() as executor:
+        # Send requests that will hang forever (signal is never sent)
+        futures = [executor.submit(httpx.get, http_url, timeout=60) for _ in range(2)]
+
+        # Wait for requests to be received by the replica
+        wait_for_condition(
+            lambda: ray.get(signal.cur_num_waiters.remote()) == 2, timeout=10
+        )
+
+        # Delete the deployment - requests are still stuck
+        serve.delete("stuck-requests-deployment", _blocking=False)
+
+        # Verify the application is eventually deleted (replica was force-killed).
+        # This should complete within graceful_shutdown_timeout_s (35s) + buffer.
+        wait_for_condition(
+            lambda: "stuck-requests-deployment" not in serve.status().applications,
+            timeout=10,
+        )
+
+        # The stuck requests should fail (connection closed or similar)
+        for future in futures:
+            try:
+                result = future.result(timeout=5)
+                # If we get a response, it should be an error (not 200)
+                assert result.status_code != 200
+            except Exception:
+                # Expected - request failed due to force-kill
+                pass
+
+    # Wait until all ports can be bound (not just until nothing is listening).
+    # This ensures the ports are fully released from TIME_WAIT state.
+    def all_ports_can_be_bound():
+        for port in http_ports + grpc_ports:
+            if not _can_bind_to_port(port):
+                return False
+        return True
+
+    # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
+    wait_for_condition(all_ports_can_be_bound, timeout=120)
 
 
 if __name__ == "__main__":

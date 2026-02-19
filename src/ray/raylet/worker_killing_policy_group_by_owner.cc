@@ -38,29 +38,29 @@ namespace raylet {
 std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
 GroupByOwnerIdWorkerKillingPolicy::SelectWorkersToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-    const MemorySnapshot &system_memory) {
+    const ProcessesMemorySnapshot &process_memory_snapshot) {
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> remaining_alive_targets;
-  for (const auto &target : targets_to_kill) {
-    std::shared_ptr<WorkerInterface> worker = target.first;
+  for (const auto &worker_to_kill_or_should_retry : workers_to_kill) {
+    std::shared_ptr<WorkerInterface> worker = worker_to_kill_or_should_retry.first;
     if (worker->GetProcess().IsAlive()) {
       RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(worker->GetGrantedLeaseId())
           << absl::StrFormat(
                  "Still waiting for worker eviction to free up memory. worker pid: %d",
                  worker->GetProcess().GetId());
-      remaining_alive_targets.push_back(target);
+      remaining_alive_targets.push_back(worker_to_kill_or_should_retry);
     }
   }
-  targets_to_kill = remaining_alive_targets;
-  if (targets_to_kill.empty()) {
-    targets_to_kill = Policy(workers, system_memory);
-    if (targets_to_kill.empty()) {
+  workers_to_kill = remaining_alive_targets;
+  if (workers_to_kill.empty()) {
+    workers_to_kill = Policy(workers, process_memory_snapshot);
+    if (workers_to_kill.empty()) {
       RAY_LOG_EVERY_MS(WARNING, 5000)
           << "Worker killer did not select any workers to "
              "kill even though memory usage is high. Object store "
              "may be causing high memory pressure. Consider checking "
              "if too many objects are unintentionally being stored.";
     }
-    return targets_to_kill;
+    return workers_to_kill;
   }
   // Else, there are workers still alive from the previous iteration.
   // We need to wait until they are dead before we can kill more workers.
@@ -70,7 +70,7 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkersToKill(
 std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
 GroupByOwnerIdWorkerKillingPolicy::Policy(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-    const MemorySnapshot &system_memory) const {
+    const ProcessesMemorySnapshot &process_memory_snapshot) const {
   if (workers.empty()) {
     RAY_LOG_EVERY_MS(INFO, 5000) << "Worker list is empty. Nothing can be killed";
     return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
@@ -123,22 +123,25 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
   auto worker_to_kill = selected_group.SelectWorkerToKill();
 
   RAY_LOG(INFO) << absl::StrFormat(
-      "Sorted list of leases based on the policy: %s, Lease should be retried? %d",
-      PolicyDebugString(sorted, system_memory),
-      should_retry);
+      "Sorted list of leases based on the policy: %s, Lease should be retried? %s",
+      PolicyDebugString(sorted, process_memory_snapshot),
+      should_retry ? "true" : "false");
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
       workers_to_kill_and_should_retry;
-  workers_to_kill_and_should_retry.push_back(
-      std::make_pair(worker_to_kill, should_retry));
+  workers_to_kill_and_should_retry.emplace_back(worker_to_kill, should_retry);
 
   return workers_to_kill_and_should_retry;
 }
 
 std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
-    const std::vector<Group> &groups, const MemorySnapshot &system_memory) {
+    const std::vector<Group> &groups,
+    const ProcessesMemorySnapshot &process_memory_snapshot) {
   std::stringstream result;
   int32_t group_index = 0;
   for (const auto &group : groups) {
+    if (group_index > 0) {
+      result << ", ";
+    }
     result << absl::StrFormat(
         "Leases (retriable: %d) (parent task id: %s) (Earliest granted "
         "time: %s): ",
@@ -153,8 +156,8 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
       }
       auto pid = worker->GetProcess().GetId();
       int64_t used_memory = 0;
-      const auto pid_entry = system_memory.process_used_bytes.find(pid);
-      if (pid_entry != system_memory.process_used_bytes.end()) {
+      const auto pid_entry = process_memory_snapshot.find(pid);
+      if (pid_entry != process_memory_snapshot.end()) {
         used_memory = pid_entry->second;
       } else {
         RAY_LOG_EVERY_MS(INFO, 60000) << absl::StrFormat(

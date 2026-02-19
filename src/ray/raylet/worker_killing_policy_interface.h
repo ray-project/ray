@@ -21,7 +21,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/memory_monitor.h"
+#include "ray/common/memory_monitor_interface.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet/worker_pool.h"
 
@@ -39,13 +39,13 @@ class WorkerKillingPolicyInterface {
    * @brief Selects workers to be killed.
    *
    * @param workers the list of candidate workers.
-   * @param system_memory snapshot of memory usage.
+   * @param process_memory_snapshot snapshot of per-process memory usage.
    * @return the list of workers to kill and whether the task on each worker should be
    * retried.
    */
   virtual std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
   SelectWorkersToKill(const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-                      const MemorySnapshot &system_memory) = 0;
+                      const ProcessesMemorySnapshot &process_memory_snapshot) = 0;
 
   virtual ~WorkerKillingPolicyInterface() = default;
 };

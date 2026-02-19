@@ -14,6 +14,7 @@ from ray.serve._private.grpc_util import (
     get_grpc_response_status,
     gRPCGenericServer,
 )
+from ray.serve._private.proxy_request_response import gRPCStreamingType
 from ray.serve._private.test_utils import FakeGrpcContext
 from ray.serve.exceptions import BackPressureError, gRPCStatusError
 from ray.serve.grpc_util import RayServegRPCContext
@@ -27,9 +28,11 @@ class FakeGrpcServer:
         self.address = address
 
 
-def fake_service_handler_factory(service_method: str, stream: bool) -> Callable:
+def fake_service_handler_factory(
+    service_method: str, streaming_type: gRPCStreamingType
+) -> Callable:
     def foo() -> bytes:
-        return f"{'stream' if stream else 'unary'} call from {service_method}".encode()
+        return f"{streaming_type.value} call from {service_method}".encode()
 
     return foo
 
@@ -38,8 +41,9 @@ def test_grpc_server():
     """Test `gRPCGenericServer` did the correct overrides.
 
     When a add_servicer_to_server function is called on an instance of `gRPCGenericServer`,
-    it correctly overrides `response_serializer` to None, and `unary_unary` and
-    `unary_stream` to be generated from the factory function.
+    it correctly overrides `response_serializer` to None, and `unary_unary`,
+    `unary_stream`, `stream_unary`, and `stream_stream` to be generated from the
+    factory function.
     """
     service_name = "ray.serve.ServeAPIService"
     method_name = "ServeRoutes"
@@ -74,13 +78,25 @@ def test_grpc_server():
     assert rpc_handler.service_name() == service_name
 
     # The populated method handlers should have the correct response_serializer,
-    # unary_unary, and unary_stream.
+    # unary_unary, unary_stream, stream_unary, and stream_stream.
     service_method = f"/{service_name}/{method_name}"
     method_handlers = rpc_handler._method_handlers.get(service_method)
     assert method_handlers.response_serializer is None
-    assert method_handlers.unary_unary() == f"unary call from {service_method}".encode()
     assert (
-        method_handlers.unary_stream() == f"stream call from {service_method}".encode()
+        method_handlers.unary_unary()
+        == f"unary_unary call from {service_method}".encode()
+    )
+    assert (
+        method_handlers.unary_stream()
+        == f"unary_stream call from {service_method}".encode()
+    )
+    assert (
+        method_handlers.stream_unary()
+        == f"stream_unary call from {service_method}".encode()
+    )
+    assert (
+        method_handlers.stream_stream()
+        == f"stream_stream call from {service_method}".encode()
     )
 
 

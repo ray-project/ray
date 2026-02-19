@@ -9,7 +9,10 @@ import ray
 import ray.cluster_utils
 import ray.experimental.internal_kv as internal_kv
 from ray import ObjectRef
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS,
@@ -19,7 +22,6 @@ from ray._private.test_utils import (
     is_placement_group_removed,
     kill_actor_and_wait_for_failure,
     reset_autoscaler_v2_enabled_cache,
-    run_string_as_driver,
 )
 from ray.autoscaler._private.commands import debug_status
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S

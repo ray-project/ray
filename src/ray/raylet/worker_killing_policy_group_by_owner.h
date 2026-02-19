@@ -23,7 +23,7 @@
 
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "ray/common/memory_monitor.h"
+#include "ray/common/memory_monitor_interface.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet/worker_killing_policy_interface.h"
 
@@ -97,7 +97,7 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
 
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> SelectWorkersToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      const MemorySnapshot &system_memory);
+      const ProcessesMemorySnapshot &process_memory_snapshot);
 
  private:
   /**
@@ -114,7 +114,7 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
    */
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> Policy(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      const MemorySnapshot &system_memory) const;
+      const ProcessesMemorySnapshot &process_memory_snapshot) const;
 
   /**
    * Creates the debug string of the groups created by the policy.
@@ -123,12 +123,13 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
    * \param system_memory snapshot of memory usage.
    * \return the debug string.
    */
-  static std::string PolicyDebugString(const std::vector<Group> &groups,
-                                       const MemorySnapshot &system_memory);
+  static std::string PolicyDebugString(
+      const std::vector<Group> &groups,
+      const ProcessesMemorySnapshot &process_memory_snapshot);
 
   // The current selected workers to be killed and whether the task on each worker
   // should be retried.
-  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> targets_to_kill;
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill;
 };
 
 }  // namespace raylet

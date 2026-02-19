@@ -130,6 +130,12 @@ def _apply_default_params(
         ctx.capacity_adjusted_min_replicas,
         ctx.capacity_adjusted_max_replicas,
     )
+
+    # If curr num replicas is 0 and the policy wants to scale up (e.g. based on internal
+    # signals like queue length), bypass the delay logic for immediate scale-up.
+    if ctx.current_num_replicas == 0 and bounded_num_replicas > 0:
+        return bounded_num_replicas, policy_state
+
     # Apply delay logic
     # Only send the internal state here to avoid overwriting the custom policy state.
     final_num_replicas, updated_state = _apply_delay_logic(
@@ -185,13 +191,12 @@ def _get_cold_start_scale_up_replicas(ctx: AutoscalingContext) -> Optional[int]:
     """
     Returns the desired number of replicas if the cold start fast path applies, otherwise returns None.
     """
-    if ctx.current_num_replicas == 0:
-        if ctx.total_num_requests > 0:
-            return max(
-                math.ceil(1 * ctx.config.get_upscaling_factor()),
-                ctx.target_num_replicas,
-            )
-        return ctx.target_num_replicas
+    if ctx.current_num_replicas == 0 and ctx.total_num_requests > 0:
+        return max(
+            math.ceil(1 * ctx.config.get_upscaling_factor()),
+            ctx.target_num_replicas,
+        )
+
     return None
 
 
@@ -298,7 +303,7 @@ def _core_replica_queue_length_policy(
     num_running_replicas = ctx.current_num_replicas
     config = ctx.config
     if num_running_replicas == 0:
-        raise ValueError("Number of replicas cannot be zero")
+        return ctx.target_num_replicas, {}
     target_num_requests = config.get_target_ongoing_requests() * num_running_replicas
     error_ratio = ctx.total_num_requests / target_num_requests
     desired_num_replicas = num_running_replicas * error_ratio

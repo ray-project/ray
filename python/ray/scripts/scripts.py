@@ -779,11 +779,17 @@ def start(
         )
         temp_dir = None
 
+    available_memory_bytes = ray._private.utils.estimate_available_memory()
+    object_store_memory = ray._private.utils.resolve_object_store_memory(
+        available_memory_bytes, object_store_memory
+    )
+
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
         cgroup_path=cgroup_path,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
+        object_store_memory=object_store_memory,
     )
 
     # - For non-worker processes, thread the behavior explicitly via RayParams.log_to_stderr.
@@ -817,6 +823,7 @@ def start(
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         memory=memory,
+        available_memory_bytes=available_memory_bytes,
         object_store_memory=object_store_memory,
         redis_username=redis_username,
         redis_password=redis_password,
@@ -2677,8 +2684,15 @@ def healthcheck(address, component, skip_version_check):
     type=str,
     help="The directory to generate the bazel project template to, if provided.",
 )
+@click.option(
+    "--bazel-version",
+    default="6.5.0",
+    required=False,
+    type=str,
+    help="The bazel version to use, if provided.",
+)
 @add_click_logging_options
-def cpp(show_library_path, generate_bazel_project_template_to):
+def cpp(show_library_path, generate_bazel_project_template_to, bazel_version):
     """Show the cpp library path and generate the bazel project template.
 
     This command MUST be run from the ray project root directory if
@@ -2704,15 +2718,6 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
         cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
     if generate_bazel_project_template_to:
-
-        bazel_version_filename = ".bazelversion"
-
-        if not os.path.exists(bazel_version_filename):
-            raise ValueError(
-                "This command can only be run from the ray project's root directory. "
-                "It expects a .bazelversion file to be present."
-            )
-
         out_dir = generate_bazel_project_template_to
         # copytree expects that the dst dir doesn't exist
         # so we manually delete it if it exists.
@@ -2730,11 +2735,8 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         out_lib_dir = os.path.join(out_dir, "thirdparty/lib")
         shutil.copytree(lib_dir, out_lib_dir)
 
-        # This assumes that your current working directory has a .bazelversion file.
-        shutil.copyfile(
-            bazel_version_filename,
-            os.path.join(out_dir, bazel_version_filename),
-        )
+        with open(os.path.join(out_dir, ".bazelversion"), "w") as f:
+            f.write(bazel_version.strip() + "\n")
 
         cli_logger.print(
             "Project template generated to {}",
