@@ -1411,6 +1411,7 @@ class TargetGroup(BaseModel, frozen=True):
     route_prefix: str = Field(description="Prefix route of the targets.")
     protocol: RequestProtocol = Field(description="Protocol of the targets.")
     app_name: str = Field("", description="Name of the application.")
+    fallback_target: Target = Field(description="Fallback target when all targets are unavailable.")
 
 
 @PublicAPI(stability="stable")

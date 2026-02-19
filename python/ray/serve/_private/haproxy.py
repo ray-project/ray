@@ -26,6 +26,7 @@ from ray.serve._private.constants import (
     NO_ROUTES_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG,
+    RAY_SERVE_FALLBACK_PROXY_HTTP_PORT,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
@@ -250,6 +251,9 @@ class BackendConfig:
     # The app name for this backend.
     app_name: str = field(default_factory=str)
 
+    # The fallback target for this backend.
+    fallback_server: ServerConfig = field(default_factory=ServerConfig)
+
     def build_health_check_config(self, global_config: "HAProxyConfig") -> dict:
         """Build health check configuration for HAProxy backend.
 
@@ -317,7 +321,7 @@ class BackendConfig:
         }
 
     def __str__(self) -> str:
-        return f"BackendConfig(app_name='{self.app_name}', name='{self.name}', path_prefix='{self.path_prefix}', servers={self.servers})"
+        return f"BackendConfig(app_name='{self.app_name}', name='{self.name}', path_prefix='{self.path_prefix}', servers={self.servers}, fallback_server={self.fallback_server})"
 
     def __repr__(self) -> str:
         return str(self)
@@ -1111,27 +1115,27 @@ class HAProxyManager(ProxyActorInterface):
                 log_file_path = handler.target.baseFilename
 
         return log_file_path
-
-    def _targets_to_servers(self, targets: List[Target]) -> List[ServerConfig]:
-        """Convert a list of targets to a list of servers."""
-        # The server name is derived from the replica's actor name, with the
-        # format `SERVE_REPLICA::<app>#<deployment>#<replica_id>`, or the
-        # proxy's actor name, with the format `SERVE_PROXY_ACTOR-<node_id>`.
-        # Special characters in the names are converted to comply with haproxy
-        # config's allowed characters, e.g. `#` -> `-`.
-        return [
-            ServerConfig(
-                name=self.get_safe_name(target.name),
-                # Use localhost if target is on the same node as HAProxy
-                host="127.0.0.1" if target.ip == self._node_ip_address else target.ip,
-                port=target.port,
-            )
-            for target in targets
-        ]
+    
+    def _target_to_server(self, target: Target) -> ServerConfig:
+        """Convert a target to a server."""
+        return ServerConfig(
+            # The server name is derived from the replica's actor name, with the
+            # format `SERVE_REPLICA::<app>#<deployment>#<replica_id>`, or the
+            # proxy's actor name, with the format `SERVE_PROXY_ACTOR-<node_id>`.
+            # Special characters in the names are converted to comply with haproxy
+            # config's allowed characters, e.g. `#` -> `-`.
+            name=self.get_safe_name(target.name),
+            # Use localhost if target is on the same node as HAProxy
+            host="127.0.0.1" if target.ip == self._node_ip_address else target.ip,
+            port=target.port,
+        )
 
     def _target_group_to_backend(self, target_group: TargetGroup) -> BackendConfig:
         """Convert a target group to a backend name."""
-        servers = self._targets_to_servers(target_group.targets)
+        servers = [
+            self._target_to_server(target)
+            for target in target_group.targets
+        ]
         # The name is lowercased and formatted as <protocol>-<app_name>. Special
         # characters in the name are converted to comply with haproxy config's
         # allowed characters, e.g. `#` -> `-`.
@@ -1142,6 +1146,7 @@ class HAProxyManager(ProxyActorInterface):
             path_prefix=target_group.route_prefix,
             servers=servers,
             app_name=target_group.app_name,
+            fallback_server=self._target_to_server(target_group.fallback_target),
         )
 
     async def _reload_haproxy(self) -> None:
