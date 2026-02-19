@@ -3898,14 +3898,14 @@
 # Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_quantized_tp_1
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -3919,14 +3919,14 @@
 # Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_tp_2
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -3939,14 +3939,14 @@
 
 - name: llm_serve_multi_node
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
       runtime_env:
         - RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 # For test_llm_serve_prefill_decode_with_data_parallelism
     cluster_compute: llm_2x_4xl4.yaml
@@ -3958,14 +3958,14 @@
 
 - name: llm_serve_llama_3dot2_1B_no_accelerator
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_g5-4xlarge.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -3979,14 +3979,14 @@
 
 - name: llm_serve_llama_3dot1_8B_lora
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -3999,14 +3999,14 @@
 
 - name: llm_serve_llama_3dot2_1B_s3
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4019,14 +4019,14 @@
 
 - name: llm_serve_correctness
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4038,14 +4038,14 @@
 
 - name: llm_serve_vllm_integration_tests
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4057,14 +4057,14 @@
 
 - name: llm_serve_sleep_wakeup
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4077,14 +4077,14 @@
 
 - name: llm_serve_pause_resume
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4097,14 +4097,14 @@
 
 - name: llm_serve_rlhf
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4117,14 +4117,14 @@
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_1p1d
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4137,14 +4137,14 @@
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4157,14 +4157,14 @@
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d_lmcache
   frequency: manual # todo(ray-llm): fix this test with new/old lmcache version and new vllm version and re-enable it.
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
       post_build_script: byod_llm_lmcache_test.sh
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
@@ -4182,14 +4182,14 @@
 
 - name: llm_batch_vllm
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-batch
   team: llm
   working_dir: llm_tests/batch
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_4xl4.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4202,14 +4202,14 @@
 
 - name: llm_batch_sglang_llama
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-batch
   team: llm
   working_dir: llm_tests/batch
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
       post_build_script: byod_llm_sglang_test.sh
     cluster_compute: llm_4xl4.yaml
 
@@ -4221,14 +4221,14 @@
 - name: llm_batch_vllm_multi_node
   # TODO(ray-llm): https://github.com/anyscale/ray/issues/572
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: llm-batch
   team: llm
   working_dir: llm_tests/batch
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_2x_4xl4.yaml
 
   run:
@@ -4237,7 +4237,7 @@
       pytest -sv test_batch_multi_node_vllm.py
 
 - name: llm_batch_single_node_baseline_benchmark
-  python: "3.11"
+  python: "3.12"
   group: llm-batch
   working_dir: llm_tests/batch
   frequency: nightly
@@ -4247,9 +4247,9 @@
     byod:
       runtime_env:
         - VLLM_DISABLE_COMPILE_CACHE=1
-      type: llm-cu128
+      type: llm-cu129
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
-      python_depset: llm_batch/llm_batch_single_node_benchmark_py311_cu128.lock
+      python_depset: llm_batch/llm_batch_single_node_benchmark_py312_cu129.lock
     cluster_compute: llm_single_node_benchmark_l4.yaml
 
   run:
