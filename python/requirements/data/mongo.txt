@@ -1,0 +1,6 @@
+numpy==1.23.5
+pyarrow==9.0.0
+pymongoarrow==0.5.1
+pymongo==4.3.2
+torch==2.3.0+cpu
+torchvision==0.18.0+cpu
