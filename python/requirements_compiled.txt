@@ -58,7 +58,7 @@ bayesian-optimization==1.4.3
     #   nevergrad
 billiard==4.2.4
     # via celery
-botorch[pymoo]==0.16.1
+botorch==0.16.1
     # via ax-platform
 celery==5.6.2
     # via -r /tmp/combined_requirements.txt
