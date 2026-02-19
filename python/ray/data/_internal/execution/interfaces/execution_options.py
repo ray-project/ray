@@ -1,5 +1,6 @@
 import math
 import os
+import warnings
 from typing import Any, Dict, List, Optional, Union
 
 from .common import NodeIdStr
@@ -301,9 +302,6 @@ class ExecutionOptions:
             automatically excluded.
             - For each resource type, resource_limits and exclude_resources can
             not be both set.
-        locality_with_output: Set this to prefer running tasks on the same node as the
-            output node (node driving the execution). It can also be set to a list of
-            node ids to spread the outputs across those nodes. Off by default.
         preserve_order: Set this to preserve the ordering between blocks processed by
             operators. Off by default.
         actor_locality_enabled: Whether to enable locality-aware task dispatch to
@@ -329,7 +327,6 @@ class ExecutionOptions:
         if exclude_resources is None:
             exclude_resources = ExecutionResources.zero()
         self.exclude_resources = exclude_resources
-        self.locality_with_output = locality_with_output
         self.preserve_order = preserve_order
         self.actor_locality_enabled = actor_locality_enabled
         if verbose_progress is None:
@@ -376,6 +373,22 @@ class ExecutionOptions:
                     "resource_limits and exclude_resources cannot "
                     f" both be set for {attr} resource."
                 )
+
+    @property
+    def locality_with_output(self) -> bool:
+        return False
+
+    @locality_with_output.setter
+    def locality_with_output(self, value: Union[bool, List[NodeIdStr]]) -> None:
+        if value:
+            warnings.warn(
+                "`ExecutionOptions.locality_with_output` has been removed and is now "
+                "a no-op. We don't recommend using it anymore, but if you still want "
+                "to replicate its behavior, follow the instructions in this gist: "
+                "https://gist.github.com/bveeramani/51e0383bb3680dd78fdfb92d76ea22a8.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
 
 def safe_or(value: Optional[Any], alt: Any) -> Any:
