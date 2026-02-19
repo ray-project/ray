@@ -250,7 +250,7 @@ exclude_patterns = [
     "ray-overview/examples/**/README.md",
     "train/examples/**/README.md",
     "serve/tutorials/deployment-serve-llm/README.*",
-    "serve/tutorials/deployment-serve-llm/**.ipynb",
+    "serve/tutorials/deployment-serve-llm/**/README.md",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
