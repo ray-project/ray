@@ -2230,6 +2230,18 @@ py_test(
 )
 
 py_test(
+    name = "test_encoder_layernorm",
+    size = "medium",
+    srcs = ["core/models/tests/test_encoder_layernorm.py"],
+    tags = [
+        "core",
+        "models",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "test_mlp_heads",
     size = "medium",
     srcs = ["core/models/tests/test_mlp_heads.py"],
