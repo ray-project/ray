@@ -215,6 +215,7 @@ class ServeController:
             logging_config=self.global_logging_config,
             grpc_options=set_proxy_default_grpc_options(grpc_options),
             proxy_actor_class=get_proxy_actor_class(),
+            running_native_proxies=self._ha_proxy_enabled,
         )
         # We modify the HTTP and gRPC options above, so delete them to avoid
         del http_options, grpc_options
