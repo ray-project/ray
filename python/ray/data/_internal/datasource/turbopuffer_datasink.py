@@ -162,11 +162,11 @@ class TurbopufferDatasink(Datasink):
             )
 
         # Validate region / base_url mutual exclusivity.
-        if region and base_url:
+        if region is not None and base_url is not None:
             raise ValueError(
                 "Specify exactly one of 'region' or 'base_url', not both."
             )
-        if not region and not base_url:
+        if region is None and base_url is None:
             raise ValueError(
                 "Either 'region' or 'base_url' must be provided."
             )
