@@ -226,22 +226,6 @@ py_test(
 )
 
 py_test(
-    name = "test_anyscale_docker_container",
-    size = "small",
-    srcs = ["test_anyscale_docker_container.py"],
-    exec_compatible_with = ["//bazel:py3"],
-    tags = [
-        "ci_unit",
-        "team:ci",
-    ],
-    deps = [
-        ":ray_ci_lib",
-        ":ray_ci_lib_test",
-        ci_require("pytest"),
-    ],
-)
-
-py_test(
     name = "test_bazel_sharding",
     size = "small",
     srcs = ["test_bazel_sharding.py"],
