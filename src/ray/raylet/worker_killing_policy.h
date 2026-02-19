@@ -21,7 +21,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/memory_monitor.h"
+#include "ray/common/memory_monitor_interface.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet/worker_pool.h"
 
@@ -35,12 +35,12 @@ class WorkerKillingPolicy {
   /// Selects a worker to be killed.
   ///
   /// \param workers the list of candidate workers.
-  /// \param system_memory snapshot of memory usage.
+  /// \param process_memory_snapshot snapshot of memory usage per process.
   ///
   /// \return the worker to kill and whether the task on the worker should be retried.
   virtual std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      const MemorySnapshot &system_memory) const = 0;
+      const ProcessesMemorySnapshot &process_memory_snapshot) const = 0;
 
   virtual ~WorkerKillingPolicy() = default;
 
@@ -50,13 +50,13 @@ class WorkerKillingPolicy {
   /// \param workers The workers to be printed.
   /// \param num_workers The number of workers to print starting from the beginning of the
   /// worker list.
-  /// \param system_memory snapshot of memory usage.
+  /// \param process_memory_snapshot snapshot of memory usage per process.
   ///
   /// \return the debug string.
   static std::string WorkersDebugString(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       int32_t num_workers,
-      const MemorySnapshot &system_memory);
+      const ProcessesMemorySnapshot &process_memory_snapshot);
 };
 
 }  // namespace raylet

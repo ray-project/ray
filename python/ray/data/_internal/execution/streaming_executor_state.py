@@ -206,6 +206,9 @@ class OpState:
     def __repr__(self):
         return f"OpState({self.op.name})"
 
+    def has_pending_bundles(self) -> bool:
+        return any(len(q) > 0 for q in self.input_queues)
+
     def total_enqueued_input_blocks(self) -> int:
         """Total number of blocks currently enqueued among:
         1. Input queue(s) pending dispatching (``OpState.input_queues``)
@@ -219,9 +222,6 @@ class OpState:
         )
         return external_queue_size + internal_queue_size
 
-    def has_pending_bundles(self) -> bool:
-        return any(len(q) > 0 for q in self.input_queues)
-
     def total_enqueued_input_blocks_bytes(self) -> int:
         """Total number of bytes occupied by input bundles currently enqueued among:
         1. Input queue(s) pending dispatching (``OpState.input_queues``)
@@ -234,15 +234,56 @@ class OpState:
         )
         return self.input_queue_bytes() + internal_queue_size_bytes
 
+    def total_enqueued_output_blocks(self) -> int:
+        """Total number of blocks currently enqueued among:
+
+        1. Output queue(s) pending dispatching (``OpState.output_queue``)
+        2. Operator's internal output queues (like ``MapOperator``s reordering
+        bundle-queue, when ``preserve_order=True`` etc)
+        """
+        external_queue_size = self.output_queue.num_blocks
+        internal_queue_size = (
+            self.op.internal_output_queue_num_blocks()
+            if isinstance(self.op, InternalQueueOperatorMixin)
+            else 0
+        )
+
+        return external_queue_size + internal_queue_size
+
+    def total_enqueued_output_blocks_bytes(self) -> int:
+        """Total number of bytes occupied by output bundles currently enqueued
+        among:
+
+        1. Output queue(s) pending dispatching (``OpState.output_queue``)
+        2. Operator's internal output queues (like ``MapOperator``s reordering
+        bundle-queue, when ``preserve_order=True`` etc)
+        """
+        internal_queue_size_bytes = (
+            self.op.internal_output_queue_num_bytes()
+            if isinstance(self.op, InternalQueueOperatorMixin)
+            else 0
+        )
+
+        return self.output_queue_bytes() + internal_queue_size_bytes
+
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
 
-        ref, diverged = dedupe_schemas_with_validation(
+        out_ref, diverged = dedupe_schemas_with_validation(
             self._schema,
             ref,
-            warn=not self._warned_on_schema_divergence,
             enforce_schemas=self.op.data_context.enforce_schemas,
         )
+
+        if (
+            diverged
+            and not self._warned_on_schema_divergence
+            and self.op.data_context.enforce_schemas
+        ):
+            warning_message = _build_schemas_mismatch_warning(self._schema, ref.schema)
+            logger.warning(warning_message)
+
+        ref = out_ref
 
         self._schema = ref.schema
         self._warned_on_schema_divergence |= diverged
@@ -430,6 +471,7 @@ def process_completed_tasks(
             ready_tasks_by_op[state].append(task)
 
         for state, ready_tasks in ready_tasks_by_op.items():
+            # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
             for task in ready_tasks:
                 if isinstance(task, DataOpTask):
@@ -564,7 +606,7 @@ def get_eligible_operators(
         #   - Its input queue has a valid bundle
         if (
             not op.has_completed()
-            and op.should_add_input()
+            and op.can_add_input()
             and state.has_pending_bundles()
         ):
             if not in_backpressure:
@@ -642,19 +684,114 @@ def _actor_info_summary_str(info: _ActorPoolInfo) -> str:
         return f"{base} ({info})"
 
 
+def _format_schema_mismatch_section(
+    title: str, entries: List[str], truncate_num_mismatched_fields_to: int
+) -> str:
+    """Generate a titled section of the schema mismatch warning.
+
+    Args:
+        title: Section title describing the mismatched fields.
+        entries: Field detail strings (name + type).
+        truncate_num_mismatched_fields_to: Max entries shown before truncation.
+
+    Returns:
+        A formatted message for the warning section, or "" if entries is empty.
+    """
+    if not entries:
+        return ""
+
+    shown = entries[:truncate_num_mismatched_fields_to]
+    remainder = len(entries) - truncate_num_mismatched_fields_to
+
+    body = "\n".join(f"    {line}" for line in shown)
+    suffix = f"\n    ... and {remainder} more" if remainder > 0 else ""
+
+    return f"{title} ({len(entries)} total):\n{body}{suffix}\n"
+
+
+def _build_schemas_mismatch_warning(
+    old_schema: "Schema", new_schema: Optional["Schema"], truncation_length: int = 20
+) -> str:
+    from ray.data.block import _is_empty_schema
+
+    if _is_empty_schema(new_schema):
+        old_fields_info = [
+            f"{name}: {str(t)}" for name, t in zip(old_schema.names, old_schema.types)
+        ]
+        is_empty_message = _format_schema_mismatch_section(
+            "Operator produced a RefBundle with an empty/unknown schema.",
+            old_fields_info,
+            truncate_num_mismatched_fields_to=truncation_length,
+        )
+        return is_empty_message + "This may lead to unexpected behavior."
+
+    # We assume old_schema and new_schema have the same underlying type
+    # and can only either be PyArrow schemas or PandasBlockSchema
+    old_fields = {name: str(t) for name, t in zip(old_schema.names, old_schema.types)}
+    new_fields = {name: str(t) for name, t in zip(new_schema.names, new_schema.types)}
+
+    new_exclusive_fields = [name for name in new_fields if name not in old_fields]
+    old_exclusive_fields = [name for name in old_fields if name not in new_fields]
+    changed_fields = [
+        name
+        for name in new_fields
+        if name in old_fields and new_fields[name] != old_fields[name]
+    ]
+
+    new_excl_fields_info = [
+        f"{field}: {new_fields[field]}" for field in new_exclusive_fields
+    ]
+    old_excl_fields_info = [
+        f"{field}: {old_fields[field]}" for field in old_exclusive_fields
+    ]
+    changed_fields_info = [
+        f"{field}: {old_fields[field]} => {new_fields[field]}"
+        for field in changed_fields
+    ]
+
+    new_excl_fields_message = _format_schema_mismatch_section(
+        "Fields exclusive to the incoming schema",
+        new_excl_fields_info,
+        truncate_num_mismatched_fields_to=truncation_length,
+    )
+    old_excl_fields_message = _format_schema_mismatch_section(
+        "Fields exclusive to the old schema",
+        old_excl_fields_info,
+        truncate_num_mismatched_fields_to=truncation_length,
+    )
+    changed_fields_message = _format_schema_mismatch_section(
+        "Fields that have different types across the old and the incoming schemas",
+        changed_fields_info,
+        truncate_num_mismatched_fields_to=truncation_length,
+    )
+
+    disordered_message = ""
+    if not new_exclusive_fields and not old_exclusive_fields and not changed_fields:
+        assert old_fields == new_fields
+        disordered_message = "Some fields are ordered differently across the old and the incoming schemas.\n"
+
+    return (
+        "Operator produced a RefBundle with a different schema "
+        "than the previous one.\n"
+        + new_excl_fields_message
+        + old_excl_fields_message
+        + changed_fields_message
+        + disordered_message
+        + "This may lead to unexpected behavior."
+    )
+
+
 def dedupe_schemas_with_validation(
     old_schema: Optional["Schema"],
     bundle: "RefBundle",
-    warn: bool = True,
     enforce_schemas: bool = False,
 ) -> Tuple["RefBundle", bool]:
-    """Unify/Dedupe two schemas, warning if warn=True
+    """Unify/Dedupe two schemas
 
     Args:
         old_schema: The old schema to unify. This can be `None`, in which case
             the new schema will be used as the old schema.
         bundle: The new `RefBundle` to unify with the old schema.
-        warn: Raise a warning if the schemas diverge.
         enforce_schemas: If `True`, allow the schemas to diverge and return unified schema.
             If `False`, but keep the old schema.
 
@@ -676,12 +813,6 @@ def dedupe_schemas_with_validation(
         return bundle, diverged
 
     diverged = True
-    if warn and enforce_schemas:
-        logger.warning(
-            f"Operator produced a RefBundle with a different schema "
-            f"than the previous one. Previous schema: {old_schema}, "
-            f"new schema: {bundle.schema}. This may lead to unexpected behavior."
-        )
     if enforce_schemas:
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
 

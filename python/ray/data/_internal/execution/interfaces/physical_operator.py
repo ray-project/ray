@@ -424,7 +424,6 @@ class PhysicalOperator(Operator):
         #       - All input blocks have been ingested
         #       - Internal queue is empty
         #       - There are no active or pending tasks
-
         return self._is_execution_marked_finished or (
             self._inputs_complete
             and self.num_active_tasks() == 0
@@ -445,13 +444,14 @@ class PhysicalOperator(Operator):
             internal_output_queue_num_blocks = self.internal_output_queue_num_blocks()
 
         # NOTE: We check for (internal_output_queue_size == 0) and
-        # (not self.has_next()) because _OrderedOutputQueue can
+        # (not self.has_next()) because ReorderingBundleQueue can
         # return False for self.has_next(), but have a non-empty queue size.
         # Draining the internal output queue is important to free object refs.
         return (
             self.has_execution_finished()
-            and not self.has_next()
             and internal_output_queue_num_blocks == 0
+            # TODO following check is redundant; remove
+            and not self.has_next()
         )
 
     def get_stats(self) -> StatsDict:
@@ -510,7 +510,7 @@ class PhysicalOperator(Operator):
         For regular tasks, this is the resources required to schedule a task. For actor
         tasks, this is the resources required to schedule an actor.
         """
-        return ExecutionResources.zero()
+        return self.incremental_resource_usage()
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
@@ -553,7 +553,7 @@ class PhysicalOperator(Operator):
         """
         self._started = True
 
-    def should_add_input(self) -> bool:
+    def can_add_input(self) -> bool:
         """Return whether it is desirable to add input to this operator right now.
 
         Operators can customize the implementation of this method to apply additional
@@ -679,40 +679,40 @@ class PhysicalOperator(Operator):
         # Default implementation simply cancels any outstanding active task
         self._cancel_active_tasks(force=force)
 
-    def current_processor_usage(self) -> ExecutionResources:
-        """Returns the current estimated CPU and GPU usage of this operator, excluding
-        object store memory.
+    def current_logical_usage(self) -> ExecutionResources:
+        """Returns the current estimated CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
 
-        This method is called by the executor to decide how to allocate processors
+        This method is called by the executor to decide how to allocate resources
         between different operators.
         """
-        return ExecutionResources(0, 0, 0)
+        return ExecutionResources.zero()
 
-    def running_processor_usage(self) -> ExecutionResources:
-        """Returns the estimated running CPU and GPU usage of this operator, excluding
-        object store memory.
+    def running_logical_usage(self) -> ExecutionResources:
+        """Returns the estimated running CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
 
         This method is called by the resource manager and the streaming
-        executor to display the number of currently running CPUs and GPUs in the
-        progress bar.
+        executor to display the number of currently running CPUs, GPUs, and memory in
+        the progress bar.
 
-        Note, this method returns `current_processor_usage() -
-        pending_processor_usage()` by default. Subclasses should only override
-        `pending_processor_usage()` if needed.
+        Note, this method returns `current_logical_usage() -
+        pending_logical_usage()` by default. Subclasses should only override
+        `pending_logical_usage()` if needed.
         """
-        usage = self.current_processor_usage()
-        usage = usage.subtract(self.pending_processor_usage())
+        usage = self.current_logical_usage()
+        usage = usage.subtract(self.pending_logical_usage())
         return usage
 
-    def pending_processor_usage(self) -> ExecutionResources:
-        """Returns the estimated pending CPU and GPU usage of this operator, excluding
-        object store memory.
+    def pending_logical_usage(self) -> ExecutionResources:
+        """Returns the estimated pending CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
 
         This method is called by the resource manager and the streaming
         executor to display the number of currently pending actors in the
         progress bar.
         """
-        return ExecutionResources(0, 0, 0)
+        return ExecutionResources.zero()
 
     def min_max_resource_requirements(
         self,

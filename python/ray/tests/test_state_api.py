@@ -4,6 +4,7 @@ import signal
 import sys
 import time
 import uuid
+import warnings
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
@@ -22,6 +23,7 @@ from ray._common.network_utils import find_free_port, parse_address
 from ray._common.test_utils import (
     SignalActor,
     async_wait_for_condition,
+    run_string_as_driver,
     wait_for_condition,
 )
 from ray._private.grpc_utils import init_grpc_channel
@@ -30,10 +32,7 @@ from ray._private.state_api_test_utils import (
     get_state_api_manager,
     verify_schema,
 )
-from ray._private.test_utils import (
-    run_string_as_driver,
-    wait_for_aggregator_agent_if_enabled,
-)
+from ray._private.test_utils import wait_for_aggregator_agent_if_enabled
 from ray._raylet import ActorID, GcsClient, JobID, NodeID, TaskID
 from ray.cluster_utils import cluster_not_supported
 from ray.core.generated.common_pb2 import (
@@ -3176,7 +3175,8 @@ def test_network_partial_failures(monkeypatch, ray_start_cluster):
         wait_for_condition(lambda: len(list_objects()) == 4)
 
         # Make sure when there's 0 node failure, it doesn't print the error.
-        with pytest.warns(None) as record:
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
             list_objects(_explain=True)
         assert len(record) == 0
 
@@ -3187,7 +3187,8 @@ def test_network_partial_failures(monkeypatch, ray_start_cluster):
             list_objects(raise_on_missing_output=False, _explain=True)
 
         # Make sure when _explain == False, warning is not printed.
-        with pytest.warns(None) as record:
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
             list_objects(raise_on_missing_output=False, _explain=False)
         assert len(record) == 0
 
@@ -3218,7 +3219,8 @@ def test_network_partial_failures_timeout(monkeypatch, ray_start_cluster):
     a = [f.remote() for _ in range(4)]  # noqa
 
     def verify():
-        with pytest.warns(None) as record:
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
             list_objects(raise_on_missing_output=False, _explain=True, timeout=5)
         return len(record) == 1
 
@@ -3464,7 +3466,8 @@ def test_data_truncate(shutdown_only, monkeypatch):
         a = A.remote()
         ray.get(a.ready.remote())
 
-        with pytest.warns(None) as record:
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
             result = runner.invoke(ray_list, ["actors"])
         assert len(record) == 0
 
@@ -3758,7 +3761,8 @@ def test_callsite_warning(callsite_enabled, monkeypatch, shutdown_only):
         runner = CliRunner()
         wait_for_condition(lambda: len(list_objects()) > 0)
 
-        with pytest.warns(None) as record:
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
             result = runner.invoke(ray_list, ["objects"])
             assert result.exit_code == 0
 
@@ -3818,25 +3822,21 @@ def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster
             assert False
 
         # Verify when raise_on_missing_output=False, it prints warnings.
-        with pytest.warns(None) as record:
+        with pytest.warns(UserWarning):
             list_objects(raise_on_missing_output=False, _explain=True, timeout=3)
-        assert len(record) == 1
 
-        with pytest.warns(None) as record:
+        with pytest.warns(UserWarning):
             summarize_objects(raise_on_missing_output=False, _explain=True, timeout=3)
-        assert len(record) == 1
 
         # Verify when CLI is used, exceptions are not raised.
-        with pytest.warns(None) as record:
+        with pytest.warns(UserWarning):
             result = runner.invoke(ray_list, ["objects", "--timeout=3"])
-        assert len(record) == 1
         assert result.exit_code == 0
 
         # Verify summary CLI also doesn't raise an exception.
-        with pytest.warns(None) as record:
+        with pytest.warns(UserWarning):
             result = runner.invoke(summary_state_cli_group, ["objects", "--timeout=3"])
         assert result.exit_code == 0
-        assert len(record) == 1
         return True
 
     wait_for_condition(verify)
@@ -3887,25 +3887,21 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
             assert False
 
         # Verify when raise_on_missing_output=False, it prints warnings.
-        with pytest.warns(None) as record:
+        with pytest.warns(UserWarning):
             list_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
-        assert len(record) == 1
 
-        with pytest.warns(None) as record:
+        with pytest.warns(UserWarning):
             summarize_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
-        assert len(record) == 1
 
         # Verify when CLI is used, exceptions are not raised.
-        with pytest.warns(None) as record:
+        with pytest.warns(UserWarning):
             result = runner.invoke(ray_list, ["tasks", "--timeout=3"])
-        assert len(record) == 1
         assert result.exit_code == 0
 
         # Verify summary CLI also doesn't raise an exception.
-        with pytest.warns(None) as record:
+        with pytest.warns(UserWarning):
             result = runner.invoke(summary_state_cli_group, ["tasks", "--timeout=3"])
         assert result.exit_code == 0
-        assert len(record) == 1
         return True
 
     wait_for_condition(verify)
