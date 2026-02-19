@@ -45,7 +45,6 @@ class _DaemonThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
             )
             t.start()
             self._threads.add(t)
-            concurrent.futures.ThreadPoolExecutor._adjust_thread_count(self)
 
 
 class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
@@ -111,8 +110,10 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
         with self._lock:
             self._shutdown = True
 
+        deadline = time.time() + self._shutdown_timeout
+
         # Wait for pending operations
-        self._wait_for_pending_operations()
+        self._wait_for_pending_operations(timeout=max(0.0, deadline - time.time()))
 
         final_done = threading.Event()
 
@@ -128,7 +129,7 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
             target=_final_closer, daemon=True, name="async_progress_final_closer"
         )
         t.start()
-        final_done.wait(timeout=self._shutdown_timeout)
+        final_done.wait(timeout=max(0.0, deadline - time.time()))
 
         self._executor.shutdown(wait=False)
         self._pending_futures.clear()
@@ -171,11 +172,13 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
             if self._shutdown:
                 return
 
+            replace = False
+
             if op_key in self._pending_futures:
                 old_controller = self._pending_futures[op_key]
                 if not old_controller.done():
                     old_controller.cancel()
-                    logger.debug(f"Replaced pending {op_key} with newer update")
+                    replace = True
 
             controller = concurrent.futures.Future()
 
@@ -191,6 +194,9 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
             # Submit worker to perform the actual method call.
             self._executor.submit(_worker_wrapper, controller, method, *args, **kwargs)
             self._pending_futures[op_key] = controller
+
+        if replace:
+            logger.debug(f"Replaced pending {op_key} with newer update")
 
     def _timed_call(self, method, *args, **kwargs):
         """Call method and track completion time."""
@@ -223,7 +229,7 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
         except Exception as e:
             logger.debug(f"Progress operation failed: {e}")
 
-    def _wait_for_pending_operations(self):
+    def _wait_for_pending_operations(self, timeout: float):
         """Wait for pending operations with timeout."""
         with self._lock:
             futures = list(self._pending_futures.values())
@@ -232,12 +238,12 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
         if num_pending > 0:
             logger.debug(
                 f"Waiting for {num_pending} pending "
-                f"progress operations (timeout: {self._shutdown_timeout}s)"
+                f"progress operations (timeout: {timeout}s)"
             )
             try:
                 concurrent.futures.wait(
                     futures,
-                    timeout=self._shutdown_timeout,
+                    timeout=timeout,
                     return_when=concurrent.futures.ALL_COMPLETED,
                 )
             except Exception as e:
@@ -252,6 +258,9 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
         while not self._shutdown:
             time.sleep(check_interval)
 
+            log_warning = None
+            log_info = None
+
             with self._lock:
                 time_since_update = time.time() - self._last_successful_update
 
@@ -261,7 +270,7 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
                     and not self._stall_warning_shown
                 ):
 
-                    logger.warning(
+                    log_warning = (
                         f"Progress bar updates have not completed for "
                         f"{time_since_update:.1f} seconds. This usually "
                         f"indicates slow or blocked terminal I/O (e.g., slow "
@@ -275,13 +284,16 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
 
                 # Reset warning if progress resumes
                 elif time_since_update < check_interval and self._stall_warning_shown:
-                    logger.info(
+                    log_info = (
                         f"Progress bar updates have resumed after "
                         f"{time_since_update:.1f}s stall."
                     )
                     self._stall_warning_shown = False
 
-        logger.debug("Progress stall monitor thread stopped")
+            if log_warning:
+                logger.warning(log_warning)
+            if log_info:
+                logger.info(log_info)
 
     def __getattr__(self, name):
         """Delegate other attributes to wrapped manager."""
