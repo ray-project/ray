@@ -134,7 +134,11 @@ ray_cc_library(
     target_compatible_with = [
         "@platforms//os:linux",
     ],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/common:__pkg__",
+        "//src/ray/common/tests:__pkg__",
+    ],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:status",

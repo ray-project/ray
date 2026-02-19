@@ -14,8 +14,10 @@ import numpy as np
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import run_string_as_driver
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
@@ -1563,7 +1565,18 @@ def test_runtime_metrics(ray_start_regular_shared):
     # due to rounding (e.g., 2.265s rounds to 2.27s for operator but 2.26s for total)
     TOLERANCE = 0.02
 
-    for time_s, percent in metrics_dict.values():
+    for name, (time_s, percent) in metrics_dict.items():
+        # Special-case Scheduling: it's cumulative time across scheduling loops,
+        # so it can exceed the wall-clock Total span under concurrency.
+        if name == "Scheduling":
+            continue
+        if time_s > total_time + TOLERANCE:
+            print("runtime_metrics raw:\n", metrics_str)
+            print("runtime_metrics parsed:", metrics_dict)
+            print(
+                f"runtime_metrics mismatch for '{name}': {time_s}s > {total_time}s (tolerance: {TOLERANCE}s)"
+            )
+
         assert time_s <= total_time + TOLERANCE
         # Check percentage, this is done with some expected loss of precision
         # due to rounding in the intital output.
