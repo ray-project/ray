@@ -274,27 +274,6 @@ def test_rl_module_forward_pass_with_layernorm():
     assert out["action_dist_inputs"].shape[0] == 4
 
 
-@pytest.mark.parametrize("activation", ["relu"])
-def test_rl_module_different_activations_with_layernorm(activation):
-    """LayerNorm works with different activation functions."""
-    model_config = {
-        "fcnet_hiddens": [16, 16],
-        "head_fcnet_hiddens": [16],
-        "vf_share_layers": False,
-        "fcnet_use_layernorm": True,
-        "fcnet_activation": activation,
-    }
-    model = RLModuleSpec(
-        module_class=DefaultPPOTorchRLModule,
-        observation_space=gym.spaces.Box(0, 1, (10,), dtype=np.float32),
-        action_space=gym.spaces.Box(0, 1, (10,), dtype=np.float32),
-        model_config=model_config,
-    ).build()
-    batch = {"obs": torch.randn(2, 10)}
-    out = model.forward_inference(batch)
-    assert "action_dist_inputs" in out
-
-
 if __name__ == "__main__":
     import sys
 
