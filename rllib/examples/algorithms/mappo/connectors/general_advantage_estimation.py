@@ -112,13 +112,13 @@ class MAPPOGAEConnector(ConnectorV2):
             critic_batch[Columns.LOSS_MASK] = combined
 
         # Shared critic forward pass -> per-agent value predictions.
-        vf_preds = rl_module[SHARED_CRITIC_ID].compute_values(critic_batch)
-        vf_preds = {mid: vf_preds[..., i] for i, mid in enumerate(obs_mids)}
+        vf_preds_tensor = rl_module[SHARED_CRITIC_ID].compute_values(critic_batch)
+        device = vf_preds_tensor.device
+        vf_preds = {mid: vf_preds_tensor[..., i] for i, mid in enumerate(obs_mids)}
 
         # Per-agent GAE computation.
         for module_id, module_vf_preds in vf_preds.items():
             module = rl_module[module_id]
-            device = module_vf_preds.device
             module_vf_preds = convert_to_numpy(module_vf_preds)
 
             episode_lens = [
