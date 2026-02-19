@@ -7,6 +7,11 @@ Or use this script: bash convert_to_md.sh
 
 # Build a multi-agent system with the A2A protocol
 
+<div align="left">
+  <a target="_blank" href="https://console.anyscale.com/template-preview/multi_agent_a2a"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+  <a href="https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content" role="button"><img src="https://img.shields.io/static/v1?label=&message=View%20On%20GitHub&color=586069&logo=github&labelColor=2f363d"></a>&nbsp;
+</div>
+
 This tutorial guides you through building and deploying a **multi-agent system** where agents communicate using the **A2A (Agent-to-Agent) protocol**. The system is built on Ray Serve for scalable deployment, LangGraph for agent orchestration, and MCP for tool integration.
 
 If you're new to Ray Serve and LangChain integration, see this **single-agent template** first:
@@ -170,7 +175,7 @@ Get the system running first, then explore how it works.
 - 1x m5d.xlarge (4 vCPU) for MCP servers and agents.
 
 **Install dependencies:**
-Install all Python dependencies from [`requirements.txt`](./requirements.txt):
+Install all Python dependencies from [`requirements.txt`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/requirements.txt):
 
 
 ```python
@@ -350,7 +355,7 @@ Explore how each service is implemented.
 
 ### 5.1 The LLM service
 
-See the code in [`llm/llm_deploy_qwen.py`](llm/llm_deploy_qwen.py). This file deploys Qwen as an OpenAI-compatible API with tool calling support.
+See the code in [`llm/llm_deploy_qwen.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/llm/llm_deploy_qwen.py). This file deploys Qwen as an OpenAI-compatible API with tool calling support.
 
 **Key configurations:**
 
@@ -373,7 +378,7 @@ For more information, see the [Anyscale MCP documentation](https://docs.anyscale
 
 #### 5.2.1 Weather MCP server
 
-See [mcps/weather_mcp_server.py](mcps/weather_mcp_server.py):
+See [mcps/weather_mcp_server.py](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/mcps/weather_mcp_server.py):
 
 | Tool | Description | Parameters |
 |---------------|------------------------------|----------------------------|
@@ -382,7 +387,7 @@ See [mcps/weather_mcp_server.py](mcps/weather_mcp_server.py):
 
 #### 5.2.2 Web search MCP server
 
-See [mcps/web_search_mcp_server.py](mcps/web_search_mcp_server.py):
+See [mcps/web_search_mcp_server.py](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/mcps/web_search_mcp_server.py):
 
 | Tool | Description | Parameters |
 |---------------|------------------------------|----------------------------|
@@ -403,7 +408,7 @@ The agent runtime consists of four core modules:
 
 #### 5.3.1 Configuration management
 
-The configuration module [`agent_runtime/config.py`](agent_runtime/config.py) centralizes configuration loading for LLM and MCP settings from environment variables.
+The configuration module [`agent_runtime/config.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/agent_runtime/config.py) centralizes configuration loading for LLM and MCP settings from environment variables.
 
 - **Classes:** `LLMConfig` (LLM backend settings) and `MCPEndpoint` (MCP server configuration).
 - **Functions:** `load_llm_config()`.
@@ -411,14 +416,14 @@ The configuration module [`agent_runtime/config.py`](agent_runtime/config.py) ce
 
 #### 5.3.2 Agent building helpers
 
-The agent builder module [`agent_runtime/agent_builder.py`](agent_runtime/agent_builder.py) provides factory functions for building LangGraph agents, centralizing LLM setup, MCP tool discovery, and agent creation to eliminate boilerplate.
+The agent builder module [`agent_runtime/agent_builder.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/agent_runtime/agent_builder.py) provides factory functions for building LangGraph agents, centralizing LLM setup, MCP tool discovery, and agent creation to eliminate boilerplate.
 
 - **Functions:** `build_llm()`, `load_mcp_tools()`, `build_tool_agent()`, and `build_mcp_agent()`.
 - **Logic handled:** Configuration loading, LLM construction, dynamic MCP tool discovery, and agent creation with `MemorySaver` checkpointing.
 
 #### 5.3.3 SSE deployment factory
 
-The SSE deployment module [`agent_runtime/serve_deployment.py`](agent_runtime/serve_deployment.py) builds the FastAPI application and Ray Serve deployment for the human-to-agent chat interface.
+The SSE deployment module [`agent_runtime/serve_deployment.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/agent_runtime/serve_deployment.py) builds the FastAPI application and Ray Serve deployment for the human-to-agent chat interface.
 
 - **Endpoints:** Exposes `POST /chat` with SSE streaming support.
 - **Functions:** `create_chat_app()` and `create_serve_deployment()`.
@@ -426,7 +431,7 @@ The SSE deployment module [`agent_runtime/serve_deployment.py`](agent_runtime/se
 
 #### 5.3.4 A2A deployment factory
 
-The A2A deployment module [`agent_runtime/a2a_deployment.py`](agent_runtime/a2a_deployment.py) enables standardized agent-to-agent communication by creating Ray Serve deployments with A2A protocol compliance.
+The A2A deployment module [`agent_runtime/a2a_deployment.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/agent_runtime/a2a_deployment.py) enables standardized agent-to-agent communication by creating Ray Serve deployments with A2A protocol compliance.
 
 
 ### 5.4 The specialized agents
@@ -435,7 +440,7 @@ Each specialized agent is a LangGraph agent that combines an LLM with specific t
 
 #### Weather agent
 
-**File:** [`agents/weather_agent_with_mcp.py`](agents/weather_agent_with_mcp.py)
+**File:** [`agents/weather_agent_with_mcp.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/agents/weather_agent_with_mcp.py)
 
 This agent provides weather information using tools from the Weather MCP server. It demonstrates the MCP integration pattern where tools are dynamically discovered from the MCP server.
 
@@ -462,7 +467,7 @@ This agent provides weather information using tools from the Weather MCP server.
 
 #### Research agent
 
-**File:** [`agents/research_agent_with_web_search_mcp.py`](agents/research_agent_with_web_search_mcp.py)
+**File:** [`agents/research_agent_with_web_search_mcp.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/agents/research_agent_with_web_search_mcp.py)
 
 This agent performs online research and gathers sources using the Web Search MCP server. It demonstrates how to combine multiple MCP tools (search + fetch) for comprehensive research workflows.
 
@@ -490,7 +495,7 @@ This agent performs online research and gathers sources using the Web Search MCP
 
 #### Travel agent (multi-agent orchestration)
 
-**File:** [`agents/travel_agent_with_a2a.py`](agents/travel_agent_with_a2a.py)
+**File:** [`agents/travel_agent_with_a2a.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/agents/travel_agent_with_a2a.py)
 
 This agent demonstrates agent-to-agent communication using the A2A protocol. Instead of connecting to MCP servers directly, it orchestrates two downstream agents (Weather and Research) to create comprehensive travel plans.
 
@@ -550,13 +555,13 @@ The A2A (Agent-to-Agent) protocol enables standardized agent-to-agent communicat
 </figure>
 
 **A2A components:**
-- Server endpoints: [`agent_runtime/a2a_deployment.py`](agent_runtime/a2a_deployment.py) (deployment factory).
-- AgentCard helper: [`protocols/a2a_card.py`](protocols/a2a_card.py) (discovery).
-- Client helper: [`protocols/a2a_client.py`](protocols/a2a_client.py) (execution).
+- Server endpoints: [`agent_runtime/a2a_deployment.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/agent_runtime/a2a_deployment.py) (deployment factory).
+- AgentCard helper: [`protocols/a2a_card.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/protocols/a2a_card.py) (discovery).
+- Client helper: [`protocols/a2a_client.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/protocols/a2a_client.py) (execution).
 
 #### AgentCard helper
 
-**File:** [`protocols/a2a_card.py`](protocols/a2a_card.py)
+**File:** [`protocols/a2a_card.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/protocols/a2a_card.py)
 
 This module provides utilities for creating A2A AgentCards using the official `a2a-sdk` types. AgentCards enable agent discovery by advertising capabilities, skills, and endpoints.
 
@@ -610,7 +615,7 @@ AgentCards are exposed at `GET /.well-known/agent-card.json` for A2A discovery:
 
 #### Client helper
 
-**File:** [`protocols/a2a_client.py`](protocols/a2a_client.py)
+**File:** [`protocols/a2a_client.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/protocols/a2a_client.py)
 
 Agents that orchestrate other agents use this client for agent-to-agent communication through the official `a2a-sdk` REST transport.
 
@@ -687,11 +692,11 @@ You can also test discovery directly:
 
 ### 5.6 The unified deployment configuration
 
-See [`serve_multi_config.yaml`](serve_multi_config.yaml) for the complete deployment configuration.
+See [`serve_multi_config.yaml`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/serve_multi_config.yaml) for the complete deployment configuration.
 
 **Autoscaling configuration:**
 
-The system uses Ray Serve's built-in autoscaling to handle variable load. See the configuration details in [`serve_multi_config.yaml`](serve_multi_config.yaml).
+The system uses Ray Serve's built-in autoscaling to handle variable load. See the configuration details in [`serve_multi_config.yaml`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/serve_multi_config.yaml).
 
 
 
