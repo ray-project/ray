@@ -27,7 +27,6 @@ from ray.tests.conftest import (
     file_system_object_spilling_config,
     mock_distributed_fs_object_spilling_config,
 )
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 import psutil
 
@@ -258,11 +257,7 @@ def test_default_config_cluster_with_different_temp_dir(ray_start_cluster_enable
         return refs
 
     tasks = [
-        task.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=node.node_id, soft=False
-            )
-        ).remote()
+        task.options(label_selector={"ray.io/node-id": node.node_id}).remote()
         for node in nodes
     ]
     res = ray.get(tasks)
