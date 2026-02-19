@@ -7,13 +7,13 @@
 set -exo pipefail
 
 for nb in \
-  "small-size-llm/README" \
-  "medium-size-llm/README" \
-  "large-size-llm/README" \
-  "vision-llm/README" \
-  "reasoning-llm/README" \
-  "hybrid-reasoning-llm/README" \
-  "gpt-oss/README" 
+  "content/small-size-llm/README" \
+  "content/medium-size-llm/README" \
+  "content/large-size-llm/README" \
+  "content/vision-llm/README" \
+  "content/reasoning-llm/README" \
+  "content/hybrid-reasoning-llm/README" \
+  "content/gpt-oss/README" 
 do
   python ci/nb2py.py "${nb}.ipynb" "${nb}.py" --ignore-cmds
   python "${nb}.py"
