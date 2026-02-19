@@ -188,8 +188,15 @@ class GangDPServer(LLMServer):
             data_parallel_rpc_port=self.dp_rpc_port,
         )
 
-        # Direct vLLM to use this replica's bundle within the gang placement group
-        os.environ["VLLM_RAY_BUNDLE_INDICES"] = str(self.dp_rank)
+        # Direct vLLM to use this replica's bundles within the gang placement group.
+        # Gang placement group concatenates per-replica bundles for all ranks,
+        # so rank i owns bundles [i*B, i*B+1, ..., i*B+B-1] where B is the number of
+        # bundles per replica (e.g. B=2 for TP=2).
+        engine_config = llm_config.get_engine_config()
+        bundles_per_replica = len(engine_config.placement_bundles)
+        os.environ["VLLM_RAY_BUNDLE_INDICES"] = self._compute_bundle_indices(
+            self.dp_rank, bundles_per_replica
+        )
 
         await super().__init__(llm_config)
 
@@ -200,6 +207,11 @@ class GangDPServer(LLMServer):
             GangMasterInfoRegistry.unregister_member(
                 self.gang_id, self.dp_rank, self.dp_size
             )
+
+    @staticmethod
+    def _compute_bundle_indices(dp_rank: int, bundles_per_replica: int) -> str:
+        start = dp_rank * bundles_per_replica
+        return ",".join(str(start + i) for i in range(bundles_per_replica))
 
     @classmethod
     def get_deployment_options(cls, llm_config: "LLMConfig"):

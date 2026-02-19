@@ -168,5 +168,57 @@ class TestGangMasterInfoRegistry:
         assert (addr, port) == ("10.0.0.2", 6666)
 
 
+class TestBundleIndices:
+    @pytest.mark.parametrize(
+        "engine_kwargs,placement_group_config,dp_rank,expected",
+        [
+            # TP=1: 1 bundle per replica
+            (dict(tensor_parallel_size=1), None, 0, "0"),
+            (dict(tensor_parallel_size=1), None, 3, "3"),
+            (dict(tensor_parallel_size=1), {"bundles": [{"GPU": 1, "CPU": 1}]}, 2, "2"),
+            # TP=2: 2 bundles per replica
+            (dict(tensor_parallel_size=2), None, 0, "0,1"),
+            (dict(tensor_parallel_size=2), None, 1, "2,3"),
+            (dict(tensor_parallel_size=2), None, 3, "6,7"),
+            (
+                dict(tensor_parallel_size=2),
+                {"bundles": [{"GPU": 1, "CPU": 1}, {"GPU": 1}]},
+                1,
+                "2,3",
+            ),
+            # TP=2, PP=2: 4 bundles per replica
+            (
+                dict(tensor_parallel_size=2, pipeline_parallel_size=2),
+                None,
+                0,
+                "0,1,2,3",
+            ),
+            (
+                dict(tensor_parallel_size=2, pipeline_parallel_size=2),
+                None,
+                1,
+                "4,5,6,7",
+            ),
+        ],
+    )
+    def test_bundle_indices(
+        self, engine_kwargs, placement_group_config, dp_rank, expected
+    ):
+        llm_config = LLMConfig(
+            model_loading_config=dict(model_id="test_model"),
+            engine_kwargs=engine_kwargs,
+            placement_group_config=placement_group_config,
+        )
+        engine_config = llm_config.get_engine_config()
+        bundles_per_replica = len(engine_config.placement_bundles)
+
+        result = GangDPServer._compute_bundle_indices(dp_rank, bundles_per_replica)
+        assert result == expected
+
+        # Prove the old code (str(dp_rank)) is wrong for multi-bundle cases
+        if bundles_per_replica > 1:
+            assert str(dp_rank) != expected
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
