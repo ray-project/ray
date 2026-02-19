@@ -5309,7 +5309,8 @@ class Dataset:
         *,
         namespace: Optional[str] = None,
         namespace_column: Optional[str] = None,
-        region: str,
+        region: Optional[str] = None,
+        base_url: Optional[str] = None,
         api_key: Optional[str] = None,
         schema: Optional[Dict[str, Any]] = None,
         id_column: str = "id",
@@ -5377,7 +5378,13 @@ class Dataset:
                 namespace.  The column is removed from the data before
                 writing.  Mutually exclusive with ``namespace``.
             region: Turbopuffer region identifier (for example,
-                ``"gcp-us-central1"``).
+                ``"gcp-us-central1"``).  Mutually exclusive with
+                ``base_url``.  Exactly one of ``region`` or ``base_url``
+                must be supplied.
+            base_url: Base URL for the Turbopuffer API (for example,
+                ``"https://gcp-us-central1.turbopuffer.com"``).  Mutually
+                exclusive with ``region``.  Exactly one of ``region`` or
+                ``base_url`` must be supplied.
             api_key: Turbopuffer API key. If omitted, the value is read from
                 the ``TURBOPUFFER_API_KEY`` environment variable.
             schema: Optional Turbopuffer schema definition to pass along with
@@ -5406,6 +5413,7 @@ class Dataset:
             namespace=namespace,
             namespace_column=namespace_column,
             region=region,
+            base_url=base_url,
             api_key=api_key,
             schema=schema,
             id_column=id_column,
