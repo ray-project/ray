@@ -101,7 +101,16 @@ def plan_read_op(
             ret.append(ref_bundle)
         return ret
 
-    inputs = InputDataBuffer(data_context, input_data_factory=get_input_data)
+    is_streaming = op.datasource.is_streaming
+    # Get metadata fetch interval from datasource property (returns None by default)
+    # This allows datasources to control their own fetch intervals
+    polling_new_tasks_interval_s = op.datasource.polling_new_tasks_interval_s
+    inputs = InputDataBuffer(
+        data_context,
+        input_data_factory=get_input_data,
+        streaming=is_streaming,
+        polling_new_tasks_interval_s=polling_new_tasks_interval_s,
+    )
 
     def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
         for read_task in blocks:

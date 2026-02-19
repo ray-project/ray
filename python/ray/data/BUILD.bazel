@@ -1213,6 +1213,16 @@ py_test(
 )
 
 py_test(
+    name = "test_input_data_buffer_streaming",
+    size = "small",
+    srcs = ["tests/test_input_data_buffer_streaming.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+)
+
+py_test(
     name = "test_metadata_provider",
     size = "small",
     srcs = ["tests/test_metadata_provider.py"],
