@@ -25,20 +25,6 @@ class DefaultMAPPOTorchRLModule(TorchRLModule, DefaultMAPPORLModule):
 
     @override(RLModule)
     def _forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Default forward pass (used for inference and exploration)."""
-        output = {}
-        # Encoder forward pass.
-        encoder_outs = self.encoder(batch)
-        # Stateful encoder?
-        if Columns.STATE_OUT in encoder_outs:
-            output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
-        # Pi head.
-        output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT])
-        return output
-
-    @override(RLModule)
-    def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Train forward pass."""
         output = {}
         encoder_outs = self.encoder(batch)
         if Columns.STATE_OUT in encoder_outs:

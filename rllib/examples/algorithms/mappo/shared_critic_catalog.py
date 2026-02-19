@@ -16,25 +16,30 @@ class SharedCriticCatalog(Catalog):
         action_space: gym.Space,  # TODO: Remove?
         model_config_dict: dict,
     ):
-        """Initializes the PPOCatalog.
+        """Initializes the SharedCriticCatalog.
 
         Args:
             observation_space: The observation space of the Encoder.
-            action_space: The action space for the Pi Head.
-            model_config_dict: The model config to use.
+            action_space: The action space (required by Catalog base class).
+            model_config_dict: The model config to use.  Must contain an
+                ``observation_spaces`` key mapping agent IDs to their
+                (1-D) observation spaces.
         """
         super().__init__(
             observation_space=observation_space,
-            action_space=action_space,  # Base Catalog class checks for this.
+            action_space=action_space,
             model_config_dict=model_config_dict,
         )
-        # We only want one encoder, so we use the base encoder config.
         self.encoder_config = self._encoder_config
-        # Adjust the input and output dimensions of the encoder.
         observation_spaces = self._model_config_dict["observation_spaces"]
         obs_size = 0
         for agent, obs in observation_spaces.items():
-            obs_size += obs.shape[0]  # Assume 1D observations
+            if len(obs.shape) != 1:
+                raise ValueError(
+                    f"SharedCriticCatalog only supports 1-D observation spaces. "
+                    f"Agent '{agent}' has shape {obs.shape}."
+                )
+            obs_size += obs.shape[0]
         self.encoder_config.input_dims = (obs_size,)
         # Value head architecture
         self.vf_head_hiddens = self._model_config_dict["head_fcnet_hiddens"]

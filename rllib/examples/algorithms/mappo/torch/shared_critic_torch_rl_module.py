@@ -1,5 +1,4 @@
-import typing
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
@@ -29,11 +28,11 @@ class SharedCriticTorchRLModule(TorchRLModule, SharedCriticRLModule):
     @override(ValueFunctionAPI)
     def compute_values(
         self,
-        batch: typing.Dict[str, Any],
+        batch: Dict[str, Any],
         embeddings: Optional[Any] = None,
     ) -> TensorType:
         if embeddings is None:
             embeddings = self.encoder(batch)[ENCODER_OUT]
         vf_out = self.vf(embeddings)
-        # Don't squeeze out last dimension (multi node value head).
+        # Multi-agent value head: keep the last dimension (one node per agent).
         return vf_out

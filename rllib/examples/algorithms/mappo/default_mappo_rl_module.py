@@ -11,44 +11,39 @@ from ray.rllib.utils.annotations import (
 from ray.util.annotations import DeveloperAPI
 
 
+def _setup_mappo_encoder(module: RLModule) -> None:
+    """Shared encoder setup logic for MAPPO actor and critic modules.
+
+    Handles stateful / inference-only configuration and builds the encoder
+    from the module's catalog.
+    """
+    is_stateful = isinstance(
+        module.catalog.encoder_config,
+        RecurrentEncoderConfig,
+    )
+    if is_stateful:
+        module.inference_only = False
+    if module.inference_only and module.framework == "torch":
+        module.catalog.encoder_config.inference_only = True
+    module.encoder = module.catalog.build_encoder(framework=module.framework)
+
+
 @DeveloperAPI
 class DefaultMAPPORLModule(RLModule, InferenceOnlyAPI, abc.ABC):
-    """Default RLModule used by MAPPO, if user does not specify a custom RLModule.
-
-    Users who want to train their RLModules with MAPPO may implement any RLModule (or TorchRLModule) subclass.
-    """
+    """Default actor RLModule for MAPPO (no value head -- critic is shared)."""
 
     @override(RLModule)
     def setup(self):
-        # __sphinx_doc_begin__
-        # If we have a stateful model, states for the critic need to be collected
-        # during sampling and `inference-only` needs to be `False`. Note, at this
-        # point the encoder is not built, yet and therefore `is_stateful()` does
-        # not work.
-        is_stateful = isinstance(
-            self.catalog.encoder_config,
-            RecurrentEncoderConfig,
-        )
-        if is_stateful:
-            self.inference_only = False
-        # If this is an `inference_only` Module, we'll have to pass this information
-        # to the encoder config as well.
-        if self.inference_only and self.framework == "torch":
-            self.catalog.encoder_config.inference_only = True
-        # Build models from catalog.
-        self.encoder = self.catalog.build_encoder(framework=self.framework)
+        _setup_mappo_encoder(self)
         self.pi = self.catalog.build_pi_head(framework=self.framework)
-        # __sphinx_doc_end__
 
     @override(RLModule)
     def get_initial_state(self) -> dict:
         if hasattr(self.encoder, "get_initial_state"):
             return self.encoder.get_initial_state()
-        else:
-            return {}
+        return {}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(InferenceOnlyAPI)
     def get_non_inference_attributes(self) -> List[str]:
-        """Return attributes, which are NOT inference-only (only used for training)."""
         return []

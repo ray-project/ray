@@ -86,7 +86,7 @@ if __name__ == "__main__":
     policies = [f"pursuer_{i}" for i in range(args.num_agents)]
 
     # An agent for each of our policies, and a single shared critic
-    env_instantiated = get_env({})  # neccessary for non-agent modules
+    env_instantiated = get_env({})  # necessary for non-agent modules
     specs = {p: RLModuleSpec() for p in policies}
     specs[SHARED_CRITIC_ID] = RLModuleSpec(
         module_class=SharedCriticTorchRLModule,
