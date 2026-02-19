@@ -384,6 +384,10 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         )
         remaining_uv_run_args = remaining_uv_run_args + ["--python", uv_python]
 
+    # Append "python" to the end so that when Ray adds "-m default_worker.py",
+    # it becomes "uv run --python X.Y.Z python -m default_worker.py"
+    remaining_uv_run_args = remaining_uv_run_args + ["python"]
+
     runtime_env["py_executable"] = " ".join(remaining_uv_run_args)
 
     # If the user specified a working_dir, we always honor it, otherwise
