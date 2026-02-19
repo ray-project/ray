@@ -216,6 +216,8 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
             controller = concurrent.futures.Future()
 
             def _worker_wrapper(ctrl_fut, m, *a, **kw):
+                if ctrl_fut.cancelled():
+                    return
                 try:
                     res = self._timed_call(m, *a, **kw)
                     if not ctrl_fut.cancelled():
