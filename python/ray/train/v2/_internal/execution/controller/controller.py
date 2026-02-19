@@ -465,7 +465,7 @@ class TrainController:
             self._controller_callback_manager.invoke("before_controller_shutdown")
         except ControllerError as e:
             if shutdown_error:
-                logger.warning(
+                logger.exception(
                     "An additional error occurred in the before_controller_shutdown "
                     "callback after a worker group shutdown error. "
                     "This error is being ignored to preserve the original "
@@ -477,11 +477,12 @@ class TrainController:
 
         if shutdown_error:
             if isinstance(controller_state.next_state, ErroredState):
-                logger.warning(
+                logger.exception(
                     "Another error occurred during shutdown after a training error. "
                     "This error is being ignored to preserve the original "
                     "training error. Error: %s",
                     shutdown_error,
+                    exc_info=shutdown_error,
                 )
             else:
                 return TrainControllerLoopIterationResult(
