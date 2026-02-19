@@ -16,6 +16,6 @@ for nb in \
   "gpt-oss/README" 
 do
   python ci/nb2py.py "${nb}.ipynb" "${nb}.py" --ignore-cmds
-  #python "${nb}.py"
+  python "${nb}.py"
   rm "${nb}.py"
 done
