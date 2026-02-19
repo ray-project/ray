@@ -682,6 +682,12 @@ class ProxyStateManager:
             node_id: state.actor_details
             for node_id, state in self._proxy_states.items()
         }
+    
+    def get_fallback_proxy_details(self) -> Optional[ProxyDetails]:
+        if self._fallback_proxy_state:
+            return self._fallback_proxy_state.actor_details
+
+        return None
 
     def get_targets(self, protocol: RequestProtocol) -> List[Target]:
         """In Ray Serve, every proxy is responsible for routing requests to the
