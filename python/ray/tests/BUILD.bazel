@@ -146,6 +146,7 @@ py_test_module_list(
         "test_client_proxy.py",
         "test_client_references.py",
         "test_client_warnings.py",
+        "test_client_working_dir.py",
     ],
     tags = [
         "custom_setup",
