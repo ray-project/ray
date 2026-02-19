@@ -198,6 +198,7 @@ class AxSearch(Searcher):
         if not self._ax:
             self._ax = AxClient(**self._ax_kwargs)
 
+        # Ententionally defensive to ensure that if the experiment is not set correctly we raise an error. Prevents silent failures.
         try:
             exp = self._ax.experiment
             has_experiment = True
