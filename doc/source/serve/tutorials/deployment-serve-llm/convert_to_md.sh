@@ -4,7 +4,7 @@ set -exo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Subdirectories containing README.ipynb -> README.md
+# Subdirectories under content/ containing README.ipynb -> README.md
 subdirs=(
   gpt-oss
   hybrid-reasoning-llm
@@ -16,11 +16,10 @@ subdirs=(
 )
 
 convert_notebook() {
-  local nb_path="$1"   # e.g. gpt-oss/README or README
+  local nb_path="$1"   # e.g. content/gpt-oss/README or content/README
   local nb_dir="$(dirname "$nb_path")"
   local nb_base="$(basename "$nb_path")"
   local md_file="$nb_dir/README.md"
-  local add_orphan="$2" # "true" or "false"
 
   # Delete README.md if it already exists
   [ -f "$md_file" ] && rm "$md_file"
@@ -41,29 +40,16 @@ convert_notebook() {
     cat "$md_file"
   } > "$tmp_file"
   mv "$tmp_file" "$md_file"
-
-  # Optionally prepend orphan header
-  if [ "$add_orphan" = "true" ]; then
-    tmp_file="$(mktemp)"
-    {
-      echo "---"
-      echo "orphan: true"
-      echo "---"
-      echo ""
-      cat "$md_file"
-    } > "$tmp_file"
-    mv "$tmp_file" "$md_file"
-  fi
 }
 
 cd "$SCRIPT_DIR"
 
-# Convert top-level README.ipynb -> README.md (no orphan header)
-convert_notebook "README" "false"
-echo "✅ Successfully converted README.ipynb to README.md"
+# Convert top-level content/README.ipynb -> content/README.md
+convert_notebook "content/README"
+echo "✅ Successfully converted content/README.ipynb to content/README.md"
 
-# Convert each subdirectory's README.ipynb -> README.md (with orphan header)
+# Convert each subdirectory's README.ipynb -> README.md
 for subdir in "${subdirs[@]}"; do
-  convert_notebook "${subdir}/README" "true"
-  echo "✅ Successfully converted ${subdir}/README.ipynb to ${subdir}/README.md"
+  convert_notebook "content/${subdir}/README"
+  echo "✅ Successfully converted content/${subdir}/README.ipynb to content/${subdir}/README.md"
 done

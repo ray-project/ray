@@ -1,7 +1,7 @@
 <!--
 Do not modify this README. This file is a copy of the notebook and is not used to display the content.
 Modify README.ipynb instead, then regenerate this file with:
-jupyter nbconvert "README.ipynb" --to markdown --output "README.md"
+jupyter nbconvert "content/README.ipynb" --to markdown --output "README.md"
 Or use this script: bash convert_to_md.sh
 -->
 
