@@ -18,8 +18,9 @@ from ray.air._internal.util import exception_cause, skip_exceptions
 from ray.air.constants import TIME_THIS_ITER_S, TIMESTAMP, TRAINING_ITERATION
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.storage import StorageContext, _exists_at_fs_path
-from ray.train.constants import DEFAULT_STORAGE_PATH
+from ray.train.constants import DEFAULT_STORAGE_PATH, RAY_CHDIR_TO_TRIAL_DIR
 from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.logger import NoopLogger
 from ray.tune.result import (
     DEBUG_METRICS,
     DONE,
@@ -672,9 +673,6 @@ class Trainable:
         usage), creates a temp directory with a UnifiedLogger.
         """
         if logdir:
-            from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
-            from ray.tune.logger import NoopLogger
-
             # Record the actor's original working dir before changing
             # to the Tune logdir
             os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
