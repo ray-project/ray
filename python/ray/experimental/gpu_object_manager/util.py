@@ -167,10 +167,12 @@ def register_custom_tensor_transports_on_actor(
         self, owner_transport_manager_info: Dict[str, TransportManagerInfo]
     ):
         from ray.experimental.gpu_object_manager.util import (
+            _ensure_default_transports_registered,
             register_tensor_transport,
             transport_manager_info,
         )
 
+        _ensure_default_transports_registered()
         for transport_name, transport_info in owner_transport_manager_info.items():
             if transport_name not in transport_manager_info:
                 register_tensor_transport(
