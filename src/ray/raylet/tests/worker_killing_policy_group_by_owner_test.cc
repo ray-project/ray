@@ -22,6 +22,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/raylet/tests/util.h"
+#include "ray/util/fake_process.h"
 
 namespace ray {
 
@@ -67,6 +68,17 @@ class WorkerKillingGroupByOwnerTest : public ::testing::Test {
     worker->GrantLeaseId(lease.GetLeaseSpecification().LeaseId());
     return worker;
   }
+
+  /**
+   * @note This function assumes that the worker is mocked
+   * and SetProcess can be called more than once.
+   * @param worker The worker whose process should be killed.
+   */
+  void KillWorkerProcess(std::shared_ptr<WorkerInterface> worker) {
+    std::unique_ptr<FakeProcess> fake_process = std::make_unique<FakeProcess>();
+    fake_process->SetAlive(false);
+    worker->SetProcess(std::move(fake_process));
+  }
 };
 
 TEST_F(WorkerKillingGroupByOwnerTest, TestEmptyWorkerPoolSelectsNullWorker) {
@@ -100,6 +112,7 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestLastWorkerInGroupShouldNotRetry) {
     bool retry = worker_to_kill_and_should_retry_.second;
     ASSERT_EQ(worker_to_kill->WorkerId(), entry.first->WorkerId());
     ASSERT_EQ(retry, entry.second);
+    KillWorkerProcess(worker_to_kill);
     workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
                   workers.end());
   }
@@ -169,6 +182,7 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByGroupSizeThenFirstSubmitt
     bool retry = worker_to_kill_and_should_retry_.second;
     ASSERT_EQ(worker_to_kill->WorkerId(), entry.first->WorkerId());
     ASSERT_EQ(retry, entry.second);
+    KillWorkerProcess(worker_to_kill);
     workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
                   workers.end());
   }
@@ -199,6 +213,7 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByRetriableLifo) {
     bool retry = worker_to_kill_and_should_retry_.second;
     ASSERT_EQ(worker_to_kill->WorkerId(), entry.first->WorkerId());
     ASSERT_EQ(retry, entry.second);
+    KillWorkerProcess(worker_to_kill);
     workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
                   workers.end());
   }
@@ -226,6 +241,7 @@ TEST_F(WorkerKillingGroupByOwnerTest,
     bool retry = worker_to_kill_and_should_retry_.second;
     ASSERT_EQ(worker_to_kill->WorkerId(), entry.first->WorkerId());
     ASSERT_EQ(retry, entry.second);
+    KillWorkerProcess(worker_to_kill);
     workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
                   workers.end());
   }
