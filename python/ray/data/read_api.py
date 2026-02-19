@@ -1,7 +1,7 @@
 import collections
 import logging
-import os
 import warnings
+from datetime import datetime
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -28,6 +28,9 @@ from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.datasource.binary_datasource import BinaryDatasource
 from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
+from ray.data._internal.datasource.databricks_credentials import (
+    DatabricksCredentialProvider,
+)
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
@@ -101,6 +104,9 @@ from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
 )
 from ray.data.datasource.partitioning import Partitioning
+from ray.data.datasource.util import (
+    _validate_head_node_resources_for_local_scheduling,
+)
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -437,6 +443,12 @@ def read_datasource(
         memory,
         ray_remote_args,
     )
+
+    if not datasource.supports_distributed_reads:
+        _validate_head_node_resources_for_local_scheduling(
+            ray_remote_args,
+            op_description="Reading from a local:// path",
+        )
 
     datasource_or_legacy_reader = _get_datasource_or_legacy_reader(
         datasource,
@@ -2658,6 +2670,7 @@ def read_databricks_tables(
     query: Optional[str] = None,
     catalog: Optional[str] = None,
     schema: Optional[str] = None,
+    credential_provider: Optional[DatabricksCredentialProvider] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -2682,12 +2695,19 @@ def read_databricks_tables(
 
         export DATABRICKS_HOST=adb-<workspace-id>.<random-number>.azuredatabricks.net
 
+    Alternatively, you can provide a custom credential provider for more advanced
+    authentication scenarios (e.g., token refresh, dynamic credentials). Create a
+    subclass of ``DatabricksCredentialProvider`` and pass it via the
+    ``credential_provider`` parameter.
+
     .. note::
 
         This function is built on the
         `Databricks statement execution API <https://docs.databricks.com/api/workspace/statementexecution>`_.
 
     Examples:
+
+        Read using environment variables:
 
         .. testcode::
             :skipif: True
@@ -2701,6 +2721,33 @@ def read_databricks_tables(
                 query='select id from table_1 limit 750000',
             )
 
+        Read using a custom credential provider:
+
+        .. testcode::
+            :skipif: True
+
+            from ray.data._internal.datasource.databricks_credentials import (
+                DatabricksCredentialProvider,
+            )
+
+            class MyCredentialProvider(DatabricksCredentialProvider):
+                def get_token(self) -> str:
+                    return "my-token"  # Fetch token from custom source
+
+                def get_host(self) -> str:
+                    return "my-host.databricks.com"
+
+                def invalidate(self) -> None:
+                    pass  # Clear cached credentials if applicable
+
+            ds = ray.data.read_databricks_tables(
+                warehouse_id='...',
+                catalog='catalog_1',
+                schema='db_1',
+                query='select id from table_1 limit 750000',
+                credential_provider=MyCredentialProvider(),
+            )
+
     Args:
         warehouse_id: The ID of the Databricks warehouse. The query statement is
             executed on this warehouse.
@@ -2711,6 +2758,12 @@ def read_databricks_tables(
             you can't set ``table_name`` argument.
         catalog: (Optional) The default catalog name used by the query.
         schema: (Optional) The default schema used by the query.
+        credential_provider: (Optional) A custom credential provider for
+            authentication. Must be a subclass of ``DatabricksCredentialProvider``
+            implementing ``get_token()``, ``get_host()``, and ``invalidate()``.
+            The provider must be picklable (serializable) as it is sent to Ray
+            workers for distributed execution. If provided, the provider is used
+            exclusively and environment variables are ignored.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -2730,47 +2783,17 @@ def read_databricks_tables(
     Returns:
         A :class:`Dataset` containing the queried data.
     """  # noqa: E501
+    # Resolve credential provider (single source of truth for token and host)
+    from ray.data._internal.datasource.databricks_credentials import (
+        resolve_credential_provider,
+    )
     from ray.data._internal.datasource.databricks_uc_datasource import (
         DatabricksUCDatasource,
     )
 
-    def get_dbutils():
-        no_dbutils_error = RuntimeError("No dbutils module found.")
-        try:
-            import IPython
-
-            ip_shell = IPython.get_ipython()
-            if ip_shell is None:
-                raise no_dbutils_error
-            return ip_shell.ns_table["user_global"]["dbutils"]
-        except ImportError:
-            raise no_dbutils_error
-        except KeyError:
-            raise no_dbutils_error
-
-    token = os.environ.get("DATABRICKS_TOKEN")
-
-    if not token:
-        raise ValueError(
-            "Please set environment variable 'DATABRICKS_TOKEN' to "
-            "databricks workspace access token."
-        )
-
-    host = os.environ.get("DATABRICKS_HOST")
-    if not host:
-        from ray.util.spark.utils import is_in_databricks_runtime
-
-        if is_in_databricks_runtime():
-            ctx = (
-                get_dbutils().notebook.entry_point.getDbutils().notebook().getContext()
-            )
-            host = ctx.tags().get("browserHostName").get()
-        else:
-            raise ValueError(
-                "You are not in databricks runtime, please set environment variable "
-                "'DATABRICKS_HOST' to databricks workspace URL"
-                '(e.g. "adb-<workspace-id>.<random-number>.azuredatabricks.net").'
-            )
+    resolved_provider = resolve_credential_provider(
+        credential_provider=credential_provider
+    )
 
     if not catalog:
         from ray.util.spark.utils import get_spark_session
@@ -2792,12 +2815,11 @@ def read_databricks_tables(
         raise ValueError("One of 'query' and 'table' arguments should be set.")
 
     datasource = DatabricksUCDatasource(
-        host=host,
-        token=token,
         warehouse_id=warehouse_id,
         catalog=catalog,
         schema=schema,
         query=query,
+        credential_provider=resolved_provider,
     )
     return read_datasource(
         datasource=datasource,
@@ -4127,9 +4149,10 @@ def read_clickhouse(
 @PublicAPI(stability="alpha")
 def read_unity_catalog(
     table: str,
-    url: str,
-    token: str,
+    url: Optional[str] = None,
+    token: Optional[str] = None,
     *,
+    credential_provider: Optional["DatabricksCredentialProvider"] = None,
     data_format: Optional[str] = None,
     region: Optional[str] = None,
     reader_kwargs: Optional[dict] = None,
@@ -4159,21 +4182,63 @@ def read_unity_catalog(
         ... )
         >>> ds.show(3)  # doctest: +SKIP
 
+        Read using a custom credential provider:
+
+        >>> from ray.data._internal.datasource.databricks_credentials import (  # doctest: +SKIP
+        ...     StaticCredentialProvider,
+        ... )
+        >>> provider = StaticCredentialProvider(  # doctest: +SKIP
+        ...     token="dapi...",
+        ...     host="https://dbc-XXXXXXX-XXXX.cloud.databricks.com",
+        ... )
+        >>> ds = ray.data.read_unity_catalog(  # doctest: +SKIP
+        ...     table="main.sales.transactions",
+        ...     credential_provider=provider,
+        ...     region="us-west-2"
+        ... )
+
     Args:
         table: Unity Catalog table path in format ``catalog.schema.table``.
         url: Databricks workspace URL (e.g., ``"https://dbc-XXXXXXX-XXXX.cloud.databricks.com"``).
+            Required if ``credential_provider`` is not specified. Please prefer to use
+            credential_provider instead of url and token parameters. This parameter will be
+            deprecated in a future release.
         token: Databricks Personal Access Token with ``EXTERNAL USE SCHEMA`` permission.
+            Required if ``credential_provider`` is not specified. Please prefer to use
+            credential_provider instead of url and token parameters. This parameter will be
+            deprecated in a future release.
+        credential_provider: (Optional) A custom credential provider for
+            authentication. Must be a subclass of ``DatabricksCredentialProvider``
+            implementing ``get_token()``, ``get_host()``, and ``invalidate()``.
+            The provider must be picklable (serializable) as it is sent to Ray
+            workers for distributed execution. If provided, the provider is used
+            exclusively and ``url``/``token`` parameters are ignored.
         data_format: Data format (``"delta"`` or ``"parquet"``). If not specified, inferred from table metadata.
         region: AWS region for S3 access (e.g., ``"us-west-2"``). Required for AWS, not needed for Azure/GCP.
         reader_kwargs: Additional arguments passed to the underlying Ray Data reader.
 
     Returns:
         A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
-    """
+    """  # noqa: E501
+    from ray.data._internal.datasource.databricks_credentials import (
+        StaticCredentialProvider,
+        resolve_credential_provider,
+    )
+
+    # Resolve credentials: either from credential_provider or from url/token
+    if credential_provider is not None:
+        resolved_provider = resolve_credential_provider(credential_provider)
+    elif url is not None and token is not None:
+        # Backwards compatible: create provider from url/token
+        resolved_provider = StaticCredentialProvider(token=token, host=url)
+    else:
+        raise ValueError(
+            "Either 'credential_provider' or both 'url' and 'token' must be provided."
+        )
+
     connector = UnityCatalogConnector(
-        base_url=url,
-        token=token,
         table_full_name=table,
+        credential_provider=resolved_provider,
         data_format=data_format,
         region=region,
         reader_kwargs=reader_kwargs,
@@ -4302,8 +4367,8 @@ def read_kafka(
     *,
     bootstrap_servers: Union[str, List[str]],
     trigger: Literal["once"] = "once",
-    start_offset: Union[int, Literal["earliest"]] = "earliest",
-    end_offset: Union[int, Literal["latest"]] = "latest",
+    start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
+    end_offset: Union[int, datetime, Literal["latest"]] = "latest",
     kafka_auth_config: Optional[KafkaAuthConfig] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -4334,6 +4399,15 @@ def read_kafka(
                 end_offset=1000,
             )
 
+            # Read from a topic using datetime range
+            from datetime import datetime
+            ds = ray.data.read_kafka(
+                topics="my-topic",
+                bootstrap_servers="localhost:9092",
+                start_offset=datetime(2025, 1, 1),
+                end_offset=datetime(2025, 1, 2),
+            )
+
 
     Args:
         topics: Kafka topic name(s) to read from. Can be a single topic name
@@ -4343,11 +4417,17 @@ def read_kafka(
         trigger: Trigger mode for reading. Only "once" is supported, which
             performs a single bounded read.
         start_offset: Starting position for reading. Can be:
+
             - int: Offset number
+            - datetime: Read from the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "earliest"
+
         end_offset: Ending position for reading (exclusive). Can be:
+
             - int: Offset number
+            - datetime: Read up to (but not including) the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "latest"
+
         kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker.

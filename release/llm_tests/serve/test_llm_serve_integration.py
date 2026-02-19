@@ -156,7 +156,7 @@ def test_deepseek_model(model_name):
     time.sleep(1)
 
 
-@pytest.mark.parametrize("model_name", ["mistralai/Voxtral-Mini-3B-2507"])
+@pytest.mark.parametrize("model_name", ["openai/whisper-small"])
 def test_transcription_model(model_name):
     """
     Test that the transcription models can be loaded successfully.
@@ -173,10 +173,6 @@ def test_transcription_model(model_name):
             trust_remote_code=True,
             gpu_memory_utilization=0.9,
             enable_prefix_caching=True,
-            max_model_len=2048,
-            tokenizer_mode="mistral",
-            config_format="mistral",
-            load_format="mistral",
         ),
     )
     app = build_openai_app({"llm_configs": [llm_config]})

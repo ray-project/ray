@@ -14,6 +14,7 @@ from ray.llm._internal.batch.processor import (
 from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig as _ChatTemplateStageConfig,
     DetokenizeStageConfig as _DetokenizeStageConfig,
+    HttpRequestStageConfig as _HttpRequestStageConfig,
     PrepareImageStageConfig as _PrepareImageStageConfig,
     PrepareMultimodalStageConfig as _PrepareMultimodalStageConfig,
     TokenizerStageConfig as _TokenizerStageConfig,
@@ -152,8 +153,8 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
         concurrency: The number of workers for data parallelism. Default to 1.
             If ``concurrency`` is a tuple ``(m, n)``, Ray creates an autoscaling
             actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
-            If ``concurrency`` is an ``int`` ``n``, CPU stages use an autoscaling
-            pool from ``(1, n)``, while GPU stages use a fixed pool of ``n`` workers.
+            If ``concurrency`` is an ``int`` ``n``, both CPU and GPU stages use an autoscaling
+            pool from ``(1, n)``.
             Stage-specific concurrency can be set via nested stage configs.
 
     Examples:
@@ -250,8 +251,8 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
         concurrency: The number of workers for data parallelism. Default to 1.
             If ``concurrency`` is a tuple ``(m, n)``, Ray creates an autoscaling
             actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
-            If ``concurrency`` is an ``int`` ``n``, CPU stages use an autoscaling
-            pool from ``(1, n)``, while GPU stages use a fixed pool of ``n`` workers.
+            If ``concurrency`` is an ``int`` ``n``, both CPU and GPU stages use an autoscaling
+            pool from ``(1, n)``.
             Stage-specific concurrency can be set via nested stage configs.
 
     Examples:
@@ -513,6 +514,29 @@ class TokenizerStageConfig(_TokenizerStageConfig):
 
 
 @PublicAPI(stability="alpha")
+class HttpRequestStageConfig(_HttpRequestStageConfig):
+    """The configuration for the http request stage.
+
+    Args:
+        enabled: Whether this stage is enabled. Defaults to True.
+        batch_size: Rows per batch. If not specified, will use the processor-level
+            batch_size.
+        concurrency: Actor pool size or range for this stage. If not specified,
+            will use the processor-level concurrency. If ``concurrency`` is a
+            tuple ``(m, n)``, Ray creates an autoscaling actor pool that scales
+            between ``m`` and ``n`` workers (``1 <= m <= n``). If ``concurrency``
+            is an ``int`` ``n``, CPU stages use an autoscaling pool from ``(1, n)``.
+        runtime_env: Optional runtime environment for this stage. If not specified,
+            will use the processor-level runtime_env. See
+            :ref:`this doc <handling_dependencies>` for more details.
+        num_cpus: Number of CPUs to reserve for each map worker in this stage.
+        memory: Heap memory in bytes to reserve for each map worker in this stage.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
 class PrepareImageStageConfig(_PrepareImageStageConfig):
     """The configuration for the prepare image stage.
 
@@ -737,6 +761,7 @@ __all__ = [
     "DetokenizeStageConfig",
     "PrepareMultimodalStageConfig",
     "TokenizerStageConfig",
+    "HttpRequestStageConfig",
     "PrepareImageStageConfig",
     "build_llm_processor",
     "build_processor",

@@ -15,7 +15,7 @@ from .resource_utilization_gauge import (
     RollingLogicalUtilizationGauge,
 )
 from .util import cap_resource_request_to_limits
-from ray._private.ray_constants import env_bool, env_float, env_integer
+from ray._common.utils import env_bool, env_float, env_integer
 from ray.data._internal.cluster_autoscaler import ClusterAutoscaler
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data._internal.execution.util import memory_string
@@ -166,7 +166,9 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
 
         if resource_utilization_calculator is None:
             resource_utilization_calculator = RollingLogicalUtilizationGauge(
-                resource_manager, cluster_util_avg_window_s=cluster_util_avg_window_s
+                resource_manager,
+                cluster_util_avg_window_s=cluster_util_avg_window_s,
+                execution_id=execution_id,
             )
 
         if autoscaling_coordinator is None:
@@ -204,11 +206,13 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         if (
             util.cpu < self._cluster_scaling_up_util_threshold
             and util.gpu < self._cluster_scaling_up_util_threshold
+            and util.memory < self._cluster_scaling_up_util_threshold
             and util.object_store_memory < self._cluster_scaling_up_util_threshold
         ):
             logger.debug(
                 "Cluster utilization is below threshold: "
-                f"CPU={util.cpu:.2f}, GPU={util.gpu:.2f}, memory={util.object_store_memory:.2f}."
+                f"CPU={util.cpu:.2f}, GPU={util.gpu:.2f}, memory={util.memory:.2f}, "
+                f"object_store_memory={util.object_store_memory:.2f}."
             )
             # Send current resources allocation when upscaling is not needed,
             # to renew our registration on AutoscalingCoordinator.
@@ -255,6 +259,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             "The utilization of one or more logical resource is higher than the "
             f"specified threshold of {self._cluster_scaling_up_util_threshold:.0%}: "
             f"CPU={current_utilization.cpu:.0%}, GPU={current_utilization.gpu:.0%}, "
+            f"memory={current_utilization.memory:.0%}, "
             f"object_store_memory={current_utilization.object_store_memory:.0%}. "
             f"Requesting {self._cluster_scaling_up_delta} node(s) of each shape:"
         )

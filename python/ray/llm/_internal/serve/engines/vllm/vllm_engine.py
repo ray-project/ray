@@ -9,7 +9,7 @@ from starlette.datastructures import State
 from starlette.requests import Request
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
-from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
+from vllm.entrypoints.openai.engine.protocol import ErrorResponse as VLLMErrorResponse
 
 import ray
 from ray.llm._internal.common.callbacks.base import CallbackCtx
@@ -322,13 +322,17 @@ class VLLMEngine(LLMEngine):
                 args=args,
             )
 
-        self._oai_models = state.openai_serving_models
-        self._oai_serving_chat = state.openai_serving_chat
-        self._oai_serving_completion = state.openai_serving_completion
-        self._oai_serving_embedding = state.openai_serving_embedding
-        self._oai_serving_transcription = state.openai_serving_transcription
-        self._oai_serving_scores = state.openai_serving_scores
-        self._oai_serving_tokenization = state.openai_serving_tokenization
+        self._oai_models = getattr(state, "openai_serving_models", None)
+        self._oai_serving_chat = getattr(state, "openai_serving_chat", None)
+        self._oai_serving_completion = getattr(state, "openai_serving_completion", None)
+        self._oai_serving_embedding = getattr(state, "openai_serving_embedding", None)
+        self._oai_serving_transcription = getattr(
+            state, "openai_serving_transcription", None
+        )
+        self._oai_serving_scores = getattr(state, "openai_serving_scores", None)
+        self._oai_serving_tokenization = getattr(
+            state, "openai_serving_tokenization", None
+        )
 
         self._validate_openai_serving_models()
         self._validate_engine_client()
@@ -346,38 +350,53 @@ class VLLMEngine(LLMEngine):
             self._oai_models, "load_lora_adapter"
         ), "oai_models must have a load_lora_adapter attribute"
 
-    def _validate_openai_serving_chat(self):
-        assert hasattr(
-            self._oai_serving_chat, "create_chat_completion"
-        ), "oai_serving_chat must have a create_chat_completion attribute"
+    @staticmethod
+    def _make_error(message: str) -> ErrorResponse:
+        return ErrorResponse(
+            error=ErrorInfo(message=message, type="invalid_request_error", code=400)
+        )
 
-    def _validate_openai_serving_completion(self):
-        assert hasattr(
-            self._oai_serving_completion, "create_completion"
-        ), "oai_serving_completion must have a create_completion attribute"
+    def _validate_openai_serving_chat(self) -> Optional[ErrorResponse]:
+        if self._oai_serving_chat is None:
+            return self._make_error(
+                "This model does not support the 'generate' task. "
+                "The chat completion endpoint is not available for this model."
+            )
 
-    def _validate_openai_serving_embedding(self):
-        assert hasattr(
-            self._oai_serving_embedding, "create_embedding"
-        ), "oai_serving_embedding must have a create_embedding attribute"
+    def _validate_openai_serving_completion(self) -> Optional[ErrorResponse]:
+        if self._oai_serving_completion is None:
+            return self._make_error(
+                "This model does not support the 'generate' task. "
+                "The completion endpoint is not available for this model."
+            )
 
-    def _validate_openai_serving_transcription(self):
-        assert hasattr(
-            self._oai_serving_transcription, "create_transcription"
-        ), "oai_serving_transcription must have a create_transcription attribute"
+    def _validate_openai_serving_embedding(self) -> Optional[ErrorResponse]:
+        if self._oai_serving_embedding is None:
+            return self._make_error(
+                "This model does not support the 'embed' task. "
+                "The embedding endpoint is not available for this model."
+            )
 
-    def _validate_openai_serving_scores(self):
-        assert hasattr(
-            self._oai_serving_scores, "create_score"
-        ), "oai_serving_scores must have a create_score attribute"
+    def _validate_openai_serving_transcription(self) -> Optional[ErrorResponse]:
+        if self._oai_serving_transcription is None:
+            return self._make_error(
+                "This model does not support the 'transcription' task. "
+                "The transcription endpoint is not available for this model."
+            )
 
-    def _validate_openai_serving_tokenization(self):
-        assert hasattr(
-            self._oai_serving_tokenization, "create_tokenize"
-        ), "oai_serving_tokenization must have a create_tokenize attribute"
-        assert hasattr(
-            self._oai_serving_tokenization, "create_detokenize"
-        ), "oai_serving_tokenization must have a create_detokenize attribute"
+    def _validate_openai_serving_scores(self) -> Optional[ErrorResponse]:
+        if self._oai_serving_scores is None:
+            return self._make_error(
+                "This model does not support the 'score' task. "
+                "The score endpoint is not available for this model."
+            )
+
+    def _validate_openai_serving_tokenization(self) -> Optional[ErrorResponse]:
+        if self._oai_serving_tokenization is None:
+            return self._make_error(
+                "This model does not support the 'tokenization' task. "
+                "The tokenization endpoint is not available for this model."
+            )
 
     def _validate_engine_client(self):
         assert hasattr(
@@ -456,6 +475,7 @@ class VLLMEngine(LLMEngine):
         engine_client = AsyncLLM(
             vllm_config=vllm_engine_config,
             executor_class=executor_class,
+            log_requests=vllm_engine_args.enable_log_requests,
             log_stats=not vllm_engine_args.disable_log_stats,
             stat_loggers=custom_stat_loggers,
         )
@@ -463,7 +483,7 @@ class VLLMEngine(LLMEngine):
         return engine_client
 
     async def resolve_lora(self, disk_lora_model: DiskMultiplexConfig):
-        from vllm.entrypoints.openai.protocol import LoadLoRAAdapterRequest
+        from vllm.entrypoints.serve.lora.protocol import LoadLoRAAdapterRequest
 
         self._validate_openai_serving_models()
 
@@ -486,7 +506,9 @@ class VLLMEngine(LLMEngine):
         request: ChatCompletionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
-        self._validate_openai_serving_chat()
+        if error := self._validate_openai_serving_chat():
+            yield error
+            return
 
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
@@ -514,7 +536,9 @@ class VLLMEngine(LLMEngine):
         request: CompletionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
-        self._validate_openai_serving_completion()
+        if error := self._validate_openai_serving_completion():
+            yield error
+            return
 
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
@@ -544,7 +568,9 @@ class VLLMEngine(LLMEngine):
         request: EmbeddingRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None]:
-        self._validate_openai_serving_embedding()
+        if error := self._validate_openai_serving_embedding():
+            yield error
+            return
 
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
@@ -566,7 +592,9 @@ class VLLMEngine(LLMEngine):
         request: TranscriptionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, TranscriptionResponse, ErrorResponse], None]:
-        self._validate_openai_serving_transcription()
+        if error := self._validate_openai_serving_transcription():
+            yield error
+            return
 
         # Extract audio data from the request file
         audio_data = await request.file.read()
@@ -600,7 +628,9 @@ class VLLMEngine(LLMEngine):
         request: ScoreRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[ScoreResponse, ErrorResponse], None]:
-        self._validate_openai_serving_scores()
+        if error := self._validate_openai_serving_scores():
+            yield error
+            return
 
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
@@ -620,7 +650,9 @@ class VLLMEngine(LLMEngine):
         request: TokenizeRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[TokenizeResponse, ErrorResponse], None]:
-        self._validate_openai_serving_tokenization()
+        if error := self._validate_openai_serving_tokenization():
+            yield error
+            return
 
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
@@ -640,7 +672,9 @@ class VLLMEngine(LLMEngine):
         request: DetokenizeRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[DetokenizeResponse, ErrorResponse], None]:
-        self._validate_openai_serving_tokenization()
+        if error := self._validate_openai_serving_tokenization():
+            yield error
+            return
 
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
