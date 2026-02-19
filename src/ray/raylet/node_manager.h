@@ -29,7 +29,7 @@
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
-#include "ray/common/memory_monitor.h"
+#include "ray/common/memory_monitor_interface.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_util.h"
@@ -43,12 +43,13 @@
 #include "ray/ray_syncer/ray_syncer.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/lease_dependency_manager.h"
-#include "ray/raylet/local_lease_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/placement_group_resource_manager.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/scheduling/cluster_lease_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/local_lease_manager.h"
+#include "ray/raylet/throttler.h"
 #include "ray/raylet/wait_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
@@ -56,7 +57,6 @@
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/rpc_callback_types.h"
-#include "ray/util/throttler.h"
 
 namespace ray::raylet {
 
@@ -758,13 +758,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void TriggerLocalOrGlobalGCIfNeeded();
 
   /// Creates the callback used in the memory monitor.
-  MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
+  KillWorkersCallback CreateKillWorkersCallback();
 
   /// Creates the detail message for the worker that is killed due to memory running low.
-  std::string CreateOomKillMessageDetails(const std::shared_ptr<WorkerInterface> &worker,
-                                          const NodeID &node_id,
-                                          const MemorySnapshot &system_memory,
-                                          float usage_threshold) const;
+  std::string CreateOomKillMessageDetails(
+      const std::shared_ptr<WorkerInterface> &worker,
+      const NodeID &node_id,
+      const SystemMemorySnapshot &system_memory_snapshot,
+      const ProcessesMemorySnapshot &process_memory_snapshot,
+      float usage_threshold) const;
 
   /// Creates the suggestion message for the worker that is killed due to memory running
   /// low.
@@ -899,7 +901,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   Throttler global_gc_throttler_;
 
   /// Target being evicted or null if no target
-  std::shared_ptr<WorkerInterface> high_memory_eviction_target_;
+  std::shared_ptr<WorkerInterface> worker_being_killed_;
 
   ray::observability::MetricInterface &memory_manager_worker_eviction_total_count_;
 
@@ -954,7 +956,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::shared_ptr<WorkerKillingPolicy> worker_killing_policy_;
 
   /// Monitors and reports node memory usage and whether it is above threshold.
-  std::unique_ptr<MemoryMonitor> memory_monitor_;
+  std::unique_ptr<MemoryMonitorInterface> memory_monitor_;
 
   /// Used to move the dashboard and runtime_env agents into the system cgroup.
   AddProcessToCgroupHook add_process_to_system_cgroup_hook_;

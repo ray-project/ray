@@ -574,52 +574,52 @@ class GPUObjectManager:
                     sent_to_src_actor_and_others_warned=True
                 )
 
-        if src_actor._actor_id == dst_actor._actor_id:
-            # If the source and destination actors are the same, the tensors can
-            # be transferred intra-process, so we skip the out-of-band tensor
-            # transfer.
-            return
+            if src_actor._actor_id == dst_actor._actor_id:
+                # If the source and destination actors are the same, the tensors can
+                # be transferred intra-process, so we skip the out-of-band tensor
+                # transfer.
+                return
 
-        tensor_transport_manager = get_tensor_transport_manager(
-            gpu_object_meta.tensor_transport_backend
-        )
-        communicator_meta = tensor_transport_manager.get_communicator_metadata(
-            src_actor,
-            dst_actor,
-            gpu_object_meta.tensor_transport_backend,
-        )
+            tensor_transport_manager = get_tensor_transport_manager(
+                gpu_object_meta.tensor_transport_backend
+            )
+            communicator_meta = tensor_transport_manager.get_communicator_metadata(
+                src_actor,
+                dst_actor,
+                gpu_object_meta.tensor_transport_backend,
+            )
 
-        send_ref = None
-        if not tensor_transport_manager.__class__.is_one_sided():
-            # Send tensors stored in the `src_actor`'s GPU object store to the
-            # destination rank `dst_rank`.
-            # NOTE: We put this task on the background thread to avoid tasks
-            # executing on the main thread blocking the data transfer.
-            send_ref = src_actor.__ray_call__.options(
+            send_ref = None
+            if not tensor_transport_manager.__class__.is_one_sided():
+                # Send tensors stored in the `src_actor`'s GPU object store to the
+                # destination rank `dst_rank`.
+                # NOTE: We put this task on the background thread to avoid tasks
+                # executing on the main thread blocking the data transfer.
+                send_ref = src_actor.__ray_call__.options(
+                    concurrency_group="_ray_system"
+                ).remote(
+                    __ray_send__,
+                    obj_id,
+                    tensor_transport_meta,
+                    communicator_meta,
+                    gpu_object_meta.tensor_transport_backend,
+                )
+
+            # Receive tensors from the source rank and store them in the
+            # `dst_actor`'s GPU object store.
+            # NOTE: Putting this task on the background thread is technically only
+            # needed for the sender task, but we put the receiver task on the same
+            # background thread to ensure that all communication operations are
+            # executed in a global order.
+            recv_ref = dst_actor.__ray_call__.options(
                 concurrency_group="_ray_system"
             ).remote(
-                __ray_send__,
+                __ray_recv__,
                 obj_id,
                 tensor_transport_meta,
                 communicator_meta,
                 gpu_object_meta.tensor_transport_backend,
             )
-
-        # Receive tensors from the source rank and store them in the
-        # `dst_actor`'s GPU object store.
-        # NOTE: Putting this task on the background thread is technically only
-        # needed for the sender task, but we put the receiver task on the same
-        # background thread to ensure that all communication operations are
-        # executed in a global order.
-        recv_ref = dst_actor.__ray_call__.options(
-            concurrency_group="_ray_system"
-        ).remote(
-            __ray_recv__,
-            obj_id,
-            tensor_transport_meta,
-            communicator_meta,
-            gpu_object_meta.tensor_transport_backend,
-        )
 
         self._unmonitored_transfers.put(
             TransferMetadata(

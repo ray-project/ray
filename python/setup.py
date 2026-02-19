@@ -22,7 +22,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 10), (3, 11), (3, 12), (3, 13)]
+SUPPORTED_PYTHONS = [(3, 10), (3, 11), (3, 12), (3, 13), (3, 14)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -135,10 +135,6 @@ else:
         "universal API for building distributed applications.",
         BUILD_TYPE,
     )
-    RAY_EXTRA_CPP = True
-    # Disable extra cpp for the development versions.
-    if "dev" in setup_spec.version or not BUILD_CPP:
-        RAY_EXTRA_CPP = False
 
 # Ideally, we could include these files by putting them in a
 # MANIFEST.in or using the package_data argument to setup, but the
@@ -247,7 +243,7 @@ if setup_spec.type == SetupType.RAY:
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
             # please add it to python/ray/dashboard/optional_deps.py as well.
-            "aiohttp >= 3.7",
+            "aiohttp >= 3.13.3",
             "aiohttp_cors",
             "colorful",
             "py-spy >= 0.2.0; python_version < '3.12'",
@@ -311,12 +307,12 @@ if setup_spec.type == SetupType.RAY:
             setup_spec.extras["serve"]
             + [
                 "celery",
+                "taskiq",
             ]
         )
     )
 
-    if RAY_EXTRA_CPP:
-        setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
+    setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
@@ -354,10 +350,9 @@ if setup_spec.type == SetupType.RAY:
             chain.from_iterable([v for k, v in setup_spec.extras.items() if k != "cpp"])
         )
     )
-    if RAY_EXTRA_CPP:
-        setup_spec.extras["all-cpp"] = list(
-            set(setup_spec.extras["all"] + setup_spec.extras["cpp"])
-        )
+    setup_spec.extras["all-cpp"] = list(
+        set(setup_spec.extras["all"] + setup_spec.extras["cpp"])
+    )
 
     # "llm" is not included in all, by design. vllm's dependency set is very
     # large and specific, will likely run into dependency conflicts with other
@@ -371,7 +366,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]>=0.13.0",
+                "vllm[audio]>=0.15.0",
                 "nixl>=0.6.1",
                 # TODO(llm): remove after next vLLM version bump
                 "transformers>=4.57.3",
@@ -828,6 +823,7 @@ if __name__ == "__main__":
             "Programming Language :: Python :: 3.11",
             "Programming Language :: Python :: 3.12",
             "Programming Language :: Python :: 3.13",
+            "Programming Language :: Python :: 3.14",
         ],
         packages=setup_spec.get_packages(),
         cmdclass=cmdclass,
