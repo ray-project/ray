@@ -550,6 +550,9 @@ class Test(dict):
             "post_build_script": self.get_byod_post_build_script(),
             "python_depset": self.get_byod_python_depset(),
         }
+        runtime_env = self.get_byod_runtime_env()
+        if runtime_env:
+            custom_info["runtime_env"] = runtime_env
         tag = f"{self.get_byod_base_image_tag(build_id)}-{dict_hash(custom_info)}"
         ray_version = self.get_ray_version()
         if ray_version:
@@ -606,6 +609,7 @@ class Test(dict):
         return (
             self.get_byod_post_build_script() is not None
             or self.get_byod_python_depset() is not None
+            or bool(self.get_byod_runtime_env())
         )
 
     def get_anyscale_byod_image(self, build_id: Optional[str] = None) -> str:

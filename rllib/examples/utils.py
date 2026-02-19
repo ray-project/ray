@@ -27,7 +27,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.serialization import convert_numpy_to_python_primitives
 from ray.rllib.utils.typing import ResultDict
-from ray.tune import CLIReporter
 from ray.tune.result import TRAINING_ITERATION
 
 if TYPE_CHECKING:
@@ -335,12 +334,12 @@ def should_stop(
     """Checks stopping criteria on `ResultDict`
 
     Args:
-        stop: Dictionary of stopping criteria. Each criterium is a mapping of
-            a metric in the `ResultDict` of the algorithm to a certain criterium.
+        stop: Dictionary of stopping criteria. Each criterion is a mapping of
+            a metric in the `ResultDict` of the algorithm to a certain criterion.
         results: An RLlib `ResultDict` containing all results from a training step.
-        keep_ray_up: Optionally shutting down the runnin Ray instance.
+        keep_ray_up: Optionally shutting down the running Ray instance.
 
-    Returns: True, if any stopping criterium is fulfilled. Otherwise, False.
+    Returns: True, if any stopping criterion is fulfilled. Otherwise, False.
     """
     for key, threshold in stop.items():
         val = results
@@ -413,7 +412,7 @@ def run_rllib_example_script_experiment(
         base_config: The AlgorithmConfig object to use for this experiment. This base
             config will be automatically "extended" based on some of the provided
             `args`. For example, `args.num_env_runners` is used to set
-            `config.num_env_runners`, etc..
+            `config.num_env_runners`, etc.
         args: A argparse.Namespace object, ideally returned by calling
             `args = add_rllib_example_script_args()`. It must have the following
             properties defined: `stop_iters`, `stop_reward`, `stop_timesteps`,
@@ -431,11 +430,11 @@ def run_rllib_example_script_experiment(
         success_metric: Only relevant if `args.as_test` is True.
             A dict mapping a single(!) ResultDict key string (using "/" in
             case of nesting, e.g. "env_runners/episode_return_mean" for referring
-            to `result_dict['env_runners']['episode_return_mean']` to a single(!)
+            to `result_dict['env_runners']['episode_return_mean']`) to a single(!)
             minimum value to be reached in order for the experiment to count as
             successful. If `args.as_test` is True AND this `success_metric` is not
             reached with the bounds defined by `stop`, will raise an Exception.
-        trainable: The Trainable sub-class to run in the tune.Tuner. If None (default),
+        trainable: The Trainable subclass to run in the tune.Tuner. If None (default),
             use the registered RLlib Algorithm class specified by args.algo.
         tune_callbacks: A list of Tune callbacks to configure with the tune.Tuner.
             In case `args.wandb_key` is provided, appends a WandB logger to this
@@ -629,7 +628,7 @@ def run_rllib_example_script_experiment(
                         val = None
                         break
                 if val is not None and not np.isnan(val) and val >= threshold:
-                    print(f"Stop criterium ({key}={threshold}) fulfilled!")
+                    print(f"Stop criterion ({key}={threshold}) fulfilled!")
                     if not keep_ray_up:
                         ray.shutdown()
                     return results
@@ -658,11 +657,11 @@ def run_rllib_example_script_experiment(
             )
         )
 
-    # Auto-configure a CLIReporter (to log the results to the console).
+    # Autoconfigure a tune.CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
     if progress_reporter is None:
         if args.num_agents == 0:
-            progress_reporter = CLIReporter(
+            progress_reporter = tune.CLIReporter(
                 metric_columns={
                     TRAINING_ITERATION: "iter",
                     "time_total_s": "total time (s)",
@@ -672,7 +671,7 @@ def run_rllib_example_script_experiment(
                 max_report_frequency=args.tune_max_report_freq,
             )
         else:
-            progress_reporter = CLIReporter(
+            progress_reporter = tune.CLIReporter(
                 metric_columns={
                     **{
                         TRAINING_ITERATION: "iter",
@@ -691,7 +690,7 @@ def run_rllib_example_script_experiment(
             )
 
     # Force Tuner to use old progress output as the new one silently ignores our custom
-    # `CLIReporter`.
+    # `tune.CLIReporter`.
     os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
 
     # Run the actual experiment (using Tune).
@@ -700,6 +699,7 @@ def run_rllib_example_script_experiment(
         trainable or config.algo_class,
         param_space=config,
         run_config=tune.RunConfig(
+            failure_config=tune.FailureConfig(max_failures=0, fail_fast="raise"),
             stop=stop,
             verbose=args.verbose,
             callbacks=tune_callbacks,
@@ -719,21 +719,6 @@ def run_rllib_example_script_experiment(
 
     if not keep_ray_up:
         ray.shutdown()
-
-    # Error out, if Tuner.fit() failed to run. Otherwise, erroneous examples might pass
-    # the CI tests w/o us knowing that they are broken (b/c some examples do not have
-    # a --as-test flag and/or any passing criteria).
-    if results.errors:
-        # Might cause an IndexError if the tuple is not long enough; in that case, use repr(e).
-        errors = [
-            e.args[0].args[2]
-            if e.args and hasattr(e.args[0], "args") and len(e.args[0].args) > 2
-            else repr(e)
-            for e in results.errors
-        ]
-        raise RuntimeError(
-            f"Running the example script resulted in one or more errors! {errors}"
-        )
 
     # If run as a test, check whether we reached the specified success criteria.
     test_passed = False
