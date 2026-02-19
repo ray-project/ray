@@ -185,10 +185,14 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
 
             # Log the full DataContext for traceability
-            option_str = pprint.pformat(vars(self._options))
-            logger.debug("Execution config:\n%s", option_str)
-            context_str = pprint.pformat(vars(self._data_context))
-            logger.debug("Data Context:\n%s", context_str)
+            if logger.isEnabledFor(logging.DEBUG):
+                combined = (
+                    "Execution config:\n"
+                    + pprint.pformat(vars(self._options))
+                    + "\n\nData Context:\n"
+                    + pprint.pformat(vars(self._data_context))
+                )
+                logger.debug("%s", combined)
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology = build_streaming_topology(dag, self._options)
