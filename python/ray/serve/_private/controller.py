@@ -40,6 +40,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_FALLBACK_PROXY_HTTP_PORT,
+    RAY_SERVE_FALLBACK_PROXY_GRPC_PORT,
     RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
@@ -1367,6 +1369,7 @@ class ServeController:
                     route_prefix="/",
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
+                    fallback_target=self._get_fallback_proxy_target(RequestProtocol.HTTP),
                 )
             )
             if is_grpc_enabled(self.get_grpc_config()):
@@ -1378,9 +1381,34 @@ class ServeController:
                             RequestProtocol.GRPC
                         ),
                         app_name="",
+                        fallback_target=self._get_fallback_proxy_target(RequestProtocol.GRPC),
                     )
                 )
         return target_groups
+ 
+    def _get_empty_target_group(self, protocol: RequestProtocol) -> TargetGroup:
+        """Get an empty target group."""
+        return TargetGroup(
+            targets=[],
+            route_prefix="/",
+            protocol=protocol,
+            app_name="",
+            fallback_target=self._get_fallback_proxy_target(protocol),
+        )
+   
+    def _get_fallback_proxy_target(self, protocol: RequestProtocol) -> Target:
+        """Get the fallback proxy target."""
+        port = (
+            RAY_SERVE_FALLBACK_PROXY_HTTP_PORT
+            if protocol == RequestProtocol.HTTP
+            else RAY_SERVE_FALLBACK_PROXY_GRPC_PORT
+        )
+        return Target(
+            ip=self._actor_details.node_ip,
+            port=port,
+            instance_id=self._actor_details.node_instance_id,
+            name=f"fallback-{protocol.value.lower()}-proxy",
+        )
 
     def get_target_groups(
         self,
@@ -1438,9 +1466,18 @@ class ServeController:
 
         if not apps:
             # When HAProxy is enabled and there are no apps, return empty target groups
-            # so that all requests fall through to the default_backend (404)
+            # only containing the fallback serve proxy.
             if self._ha_proxy_enabled and from_proxy_manager:
-                return []
+                target_groups = [
+                    self._get_empty_target_group(RequestProtocol.HTTP),
+                ]
+                if is_grpc_enabled(self.get_grpc_config()):
+                    target_groups.append(
+                        self._get_empty_target_group(RequestProtocol.GRPC),
+                    )
+
+                return target_groups
+
             return proxy_target_groups
 
         # Create target groups for each application
@@ -1458,7 +1495,7 @@ class ServeController:
                 )
 
         return target_groups
-
+    
     def _get_running_replica_details_for_ingress_deployment(
         self, app_name: str
     ) -> List[ReplicaDetails]:
@@ -1513,6 +1550,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=http_targets,
                     app_name=app_name,
+                    fallback_target=self._get_fallback_proxy_target(RequestProtocol.HTTP),
                 )
             )
 
@@ -1528,6 +1566,7 @@ class ServeController:
                         route_prefix=route_prefix,
                         targets=grpc_targets,
                         app_name=app_name,
+                        fallback_target=self._get_fallback_proxy_target(RequestProtocol.GRPC),
                     )
                 )
 
@@ -1552,6 +1591,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=[] if self._ha_proxy_enabled else http_targets,
                     app_name=app_name,
+                    fallback_target=self._get_fallback_proxy_target(RequestProtocol.HTTP),
                 )
             )
         if grpc_targets:
@@ -1561,6 +1601,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=[] if self._ha_proxy_enabled else grpc_targets,
                     app_name=app_name,
+                    fallback_target=self._get_fallback_proxy_target(RequestProtocol.GRPC),
                 )
             )
         return target_groups
