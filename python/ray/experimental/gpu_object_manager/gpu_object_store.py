@@ -103,10 +103,14 @@ def __ray_free__(
         tensor_transport_manager = get_tensor_transport_manager(
             tensor_transport_backend
         )
-        tensor_transport_manager.garbage_collect(obj_id, tensor_transport_meta)
-
         gpu_object_manager = global_worker.gpu_object_manager
         gpu_object_store = gpu_object_manager.gpu_object_store
+
+        if not gpu_object_store.has_object(obj_id):
+            return
+        tensors = gpu_object_store.get_object(obj_id)
+        tensor_transport_manager.garbage_collect(obj_id, tensor_transport_meta, tensors)
+
         gpu_object_store.pop_object(obj_id)
     except AssertionError:
         # This could fail if this is a retry and it's already been freed.
