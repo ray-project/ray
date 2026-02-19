@@ -253,13 +253,13 @@ These concrete examples demonstrate how Ray Train appropriately saves checkpoint
         X = np.random.normal(0, 1, size=(n, 4))
         Y = np.random.uniform(0, 1, size=(n, 1))
 
-        dataset = tf.data.Dataset.from_tensor_slices((X, Y)).batch(20)
-
         strategy = tf.distribute.MultiWorkerMirroredStrategy()
         with strategy.scope():
             # toy neural network : 1-layer
             model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
             model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
+
+        dataset = tf.data.Dataset.from_tensor_slices((X, Y)).batch(20)
 
         for epoch in range(config["num_epochs"]):
             history = model.fit(dataset)
@@ -308,8 +308,6 @@ Load checkpoints
         X = np.random.normal(0, 1, size=(n, 4))
         Y = np.random.uniform(0, 1, size=(n, 1))
 
-        dataset = tf.data.Dataset.from_tensor_slices((X, Y)).batch(20)
-
         strategy = tf.distribute.MultiWorkerMirroredStrategy()
         with strategy.scope():
             # toy neural network : 1-layer
@@ -324,6 +322,8 @@ Load checkpoints
                     [tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))]
                 )
             model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
+
+        dataset = tf.data.Dataset.from_tensor_slices((X, Y)).batch(20)
 
         for epoch in range(config["num_epochs"]):
             history = model.fit(dataset)
