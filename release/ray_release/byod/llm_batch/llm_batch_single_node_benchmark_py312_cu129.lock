@@ -2311,9 +2311,9 @@ vine==5.1.0 \
     #   amqp
     #   celery
     #   kombu
-virtualenv==20.37.0 \
-    --hash=sha256:5d3951c32d57232ae3569d4de4cc256c439e045135ebf43518131175d9be435d \
-    --hash=sha256:6f7e2064ed470aa7418874e70b6369d53b66bcd9e9fd5389763e96b6c94ccb7c
+virtualenv==20.38.0 \
+    --hash=sha256:94f39b1abaea5185bf7ea5a46702b56f1d0c9aa2f41a6c2b8b0af4ddc74c10a7 \
+    --hash=sha256:d6e78e5889de3a4742df2d3d44e779366325a90cf356f15621fddace82431794
     # via -r python/requirements.txt
 watchfiles==1.1.1 \
     --hash=sha256:00485f441d183717038ed2e887a7c868154f216877653121068107b227a2f64c \
