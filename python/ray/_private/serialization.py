@@ -693,12 +693,12 @@ class SerializationContext:
 
         def serialize(tensor):
             ctx = ChannelContext.get_current()
-            return ctx.serialization_context.serialize_tensor(tensor)
+            return ctx.serialization_context.serialize_tensor(tensor, is_rdt=True)
 
         def deserialize(placeholder):
             ctx = ChannelContext.get_current()
             return ctx.serialization_context.deserialize_tensor(
-                placeholder, Device.DEFAULT
+                placeholder, Device.DEFAULT, is_rdt=True
             )
 
         data_type = get_transport_data_type(tensor_transport)

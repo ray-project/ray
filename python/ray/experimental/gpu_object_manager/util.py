@@ -86,20 +86,29 @@ def register_tensor_transport(
 
 DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC"]
 
-try:
-    import torch
+_default_transports_registered = False
 
-    register_tensor_transport(
-        "NIXL", ["cuda", "cpu"], NixlTensorTransport, torch.Tensor
-    )
-    register_tensor_transport("GLOO", ["cpu"], GLOOTensorTransport, torch.Tensor)
-    register_tensor_transport("NCCL", ["cuda"], NCCLTensorTransport, torch.Tensor)
-    register_tensor_transport("CUDA_IPC", ["cuda"], CudaIpcTransport, torch.Tensor)
-except ImportError:
-    pass
+
+def _ensure_default_transports_registered():
+    global _default_transports_registered
+    if _default_transports_registered:
+        return
+    _default_transports_registered = True
+    try:
+        import torch
+
+        register_tensor_transport(
+            "NIXL", ["cuda", "cpu"], NixlTensorTransport, torch.Tensor
+        )
+        register_tensor_transport("GLOO", ["cpu"], GLOOTensorTransport, torch.Tensor)
+        register_tensor_transport("NCCL", ["cuda"], NCCLTensorTransport, torch.Tensor)
+        register_tensor_transport("CUDA_IPC", ["cuda"], CudaIpcTransport, torch.Tensor)
+    except ImportError:
+        pass
 
 
 def get_transport_data_type(tensor_transport: str) -> type:
+    _ensure_default_transports_registered()
     if tensor_transport not in transport_manager_info:
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
 
@@ -126,6 +135,7 @@ def get_tensor_transport_manager(
     global transport_managers
     global transport_managers_lock
 
+    _ensure_default_transports_registered()
     with transport_managers_lock:
         if transport_name in transport_managers:
             return transport_managers[transport_name]
@@ -149,6 +159,7 @@ def register_custom_tensor_transports_on_actor(
     global transport_manager_info
     global has_custom_transports
 
+    _ensure_default_transports_registered()
     if not has_custom_transports:
         return None
 
@@ -176,7 +187,7 @@ def register_custom_tensor_transports_on_actor(
 
 def device_match_transport(device: str, tensor_transport: str) -> bool:
     """Check if the device matches the transport."""
-
+    _ensure_default_transports_registered()
     if tensor_transport not in transport_manager_info:
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
 
@@ -184,6 +195,7 @@ def device_match_transport(device: str, tensor_transport: str) -> bool:
 
 
 def normalize_and_validate_tensor_transport(tensor_transport: str) -> str:
+    _ensure_default_transports_registered()
     tensor_transport = tensor_transport.upper()
 
     if tensor_transport not in transport_manager_info:
@@ -193,6 +205,7 @@ def normalize_and_validate_tensor_transport(tensor_transport: str) -> str:
 
 
 def validate_one_sided(tensor_transport: str, ray_usage_func: str):
+    _ensure_default_transports_registered()
     if not transport_manager_info[
         tensor_transport
     ].transport_manager_class.is_one_sided():

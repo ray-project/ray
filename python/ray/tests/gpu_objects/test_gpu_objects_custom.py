@@ -101,7 +101,7 @@ class SharedMemoryTransport(TensorTransportManager):
         self,
         obj_id: str,
         tensor_transport_meta: TensorTransportMetadata,
-        tensors: List["torch.Tensor"],
+        tensors: List[numpy.ndarray],
     ):
         self.shared_memory_objects[obj_id].close()
         self.shared_memory_objects[obj_id].unlink()
@@ -126,6 +126,9 @@ def test_register_and_use_custom_transport(ray_start_regular):
         def echo(self, data):
             return data
 
+        def non_rdt_echo(self, data):
+            return data
+
         def sum(self, data):
             return data.sum().item()
 
@@ -139,6 +142,11 @@ def test_register_and_use_custom_transport(ray_start_regular):
 
     actors = [Actor.remote() for _ in range(2)]
     ref = actors[0].echo.remote(numpy.array([1, 2, 3]))
+    result = actors[1].sum.remote(ref)
+    assert ray.get(result) == 6
+
+    # Test that non-rdt methods that return the data type still work.
+    ref = actors[0].non_rdt_echo.remote(numpy.array([1, 2, 3]))
     result = actors[1].sum.remote(ref)
     assert ray.get(result) == 6
 

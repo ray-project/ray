@@ -92,7 +92,7 @@ class _SerializationContext:
         return prev_tensors, deserialized_tensor_placeholders
 
     def serialize_tensor(
-        self, tensor: Any
+        self, tensor: Any, is_rdt: bool
     ) -> Union[int, Tuple["np.ndarray", "torch.dtype", str]]:
         from ray.experimental.channel import ChannelContext
 
@@ -108,6 +108,16 @@ class _SerializationContext:
             # Return a placeholder.
             return len(self._out_of_band_tensors) - 1
 
+        if is_rdt:
+            # If the custom rdt serializer is already registered for this type
+            # but this method is not an rdt method, we'll try to serialize with
+            # the default pickle serializer to avoid registering and deregistering
+            # serializers per function call.
+            import pickle
+
+            return pickle.dumps(tensor)
+
+        # This path is only for cgraphs.
         return self.serialize_to_numpy_or_scalar(tensor)
 
     def serialize_to_numpy_or_scalar(
@@ -142,8 +152,9 @@ class _SerializationContext:
 
     def deserialize_tensor(
         self,
-        val: Union[Tuple["np.ndarray", "torch.dtype", str], int],
+        val: Union[Tuple["np.ndarray", "torch.dtype", str], int, bytes],
         target_device: Device,
+        is_rdt: bool,
     ):
 
         # Found a placeholder for a tensor that was serialized via accelerator.
@@ -161,6 +172,12 @@ class _SerializationContext:
             if target_device == Device.CPU:
                 tensor = tensor.to("cpu")
             return tensor
+
+        if is_rdt:
+            import pickle
+
+            assert isinstance(val, bytes)
+            return pickle.loads(val)
 
         np_array, dtype, tensor_device_type = val
         return self.deserialize_from_numpy_or_scalar(

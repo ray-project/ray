@@ -156,7 +156,7 @@ class TensorTransportManager(ABC):
         self,
         obj_id: str,
         tensor_transport_meta: TensorTransportMetadata,
-        tensors: List["torch.Tensor"],
+        tensors: List[Any],
     ):
         """
         Garbage collect for the tensor transport after the GPU object is freed. This is only
