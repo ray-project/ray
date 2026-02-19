@@ -27,7 +27,7 @@ class VLLMChatTemplate:
 
     async def __call__(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         prompts: List[str] = []
-        all_messages: list = []
+        all_messages: List[List[Dict[str, Any]]] = []
 
         for messages in batch["messages"]:
             if hasattr(messages, "tolist"):
@@ -65,9 +65,9 @@ class VLLMTokenize:
         )
 
     async def __call__(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-        all_tokenized: List[List[int]] = []
-        for prompt in batch["prompt"]:
-            all_tokenized.append(self.tokenizer.encode(prompt))
+        all_tokenized: List[List[int]] = [
+            self.tokenizer.encode(prompt) for prompt in batch["prompt"]
+        ]
 
         return {
             "tokenized_prompt": all_tokenized,
