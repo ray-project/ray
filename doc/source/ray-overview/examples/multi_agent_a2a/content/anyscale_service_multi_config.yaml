@@ -4,16 +4,6 @@ working_dir: .
 
 requirements: ./requirements.txt
 
-compute_config:
-  head_node:
-    name: head
-    instance_type: m5.2xlarge  # GCP: n2-standard-8
-  worker_nodes:
-    - name: 1xL4:16CPU-64GB
-      instance_type: g6.4xlarge  # GCP: g2-standard-16 (1x L4 GPU)
-      min_nodes: 1
-      max_nodes: 1
-
 logging_config:
   encoding: JSON
   log_level: INFO
