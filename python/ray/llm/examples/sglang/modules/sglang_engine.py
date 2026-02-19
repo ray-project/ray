@@ -94,8 +94,6 @@ class SGLangServer:
                 }
 
             message_dict["role"] = str(message_dict.get("role", "user"))
-            content = message_dict.get("content", "")
-            message_dict["content"] = "" if content is None else content
             converted_messages.append(message_dict)
         return converted_messages
 
@@ -182,6 +180,8 @@ class SGLangServer:
         for message in messages:
             role = str(message.get("role", "user"))
             content = message.get("content", "")
+            if content is None:
+                content = ""
             prompt_lines.append(f"{role}: {content}")
         prompt_lines.append("assistant:")
         return "\n".join(prompt_lines)
