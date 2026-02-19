@@ -12,6 +12,8 @@ ray_cc_library(
         "//src/ray/util:event",
         "//src/ray/util:logging",
         "//src/ray/util:process",
+        "//src/ray/util:process_interface",
+        "//src/ray/util:process_utils",
         "//src/ray/util:thread_utils",
         "@boost//:asio",
     ],
@@ -62,7 +64,7 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
-        "//src/ray/util:process",
+        "//src/ray/util:process_interface",
         "@com_google_absl//absl/time",
     ],
 )
@@ -83,6 +85,7 @@ ray_cc_library(
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet_ipc_client:client_connection",
         "//src/ray/util:process",
+        "//src/ray/util:process_interface",
         "@com_google_absl//absl/time",
     ],
 )
@@ -94,6 +97,7 @@ ray_cc_library(
     deps = [
         ":worker",
         "//src/ray/raylet_ipc_client:client_connection",
+        "//src/ray/util:fake_process",
     ],
 )
 
@@ -118,8 +122,11 @@ ray_cc_library(
         "//src/ray/raylet_ipc_client:client_connection",
         "//src/ray/util:container_util",
         "//src/ray/util:network_util",
+        "//src/ray/util:process",
+        "//src/ray/util:process_utils",
         "//src/ray/util:time",
         "@boost//:system",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -138,7 +145,7 @@ ray_cc_library(
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:logging",
-        "//src/ray/util:process",
+        "//src/ray/util:process_utils",
         "//src/ray/util:time",
         "@boost//:beast",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -174,6 +181,7 @@ ray_cc_library(
         "//src/ray/protobuf:node_manager_cc_proto",
         "//src/ray/pubsub:subscriber_interface",
         "//src/ray/util:time",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -192,7 +200,7 @@ ray_cc_library(
         ":worker_interface",
         ":worker_pool",
         "//src/ray/common:lease",
-        "//src/ray/common:memory_monitor",
+        "//src/ray/common:memory_monitor_interface",
         "@com_google_absl//absl/time",
     ],
 )
@@ -236,7 +244,9 @@ ray_cc_library(
         "//src/ray/common:buffer",
         "//src/ray/common:flatbuf_utils",
         "//src/ray/common:lease",
-        "//src/ray/common:memory_monitor",
+        "//src/ray/common:memory_monitor_factory",
+        "//src/ray/common:memory_monitor_interface",
+        "//src/ray/common:memory_monitor_utils",
         "//src/ray/common/cgroup2:cgroup_manager_interface",
         "//src/ray/core_worker:experimental_mutable_object_provider",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
@@ -256,6 +266,8 @@ ray_cc_library(
         "//src/ray/util:container_util",
         "//src/ray/util:network_util",
         "//src/ray/util:port_persistence",
+        "//src/ray/util:process",
+        "//src/ray/util:process_utils",
         "//src/ray/util:time",
         "@boost//:system",
         "@com_google_absl//absl/base:core_headers",

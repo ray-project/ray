@@ -16,6 +16,7 @@ from ray.data._internal.execution.interfaces.common import (
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data.block import BlockMetadata
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
@@ -548,8 +549,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             result.append((metric.name, value))
 
         # TODO: record resource usage in OpRuntimeMetrics,
-        # avoid calling self._op.current_processor_usage()
-        resource_usage = self._op.current_processor_usage()
+        # avoid calling self._op.current_logical_usage()
+        resource_usage = self._op.current_logical_usage()
         result.extend(
             [
                 ("cpu_usage", resource_usage.cpu or 0),
@@ -689,9 +690,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return None
 
         bytes_per_output = self.average_bytes_per_output
-        # If we don’t have a sample, just return null
+        # If we don’t have a sample yet and the limit is “unlimited”, we can’t
+        # estimate – just bail out.
         if bytes_per_output is None:
-            return None
+            if context.target_max_block_size is None:
+                return None
+            else:
+                # Block size can be up to MAX_SAFE_BLOCK_SIZE_FACTOR larger before being sliced.
+                bytes_per_output = (
+                    context.target_max_block_size * MAX_SAFE_BLOCK_SIZE_FACTOR
+                )
 
         num_pending_outputs = context._max_num_blocks_in_streaming_gen_buffer
         if self.average_num_outputs_per_task is not None:

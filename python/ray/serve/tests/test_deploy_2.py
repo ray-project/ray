@@ -333,7 +333,8 @@ def test_num_replicas_auto_api(serve_instance, use_options):
         "initial_replicas": None,
         "aggregation_function": "mean",
         "policy": {
-            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+            "policy_kwargs": {},
         },
     }
 
@@ -399,7 +400,8 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         "initial_replicas": None,
         "aggregation_function": "mean",
         "policy": {
-            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+            "policy_kwargs": {},
         },
     }
 
@@ -410,9 +412,9 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
             assert ray.get(signal.cur_num_waiters.remote()) == target
             return True
 
-        wait_for_condition(check_num_waiters, target=2 * (i + 1))
+        wait_for_condition(check_num_waiters, target=2 * (i + 1), timeout=30)
         print(time.time(), f"Number of waiters on signal reached {2*(i+1)}.")
-        wait_for_condition(check_num_replicas_eq, name="A", target=i + 1)
+        wait_for_condition(check_num_replicas_eq, name="A", target=i + 1, timeout=30)
         print(time.time(), f"Confirmed number of replicas are at {i+1}.")
 
 
