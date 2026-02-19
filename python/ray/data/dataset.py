@@ -145,6 +145,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
+    from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
@@ -3665,7 +3666,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._snapshot_stats = limited_ds._plan.stats()
+        self._plan._cache.set_stats(limited_ds._plan.stats())
         return res
 
     @ConsumptionAPI
@@ -3716,7 +3717,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._snapshot_stats = limited_ds._plan.stats()
+        self._plan._cache.set_stats(limited_ds._plan.stats())
         return output
 
     @ConsumptionAPI
@@ -3959,10 +3960,10 @@ class Dataset:
         if self._logical_plan.dag.infer_metadata().size_bytes is not None:
             return self._logical_plan.dag.infer_metadata().size_bytes
 
-        metadata = self._plan.execute().metadata
-        if not metadata or metadata[0].size_bytes is None:
-            return None
-        return sum(m.size_bytes for m in metadata)
+        cached = self._plan._cache.get_size_bytes(self._logical_plan.dag)
+        if cached is not None:
+            return cached
+        return self._plan.execute().size_bytes()
 
     @ConsumptionAPI
     @PublicAPI(api_group=IM_API_GROUP)
@@ -6720,7 +6721,7 @@ class Dataset:
         plan_copy = self._plan.deep_copy()
         logical_plan_copy = copy.copy(self._plan._logical_plan)
         ds = Dataset(plan_copy, logical_plan_copy)
-        ds._plan.clear_snapshot()
+        ds._plan.clear_cache()
         ds._set_uuid(self._get_uuid())
 
         def _reduce_remote_fn(rf: ray.remote_function.RemoteFunction):
@@ -7178,3 +7179,138 @@ def _block_to_ndarray(block: Block, column: Optional[str]):
 def _block_to_arrow(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_arrow()
+
+
+class _ExecutionCache:
+    """Consolidated cache for Dataset execution results.
+
+    Caches the output bundle, execution stats, and lightweight metadata
+    (schema, num_rows, size_bytes), and tracks which operator produced
+    the cached data.
+
+    There are two "layers" of cache:
+      1. Bundle layer: the full RefBundle from eager execution (execute()).
+         Valid only when _operator matches the current DAG.
+      2. Metadata layer: schema, num_rows, size_bytes cached as scalars.
+         Populated when a streaming iterator is fully exhausted
+         (CacheMetadataIterator in legacy_compat.py).
+
+    Getters check the bundle layer first, then the metadata layer.
+    """
+
+    def __init__(self):
+        # --- Bundle layer (from eager execution) ---
+        self._operator: Optional["LogicalOperator"] = None
+        self._bundle: Optional[RefBundle] = None
+
+        # --- Metadata layer (from streaming iteration) ---
+        self._num_rows: Optional[int] = None
+        self._size_bytes: Optional[int] = None
+        # Note schema can be cached via other means as well.
+        self._schema: Optional["Schema"] = None
+
+        # --- Other ---
+        self._stats: Optional[DatasetStats] = None
+
+    # --- Consolidated Getters ---
+
+    def _cache_is_fresh(self, dag: "LogicalOperator") -> bool:
+        # This _ExecutionCache is only fresh if the current logical
+        # plan dag ends with the same operator. Otherwise, the plan
+        # has changed, so there may have been a change in schema,
+        # count, etc.
+        return self._operator == dag
+
+    def get_bundle(self, dag: "LogicalOperator") -> Optional[RefBundle]:
+        if self._cache_is_fresh(dag):
+            return self._bundle
+        return None
+
+    def get_stats(self) -> Optional[DatasetStats]:
+        # We don't check for cache freshness just for stats for behaviorial
+        # backwards compatibility.
+        return self._stats
+
+    def get_schema(self, dag: "LogicalOperator") -> Optional["Schema"]:
+        if self._cache_is_fresh(dag):
+            if self._bundle is not None and self._bundle.schema is not None:
+                return self._bundle.schema
+            return self._schema
+        return None
+
+    def get_num_rows(self, dag: "LogicalOperator") -> Optional[int]:
+        if self._cache_is_fresh(dag):
+            if self._bundle is not None and self._bundle.num_rows() is not None:
+                return self._bundle.num_rows()
+            return self._num_rows
+        return None
+
+    def get_size_bytes(self, dag: "LogicalOperator") -> Optional[int]:
+        if self._cache_is_fresh(dag):
+            if self._bundle is not None:
+                return self._bundle.size_bytes()
+            return self._size_bytes
+        return None
+
+    # --- Setters ---
+
+    def set_stats(self, stats: DatasetStats) -> None:
+        # stats are cached independently
+        self._stats = stats
+
+    def set_num_rows(self, dag: "LogicalOperator", num_rows: int) -> None:
+        if dag != self._operator:
+            self._clear_dag_dependent_cache()
+        self._operator = dag
+        self._num_rows = num_rows
+
+    def set_size_bytes(self, dag: "LogicalOperator", size_bytes: int) -> None:
+        if dag != self._operator:
+            self._clear_dag_dependent_cache()
+        self._operator = dag
+        self._size_bytes = size_bytes
+
+    def set_schema(self, dag: "LogicalOperator", schema: "Schema") -> None:
+        if dag != self._operator:
+            self._clear_dag_dependent_cache()
+        self._operator = dag
+        self._schema = schema
+
+    def set_bundle(self, dag: "LogicalOperator", bundle: RefBundle) -> None:
+        if dag != self._operator:
+            self._clear_dag_dependent_cache()
+        self._operator = dag
+        self._bundle = bundle
+
+    # --- Lifecycle ---
+
+    def clear(self) -> None:
+        self._stats = None
+        self._clear_dag_dependent_cache()
+
+    def _clear_dag_dependent_cache(self) -> None:
+        self._operator = None
+        self._bundle = None
+        self._schema = None
+        self._num_rows = None
+        self._size_bytes = None
+
+    def copy(self) -> "_ExecutionCache":
+        new = _ExecutionCache()
+        new._operator = self._operator
+        new._bundle = self._bundle
+        new._stats = self._stats
+        new._schema = self._schema
+        new._num_rows = self._num_rows
+        new._size_bytes = self._size_bytes
+        return new
+
+    def deep_copy(self) -> "_ExecutionCache":
+        new = _ExecutionCache()
+        new._operator = copy.copy(self._operator)
+        new._bundle = copy.copy(self._bundle)
+        new._stats = copy.copy(self._stats)
+        new._schema = copy.copy(self._schema)
+        new._num_rows = self._num_rows
+        new._size_bytes = self._size_bytes
+        return new
