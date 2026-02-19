@@ -87,7 +87,7 @@ def __ray_recv__(
     tensor_transport_meta: TensorTransportMetadata,
     communicator_meta: CommunicatorMetadata,
     backend: str,
-    buffers: Optional[List["torch.Tensor"]] = None,
+    target_buffers: Optional[List["torch.Tensor"]] = None,
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
@@ -103,13 +103,13 @@ def __ray_recv__(
             )
 
         tensor_transport_manager = get_tensor_transport_manager(backend)
-        if buffers:
-            validate_tensor_buffers(buffers, tensor_meta, device)
+        if target_buffers:
+            validate_tensor_buffers(target_buffers, tensor_meta, device)
         tensors = tensor_transport_manager.recv_multiple_tensors(
             obj_id,
             tensor_transport_meta,
             communicator_meta,
-            buffers,
+            target_buffers,
         )
         assert len(tensors) == len(tensor_meta)
         gpu_object_store.add_object(obj_id, tensors)

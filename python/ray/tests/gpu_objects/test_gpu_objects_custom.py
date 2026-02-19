@@ -87,7 +87,7 @@ class SharedMemoryTransport(TensorTransportManager):
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
-        buffers: Optional[List["torch.Tensor"]] = None,
+        target_buffers: Optional[List["torch.Tensor"]] = None,
     ):
         shm_name = tensor_transport_metadata.shm_name
         size = tensor_transport_metadata.shm_size

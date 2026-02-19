@@ -5,7 +5,7 @@ import torch
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.experimental import set_buffer_for_ref
+from ray.experimental import set_target_for_ref
 from ray.experimental.gpu_object_manager.util import get_tensor_transport_manager
 
 
@@ -392,7 +392,7 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
             return ray.put(self.tensor_list, _tensor_transport="nixl")
 
         def get_with_buffers(self, refs):
-            set_buffer_for_ref(refs[0], self.tensor_list)
+            set_target_for_ref(refs[0], self.tensor_list)
             tensors = ray.get(refs[0])
             # Make sure we ray.get-ted into the buffers
             for new_tensor, tensor_buffer in zip(tensors, self.tensor_list):
@@ -404,7 +404,7 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
                 torch.tensor([1, 2]).to("cuda"),
                 torch.tensor([4, 5]).to("cuda"),
             ]
-            set_buffer_for_ref(refs[0], wrong_tensor_buffer)
+            set_target_for_ref(refs[0], wrong_tensor_buffer)
             with pytest.raises(ValueError) as excinfo:
                 ray.get(refs[0])
             assert "Shape of tensor_buffer at index 0" in str(excinfo.value)
@@ -414,6 +414,7 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
     ref = ray.get(actors[0].get_ref.remote())
     result = actors[1].get_with_buffers.remote([ref])
     assert ray.get(result)
+
     result = actors[1].get_with_wrong_buffers.remote([ref])
     assert ray.get(result)
 

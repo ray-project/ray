@@ -202,13 +202,13 @@ class NixlTensorTransport(TensorTransportManager):
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
-        buffers: Optional[List["torch.Tensor"]] = None,
+        target_buffers: Optional[List["torch.Tensor"]] = None,
     ) -> List["torch.Tensor"]:
         from ray.experimental.gpu_object_manager.util import (
             create_empty_tensors_from_metadata,
         )
 
-        tensors = buffers or create_empty_tensors_from_metadata(
+        tensors = target_buffers or create_empty_tensors_from_metadata(
             tensor_transport_metadata
         )
 

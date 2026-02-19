@@ -1,6 +1,6 @@
 from ray.experimental.gpu_object_manager.gpu_object_manager import (
     GPUObjectManager,
-    set_buffer_for_ref,
+    set_target_for_ref,
     wait_tensor_freed,
 )
 from ray.experimental.gpu_object_manager.tensor_transport_manager import (
@@ -19,5 +19,5 @@ __all__ = [
     "TensorTransportManager",
     "TensorTransportMetadata",
     "CommunicatorMetadata",
-    "set_buffer_for_ref",
+    "set_target_for_ref",
 ]
