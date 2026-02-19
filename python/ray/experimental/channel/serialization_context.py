@@ -98,7 +98,7 @@ class _SerializationContext:
 
         ctx = ChannelContext.get_current()
         if self._use_external_transport and (
-            ctx._torch_device is None or ctx._torch_device == tensor.device
+            is_rdt or ctx._torch_device is None or ctx._torch_device == tensor.device
         ):
             # External transport is enabled and we found a tensor that matches
             # our device.  Add the actual tensor to a buffer. The buffer of
