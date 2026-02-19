@@ -32,9 +32,6 @@ from ray import serve
 
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
 
-if not BRAVE_API_KEY:
-    raise ValueError("BRAVE_API_KEY environment variable is required")
-
 DEFAULT_USER_AGENT = "ModelContextProtocol/1.0 (WebSearch; +https://github.com/modelcontextprotocol/servers)"
 USER_AGENT = os.getenv("WEB_SEARCH_USER_AGENT", DEFAULT_USER_AGENT)
 
