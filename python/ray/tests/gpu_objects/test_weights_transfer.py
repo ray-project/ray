@@ -9,14 +9,15 @@ import torch
 
 import ray
 from ray.actor import ActorHandle
+from ray.experimental import register_nixl_memory, set_target_for_ref
 
 
 class Model(torch.nn.Module):
     def __init__(self, num_indices: int):
         super().__init__()
         # 2GiB matrix.
-        TOTAL_SIZE_BYTES = 2 * 1024 * 1024 * 1024
-        NUM_ROWS = 10_000
+        TOTAL_SIZE_BYTES = 2 * 100 * 1024 * 1024
+        NUM_ROWS = 1_000
         self.layer = torch.nn.Linear(
             TOTAL_SIZE_BYTES // NUM_ROWS // 2, NUM_ROWS, dtype=torch.float16
         )
@@ -37,11 +38,13 @@ class Model(torch.nn.Module):
 
 @ray.remote(enable_tensor_transport=True)
 class Generator:
-    def __init__(self, num_indices: int, device_str: str):
+    def __init__(self, use_nixl: bool, num_indices: int, device_str: str):
         init_start = time.perf_counter()
         self._device = torch.device(device_str)
         self._model = Model(num_indices).to(self._device)
         self._model_version = 0
+        if use_nixl:
+            register_nixl_memory(self._model.layer.weight)
         # Wait for the first weight sync before starting generation.
         self._generation_event = asyncio.Event()
         self._timings_ms = {"ray_get": []}
@@ -61,14 +64,14 @@ class Generator:
         # Sync weights.
         views = self._model.get_views()
         ref = refs[0]
+        old_items = [view[0].item() for view in views]
         get_start = time.perf_counter()
-        received_tensors = ray.get(ref)
+        set_target_for_ref(ref, views)
+        ray.get(ref)
         self._timings_ms["ray_get"].append((time.perf_counter() - get_start) * 1000.0)
-        for view, received_tensor in zip(views, received_tensors):
-            item = view[0].item()
-            view.copy_(received_tensor)
-            if not torch.all(item + 1 == view).item():
-                print("weights not synced, got", view[0], "expected", item + 1)
+        for view, old_item in zip(views, old_items):
+            if not torch.all(old_item + 1 == view).item():
+                print("weights not synced, got", view[0], "expected", old_item + 1)
 
         self._model_version = model_version
         print("synced weights", model_version)
@@ -99,6 +102,14 @@ class Generator:
     def get_timing_metrics(self):
         return _summarize_timings(self._timings_ms)
 
+    def get_gpu_memory_metrics(self):
+        if self._device.type == "cuda":
+            return {
+                "peak_allocated_bytes": torch.cuda.max_memory_allocated(self._device),
+                "peak_reserved_bytes": torch.cuda.max_memory_reserved(self._device),
+            }
+        return {}
+
 
 @ray.remote(enable_tensor_transport=True)
 class Trainer:
@@ -109,6 +120,8 @@ class Trainer:
         self._model_version = 0
         self._generators = []
         self._tensor_transport = "nixl" if use_nixl else None
+        if use_nixl:
+            register_nixl_memory(self._model.layer.weight)
         self._timings_ms = {"ray_put": [], "ray_get": []}
         self._timings_ms["Trainer.__init__"] = [
             (time.perf_counter() - init_start) * 1000.0
@@ -180,6 +193,14 @@ class Trainer:
         views = self._model.get_views()
         return sum(view.numel() * view.element_size() for view in views)
 
+    def get_gpu_memory_metrics(self):
+        if self._device.type == "cuda":
+            return {
+                "peak_allocated_bytes": torch.cuda.max_memory_allocated(self._device),
+                "peak_reserved_bytes": torch.cuda.max_memory_reserved(self._device),
+            }
+        return {}
+
 
 def _summarize_timings(timings_ms):
     summary = {}
@@ -234,7 +255,9 @@ if __name__ == "__main__":
     run_start = time.perf_counter()
     actor_opts = {"num_gpus": 1} if device_str == "cuda" else {}
     trainer = Trainer.options(**actor_opts).remote(use_nixl, num_indices, device_str)
-    generator = Generator.options(**actor_opts).remote(num_indices, device_str)
+    generator = Generator.options(**actor_opts).remote(
+        use_nixl, num_indices, device_str
+    )
 
     bytes_per_iteration = ray.get(trainer.get_bytes_per_iteration.remote())
     trainer_ref = trainer.loop.remote([generator], num_iters=num_iters)
@@ -289,7 +312,9 @@ if __name__ == "__main__":
                 generator_failures += 1
             # Start a new generator.
             print("starting new generator")
-            generator = Generator.options(**actor_opts).remote(num_indices, device_str)
+            generator = Generator.options(**actor_opts).remote(
+                use_nixl, num_indices, device_str
+            )
             trainer.reset_generators.remote([generator])
             generator_ref = generator.loop.remote(num_iters=num_iters)
 
@@ -298,6 +323,8 @@ if __name__ == "__main__":
     print("job complete")
     trainer_metrics = ray.get(trainer.get_timing_metrics.remote())
     generator_metrics = ray.get(generator.get_timing_metrics.remote())
+    trainer_gpu_memory = ray.get(trainer.get_gpu_memory_metrics.remote())
+    generator_gpu_memory = ray.get(generator.get_gpu_memory_metrics.remote())
 
     output = {
         "num_indices": num_indices,
@@ -312,6 +339,8 @@ if __name__ == "__main__":
         "total_run_time_ms": run_time_ms,
         "trainer_metrics": trainer_metrics,
         "generator_metrics": generator_metrics,
+        "trainer_gpu_memory": trainer_gpu_memory,
+        "generator_gpu_memory": generator_gpu_memory,
     }
     print(output)
     with open(args.output_file, "a", encoding="utf-8") as handle:
