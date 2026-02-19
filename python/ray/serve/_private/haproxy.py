@@ -26,7 +26,6 @@ from ray.serve._private.constants import (
     NO_ROUTES_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG,
-    RAY_SERVE_FALLBACK_PROXY_HTTP_PORT,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
@@ -1115,7 +1114,7 @@ class HAProxyManager(ProxyActorInterface):
                 log_file_path = handler.target.baseFilename
 
         return log_file_path
-    
+
     def _target_to_server(self, target: Target) -> ServerConfig:
         """Convert a target to a server."""
         return ServerConfig(

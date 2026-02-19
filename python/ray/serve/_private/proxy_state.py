@@ -22,8 +22,8 @@ from ray.serve._private.constants import (
     PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     PROXY_READY_CHECK_TIMEOUT_S,
     RAY_SERVE_ENABLE_TASK_EVENTS,
-    RAY_SERVE_FALLBACK_PROXY_HTTP_PORT,
     RAY_SERVE_FALLBACK_PROXY_GRPC_PORT,
+    RAY_SERVE_FALLBACK_PROXY_HTTP_PORT,
     REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -616,7 +616,7 @@ class ProxyStateManager:
         self._running_native_proxies = running_native_proxies
 
         # The fallback proxy is a Serve proxy specifically used when Serve is running native proxies
-        # and there are no ingress replicas for the native proxies to route requests to. This can 
+        # and there are no ingress replicas for the native proxies to route requests to. This can
         # happen in the scale from zero case, in which requests will be routed to the fallback proxy,
         # which eventaully triggers upscaling.
         self._fallback_proxy_state: Optional[ProxyState] = None
@@ -826,7 +826,7 @@ class ProxyStateManager:
             node_ip_address=node_ip_address,
             proxy_actor_class=proxy_actor_class or self._proxy_actor_class,
         )
-    
+
     def _start_fallback_proxy_if_needed(self, node_id: str, node_ip_address: str, node_instance_id: str) -> None:
         """Start a Serve proxy on the head node if it doesn't already exist."""
         if (
@@ -870,7 +870,7 @@ class ProxyStateManager:
 
             if node_id in self._proxy_states:
                 continue
-                
+
             name = self._generate_actor_name(node_id=node_id)
             actor_proxy_wrapper = self._start_proxy(
                 name=name,
@@ -887,7 +887,7 @@ class ProxyStateManager:
                 proxy_restart_count=self._proxy_restart_counts.get(node_id, 0),
                 timer=self._timer,
             )
-    
+
     def _stop_fallback_proxy_if_needed(self, alive_node_ids: Set[str]) -> None:
         """Stop the fallback proxy if it exists and is not needed."""
         if not self._fallback_proxy_state:
@@ -906,7 +906,7 @@ class ProxyStateManager:
         elif self._fallback_proxy_state.status == ProxyStatus.DRAINED:
             logger.info(f"Removing drained fallback proxy on head node '{self._head_node_id}'.")
             stop_proxy = True
-        
+
         if stop_proxy:
             self._fallback_proxy_state.shutdown()
             self._fallback_proxy_state = None
