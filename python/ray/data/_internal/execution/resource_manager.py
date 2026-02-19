@@ -179,18 +179,17 @@ class ResourceManager:
         #      for ineligible ops
         #
         # Outputs of this operator used downstream
-        used_op_outputs_bytes = sum(
-            [
-                (
-                    # Blocks pending in the downstream (internal) input queue
-                    downstream_op.metrics.obj_store_mem_internal_inqueue
-                    +
-                    # Blocks used as inputs of downstream's active tasks
-                    downstream_op.metrics.obj_store_mem_pending_task_inputs
-                )
-                for downstream_op in op.output_dependencies
-            ]
-        )
+        used_op_outputs_bytes = 0
+        for downstream_op in op.output_dependencies:
+            input_idx = downstream_op.input_dependencies.index(op)
+            per_input = downstream_op.internal_inqueue_bytes_for_input(input_idx)
+            if per_input is not None:
+                inqueue_bytes = per_input
+            else:
+                inqueue_bytes = downstream_op.metrics.obj_store_mem_internal_inqueue
+            used_op_outputs_bytes += (
+                inqueue_bytes + downstream_op.metrics.obj_store_mem_pending_task_inputs
+            )
 
         self._mem_op_internal[op] = mem_op_internal
         self._mem_op_outputs[op] = op_outputs_bytes + used_op_outputs_bytes

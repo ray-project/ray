@@ -77,6 +77,9 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
     def internal_input_queue_num_bytes(self) -> int:
         return sum(q.estimate_size_bytes() for q in self._input_buffers)
 
+    def internal_inqueue_bytes_for_input(self, input_index: int) -> Optional[int]:
+        return self._input_buffers[input_index].estimate_size_bytes()
+
     def internal_output_queue_num_blocks(self) -> int:
         return self._output_buffer.num_blocks()
 
