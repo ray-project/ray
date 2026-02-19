@@ -41,7 +41,7 @@ _SERVE_RUN_RE = re.compile(r"^serve run\s+(.+)$")
 
 _SERVE_RUN_BLOCK = """\
 # Start Serve (returns immediately with --non-blocking)
-serve run {config} --non-blocking
+serve run {config} --non-blocking --working-dir .
 
 # Wait for all applications to be RUNNING
 echo "Waiting for all Serve applications to be ready..."
