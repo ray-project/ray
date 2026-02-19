@@ -251,7 +251,7 @@ class BackendConfig:
     app_name: str = field(default_factory=str)
 
     # The fallback target for this backend.
-    fallback_server: ServerConfig = field(default_factory=ServerConfig)
+    fallback_server: Optional[ServerConfig] = None
 
     def build_health_check_config(self, global_config: "HAProxyConfig") -> dict:
         """Build health check configuration for HAProxy backend.
