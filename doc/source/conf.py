@@ -82,7 +82,7 @@ extensions = [
 # -- sphinx-collections: pull external template files at build time -----------
 
 _ANYSCALE_HOST = os.environ.get(
-    "ANYSCALE_HOST", "https://console.anyscale.com"
+    "ANYSCALE_HOST", "https://console.anyscale-staging.com"
 )
 _TEMPLATE_README_API = (
     _ANYSCALE_HOST + "/api/v2/experimental_workspaces/template/readme/{name}"
@@ -110,8 +110,12 @@ def _resolve_template_url(name):
 
 def _fetch_and_extract_zip(config):
     """Download a zip archive and extract it into the collection target directory."""
+    import shutil
+
     url = _resolve_template_url(config["name"])
     target = pathlib.Path(config["target"])
+    if target.is_dir():
+        shutil.rmtree(target)
     target.mkdir(parents=True, exist_ok=True)
     logger.info("sphinx-collections: downloading %s -> %s", url, target)
     with urlopen(url) as resp:
@@ -126,7 +130,8 @@ collections = {
         "driver": "function",
         "source": _fetch_and_extract_zip,
         "target": coll["target"],
-        "name": name,
+        "clean": False,
+        "final_clean": False,
         "write_result": False,
     }
     for name, coll in _TEMPLATE_COLLECTIONS.items()
