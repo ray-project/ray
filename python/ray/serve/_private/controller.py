@@ -1369,7 +1369,6 @@ class ServeController:
                     route_prefix="/",
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
-                    fallback_target=self._get_fallback_proxy_target(RequestProtocol.HTTP),
                 )
             )
             if is_grpc_enabled(self.get_grpc_config()):
@@ -1381,7 +1380,6 @@ class ServeController:
                             RequestProtocol.GRPC
                         ),
                         app_name="",
-                        fallback_target=self._get_fallback_proxy_target(RequestProtocol.GRPC),
                     )
                 )
         return target_groups
@@ -1396,19 +1394,23 @@ class ServeController:
             fallback_target=self._get_fallback_proxy_target(protocol),
         )
 
-    def _get_fallback_proxy_target(self, protocol: RequestProtocol) -> Target:
+    def _get_fallback_proxy_target(self, protocol: RequestProtocol) -> Optional[Target]:
         """Get the fallback proxy target."""
         port = (
             RAY_SERVE_FALLBACK_PROXY_HTTP_PORT
             if protocol == RequestProtocol.HTTP
             else RAY_SERVE_FALLBACK_PROXY_GRPC_PORT
         )
-        return Target(
-            ip=self._actor_details.node_ip,
-            port=port,
-            instance_id=self._actor_details.node_instance_id,
-            name=f"fallback-{protocol.value.lower()}-proxy",
-        )
+        fallback_proxy_details = self.proxy_state_manager.get_fallback_proxy_details()
+        if fallback_proxy_details:
+            return Target(
+                ip=fallback_proxy_details.node_ip,
+                port=port,
+                instance_id=fallback_proxy_details.node_instance_id,
+                name=fallback_proxy_details.actor_name,
+            )
+        
+        return None
 
     def get_target_groups(
         self,
