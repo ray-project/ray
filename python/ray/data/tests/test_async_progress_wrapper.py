@@ -10,6 +10,7 @@ from ray.data._internal.progress import (
 )
 from ray.data._internal.progress.async_progress_wrapper import (
     AsyncProgressManagerWrapper,
+    _DaemonThreadPoolExecutor,
 )
 from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
 from ray.data.context import DataContext
@@ -369,6 +370,24 @@ def test_async_progress_updater_non_blocking():
     except ImportError:
         # Skip test if tqdm not available
         pytest.skip("tqdm not available")
+
+
+def test_worker_threads_are_daemon():
+    executor = _DaemonThreadPoolExecutor(max_workers=2)
+    future = executor.submit(lambda: None)
+    future.result(timeout=2)
+    for t in executor._threads:
+        assert t.daemon, f"Thread {t.name} is not a daemon thread"
+    executor.shutdown(wait=True)
+
+
+def test_submit_after_shutdown_raises():
+    executor = _DaemonThreadPoolExecutor(max_workers=1)
+    executor.shutdown(wait=True)
+    with pytest.raises(
+        RuntimeError, match="cannot schedule new futures after shutdown"
+    ):
+        executor.submit(lambda: None)
 
 
 if __name__ == "__main__":

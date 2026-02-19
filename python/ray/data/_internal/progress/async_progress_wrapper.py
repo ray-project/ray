@@ -1,10 +1,9 @@
 import concurrent.futures
 import logging
+import queue
 import threading
 import time
 import typing
-import weakref
-from concurrent.futures.thread import _worker
 from typing import Optional
 
 from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
@@ -16,35 +15,69 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class _DaemonThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
+class _DaemonThreadPoolExecutor:
     """
     ThreadPoolExecutor that uses daemon threads.
 
     thread factory not compatible with older python versions
+    + parameters of concurrent.futures.thread are not forward or backward compatible across versions.
     """
 
-    def _adjust_thread_count(self):
-        """Override to create daemon worker threads instead of regular threads."""
+    def __init__(
+        self, max_workers=1, thread_name_prefix="", initializer=None, initargs=()
+    ):
+        self._max_workers = max_workers
+        self._thread_name_prefix = thread_name_prefix
+        self._initializer = initializer
+        self._initargs = initargs
+        self._work_queue: queue.SimpleQueue = queue.SimpleQueue()
+        self._threads: set[threading.Thread] = set()
+        self._shutdown = False
+        self._lock = threading.Lock()
 
-        def weakref_cb(_, q=self._work_queue):
-            q.put(None)
+    def submit(self, fn, *args, **kwargs) -> concurrent.futures.Future:
+        """Submit a callable to be executed by a daemon worker thread."""
+        if self._shutdown:
+            raise RuntimeError("cannot schedule new futures after shutdown")
+        f: concurrent.futures.Future = concurrent.futures.Future()
+        self._work_queue.put((f, fn, args, kwargs))
+        self._adjust_thread_count()
+        return f
 
-        num_threads = len(self._threads)
-        if num_threads < self._max_workers:
-            thread_name = f"{self._thread_name_prefix or ''}_{num_threads}"
-            t = threading.Thread(
-                name=thread_name,
-                target=_worker,
-                args=(
-                    weakref.ref(self, weakref_cb),
-                    self._work_queue,
-                    self._initializer,
-                    self._initargs,
-                ),
-                daemon=True,
-            )
-            t.start()
-            self._threads.add(t)
+    def _adjust_thread_count(self) -> None:
+        with self._lock:
+            if len(self._threads) < self._max_workers:
+                idx = len(self._threads)
+                t = threading.Thread(
+                    name=f"{self._thread_name_prefix}_{idx}",
+                    target=self._worker_loop,
+                    daemon=True,
+                )
+                t.start()
+                self._threads.add(t)
+
+    def _worker_loop(self) -> None:
+        if self._initializer is not None:
+            self._initializer(*self._initargs)
+        while True:
+            item = self._work_queue.get()
+            if item is None:
+                break
+            f, fn, args, kwargs = item
+            if not f.cancelled():
+                try:
+                    f.set_result(fn(*args, **kwargs))
+                except Exception as e:
+                    f.set_exception(e)
+
+    def shutdown(self, wait: bool = True) -> None:
+        self._shutdown = True
+        # One sentinel per worker thread to unblock each _work_queue.get()
+        for _ in self._threads:
+            self._work_queue.put(None)
+        if wait:
+            for t in self._threads:
+                t.join()
 
 
 class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
