@@ -1995,6 +1995,56 @@
 
   alert: default
 
+- name: train_elastic_e2e_with_node_killing
+  python: "3.10"
+  group: Train tests
+  working_dir: train_tests/elastic_training
+
+  frequency: weekly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_gpu_aws.yaml
+
+  run:
+    timeout: 4800
+    script: RAY_TRAIN_V2_ENABLED=1 python torch_elastic_e2e.py run --num-epochs 60
+
+    wait_for_nodes:
+      num_nodes: 1
+
+  variations:
+    - __suffix__: aws
+
+  alert: default
+
+- name: elastic_benchmark
+  python: "3.10"
+  group: Train tests
+  working_dir: train_tests/benchmark
+
+  frequency: weekly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_configs/compute_gpu_8x4_aws.yaml
+
+  run:
+    timeout: 7200
+    script: RAY_TRAIN_V2_ENABLED=1 python -m elastic_training.elastic_e2e --task="image_classification" --image_classification_data_format="parquet" --dataloader_type=ray_data --checkpoint_every_n_steps=100 --min_workers=8 --max_workers=32 --num_epochs=4
+
+    wait_for_nodes:
+      num_nodes: 1
+
+  variations:
+    - __suffix__: aws
+
+  alert: default
+
 ###############
 # RLlib tests #
 ###############
