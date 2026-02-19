@@ -29,6 +29,7 @@ def tmp_logger_fixture():
     # 1. Unique name for total isolation
     name = f"test_{uuid.uuid4().hex}"
     logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
 
     yield logger
 
