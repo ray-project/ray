@@ -52,11 +52,11 @@ class PlacementGroup:
         self,
         id: "ray._raylet.PlacementGroupID",
         bundle_cache: Optional[List[Dict]] = None,
-        all_bundle_cache: Optional[List[Dict]] = None,
+        all_bundle_cache: Optional[List[List[Dict]]] = None,
     ):
         self.id = id
         self.bundle_cache = bundle_cache
-        self._all_bundle_cache = all_bundle_cache
+        self._scheduling_options_cache = all_bundle_cache
 
     @property
     def is_empty(self):
@@ -84,9 +84,9 @@ class PlacementGroup:
 
         _export_bundle_reservation_check_method_if_needed()
 
-        # We check _all_bundle_specs to ensure the placement group has at least
-        # one defined bundle strategy to wait on.
-        assert len(self._all_bundle_specs) != 0, (
+        # We check _scheduling_options_bundles to ensure the placement group has at least
+        # one defined scheduling option to wait on.
+        assert len(self._scheduling_options_bundles) != 0, (
             "ready() cannot be called on a placement group with no bundles defined. "
             "Ensure the placement group was created with a non-empty list of bundles."
         )
@@ -112,23 +112,33 @@ class PlacementGroup:
         using a fallback strategy, this returns the fallback bundles.
         """
         self._fill_bundle_cache_if_needed()
-        return self.bundle_cache
+        return self.bundle_cache or []
 
     @property
     def bundle_count(self) -> int:
         self._fill_bundle_cache_if_needed()
-        return len(self.bundle_cache)
+        if self.bundle_cache:
+            return len(self.bundle_cache)
+        # If PG is pending, return the primary strategy's length for validation.
+        return (
+            len(self._scheduling_options_bundles[0])
+            if self._scheduling_options_bundles
+            else 0
+        )
 
     @property
-    def _all_bundle_specs(self) -> List[Dict]:
-        """Return all possible bundles, including the primary and fallback options.
+    def _scheduling_options_bundles(self) -> List[List[Dict]]:
+        """Return all possible bundles as a nested list of strategies.
 
+        This includes the primary and fallback options.
         This is used for validation to ensure we don't reject tasks that
         are valid under a fallback strategy configuration.
         """
         self._fill_bundle_cache_if_needed()
 
-        return self._all_bundle_cache or self.bundle_cache
+        return self._scheduling_options_cache or (
+            [self.bundle_specs] if self.bundle_specs else []
+        )
 
     def _fill_bundle_cache_if_needed(self) -> None:
         if self.bundle_cache:
@@ -137,7 +147,7 @@ class PlacementGroup:
         cache_data = _get_bundle_cache(self.id)
 
         self.bundle_cache = cache_data["active"]
-        self._all_bundle_cache = cache_data["all"]
+        self._scheduling_options_cache = cache_data["all"]
 
     def __eq__(self, other):
         if not isinstance(other, PlacementGroup):
@@ -164,15 +174,15 @@ def _get_bundle_cache(pg_id: PlacementGroupID) -> Dict[str, List[Dict]]:
     table = ray._private.state.state.placement_group_table(pg_id)
 
     # The bundles actively being used for scheduling.
-    active_bundles = list(table["bundles"].values())
+    active_bundles = list(table.get("bundles", {}).values())
 
     # The list of bundles from all scheduling options.
     if "scheduling_options" in table and table["scheduling_options"]:
         all_bundles = []
         for strategy in table["scheduling_options"]:
-            all_bundles.extend(strategy.get("bundles", []))
+            all_bundles.append(strategy.get("bundles", []))
     else:
-        all_bundles = active_bundles
+        all_bundles = [active_bundles] if active_bundles else []
 
     return {"active": active_bundles, "all": all_bundles}
 
@@ -575,16 +585,20 @@ def _valid_resource_shape(resources, bundle_specs):
 def _validate_resource_shape(
     placement_group, resources, placement_resources, task_or_actor_repr
 ):
-    bundles = placement_group._all_bundle_specs
-    resources_valid = _valid_resource_shape(resources, bundles)
-    placement_resources_valid = _valid_resource_shape(placement_resources, bundles)
+    strategies = placement_group._scheduling_options_bundles
+    resources_valid = any(
+        _valid_resource_shape(resources, strategy) for strategy in strategies
+    )
+    placement_resources_valid = any(
+        _valid_resource_shape(placement_resources, strategy) for strategy in strategies
+    )
 
     if not resources_valid:
         raise ValueError(
             f"Cannot schedule {task_or_actor_repr} with "
             "the placement group because the resource request "
-            f"{resources} cannot fit into any bundles for "
-            f"the placement group, {bundles}."
+            f"{resources} cannot fit into any bundles across all scheduling strategies for "
+            f"the placement group, {strategies}."
         )
     if not placement_resources_valid:
         # Happens for the default actor case.
@@ -595,8 +609,8 @@ def _validate_resource_shape(
             "the placement group because the actor requires "
             f"{placement_resources.get('CPU', 0)} CPU for "
             "creation, but it cannot "
-            f"fit into any bundles for the placement group, "
-            f"{bundles}. Consider "
+            f"fit into any bundles across all scheduling strategies for the placement group, "
+            f"{strategies}. Consider "
             "creating a placement group with CPU resources."
         )
 
