@@ -40,8 +40,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
-    RAY_SERVE_FALLBACK_PROXY_HTTP_PORT,
     RAY_SERVE_FALLBACK_PROXY_GRPC_PORT,
+    RAY_SERVE_FALLBACK_PROXY_HTTP_PORT,
     RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
@@ -1385,7 +1385,7 @@ class ServeController:
                     )
                 )
         return target_groups
- 
+
     def _get_empty_target_group(self, protocol: RequestProtocol) -> TargetGroup:
         """Get an empty target group."""
         return TargetGroup(
@@ -1395,7 +1395,7 @@ class ServeController:
             app_name="",
             fallback_target=self._get_fallback_proxy_target(protocol),
         )
-   
+
     def _get_fallback_proxy_target(self, protocol: RequestProtocol) -> Target:
         """Get the fallback proxy target."""
         port = (
@@ -1495,7 +1495,7 @@ class ServeController:
                 )
 
         return target_groups
-    
+
     def _get_running_replica_details_for_ingress_deployment(
         self, app_name: str
     ) -> List[ReplicaDetails]:
