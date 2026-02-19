@@ -383,7 +383,9 @@ class ExecutionOptions:
         if value:
             warnings.warn(
                 "`ExecutionOptions.locality_with_output` has been removed and is now "
-                "a no-op.",
+                "a no-op. We don't recommend using it anymore, but if you still want "
+                "to replicate its behavior, follow the instructions in this gist: "
+                "https://gist.github.com/bveeramani/51e0383bb3680dd78fdfb92d76ea22a8.",
                 DeprecationWarning,
                 stacklevel=2,
             )
