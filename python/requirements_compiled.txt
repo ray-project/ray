@@ -1656,7 +1656,7 @@ pygments==2.18.0
     #   nbconvert
     #   rich
     #   sphinx
-pyiceberg==0.10.0
+pyiceberg==0.11.0
     # via -r python/requirements/ml/data-test-requirements.txt
 pyjwt==2.8.0
     # via
@@ -2107,7 +2107,6 @@ snowflake-connector-python==3.15.0
 sortedcontainers==2.4.0
     # via
     #   distributed
-    #   pyiceberg
     #   snowflake-connector-python
 soundfile==0.12.1
     # via -r python/requirements/ml/data-test-requirements.txt
@@ -2589,7 +2588,9 @@ zipp==3.19.2
 zoopt==0.4.1
     # via -r python/requirements/ml/tune-test-requirements.txt
 zstandard==0.23.0
-    # via clickhouse-connect
+    # via
+    #   clickhouse-connect
+    #   pyiceberg
 
 # The following packages are considered to be unsafe in a requirements file:
 # pip

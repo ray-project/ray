@@ -1699,7 +1699,7 @@ pygments==2.18.0
     #   nbconvert
     #   rich
     #   sphinx
-pyiceberg==0.10.0
+pyiceberg==0.11.0
     # via -r python/requirements/ml/data-test-requirements.txt
 pyjwt==2.8.0
     # via
