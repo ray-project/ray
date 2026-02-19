@@ -4,13 +4,24 @@
 # cython: cdivision=True
 # cython: initializedcheck=False
 
-"""
-Cython-optimized implementations of performance-critical timeseries functions.
+# =============================================================================
+# WARNING: This file is used EXCLUSIVELY by Ray Serve.
+# =============================================================================
+#
+# These Cython-optimized timeseries utilities exist solely to support the
+# Ray Serve controller's autoscaling metrics pipeline (specifically the
+# per-deployment timeseries aggregation in the Serve replica scheduler).
+#
+# This code lives in `ray/includes/` and is compiled into `_raylet.so` because
+# Rather than introducing a new top-level `.pyx` / `.so` for a single
+# Serve-internal optimization, we include it here alongside the other
+# `.pxi` helpers that ship in `_raylet`.
+#
+# If you are not working on Ray Serve autoscaling, you almost certainly do not
+# need to modify this file.
+# =============================================================================
 
-This module provides native-code implementations of hot path functions,
-particularly the k-way merge algorithm for timeseries and time-weighted
-average calculations.
-"""
+
 
 # C library imports
 from libc.stdlib cimport malloc, free
