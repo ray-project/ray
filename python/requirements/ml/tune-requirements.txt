@@ -1,6 +1,6 @@
 # Searchers
 # AxSearch requires ax-platform >= 1.0.0 for modern API compatibility
-ax-platform==1.2.1 
+ax-platform==1.2.1
 
 bayesian-optimization==1.4.3
 

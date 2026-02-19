@@ -254,7 +254,7 @@ botocore==1.32.7
     #   moto
     #   s3transfer
     #   snowflake-connector-python
-botorch==0.8.5
+botorch==0.16.1
     # via ax-platform
 braceexpand==0.1.7
     # via webdataset
