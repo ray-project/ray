@@ -391,15 +391,19 @@ METRICS_GAUGES = {
     ),
 }
 
-PSUTIL_PROCESS_ATTRS = [
-    "pid",
-    "create_time",
-    "cpu_percent",
-    "cpu_times",
-    "cmdline",
-    "memory_info",
-    "memory_full_info",
-] + (["num_fds"] if sys.platform != "win32" else [])
+PSUTIL_PROCESS_ATTRS = (
+    [
+        "pid",
+        "create_time",
+        "cpu_percent",
+        "cpu_times",
+        "cmdline",
+        "memory_info",
+    ]
+    + (["num_fds"] if sys.platform != "win32" else [])
+    # Only collect memory_full_info in Mac OS X
+    + (["memory_full_info"] if sys.platform == "darwin" else [])
+)
 
 
 class ReporterAgent(
@@ -1234,13 +1238,21 @@ class ReporterAgent(
 
             memory_info = stat.get("memory_info")
             if memory_info:
-                mem = stat["memory_info"]
-                total_rss += float(mem.rss) / 1.0e6
-                if hasattr(mem, "shared"):
-                    total_shm += float(mem.shared)
+                total_rss += float(memory_info.rss) / 1.0e6
+                if hasattr(memory_info, "shared"):
+                    total_shm += float(memory_info.shared)
             mem_full_info = stat.get("memory_full_info")
             if mem_full_info is not None:
+                # For Mac OS X, directly get USS metric from memory_full_info
                 total_uss += float(mem_full_info.uss) / 1.0e6
+            elif memory_info is not None:
+                # For linux or windows, memory_full_info is not collected. Approximated USS from memory_info
+                if hasattr(memory_info, "shared"):
+                    # Linux: USS ≈ RSS - shared
+                    total_uss += float(memory_info.rss - memory_info.shared) / 1.0e6
+                elif hasattr(memory_info, "private"):
+                    # Windows: private IS USS
+                    total_uss += float(memory_info.private) / 1.0e6
             total_num_fds += int(stat.get("num_fds", 0))
 
         tags = {"ip": self._ip, "Component": component_name}
