@@ -5,7 +5,11 @@ import pandas as pd
 
 from ray.data.aggregate import Max, Min
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors.utils import _Computed, migrate_private_fields
+from ray.data.preprocessors.utils import (
+    _Computed,
+    _PublicField,
+    migrate_private_fields,
+)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -252,18 +256,19 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         migrate_private_fields(
             self,
             fields={
-                "_columns": ("columns", None),
-                "_bins": ("bins", None),
-                "_right": ("right", True),
-                "_include_lowest": ("include_lowest", False),
-                "_duplicates": ("duplicates", "raise"),
-                "_dtypes": ("dtypes", None),
-                "_output_columns": (
-                    "output_columns",
-                    _Computed(lambda obj: obj._columns),
+                "_columns": _PublicField(public_field="columns"),
+                "_bins": _PublicField(public_field="bins"),
+                "_right": _PublicField(public_field="right", default=True),
+                "_include_lowest": _PublicField(
+                    public_field="include_lowest", default=False
+                ),
+                "_duplicates": _PublicField(public_field="duplicates", default="raise"),
+                "_dtypes": _PublicField(public_field="dtypes", default=None),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
                 ),
             },
-            required=["_columns", "_bins"],
         )
 
 
@@ -452,18 +457,19 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         migrate_private_fields(
             self,
             fields={
-                "_columns": ("columns", None),
-                "_bins": ("bins", None),
-                "_right": ("right", True),
-                "_include_lowest": ("include_lowest", False),
-                "_duplicates": ("duplicates", "raise"),
-                "_dtypes": ("dtypes", None),
-                "_output_columns": (
-                    "output_columns",
-                    _Computed(lambda obj: obj._columns),
+                "_columns": _PublicField(public_field="columns"),
+                "_bins": _PublicField(public_field="bins"),
+                "_right": _PublicField(public_field="right", default=True),
+                "_include_lowest": _PublicField(
+                    public_field="include_lowest", default=False
+                ),
+                "_duplicates": _PublicField(public_field="duplicates", default="raise"),
+                "_dtypes": _PublicField(public_field="dtypes", default=None),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
                 ),
             },
-            required=["_columns", "_bins"],
         )
 
 

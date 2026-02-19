@@ -1,7 +1,10 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors.utils import migrate_private_fields
+from ray.data.preprocessors.utils import (
+    _PublicField,
+    migrate_private_fields,
+)
 from ray.data.util.data_batch_conversion import BatchFormat
 
 if TYPE_CHECKING:
@@ -128,7 +131,6 @@ class Chain(Preprocessor):
         migrate_private_fields(
             self,
             fields={
-                "_preprocessors": ("preprocessors", None),
+                "_preprocessors": _PublicField(public_field="preprocessors"),
             },
-            required=["_preprocessors"],
         )

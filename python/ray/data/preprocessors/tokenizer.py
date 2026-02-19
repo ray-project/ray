@@ -5,6 +5,7 @@ import pandas as pd
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors.utils import (
     _Computed,
+    _PublicField,
     migrate_private_fields,
     simple_split_tokenizer,
 )
@@ -112,12 +113,13 @@ class Tokenizer(Preprocessor):
         migrate_private_fields(
             self,
             fields={
-                "_columns": ("columns", None),
-                "_tokenization_fn": ("tokenization_fn", simple_split_tokenizer),
-                "_output_columns": (
-                    "output_columns",
-                    _Computed(lambda obj: obj._columns),
+                "_columns": _PublicField(public_field="columns"),
+                "_tokenization_fn": _PublicField(
+                    public_field="tokenization_fn", default=simple_split_tokenizer
+                ),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
                 ),
             },
-            required=["_columns"],
         )

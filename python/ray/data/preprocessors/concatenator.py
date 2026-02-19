@@ -5,7 +5,10 @@ import numpy as np
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors.utils import migrate_private_fields
+from ray.data.preprocessors.utils import (
+    _PublicField,
+    migrate_private_fields,
+)
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -186,11 +189,14 @@ class Concatenator(Preprocessor):
         migrate_private_fields(
             self,
             fields={
-                "_columns": ("columns", None),
-                "_output_column_name": ("output_column_name", "concat_out"),
-                "_dtype": ("dtype", None),
-                "_raise_if_missing": ("raise_if_missing", False),
-                "_flatten": ("flatten", False),
+                "_columns": _PublicField(public_field="columns"),
+                "_output_column_name": _PublicField(
+                    public_field="output_column_name", default="concat_out"
+                ),
+                "_dtype": _PublicField(public_field="dtype", default=None),
+                "_raise_if_missing": _PublicField(
+                    public_field="raise_if_missing", default=False
+                ),
+                "_flatten": _PublicField(public_field="flatten", default=False),
             },
-            required=["_columns"],
         )

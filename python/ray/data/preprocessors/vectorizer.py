@@ -6,6 +6,7 @@ import pandas as pd
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors.utils import (
     _Computed,
+    _PublicField,
     migrate_private_fields,
     simple_hash,
     simple_split_tokenizer,
@@ -192,15 +193,16 @@ class HashingVectorizer(Preprocessor):
         migrate_private_fields(
             self,
             fields={
-                "_columns": ("columns", None),
-                "_num_features": ("num_features", None),
-                "_tokenization_fn": ("tokenization_fn", simple_split_tokenizer),
-                "_output_columns": (
-                    "output_columns",
-                    _Computed(lambda obj: obj._columns),
+                "_columns": _PublicField(public_field="columns"),
+                "_num_features": _PublicField(public_field="num_features"),
+                "_tokenization_fn": _PublicField(
+                    public_field="tokenization_fn", default=simple_split_tokenizer
+                ),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
                 ),
             },
-            required=["_columns", "_num_features"],
         )
 
 
@@ -387,13 +389,16 @@ class CountVectorizer(Preprocessor):
         migrate_private_fields(
             self,
             fields={
-                "_columns": ("columns", None),
-                "_tokenization_fn": ("tokenization_fn", simple_split_tokenizer),
-                "_max_features": ("max_features", None),
-                "_output_columns": (
-                    "output_columns",
-                    _Computed(lambda obj: obj._columns),
+                "_columns": _PublicField(public_field="columns"),
+                "_tokenization_fn": _PublicField(
+                    public_field="tokenization_fn", default=simple_split_tokenizer
+                ),
+                "_max_features": _PublicField(
+                    public_field="max_features", default=None
+                ),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
                 ),
             },
-            required=["_columns"],
         )

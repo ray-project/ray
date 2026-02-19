@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors.utils import _Computed, migrate_private_fields
+from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
 from ray.util.annotations import PublicAPI
 
 
@@ -149,12 +149,11 @@ class Normalizer(Preprocessor):
         migrate_private_fields(
             self,
             fields={
-                "_columns": ("columns", None),
-                "_norm": ("norm", "l2"),
-                "_output_columns": (
-                    "output_columns",
-                    _Computed(lambda obj: obj._columns),
+                "_columns": _PublicField(public_field="columns"),
+                "_norm": _PublicField(public_field="norm", default="l2"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
                 ),
             },
-            required=["_columns"],
         )

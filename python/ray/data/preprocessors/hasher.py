@@ -4,7 +4,11 @@ from typing import Any, Dict, List
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors.utils import migrate_private_fields, simple_hash
+from ray.data.preprocessors.utils import (
+    _PublicField,
+    migrate_private_fields,
+    simple_hash,
+)
 from ray.util.annotations import PublicAPI
 
 
@@ -141,9 +145,8 @@ class FeatureHasher(Preprocessor):
         migrate_private_fields(
             self,
             fields={
-                "_columns": ("columns", None),
-                "_num_features": ("num_features", None),
-                "_output_column": ("output_column", None),
+                "_columns": _PublicField(public_field="columns"),
+                "_num_features": _PublicField(public_field="num_features"),
+                "_output_column": _PublicField(public_field="output_column"),
             },
-            required=["_columns", "_num_features", "_output_column"],
         )

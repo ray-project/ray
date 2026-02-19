@@ -8,7 +8,7 @@ import pyarrow.compute as pc
 from ray.data.aggregate import AbsMax, ApproximateQuantile, Max, Mean, Min, Std
 from ray.data.block import BlockAccessor
 from ray.data.preprocessor import Preprocessor, SerializablePreprocessorBase
-from ray.data.preprocessors.utils import _Computed, migrate_private_fields
+from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -201,13 +201,12 @@ class StandardScaler(SerializablePreprocessorBase):
         migrate_private_fields(
             self,
             fields={
-                "_columns": ("columns", None),
-                "_output_columns": (
-                    "output_columns",
-                    _Computed(lambda obj: obj._columns),
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
                 ),
             },
-            required=["_columns"],
         )
 
     def __repr__(self):
@@ -337,13 +336,12 @@ class MinMaxScaler(SerializablePreprocessorBase):
         migrate_private_fields(
             self,
             fields={
-                "_columns": ("columns", None),
-                "_output_columns": (
-                    "output_columns",
-                    _Computed(lambda obj: obj._columns),
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
                 ),
             },
-            required=["_columns"],
         )
 
     def __repr__(self):
@@ -466,13 +464,12 @@ class MaxAbsScaler(SerializablePreprocessorBase):
         migrate_private_fields(
             self,
             fields={
-                "_columns": ("columns", None),
-                "_output_columns": (
-                    "output_columns",
-                    _Computed(lambda obj: obj._columns),
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
                 ),
             },
-            required=["_columns"],
         )
 
     def __repr__(self):
@@ -657,18 +654,19 @@ class RobustScaler(SerializablePreprocessorBase):
         migrate_private_fields(
             self,
             fields={
-                "_columns": ("columns", None),
-                "_output_columns": (
-                    "output_columns",
-                    _Computed(lambda obj: obj._columns),
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
                 ),
-                "_quantile_range": ("quantile_range", (0.25, 0.75)),
-                "_quantile_precision": (
-                    "quantile_precision",
-                    self.DEFAULT_QUANTILE_PRECISION,
+                "_quantile_range": _PublicField(
+                    public_field="quantile_range", default=(0.25, 0.75)
+                ),
+                "_quantile_precision": _PublicField(
+                    public_field="quantile_precision",
+                    default=self.DEFAULT_QUANTILE_PRECISION,
                 ),
             },
-            required=["_columns"],
         )
 
     def __repr__(self):

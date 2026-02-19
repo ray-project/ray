@@ -1,5 +1,6 @@
 import hashlib
 from collections import deque
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -8,7 +9,6 @@ from typing import (
     Dict,
     List,
     Optional,
-    Tuple,
     Union,
 )
 
@@ -270,21 +270,38 @@ class _Computed:
         return self._factory(obj)
 
 
+_REQUIRED_FIELD = object()  # Sentinel for required fields with no default value
+
+
+@dataclass
+class _PublicField:
+    """
+    Represents a public field that may have been used in older versions of the code.
+    If the field's default value is not _REQUIRED_FIELD, it will be used if neither the private field nor the public field is present during unpickling.
+    Otherwise, the field is required and must be present as either the private or public field during unpickling, or a ValueError will be raised.
+    Used for backwards compatibility during unpickling.
+    """
+
+    public_field: str
+    default: Any = _REQUIRED_FIELD
+
+
 def migrate_private_fields(
     obj: Any,
     *,
-    fields: Dict[str, Tuple[str, Any]],
-    required: List[str],
+    fields: Dict[str, _PublicField],
 ) -> None:
     """
     Migrates old public field names to new private field names during unpickling for backwards compatibility.
     """
-    for private_field, (public_field, default) in fields.items():
+    for private_field, public_field_obj in fields.items():
         if private_field not in obj.__dict__:
-            if public_field in obj.__dict__:
+            if public_field_obj.public_field in obj.__dict__:
                 # Migrate from old public field names to new private field names
-                setattr(obj, private_field, obj.__dict__.pop(public_field))
-            elif private_field in required:
+                setattr(
+                    obj, private_field, obj.__dict__.pop(public_field_obj.public_field)
+                )
+            elif public_field_obj.default is _REQUIRED_FIELD:
                 raise ValueError(
                     f"Invalid serialized {type(obj).__name__}: missing required field '{private_field}'."
                 )
@@ -295,5 +312,7 @@ def migrate_private_fields(
                 setattr(
                     obj,
                     private_field,
-                    default(obj) if isinstance(default, _Computed) else default,
+                    public_field_obj.default(obj)
+                    if isinstance(public_field_obj.default, _Computed)
+                    else public_field_obj.default,
                 )
