@@ -13,6 +13,7 @@ from ray.data._internal.planner.plan_read_op import plan_read_op
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
+from ray.tests.conftest import *  # noqa
 
 
 class MockStreamingDatasource(Datasource):
