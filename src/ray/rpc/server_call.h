@@ -190,8 +190,10 @@ class ServerCallImpl : public ServerCall {
         cluster_id_(cluster_id),
         start_time_(0),
         record_metrics_(record_metrics) {
-    // @TODO+:Eugo
-    reply_ = google::protobuf::Arena::Create<Reply>(&arena_);
+    // @EUGO_CHANGE: @begin: @NO_CHANGE: For posterity, we needed the following as we supported newer version of protobuf
+    // reply_ = google::protobuf::Arena::Create<Reply>(&arena_);
+    reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
+    // @EUGO_CHANGE: @end: @NO_CHANGE
     // TODO call_name_ sometimes get corrunpted due to memory issues.
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     if (record_metrics_) {

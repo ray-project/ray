@@ -17,7 +17,7 @@ readme = 'README.rst'
 requires-python = '>=3.12'
 license = {file = 'LICENSE'}
 
-# @TODO+:Eugo
+# @EUGO_CHANGE:
 # These and `[project.optional-dependencies]` should be synced against `setup.py`, `requirements.txt`. and PyPi API:
 #
 dependencies = [

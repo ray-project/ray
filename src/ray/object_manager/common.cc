@@ -16,8 +16,9 @@
 
 #include "absl/functional/bind_front.h"
 #include "absl/strings/str_format.h"
-// @TODO+:Eugo
-#include "absl/strings/str_cat.h"
+// @EUGO_CHANGE: @begin: @NO_CHANGE: For posterity, we needed the following as we supported newer version of absl
+// #include "absl/strings/str_cat.h"
+// @EUGO_CHANGE: @end: @NO_CHANGE
 
 namespace ray {
 

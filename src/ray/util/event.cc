@@ -132,9 +132,10 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
   std::string event_data_as_string;
   google::protobuf::util::JsonPrintOptions options;
   options.preserve_proto_field_names = true;
-  // @TODO+:Eugo
-  // Required so enum with value 0 is not omitted
-  #if GOOGLE_PROTOBUF_VERSION < 5028000
+  // @EUGO_CHANGE: @begin: @NO_CHANGE: For posterity, we needed the following as we
+  // supported newer version of protobuf Required so enum with value 0 is not omitted #if
+  // GOOGLE_PROTOBUF_VERSION < 5028000
+  // @EUGO_CHANGE: @end: @NO_CHANGE
   options.always_print_primitive_fields = true;
   #else
   // https://github.com/protocolbuffers/protobuf/issues/17437
