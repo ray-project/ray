@@ -535,7 +535,7 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
         gpu_obj_id,
         CollectiveTransportMetadata(
             tensor_meta=[(tensor.shape, tensor.dtype)],
-            tensor_device=tensor.device,
+            tensor_device=tensor.device.type,
         ),
     )
 
