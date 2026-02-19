@@ -2241,7 +2241,7 @@
     script: python experimental/rdt_single_node_microbenchmark.py
 
 - name: rdt_single_node_A100_microbenchmark
-  python: "3.11"
+  python: "3.12"
   group: core-daily-test
   team: core
   frequency: weekly
@@ -2249,7 +2249,7 @@
 
   cluster:
     byod:
-      type: llm-cu128 # llm image already has nixl
+      type: llm-cu129 # llm image already has nixl
       runtime_env: # env vars for nixl
         - UCX_TLS=all
         - UCX_NET_DEVICES=all
@@ -4259,14 +4259,14 @@
 
 - name: text_embeddings_benchmark_{{scaling}}
   frequency: nightly
-  python: "3.11"  # necessary for the llm-cu128 image
+  python: "3.12"  # necessary for the llm-cu129 image
   working_dir: nightly_tests
   team: data
   group: data-tests
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: dataset/{{scaling}}_gpu_g6e_2xl_aws.yaml
 
   matrix:
@@ -4282,14 +4282,14 @@
 # in a test definition, so split off preemptible tests here.
 - name: text_embeddings_benchmark_{{scaling}}_preemptible
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   working_dir: nightly_tests
   team: data
   group: data-tests
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: dataset/{{scaling}}_gpu_g6e_2xl_aws.yaml
 
   matrix:
@@ -4343,14 +4343,14 @@
 - name: entity_recognition_with_llms  # do not use dashes (regex sensitive)
   # https://github.com/ray-project/ray/issues/57222
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/entity-recognition-with-llms  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_llm_ner.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4368,14 +4368,14 @@
 
 - name: mcp_ray_serve  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/mcp-ray-serve  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_mcp-ray-serve.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4393,14 +4393,14 @@
 
 - name: langchain_agent_ray_serve  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: serve
   working_dir: //doc/source/ray-overview/examples/langchain_agent_ray_serve  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_langchain_agent_ray_serve.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4419,14 +4419,14 @@
 
 - name: deployment_serve_llm  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/serve/tutorials/deployment-serve-llm  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_deployment_serve_llm.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4672,14 +4672,14 @@
 - name: e2e_audio
   # https://github.com/ray-project/ray/issues/57220
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/e2e-audio  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
       post_build_script: byod_e2e_audio.sh
     cluster_compute: ci/aws.yaml
 
@@ -4746,14 +4746,14 @@
 - name: object_detection  # do not use dashes (regex sensitive)
   # https://github.com/ray-project/ray/issues/57228
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/object-detection
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_object_detection.sh # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4772,14 +4772,14 @@
 - name: e2e_rag  # do not use dashes (regex sensitive)
   # https://github.com/ray-project/ray/issues/57224
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/e2e-rag  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_e2e_rag.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4804,7 +4804,7 @@
 
   cluster:
     byod:
-      type: cpu  # ["gpu", "cpu", "cu123", "llm-cu128"]
+      type: cpu  # ["gpu", "cpu", "cu123", "llm-cu129"]
       post_build_script: byod_unstructured_data_ingestion.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4822,14 +4822,14 @@
 
 - name: llamafactory_llm_fine_tune  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/llamafactory-llm-fine-tune  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_llamafactory_llm_fine_tune.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4847,14 +4847,14 @@
 
 - name: ray_train_workloads  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: train
   working_dir: //doc/source/train/tutorials  # use // from repo root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_ray_train_workloads.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4872,14 +4872,14 @@
 
 - name: tune_pytorch_asha  # do not use dashes
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: tune
   working_dir: //doc/source/tune/examples/tune_pytorch_asha
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_tune_pytorch_asha.sh
     cluster_compute: ci/aws.yaml
 
@@ -4897,14 +4897,14 @@
 
 - name: llm_batch_inference_text  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/data/examples/llm_batch_inference_text  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_llm_batch_inference_text.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4923,14 +4923,14 @@
 
 - name: llm_batch_inference_vision  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/data/examples/llm_batch_inference_vision  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_llm_batch_inference_vision.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
