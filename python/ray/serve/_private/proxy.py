@@ -842,7 +842,7 @@ class gRPCProxy(GenericProxy):
         proxy_request: ProxyRequest,
         app_is_cross_language: bool = False,
     ) -> ResponseGenerator:
-        # Handle streaming input for client/bidi streaming
+        # handle the streaming input that exists in client-streaming and bidi-streaming RPC types.
         if (
             isinstance(proxy_request, gRPCProxyRequest)
             and proxy_request.has_input_stream
@@ -856,7 +856,7 @@ class gRPCProxy(GenericProxy):
                 yield message
             return
 
-        # Standard unary/server-streaming path
+        # Standard server-unary/server-streaming path
         response_generator = ProxyResponseGenerator(
             handle.remote(proxy_request.serialized_replica_arg()),
             timeout_s=self.request_timeout_s,
