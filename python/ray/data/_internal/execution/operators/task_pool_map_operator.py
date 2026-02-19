@@ -97,7 +97,7 @@ class TaskPoolMapOperator(MapOperator):
 
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
 
-    def _add_bundled_input(self, bundle: RefBundle):
+    def _try_schedule_task(self, bundle: RefBundle, strict: bool):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
         self._notify_first_input(bundle)
         # Submit the task as a normal Ray task.
@@ -131,27 +131,25 @@ class TaskPoolMapOperator(MapOperator):
             slices=bundle.slices,
             **self.get_map_task_kwargs(),
         )
+
         self._submit_data_task(gen, bundle)
 
     def progress_str(self) -> str:
         return ""
 
-    def current_processor_usage(self) -> ExecutionResources:
+    def current_logical_usage(self) -> ExecutionResources:
         num_active_workers = self.num_active_tasks()
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
+            memory=self._ray_remote_args.get("memory", 0) * num_active_workers,
         )
 
-    def pending_processor_usage(self) -> ExecutionResources:
+    def pending_logical_usage(self) -> ExecutionResources:
         return ExecutionResources()
 
     def incremental_resource_usage(self) -> ExecutionResources:
-        return self.per_task_resource_allocation().copy(
-            object_store_memory=(
-                self._metrics.obj_store_mem_max_pending_output_per_task or 0
-            ),
-        )
+        return self.per_task_resource_allocation()
 
     def per_task_resource_allocation(self) -> ExecutionResources:
         return ExecutionResources(
