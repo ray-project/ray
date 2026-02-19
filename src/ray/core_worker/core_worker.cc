@@ -43,6 +43,7 @@
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/subreaper.h"
 #include "ray/util/time.h"
 
@@ -397,7 +398,9 @@ CoreWorker::CoreWorker(
 
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
-  SubscribeToNodeChanges();
+  if (options_.worker_type == WorkerType::DRIVER) {
+    SubscribeToNodeChanges();
+  }
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
