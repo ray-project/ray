@@ -15,6 +15,9 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionResponse,
     CompletionRequest,
     CompletionResponse,
+    EmbeddingCompletionRequest,
+    EmbeddingRequest,
+    EmbeddingResponse,
 )
 
 
@@ -228,6 +231,68 @@ class SGLangServer:
             model=getattr(request, "model", "default_model"),
             choices=all_choices,
             usage=usage_data,
+        )
+
+        yield resp
+
+    async def embeddings(
+        self, request: EmbeddingRequest, raw_request: Optional[Any] = None
+    ) -> AsyncGenerator[EmbeddingResponse, None]:
+
+        # EmbeddingRequest is Union[EmbeddingCompletionRequest, EmbeddingChatRequest]
+        if isinstance(request, EmbeddingCompletionRequest):
+            input_data = request.input
+            if isinstance(input_data, str):
+                texts = [input_data]
+            elif isinstance(input_data, list):
+                if not input_data:
+                    texts = []
+                elif isinstance(input_data[0], str):
+                    texts = list(input_data)
+                else:
+                    tokenizer = self.engine.get_tokenizer()
+                    if isinstance(input_data[0], list):
+                        # Batched token IDs - decode each list
+                        texts = [tokenizer.decode(ids) for ids in input_data]
+                    else:
+                        # Single list of token IDs
+                        texts = [tokenizer.decode(input_data)]
+            else:
+                texts = [str(input_data)]
+        else:
+            # Chat embedding request - convert messages to prompt
+            texts = [format_messages_to_prompt(request.messages)]
+
+        data = []
+        total_prompt_tokens = 0
+
+        if texts:
+            results = await self.engine.async_encode(texts)
+            if not isinstance(results, list):
+                results = [results]
+
+            for i, result in enumerate(results):
+                embedding = result["embedding"]
+                meta = result.get("meta_info", {}) or {}
+                prompt_tokens = int(meta.get("prompt_tokens", 0))
+                total_prompt_tokens += prompt_tokens
+
+                data.append(
+                    {
+                        "index": i,
+                        "object": "embedding",
+                        "embedding": embedding,
+                    }
+                )
+
+        resp = EmbeddingResponse(
+            model=request.model or "",
+            data=data,
+            usage={
+                "prompt_tokens": total_prompt_tokens,
+                "total_tokens": total_prompt_tokens,
+                "completion_tokens": 0,
+            },
         )
 
         yield resp
