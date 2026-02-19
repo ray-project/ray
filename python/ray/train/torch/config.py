@@ -2,7 +2,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Optional
+from typing import List, Optional
 
 import torch
 import torch.distributed as dist
@@ -141,7 +141,7 @@ def _shutdown_torch(destroy_process_group=False):
     from ray.air._internal.torch_utils import get_devices
 
     devices = get_devices()
-    if destroy_process_group:
+    if destroy_process_group and dist.is_initialized():
         dist.destroy_process_group()
     if torch.cuda.is_available():
         for device in devices:
@@ -149,21 +149,93 @@ def _shutdown_torch(destroy_process_group=False):
                 torch.cuda.empty_cache()
 
 
-def _set_torch_distributed_env_vars():
+def _set_torch_distributed_env_vars(torchft_enabled: bool = False):
     # Same env vars as in
     # https://pytorch.org/docs/stable/elastic/run.html#environment-variables
     from ray.train.torch import get_device
 
     context = ray.train.get_context()
     os.environ["LOCAL_RANK"] = str(context.get_local_rank())
-    os.environ["RANK"] = str(context.get_world_rank())
     os.environ["LOCAL_WORLD_SIZE"] = str(context.get_local_world_size())
-    os.environ["WORLD_SIZE"] = str(context.get_world_size())
     os.environ["NODE_RANK"] = str(context.get_node_rank())
+    # torchft can only be enabled in Ray Train v2
+    if torchft_enabled:
+        os.environ["RANK"] = str(context.get_replica_group_rank())
+        os.environ["WORLD_SIZE"] = str(context.get_replica_group_world_size())
+    else:
+        os.environ["RANK"] = str(context.get_world_rank())
+        os.environ["WORLD_SIZE"] = str(context.get_world_size())
 
     # Makes sure Hugging Face Accelerate uses the correct device
     device = get_device()
     os.environ["ACCELERATE_TORCH_DEVICE"] = str(device)
+
+
+def _get_backend(worker_group: BaseWorkerGroup, backend_config: TorchConfig) -> str:
+    """Get the appropriate training backend."""
+    if backend_config.backend is None:
+        resources = worker_group.get_resources_per_worker()
+        num_gpus_per_worker = resources.get("GPU", 0)
+        if num_gpus_per_worker > 0:
+            return "nccl"
+        else:
+            return "gloo"
+    else:
+        return backend_config.backend
+
+
+def _setup_torch_process_group_with_master(
+    worker_group: BaseWorkerGroup,
+    backend_config: TorchConfig,
+    backend: str,
+    group_ranks: List[int],
+):
+    """Set up torch process group and env vars for a group of workers.
+
+    Args:
+        worker_group: The worker group.
+        backend_config: The torch backend config.
+        backend: The distributed backend (nccl, gloo, etc.).
+        group_ranks: The global ranks of workers in this group.
+    """
+    # Get master addr/port from the first worker in the group
+    master_addr, master_port = worker_group.execute_single(
+        group_ranks[0], get_address_and_port
+    )
+    if backend_config.init_method == "env":
+
+        def set_env_vars(addr, port):
+            os.environ["MASTER_ADDR"] = addr
+            os.environ["MASTER_PORT"] = str(port)
+
+        for rank in group_ranks:
+            worker_group.execute_single(
+                rank, set_env_vars, addr=master_addr, port=master_port
+            )
+        url = "env://"
+    elif backend_config.init_method == "tcp":
+        url = f"tcp://{build_address(master_addr, master_port)}"
+    else:
+        raise ValueError(
+            f"The provided init_method ("
+            f"{backend_config.init_method}) is not supported. Must "
+            f"be either 'env' or 'tcp'."
+        )
+
+    setup_futures = []
+    for i, global_rank in enumerate(group_ranks):
+        setup_futures.append(
+            worker_group.execute_single_async(
+                global_rank,
+                _setup_torch_process_group,
+                backend=backend,
+                world_rank=i,
+                world_size=len(group_ranks),
+                init_method=url,
+                timeout_s=backend_config.timeout_s,
+            )
+        )
+    ray.get(setup_futures)
 
 
 class _TorchBackend(Backend):
@@ -171,52 +243,11 @@ class _TorchBackend(Backend):
 
     def on_start(self, worker_group: BaseWorkerGroup, backend_config: TorchConfig):
         if dist.is_available():
-            # Set the appropriate training backend.
-            if backend_config.backend is None:
-                resources = worker_group.get_resources_per_worker()
-                num_gpus_per_worker = resources.get("GPU", 0)
-
-                if num_gpus_per_worker > 0:
-                    backend = "nccl"
-                else:
-                    backend = "gloo"
-            else:
-                backend = backend_config.backend
-
-            master_addr, master_port = worker_group.execute_single(
-                0, get_address_and_port
+            backend = _get_backend(worker_group, backend_config)
+            group_ranks = list(range(len(worker_group)))
+            _setup_torch_process_group_with_master(
+                worker_group, backend_config, backend, group_ranks
             )
-            if backend_config.init_method == "env":
-
-                def set_env_vars(addr, port):
-                    os.environ["MASTER_ADDR"] = addr
-                    os.environ["MASTER_PORT"] = str(port)
-
-                worker_group.execute(set_env_vars, addr=master_addr, port=master_port)
-                url = "env://"
-            elif backend_config.init_method == "tcp":
-                url = f"tcp://{build_address(master_addr, master_port)}"
-            else:
-                raise ValueError(
-                    f"The provided init_method ("
-                    f"{backend_config.init_method}) is not supported. Must "
-                    f"be either 'env' or 'tcp'."
-                )
-
-            setup_futures = []
-            for i in range(len(worker_group)):
-                setup_futures.append(
-                    worker_group.execute_single_async(
-                        i,
-                        _setup_torch_process_group,
-                        backend=backend,
-                        world_rank=i,
-                        world_size=len(worker_group),
-                        init_method=url,
-                        timeout_s=backend_config.timeout_s,
-                    )
-                )
-            ray.get(setup_futures)
         else:
             raise RuntimeError("Distributed torch is not available.")
 

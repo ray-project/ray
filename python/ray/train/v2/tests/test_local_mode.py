@@ -541,6 +541,11 @@ def test_torch_distributed_variables_local_train_fn_utils():
             assert context.get_local_rank() == 0
             assert context.get_local_world_size() == 1
             assert context.get_node_rank() == 0
+            # DDP defaults: each worker is its own replica group
+            assert context.get_replica_group_rank() == 0
+            assert context.get_replica_group_world_size() == 1
+            assert context.get_replica_group_id() == 0
+            assert context.get_num_replica_groups() == 1
 
         controller.run(dummy_train_func)
 
@@ -577,6 +582,11 @@ def test_torch_distributed_variables_local_train_fn_utils():
             assert (
                 context.get_node_rank() == 1
             )  # global_rank // nproc_per_node = 2 // 2 = 1
+            # DDP defaults: each worker is its own replica group
+            assert context.get_replica_group_rank() == 0
+            assert context.get_replica_group_world_size() == 1
+            assert context.get_replica_group_id() == 2  # equals world_rank
+            assert context.get_num_replica_groups() == 4  # equals world_size
 
         controller.run(dummy_train_func)
 
@@ -607,6 +617,11 @@ def test_torch_distributed_variables_local_train_fn_utils():
             assert context.get_local_rank() == 1
             assert context.get_local_world_size() == 2
             assert context.get_node_rank() == 1
+            # DDP defaults: each worker is its own replica group
+            assert context.get_replica_group_rank() == 0
+            assert context.get_replica_group_world_size() == 1
+            assert context.get_replica_group_id() == 2  # equals world_rank
+            assert context.get_num_replica_groups() == 4  # equals world_size
 
         controller.run(dummy_train_func)
 
