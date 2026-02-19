@@ -315,7 +315,7 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
         Returns:
             The interval in seconds, or None if not configured.
         """
-        return self._polling_new_tasks_interval_s
+        return None
 
 
 @Deprecated
