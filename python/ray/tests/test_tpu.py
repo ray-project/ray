@@ -839,5 +839,69 @@ def test_slice_placement_group_chips_per_vm_override(ray_v6e_tpu_cluster):
     assert override_pg.bundle_resources["TPU"] == 4
 
 
+@pytest.mark.parametrize(
+    "devices_ids, search_id, expected_found",
+    [
+        ([1, 2], 1, True),
+        ([1, 2], 2, True),
+        ([1, 2], 3, False),
+        ([], 1, False),
+    ],
+)
+def test_get_local_device_from_global_id_cases(devices_ids, search_id, expected_found):
+    """Tests get_local_device_from_global_id with various device configurations."""
+    mock_devices = []
+    for d_id in devices_ids:
+        m = MagicMock()
+        m.id = d_id
+        mock_devices.append(m)
+
+    mock_jax = MagicMock()
+    mock_jax.devices.return_value = mock_devices
+    with patch.dict("sys.modules", {"jax": mock_jax}):
+        device = ray.util.tpu.get_local_device_from_global_id(search_id)
+        if expected_found:
+            assert device is not None
+            assert device.id == search_id
+        else:
+            assert device is None
+
+
+def test_get_local_device_from_global_id_no_jax():
+    """Tests that get_local_device_from_global_id returns None if jax is not installed."""
+    with patch.dict("sys.modules", {"jax": None}):
+        with patch("builtins.__import__", side_effect=ImportError):
+            device = ray.util.tpu.get_local_device_from_global_id(1)
+            assert device is None
+
+
+@pytest.mark.parametrize(
+    "jax_available, local_devices_result, expected_ids",
+    [
+        (True, [10, 20], [10, 20]),
+        (True, [], []),
+        (False, None, []),
+    ],
+)
+def test_get_tpu_device_ids_cases(jax_available, local_devices_result, expected_ids):
+    """Tests get_tpu_device_ids under different JAX availability scenarios."""
+    if jax_available:
+        mock_devices = []
+        for d_id in local_devices_result:
+            m = MagicMock()
+            m.id = d_id
+            mock_devices.append(m)
+        mock_jax = MagicMock()
+        mock_jax.local_devices.return_value = mock_devices
+        with patch.dict("sys.modules", {"jax": mock_jax}):
+            ids = ray.util.tpu.get_tpu_device_ids(None)
+            assert ids == expected_ids
+    else:
+        with patch.dict("sys.modules", {"jax": None}):
+            with patch("builtins.__import__", side_effect=ImportError):
+                ids = ray.util.tpu.get_tpu_device_ids(None)
+                assert ids == []
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

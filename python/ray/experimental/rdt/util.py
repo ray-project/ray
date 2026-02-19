@@ -84,7 +84,7 @@ def register_tensor_transport(
         has_custom_transports = True
 
 
-DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC"]
+DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC", "JAX"]
 
 _default_transports_registered = False
 
@@ -95,6 +95,17 @@ def _ensure_default_transports_registered():
         if _default_transports_registered:
             return
         _default_transports_registered = True
+
+        # Register JAX if jax is available.
+        try:
+            import jax
+
+            from ray.experimental.tpu_transport import JaxTransport
+
+            register_tensor_transport("JAX", ["tpu", "cpu"], JaxTransport, jax.Array)
+        except ImportError:
+            pass
+
         try:
             import torch
 
@@ -195,7 +206,12 @@ def device_match_transport(device: str, tensor_transport: str) -> bool:
     if tensor_transport not in transport_manager_info:
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
 
-    return device in transport_manager_info[tensor_transport].devices
+    supported_devices = transport_manager_info[tensor_transport].devices
+    # The device name for TPUs can include the version, so we check if the
+    # device name starts with "tpu"
+    return device in supported_devices or (
+        device.lower().startswith("tpu") and "tpu" in supported_devices
+    )
 
 
 def normalize_and_validate_tensor_transport(tensor_transport: str) -> str:

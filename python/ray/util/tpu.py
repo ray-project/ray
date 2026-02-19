@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager
@@ -18,6 +18,9 @@ from ray.util.placement_group import (
     placement_group,
     remove_placement_group,
 )
+
+if TYPE_CHECKING:
+    import jax
 
 logger = logging.getLogger(__name__)
 
@@ -685,3 +688,33 @@ def slice_placement_group(
         chips_per_vm=chips_per_vm,
         **kwargs,
     )
+
+
+def get_local_device_from_global_id(global_id: int) -> Optional["jax.Device"]:
+    """
+    Get the local JAX device object from its global ID.
+    """
+    try:
+        import jax
+    except ImportError:
+        return None
+
+    # We don't use a global cache here to ensure test isolation and
+    # to avoid issues with mock JAX objects in unit tests.
+    try:
+        for d in jax.devices():
+            if d.id == global_id:
+                return d
+    except Exception:
+        return None
+    return None
+
+
+def get_tpu_device_ids(_):
+    try:
+        import jax
+
+        device_ids = [d.id for d in jax.local_devices()]
+        return device_ids
+    except (ImportError, IndexError):
+        return []
