@@ -90,6 +90,7 @@ class TestGangMasterInfoRegistry:
     _KV_MODULE = "ray.llm._internal.serve.serving_patterns.data_parallel.gang_dp_server"
 
     def _make_kv_store(self):
+        # Mocks GCS KV store
         store = {}
         return (
             store,
@@ -173,28 +174,28 @@ class TestBundleIndices:
         "engine_kwargs,placement_group_config,dp_rank,expected",
         [
             # TP=1: 1 bundle per replica
-            (dict(tensor_parallel_size=1), None, 0, "0"),
-            (dict(tensor_parallel_size=1), None, 3, "3"),
-            (dict(tensor_parallel_size=1), {"bundles": [{"GPU": 1, "CPU": 1}]}, 2, "2"),
+            ({"tensor_parallel_size": 1}, None, 0, "0"),
+            ({"tensor_parallel_size": 1}, None, 3, "3"),
+            ({"tensor_parallel_size": 1}, {"bundles": [{"GPU": 1, "CPU": 1}]}, 2, "2"),
             # TP=2: 2 bundles per replica
-            (dict(tensor_parallel_size=2), None, 0, "0,1"),
-            (dict(tensor_parallel_size=2), None, 1, "2,3"),
-            (dict(tensor_parallel_size=2), None, 3, "6,7"),
+            ({"tensor_parallel_size": 2}, None, 0, "0,1"),
+            ({"tensor_parallel_size": 2}, None, 1, "2,3"),
+            ({"tensor_parallel_size": 2}, None, 3, "6,7"),
             (
-                dict(tensor_parallel_size=2),
+                {"tensor_parallel_size": 2},
                 {"bundles": [{"GPU": 1, "CPU": 1}, {"GPU": 1}]},
                 1,
                 "2,3",
             ),
             # TP=2, PP=2: 4 bundles per replica
             (
-                dict(tensor_parallel_size=2, pipeline_parallel_size=2),
+                {"tensor_parallel_size": 2, "pipeline_parallel_size": 2},
                 None,
                 0,
                 "0,1,2,3",
             ),
             (
-                dict(tensor_parallel_size=2, pipeline_parallel_size=2),
+                {"tensor_parallel_size": 2, "pipeline_parallel_size": 2},
                 None,
                 1,
                 "4,5,6,7",
@@ -214,10 +215,6 @@ class TestBundleIndices:
 
         result = GangDPServer._compute_bundle_indices(dp_rank, bundles_per_replica)
         assert result == expected
-
-        # Prove the old code (str(dp_rank)) is wrong for multi-bundle cases
-        if bundles_per_replica > 1:
-            assert str(dp_rank) != expected
 
 
 if __name__ == "__main__":
