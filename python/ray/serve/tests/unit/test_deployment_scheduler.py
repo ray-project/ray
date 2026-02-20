@@ -1717,10 +1717,10 @@ class TestScheduleGangPlacementGroups:
             assert req.bundles == [replica_resource_dict] * gang_size
             assert req.strategy == gang_strategy
 
-    def test_schedule_gang_placement_groups_invalid_gang_size(
+    def test_schedule_gang_placement_groups_rounds_down(
         self, mock_deployment_state_manager
     ):
-        """Returns failure when desired replicas cannot be evenly divided by gang size."""
+        """Rounds down to the nearest gang_size multiple when not evenly divisible."""
         gang_size = 3
         num_replicas_to_add = 4
         create_pg_fn = Mock()
@@ -1740,9 +1740,10 @@ class TestScheduleGangPlacementGroups:
 
         result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
 
-        assert not result[deployment_id].success
-        assert "not divisible by gang_size" in result[deployment_id].error_message
-        create_pg_fn.assert_not_called()
+        # 4 replicas with gang_size=3 rounds down to 3, creating 1 gang
+        assert result[deployment_id].success
+        assert len(result[deployment_id].gang_pgs) == 1
+        create_pg_fn.assert_called_once()
 
     def test_schedule_gang_placement_groups_all_pg_creation_failures(
         self, mock_deployment_state_manager

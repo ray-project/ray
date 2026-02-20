@@ -947,6 +947,16 @@ class ActorReplicaWrapper:
                         self._has_user_routing_stats_method,
                         self._gang_context,
                     ) = ray.get(self._ready_obj_ref)
+
+                    # Recover gang placement group from actor gang context.
+                    # If recovery fails, treat the replica as failed so the
+                    # gang is restarted cleanly, or otherwise the PG leaks.
+                    if self._placement_group is None and self._gang_context is not None:
+                        if not self._recover_gang_placement_group():
+                            return ReplicaStartupStatus.FAILED, (
+                                f"Failed to recover gang placement group "
+                                f"for {self._replica_id}."
+                            )
             except RayTaskError as e:
                 logger.exception(
                     f"Exception in {self._replica_id}, the replica will be stopped."
@@ -962,6 +972,28 @@ class ActorReplicaWrapper:
                 return ReplicaStartupStatus.FAILED, repr(e)
 
         return ReplicaStartupStatus.SUCCEEDED, None
+
+    def _recover_gang_placement_group(self) -> bool:
+        """Recover the gang PG reference for this replica after controller restart.
+
+        Returns:
+            True if the PG was recovered successfully, False otherwise.
+        """
+        pg_name = self._gang_context.pg_name
+        if not pg_name:
+            logger.warning(
+                f"No pg_name in gang context for {self._replica_id}, "
+                "cannot recover gang PG."
+            )
+            return False
+
+        try:
+            self._placement_group = ray.util.get_placement_group(pg_name)
+            logger.info(f"Recovered gang PG '{pg_name}' for {self._replica_id}.")
+            return True
+        except ValueError:
+            logger.warning(f"Gang PG '{pg_name}' not found for {self._replica_id}.")
+            return False
 
     @property
     def actor_resources(self) -> Optional[Dict[str, float]]:
@@ -3138,11 +3170,33 @@ class DeploymentState:
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
-            removed_replicas = f"{to_remove} replica{'s' if to_remove > 1 else ''}"
-            logger.info(f"Removing {removed_replicas} from {self._id}.")
-            downscale = DeploymentDownscaleRequest(
-                deployment_id=self._id, num_to_stop=to_remove
-            )
+            gang_config = self.get_gang_config()
+            gang_id_by_replica = None
+
+            if gang_config is not None:
+                # Round down to a full gang so we only stop complete gangs
+                gang_size = gang_config.gang_size
+                to_remove = (to_remove // gang_size) * gang_size
+                if to_remove == 0:
+                    return (upscale, downscale)
+
+                # Build gang membership map so the scheduler can select complete gangs
+                gang_id_by_replica = {}
+                for replica in self._replicas.get():
+                    if replica.gang_context is not None:
+                        gang_id_by_replica[replica.replica_id] = (
+                            replica.gang_context.gang_id
+                        )
+
+            if to_remove > 0:
+                removed_replicas = f"{to_remove} replica{'s' if to_remove > 1 else ''}"
+                logger.info(f"Removing {removed_replicas} from {self._id}.")
+                downscale = DeploymentDownscaleRequest(
+                    deployment_id=self._id,
+                    num_to_stop=to_remove,
+                    gang_id_by_replica=gang_id_by_replica,
+                    gang_size=gang_config.gang_size if gang_config else None,
+                )
 
         return upscale, downscale
 
@@ -3239,9 +3293,12 @@ class DeploymentState:
             f"(gang_size={gang_size}, {num_gangs} gang(s))."
         )
 
-        for gang_pg in gang_pgs:
-            # Pre-generate replica IDs for all members of this gang
-            gang_id = get_random_string()
+        gang_ids = gang_reservation_result.gang_ids or [
+            get_random_string() for _ in gang_pgs
+        ]
+        gang_pg_names = gang_reservation_result.gang_pg_names or ["" for _ in gang_pgs]
+
+        for gang_pg, gang_id, pg_name in zip(gang_pgs, gang_ids, gang_pg_names):
             member_replica_ids = [
                 ReplicaID(get_random_string(), deployment_id=self._id)
                 for _ in range(gang_size)
@@ -3253,6 +3310,7 @@ class DeploymentState:
                     rank=bundle_index,
                     world_size=gang_size,
                     member_replica_ids=[r.unique_id for r in member_replica_ids],
+                    pg_name=pg_name,
                 )
 
                 new_deployment_replica = DeploymentReplica(
