@@ -36,6 +36,22 @@ params = {
 
 
 def test_fit(ray_start_4_cpus):
+    @ray.remote
+    class ValidationCollector:
+        def __init__(self):
+            self.validation_scores = {}
+
+        def report(self, rank, rmse):
+            self.validation_scores[rank] = rmse
+
+        def get_validation_scores(self):
+            return self.validation_scores
+
+    # Ensure all workers have the same model in data parallel training
+    # by comparing their best validation scores.
+    # Comparing xgboost models directly seems less reliable.
+    collector = ValidationCollector.remote()
+
     def xgboost_train_fn_per_worker(
         label_column: str,
         dataset_keys: set,
@@ -78,6 +94,10 @@ def test_fit(ray_start_4_cpus):
             num_boost_round=remaining_iters,
             xgb_model=starting_model,
         )
+        collector.report.remote(
+            ray.train.get_context().get_world_rank(),
+            evals_result["valid"]["rmse"],
+        )
 
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
@@ -88,9 +108,13 @@ def test_fit(ray_start_4_cpus):
         ),
         train_loop_config=params,
         scaling_config=scale_config,
+        # Sharding the validation dataset across workers is ok because xgboost allreduces metrics.
+        # See https://github.com/dmlc/xgboost/blob/d0135d0f43ff91e738edcbcea54e44b50d336adf/python-package/xgboost/callback.py#L131.
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
+    validation_scores = ray.get(collector.get_validation_scores.remote())
+    assert validation_scores[0] == pytest.approx(validation_scores[1], abs=1e-6)
     with pytest.raises(DeprecationWarning):
         XGBoostTrainer.get_model(result.checkpoint)
 
