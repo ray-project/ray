@@ -151,7 +151,7 @@ def test_uv_run_runtime_env_hook():
         cmd=[find_uv_bin(), "run", "--no-project", script],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable} python",
             "working_dir": os.getcwd(),
         },
     )
@@ -159,7 +159,7 @@ def test_uv_run_runtime_env_hook():
         cmd=[find_uv_bin(), "run", "--no-project", "--directory", "/tmp", script],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable} python",
             "working_dir": os.path.realpath("/tmp"),
         },
     )
@@ -167,7 +167,7 @@ def test_uv_run_runtime_env_hook():
         [find_uv_bin(), "run", "--no-project", script],
         {"working_dir": "/some/path"},
         {
-            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable} python",
             "working_dir": "/some/path",
         },
     )
@@ -183,7 +183,7 @@ def test_uv_run_runtime_env_hook():
             cmd=[find_uv_bin(), "run", script],
             runtime_env={},
             expected_output={
-                "py_executable": f"{find_uv_bin()} run --python {sys.executable}",
+                "py_executable": f"{find_uv_bin()} run --python {sys.executable} python",
                 "working_dir": f"{tmp_dir}",
             },
             subprocess_kwargs={"cwd": tmp_dir},
@@ -199,7 +199,7 @@ def test_uv_run_runtime_env_hook():
             cmd=[find_uv_bin(), "run", "--with-requirements", requirements, script],
             runtime_env={},
             expected_output={
-                "py_executable": f"{find_uv_bin()} run --with-requirements {requirements} --python {sys.executable}",
+                "py_executable": f"{find_uv_bin()} run --with-requirements {requirements} --python {sys.executable} python",
                 "working_dir": f"{tmp_dir}",
             },
             subprocess_kwargs={"cwd": tmp_dir},
@@ -261,7 +261,7 @@ def test_uv_run_runtime_env_hook():
         cmd=[find_uv_bin(), "run", "--no-project", script],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable} python",
             "working_dir": os.getcwd(),
         },
         subprocess_kwargs={
@@ -274,7 +274,7 @@ def test_uv_run_runtime_env_hook():
         cmd=[find_uv_bin(), "run", "--no-project", script],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable} python",
             "working_dir": os.getcwd(),
         },
         subprocess_kwargs={
@@ -293,7 +293,7 @@ def test_uv_run_runtime_env_hook():
         ],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable} python",
             "working_dir": os.getcwd(),
         },
     )
@@ -311,7 +311,7 @@ def test_uv_run_runtime_env_hook():
         ],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable} python",
             "working_dir": os.getcwd(),
         },
     )
