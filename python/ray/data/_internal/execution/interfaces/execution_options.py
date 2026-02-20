@@ -316,11 +316,22 @@ class ExecutionOptions:
         self,
         resource_limits: Optional[ExecutionResources] = None,
         exclude_resources: Optional[ExecutionResources] = None,
-        locality_with_output: Union[bool, List[NodeIdStr]] = False,
         preserve_order: bool = False,
         actor_locality_enabled: bool = True,
         verbose_progress: Optional[bool] = None,
     ):
+        """Initialize execution options.
+
+        Args:
+            resource_limits: Limit on logical resources a Dataset can use.
+                Defaults to auto-detected limits.
+            exclude_resources: Resources to exclude from Ray Data.
+            preserve_order: Whether to preserve block processing order.
+            actor_locality_enabled: Whether to enable locality-aware dispatch for
+                stateful map and streaming split operations.
+            verbose_progress: Whether to report progress per operator. If None,
+                read from ``RAY_DATA_VERBOSE_PROGRESS``.
+        """
         if resource_limits is None:
             resource_limits = ExecutionResources.for_limits()
         self.resource_limits = resource_limits
@@ -339,7 +350,6 @@ class ExecutionOptions:
         return (
             f"ExecutionOptions(resource_limits={self.resource_limits}, "
             f"exclude_resources={self.exclude_resources}, "
-            f"locality_with_output={self.locality_with_output}, "
             f"preserve_order={self.preserve_order}, "
             f"actor_locality_enabled={self.actor_locality_enabled}, "
             f"verbose_progress={self.verbose_progress})"
