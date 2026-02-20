@@ -1543,6 +1543,14 @@ class ReplicaStateContainer:
         self._replica_id_index: Dict[ReplicaID, DeploymentReplica] = {}
         self._on_replica_state_change = on_replica_state_change
 
+    def __getstate__(self):
+        # Exclude the callback to keep the container picklable (the callback
+        # is a bound method on DeploymentState which holds unpicklable objects
+        # like asyncio futures).  Used by _dump_replica_states_for_testing.
+        state = self.__dict__.copy()
+        state["_on_replica_state_change"] = None
+        return state
+
     def add(self, state: ReplicaState, replica: DeploymentReplica):
         """Add the provided replica under the provided state.
 
