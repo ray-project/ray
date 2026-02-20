@@ -84,7 +84,7 @@ def test_streaming_input_data_buffer_from_datasource(ray_start_regular_shared):
     """Test that metadata fetch interval can be set from datasource."""
 
     # Create mock streaming datasource with interval configured
-    datasource_interval = 1  # 5 seconds interval
+    datasource_interval = 1  # 1 second interval
     datasource = MockStreamingDatasource(
         batches_per_fetch=1, polling_new_tasks_interval_s=datasource_interval
     )
