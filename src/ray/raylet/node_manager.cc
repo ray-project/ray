@@ -3052,8 +3052,8 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           }
           std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
               workers_to_kill_and_should_retry =
-                  worker_killing_policy_->SelectWorkersToKill(workers,
-                                                              process_memory_snapshot);
+                  worker_killing_policy_->SelectWorkersToKill(
+                      workers, process_memory_snapshot, system_memory);
 
           // Compute the memory usage threshold
           int64_t total_memory_bytes = system_memory.total_bytes;
