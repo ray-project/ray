@@ -22,7 +22,6 @@ from ray.serve._private import default_impl
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
-    GANG_PG_NAME_PREFIX,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
@@ -69,14 +68,12 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     JavaActorHandleProxy,
     check_obj_ref_ready_nowait,
-    get_active_placement_group_ids,
     get_capacity_adjusted_num_replicas,
     get_random_string,
     msgpack_deserialize,
     msgpack_serialize,
 )
 from ray.serve._private.version import DeploymentVersion
-from ray.serve.config import GangRuntimeFailurePolicy
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import (
     DeploymentDetails,

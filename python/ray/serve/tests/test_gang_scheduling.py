@@ -7,10 +7,9 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.serve._private.common import DeploymentID, ReplicaState
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.test_utils import check_apps_running
 from ray.serve.config import GangPlacementStrategy, GangSchedulingConfig
-from ray.serve.context import _get_global_client
 from ray.tests.conftest import *  # noqa
 from ray.util.placement_group import get_current_placement_group, placement_group_table
 
