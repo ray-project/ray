@@ -1017,9 +1017,6 @@ class ReplicaBase(ABC):
         # Track deployment handles created dynamically via get_deployment_handle()
         self._dynamically_created_handles: Set[DeploymentID] = set()
 
-        # Cache for proxy actor handles (for gRPC streaming)
-        self._proxy_actor_cache: Dict[str, ray.actor.ActorHandle] = {}
-
         # Flipped to `True` when health checks pass and `False` when they fail. May be
         # used by replica subclass implementations.
         self._healthy = False
@@ -1375,16 +1372,6 @@ class ReplicaBase(ABC):
 
         return request_args, request_kwargs, ray_trace_ctx
 
-    def _get_or_create_proxy_actor(
-        self, proxy_actor_name: str
-    ) -> ray.actor.ActorHandle:
-        """Get proxy actor handle from cache, or look it up and cache it."""
-        if proxy_actor_name not in self._proxy_actor_cache:
-            self._proxy_actor_cache[proxy_actor_name] = ray.get_actor(
-                proxy_actor_name, namespace=SERVE_NAMESPACE
-            )
-        return self._proxy_actor_cache[proxy_actor_name]
-
     def _setup_grpc_streaming_args(
         self,
         request_metadata: RequestMetadata,
@@ -1395,9 +1382,11 @@ class ReplicaBase(ABC):
         Creates a gRPCInputStream that wraps the callback to the proxy,
         allowing the user method to iterate over incoming request messages.
         """
-        # Get the proxy actor handle for receiving messages (cached)
-        proxy_actor = self._get_or_create_proxy_actor(
-            streaming_request.proxy_actor_name
+        # Look up the proxy actor fresh per-request to avoid stale handles
+        # if the proxy actor restarts (same name, new actor ID). This mirrors
+        # the per-request lookup in StreamingHTTPRequest.receive_asgi_messages.
+        proxy_actor = ray.get_actor(
+            streaming_request.proxy_actor_name, namespace=SERVE_NAMESPACE
         )
 
         # Create a cancel event that will be set when the client cancels
