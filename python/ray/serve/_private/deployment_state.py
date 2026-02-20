@@ -1538,9 +1538,10 @@ class DeploymentReplica:
 class ReplicaStateContainer:
     """Container for mapping ReplicaStates to lists of DeploymentReplicas."""
 
-    def __init__(self):
+    def __init__(self, on_replica_state_change=None):
         self._replicas: Dict[ReplicaState, List[DeploymentReplica]] = defaultdict(list)
         self._replica_id_index: Dict[ReplicaID, DeploymentReplica] = {}
+        self._on_replica_state_change = on_replica_state_change
 
     def add(self, state: ReplicaState, replica: DeploymentReplica):
         """Add the provided replica under the provided state.
@@ -1550,9 +1551,13 @@ class ReplicaStateContainer:
             replica: replica to add.
         """
         assert isinstance(state, ReplicaState), f"Type: {type(state)}"
+        actor_details = getattr(replica, "actor_details", None)
+        old_state = actor_details.state if actor_details is not None else None
         replica.update_state(state)
         self._replicas[state].append(replica)
         self._replica_id_index[replica.replica_id] = replica
+        if self._on_replica_state_change and state != old_state:
+            self._on_replica_state_change(old_state, state)
 
     def get(
         self, states: Optional[List[ReplicaState]] = None
@@ -2233,7 +2238,9 @@ class DeploymentState:
         # This is reset to False when the deployment is re-deployed.
         self._replica_has_started: bool = False
 
-        self._replicas: ReplicaStateContainer = ReplicaStateContainer()
+        self._replicas: ReplicaStateContainer = ReplicaStateContainer(
+            on_replica_state_change=self._on_replica_state_change
+        )
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
             self._id.name,
             DeploymentStatus.UPDATING,
@@ -2371,6 +2378,21 @@ class DeploymentState:
 
         self._docs_path: Optional[str] = None
         self._route_patterns: Optional[List[str]] = None
+
+    _BROADCAST_STATES = frozenset(
+        {ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION}
+    )
+
+    def _on_replica_state_change(
+        self, old_state: ReplicaState, new_state: ReplicaState
+    ) -> None:
+        """Called by ReplicaStateContainer.add() when a replica transitions."""
+        broadcast_set_changed = (old_state in self._BROADCAST_STATES) != (
+            new_state in self._BROADCAST_STATES
+        )
+        if broadcast_set_changed:
+            self._replicas_changed = True
+        self._needs_reconciliation = True
 
     def should_autoscale(self) -> bool:
         """
@@ -2906,8 +2928,6 @@ class DeploymentState:
                 )
                 if actor_updating:
                     self._replicas.add(ReplicaState.UPDATING, replica)
-                    self._replicas_changed = True
-                    self._needs_reconciliation = True
                 else:
                     self._replicas.add(ReplicaState.RUNNING, replica)
             # We don't allow going from STARTING, PENDING_MIGRATION to UPDATING.
@@ -3107,7 +3127,6 @@ class DeploymentState:
                     ReplicaState.UPDATING,
                     ReplicaState.RECOVERING,
                     ReplicaState.STOPPING,
-                    ReplicaState.PENDING_MIGRATION,
                 ]
             )
             == 0
@@ -3161,8 +3180,6 @@ class DeploymentState:
                 # This replica should be now be added to handle's replica
                 # set.
                 self._replicas.add(ReplicaState.RUNNING, replica)
-                self._replicas_changed = True
-                self._needs_reconciliation = True
                 self._deployment_scheduler.on_replica_running(
                     replica.replica_id, replica.actor_node_id
                 )
@@ -3311,8 +3328,6 @@ class DeploymentState:
         logger.debug(f"Adding STOPPING to replica: {replica.replica_id}.")
         replica.stop(graceful=graceful_stop)
         self._replicas.add(ReplicaState.STOPPING, replica)
-        self._replicas_changed = True
-        self._needs_reconciliation = True
         self._deployment_scheduler.on_replica_stopping(replica.replica_id)
         self._set_health_gauge(replica.replica_id.unique_id, 0)
 
@@ -3610,7 +3625,6 @@ class DeploymentState:
                         "another node."
                     )
                     self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
-                    self._needs_reconciliation = True
                 # For replicas that are STARTING or UPDATING, might as
                 # well terminate them immediately to allow replacement
                 # replicas to start. Otherwise we need to wait for them
@@ -3667,8 +3681,6 @@ class DeploymentState:
         replica_to_stop = running_replicas.pop()
         replica_to_stop.stop(graceful=False)
         self._replicas.add(ReplicaState.STOPPING, replica_to_stop)
-        self._replicas_changed = True
-        self._needs_reconciliation = True
         for replica in running_replicas:
             self._replicas.add(ReplicaState.RUNNING, replica)
 
