@@ -18,6 +18,8 @@
 #include <string_view>
 #include <type_traits>
 
+#include "ray/gcs/gcs_kv_manager.h"
+#include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/gcs_task_manager.h"
 #include "ray/observability/ray_event_recorder.h"
 #include "ray/pubsub/gcs_publisher.h"
@@ -44,6 +46,10 @@ struct GcsServerIOContextPolicy {
       return IndexOf("ray_syncer_io_context");
     } else if constexpr (std::is_same_v<T, observability::RayEventRecorder>) {
       return IndexOf("ray_event_io_context");
+    } else if constexpr (std::is_same_v<T, GcsInternalKVManager>) {
+      return IndexOf("internal_kv_io_context");
+    } else if constexpr (std::is_same_v<T, GcsNodeManager>) {
+      return IndexOf("node_manager_io_context");
     } else {
       // default io context
       return -1;
@@ -53,13 +59,15 @@ struct GcsServerIOContextPolicy {
   // This list must be unique and complete set of names returned from
   // GetDedicatedIOContextIndex. Or you can get runtime crashes when accessing a missing
   // name, or get leaks by creating unused threads.
-  constexpr static std::array<std::string_view, 4> kAllDedicatedIOContextNames{
+  constexpr static std::array<std::string_view, 6> kAllDedicatedIOContextNames{
       "task_io_context",
       "pubsub_io_context",
       "ray_syncer_io_context",
-      "ray_event_io_context"};
-  constexpr static std::array<bool, 4> kAllDedicatedIOContextEnableLagProbe{
-      true, true, true, true};
+      "ray_event_io_context",
+      "internal_kv_io_context",
+      "node_manager_io_context"};
+  constexpr static std::array<bool, 6> kAllDedicatedIOContextEnableLagProbe{
+      true, true, true, true, true, true};
 
   constexpr static size_t IndexOf(std::string_view name) {
     return ray::IndexOf(kAllDedicatedIOContextNames, name);

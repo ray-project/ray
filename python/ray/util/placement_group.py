@@ -9,9 +9,6 @@ from ray._private.label_utils import validate_label_selector
 from ray._private.utils import get_ray_doc_version
 from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-bundle_reservation_check = None
 
 VALID_PLACEMENT_GROUP_STRATEGIES = {
     "PACK",
@@ -19,23 +16,6 @@ VALID_PLACEMENT_GROUP_STRATEGIES = {
     "STRICT_PACK",
     "STRICT_SPREAD",
 }
-
-
-# We need to import this method to use for ready API.
-# But ray.remote is only available in runtime, and
-# if we define this method inside ready method, this function is
-# exported whenever ready is called, which can impact performance,
-# https://github.com/ray-project/ray/issues/6240.
-def _export_bundle_reservation_check_method_if_needed():
-    global bundle_reservation_check
-    if bundle_reservation_check:
-        return
-
-    @ray.remote(num_cpus=0)
-    def bundle_reservation_check_func(placement_group):
-        return placement_group
-
-    bundle_reservation_check = bundle_reservation_check_func
 
 
 @PublicAPI
@@ -61,8 +41,8 @@ class PlacementGroup:
     def ready(self) -> "ray._raylet.ObjectRef":
         """Returns an ObjectRef to check ready status.
 
-        This API runs a small dummy task to wait for placement group creation.
-        It is compatible to ray.get and ray.wait.
+        This API returns an ObjectRef that becomes ready when the placement group
+        is created. It is compatible with ray.get, ray.wait, and await.
 
         Example:
             .. testcode::
@@ -76,19 +56,10 @@ class PlacementGroup:
                 ray.wait([pg.ready()])
 
         """
-        self._fill_bundle_cache_if_needed()
+        if self.is_empty:
+            return ray.put(self)
 
-        _export_bundle_reservation_check_method_if_needed()
-
-        assert len(self.bundle_cache) != 0, (
-            "ready() cannot be called on placement group object with a "
-            "bundle length == 0, current bundle length: "
-            f"{len(self.bundle_cache)}"
-        )
-
-        return bundle_reservation_check.options(
-            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=self),
-        ).remote(self)
+        return _call_placement_group_ready_async(self)
 
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
         """Wait for the placement group to be ready within the specified time.
@@ -121,6 +92,15 @@ class PlacementGroup:
 
     def __hash__(self):
         return hash(self.id)
+
+
+@client_mode_wrap
+def _call_placement_group_ready_async(pg: PlacementGroup) -> "ray._raylet.ObjectRef":
+    worker = ray._private.worker.global_worker
+    worker.check_connected()
+    # Serialize pg so that ray.get() returns the PlacementGroup
+    serialized = worker.get_serialization_context().serialize(pg)
+    return worker.core_worker.async_wait_placement_group_ready(pg.id, serialized)
 
 
 @client_mode_wrap

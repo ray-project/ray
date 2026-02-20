@@ -21,7 +21,6 @@ import numpy as np
 
 import ray
 from ray.actor import ActorHandle
-from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
@@ -142,14 +141,6 @@ class _DatasetStatsBuilder:
             metadata=op_metadata,
             parent=self.parent,
             base_name=self.operator_name,
-        )
-        stats.time_total_s = time.perf_counter() - self.start_time
-        return stats
-
-    def build(self, final_blocks: BlockList) -> "DatasetStats":
-        stats = DatasetStats(
-            metadata={self.operator_name: final_blocks.get_metadata()},
-            parent=self.parent,
         )
         stats.time_total_s = time.perf_counter() - self.start_time
         return stats
