@@ -250,7 +250,7 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
                 f"Progress operation took {duration:.2f}s " f"(method: {method_name})"
             )
 
-            return result
+        return result
 
     @staticmethod
     def _safe_call(method, *args, **kwargs):
