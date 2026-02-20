@@ -157,7 +157,7 @@ class SplitCoordinator:
         self._n = n
         self._locality_hints = locality_hints
         self._lock = threading.RLock()
-        self._executor = None
+        self._current_executor = None
 
         # Guarded by self._lock.
         self._next_bundle: Dict[int, RefBundle] = {}
@@ -171,30 +171,14 @@ class SplitCoordinator:
         # Add a new stats field to track coordinator overhead
         self._coordinator_overhead_s = 0.0
 
-        def gen_epochs():
-            while True:
-                self._executor = self._base_dataset._plan.create_executor()
-                # NOTE: We pass dataset.context (the original, uncopied context) rather
-                # than self._data_context (the deep copy used for process isolation)
-                # because the planner adds callbacks (e.g. checkpoint) to the original
-                # context during _get_execution_dag. Using self._data_context would cause
-                # those callbacks to be silently missed.
-                # TODO: Fix this by having Planner.plan() return callbacks explicitly
-                # rather than writing them into the context.
-                output_iterator = execute_to_legacy_bundle_iterator(
-                    self._executor, dataset._plan, dataset.context
-                )
-                yield output_iterator
-
-        self._next_epoch = gen_epochs()
         self._output_iterator = None
         # Store the error raised from the `gen_epoch` call.
         self._gen_epoch_error: Optional[Exception] = None
 
     def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
-        if self._executor:
-            stats = self._executor.get_stats()
+        if self._current_executor:
+            stats = self._current_executor.get_stats()
         else:
             stats = self._base_dataset._plan.stats()
 
@@ -213,6 +197,34 @@ class SplitCoordinator:
         # Wait for all clients to arrive at the barrier before starting a new epoch.
         epoch_id = self._barrier(split_idx)
         return epoch_id
+
+    def _try_start_new_epoch(self, starting_epoch: int):
+        with self._lock:
+            # This check gates that we start epoch only once
+            if self._cur_epoch == starting_epoch:
+                self._cur_epoch += 1
+                self._unfinished_clients_in_epoch = self._n
+                self._next_bundle.clear()
+
+                try:
+                    # Force executor shutdown if present
+                    if self._current_executor is not None:
+                        self._current_executor.shutdown(force=True)
+
+                    plan = self._base_dataset._plan
+                    # Re-execute dataset
+                    self._current_executor = plan.create_executor()
+                    self._output_iterator = execute_to_legacy_bundle_iterator(
+                        self._current_executor, plan, self._base_dataset.context
+                    )
+
+                except Exception as e:
+                    self._gen_epoch_error = e
+
+        if self._gen_epoch_error is not None:
+            # If there was an error when advancing to the next epoch,
+            # re-raise it for all threads.
+            raise self._gen_epoch_error
 
     def get(
         self,
@@ -305,9 +317,9 @@ class SplitCoordinator:
 
         Must be called while holding self._lock.
         """
-        if self._executor is not None:
+        if self._current_executor is not None:
             total_bytes = self._get_total_prefetched_bytes()
-            self._executor.set_external_consumer_bytes(total_bytes)
+            self._current_executor.set_external_consumer_bytes(total_bytes)
 
     def get_client_prefetched_bytes(self) -> Dict[int, int]:
         """Get prefetched bytes for each client (for testing)."""
@@ -318,8 +330,8 @@ class SplitCoordinator:
         """Shuts down the internal data executor."""
         with self._lock:
             # Call shutdown on the executor
-            if self._executor is not None:
-                self._executor.shutdown(force=False)
+            if self._current_executor is not None:
+                self._current_executor.shutdown(force=False)
 
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""
@@ -345,20 +357,12 @@ class SplitCoordinator:
                     )
             time.sleep(0.1)
 
-        # Advance to the next epoch.
-        with self._lock:
-            if self._cur_epoch == starting_epoch:
-                self._cur_epoch += 1
-                self._unfinished_clients_in_epoch = self._n
-                try:
-                    self._output_iterator = next(self._next_epoch)
-                except Exception as e:
-                    self._gen_epoch_error = e
-
-        if self._gen_epoch_error is not None:
-            # If there was an error when advancing to the next epoch,
-            # re-raise it for all threads.
-            raise self._gen_epoch_error
+        # Advance to the next epoch
+        self._try_start_new_epoch(starting_epoch)
 
         assert self._output_iterator is not None
-        return starting_epoch + 1
+        assert (
+            self._cur_epoch == starting_epoch + 1
+        ), f"Expected current epoch to be {starting_epoch + 1} (got {self._cur_epoch})"
+
+        return self._cur_epoch
