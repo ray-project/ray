@@ -89,6 +89,25 @@ def test_physical_apply_transform_deep_chain_no_stale_downstream_refs():
     assert transformed_mid.output_dependencies == [transformed_root]
 
 
+def test_physical_apply_transform_rejects_in_place_input_mutation():
+    ctx = DataContext.get_current()
+    old_input = PhysicalOperator("old_input", [], ctx)
+    new_input = PhysicalOperator("new_input", [], ctx)
+    root = PhysicalOperator("root", [old_input], ctx)
+
+    def transform(op: PhysicalOperator) -> PhysicalOperator:
+        if op is root:
+            op._input_dependencies = [new_input]
+            return op
+        return op
+
+    with pytest.raises(
+        AssertionError,
+        match="In-place input mutation is not supported; return a new node instead.",
+    ):
+        root._apply_transform(transform)
+
+
 def test_does_not_double_count_usage_from_union():
     """Regression test for https://github.com/ray-project/ray/pull/61040."""
     # Create a mock topology:

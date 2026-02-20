@@ -414,6 +414,8 @@ class PhysicalOperator(Operator):
         # 3) Apply transform on the current node itself. If transform replaces
         # the current node, rewire reverse dependencies from old node inputs
         # to the returned replacement node inputs.
+        # Returning the same node must not mutate inputs in-place.
+        original_inputs = tuple(target.input_dependencies)
         transformed_target = transform(target)
         if transformed_target is not target:
             for input_op in target.input_dependencies:
@@ -424,6 +426,10 @@ class PhysicalOperator(Operator):
             transformed_target._rewire_output_deps(
                 target, transformed_target.input_dependencies
             )
+        else:
+            assert (
+                tuple(transformed_target.input_dependencies) == original_inputs
+            ), "In-place input mutation is not supported; return a new node instead."
         return transformed_target
 
     def _copy_for_transform(self) -> "PhysicalOperator":
