@@ -97,7 +97,7 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
 
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> SelectWorkersToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      const ProcessesMemorySnapshot &process_memory_snapshot);
+      const ProcessesMemorySnapshot &process_memory_snapshot) override;
 
  private:
   /**
@@ -129,7 +129,7 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
 
   // The current selected workers to be killed and whether the task on each worker
   // should be retried.
-  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill;
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_being_killed_;
 };
 
 }  // namespace raylet

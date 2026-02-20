@@ -1,4 +1,4 @@
-// Copyright 2022 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,9 +39,8 @@ class WorkerKillingPolicyInterface {
    * @brief Selects workers to be killed.
    *
    * @param workers the list of candidate workers.
-   * @param process_memory_snapshot snapshot of per-process memory usage.
-   * @return the list of workers to kill and whether the task on each worker should be
-   * retried.
+   * @param system_memory snapshot of memory usage.
+   * @return the worker to kill and whether the task on the worker should be retried.
    */
   virtual std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
   SelectWorkersToKill(const std::vector<std::shared_ptr<WorkerInterface>> &workers,

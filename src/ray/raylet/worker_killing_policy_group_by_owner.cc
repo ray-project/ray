@@ -40,7 +40,7 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkersToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const ProcessesMemorySnapshot &process_memory_snapshot) {
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> remaining_alive_targets;
-  for (const auto &worker_to_kill_or_should_retry : workers_to_kill) {
+  for (const auto &worker_to_kill_or_should_retry : workers_being_killed_) {
     std::shared_ptr<WorkerInterface> worker = worker_to_kill_or_should_retry.first;
     if (worker->GetProcess().IsAlive()) {
       RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(worker->GetGrantedLeaseId())
@@ -50,17 +50,17 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkersToKill(
       remaining_alive_targets.push_back(worker_to_kill_or_should_retry);
     }
   }
-  workers_to_kill = remaining_alive_targets;
-  if (workers_to_kill.empty()) {
-    workers_to_kill = Policy(workers, process_memory_snapshot);
-    if (workers_to_kill.empty()) {
+  workers_being_killed_ = remaining_alive_targets;
+  if (workers_being_killed_.empty()) {
+    workers_being_killed_ = Policy(workers, process_memory_snapshot);
+    if (workers_being_killed_.empty()) {
       RAY_LOG_EVERY_MS(WARNING, 5000)
           << "Worker killer did not select any workers to "
              "kill even though memory usage is high. Object store "
              "may be causing high memory pressure. Consider checking "
              "if too many objects are unintentionally being stored.";
     }
-    return workers_to_kill;
+    return workers_being_killed_;
   }
   // Else, there are workers still alive from the previous iteration.
   // We need to wait until they are dead before we can kill more workers.
@@ -72,7 +72,6 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const ProcessesMemorySnapshot &process_memory_snapshot) const {
   if (workers.empty()) {
-    RAY_LOG_EVERY_MS(INFO, 5000) << "Worker list is empty. Nothing can be killed";
     return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
   }
 
