@@ -53,7 +53,7 @@ in the code). The number of environment
 steps can be changed through argparser's `default_timesteps`.
 The LSTM should successfully learn to maintain an internal state that
 tracks velocity by observing sequential position changes.
-This mean result in training taking significantly longer than the fully
+This may result in training taking significantly longer than the fully
 observable CartPole version due to the additional complexity of learning
 with partial observability and the need for the LSTM to develop useful hidden
 state representations. Additionally, the learning curve may show more variance
