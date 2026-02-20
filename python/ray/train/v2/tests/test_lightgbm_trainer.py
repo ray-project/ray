@@ -53,7 +53,7 @@ def test_fit_with_categoricals(ray_start_6_cpus):
             return self.validation_scores
 
     # Ensure all workers have the same model in data parallel training
-    # by comparing their best validation scores.
+    # by comparing their validation scores.
     # Comparing lightgbm models directly seems less reliable.
     collector = ValidationCollector.remote()
 
