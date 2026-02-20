@@ -118,6 +118,16 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
         controller.get_deployment_details.remote("default", "autoscaling_app")
     )
     replica = deployment_details.replicas[0]
+
+    http_port, grpc_port = None, None
+
+    for target_group in details["target_groups"]:
+        if target_group["protocol"] == "HTTP" and target_group["targets"]:
+            http_port = target_group["targets"][0]["port"]
+
+        if target_group["protocol"] == "gRPC" and target_group["targets"]:
+            grpc_port = target_group["targets"][0]["port"]
+
     expected_json = json.dumps(
         {
             "controller_info": {
@@ -185,7 +195,8 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                                     "upscale_delay_s": 30.0,
                                     "aggregation_function": "mean",
                                     "policy": {
-                                        "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+                                        "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+                                        "policy_kwargs": {},
                                     },
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
@@ -242,25 +253,27 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                     "targets": [
                         {
                             "ip": node_ip,
-                            "port": 8000,
+                            "port": http_port,
                             "instance_id": node_instance_id,
                             "name": proxy_details.actor_name,
                         },
                     ],
                     "route_prefix": "/",
                     "protocol": "HTTP",
+                    "app_name": "",
                 },
                 {
                     "targets": [
                         {
                             "ip": node_ip,
-                            "port": 9000,
+                            "port": grpc_port,
                             "instance_id": node_instance_id,
                             "name": proxy_details.actor_name,
                         },
                     ],
                     "route_prefix": "/",
                     "protocol": "gRPC",
+                    "app_name": "",
                 },
             ],
         }

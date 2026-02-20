@@ -41,12 +41,16 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
         self._cluster_gpu_util_calculator = TimeWindowAverageCalculator(
             cluster_util_avg_window_s
         )
+        self._cluster_mem_util_calculator = TimeWindowAverageCalculator(
+            cluster_util_avg_window_s
+        )
         self._cluster_obj_mem_util_calculator = TimeWindowAverageCalculator(
             cluster_util_avg_window_s
         )
 
         self._cluster_cpu_utilization_gauge = None
         self._cluster_gpu_utilization_gauge = None
+        self._cluster_mem_utilization_gauge = None
         self._cluster_object_store_memory_utilization_gauge = None
 
         if self._execution_id is not None:
@@ -58,6 +62,11 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
             self._cluster_gpu_utilization_gauge = Gauge(
                 "data_cluster_gpu_utilization",
                 description="Cluster utilization % (GPU)",
+                tag_keys=("dataset",),
+            )
+            self._cluster_mem_utilization_gauge = Gauge(
+                "data_cluster_mem_utilization",
+                description="Cluster utilization % (Memory)",
                 tag_keys=("dataset",),
             )
             self._cluster_object_store_memory_utilization_gauge = Gauge(
@@ -80,12 +89,14 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
 
         cpu_util = save_div(global_usage.cpu, global_limits.cpu)
         gpu_util = save_div(global_usage.gpu, global_limits.gpu)
+        mem_util = save_div(global_usage.memory, global_limits.memory)
         obj_store_mem_util = save_div(
             global_usage.object_store_memory, global_limits.object_store_memory
         )
 
         self._cluster_cpu_util_calculator.report(cpu_util)
         self._cluster_gpu_util_calculator.report(gpu_util)
+        self._cluster_mem_util_calculator.report(mem_util)
         self._cluster_obj_mem_util_calculator.report(obj_store_mem_util)
 
         if self._execution_id is not None:
@@ -94,6 +105,8 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
                 self._cluster_cpu_utilization_gauge.set(cpu_util * 100, tags=tags)
             if self._cluster_gpu_utilization_gauge is not None:
                 self._cluster_gpu_utilization_gauge.set(gpu_util * 100, tags=tags)
+            if self._cluster_mem_utilization_gauge is not None:
+                self._cluster_mem_utilization_gauge.set(mem_util * 100, tags=tags)
             if self._cluster_object_store_memory_utilization_gauge is not None:
                 self._cluster_object_store_memory_utilization_gauge.set(
                     obj_store_mem_util * 100, tags=tags
@@ -104,5 +117,6 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
         return ExecutionResources(
             cpu=self._cluster_cpu_util_calculator.get_average(),
             gpu=self._cluster_gpu_util_calculator.get_average(),
+            memory=self._cluster_mem_util_calculator.get_average(),
             object_store_memory=self._cluster_obj_mem_util_calculator.get_average(),
         )

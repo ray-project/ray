@@ -21,7 +21,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/memory_monitor.h"
+#include "ray/common/memory_monitor_interface.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet/worker_pool.h"
 
