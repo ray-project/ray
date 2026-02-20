@@ -344,7 +344,6 @@ def reset_logging() -> None:
     _ACTIVE_DATASET = None
 
 
-
 def _get_default_formatter() -> logging.Formatter:
     log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
     if log_encoding is not None and log_encoding.upper() == "JSON":
