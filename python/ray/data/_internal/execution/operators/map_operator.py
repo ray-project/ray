@@ -2,6 +2,7 @@ import copy
 import functools
 import itertools
 import logging
+import time
 from abc import ABC, abstractmethod
 from dataclasses import replace
 from typing import (
@@ -45,6 +46,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     OpTask,
+    TaskExecDriverStats,
     estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -67,6 +69,7 @@ from ray.data.block import (
     BlockExecStats,
     BlockMetadataWithSchema,
     BlockStats,
+    TaskExecStats,
     _take_first_non_empty_schema,
     to_stats,
 )
@@ -569,8 +572,22 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             self._output_queue.add(output, key=task_index)
             self._metrics.on_output_queued(output)
 
-        def _task_done_callback(task_index: int, exception: Optional[Exception]):
-            self._metrics.on_task_finished(task_index, exception)
+        def _task_done_callback(
+            task_index: int,
+            exception: Optional[Exception],
+            task_exec_stats: Optional[TaskExecStats],
+            task_exec_driver_stats: Optional[TaskExecDriverStats],
+        ):
+            # NOTE: `TaskExecStats` could be null in case there's no blocks
+            #       emitted (current limitation, since it's emitted along with
+            #       `BlockMetadata`)
+            assert exception or (
+                task_exec_driver_stats
+            ), "Driver's task execution stats must be provided on task's successful completion"
+
+            self._metrics.on_task_finished(
+                task_index, exception, task_exec_stats, task_exec_driver_stats
+            )
 
             # Estimate number of tasks and rows from inputs received and tasks
             # submitted so far
@@ -718,48 +735,59 @@ def _map_task(
         A generator of blocks, followed by the list of BlockMetadata for the blocks
         as the last generator return.
     """
+    task_start_s = time.perf_counter()
+
     logger.debug(
         "Executing map task of operator %s with task index %d",
         ctx.op_name,
         ctx.task_idx,
     )
 
+
     ctx.kwargs.update(kwargs)
 
-    with (DataContext.current(data_context), TaskContext.current(ctx)):
-        stats = BlockExecStats.builder()
+    with DataContext.current(data_context), TaskContext.current(ctx):
         map_transformer.override_target_max_block_size(
             ctx.target_max_block_size_override
         )
-        block_iter: Iterable[Block]
-        if slices:
-            block_iter = _iter_sliced_blocks(blocks, slices)
-        else:
-            block_iter = iter(blocks)
+
+        blocks_iter = _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
+
+        blk_exec_stats_builder = BlockExecStats.builder()
 
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
-            for block in map_transformer.apply_transform(block_iter, ctx):
+            for block in map_transformer.apply_transform(blocks_iter, ctx):
                 block_meta = BlockAccessor.for_block(block).get_metadata()
                 block_schema = BlockAccessor.for_block(block).schema()
 
                 # Derive block execution stats
-                exec_stats = stats.build()
+                blk_exec_stats = blk_exec_stats_builder.build()
                 # Yield block and retrieve its Ray object serialization timing
-                stats: StreamingGeneratorStats = yield block
-                if stats:
-                    exec_stats.block_ser_time_s = stats.object_creation_dur_s
+                gen_stats: StreamingGeneratorStats = yield block
+                if gen_stats:
+                    blk_exec_stats.block_ser_time_s = gen_stats.object_creation_dur_s
 
-                exec_stats.udf_time_s = map_transformer.udf_time_s(reset=True)
-                exec_stats.task_idx = ctx.task_idx
-                exec_stats.max_uss_bytes = profiler.estimate_max_uss()
+                blk_exec_stats.udf_time_s = map_transformer.udf_time_s(reset=True)
+                blk_exec_stats.task_idx = ctx.task_idx
+                blk_exec_stats.max_uss_bytes = profiler.estimate_max_uss()
+
+                # NOTE: This tracks task duration up to this point, though we're primarily
+                #       interested in task total duration
+                # TODO figure out a better way to track task total duration
+                task_dur_s = time.perf_counter() - task_start_s
 
                 yield BlockMetadataWithSchema(
-                    metadata=replace(block_meta, exec_stats=exec_stats),
+                    metadata=replace(
+                        block_meta,
+                        exec_stats=blk_exec_stats,
+                        task_exec_stats=TaskExecStats(task_wall_time_s=task_dur_s),
+                    ),
+                    # TODO only pass schema w/ the first block
                     schema=block_schema,
                 )
 
                 # Reset trackers
-                stats = BlockExecStats.builder()
+                blk_exec_stats_builder = BlockExecStats.builder()
                 profiler.reset()
 
 
