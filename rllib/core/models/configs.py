@@ -141,6 +141,8 @@ class _MLPConfig(ModelConfig):
         output_layer_dim: An int indicating the size of the output layer. This may be
             set to `None` in case no extra output layer should be built and only the
             layers specified by `hidden_layer_dims` will be part of the network.
+        output_layer_use_layernorm: Whether to insert a LayerNorm after the output
+            layer (before its activation). Only applies when `output_layer_dim` is set.
         output_layer_use_bias: Whether to use bias on the separate output layer, if any.
         output_layer_activation: The activation function to use for the output layer,
             if any. The default activation for the output layer, if any, is "linear",
@@ -180,6 +182,7 @@ class _MLPConfig(ModelConfig):
     # Optional last output layer with - possibly - different activation and use_bias
     # settings.
     output_layer_dim: Optional[int] = None
+    output_layer_use_layernorm: bool = False
     output_layer_use_bias: bool = True
     output_layer_activation: str = "linear"
     output_layer_weights_initializer: Optional[Union[str, Callable]] = None
