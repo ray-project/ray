@@ -1135,8 +1135,12 @@ def create_stub_streaming_gen(
 
     @ray.remote
     def stub_map_task():
+        import time as _time
+
         if raise_exception is not None:
             raise raise_exception
+
+        task_start_s = _time.perf_counter()
 
         for nbytes in block_nbytes:
             # Create a block with a single row of the specified size.
@@ -1146,7 +1150,11 @@ def create_stub_streaming_gen(
             yield block
 
             block_accessor = BlockAccessor.for_block(block)
-            block_metadata = block_accessor.get_metadata()
+            block_metadata = block_accessor.get_metadata(
+                task_exec_stats=TaskExecStats(
+                    task_wall_time_s=_time.perf_counter() - task_start_s,
+                )
+            )
             yield BlockMetadataWithSchema(
                 block_metadata, schema=block_accessor.schema()
             )
@@ -1217,8 +1225,10 @@ class TestDataOpTask:
             raise_exception=AssertionError("Block generation failed"),
         )
 
-        def verify_exception(exc: Optional[Exception]):
+        def verify_exception(exc, task_exec_stats, task_exec_driver_stats):
             assert isinstance(exc, AssertionError)
+            assert task_exec_stats is None
+            assert task_exec_driver_stats is None
 
         data_op_task = DataOpTask(
             0,
@@ -1315,6 +1325,73 @@ class TestDataOpTask:
 
         # We should now be able to read the 128 MiB block.
         assert bytes_read == pytest.approx(128 * MiB)
+
+    @patch("time.perf_counter")
+    def test_on_data_ready_output_backpressure_tracking(
+        self, mock_perf_counter, ray_start_regular_shared
+    ):
+        """Test that DataOpTask tracks output backpressure time correctly.
+
+        Output backpressure occurs when max_bytes_to_read=0, meaning the
+        downstream can't consume more data. The task should track the total
+        time spent in this state and report it via TaskExecDriverStats.
+        """
+        # Use 2 blocks so the task stays alive across both BP periods.
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB, 128 * MiB])
+
+        captured_stats = {}
+
+        def capture_done(exc, task_exec_stats, task_exec_driver_stats):
+            captured_stats["exc"] = exc
+            captured_stats["task_exec_stats"] = task_exec_stats
+            captured_stats["task_exec_driver_stats"] = task_exec_driver_stats
+
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            task_done_callback=capture_done,
+        )
+
+        clock = 0.0
+        mock_perf_counter.return_value = clock
+
+        # Wait for data to become available
+        ray.wait([streaming_gen], fetch_local=False)
+
+        # 1st backpressure period: 2.5s
+        clock = 1.0
+        mock_perf_counter.return_value = clock
+        assert data_op_task.on_data_ready(0) == 0
+
+        clock = 3.5
+        mock_perf_counter.return_value = clock
+
+        # Resume: ends 1st BP period (2.5s), reads block 1 (limited to 1 byte
+        # so it reads exactly one block and stops)
+        data_op_task.on_data_ready(None)
+        assert not data_op_task.has_finished
+
+        # 2nd backpressure period: 1.5s
+        clock = 5.0
+        mock_perf_counter.return_value = clock
+        data_op_task.on_data_ready(0)
+
+        clock = 6.5
+        mock_perf_counter.return_value = clock
+
+        # Drain to completion
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            data_op_task.on_data_ready(None)
+
+        # Verify stats were captured
+        assert captured_stats["exc"] is None
+        assert captured_stats["task_exec_stats"] is not None
+        assert captured_stats["task_exec_driver_stats"] is not None
+
+        # Total backpressure = 2.5s + 1.5s = 4.0s
+        bp_time = captured_stats["task_exec_driver_stats"].task_output_backpressure_s
+        assert bp_time == pytest.approx(4.0)
 
 
 if __name__ == "__main__":

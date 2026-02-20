@@ -11,6 +11,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     OpTask,
     PhysicalOperator,
     RefBundle,
+    TaskExecDriverStats,
 )
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
@@ -27,7 +28,7 @@ from ray.data._internal.issue_detection.detectors.hanging_detector import (
 from ray.data._internal.issue_detection.detectors.high_memory_detector import (
     HighMemoryIssueDetector,
 )
-from ray.data.block import BlockMetadata
+from ray.data.block import BlockMetadata, TaskExecStats
 from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
 
@@ -168,8 +169,18 @@ class TestHangingExecutionIssueDetector:
         op.metrics.on_task_submitted(0, input_bundle)
         op.metrics.on_task_submitted(1, input_bundle)
         op.metrics.on_task_submitted(2, input_bundle)
-        op.metrics.on_task_finished(0, exception=None)
-        op.metrics.on_task_finished(1, exception=None)
+        op.metrics.on_task_finished(
+            0,
+            exception=None,
+            task_exec_stats=TaskExecStats(task_wall_time_s=0.0),
+            task_exec_driver_stats=TaskExecDriverStats(task_output_backpressure_s=0),
+        )
+        op.metrics.on_task_finished(
+            1,
+            exception=None,
+            task_exec_stats=TaskExecStats(task_wall_time_s=0.0),
+            task_exec_driver_stats=TaskExecDriverStats(task_output_backpressure_s=0),
+        )
 
         # Start detecting
         issues = detector.detect()
