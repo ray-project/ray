@@ -173,7 +173,10 @@ class CollectiveTensorTransport(TensorTransportManager):
             )
 
     def garbage_collect(
-        self, obj_id: str, tensor_transport_meta: TensorTransportMetadata
+        self,
+        obj_id: str,
+        tensor_transport_meta: TensorTransportMetadata,
+        tensors: List["torch.Tensor"],
     ):
         pass
 
