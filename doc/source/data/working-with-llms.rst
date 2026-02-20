@@ -93,7 +93,7 @@ Ray Data LLM uses a **multi-stage processor pipeline** to transform your data th
 - **Detokenize**: Converts output token IDs back to readable text.
 - **Postprocess**: Your custom function that extracts and formats the final output.
 
-Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. CPU stages (ChatTemplate, Tokenize, Detokenize, and HttpRequestStage) use autoscaling actor pools (except for ServeDeployment stage), while the GPU stage uses a fixed pool.
+Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. All stages (CPU and GPU) use autoscaling actor pools by default, except for the ServeDeployment stage which uses a fixed pool.
 
 .. _horizontal_scaling:
 
@@ -108,6 +108,13 @@ Horizontally scale the LLM stage to multiple GPU replicas using the ``concurrenc
     :end-before: __concurrent_config_example_end__
 
 Each replica runs an independent inference engine. Set ``concurrency`` to match the number of available GPUs or GPU nodes.
+
+By default, when you set ``concurrency`` to an integer ``n``, GPU stages autoscale from 1 to ``n`` actors. To use a fixed pool of ``n`` actors, set ``concurrency`` to ``(n, n)``.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __concurrent_config_fixed_pool_example_start__
+    :end-before: __concurrent_config_fixed_pool_example_end__
 
 .. _text_generation:
 
@@ -527,3 +534,16 @@ For multi-turn conversations or complex agentic workflows, share a vLLM engine a
 ----
 
 **Usage data collection**: Ray collects anonymous usage data to improve Ray Data LLM. To opt out, see :ref:`Ray usage stats <ref-usage-stats>`.
+
+
+Get Help
+~~~~~~~~~~~~~~~~~
+
+If you encounter issues not covered in this guide:
+
+- `Ray GitHub Issues <https://github.com/ray-project/ray/issues>`_ - Report bugs or request features
+- `Ray Slack <https://ray-distributed.slack.com>`_ - Get help from the community
+- `Ray Discourse Forum <https://discuss.ray.io>`_ - Ask questions and share knowledge
+- `Ray LLM Office Hours <https://docs.google.com/document/d/1n3-Jw_4su8yilo9zdi5OciAduoz6H_VmdL8i9sL4f-E/edit?tab=t.e700ayqsx3v3>`_ - Learn about new features, ask questions, and get guidance from the team
+
+  - `Past Office Hours Recordings <https://youtube.com/playlist?list=PLzTswPQNepXl2IYF8DcV35FdCoVbeL4_6&si=ik81bljIlasYAHKN>`_ - View recordings from previous sessions
