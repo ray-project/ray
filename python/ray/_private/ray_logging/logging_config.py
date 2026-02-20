@@ -44,6 +44,10 @@ class DefaultLoggingConfigurator(LoggingConfigurator):
 
         root_logger = logging.getLogger()
         root_logger.setLevel(logging_config.log_level)
+        # Remove existing handlers (e.g., PlainRayHandler added by
+        # generate_logging_config) to avoid duplicate log output.
+        for h in root_logger.handlers[:]:
+            root_logger.removeHandler(h)
         root_logger.addHandler(handler)
 
         ray_logger = logging.getLogger("ray")

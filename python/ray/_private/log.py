@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 import time
 from typing import Optional, Union
@@ -108,8 +109,15 @@ def generate_logging_config():
         ray_logger.addHandler(default_handler)
         ray_logger.propagate = False
 
+        # Configure the root logger in worker processes (and their spawn'd
+        # subprocesses) so that user loggers like
+        # logging.getLogger("my_dataloader") have a handler to propagate to.
+        # We only do this in workers (detected via RAY_RAYLET_PID, which is
+        # inherited by child processes) to avoid hijacking the root logger in
+        # the driver, where users may rely on logging.basicConfig() or their
+        # own logging setup.
         root_logger = logging.getLogger()
-        if not root_logger.handlers:
+        if not root_logger.handlers and os.environ.get("RAY_RAYLET_PID"):
             root_logger.setLevel(logging.INFO)
             root_logger.addHandler(PlainRayHandler())
 
