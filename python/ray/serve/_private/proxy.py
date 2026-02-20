@@ -829,10 +829,10 @@ class gRPCProxy(GenericProxy):
 
     def _cleanup_streaming_session(self, session_id: str):
         """Clean up a streaming session."""
-        if session_id in self._streaming_sessions:
-            _, cancel_event = self._streaming_sessions[session_id]
+        session = self._streaming_sessions.pop(session_id)
+        if session is not None:
+            _, cancel_event = session
             cancel_event.set()
-            self._streaming_sessions.pop(session_id)
 
     async def send_request_to_replica(
         self,
