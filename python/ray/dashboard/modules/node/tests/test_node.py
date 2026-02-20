@@ -149,7 +149,7 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
     ],
     indirect=True,
 )
-def test_dead_node_eviction(
+def test_dead_node_cache_contains_latest_dead_node_if_cache_overflows(
     enable_test_module, disable_aiohttp_cache, ray_start_cluster_head_with_env_vars
 ):
     cluster: Cluster = ray_start_cluster_head_with_env_vars
@@ -171,23 +171,16 @@ def test_dead_node_eviction(
                 node_id = node_info["raylet"]["nodeId"]
                 response = requests.get(webui_url + f"/nodes/{node_id}")
                 response.raise_for_status()
-                print(f"IRABBANI: {node_id} : {node_info['raylet']['state']}")
                 if node_info["raylet"]["state"] == "DEAD":
                     dead_nodes.add(node_id)
                 if node_info["raylet"]["state"] == "ALIVE":
                     alive_nodes.add(node_id)
-            print(expected_alive_nodes, alive_nodes)
-            print(expected_dead_nodes, dead_nodes)
             assert alive_nodes == expected_alive_nodes
             assert dead_nodes == expected_dead_nodes
-            print("OOH")
             return True
         except Exception as ex:
             logger.info(ex)
             return False
-
-    # I've added three nodes.
-    # I've killed two nodes. it should overflow.
 
     node_1 = cluster.add_node()
     head_node_id = ray.get_runtime_context().get_node_id()
@@ -231,9 +224,6 @@ def test_dead_node_eviction(
         expected_alive_nodes=curr_alive_nodes,
         expected_dead_nodes=curr_dead_nodes,
     )
-
-    # cluster.remove_node(node_2, allow_graceful=False)
-    # node_2_id = node_2.node_id
 
 
 @pytest.mark.parametrize(
