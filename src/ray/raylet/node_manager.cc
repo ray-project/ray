@@ -3213,11 +3213,14 @@ std::string NodeManager::CreateOomKillMessageSuggestions(
 
   if (has_non_retriable_task || has_non_retriable_actor) {
     not_retriable_recommendation_ss << "Set ";
-    if (!has_non_retriable_actor) {
-      not_retriable_recommendation_ss << "max_retries";
-    } else {
-      not_retriable_recommendation_ss << "max_restarts and max_task_retries";
+    std::vector<std::string> not_retriable_recommendations;
+    if (has_non_retriable_task) {
+      not_retriable_recommendations.push_back("max_retries");
     }
+    if (has_non_retriable_actor) {
+      not_retriable_recommendations.push_back("max_restarts and max_task_retries");
+    }
+    not_retriable_recommendation_ss << absl::StrJoin(not_retriable_recommendations, ", ");
     not_retriable_recommendation_ss
         << " to enable retry when the task crashes due to OOM. ";
   }
