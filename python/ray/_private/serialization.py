@@ -167,13 +167,7 @@ class SerializationContext:
 
         self._memcopy_thread_pool = None
         if MEMCOPY_THREAD_COUNT > 1:
-            try:
-                self._memcopy_thread_pool = _MemcopyThreadPool(MEMCOPY_THREAD_COUNT)
-            except Exception:
-                logger.warning(
-                    "Failed to initialize serialization memcopy thread pool.",
-                    exc_info=True,
-                )
+            self._memcopy_thread_pool = _MemcopyThreadPool(MEMCOPY_THREAD_COUNT)
 
         # Enable zero-copy serialization of tensors if the environment variable is set.
         self._zero_copy_tensors_enabled = (

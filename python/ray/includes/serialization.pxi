@@ -37,13 +37,8 @@ cdef class _MemcopyThreadPool:
     cdef int _num_threads
 
     def __cinit__(self, int num_threads):
+        self._pool = NULL
         self._num_threads = num_threads
-        if num_threads > 1:
-            self._pool = CreateParallelMemcopyThreadPool(num_threads)
-            if self._pool == NULL:
-                raise RuntimeError("Failed to create memcopy thread pool")
-        else:
-            self._pool = NULL
 
     def __dealloc__(self):
         if self._pool != NULL:
@@ -51,9 +46,16 @@ cdef class _MemcopyThreadPool:
             self._pool = NULL
 
     def __bool__(self):
-        return self._pool != NULL
+        return self._num_threads > 1
 
     cdef ParallelMemcopyThreadPool* get(self):
+        if self._pool == NULL and self._num_threads > 1:
+            self._pool = CreateParallelMemcopyThreadPool(self._num_threads)
+            if self._pool == NULL:
+                raise RuntimeError("Failed to create memcopy thread pool")
+        return self._pool
+
+    cdef ParallelMemcopyThreadPool* get_if_initialized(self):
         return self._pool
 
 cdef extern from "google/protobuf/repeated_field.h" nogil:
@@ -379,6 +381,16 @@ cdef class Pickle5Writer:
             self._total_bytes += kMajorBufferAlign + self._curr_buffer_addr
         return self._total_bytes
 
+    cdef bint has_large_buffers(self, uint64_t threshold) nogil:
+        cdef:
+            int i
+            uint64_t buffer_len
+        for i in range(self.python_object.buffer_size()):
+            buffer_len = self.python_object.buffer(i).length()
+            if buffer_len > threshold:
+                return True
+        return False
+
     @cython.boundscheck(False)
     @cython.wraparound(False)
     cdef void write_to(self, const uint8_t[:] inband, uint8_t[:] data,
@@ -459,12 +471,12 @@ cdef class SerializedObject(object):
                 type(self).__name__))
 
     cpdef set_memcopy_thread_pool(self, _MemcopyThreadPool pool):
-        if pool is not None and pool.get() != NULL:
-            self._memcopy_pool = pool.get()
-            self._memcopy_pool_owner = pool
-        else:
+        if pool is None:
             self._memcopy_pool = NULL
             self._memcopy_pool_owner = None
+        else:
+            self._memcopy_pool = pool.get_if_initialized()
+            self._memcopy_pool_owner = pool
 
 
 cdef class Pickle5SerializedObject(SerializedObject):
@@ -491,8 +503,17 @@ cdef class Pickle5SerializedObject(SerializedObject):
     @cython.boundscheck(False)
     @cython.wraparound(False)
     cdef void write_to(self, uint8_t[:] buffer) nogil:
-        self.writer.write_to(self.inband, buffer, MEMCOPY_THREAD_COUNT,
-                             self._memcopy_pool)
+        cdef ParallelMemcopyThreadPool *memcopy_pool = self._memcopy_pool
+        if (memcopy_pool == NULL and
+                MEMCOPY_THREAD_COUNT > 1 and
+                self._memcopy_pool_owner is not None and
+                self.writer.has_large_buffers(kMemcopyDefaultThreshold)):
+            with gil:
+                if self._memcopy_pool == NULL and self._memcopy_pool_owner is not None:
+                    self._memcopy_pool = (
+                        <_MemcopyThreadPool>self._memcopy_pool_owner).get()
+                memcopy_pool = self._memcopy_pool
+        self.writer.write_to(self.inband, buffer, MEMCOPY_THREAD_COUNT, memcopy_pool)
 
 
 cdef class MessagePackSerializedObject(SerializedObject):
@@ -584,11 +605,21 @@ cdef class RawSerializedObject(SerializedObject):
     @cython.boundscheck(False)
     @cython.wraparound(False)
     cdef void write_to(self, uint8_t[:] buffer) nogil:
+        cdef ParallelMemcopyThreadPool *memcopy_pool = self._memcopy_pool
+        if (memcopy_pool == NULL and
+                MEMCOPY_THREAD_COUNT > 1 and
+                self._total_bytes > kMemcopyDefaultThreshold and
+                self._memcopy_pool_owner is not None):
+            with gil:
+                if self._memcopy_pool == NULL and self._memcopy_pool_owner is not None:
+                    self._memcopy_pool = (
+                        <_MemcopyThreadPool>self._memcopy_pool_owner).get()
+                memcopy_pool = self._memcopy_pool
         with nogil:
             if (MEMCOPY_THREAD_COUNT > 1 and
                     self._total_bytes > kMemcopyDefaultThreshold):
                 parallel_memcopy_with_pool(
-                    self._memcopy_pool,
+                    memcopy_pool,
                     &buffer[0],
                     self.value_ptr,
                     self._total_bytes,
