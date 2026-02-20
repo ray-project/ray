@@ -203,13 +203,12 @@ class TestAsyncProgressManagerWrapperBehavior:
         with wrapper._lock:
             num_pending = len(wrapper._pending_futures)
 
-        # Dict holds at most 4 + N futures where:
-        # - 4 fixed operations (start, refresh, update_total_progress, update_total_resource_status)
-        # - N per-operator entries (update_operator_progress:op_name)
-        # For typical pipelines with ~15 operators, expect ~20 entries max
+        # The loop submits exactly 5 distinct keys:
+        # start, refresh, update_total_progress, update_total_resource_status,
+        # update_operator_progress:<id> — all extras are deduplicated by the replacement mechanism
         assert (
             num_pending == 5
-        ), f"Expected bounded queue (≤50 items), got {num_pending}"
+        ), f"Expected exactly 5 pending futures (one per distinct operation key), got {num_pending}"
 
         wrapper.close_with_finishing_description("Test", True)
 

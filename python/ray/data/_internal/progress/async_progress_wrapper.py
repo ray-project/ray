@@ -32,12 +32,12 @@ class _DaemonThreadPoolExecutor:
         self._initargs = initargs
         self._work_queue: queue.SimpleQueue = queue.SimpleQueue()
         self._threads: set[threading.Thread] = set()
-        self._shutdown = False
+        self._shutdown_event = threading.Event()
         self._lock = threading.Lock()
 
     def submit(self, fn, *args, **kwargs) -> concurrent.futures.Future:
         """Submit a callable to be executed by a daemon worker thread."""
-        if self._shutdown:
+        if self._shutdown_event.is_set():
             raise RuntimeError("cannot schedule new futures after shutdown")
         f: concurrent.futures.Future = concurrent.futures.Future()
         self._work_queue.put((f, fn, args, kwargs))
@@ -71,7 +71,7 @@ class _DaemonThreadPoolExecutor:
                     f.set_exception(e)
 
     def shutdown(self, wait: bool = True, timeout: Optional[float] = None) -> None:
-        self._shutdown = True
+        self._shutdown_event.set()
         # One sentinel per worker thread to unblock each _work_queue.get()
         for _ in self._threads:
             self._work_queue.put(None)
@@ -103,6 +103,7 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
         self._wrapped = wrapped_manager
         self._stall_warning_threshold = stall_warning_threshold
         self._shutdown_timeout = shutdown_timeout
+        self._stall_started_at: Optional[float] = None
 
         # ThreadPoolExecutor for async operations
         self._executor = _DaemonThreadPoolExecutor(
@@ -111,7 +112,7 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
         )
 
         # State Tracking
-        self._shutdown = False
+        self._shutdown_event = threading.Event()
         self._lock = threading.Lock()
         self._pending_futures: dict[str, concurrent.futures.Future] = {}
 
@@ -129,13 +130,13 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
 
     def start(self) -> None:
         """Non-blocking start operation."""
-        if self._shutdown:
+        if self._shutdown_event.is_set():
             return
         self._submit(self._wrapped.start)
 
     def refresh(self) -> None:
         """Non-blocking refresh operation."""
-        if self._shutdown:
+        if self._shutdown_event.is_set():
             return
         self._submit(self._wrapped.refresh)
 
@@ -146,7 +147,7 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
         )
 
         with self._lock:
-            self._shutdown = True
+            self._shutdown_event.set()
 
         deadline = time.time() + self._shutdown_timeout
 
@@ -177,13 +178,13 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
 
     def update_total_progress(self, new_rows: int, total_rows: Optional[int]) -> None:
         """Non-blocking update of total progress."""
-        if self._shutdown:
+        if self._shutdown_event.is_set():
             return
         self._submit(self._wrapped.update_total_progress, new_rows, total_rows)
 
     def update_total_resource_status(self, resource_status: str) -> None:
         """Non-blocking update of resource status."""
-        if self._shutdown:
+        if self._shutdown_event.is_set():
             return
         self._submit(self._wrapped.update_total_resource_status, resource_status)
 
@@ -191,7 +192,7 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
         self, opstate: "OpState", resource_manager: "ResourceManager"
     ) -> None:
         """Non-blocking update of operator progress."""
-        if self._shutdown:
+        if self._shutdown_event.is_set():
             return
         self._submit(self._wrapped.update_operator_progress, opstate, resource_manager)
 
@@ -208,7 +209,7 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
             op_key = method.__name__
 
         with self._lock:
-            if self._shutdown:
+            if self._shutdown_event.is_set():
                 return
 
             replace = False
@@ -292,9 +293,7 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
 
         logger.debug("Progress stall monitor thread started")
 
-        while not self._shutdown:
-            time.sleep(check_interval)
-
+        while not self._shutdown_event.wait(timeout=check_interval):
             log_warning = None
             log_info = None
 
@@ -306,7 +305,7 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
                     time_since_update > self._stall_warning_threshold
                     and not self._stall_warning_shown
                 ):
-
+                    self._stall_started_at = time.time() - time_since_update
                     log_warning = (
                         f"Progress bar updates have not completed for "
                         f"{time_since_update:.1f} seconds. This usually "
@@ -321,10 +320,12 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
 
                 # Reset warning if progress resumes
                 elif time_since_update < check_interval and self._stall_warning_shown:
+                    stall_duration = time.time() - self._stall_started_at
                     log_info = (
                         f"Progress bar updates have resumed after "
-                        f"{time_since_update:.1f}s stall."
+                        f"{stall_duration:.1f}s stall."
                     )
+                    self._stall_started_at = None
                     self._stall_warning_shown = False
 
             if log_warning:
