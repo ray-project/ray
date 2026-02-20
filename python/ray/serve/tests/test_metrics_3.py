@@ -13,8 +13,7 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import PrometheusTimeseries
+from ray._common.test_utils import PrometheusTimeseries, SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
@@ -638,6 +637,10 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     ray.get(signal.send.remote())
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Async Inference feature testing is flaky on Windows.",
+)
 def test_async_inference_task_queue_metrics_delay(
     metrics_start_shutdown, external_redis  # noqa: F811
 ):

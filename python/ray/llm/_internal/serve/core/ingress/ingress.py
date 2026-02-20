@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import sys
 from contextlib import asynccontextmanager
@@ -96,6 +97,23 @@ DEFAULT_INGRESS_OPTIONS = {
         "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
     },
 }
+
+
+def _get_min_replicas_from_llm_config(config: LLMConfig) -> Optional[int]:
+    autoscaling_config = config.deployment_config.get("autoscaling_config")
+    if autoscaling_config is None:
+        return None
+    if isinstance(autoscaling_config, dict):
+        return autoscaling_config.get("min_replicas")
+    return getattr(autoscaling_config, "min_replicas", None)
+
+
+def _all_models_scale_to_zero(llm_configs: Optional[List[LLMConfig]]) -> bool:
+    """Check if all models are configured with min_replicas == 0."""
+    if not llm_configs:
+        return False
+    return all(_get_min_replicas_from_llm_config(config) == 0 for config in llm_configs)
+
 
 # These methods correspond to functions defined in the LLMEngine class in python/ray/llm/_internal/serve/deployments/llm/llm_engine.py
 class CallMethod(Enum):
@@ -763,10 +781,17 @@ class OpenAiIngress(DeploymentProtocol):
     ) -> Dict[str, Any]:
         """Get the deployment options for the ingress deployment.
 
+        If all models are configured with min_replicas=0 (scale-to-zero),
+        the ingress will also be configured with min_replicas=0 so that
+        the worker node/GPU instance can be fully released when idle.
+
         Args:
             llm_configs: The LLM configs to infer the number of ingress replicas from.
 
         Returns:
             A dictionary containing the deployment options for the ingress deployment.
         """
-        return DEFAULT_INGRESS_OPTIONS
+        options = copy.deepcopy(DEFAULT_INGRESS_OPTIONS)
+        if _all_models_scale_to_zero(llm_configs):
+            options.setdefault("autoscaling_config", {})["min_replicas"] = 0
+        return options

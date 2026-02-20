@@ -68,6 +68,10 @@ export type GPUStats = {
   memoryUsed: number;
   memoryTotal: number;
   processesPids?: ProcessGPUUsage[];
+  /** Current power draw in milliwatts (e.g. NVIDIA, AMD) */
+  powerMw?: number;
+  /** Temperature in Celsius (e.g. NVIDIA) */
+  temperatureC?: number;
 };
 
 export type NodeDetailExtend = {

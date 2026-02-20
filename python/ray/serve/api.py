@@ -41,6 +41,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import (
     AutoscalingConfig,
+    GangSchedulingConfig,
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
@@ -344,6 +345,9 @@ def deployment(
         Union[Dict, RequestRouterConfig, None]
     ] = DEFAULT.VALUE,
     max_constructor_retry_count: Default[int] = DEFAULT.VALUE,
+    gang_scheduling_config: Default[
+        Union[Dict, GangSchedulingConfig, None]
+    ] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -414,6 +418,10 @@ def deployment(
         request_router_config: Config for the request router used for this deployment.
         max_constructor_retry_count: Maximum number of times to retry the deployment
             constructor. Defaults to 20.
+        gang_scheduling_config: Configuration for gang scheduling of deployment replicas.
+            Gang scheduling ensures that groups of replicas are scheduled together
+            atomically, which is essential for distributed workloads that require
+            coordination between replicas. See `GangSchedulingConfig` for options.
     Returns:
         `Deployment`
     """
@@ -427,6 +435,15 @@ def deployment(
         raise ValueError("`max_ongoing_requests` must be non-null, got None.")
 
     if num_replicas == "auto":
+        if (
+            gang_scheduling_config is not DEFAULT.VALUE
+            and gang_scheduling_config is not None
+        ):
+            raise ValueError(
+                'num_replicas="auto" is not allowed when '
+                "gang_scheduling_config is provided. Please set num_replicas "
+                "to a fixed multiple of gang_size."
+            )
         num_replicas = None
         max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
             max_ongoing_requests, autoscaling_config
@@ -480,6 +497,7 @@ def deployment(
         logging_config=logging_config,
         request_router_config=request_router_config,
         max_constructor_retry_count=max_constructor_retry_count,
+        gang_scheduling_config=gang_scheduling_config,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 

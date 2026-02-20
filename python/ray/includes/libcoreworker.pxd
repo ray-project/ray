@@ -147,6 +147,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CPlacementGroupID &placement_group_id)
         CRayStatus WaitPlacementGroupReady(
             const CPlacementGroupID &placement_group_id, int64_t timeout_seconds)
+        CObjectID AsyncWaitPlacementGroupReady(
+            const CPlacementGroupID &placement_group_id,
+            const c_string &serialized_object_data,
+            const c_string &serialized_object_metadata)
         CRayStatus SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
