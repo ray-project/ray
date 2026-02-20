@@ -138,38 +138,12 @@ class SGLangServer:
                     add_generation_prompt=True,
                     **template_kwargs,
                 )
-            except Exception as first_error:
-                fallback_kwargs = dict(template_kwargs)
-                tools = fallback_kwargs.get("tools")
-                # Try an alternative tools payload shape used by some templates.
-                if not tools:
-                    logger.warning(
-                        "SGLang chat template rendering failed; falling back to "
-                        "simple role/content prompt. first_error=%s",
-                        first_error,
-                    )
-                    return self._render_fallback_prompt(messages)
-
-                fallback_kwargs["tools"] = [
-                    item
-                    if isinstance(item, dict) and "function" in item
-                    else {"function": item}
-                    for item in tools
-                ]
-                try:
-                    return tokenizer.apply_chat_template(
-                        messages,
-                        tokenize=False,
-                        add_generation_prompt=True,
-                        **fallback_kwargs,
-                    )
-                except Exception as second_error:
-                    logger.warning(
-                        "SGLang chat template rendering failed; falling back to "
-                        "simple role/content prompt. first_error=%s second_error=%s",
-                        first_error,
-                        second_error,
-                    )
+            except Exception as template_error:
+                logger.warning(
+                    "SGLang chat template rendering failed; falling back to "
+                    "simple role/content prompt. error=%s",
+                    template_error,
+                )
 
         return self._render_fallback_prompt(messages)
 
@@ -201,31 +175,23 @@ class SGLangServer:
             if inspect.isawaitable(maybe_awaitable):
                 await maybe_awaitable
 
-    async def _generate_and_extract_metadata(
+    async def _generate_raw(
         self,
         request: Any,
         prompt: Any,
     ) -> dict[str, Any]:
-        """
-        Handles parameter extraction, calls the SGLang engine, and processes the
-        raw response to extract common metadata and generated text.
-        """
+        """Run generation and return raw engine output payload."""
         sampling_params = self._build_sampling_params(request)
         generate_kwargs = {
             "prompt": prompt,
             "sampling_params": sampling_params,
             "stream": False,
         }
+        return await self.engine.async_generate(**generate_kwargs)
 
-        raw = await self.engine.async_generate(**generate_kwargs)
-
-        if isinstance(raw, list):
-            if not raw:
-                raise RuntimeError(
-                    "SGLang engine returned an empty response list during generation."
-                )
-            raw = raw[0]
-
+    @staticmethod
+    def _extract_generation_metadata(raw: dict[str, Any]) -> dict[str, Any]:
+        """Extract normalized generation metadata from one raw engine payload."""
         text: str = raw.get("text", "")
         meta: dict[str, Any] = raw.get("meta_info", {}) or {}
         finish_reason_info = meta.get("finish_reason", {}) or {}
@@ -248,6 +214,24 @@ class SGLangServer:
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
         }
+
+    async def _generate_and_extract_metadata(
+        self,
+        request: Any,
+        prompt: Any,
+    ) -> dict[str, Any]:
+        """
+        Handles parameter extraction, calls the SGLang engine, and processes the
+        raw response to extract common metadata and generated text.
+        """
+        raw = await self._generate_raw(request, prompt)
+        if isinstance(raw, list):
+            if not raw:
+                raise RuntimeError(
+                    "SGLang engine returned an empty response list during generation."
+                )
+            raw = raw[0]
+        return self._extract_generation_metadata(raw)
 
     async def chat(
         self,
