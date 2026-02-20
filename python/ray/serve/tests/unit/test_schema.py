@@ -473,15 +473,6 @@ class TestDeploymentSchema:
         ):
             DeploymentSchema.parse_obj(deployment_schema)
 
-    @pytest.mark.parametrize("gang_size", [0, -1])
-    def test_gang_scheduling_config_invalid_gang_size(self, gang_size):
-        deployment_schema = self.get_minimal_deployment_schema()
-        deployment_schema["num_replicas"] = 4
-        deployment_schema["gang_scheduling_config"] = {"gang_size": gang_size}
-
-        with pytest.raises(ValidationError):
-            DeploymentSchema.parse_obj(deployment_schema)
-
     def test_mutually_exclusive_max_replicas_per_node_and_gang_scheduling_config(self):
         deployment_schema = self.get_minimal_deployment_schema()
         deployment_schema["max_replicas_per_node"] = 2

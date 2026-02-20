@@ -910,6 +910,11 @@ class GangReservationResult:
     """True when all gang PGs were created successfully."""
     error_message: Optional[str] = None
     gang_pgs: Optional[List[PlacementGroup]] = None
+    gang_ids: Optional[List[str]] = None
+    """Unique gang IDs matching 1:1 with gang_pgs."""
+    gang_pg_names: Optional[List[str]] = None
+    """PG names matching 1:1 with gang_pgs. Stored in GangContext so
+    replicas can recover the PG reference after controller restart."""
 
 
 # This error is used to raise when a by-value DeploymentResponse is converted to an

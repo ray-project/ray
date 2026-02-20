@@ -49,6 +49,10 @@ class GangContext:
     member_replica_ids: List[str]
     """List of replica IDs in this gang, ordered by rank."""
 
+    pg_name: str = ""
+    """Name of the gang placement group. Used to recover the PG reference
+    after controller restart."""
+
 
 @DeveloperAPI
 @dataclass
