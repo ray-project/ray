@@ -3085,11 +3085,11 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
               oom_kill_details,
               oom_kill_suggestions);
 
+          // Report the event to the dashboard.
+          RAY_EVENT_EVERY_MS(ERROR, "Out of Memory", 10 * 1000) << worker_exit_message;
+
           for (const auto &[worker_to_kill, should_retry] :
                workers_to_kill_and_should_retry) {
-            // Report the event to the dashboard.
-            RAY_EVENT_EVERY_MS(ERROR, "Out of Memory", 10 * 1000) << worker_exit_message;
-
             // Mark the worker as failure and raise an exception from a caller.
             rpc::RayErrorInfo worker_failure_reason;
             worker_failure_reason.set_error_message(worker_exit_message);
