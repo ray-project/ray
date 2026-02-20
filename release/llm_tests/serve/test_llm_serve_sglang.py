@@ -15,7 +15,6 @@ SERVER_URL = "http://localhost:8000"
 
 
 def wait_for_server_ready(url: str, timeout: int = 300, retry_interval: int = 5):
-    """Poll the server until it can serve a completion request."""
     start_time = time.time()
     while time.time() - start_time < timeout:
         try:
@@ -34,15 +33,13 @@ def wait_for_server_ready(url: str, timeout: int = 300, retry_interval: int = 5)
                 return
         except Exception:
             pass
-
-        print(f"Waiting for server at {url} to be ready...")
         time.sleep(retry_interval)
 
     raise TimeoutError(f"Server at {url} did not become ready within {timeout}s")
 
 
 def test_sglang_serve_e2e():
-    """End-to-end test for the SGLang serve example integration pattern."""
+    """Verify the SGLang custom server_cls example works end-to-end with build_openai_app."""
     llm_config = LLMConfig(
         model_loading_config={
             "model_id": RAY_MODEL_ID,
@@ -66,39 +63,24 @@ def test_sglang_serve_e2e():
     serve.run(app, blocking=False)
 
     try:
-        wait_for_server_ready(SERVER_URL, timeout=300)
-        time.sleep(5)
-
+        wait_for_server_ready(SERVER_URL)
         client = OpenAI(base_url=f"{SERVER_URL}/v1", api_key="fake-key")
 
-        # Chat completions
         chat_resp = client.chat.completions.create(
             model=RAY_MODEL_ID,
             messages=[{"role": "user", "content": "What is the capital of France?"}],
             max_tokens=64,
             temperature=0.0,
         )
-        assert len(chat_resp.choices) > 0
-        chat_content = chat_resp.choices[0].message.content
-        assert (
-            chat_content and len(chat_content.strip()) > 0
-        ), f"Empty chat response: {chat_resp}"
-        print(f"Chat response: {chat_content}")
+        assert chat_resp.choices[0].message.content.strip()
 
-        # Text completions
         comp_resp = client.completions.create(
             model=RAY_MODEL_ID,
             prompt="The capital of France is",
             max_tokens=64,
             temperature=0.0,
         )
-        assert len(comp_resp.choices) > 0
-        comp_text = comp_resp.choices[0].text
-        assert (
-            comp_text and len(comp_text.strip()) > 0
-        ), f"Empty completion response: {comp_resp}"
-        print(f"Completion response: {comp_text}")
-
+        assert comp_resp.choices[0].text.strip()
     finally:
         serve.shutdown()
 
