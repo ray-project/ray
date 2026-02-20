@@ -1,5 +1,5 @@
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pyarrow as pa
 import pytest
@@ -9,8 +9,11 @@ from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     OpRuntimeMetrics,
 )
+from ray.data._internal.execution.interfaces.physical_operator import (
+    TaskExecDriverStats,
+)
 from ray.data._internal.util import KiB
-from ray.data.block import BlockExecStats, BlockMetadata
+from ray.data.block import BlockExecStats, BlockMetadata, TaskExecStats
 from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
 
 
@@ -75,7 +78,12 @@ def test_task_completion_time_histogram():
         metrics._running_tasks[i].start_time = time.perf_counter() - completion_time
 
         # Complete the task
-        metrics.on_task_finished(i, None)  # None means no exception
+        metrics.on_task_finished(
+            i,
+            None,
+            TaskExecStats(task_wall_time_s=completion_time),
+            TaskExecDriverStats(task_output_backpressure_s=0),
+        )
 
         # Check that the correct bucket was incremented
         assert metrics.task_completion_time._bucket_counts[expected_bucket] == 1
@@ -119,7 +127,12 @@ def test_block_completion_time_histogram():
         metrics._running_tasks[i].cum_block_ser_time_s = ser_time
 
         # Complete the task
-        metrics.on_task_finished(i, None)  # None means no exception
+        metrics.on_task_finished(
+            i,
+            None,
+            TaskExecStats(task_wall_time_s=gen_time + ser_time),
+            TaskExecDriverStats(task_output_backpressure_s=0),
+        )
 
         # Check that the correct bucket was incremented by the number of blocks
         assert (
@@ -130,9 +143,10 @@ def test_block_completion_time_histogram():
         metrics.block_completion_time._bucket_counts[expected_bucket] = 0
 
 
-def test_task_completion_time_excl_backpressure():
-    """Test that task_completion_time_excl_backpressure_s includes both
-    block generation time and serialization time.
+@patch("time.perf_counter")
+def test_task_completion_time_excl_backpressure(mock_perf_counter):
+    """Test that average_task_completion_time_excl_backpressure_s correctly
+    subtracts output backpressure from the driver's wall-clock task time.
 
     This metric is critical for productivity calculation in resource allocators
     as it represents the actual work time excluding output backpressure delays.
@@ -142,34 +156,76 @@ def test_task_completion_time_excl_backpressure():
 
     metrics = OpRuntimeMetrics(op)
 
-    # Submit and complete multiple tasks with different gen/ser times
     test_cases = [
-        # (gen_time, ser_time, num_outputs)
-        (0.5, 0.1, 2),  # Task 0: 0.5s gen + 0.1s ser = 0.6s
-        (0.3, 0.05, 1),  # Task 1: 0.3s gen + 0.05s ser = 0.35s
-        (0.8, 0.2, 3),  # Task 2: 0.8s gen + 0.2s ser = 1.0s
+        # (driver_wall_time_s, worker_wall_time_s, backpressure_time_s, gen_time_s, ser_time_s, num_outputs)
+        (2.0, 1.8, 0.5, 0.5, 0.1, 2),  # Task 0
+        (1.5, 1.3, 0.2, 0.3, 0.05, 1),  # Task 1
+        (3.0, 2.8, 1.0, 0.8, 0.2, 3),  # Task 2
     ]
 
-    expected_total = 0
-    for i, (gen_time, ser_time, num_outputs) in enumerate(test_cases):
+    total_gen_ser = 0
+    clock = 0.0
+    for i, tc in enumerate(test_cases):
+        (
+            driver_wall_time_s,
+            worker_wall_time_s,
+            output_bp_time_s,
+            gen_time_s,
+            ser_time_s,
+            num_outputs,
+        ) = tc
+
         input_bundle = RefBundle([], owns_blocks=False, schema=None)
+
+        # Freeze time at task submission
+        mock_perf_counter.return_value = clock
         metrics.on_task_submitted(i, input_bundle)
 
-        # Set task info
         metrics._running_tasks[i].num_outputs = num_outputs
-        metrics._running_tasks[i].cum_block_gen_time_s = gen_time
-        metrics._running_tasks[i].cum_block_ser_time_s = ser_time
+        metrics._running_tasks[i].cum_block_gen_time_s = gen_time_s
+        metrics._running_tasks[i].cum_block_ser_time_s = ser_time_s
 
-        metrics.on_task_finished(i, None)
-        expected_total += gen_time + ser_time
+        # Advance clock by driver_wall_time_s before finishing
+        clock += driver_wall_time_s
+        mock_perf_counter.return_value = clock
 
-    assert metrics.task_completion_time_excl_backpressure_s == pytest.approx(
-        expected_total
+        metrics.on_task_finished(
+            i,
+            None,
+            TaskExecStats(task_wall_time_s=worker_wall_time_s),
+            TaskExecDriverStats(task_output_backpressure_s=output_bp_time_s),
+        )
+
+        total_gen_ser += gen_time_s + ser_time_s
+
+    num_tasks = len(test_cases)
+
+    total_driver_wall_time_s = sum(t[0] for t in test_cases)
+    total_worker_wall_time_s = sum(t[1] for t in test_cases)
+    total_output_bp_time_s = sum(t[2] for t in test_cases)
+
+    total_scheduling_time_s = total_driver_wall_time_s - total_worker_wall_time_s
+
+    # Raw counters
+    assert metrics.task_block_gen_and_ser_time_s == pytest.approx(total_gen_ser)
+    assert metrics.task_completion_time_s == pytest.approx(total_driver_wall_time_s)
+    assert metrics.task_scheduling_time_s == pytest.approx(total_scheduling_time_s)
+    assert metrics.task_output_backpressure_time_s == pytest.approx(
+        total_output_bp_time_s
     )
 
-    expected_avg = expected_total / len(test_cases)
-    assert metrics.average_task_completion_excl_backpressure_time_s == pytest.approx(
-        expected_avg
+    # Derived averages
+    assert metrics.average_total_task_completion_time_s == pytest.approx(
+        total_driver_wall_time_s / num_tasks
+    )
+    assert metrics.average_task_scheduling_time_s == pytest.approx(
+        total_scheduling_time_s / num_tasks
+    )
+    assert metrics.average_task_output_backpressure_time_s == pytest.approx(
+        total_output_bp_time_s / num_tasks
+    )
+    assert metrics.average_task_completion_time_excl_backpressure_s == pytest.approx(
+        (total_driver_wall_time_s - total_output_bp_time_s) / num_tasks
     )
 
 
