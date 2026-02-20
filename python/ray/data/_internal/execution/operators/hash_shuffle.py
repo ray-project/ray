@@ -50,6 +50,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     OpTask,
+    TaskExecDriverStats,
     estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
@@ -66,6 +67,7 @@ from ray.data.block import (
     BlockMetadataWithSchema,
     BlockStats,
     BlockType,
+    TaskExecStats,
     to_stats,
 )
 from ray.data.context import (
@@ -275,7 +277,7 @@ def _shuffle_block(
 
     if block.num_rows == 0:
         empty = BlockAccessor.for_block(block).get_metadata(
-            exec_stats=stats.build(block_ser_time_s=0)
+            block_exec_stats=stats.build(block_ser_time_s=0),
         )
         return (empty, {})
 
@@ -349,7 +351,7 @@ def _shuffle_block(
         i += 1
 
     original_block_metadata = BlockAccessor.for_block(block).get_metadata(
-        exec_stats=stats.build(block_ser_time_s=0)
+        block_exec_stats=stats.build(block_ser_time_s=0)
     )
 
     if logger.isEnabledFor(logging.DEBUG):
@@ -758,7 +760,13 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 self._shuffle_metrics.on_task_output_generated(
                     cur_shuffle_task_idx, out_bundle
                 )
-                self._shuffle_metrics.on_task_finished(cur_shuffle_task_idx, None)
+                # TODO wire in stats & exceptions
+                self._shuffle_metrics.on_task_finished(
+                    cur_shuffle_task_idx,
+                    None,
+                    task_exec_stats=None,
+                    task_exec_driver_stats=None,
+                )
 
                 # Update Shuffle progress bar
                 self._shuffle_bar.update(increment=input_block_metadata.num_rows or 0)
@@ -875,13 +883,28 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 increment=bundle.num_rows() or 0, total=self.num_output_rows_total()
             )
 
-        def _on_aggregation_done(partition_id: int, exc: Optional[Exception]):
+        def _on_aggregation_done(
+            partition_id: int,
+            exc: Optional[Exception],
+            task_exec_stats: Optional[TaskExecStats],
+            task_exec_driver_stats: Optional[TaskExecDriverStats],
+        ):
+            # NOTE: `TaskExecStats` could be null in case there's no blocks
+            #       emitted (current limitation, since it's emitted along with
+            #       `BlockMetadata`)
+            assert exc or (
+                task_exec_driver_stats
+            ), "Driver's task execution stats must be provided on task's successful completion"
+
             if partition_id in self._finalizing_tasks:
                 self._finalizing_tasks.pop(partition_id)
 
                 # Update Finalize Metrics on task completion
                 self._reduce_metrics.on_task_finished(
-                    task_index=partition_id, exception=exc
+                    task_index=partition_id,
+                    exception=exc,
+                    task_exec_stats=task_exec_stats,
+                    task_exec_driver_stats=task_exec_driver_stats,
                 )
 
                 if exc:
@@ -1726,6 +1749,8 @@ class HashShuffleAggregator:
 
         And therefore as such doesn't require explicit concurrency control
         """
+        start_time_s = time.perf_counter()
+
         exec_stats_builder = BlockExecStats.builder()
 
         # Collect partition shards from all input sequences for this partition
@@ -1759,7 +1784,13 @@ class HashShuffleAggregator:
             if stats:
                 exec_stats.block_ser_time_s = stats.object_creation_dur_s
 
-            yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
+            yield BlockMetadataWithSchema.from_block(
+                block,
+                block_exec_stats=exec_stats,
+                task_exec_stats=TaskExecStats(
+                    task_wall_time_s=time.perf_counter() - start_time_s,
+                ),
+            )
 
     def _debug_dump(self):
         """Periodically dumps the state of the HashShuffleAggregator for debugging."""
