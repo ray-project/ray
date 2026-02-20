@@ -418,7 +418,7 @@ class PhysicalOperator(Operator):
         original_inputs = tuple(target.input_dependencies)
         transformed_target = transform(target)
         if transformed_target is not target:
-            for input_op in target.input_dependencies:
+            for input_op in original_inputs:
                 assert isinstance(input_op, PhysicalOperator), input_op
                 input_op._output_dependencies = [
                     dep for dep in input_op._output_dependencies if dep is not target
