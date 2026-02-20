@@ -473,7 +473,6 @@ class TestDeploymentSchema:
         ):
             DeploymentSchema.parse_obj(deployment_schema)
 
-
     @pytest.mark.parametrize("gang_size", [0, -1])
     def test_gang_scheduling_config_invalid_gang_size(self, gang_size):
         deployment_schema = self.get_minimal_deployment_schema()

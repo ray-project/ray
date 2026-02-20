@@ -1562,7 +1562,6 @@ class TestOverrideDeploymentInfo:
             {"bundles": [{"CPU": 1}]}
         ]
 
-
     def test_override_gang_scheduling_config(self, info):
         """Test gang_scheduling_config dict is converted to GangSchedulingConfig."""
         config = ServeApplicationSchema(
