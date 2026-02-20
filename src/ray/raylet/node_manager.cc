@@ -52,7 +52,7 @@
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/throttler.h"
 #include "ray/raylet/worker.h"
-#include "ray/raylet/worker_killing_policy_group_by_owner.h"
+#include "ray/raylet/worker_killing_policy_factory.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
@@ -237,7 +237,7 @@ NodeManager::NodeManager(
       record_metrics_period_ms_(config.record_metrics_period_ms),
       placement_group_resource_manager_(placement_group_resource_manager),
       ray_syncer_(io_service_, self_node_id_.Binary(), 1, 0),
-      worker_killing_policy_(std::make_shared<GroupByOwnerIdWorkerKillingPolicy>()),
+      worker_killing_policy_(WorkerKillingPolicyFactory::Create()),
       memory_monitor_(MemoryMonitorFactory::Create(CreateKillWorkersCallback())),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),

@@ -25,19 +25,24 @@
 #include "absl/time/time.h"
 #include "ray/common/memory_monitor_interface.h"
 #include "ray/raylet/worker_interface.h"
-#include "ray/raylet/worker_killing_policy.h"
+#include "ray/raylet/worker_killing_policy_interface.h"
 
 namespace ray {
 
 namespace raylet {
 
-/// Key groups on its owner id. For non-retriable lease the owner id is Nil,
-/// Since non-retriable lease forms its own group.
+/**
+ * @brief Key groups on its owner id. For non-retriable lease the owner id is Nil,
+ * Since non-retriable lease forms its own group.
+ */
 struct GroupKey {
   explicit GroupKey(const TaskID &owner_id) : owner_id_(owner_id) {}
   const TaskID &owner_id_;
 };
 
+/**
+ * @brief group of workers with the same owner id.
+ */
 struct Group {
  public:
   Group(const TaskID &owner_id, bool retriable)
@@ -76,23 +81,32 @@ struct Group {
   bool retriable_;
 };
 
-/// Groups leases by its owner id. Non-retriable leases (whether it be task or actor)
-/// forms its own group. Prioritizes killing groups that are retriable first, else it
-/// picks the largest group, else it picks the newest group. The "age" of a group is based
-/// on the time of its earliest granted leases. When a group is selected for killing it
-/// selects the last submitted task.
-///
-/// When selecting a worker / task to be killed, it will set the task to-be-killed to be
-/// non-retriable if it is the last member of the group, and is retriable otherwise.
-class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicy {
+/**
+ * @brief Groups leases by its owner id. Non-retriable leases (whether it be task or
+ * actor) forms its own group. Prioritizes killing groups that are retriable first, else
+ * it picks the largest group, else it picks the newest group. The "age" of a group is
+ * based on the time of its earliest granted leases. When a group is selected for killing
+ * it selects the last submitted task.
+ *
+ * When selecting a worker / task to be killed, it will set the task to-be-killed to be
+ * non-retriable if it is the last member of the group, and is retriable otherwise.
+ */
+class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
  public:
-  GroupByOwnerIdWorkerKillingPolicy();
+  GroupByOwnerIdWorkerKillingPolicy() = default;
+
   std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const ProcessesMemorySnapshot &process_memory_snapshot) const;
 
  private:
-  /// Creates the debug string of the groups created by the policy.
+  /**
+   * Creates the debug string of the groups created by the policy.
+   *
+   * \param groups groups to print
+   * \param system_memory snapshot of memory usage.
+   * \return the debug string.
+   */
   static std::string PolicyDebugString(
       const std::vector<Group> &groups,
       const ProcessesMemorySnapshot &process_memory_snapshot);
