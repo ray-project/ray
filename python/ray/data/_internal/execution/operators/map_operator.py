@@ -743,7 +743,6 @@ def _map_task(
         ctx.task_idx,
     )
 
-
     ctx.kwargs.update(kwargs)
 
     with DataContext.current(data_context), TaskContext.current(ctx):

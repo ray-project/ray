@@ -59,7 +59,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.operators import MapRows, Read, Write
 from ray.data._internal.util import MiB
-from ray.data.block import BlockAccessor, BlockMetadataWithSchema
+from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecStats
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 
