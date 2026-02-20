@@ -760,8 +760,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Creates the callback used in the memory monitor.
   KillWorkersCallback CreateKillWorkersCallback();
 
-  /// Creates the detail message for the workers that are killed due to memory running
-  /// low.
+  /**
+   * \param workers_to_kill The workers to print the kill details for.
+   * \param node_id The ID of the node.
+   * \param system_memory_snapshot The snapshot of the system memory.
+   * \param process_memory_snapshot The snapshot of the process memory.
+   * \param usage_threshold The memory limit.
+   * \return The detail message for the workers that are killed due to memory running low.
+   */
   std::string CreateOomKillMessageDetails(
       const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
           &workers_to_kill,
@@ -770,8 +776,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const ProcessesMemorySnapshot &process_memory_snapshot,
       float usage_threshold) const;
 
-  /// Creates the suggestion message for the workers that are killed due to memory running
-  /// low.
+  /**
+   * \param workers_to_kill The workers to print the kill suggestions for.
+   * \return The suggestion message for the workers that are killed due to memory running
+   * low.
+   */
   std::string CreateOomKillMessageSuggestions(
       const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
           &workers_to_kill) const;
