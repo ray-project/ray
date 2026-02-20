@@ -9,7 +9,7 @@ Or use this script: bash convert_to_md.sh
 
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Fgpt-oss"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
-<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/gpt-oss" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/content/gpt-oss" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
 *gpt-oss* is a family of open-source models designed for general-purpose language understanding and generation. The 20&nbsp;B parameter variant (`gpt-oss-20b`) offers strong reasoning capabilities with lower latency. This makes it well-suited for local or specialized use cases. The larger 120&nbsp;B parameter variant (`gpt-oss-120b`) is designed for production-scale, high-reasoning workloads.
@@ -293,7 +293,7 @@ Example log for gpt-oss-120b with 2xL40S:
 INFO 09-09 00:32:32 [kv_cache_utils.py:1017] Maximum concurrency for 32,768 tokens per request: 6.18x
 ```
 
-To improve concurrency for gpt-oss models, see [Deploy a small-sized LLM: Improve concurrency](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html#improve-concurrency) for small-sized models such as `gpt-oss-20b`, and [Deploy a medium-sized LLM: Improve concurrency](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#improve-concurrency) for medium-sized models such as `gpt-oss-120b`.
+To improve concurrency for gpt-oss models, see [Deploy a small-sized LLM: Improve concurrency](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/content/small-size-llm/README.html#improve-concurrency) for small-sized models such as `gpt-oss-20b`, and [Deploy a medium-sized LLM: Improve concurrency](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/content/medium-size-llm/README.html#improve-concurrency) for medium-sized models such as `gpt-oss-120b`.
 
 **Note:** Some example guides recommend using quantization to boost concurrency. `gpt-oss` weights are already 4-bit by default, so further quantization typically isn't applicable.  
 

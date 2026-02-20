@@ -9,7 +9,7 @@ Or use this script: bash convert_to_md.sh
 
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Freasoning-llm"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
-<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/reasoning-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/content/reasoning-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
 A reasoning LLM handles tasks that require deeper analysis or step-by-step thought. It generates intermediate reasoning before arriving at a final answer, making it better suited for situations where careful logic or structured problem-solving is more important than speed or efficiency.
@@ -205,7 +205,7 @@ Shutdown your LLM service:
 
 ## Deploy to production with Anyscale services
 
-For production deployment, use Anyscale services to deploy your Ray Serve app to a dedicated cluster without modifying the code. Anyscale ensures scalability, fault tolerance, and load balancing, keeping the service resilient against node failures, high traffic, and rolling updates. For more details, see [Serve LLMs with Anyscale](https://docs.anyscale.com/llm/serving). See [Deploy a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#deploy-to-production-with-anyscale-services) for an example with a medium-sized model like the *QwQ-32&nbsp;B* used here.
+For production deployment, use Anyscale services to deploy your Ray Serve app to a dedicated cluster without modifying the code. Anyscale ensures scalability, fault tolerance, and load balancing, keeping the service resilient against node failures, high traffic, and rolling updates. For more details, see [Serve LLMs with Anyscale](https://docs.anyscale.com/llm/serving). See [Deploy a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/content/medium-size-llm/README.html#deploy-to-production-with-anyscale-services) for an example with a medium-sized model like the *QwQ-32&nbsp;B* used here.
 
 ---
 

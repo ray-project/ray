@@ -44,10 +44,6 @@ convert_notebook() {
 
 cd "$SCRIPT_DIR"
 
-# Convert top-level content/README.ipynb -> content/README.md
-convert_notebook "content/README"
-echo "✅ Successfully converted content/README.ipynb to content/README.md"
-
 # Convert each subdirectory's README.ipynb -> README.md
 for subdir in "${subdirs[@]}"; do
   convert_notebook "content/${subdir}/README"
