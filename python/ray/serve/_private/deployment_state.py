@@ -22,6 +22,7 @@ from ray.serve._private import default_impl
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
+    GANG_PG_NAME_PREFIX,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
@@ -53,6 +54,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
+
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
@@ -68,12 +70,14 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     JavaActorHandleProxy,
     check_obj_ref_ready_nowait,
+    get_active_placement_group_ids,
     get_capacity_adjusted_num_replicas,
     get_random_string,
     msgpack_deserialize,
     msgpack_serialize,
 )
 from ray.serve._private.version import DeploymentVersion
+from ray.serve.config import GangRuntimeFailurePolicy
 from ray.serve.gang import GangContext
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import (
@@ -3572,9 +3576,16 @@ class DeploymentState:
         transition happened.
         """
 
-        # Track gang IDs of replicas that failed health checks so we can
-        # stop sibling gang members afterwards.
-        failed_health_gang_ids: Set[str] = set()
+        gang_config = self.get_gang_config()
+        restart_gang = (
+            gang_config is not None
+            and gang_config.runtime_failure_policy
+            == GangRuntimeFailurePolicy.RESTART_GANG
+        )
+
+        healthy_replicas: List[DeploymentReplica] = []
+        unhealthy_replicas: List[DeploymentReplica] = []
+        gang_ids_to_restart: Set[str] = set()
 
         for replica in self._replicas.pop(
             states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
@@ -3593,25 +3604,27 @@ class DeploymentState:
                 self.health_check_failures_counter.inc(tags=metric_tags)
 
             if is_healthy:
-                self._replicas.add(replica.actor_details.state, replica)
-                self._set_health_gauge(replica.replica_id.unique_id, 1)
-                routing_stats = replica.pull_routing_stats()
-                if routing_stats is not None and routing_stats != replica.routing_stats:
-                    self._broadcasted_replicas_set_changed = True
-                replica.record_routing_stats(routing_stats)
+                healthy_replicas.append(replica)
             else:
+                unhealthy_replicas.append(replica)
+                if restart_gang and replica.gang_context is not None:
+                    gang_ids_to_restart.add(replica.gang_context.gang_id)
+
+        for replica in healthy_replicas:
+            if (
+                restart_gang
+                and replica.gang_context is not None
+                and replica.gang_context.gang_id in gang_ids_to_restart
+            ):
+                # Healthy replica whose gang has an unhealthy member.
+                # Forcefully stop it so the entire gang is rescheduled.
                 logger.warning(
-                    f"Replica {replica.replica_id} failed health check, stopping it."
+                    f"Replica {replica.replica_id} is healthy but its gang "
+                    f"(gang_id={replica.gang_context.gang_id}) has an "
+                    "unhealthy replica. Forcefully stopping it because  "
+                    "RESTART_GANG runtime failure policy is enabled."
                 )
-                self._set_health_gauge(replica.replica_id.unique_id, 0)
-                self._stop_replica(
-                    replica, graceful_stop=not self.FORCE_STOP_UNHEALTHY_REPLICAS
-                )
-                if replica.gang_context is not None:
-                    failed_health_gang_ids.add(replica.gang_context.gang_id)
-                # If this is a replica of the target version, the deployment
-                # enters the "UNHEALTHY" status until the replica is
-                # recovered or a new deploy happens.
+                self._stop_replica(replica, graceful_stop=False)
                 if replica.version == self._target_state.version:
                     self._curr_status_info = self._curr_status_info.handle_transition(
                         trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
@@ -3619,6 +3632,33 @@ class DeploymentState:
                         "deployment will be UNHEALTHY until the replica "
                         "recovers or a new deploy happens.",
                     )
+            else:
+                self._replicas.add(replica.actor_details.state, replica)
+                self._set_health_gauge(replica.replica_id.unique_id, 1)
+                routing_stats = replica.pull_routing_stats()
+                replica.record_routing_stats(routing_stats)
+
+        # Process unhealthy replicas with force-stop for gang replicas under
+        # RESTART_GANG policy.
+        for replica in unhealthy_replicas:
+            logger.warning(
+                f"Replica {replica.replica_id} failed health check, stopping it."
+            )
+            self._set_health_gauge(replica.replica_id.unique_id, 0)
+            graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
+            if restart_gang and replica.gang_context is not None:
+                graceful = False
+            self._stop_replica(replica, graceful_stop=graceful)
+            # If this is a replica of the target version, the deployment
+            # enters the "UNHEALTHY" status until the replica is
+            # recovered or a new deploy happens.
+            if replica.version == self._target_state.version:
+                self._curr_status_info = self._curr_status_info.handle_transition(
+                    trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
+                    message="A replica's health check failed. This "
+                    "deployment will be UNHEALTHY until the replica "
+                    "recovers or a new deploy happens.",
+                )
 
         # If any gang member failed a health check, stop all other members
         # of that gang so partial gangs never run.
@@ -4067,7 +4107,8 @@ class DeploymentStateManager:
     ):
         """Detect and remove any placement groups not associated with a replica.
 
-        This can happen under certain rare circumstances:
+        For per-replica PGs, a PG is leaked if no actor with that name exists. This
+        can happen under certain rare circumstances:
             - The controller creates a placement group then crashes before creating
             the associated replica actor.
             - While the controller is down, a replica actor crashes but its placement
@@ -4075,6 +4116,10 @@ class DeploymentStateManager:
 
         In both of these (or any other unknown cases), we simply need to remove the
         leaked placement groups.
+
+        For gang PGs, a PG is leaked only if no alive actor references its placement
+        group ID. Gang PGs that still have live actors are preserved to avoid releasing
+        their resource reservations.
         """
         leaked_pg_names = []
         for pg_name in all_current_placement_group_names:
@@ -4083,6 +4128,32 @@ class DeploymentStateManager:
                 and pg_name not in all_current_actor_names
             ):
                 leaked_pg_names.append(pg_name)
+
+        gang_pg_names_in_cluster = [
+            name
+            for name in all_current_placement_group_names
+            if name.startswith(GANG_PG_NAME_PREFIX)
+        ]
+        if gang_pg_names_in_cluster:
+            pg_table = ray.util.placement_group_table()
+            gang_pg_name_to_id: Dict[str, str] = {}
+            for pg_id_hex, entry in pg_table.items():
+                name = entry.get("name", "")
+                if name.startswith(GANG_PG_NAME_PREFIX):
+                    gang_pg_name_to_id[name] = pg_id_hex
+
+            try:
+                occupied_pg_ids = get_active_placement_group_ids()
+            except Exception:
+                logger.warning(
+                    "Skipping gang PG leak detection due to GCS query failure.",
+                    exc_info=True,
+                )
+            else:
+                for gang_pg_name in gang_pg_names_in_cluster:
+                    pg_id = gang_pg_name_to_id.get(gang_pg_name)
+                    if pg_id is not None and pg_id not in occupied_pg_ids:
+                        leaked_pg_names.append(gang_pg_name)
 
         if len(leaked_pg_names) > 0:
             logger.warning(
