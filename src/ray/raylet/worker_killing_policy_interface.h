@@ -14,16 +14,12 @@
 
 #pragma once
 
-#include <gtest/gtest_prod.h>
-
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "ray/common/memory_monitor_interface.h"
 #include "ray/raylet/worker_interface.h"
-#include "ray/raylet/worker_pool.h"
 
 namespace ray {
 

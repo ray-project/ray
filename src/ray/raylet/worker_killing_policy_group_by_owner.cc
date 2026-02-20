@@ -14,22 +14,16 @@
 
 #include "ray/raylet/worker_killing_policy_group_by_owner.h"
 
-#include <gtest/gtest_prod.h>
-
 #include <algorithm>
-#include <boost/container_hash/hash.hpp>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "ray/common/lease/lease.h"
-#include "ray/raylet/worker_interface.h"
-#include "ray/raylet/worker_pool.h"
 
 namespace ray {
 

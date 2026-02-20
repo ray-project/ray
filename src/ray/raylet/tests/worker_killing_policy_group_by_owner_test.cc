@@ -20,6 +20,8 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/lease/lease.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/raylet/tests/util.h"
 #include "ray/util/fake_process.h"
@@ -72,6 +74,7 @@ class WorkerKillingGroupByOwnerTest : public ::testing::Test {
   /**
    * @note This function assumes that the worker is mocked
    * and SetProcess can be called more than once.
+   *
    * @param worker The worker whose process should be killed.
    */
   void KillWorkerProcess(std::shared_ptr<WorkerInterface> worker) {

@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <gtest/gtest_prod.h>
-
 #include <memory>
 #include <string>
 #include <utility>
@@ -23,8 +21,6 @@
 
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "ray/common/memory_monitor_interface.h"
-#include "ray/raylet/worker_interface.h"
 #include "ray/raylet/worker_killing_policy_interface.h"
 
 namespace ray {
@@ -93,8 +89,6 @@ struct Group {
  */
 class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
  public:
-  GroupByOwnerIdWorkerKillingPolicy() = default;
-
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> SelectWorkersToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const ProcessesMemorySnapshot &process_memory_snapshot,
@@ -128,7 +122,7 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
       const std::vector<Group> &groups,
       const ProcessesMemorySnapshot &process_memory_snapshot);
 
-  // The current selected workers to be killed and whether the task on each worker
+  // The current selected workers being killed and whether the task on each worker
   // should be retried.
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_being_killed_;
 };
