@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/worker_killing_policy.h"
+#include "ray/raylet/worker_killing_policy_group_by_owner.h"
 
 #include <memory>
 #include <string>
@@ -22,7 +22,6 @@
 #include "gtest/gtest.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/raylet/tests/util.h"
-#include "ray/raylet/worker_killing_policy_group_by_owner.h"
 
 namespace ray {
 
