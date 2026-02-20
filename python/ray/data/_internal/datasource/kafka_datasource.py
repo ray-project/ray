@@ -295,7 +295,10 @@ class KafkaDatasource(Datasource):
         topics: Union[str, List[str]],
         bootstrap_servers: Union[str, List[str]],
         start_offset: Union[
-            int, datetime, Literal["earliest"], Dict[str, Dict[int, Union[int, str]]]
+            int,
+            datetime,
+            Literal["earliest"],
+            Dict[str, Dict[int, Union[int, str, datetime]]],
         ] = "earliest",
         end_offset: Union[int, datetime, Literal["latest"]] = "latest",
         kafka_auth_config: Optional[KafkaAuthConfig] = None,
@@ -311,10 +314,11 @@ class KafkaDatasource(Datasource):
                 - datetime: Read from the first message at or after this time.
                   Datetimes with no timezone info are treated as UTC.
                 - str: "earliest" — start from the beginning of each partition.
-                - Dict[str, Dict[int, Union[int, str]]]: Per-partition offsets,
-                  mapping topic name → (partition id → offset). Each partition
-                  offset can be an int or "earliest". Partitions not listed in
-                  the dict fall back to "earliest".
+                - Dict[str, Dict[int, Union[int, str, datetime]]]: Per-partition
+                  offsets, mapping topic name → (partition id → offset). Each
+                  partition offset can be an int, "earliest", or a datetime
+                  (treated the same as the global datetime form). Partitions not
+                  listed in the dict fall back to "earliest".
                   Example: ``{"my_topic": {0: 1500, 1: "earliest"}}``.
             end_offset: Ending position (exclusive). Can be:
                 - int: Offset number
@@ -380,10 +384,15 @@ class KafkaDatasource(Datasource):
                             f"Partition keys in per-partition start_offset must be ints. "
                             f"Got: {type(partition).__name__} for topic '{topic}'"
                         )
-                    if not isinstance(offset, (int, str)):
+                    # Mirror the bool guard applied to partition keys: bool is a
+                    # subclass of int, so True/False must be rejected explicitly.
+                    if isinstance(offset, bool) or not isinstance(
+                        offset, (int, str, datetime)
+                    ):
                         raise ValueError(
-                            f"Per-partition start_offset values must be int or 'earliest'. "
-                            f"Got: {type(offset).__name__} for topic '{topic}', partition {partition}"
+                            f"Per-partition start_offset values must be int, 'earliest', "
+                            f"or datetime. Got: {type(offset).__name__} for topic "
+                            f"'{topic}', partition {partition}"
                         )
                     if isinstance(offset, str) and offset != "earliest":
                         raise ValueError(

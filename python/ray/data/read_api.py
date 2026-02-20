@@ -4368,7 +4368,10 @@ def read_kafka(
     bootstrap_servers: Union[str, List[str]],
     trigger: Literal["once"] = "once",
     start_offset: Union[
-        int, datetime, Literal["earliest"], Dict[str, Dict[int, Union[int, str]]]
+        int,
+        datetime,
+        Literal["earliest"],
+        Dict[str, Dict[int, Union[int, str, datetime]]],
     ] = "earliest",
     end_offset: Union[int, datetime, Literal["latest"]] = "latest",
     kafka_auth_config: Optional[KafkaAuthConfig] = None,
@@ -4438,10 +4441,11 @@ def read_kafka(
             - int: Offset number applied globally to all partitions.
             - datetime: Read from the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: ``"earliest"`` — start from the beginning of each partition.
-            - Dict[str, Dict[int, Union[int, str]]]: Per-partition offsets,
-              mapping topic name → (partition id → offset). Each partition offset
-              can be an int or ``"earliest"``. Partitions omitted from the dict
-              fall back to ``"earliest"``.
+            - Dict[str, Dict[int, Union[int, str, datetime]]]: Per-partition
+              offsets, mapping topic name → (partition id → offset). Each
+              partition offset can be an int, ``"earliest"``, or a datetime
+              (treated the same as the global datetime form). Partitions omitted
+              from the dict fall back to ``"earliest"``.
               Example: ``{"my_topic": {0: 1500, 1: "earliest"}}``.
 
         end_offset: Ending position for reading (exclusive). Can be:

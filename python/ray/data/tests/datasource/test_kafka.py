@@ -189,11 +189,13 @@ def test_kafka_datasource_init_per_partition_valid():
     """Valid per-partition start_offset dicts must pass __init__ without error."""
     from ray.data._internal.datasource.kafka_datasource import KafkaDatasource
 
-    # Mix of int and "earliest" per-partition offsets
+    # Mix of int, "earliest", and datetime per-partition offsets
     KafkaDatasource(
         topics=["my_topic"],
         bootstrap_servers="localhost:9092",
-        start_offset={"my_topic": {0: 1500, 1: "earliest"}},
+        start_offset={
+            "my_topic": {0: 1500, 1: "earliest", 2: datetime(2025, 1, 1)}
+        },
     )
 
     # Empty dict (no per-partition overrides) is also valid
@@ -228,8 +230,12 @@ def test_kafka_datasource_init_per_partition_valid():
             "Partition keys in per-partition start_offset must be ints",
         ),
         (
+            {"my_topic": {0: True}},
+            "Per-partition start_offset values must be int, 'earliest', or datetime",
+        ),
+        (
             {"my_topic": {0: 3.14}},
-            "Per-partition start_offset values must be int or 'earliest'",
+            "Per-partition start_offset values must be int, 'earliest', or datetime",
         ),
         (
             {"my_topic": {0: "latest"}},
