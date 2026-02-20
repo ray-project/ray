@@ -797,12 +797,12 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.num_row_inputs_received += input.num_rows() or 0
         self.bytes_inputs_received += input.size_bytes()
 
-    def on_input_queued(self, input: RefBundle, input_index: int = 0):
+    def on_input_queued(self, input: RefBundle, *, input_index: int):
         """Callback when the operator queues an input."""
         self.obj_store_mem_internal_inqueue_blocks += len(input.blocks)
         self._internal_inqueues[input_index].add(input)
 
-    def on_input_dequeued(self, input: RefBundle, input_index: int = 0):
+    def on_input_dequeued(self, input: RefBundle, *, input_index: int):
         """Callback when the operator dequeues an input."""
         self.obj_store_mem_internal_inqueue_blocks -= len(input.blocks)
         input_size = input.size_bytes()
