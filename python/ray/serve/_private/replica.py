@@ -273,6 +273,7 @@ ReplicaMetadata = Tuple[
     Optional[List[str]],  # route_patterns
     Optional[List[DeploymentID]],  # outbound_deployments
     bool,  # has_user_routing_stats_method
+    Optional[GangContext],  # gang_context
 ]
 
 
@@ -1118,6 +1119,7 @@ class ReplicaBase(ABC):
             route_patterns,
             self.list_outbound_deployments(),
             has_user_routing_stats_method,
+            self._gang_context,
         )
 
     def get_dynamically_created_handles(self) -> Set[DeploymentID]:
