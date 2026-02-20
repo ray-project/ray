@@ -65,6 +65,15 @@ trap 'serve shutdown -y 2>/dev/null || true' EXIT"""
 
 _DEPLOY_RE = re.compile(r"^anyscale service deploy\s+(.+)$")
 
+# Extract the file path from flags like ``-f path.yaml`` or ``--config-file path.yaml``.
+_CONFIG_PATH_RE = re.compile(r"(?:-f|--config-file)\s+(\S+)")
+
+
+def _extract_config_path(flags: str) -> str:
+    """Return the config file path from deploy-style CLI flags."""
+    m = _CONFIG_PATH_RE.search(flags)
+    return m.group(1) if m else flags.strip()
+
 # Matches hardcoded %env / export lines for BASE_URL or ANYSCALE_API_TOKEN.
 _HARDCODED_ENV_RE = re.compile(
     r"^(?:%env|export)\s+(?:BASE_URL|ANYSCALE_API_TOKEN)="
@@ -144,10 +153,15 @@ def _postprocess(lines: list[str]) -> list[str]:
         out.append(line)
 
     # Terminate the Anyscale service at the end of the script.
+    # Use --name instead of -f because `terminate` rejects extra fields
+    # (applications, logging_config, …) in the full service config YAML.
     if deploy_flags:
         out.append("")
         out.append("# Tear down the Anyscale service")
-        out.append(f"anyscale service terminate {deploy_flags}")
+        out.append(
+            f"SERVICE_NAME=$(python3 -c \"import yaml; print(yaml.safe_load(open('{_extract_config_path(deploy_flags)}'))['name'])\")"
+        )
+        out.append("anyscale service terminate --name \"$SERVICE_NAME\"")
 
     return out
 
