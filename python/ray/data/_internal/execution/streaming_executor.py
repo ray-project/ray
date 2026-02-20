@@ -186,9 +186,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
 
             # Log the full DataContext for traceability
-            if logger.isEnabledFor(logging.DEBUG) and log_once(
-                f"ray_data_log_context_{self._dataset_id}"
-            ):
+            if logger.isEnabledFor(logging.DEBUG) and log_once("ray_data_log_context"):
                 logger.debug(
                     f"Data Context for dataset {self._dataset_id}:\n%s",
                     pprint.pformat(self._data_context),
