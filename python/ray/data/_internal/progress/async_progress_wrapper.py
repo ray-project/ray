@@ -238,23 +238,19 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
         start_time = time.time()
         method_name = getattr(method, "__name__", str(method))
 
-        try:
-            result = method(*args, **kwargs)
-            duration = time.time() - start_time
+        result = method(*args, **kwargs)
+        duration = time.time() - start_time
 
-            # Record successful update
-            with self._lock:
-                self._last_successful_update = time.time()
+        # Record successful update
+        with self._lock:
+            self._last_successful_update = time.time()
 
-            if duration > 1.0:
-                logger.debug(
-                    f"Progress operation took {duration:.2f}s "
-                    f"(method: {method_name})"
-                )
+        if duration > 1.0:
+            logger.debug(
+                f"Progress operation took {duration:.2f}s " f"(method: {method_name})"
+            )
 
             return result
-        except Exception as e:
-            logger.debug(f"Progress operation failed (method: {method_name}): {e}")
 
     @staticmethod
     def _safe_call(method, *args, **kwargs):
