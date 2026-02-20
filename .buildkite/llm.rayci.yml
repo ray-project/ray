@@ -78,7 +78,7 @@ steps:
     tags:
       - llm
       - gpu
-    instance_type: gpu-large
+    instance_type: g6.12xlarge
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //doc/... llm
         --python-version 3.12 --build-name llmgpubuild-py312
