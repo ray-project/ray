@@ -41,8 +41,11 @@ def test_fit(ray_start_4_cpus):
         def __init__(self):
             self.validation_scores = {}
 
-        def report(self, rank, rmse):
-            self.validation_scores[rank] = rmse
+        def report(self, rank, logloss, error):
+            self.validation_scores[rank] = {
+                "logloss": logloss,
+                "error": error,
+            }
 
         def get_validation_scores(self):
             return self.validation_scores
@@ -87,7 +90,7 @@ def test_fit(ray_start_4_cpus):
 
         evals_result = {}
         xgboost.train(
-            {},
+            params,
             dtrain=dtrain,
             evals=evals,
             evals_result=evals_result,
@@ -96,7 +99,8 @@ def test_fit(ray_start_4_cpus):
         )
         collector.report.remote(
             ray.train.get_context().get_world_rank(),
-            evals_result["valid"]["rmse"],
+            evals_result["valid"]["logloss"],
+            evals_result["valid"]["error"],
         )
 
     train_dataset = ray.data.from_pandas(train_df)
@@ -106,7 +110,6 @@ def test_fit(ray_start_4_cpus):
             label_column="target",
             dataset_keys={TRAIN_DATASET_KEY, "valid"},
         ),
-        train_loop_config=params,
         scaling_config=scale_config,
         # Sharding the validation dataset across workers is ok because xgboost allreduces metrics.
         # See https://github.com/dmlc/xgboost/blob/d0135d0f43ff91e738edcbcea54e44b50d336adf/python-package/xgboost/callback.py#L131.
@@ -114,7 +117,12 @@ def test_fit(ray_start_4_cpus):
     )
     result = trainer.fit()
     validation_scores = ray.get(collector.get_validation_scores.remote())
-    assert validation_scores[0] == pytest.approx(validation_scores[1], abs=1e-6)
+    assert validation_scores[0]["logloss"] == pytest.approx(
+        validation_scores[1]["logloss"], abs=1e-6
+    )
+    assert validation_scores[0]["error"] == pytest.approx(
+        validation_scores[1]["error"], abs=1e-6
+    )
     with pytest.raises(DeprecationWarning):
         XGBoostTrainer.get_model(result.checkpoint)
 
