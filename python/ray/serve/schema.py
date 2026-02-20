@@ -515,6 +515,39 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         return values
 
     @root_validator
+    def validate_max_replicas_per_node_and_gang_scheduling_config(cls, values):
+        max_replicas_per_node = values.get("max_replicas_per_node", None)
+        gang_scheduling_config = values.get("gang_scheduling_config", None)
+
+        if max_replicas_per_node not in [
+            DEFAULT.VALUE,
+            None,
+        ] and gang_scheduling_config not in [DEFAULT.VALUE, None]:
+            raise ValueError(
+                "Setting max_replicas_per_node is not allowed when "
+                "gang_scheduling_config is provided."
+            )
+
+        return values
+
+    @root_validator
+    def validate_placement_group_strategy_and_gang_scheduling_config(cls, values):
+        placement_group_strategy = values.get("placement_group_strategy", None)
+        gang_scheduling_config = values.get("gang_scheduling_config", None)
+
+        if placement_group_strategy not in [
+            DEFAULT.VALUE,
+            None,
+        ] and gang_scheduling_config not in [DEFAULT.VALUE, None]:
+            raise ValueError(
+                "Setting placement_group_strategy is not allowed when "
+                "gang_scheduling_config is provided. Use "
+                "gang_scheduling_config.gang_placement_strategy instead."
+            )
+
+        return values
+
+    @root_validator
     def validate_bundle_label_selector(cls, values):
         placement_group_bundles = values.get("placement_group_bundles", None)
         bundle_label_selector = values.get(
