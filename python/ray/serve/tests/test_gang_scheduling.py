@@ -1124,6 +1124,187 @@ class TestGangScaling:
         serve.delete("app")
         serve.shutdown()
 
+    def test_slow_recovery_gang_replica_cleans_siblings(self, ray_cluster):
+        """Verifies that when a recovering gang replica is slow, all
+        gang siblings are also stopped and the gang is replaced."""
+        cluster = ray_cluster
+        # Lower the slow-startup threshold
+        os.environ["SERVE_SLOW_STARTUP_WARNING_S"] = "3"
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            block_signal = os.path.join(tmpdir, "block_recovery")
+
+            @serve.deployment(
+                name="D",
+                version="v1",
+                num_replicas=4,
+                ray_actor_options={"num_cpus": 0.25},
+                gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+            )
+            class D:
+                def __init__(self):
+                    # If the block signal file exists, remove it atomically
+                    # and sleep to simulate a slow recovery. Only the first
+                    # replacement will see the file; subsequent ones proceed
+                    # normally.
+                    try:
+                        os.remove(block_signal)
+                        # Sleep longer than SLOW_STARTUP_WARNING_S. The
+                        # controller will forcefully kill this actor, so
+                        # this won't actually block the test for 60s.
+                        time.sleep(60)
+                    except FileNotFoundError:
+                        pass
+
+                def __call__(self):
+                    ctx = ray.serve.context._get_internal_replica_context()
+                    gc = ctx.gang_context
+                    return {"gang_id": gc.gang_id if gc else None}
+
+            serve.run(D.bind(), name="app")
+            wait_for_condition(check_apps_running, apps=["app"])
+
+            deployment_id = DeploymentID(name="D", app_name="app")
+            controller = _get_global_client()._controller
+
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote(deployment_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            assert len(running) == 4
+            initial_gang_ids = {replica.gang_context.gang_id for replica in running}
+            assert len(initial_gang_ids) == 2
+
+            victim = running[0]
+            victim_gang_id = victim.gang_context.gang_id
+
+            # Arm the block signal so the replacement __init__ will sleep.
+            with open(block_signal, "w") as f:
+                f.write("block")
+
+            # Kill the victim replica. Ray restarts the actor, but its
+            # __init__ will block -> controller detects slow recovery ->
+            # stops the slow replica AND its gang sibling.
+            replica_infos = ray.get(controller._all_running_replicas.remote())
+            victim_info = [
+                r
+                for r in replica_infos[deployment_id]
+                if r.replica_id == victim.replica_id
+            ][0]
+            victim_handle = ray.get_actor(victim_info.actor_name, namespace="serve")
+            ray.kill(victim_handle, no_restart=False)
+
+            def recovered_with_new_gang():
+                replicas = ray.get(
+                    controller._dump_replica_states_for_testing.remote(deployment_id)
+                )
+                running = replicas.get([ReplicaState.RUNNING])
+                assert len(running) == 4
+                gang_ids = {replica.gang_context.gang_id for replica in running}
+                assert len(gang_ids) == 2
+                assert victim_gang_id not in gang_ids
+                return True
+
+            wait_for_condition(recovered_with_new_gang, timeout=90)
+
+        os.environ.pop("SERVE_SLOW_STARTUP_WARNING_S", None)
+        serve.delete("app")
+        serve.shutdown()
+
+
+class TestGangHealthCheck:
+    """Tests for RESTART_GANG stopping siblings in all states."""
+
+    def test_health_check_stops_starting_siblings(self, ray_cluster):
+        """RESTART_GANG must stop siblings still in STARTING state,
+        otherwise they become orphans that permanently block PG reservation."""
+        GRACE_S = 5
+
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @ray.remote
+        class Toggle:
+            def __init__(self):
+                self._fail = False
+
+            def set(self, v):
+                self._fail = v
+
+            def get(self):
+                return self._fail
+
+        toggle = Toggle.remote()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            block_signal = os.path.join(tmpdir, "block")
+
+            @serve.deployment(
+                name="D",
+                num_replicas=2,
+                ray_actor_options={"num_cpus": 0.25},
+                health_check_period_s=1,
+                health_check_timeout_s=1,
+                gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+            )
+            class D:
+                def __init__(self):
+                    self._born = time.time()
+                    try:
+                        os.remove(block_signal)
+                        time.sleep(300)
+                    except FileNotFoundError:
+                        pass
+
+                def check_health(self):
+                    # Grace period lets replacements pass the initial startup
+                    # health check and reach RUNNING before failing.
+                    if time.time() - self._born < GRACE_S:
+                        return
+                    if ray.get(toggle.get.remote()):
+                        raise Exception("unhealthy")
+
+                def __call__(self):
+                    return "ok"
+
+            serve.run(D.bind(), name="app")
+            wait_for_condition(check_apps_running, apps=["app"])
+
+            # Arm: block one replacement in init, fail health after grace.
+            with open(block_signal, "w") as f:
+                f.write("1")
+            ray.get(toggle.set.remote(True))
+
+            # Originals fail health check → RESTART_GANG → replacement gang
+            # starts → one member blocks (STARTING), the other reaches
+            # RUNNING then fails health check → RESTART_GANG again → our fix
+            # force-stops the STARTING sibling.
+            time.sleep(20)
+            ray.get(toggle.set.remote(False))
+
+            # Without the fix, the STARTING orphan makes replica count
+            # non-divisible by gang_size, permanently stalling recovery.
+            wait_for_condition(check_apps_running, apps=["app"], timeout=120)
+
+            deployment_id = DeploymentID(name="D", app_name="app")
+            controller = _get_global_client()._controller
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote(deployment_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            assert len(running) == 2
+            assert len({r.gang_context.gang_id for r in running}) == 1
+
+        serve.delete("app")
+        serve.shutdown()
+
 
 class TestGangMigration:
     def test_gang_migration(self, ray_cluster):
