@@ -1,3 +1,4 @@
+import asyncio
 import copy
 import signal
 import time
@@ -193,15 +194,19 @@ class SGLangServer:
             # Single string prompt: wrap it in a list for iteration
             prompts_to_process = [prompt_input]
 
+        tasks = [
+            self._generate_and_extract_metadata(request, prompt)
+            for prompt in prompts_to_process
+        ]
+        results = await asyncio.gather(*tasks)
+
         all_choices = []
         total_prompt_tokens = 0
         total_completion_tokens = 0
         last_metadata = {}
 
-        # 2. Loop through all prompts in the batch
-        for index, prompt_string in enumerate(prompts_to_process):
-            metadata = await self._generate_and_extract_metadata(request, prompt_string)
-            last_metadata = metadata  # Keep track of the metadata from the last run
+        for index, metadata in enumerate(results):
+            last_metadata = metadata
 
             total_prompt_tokens += metadata["prompt_tokens"]
             total_completion_tokens += metadata["completion_tokens"]
