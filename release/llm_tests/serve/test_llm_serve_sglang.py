@@ -66,6 +66,27 @@ def test_sglang_serve_e2e():
         temperature=0.0,
     )
     assert comp_resp.choices[0].text.strip()
+
+    # Embeddings - single input
+    emb_resp = client.embeddings.create(
+        model=RAY_MODEL_ID,
+        input="Hello world",
+    )
+    assert emb_resp.data
+    assert len(emb_resp.data) == 1
+    assert emb_resp.data[0].embedding
+    assert len(emb_resp.data[0].embedding) > 0
+    assert emb_resp.usage.prompt_tokens > 0
+
+    # Embeddings - batch input
+    emb_batch_resp = client.embeddings.create(
+        model=RAY_MODEL_ID,
+        input=["Hello world", "How are you"],
+    )
+    assert len(emb_batch_resp.data) == 2
+    assert emb_batch_resp.data[0].embedding
+    assert emb_batch_resp.data[1].embedding
+
     serve.shutdown()
 
 
