@@ -4136,6 +4136,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
       post_build_script: byod_llm_sglang_test.sh
     cluster_compute: llm_four_L4_gpu_head_node.yaml
 
