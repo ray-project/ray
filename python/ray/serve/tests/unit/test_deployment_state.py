@@ -6406,5 +6406,56 @@ def test_routing_stats_change_triggers_broadcast(mock_deployment_state_manager):
     assert ds._replicas_changed is False
 
 
+def test_pending_migration_prevents_needs_reconciliation_clear(
+    mock_deployment_state_manager,
+):
+    create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
+    node_1 = NodeID.from_random().hex()
+    node_2 = NodeID.from_random().hex()
+    cluster_node_info_cache.add_node(node_1)
+    cluster_node_info_cache.add_node(node_2)
+    dsm: DeploymentStateManager = create_dsm()
+    timer.reset(0)
+
+    b_info_1, v1 = deployment_info(
+        num_replicas=2, graceful_shutdown_timeout_s=20, version="1"
+    )
+    dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Start replicas on different nodes.
+    dsm.update()
+    one_replica, another_replica = ds._replicas.get()
+    one_replica._actor.set_node_id(node_1)
+    one_replica._actor.set_ready()
+    another_replica._actor.set_node_id(node_2)
+    another_replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v1)])
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert ds._needs_reconciliation is False
+
+    # Drain node_2: one replica transitions to PENDING_MIGRATION and a
+    # replacement STARTING replica is created.
+    cluster_node_info_cache.draining_nodes = {node_2: 60 * 1000}
+    dsm.update()
+    assert ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == 1
+    assert ds._replicas.count(states=[ReplicaState.STARTING]) == 1
+    assert ds._needs_reconciliation is True
+
+    # Node stops draining before the replacement is ready.  The
+    # PENDING_MIGRATION replica should move back to RUNNING.
+    cluster_node_info_cache.draining_nodes = {}
+    dsm.update()
+
+    pending_migration_count = ds._replicas.count(
+        states=[ReplicaState.PENDING_MIGRATION]
+    )
+    assert pending_migration_count == 0, (
+        f"Expected 0 PENDING_MIGRATION replicas but found {pending_migration_count}. "
+        "The replica is stuck because _needs_reconciliation was incorrectly cleared."
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

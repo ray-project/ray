@@ -2769,8 +2769,6 @@ class DeploymentState:
         )
         self._replica_constructor_retry_counter = 0
         self._replica_has_started = False
-        self._replicas_changed = True
-        self._needs_reconciliation = True
         return True
 
     def autoscale(self, decision_num_replicas: int) -> bool:
@@ -3086,9 +3084,6 @@ class DeploymentState:
             # leave it to the controller to fully scale to target
             # number of replicas and only return as completed once
             # reached target replica count
-            if not self._replica_has_started:
-                self._replicas_changed = True
-                self._needs_reconciliation = True
             self._replica_has_started = True
         elif self._replica_startup_failing():
             self._curr_status_info = self._curr_status_info.handle_transition(
@@ -3112,6 +3107,7 @@ class DeploymentState:
                     ReplicaState.UPDATING,
                     ReplicaState.RECOVERING,
                     ReplicaState.STOPPING,
+                    ReplicaState.PENDING_MIGRATION,
                 ]
             )
             == 0
