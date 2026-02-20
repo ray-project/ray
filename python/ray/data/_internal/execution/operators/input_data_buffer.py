@@ -90,7 +90,7 @@ class InputDataBuffer(PhysicalOperator):
         if not self._is_input_initialized or self._input_data is None:
             return False
 
-        # For streaming sources with micro-batching, periodically fetch new batches
+        # For streaming sources with micro-batching, periodically fetch new data
         if (
             self._streaming
             and self._polling_new_tasks_interval_s is not None
@@ -100,17 +100,18 @@ class InputDataBuffer(PhysicalOperator):
             time_since_last_fetch = current_time - self._last_fetch_time
 
             if time_since_last_fetch >= self._polling_new_tasks_interval_s:
-                # Fetch new batch and append to existing data (non-blocking)
                 new_bundles = self._input_data_factory(
                     self.target_max_block_size_override
                     or self.data_context.target_max_block_size
                 )
-                self._initialize_metadata(new_bundles)
-                self._input_data.extend(new_bundles)
+                if new_bundles:
+                    self._initialize_metadata(new_bundles)
+                    self._input_data.extend(new_bundles)
+                    for bundle in new_bundles:
+                        self._metrics.on_input_received(bundle)
                 self._last_fetch_time = current_time
-                # Record input metrics for new batch
-                for bundle in new_bundles:
-                    self._metrics.on_input_received(bundle)
+
+            return self._input_data_index < len(self._input_data)
 
         return self._input_data_index < len(self._input_data)
 
@@ -120,6 +121,22 @@ class InputDataBuffer(PhysicalOperator):
         bundle = self._input_data[self._input_data_index]
         self._input_data_index += 1
         return bundle
+
+    def has_execution_finished(self) -> bool:
+        """Override to prevent auto-completion for streaming sources.
+
+        The default implementation returns True when _inputs_complete=True and
+        num_active_tasks()=0. For InputDataBuffer (a root operator with no
+        dependencies), these conditions are always satisfied, which would cause
+        streaming pipelines to terminate immediately.
+
+        For streaming, we only return True when explicitly marked finished
+        (e.g., when a downstream LimitOperator reaches its limit via take(N),
+        or when the consumer stops pulling via iter_batches()).
+        """
+        if self._streaming:
+            return self._is_execution_marked_finished
+        return super().has_execution_finished()
 
     def get_stats(self) -> StatsDict:
         return {}

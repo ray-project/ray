@@ -467,7 +467,14 @@ def read_datasource(
 
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
-    read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
+    # For streaming datasources, skip estimation - data size is unbounded
+    if (
+        isinstance(datasource_or_legacy_reader, Datasource)
+        and datasource_or_legacy_reader.is_streaming
+    ):
+        read_tasks = []
+    else:
+        read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
     stats = DatasetStats(
         metadata={"Read": [read_task.metadata for read_task in read_tasks]},
@@ -4366,7 +4373,7 @@ def read_kafka(
     topics: Union[str, List[str]],
     *,
     bootstrap_servers: Union[str, List[str]],
-    trigger: Literal["once"] = "once",
+    trigger: Literal["once", "continuous"] = "once",
     start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
     end_offset: Union[int, datetime, Literal["latest"]] = "latest",
     kafka_auth_config: Optional[KafkaAuthConfig] = None,
@@ -4376,6 +4383,7 @@ def read_kafka(
     ray_remote_args: Optional[Dict[str, Any]] = None,
     override_num_blocks: Optional[int] = None,
     timeout_ms: int = 10000,
+    polling_new_tasks_interval_s: Optional[float] = 5,
 ) -> Dataset:
     """Read data from Kafka topics.
 
@@ -4456,8 +4464,10 @@ def read_kafka(
         ValueError: If invalid parameters are provided.
         ImportError: If kafka-python is not installed.
     """  # noqa: E501
-    if trigger != "once":
-        raise ValueError(f"Only trigger='once' is supported. Got trigger={trigger!r}")
+    if trigger not in ["once", "continuous"]:
+        raise ValueError(
+            f"Only trigger='once' or 'continuous' is supported. Got trigger={trigger!r}"
+        )
 
     return ray.data.read_datasource(
         KafkaDatasource(
@@ -4467,6 +4477,8 @@ def read_kafka(
             end_offset=end_offset,
             kafka_auth_config=kafka_auth_config,
             timeout_ms=timeout_ms,
+            trigger=trigger,
+            polling_new_tasks_interval_s=polling_new_tasks_interval_s,
         ),
         parallelism=-1,
         num_cpus=num_cpus,

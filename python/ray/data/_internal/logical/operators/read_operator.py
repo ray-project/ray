@@ -108,7 +108,7 @@ class Read(
     @functools.cached_property
     def _cached_output_metadata(self) -> "BlockMetadataWithSchema":
         # Legacy datasources might not implement `get_read_tasks`.
-        if self.datasource.should_create_reader:
+        if self.datasource.should_create_reader or self.datasource.is_streaming:
             empty_meta = BlockMetadata(None, None, None, None)
             return BlockMetadataWithSchema(metadata=empty_meta, schema=None)
 
