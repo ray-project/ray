@@ -48,27 +48,25 @@ def test_sglang_serve_e2e():
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
 
-    try:
-        wait_for_condition(_app_is_running, timeout=300)
-        client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+    wait_for_condition(_app_is_running, timeout=300)
+    client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
 
-        chat_resp = client.chat.completions.create(
-            model=RAY_MODEL_ID,
-            messages=[{"role": "user", "content": "What is the capital of France?"}],
-            max_tokens=64,
-            temperature=0.0,
-        )
-        assert chat_resp.choices[0].message.content.strip()
+    chat_resp = client.chat.completions.create(
+        model=RAY_MODEL_ID,
+        messages=[{"role": "user", "content": "What is the capital of France?"}],
+        max_tokens=64,
+        temperature=0.0,
+    )
+    assert chat_resp.choices[0].message.content.strip()
 
-        comp_resp = client.completions.create(
-            model=RAY_MODEL_ID,
-            prompt="The capital of France is",
-            max_tokens=64,
-            temperature=0.0,
-        )
-        assert comp_resp.choices[0].text.strip()
-    finally:
-        serve.shutdown()
+    comp_resp = client.completions.create(
+        model=RAY_MODEL_ID,
+        prompt="The capital of France is",
+        max_tokens=64,
+        temperature=0.0,
+    )
+    assert comp_resp.choices[0].text.strip()
+    serve.shutdown()
 
 
 if __name__ == "__main__":
