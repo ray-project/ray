@@ -271,8 +271,19 @@ class SGLangServer:
             if not isinstance(results, list):
                 results = [results]
 
+            if not results:
+                raise RuntimeError(
+                    "SGLang engine returned an empty response for embedding request."
+                )
+
+            if len(results) != len(texts):
+                raise RuntimeError(
+                    f"SGLang engine returned {len(results)} results "
+                    f"for {len(texts)} inputs."
+                )
+
             for i, result in enumerate(results):
-                embedding = result["embedding"]
+                embedding = result.get("embedding", [])
                 meta = result.get("meta_info", {}) or {}
                 prompt_tokens = int(meta.get("prompt_tokens", 0))
                 total_prompt_tokens += prompt_tokens
