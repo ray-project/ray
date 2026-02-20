@@ -672,6 +672,6 @@ class RobustScaler(SerializablePreprocessorBase):
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self._columns!r}, "
-            f"quantile_range={self._quantile_range!r}), "
+            f"quantile_range={self._quantile_range!r}, "
             f"output_columns={self._output_columns!r})"
         )
