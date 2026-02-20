@@ -633,10 +633,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return self.bytes_task_outputs_generated / self.num_task_outputs_generated
 
     @metric_property(
-        description="Byte size of input blocks in the operator's internal input queue.",
+        description="Byte size of input blocks in the operator's internal input queues, summed across all input dependencies.",
         metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
     )
     def obj_store_mem_internal_inqueue(self) -> int:
+        """Return the total inqueue bytes of all input dependencies."""
         return sum(q.estimate_size_bytes() for q in self._internal_inqueues)
 
     def obj_store_mem_internal_inqueue_for_input(self, input_index: int) -> int:
