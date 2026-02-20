@@ -734,11 +734,16 @@ class AsyncioRouter:
     def _process_finished_request(
         self,
         replica_id: ReplicaID,
-        parent_request_id: str,
-        response_id: str,
+        internal_request_id: str,
         result: Union[Any, RayError],
-    ):
-        self._metrics_manager.dec_num_running_requests_for_replica(replica_id)
+    ) -> None:
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            self._metrics_manager.dec_num_running_requests_for_replica(replica_id)
+
+        # Notify request router that request completed (for cleanup, e.g., token release)
+        if self.request_router:
+            self.request_router.on_request_completed(replica_id, internal_request_id)
+
         if isinstance(result, ActorDiedError):
             # Replica has died but controller hasn't notified the router yet.
             # Don't consider this replica for requests in the future, and retry
@@ -769,6 +774,7 @@ class AsyncioRouter:
     ) -> Optional[ReplicaResult]:
         result: Optional[ReplicaResult] = None
         replica: Optional[RunningReplica] = None
+        callback_registered = False
         try:
             # Resolve request arguments BEFORE incrementing queued requests.
             # This ensures that queue metrics reflect actual pending work,
@@ -797,18 +803,18 @@ class AsyncioRouter:
 
             # Keep track of requests that have been sent out to replicas
             if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-                _request_context = ray.serve.context._get_serve_request_context()
-                request_id: str = _request_context.request_id
                 self._metrics_manager.inc_num_running_requests_for_replica(
                     replica.replica_id
                 )
-                callback = partial(
-                    self._process_finished_request,
-                    replica.replica_id,
-                    request_id,
-                    response_id,
-                )
-                result.add_done_callback(callback)
+            # Always register callback to notify router when request completes
+            # (needed for token release in queue-based routing, metrics tracking, etc.)
+            callback = partial(
+                self._process_finished_request,
+                replica.replica_id,
+                pr.metadata.internal_request_id,
+            )
+            result.add_done_callback(callback)
+            callback_registered = True
 
             if not with_rejection:
                 return result
@@ -846,6 +852,12 @@ class AsyncioRouter:
             if replica is not None:
                 self.request_router.on_replica_actor_unavailable(replica.replica_id)
                 logger.warning(f"{replica.replica_id} is temporarily unavailable.")
+        finally:
+            # Only release if callback wasn't registered (callback handles release).
+            if replica is not None and not callback_registered:
+                self.request_router.on_request_completed(
+                    replica.replica_id, pr.metadata.internal_request_id
+                )
 
         return None
 

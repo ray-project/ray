@@ -162,9 +162,6 @@ class DataConfig:
 
         ctx = DataContext.get_current()
         return ExecutionOptions(
-            # TODO(hchen): Re-enable `locality_with_output` by default after fixing
-            # https://github.com/ray-project/ray/issues/40607
-            locality_with_output=ctx.execution_options.locality_with_output,
             resource_limits=ctx.execution_options.resource_limits,
             exclude_resources=ctx.execution_options.exclude_resources,
             preserve_order=ctx.execution_options.preserve_order,
