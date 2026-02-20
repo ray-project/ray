@@ -1,41 +1,27 @@
 import sys
-import time
 
 import pytest
-import requests
 from openai import OpenAI
 
 from ray import serve
+from ray._common.test_utils import wait_for_condition
 from ray.llm.examples.sglang.modules.sglang_engine import SGLangServer
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.llm import LLMConfig, build_openai_app
+from ray.serve.schema import ApplicationStatus
 
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
 RAY_MODEL_ID = "qwen-0.5b-sglang"
-SERVER_URL = "http://localhost:8000"
 
 
-def wait_for_server_ready(url: str, timeout: int = 300, retry_interval: int = 5):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            resp = requests.post(
-                f"{url}/v1/completions",
-                json={
-                    "model": RAY_MODEL_ID,
-                    "prompt": "test",
-                    "max_tokens": 5,
-                    "temperature": 0,
-                },
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                print(f"Server at {url} is ready.")
-                return
-        except Exception:
-            pass
-        time.sleep(retry_interval)
-
-    raise TimeoutError(f"Server at {url} did not become ready within {timeout}s")
+def _app_is_running():
+    try:
+        return (
+            serve.status().applications[SERVE_DEFAULT_APP_NAME].status
+            == ApplicationStatus.RUNNING
+        )
+    except (KeyError, AttributeError):
+        return False
 
 
 def test_sglang_serve_e2e():
@@ -63,8 +49,8 @@ def test_sglang_serve_e2e():
     serve.run(app, blocking=False)
 
     try:
-        wait_for_server_ready(SERVER_URL)
-        client = OpenAI(base_url=f"{SERVER_URL}/v1", api_key="fake-key")
+        wait_for_condition(_app_is_running, timeout=300)
+        client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
 
         chat_resp = client.chat.completions.create(
             model=RAY_MODEL_ID,
