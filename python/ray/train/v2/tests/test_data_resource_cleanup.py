@@ -125,7 +125,7 @@ def test_split_coordinator_shutdown_executor(ray_start_4_cpus):
     # Explicitly trigger autoscaling
     ray.get(
         coord.__ray_call__.remote(
-            lambda coord: coord._executor._cluster_autoscaler.try_trigger_scaling()
+            lambda coord: coord._current_executor._cluster_autoscaler.try_trigger_scaling()
         )
     )
 
