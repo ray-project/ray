@@ -1,7 +1,7 @@
 import collections
 import logging
 import time
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -159,6 +159,15 @@ def to_stats(metas: List["BlockMetadata"]) -> List["BlockStats"]:
 
 
 @DeveloperAPI
+@dataclass(frozen=True)
+class TaskExecStats:
+    """Task's execution stats reported from the executing worker"""
+
+    # Total task's wall-clock time from start to finish (measured on the worker)
+    task_wall_time_s: float
+
+
+@DeveloperAPI
 class BlockExecStats:
     """Execution stats for this block.
 
@@ -228,11 +237,11 @@ class _BlockExecStatsBuilder:
 class BlockStats:
     """Statistics about the block produced"""
 
-    #: The number of rows contained in this block, or None.
+    # The number of rows contained in this block, or None.
     num_rows: Optional[int]
-    #: The approximate size in bytes of this block, or None.
+    # The approximate size in bytes of this block, or None.
     size_bytes: Optional[int]
-    #: Execution stats for this block.
+    # Execution stats for this block.
     exec_stats: Optional[BlockExecStats]
 
     def __post_init__(self):
@@ -250,10 +259,13 @@ _BLOCK_STATS_FIELD_NAMES = {f.name for f in fields(BlockStats)}
 class BlockMetadata(BlockStats):
     """Metadata about the block."""
 
-    #: The pyarrow schema or types of the block elements, or None.
-    #: The list of file paths used to generate this block, or
-    #: the empty list if indeterminate.
+    # The pyarrow schema or types of the block elements, or None.
+    # The list of file paths used to generate this block, or
+    # the empty list if indeterminate.
     input_files: Optional[List[str]]
+
+    # Task execution stats reported from the worker
+    task_exec_stats: Optional[TaskExecStats] = field(default=None)
 
     def to_stats(self):
         return BlockStats(
@@ -278,16 +290,24 @@ class BlockMetadataWithSchema(BlockMetadata):
             size_bytes=metadata.size_bytes,
             num_rows=metadata.num_rows,
             exec_stats=metadata.exec_stats,
+            task_exec_stats=metadata.task_exec_stats,
         )
         self.schema = schema
 
     def from_block(
-        block: Block, stats: Optional["BlockExecStats"] = None
+        block: Block,
+        block_exec_stats: Optional["BlockExecStats"] = None,
+        task_exec_stats: Optional["TaskExecStats"] = None,
     ) -> "BlockMetadataWithSchema":
         accessor = BlockAccessor.for_block(block)
-        meta = accessor.get_metadata(exec_stats=stats)
-        schema = accessor.schema()
-        return BlockMetadataWithSchema(metadata=meta, schema=schema)
+
+        return BlockMetadataWithSchema(
+            metadata=accessor.get_metadata(
+                block_exec_stats=block_exec_stats,
+                task_exec_stats=task_exec_stats,
+            ),
+            schema=accessor.schema(),
+        )
 
     @property
     def metadata(self) -> BlockMetadata:
@@ -296,6 +316,7 @@ class BlockMetadataWithSchema(BlockMetadata):
             size_bytes=self.size_bytes,
             exec_stats=self.exec_stats,
             input_files=self.input_files,
+            task_exec_stats=self.task_exec_stats,
         )
 
 
@@ -436,14 +457,16 @@ class BlockAccessor:
     def get_metadata(
         self,
         input_files: Optional[List[str]] = None,
-        exec_stats: Optional[BlockExecStats] = None,
+        block_exec_stats: Optional[BlockExecStats] = None,
+        task_exec_stats: Optional[TaskExecStats] = None,
     ) -> BlockMetadata:
         """Create a metadata object from this block."""
         return BlockMetadata(
             num_rows=self.num_rows(),
             size_bytes=self.size_bytes(),
             input_files=input_files,
-            exec_stats=exec_stats,
+            exec_stats=block_exec_stats,
+            task_exec_stats=task_exec_stats,
         )
 
     def zip(self, other: "Block") -> "Block":
