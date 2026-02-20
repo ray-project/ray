@@ -293,6 +293,12 @@ class Catalog:
                     input_dims=observation_space.shape,
                     hidden_layer_dims=hidden_layer_dims,
                     hidden_layer_activation=activation,
+                    hidden_layer_use_layernorm=model_config_dict.get(
+                        "fcnet_use_layernorm", False
+                    ),
+                    output_layer_use_layernorm=model_config_dict.get(
+                        "fcnet_use_layernorm", False
+                    ),
                     hidden_layer_weights_initializer=model_config_dict[
                         "fcnet_kernel_initializer"
                     ],
