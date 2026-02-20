@@ -38,24 +38,29 @@ class InputDataBuffer(PhysicalOperator):
                 or defaults to 5 seconds if not set in context.
         """
         super().__init__("Input", [], data_context)
+        self._streaming = streaming
+        self._input_data_index = 0
+        # Track last fetch time for micro-batching with controlled intervals
+        self._last_fetch_time = None
+        self._polling_new_tasks_interval_s = polling_new_tasks_interval_s
+        # Initialize metadata fields before _initialize_metadata() may be called
+        self._estimated_num_output_bundles = None
+        self._estimated_num_output_rows = None
+        self._stats = None
+
         if input_data is not None:
             assert input_data_factory is None
             # Copy the input data to avoid mutating the original list.
             self._input_data = input_data[:]
             # TODO(youcheng): We might need to clear the input data list after it is used it is possible that the input data list will become very large.
             self._is_input_initialized = True
-            self._initialize_metadata()
+            self._initialize_metadata(self._input_data)
         else:
             # Initialize input lazily when execution is started.
             assert input_data_factory is not None
             self._input_data_factory = input_data_factory
             self._input_data = None
             self._is_input_initialized = False
-        self._streaming = streaming
-        self._input_data_index = 0
-        # Track last fetch time for micro-batching with controlled intervals
-        self._last_fetch_time = None
-        self._polling_new_tasks_interval_s = polling_new_tasks_interval_s
         # Only mark as finished if we have input_data directly (non-streaming case).
         # For streaming sources with factory, we don't mark it finished since
         # streaming datasources are long-running and never finish.
@@ -69,7 +74,7 @@ class InputDataBuffer(PhysicalOperator):
                 or self.data_context.target_max_block_size
             )
             self._is_input_initialized = True
-            self._initialize_metadata()
+            self._initialize_metadata(self._input_data)
             # InputDataBuffer does not take inputs from other operators,
             # so we record input metrics here
             for bundle in self._input_data:
@@ -100,9 +105,9 @@ class InputDataBuffer(PhysicalOperator):
                     self.target_max_block_size_override
                     or self.data_context.target_max_block_size
                 )
+                self._initialize_metadata(new_bundles)
                 self._input_data.extend(new_bundles)
                 self._last_fetch_time = current_time
-                self._initialize_metadata()
                 # Record input metrics for new batch
                 for bundle in new_bundles:
                     self._metrics.on_input_received(bundle)
@@ -122,13 +127,16 @@ class InputDataBuffer(PhysicalOperator):
     def _add_input_inner(self, refs, input_index) -> None:
         raise ValueError("Inputs are not allowed for this operator.")
 
-    def _initialize_metadata(self):
-        assert self._input_data is not None and self._is_input_initialized
-        self._estimated_num_output_bundles = len(self._input_data)
+    def _initialize_metadata(self, bundles: List[RefBundle]):
+        """Update metadata incrementally with the given bundles."""
+        if self._estimated_num_output_bundles is None:
+            self._estimated_num_output_bundles = len(bundles)
+        else:
+            self._estimated_num_output_bundles += len(bundles)
 
         block_metadata = []
         total_rows = 0
-        for bundle in self._input_data:
+        for bundle in bundles:
             block_metadata.extend(bundle.metadata)
             bundle_num_rows = bundle.num_rows()
             if total_rows is not None and bundle_num_rows is not None:
@@ -136,8 +144,16 @@ class InputDataBuffer(PhysicalOperator):
             else:
                 # total row is unknown
                 total_rows = None
+
+        # Accumulate row count (only if both old and new are known)
         if total_rows:
-            self._estimated_num_output_rows = total_rows
-        self._stats = {
-            "input": block_metadata,
-        }
+            if self._estimated_num_output_rows is not None:
+                self._estimated_num_output_rows += total_rows
+            else:
+                self._estimated_num_output_rows = total_rows
+
+        # Extend existing stats rather than overwriting
+        if self._stats:
+            self._stats.setdefault("input", []).extend(block_metadata)
+        else:
+            self._stats = {"input": block_metadata}
