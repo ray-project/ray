@@ -373,8 +373,8 @@ class ExecutionPlan:
 
         def _build_limited_plan(plan: "ExecutionPlan") -> "ExecutionPlan":
             limited_dag = Limit(plan._logical_plan.dag, limit=1)
-            limited_plan = self.copy()
-            limited_plan.link_logical_plan(LogicalPlan(limited_dag, self._context))
+            limited_plan = plan.copy()
+            limited_plan.link_logical_plan(LogicalPlan(limited_dag, plan._context))
             return limited_plan
 
         schema = self._cache.get_schema(self._logical_plan.dag)
