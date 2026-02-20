@@ -29,34 +29,24 @@ namespace ray {
 
 namespace raylet {
 
-/// Provides the policy on which worker to prioritize killing.
-class WorkerKillingPolicy {
+/**
+ * @brief Implementations of this interface provide the policy on which worker to
+ * prioritize killing.
+ */
+class WorkerKillingPolicyInterface {
  public:
-  /// Selects a worker to be killed.
-  ///
-  /// \param workers the list of candidate workers.
-  /// \param process_memory_snapshot snapshot of memory usage per process.
-  ///
-  /// \return the worker to kill and whether the task on the worker should be retried.
+  /**
+   * @brief Selects workers to be killed.
+   *
+   * @param workers the list of candidate workers.
+   * @param system_memory snapshot of memory usage.
+   * @return the worker to kill and whether the task on the worker should be retried.
+   */
   virtual std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const ProcessesMemorySnapshot &process_memory_snapshot) const = 0;
 
-  virtual ~WorkerKillingPolicy() = default;
-
- protected:
-  /// Returns debug string of the workers.
-  ///
-  /// \param workers The workers to be printed.
-  /// \param num_workers The number of workers to print starting from the beginning of the
-  /// worker list.
-  /// \param process_memory_snapshot snapshot of memory usage per process.
-  ///
-  /// \return the debug string.
-  static std::string WorkersDebugString(
-      const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      int32_t num_workers,
-      const ProcessesMemorySnapshot &process_memory_snapshot);
+  virtual ~WorkerKillingPolicyInterface() = default;
 };
 
 }  // namespace raylet

@@ -160,7 +160,6 @@ py_test_module_list(
         "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
     },
     files = [
-        "test_fastapi.py",
         "test_gcs_failure.py",
         "test_gradio.py",
         "test_replica_ranks.py",
@@ -183,6 +182,7 @@ py_test_module_list(
     files = [
         "test_autoscaling_policy.py",
         "test_deploy.py",
+        "test_fastapi.py",
         "test_grpc.py",
         "test_logging.py",
         "test_logging_2.py",
