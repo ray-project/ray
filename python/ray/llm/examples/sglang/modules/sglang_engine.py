@@ -203,10 +203,8 @@ class SGLangServer:
         all_choices = []
         total_prompt_tokens = 0
         total_completion_tokens = 0
-        last_metadata = {}
 
-        last_metadata = results[-1]
-
+        for index, metadata in enumerate(results):
             total_prompt_tokens += metadata["prompt_tokens"]
             total_completion_tokens += metadata["completion_tokens"]
 
@@ -223,6 +221,8 @@ class SGLangServer:
             "completion_tokens": total_completion_tokens,
             "total_tokens": total_prompt_tokens + total_completion_tokens,
         }
+
+        last_metadata = results[-1]
 
         # Use metadata from the last generation for shared fields (id, created)
         resp = CompletionResponse(
