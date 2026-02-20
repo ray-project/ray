@@ -77,9 +77,6 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
     def internal_input_queue_num_bytes(self) -> int:
         return sum(q.estimate_size_bytes() for q in self._input_buffers)
 
-    def internal_inqueue_bytes_for_input(self, input_index: int) -> Optional[int]:
-        return self._input_buffers[input_index].estimate_size_bytes()
-
     def internal_output_queue_num_blocks(self) -> int:
         return self._output_buffer.num_blocks()
 
@@ -88,10 +85,10 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queues."""
-        for input_buffer in self._input_buffers:
+        for idx, input_buffer in enumerate(self._input_buffers):
             while input_buffer:
                 bundle = input_buffer.get_next()
-                self._metrics.on_input_dequeued(bundle)
+                self._metrics.on_input_dequeued(bundle, idx)
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
@@ -104,7 +101,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         assert 0 <= input_index <= len(self._input_dependencies), input_index
         if self._preserve_order:
             self._input_buffers[input_index].add(refs)
-            self._metrics.on_input_queued(refs)
+            self._metrics.on_input_queued(refs, input_index)
             self._try_round_robin()
         else:
             self._output_buffer.add(refs)
@@ -156,7 +153,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
             if buffer.has_next():
                 refs = buffer.get_next()
-                self._metrics.on_input_dequeued(refs)
+                self._metrics.on_input_dequeued(refs, self._current_input_index)
                 self._output_buffer.add(refs)
                 self._metrics.on_output_queued(refs)
             elif not self._input_done_flags[self._current_input_index] or all(

@@ -649,20 +649,6 @@ class PhysicalOperator(Operator):
         """
         return len(self.get_active_tasks())
 
-    def internal_inqueue_bytes_for_input(self, input_index: int) -> Optional[int]:
-        """Return internal inqueue bytes attributable to a specific input dependency.
-
-        For multi-input operators (e.g., UnionOperator), the aggregate
-        ``obj_store_mem_internal_inqueue`` metric includes blocks from all inputs.
-        This method allows per-input attribution so that the resource manager
-        can correctly charge each upstream operator only for the blocks it
-        produced that are sitting in this operator's internal input queue.
-
-        Returns None to indicate per-input tracking is not supported,
-        falling back to the aggregate metric.
-        """
-        return None
-
     def throttling_disabled(self) -> bool:
         """Whether to disable resource throttling for this operator.
 
