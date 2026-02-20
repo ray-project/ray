@@ -19,9 +19,11 @@ import requests
 import ray
 import ray.util.serialization_addons
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
-from ray._common.utils import get_random_alphanumeric_string, import_attr
+from ray._common.utils import binary_to_hex, get_random_alphanumeric_string, import_attr
+from ray._private.state import state
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
+from ray.core.generated import gcs_pb2
 from ray.serve._private.common import RequestMetadata, ServeComponentType
 from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
