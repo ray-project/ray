@@ -2,14 +2,47 @@ import argparse
 import copy
 import optparse
 import os
+import pathlib
 import platform
 import sys
+import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from ray._private.path_utils import is_path
-
 import psutil
+
+
+def _is_path(path_or_uri: str) -> bool:
+    """Returns True if uri_or_path is a path and False otherwise.
+
+    IMPORTANT: This is a duplicate of ray._private.path_utils.is_path().
+
+    Why we can't import from path_utils:
+    - This hook runs via `uv run --no-project uv_runtime_env_hook.py` in test scenarios
+    - UV creates a minimal environment without dependencies installed yet
+    - Importing from ray._private.path_utils triggers the full Ray import chain:
+      ray._private.path_utils → ray/__init__.py → ray._private.worker →
+      ray.widgets → ray.widgets.util → packaging.version
+    - The 'packaging' module is not available in the minimal UV environment,
+      causing: ModuleNotFoundError: No module named 'packaging.version'
+
+    This duplicate implementation uses only stdlib (pathlib, urllib.parse)
+    to avoid the dependency issue. If you modify this function, ensure you
+    also update ray._private.path_utils.is_path() to keep them in sync.
+    """
+    if not isinstance(path_or_uri, str):
+        raise TypeError(f"path_or_uri must be a string, got {type(path_or_uri)}.")
+
+    parsed_path = pathlib.Path(path_or_uri)
+    parsed_uri = urllib.parse.urlparse(path_or_uri)
+
+    if isinstance(parsed_path, pathlib.PurePosixPath):
+        return not parsed_uri.scheme
+    elif isinstance(parsed_path, pathlib.PureWindowsPath):
+        return parsed_uri.scheme == parsed_path.drive.strip(":").lower()
+    else:
+        # this should never happen
+        raise TypeError(f"Unsupported path type: {type(parsed_path).__name__}")
 
 
 def _create_uv_run_parser():
@@ -378,7 +411,7 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # Convert Path to string if needed
     if isinstance(working_dir, Path):
         working_dir = str(working_dir)
-    if is_path(working_dir):
+    if _is_path(working_dir):
         _check_working_dir_files(options, runtime_env)
 
     return runtime_env
