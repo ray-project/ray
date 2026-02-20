@@ -181,13 +181,15 @@ actor_instance = actor.remote()
 ray.get(actor_instance.print_message.remote())
 """
         stderr = run_string_as_driver(script)
+        # Without LoggingConfig the plain root-logger handler is active, so the
+        # message text appears but structured fields are absent.
+        assert "This is a Ray actor" in stderr
         should_not_exist = [
             "job_id",
             "worker_id",
             "node_id",
             "actor_id",
             "task_id",
-            "This is a Ray actor",
             "timestamp_ns",
         ]
         for s in should_not_exist:
