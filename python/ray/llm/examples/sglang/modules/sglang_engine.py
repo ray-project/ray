@@ -205,8 +205,7 @@ class SGLangServer:
         total_completion_tokens = 0
         last_metadata = {}
 
-        for index, metadata in enumerate(results):
-            last_metadata = metadata
+        last_metadata = results[-1]
 
             total_prompt_tokens += metadata["prompt_tokens"]
             total_completion_tokens += metadata["completion_tokens"]
