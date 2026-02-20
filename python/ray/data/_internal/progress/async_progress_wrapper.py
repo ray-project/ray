@@ -70,14 +70,19 @@ class _DaemonThreadPoolExecutor:
                 except Exception as e:
                     f.set_exception(e)
 
-    def shutdown(self, wait: bool = True) -> None:
+    def shutdown(self, wait: bool = True, timeout: Optional[float] = None) -> None:
         self._shutdown = True
         # One sentinel per worker thread to unblock each _work_queue.get()
         for _ in self._threads:
             self._work_queue.put(None)
         if wait:
+            deadline = time.time() + timeout if timeout is not None else None
             for t in self._threads:
-                t.join()
+                if deadline is not None:
+                    remaining = max(0, deadline - time.time())
+                    t.join(timeout=remaining)
+                else:
+                    t.join()
 
 
 class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
@@ -148,6 +153,8 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
         # Wait for pending operations
         self._wait_for_pending_operations(timeout=max(0.0, deadline - time.time()))
 
+        self._executor.shutdown(wait=True, timeout=max(0.0, deadline - time.time()))
+
         final_done = threading.Event()
 
         def _final_closer():
@@ -164,7 +171,6 @@ class AsyncProgressManagerWrapper(BaseExecutionProgressManager):
         t.start()
         final_done.wait(timeout=max(0.0, deadline - time.time()))
 
-        self._executor.shutdown(wait=False)
         self._pending_futures.clear()
 
         logger.debug("AsyncProgressManagerWrapper closed")
