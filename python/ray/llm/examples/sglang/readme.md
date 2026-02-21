@@ -23,14 +23,12 @@ What is NOT supported in this implementation:
 **Note on Multi-GPU support:** TP (tensor parallelism) and PP (pipeline parallelism) are supported on a single node. Set `tp_size` and/or `pp_size` in `engine_kwargs` to distribute model execution across multiple GPUs.
 
 ## Core Components
-
 Your custom deployment consists of two main components:
 
 1. `SGLangServer` (**Backend**): The core Ray Serve deployment that initializes the SGLang runtime and model. This deployment contains the model's business logic, including resource requirements and generation methods (`completions` and `chat_completions`).
 2. enable ENV-VAR: `RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0` on CUDA device or `RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES=0` on ROCm device
 
 ### Deploy an LLM model using SGLang Engine
-
 Server
 
 ```{literalinclude} ../../../../../python/ray/llm/examples/sglang/serve_sglang.py
@@ -39,7 +37,6 @@ Server
 
 Python Client
 client for v1/chat/completions endpoint
-
 ```python
 import openai
 
@@ -59,7 +56,6 @@ print(f"Response: {response}")
 
 cURL
 client for v1/completions endpoint
-
 ```bash
 curl http://127.0.0.1:8000/v1/completions \
     -H "Content-Type: application/json" \
@@ -70,6 +66,8 @@ curl http://127.0.0.1:8000/v1/completions \
         "temperature": 0
     }'
 ```
+
+
 
 ## See also
 
