@@ -1341,8 +1341,6 @@ def test_small_data_local_aggregation(
     disable_fallback_to_object_extension,
 ):
     """Test that small datasets use local aggregation fast-path."""
-    from ray.data.context import DataContext, ShuffleStrategy
-
     ctx = DataContext.get_current()
     original_shuffle_strategy = ctx.shuffle_strategy
     original_threshold = ctx.small_data_threshold_for_local_aggregation
@@ -1370,8 +1368,6 @@ def test_local_aggregation_threshold_disabled(
     disable_fallback_to_object_extension,
 ):
     """Test that setting threshold to 0 disables local aggregation."""
-    from ray.data.context import DataContext, ShuffleStrategy
-
     ctx = DataContext.get_current()
     original_shuffle_strategy = ctx.shuffle_strategy
     original_threshold = ctx.small_data_threshold_for_local_aggregation
@@ -1399,8 +1395,6 @@ def test_local_aggregation_mean(
     disable_fallback_to_object_extension,
 ):
     """Test that Mean aggregation works correctly with local aggregation."""
-    from ray.data.context import DataContext, ShuffleStrategy
-
     ctx = DataContext.get_current()
     original_shuffle_strategy = ctx.shuffle_strategy
     original_threshold = ctx.small_data_threshold_for_local_aggregation
@@ -1427,8 +1421,6 @@ def test_local_aggregation_global_agg(
     disable_fallback_to_object_extension,
 ):
     """Test that global aggregation (groupby None) works with local aggregation."""
-    from ray.data.context import DataContext, ShuffleStrategy
-
     ctx = DataContext.get_current()
     original_shuffle_strategy = ctx.shuffle_strategy
     original_threshold = ctx.small_data_threshold_for_local_aggregation
